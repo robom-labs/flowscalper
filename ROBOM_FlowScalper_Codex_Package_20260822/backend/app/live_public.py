@@ -245,7 +245,13 @@ def _eligible_tickers(
         for instrument in instruments
         if instrument.status.upper() == "TRADING"
         and instrument.quote_asset == "USDT"
-        and "PERPETUAL" in instrument.contract_type.upper()
+        and (
+            instrument.contract_type.upper() == "PERPETUAL"
+            if instrument.venue is Venue.BINANCE_USDM
+            else "PERPETUAL" in instrument.contract_type.upper()
+        )
+        and instrument.base_asset not in {"USDC", "FDUSD", "TUSD", "USDP"}
+        and not instrument.symbol.endswith(("UPUSDT", "DOWNUSDT", "BULLUSDT", "BEARUSDT"))
     }
     return {
         ticker.symbol: ticker
