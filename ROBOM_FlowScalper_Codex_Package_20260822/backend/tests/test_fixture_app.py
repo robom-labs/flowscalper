@@ -1,6 +1,7 @@
 """오프라인 fixture가 PAPER 상태로 끝까지 부팅되는지 검증한다."""
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -92,6 +93,25 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
     assert ledger.count("trades") == 2
     assert ledger.count("transitions") == 10
     assert ledger.count("snapshots") == 2
+    assert ledger.count("paper_orders") == 4
+    assert ledger.count("fills") == 4
+    orders = ledger.list_orders("run-persisted")
+    fills = ledger.list_fills("run-persisted")
+    trade = ledger.list_trades("run-persisted")[0]
+    assert [order["intent"] for order in orders] == ["ENTRY_IOC", "TAKE_PROFIT"]
+    assert [(fill["planned_price"], fill["price"]) for fill in fills] == [
+        ("100.00", "100.10"),
+        ("102.00", "101.90"),
+    ]
+    assert sum(Decimal(fill["fee_usdt"]) for fill in fills) == Decimal(trade["fees_usdt"])
+    assert sum(Decimal(fill["slippage_usdt"]) for fill in fills) == Decimal(trade["slippage_usdt"])
+    transition_times = [
+        transition["ts_ms"] for transition in ledger.list_transitions("run-persisted")
+    ]
+    assert transition_times == sorted(transition_times)
+    assert transition_times[2] == orders[0]["created_ts_ms"]
+    assert transition_times[3] == fills[0]["ts_ms"]
+    assert transition_times[-1] == fills[-1]["ts_ms"]
     ledger.close()
 
 

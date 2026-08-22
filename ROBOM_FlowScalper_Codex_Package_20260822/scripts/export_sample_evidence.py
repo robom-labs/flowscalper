@@ -33,6 +33,8 @@ def main() -> None:
         if len(trades) != 1:
             raise RuntimeError(f"증거 Run의 완료 거래는 1건이어야 합니다: {len(trades)}")
         transitions = ledger.list_transitions(recovered.run_id)
+        orders = ledger.list_orders(recovered.run_id)
+        fills = ledger.list_fills(recovered.run_id)
         events = [
             {
                 "sequence": row["sequence"],
@@ -66,6 +68,8 @@ def main() -> None:
                     "status": "PASS",
                     "run_id": recovered.run_id,
                     "trade": trades[0],
+                    "orders": orders,
+                    "fills": fills,
                     "transition_count": len(transitions),
                     "replay_checksum": replay.checksum,
                     "replay_path": list(replay.decision_path),

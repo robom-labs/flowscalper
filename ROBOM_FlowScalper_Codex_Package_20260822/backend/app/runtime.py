@@ -224,21 +224,33 @@ class PaperRuntime:
             return
         timestamp = self.clock.utc_ms()
         fixture_path = (
-            ("OBSERVING", "FIXTURE_BOOK_VALID"),
-            ("ARMED", "LSA_CONFIRMED"),
-            ("ENTRY_PENDING", "ENTRY_IOC"),
-            ("PROTECTED", "FULL_FILL_WITH_PROTECTION"),
-            ("CLOSED", "TAKE_PROFIT"),
+            ("OBSERVING", "FIXTURE_BOOK_VALID", 185_000),
+            ("ARMED", "LSA_CONFIRMED", 184_500),
+            ("ENTRY_PENDING", "ENTRY_IOC", 184_075),
+            ("PROTECTED", "FULL_FILL_WITH_PROTECTION", 184_000),
+            ("CLOSED", "TAKE_PROFIT", 0),
         )
-        for offset, (state, reason_code) in enumerate(fixture_path):
+        for state, reason_code, age_ms in fixture_path:
+            evidence: dict[str, object] = {}
+            if state == "ARMED":
+                evidence = {
+                    "planned_entry": "100.00",
+                    "planned_take_profit": "102.00",
+                    "planned_stop": "99.55",
+                }
+            elif state == "PROTECTED":
+                evidence = {"actual_entry": "100.10", "protected_quantity": "1"}
+            elif state == "CLOSED":
+                evidence = {"actual_exit": "101.90", "remaining_quantity": "0"}
             self.ledger.append_transition(
                 self.run_id,
                 state=state,
-                ts_ms=timestamp - (len(fixture_path) - offset) * 1_000,
+                ts_ms=timestamp - age_ms,
                 payload={
                     "trade_id": f"{self.run_id}-fixture-trade-001",
                     "reason_code": reason_code,
                     "sample_type": "OFFLINE_FIXTURE",
+                    **evidence,
                 },
             )
         self.ledger.save_snapshot(
@@ -246,6 +258,78 @@ class PaperRuntime:
             lifecycle_state="CLOSED",
             ts_ms=timestamp,
             payload={"open_position": None, "last_exit_reason": "TAKE_PROFIT"},
+        )
+        self.ledger.record_order(
+            {
+                "order_id": f"{self.run_id}-entry-order",
+                "run_id": self.run_id,
+                "trade_id": f"{self.run_id}-fixture-trade-001",
+                "venue": Venue.FIXTURE.value,
+                "symbol": "BTCUSDT",
+                "side": "BUY",
+                "intent": "ENTRY_IOC",
+                "status": "FILLED",
+                "requested_qty": "1",
+                "filled_qty": "1",
+                "price_cap": "100.10",
+                "average_fill_price": "100.10",
+                "created_ts_ms": timestamp - 184_075,
+                "arrival_ts_ms": timestamp - 184_000,
+                "finalized_ts_ms": timestamp - 184_000,
+                "fee_usdt": "0.06006",
+                "slippage_usdt": "0.10",
+                "reason_codes": ["FIXTURE_DEPTH_WALK"],
+            }
+        )
+        self.ledger.record_fill(
+            {
+                "fill_id": f"{self.run_id}-entry-fill",
+                "run_id": self.run_id,
+                "order_id": f"{self.run_id}-entry-order",
+                "side": "BUY",
+                "planned_price": "100.00",
+                "price": "100.10",
+                "quantity": "1",
+                "fee_usdt": "0.06006",
+                "slippage_usdt": "0.10",
+                "ts_ms": timestamp - 184_000,
+            }
+        )
+        self.ledger.record_order(
+            {
+                "order_id": f"{self.run_id}-exit-order",
+                "run_id": self.run_id,
+                "trade_id": f"{self.run_id}-fixture-trade-001",
+                "venue": Venue.FIXTURE.value,
+                "symbol": "BTCUSDT",
+                "side": "SELL",
+                "intent": "TAKE_PROFIT",
+                "status": "FILLED",
+                "requested_qty": "1",
+                "filled_qty": "1",
+                "trigger_price": "102.00",
+                "average_fill_price": "101.90",
+                "created_ts_ms": timestamp - 75,
+                "arrival_ts_ms": timestamp,
+                "finalized_ts_ms": timestamp,
+                "fee_usdt": "0.06114",
+                "slippage_usdt": "0.10",
+                "reason_codes": ["FIXTURE_EXECUTABLE_BID"],
+            }
+        )
+        self.ledger.record_fill(
+            {
+                "fill_id": f"{self.run_id}-exit-fill",
+                "run_id": self.run_id,
+                "order_id": f"{self.run_id}-exit-order",
+                "side": "SELL",
+                "planned_price": "102.00",
+                "price": "101.90",
+                "quantity": "1",
+                "fee_usdt": "0.06114",
+                "slippage_usdt": "0.10",
+                "ts_ms": timestamp,
+            }
         )
         self.ledger.record_trade(
             {
@@ -260,7 +344,7 @@ class PaperRuntime:
                 "entry_price": "100.10",
                 "exit_price": "101.90",
                 "initial_stop": "99.55",
-                "take_profit": "101.90",
+                "take_profit": "102.00",
                 "quantity": "1",
                 "exit_reason": "TAKE_PROFIT",
                 "gross_pnl_usdt": "1.80",

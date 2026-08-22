@@ -435,12 +435,32 @@ class SQLiteLedger:
             for row in rows
         ]
 
+    def list_orders(self, run_id: str) -> list[dict[str, Any]]:
+        return self._list_payloads("paper_orders", run_id, "created_ts_ms, order_id")
+
+    def list_fills(self, run_id: str) -> list[dict[str, Any]]:
+        return self._list_payloads("fills", run_id, "ts_ms, fill_id")
+
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._connection.execute(
                 "SELECT * FROM runs WHERE run_id = ?", (run_id,)
             ).fetchone()
         return dict(row) if row is not None else None
+
+    def _list_payloads(self, table: str, run_id: str, ordering: str) -> list[dict[str, Any]]:
+        allowed = {
+            ("paper_orders", "created_ts_ms, order_id"),
+            ("fills", "ts_ms, fill_id"),
+        }
+        if (table, ordering) not in allowed:
+            raise ValueError("허용되지 않은 payload 조회입니다.")
+        with self._lock:
+            rows = self._connection.execute(
+                f"SELECT payload_json FROM {table} WHERE run_id = ? ORDER BY {ordering}",
+                (run_id,),
+            ).fetchall()
+        return [json.loads(str(row["payload_json"])) for row in rows]
 
     def count(self, table: str) -> int:
         allowed = {
