@@ -69,6 +69,8 @@ class SupervisorTelemetry:
     last_error: str | None = None
     planned_rotation_count: int = 0
     entry_locked: bool = True
+    critical_lag_threshold_ms: float = 1_500.0
+    critical_lag_event_count: int = 0
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
 
     @property
@@ -97,6 +99,12 @@ class SupervisorTelemetry:
             "lag_p95_ms": self.lag_p95_ms,
             "planned_rotations": self.planned_rotation_count,
             "entry_locked": self.entry_locked,
+            "critical_lag_threshold_ms": self.critical_lag_threshold_ms,
+            "critical_lag_event_count": self.critical_lag_event_count,
+            "critical_lag_active": bool(
+                self.lag_p95_ms is not None
+                and self.lag_p95_ms > self.critical_lag_threshold_ms
+            ),
             "last_error": self.last_error,
         }
 
@@ -113,11 +121,14 @@ class PersistentPublicSupervisor:
         sink: EventSink,
         queue_capacity: int = 4_096,
         startup_timeout_seconds: float = 25.0,
+        critical_lag_threshold_ms: float = 1_500.0,
         backoff: BackoffPolicy | None = None,
         rng: random.Random | None = None,
     ) -> None:
         if queue_capacity <= 0:
             raise ValueError("queue_capacity은 양수여야 합니다.")
+        if critical_lag_threshold_ms <= 0:
+            raise ValueError("critical lag 기준은 양수여야 합니다.")
         self.provider = provider
         self.run_id = run_id
         self.clock = clock
@@ -125,7 +136,10 @@ class PersistentPublicSupervisor:
         self.startup_timeout_seconds = startup_timeout_seconds
         self.backoff = backoff or BackoffPolicy()
         self.rng = rng or random.Random(20260822)
-        self.telemetry = SupervisorTelemetry(queue_capacity=queue_capacity)
+        self.telemetry = SupervisorTelemetry(
+            queue_capacity=queue_capacity,
+            critical_lag_threshold_ms=critical_lag_threshold_ms,
+        )
         self.selection: ProviderSelection | None = None
         self._queue: asyncio.Queue[MarketEvent] = asyncio.Queue(maxsize=queue_capacity)
         self._ready = asyncio.Event()
@@ -213,6 +227,8 @@ class PersistentPublicSupervisor:
         self.telemetry.last_event_monotonic_ns = event.receive_monotonic_ns
         if event.quality.lag_ms is not None:
             self.telemetry.lag_samples_ms.append(event.quality.lag_ms)
+            if event.quality.lag_ms > self.telemetry.critical_lag_threshold_ms:
+                self.telemetry.critical_lag_event_count += 1
         flags = set(event.quality.flags)
         if "SEQUENCE_GAP" in flags:
             self.telemetry.gap_count += 1
@@ -225,8 +241,18 @@ class PersistentPublicSupervisor:
             and not event.quality.is_stale
         ):
             self.telemetry.state = ConnectionState.LIVE
-            self.telemetry.entry_locked = False
+            self.telemetry.entry_locked = bool(
+                self.telemetry.lag_p95_ms is not None
+                and self.telemetry.lag_p95_ms
+                > self.telemetry.critical_lag_threshold_ms
+            )
             self._ready.set()
+        elif (
+            self.telemetry.lag_p95_ms is not None
+            and self.telemetry.lag_p95_ms
+            > self.telemetry.critical_lag_threshold_ms
+        ):
+            self.telemetry.entry_locked = True
 
     def _enqueue(self, event: MarketEvent) -> None:
         if self._queue.full():
@@ -268,13 +294,15 @@ class BinancePersistentProvider:
         *,
         wide_max: int = 50,
         deep_max: int = 10,
-        planned_rotation_seconds: float = 23 * 60 * 60,
+        planned_rotation_seconds: float = 23 * 60 * 60 + 45 * 60,
+        pinned_symbols: tuple[str, ...] = (),
     ) -> None:
         if not 8 <= deep_max <= 12:
             raise ValueError("deep_max는 8..12 범위여야 합니다.")
         self.wide_max = wide_max
         self.deep_max = deep_max
         self.planned_rotation_seconds = planned_rotation_seconds
+        self.pinned_symbols = tuple(dict.fromkeys(pinned_symbols))
 
     async def prepare(self, *, run_id: str, clock: Clock) -> ProviderSelection:
         try:
@@ -287,7 +315,12 @@ class BinancePersistentProvider:
         eligible = _eligible_tickers(instruments, tickers)
         if not eligible:
             raise PublicDataUnavailable("BINANCE_USDM 유효 종목이 없습니다.")
-        wide, deep = _wide_and_deep(tuple(eligible), self.wide_max, self.deep_max)
+        wide, deep = _wide_and_deep(
+            tuple(eligible),
+            self.wide_max,
+            self.deep_max,
+            pinned_symbols=self.pinned_symbols,
+        )
         by_symbol = {item.symbol: item for item in instruments if item.symbol in set(wide)}
         return ProviderSelection(
             venue=self.venue,
@@ -508,13 +541,15 @@ class BybitPersistentProvider:
         *,
         wide_max: int = 50,
         deep_max: int = 10,
-        planned_rotation_seconds: float = 23 * 60 * 60,
+        planned_rotation_seconds: float = 23 * 60 * 60 + 45 * 60,
+        pinned_symbols: tuple[str, ...] = (),
     ) -> None:
         if not 8 <= deep_max <= 12:
             raise ValueError("deep_max는 8..12 범위여야 합니다.")
         self.wide_max = wide_max
         self.deep_max = deep_max
         self.planned_rotation_seconds = planned_rotation_seconds
+        self.pinned_symbols = tuple(dict.fromkeys(pinned_symbols))
 
     async def prepare(self, *, run_id: str, clock: Clock) -> ProviderSelection:
         try:
@@ -527,7 +562,12 @@ class BybitPersistentProvider:
         eligible = _eligible_tickers(instruments, tickers)
         if not eligible:
             raise PublicDataUnavailable("BYBIT_LINEAR 유효 종목이 없습니다.")
-        wide, deep = _wide_and_deep(tuple(eligible), self.wide_max, self.deep_max)
+        wide, deep = _wide_and_deep(
+            tuple(eligible),
+            self.wide_max,
+            self.deep_max,
+            pinned_symbols=self.pinned_symbols,
+        )
         return ProviderSelection(
             venue=self.venue,
             instruments={item.symbol: item for item in instruments if item.symbol in set(wide)},
@@ -661,6 +701,8 @@ def _wide_and_deep(
     ranked_symbols: Sequence[str],
     wide_max: int,
     deep_max: int,
+    *,
+    pinned_symbols: Sequence[str] = (),
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if wide_max < deep_max:
         raise ValueError("wide_max는 deep_max 이상이어야 합니다.")
@@ -670,8 +712,16 @@ def _wide_and_deep(
             wide_values.insert(0, priority)
             del wide_values[wide_max:]
     deep_values: list[str] = []
+    for symbol in pinned_symbols:
+        if symbol not in ranked_symbols:
+            raise PublicDataUnavailable(f"복구 PAPER 종목이 공개 유니버스에 없습니다: {symbol}")
+        if symbol not in wide_values:
+            wide_values.insert(0, symbol)
+            del wide_values[wide_max:]
+        if symbol not in deep_values:
+            deep_values.append(symbol)
     for priority in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
-        if priority in wide_values:
+        if priority in wide_values and priority not in deep_values:
             deep_values.append(priority)
     deep_values.extend(symbol for symbol in wide_values if symbol not in deep_values)
     return tuple(wide_values), tuple(deep_values[:deep_max])

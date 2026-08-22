@@ -17,9 +17,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.app.clocks import SystemClock
-from backend.app.domain.models import RuntimeMode, Venue
+from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
 from backend.app.runtime import PaperRuntime
-from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.storage.parquet import ParquetEventStore
+from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
 from backend.app.strategies.registry import StrategyMode
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -70,7 +71,13 @@ def _runtime_from_environment() -> PaperRuntime:
     database = Path(os.environ.get("ROBOM_DB_PATH", str(default_database)))
     ledger = SQLiteLedger(database)
     clock = SystemClock()
-    recovered = ledger.recover_latest(recovered_ts_ms=clock.utc_ms())
+    recovery_error: LedgerInvariantError | None = None
+    try:
+        recovered = ledger.recover_latest(recovered_ts_ms=clock.utc_ms())
+    except LedgerInvariantError as error:
+        recovered = None
+        recovery_error = error
+        mode = RuntimeMode.READY
     run_id = None
     run_venue = Venue.NONE if mode is RuntimeMode.READY else Venue.FIXTURE
     if recovered is not None and mode is not RuntimeMode.READY:
@@ -83,8 +90,21 @@ def _runtime_from_environment() -> PaperRuntime:
         clock=clock,
         run_id=run_id or ("ready" if mode is RuntimeMode.READY else f"run-{uuid4().hex[:12]}"),
         ledger=ledger,
+        storage_guard=ParquetEventStore(
+            database.parent / "market-parquet",
+            minimum_free_bytes=int(
+                os.environ.get("ROBOM_MIN_FREE_BYTES", str(2 * 1024**3))
+            ),
+            minimum_free_ratio=float(os.environ.get("ROBOM_MIN_FREE_RATIO", "0.05")),
+        ),
         venue=run_venue,
     )
+    recovery_ok = True
+    if recovery_error is not None:
+        runtime._lock_recovery("RECOVERY_CHECKSUM_OR_SCHEMA_INVALID")
+        recovery_ok = False
+    elif recovered is not None and run_id is not None:
+        recovery_ok = runtime.restore_recovery_state(recovered)
     if run_id is not None:
         ledger.record_incident(
             f"recovery-{run_id}-{runtime.clock.utc_ms()}",
@@ -92,10 +112,21 @@ def _runtime_from_environment() -> PaperRuntime:
             severity="INFO",
             category="PAPER_RESTART_RECOVERY",
             ts_ms=runtime.clock.utc_ms(),
-            payload={"lifecycle_state": recovered.lifecycle_state if recovered else "RUN_OPEN"},
+            payload={
+                "lifecycle_state": recovered.lifecycle_state if recovered else "RUN_OPEN",
+                "recovery_ok": recovery_ok,
+                "open_position": runtime.paper_portfolio.main.position is not None,
+            },
         )
-    if runtime.mode is RuntimeMode.DEMO_FIXTURE:
+    if runtime.mode is RuntimeMode.DEMO_FIXTURE and recovery_ok:
         runtime.boot_demo()
+        runtime.paused = False
+        runtime.position_visible = True
+        runtime.market_data_state = MarketDataState.FIXTURE
+        runtime.runtime_health_flags = [
+            "OFFLINE_DEMO_ISOLATED",
+            "PAPER_STATE_RECOVERED",
+        ]
     return runtime
 
 
@@ -256,7 +287,10 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
         except WebSocketDisconnect:
             return
 
-    if FRONTEND_DIST.exists():
+    if (
+        (FRONTEND_DIST / "assets").is_dir()
+        and (FRONTEND_DIST / "index.html").is_file()
+    ):
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
         @app.get("/{path:path}")

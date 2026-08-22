@@ -142,7 +142,7 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
     assert ledger.get_run("run-persisted")["finalized_ts_ms"] is not None
     assert ledger.count("trades") == 2
     assert ledger.count("transitions") == 10
-    assert ledger.count("snapshots") == 2
+    assert ledger.count("snapshots") == 4
     assert ledger.count("paper_orders") == 4
     assert ledger.count("fills") == 4
     orders = ledger.list_orders("run-persisted")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -157,3 +158,145 @@ class ShadowLedger:
 
     def rows(self) -> list[dict[str, object]]:
         return [account.snapshot() for account in self._accounts.values()]
+
+    def recovery_state(self) -> dict[str, object]:
+        """재시작 뒤에도 전략·비용 프로필별 가상계좌가 섞이지 않게 직렬화한다."""
+
+        return {
+            "accounts": [
+                {
+                    "strategy_id": account.key.strategy_id,
+                    "profile": account.key.profile.value,
+                    "starting_equity_usdt": str(account.starting_equity_usdt),
+                    "current_equity_usdt": str(account.current_equity_usdt),
+                    "peak_equity_usdt": str(account.peak_equity_usdt),
+                    "realized_pnl_usdt": str(account.realized_pnl_usdt),
+                    "fees_usdt": str(account.fees_usdt),
+                    "slippage_usdt": str(account.slippage_usdt),
+                    "maximum_drawdown_usdt": str(account.maximum_drawdown_usdt),
+                    "open_position": _shadow_position_payload(account.open_position),
+                    "trades": [_shadow_trade_payload(trade) for trade in account.trades],
+                }
+                for _, account in sorted(
+                    self._accounts.items(),
+                    key=lambda item: (item[0].strategy_id, item[0].profile.value),
+                )
+            ]
+        }
+
+    def restore_state(self, payload: Mapping[str, object]) -> None:
+        """checksum 검증을 마친 snapshot만 현재 Registry 계좌에 복원한다."""
+
+        rows = payload.get("accounts")
+        if not isinstance(rows, list):
+            raise ValueError("shadow 복구 snapshot에 accounts가 없습니다.")
+        seen: set[ShadowAccountKey] = set()
+        for value in rows:
+            if not isinstance(value, Mapping):
+                raise ValueError("shadow 복구 계좌 형식이 잘못됐습니다.")
+            key = ShadowAccountKey(
+                str(value["strategy_id"]), CostProfile(str(value["profile"]))
+            )
+            if key in seen or key not in self._accounts:
+                raise ValueError(f"shadow 복구 계좌가 중복되거나 미등록입니다: {key}")
+            seen.add(key)
+            account = self._accounts[key]
+            account.starting_equity_usdt = Decimal(str(value["starting_equity_usdt"]))
+            account.current_equity_usdt = Decimal(str(value["current_equity_usdt"]))
+            account.peak_equity_usdt = Decimal(str(value["peak_equity_usdt"]))
+            account.realized_pnl_usdt = Decimal(str(value["realized_pnl_usdt"]))
+            account.fees_usdt = Decimal(str(value["fees_usdt"]))
+            account.slippage_usdt = Decimal(str(value["slippage_usdt"]))
+            account.maximum_drawdown_usdt = Decimal(
+                str(value["maximum_drawdown_usdt"])
+            )
+            position = value.get("open_position")
+            account.open_position = (
+                _shadow_position_from_payload(position)
+                if isinstance(position, Mapping)
+                else None
+            )
+            trade_rows = value.get("trades")
+            if not isinstance(trade_rows, list):
+                raise ValueError("shadow 복구 거래 목록 형식이 잘못됐습니다.")
+            account.trades = [
+                _shadow_trade_from_payload(row)
+                for row in trade_rows
+                if isinstance(row, Mapping)
+            ]
+            if len(account.trades) != len(trade_rows):
+                raise ValueError("shadow 복구 거래 행 형식이 잘못됐습니다.")
+            if account.current_equity_usdt != (
+                account.starting_equity_usdt + account.realized_pnl_usdt
+            ):
+                raise ValueError("shadow 복구 계좌 손익이 자산과 일치하지 않습니다.")
+        if seen != set(self._accounts):
+            raise ValueError("shadow 복구 snapshot의 전략 계좌 집합이 Registry와 다릅니다.")
+
+
+def _shadow_position_payload(position: ShadowPosition | None) -> dict[str, object] | None:
+    if position is None:
+        return None
+    return {
+        "shadow_trade_id": position.shadow_trade_id,
+        "symbol": position.symbol,
+        "side": position.side.value,
+        "quantity": str(position.quantity),
+        "entry_price": str(position.entry_price),
+        "entry_fee_usdt": str(position.entry_fee_usdt),
+        "entry_slippage_usdt": str(position.entry_slippage_usdt),
+        "opened_ts_ms": position.opened_ts_ms,
+    }
+
+
+def _shadow_position_from_payload(payload: Mapping[str, object]) -> ShadowPosition:
+    return ShadowPosition(
+        shadow_trade_id=str(payload["shadow_trade_id"]),
+        symbol=str(payload["symbol"]),
+        side=Side(str(payload["side"])),
+        quantity=Decimal(str(payload["quantity"])),
+        entry_price=Decimal(str(payload["entry_price"])),
+        entry_fee_usdt=Decimal(str(payload["entry_fee_usdt"])),
+        entry_slippage_usdt=Decimal(str(payload["entry_slippage_usdt"])),
+        opened_ts_ms=int(str(payload["opened_ts_ms"])),
+    )
+
+
+def _shadow_trade_payload(trade: ShadowTrade) -> dict[str, object]:
+    return {
+        "shadow_trade_id": trade.shadow_trade_id,
+        "strategy_id": trade.strategy_id,
+        "profile": trade.profile.value,
+        "symbol": trade.symbol,
+        "side": trade.side.value,
+        "quantity": str(trade.quantity),
+        "entry_price": str(trade.entry_price),
+        "exit_price": str(trade.exit_price),
+        "gross_pnl_usdt": str(trade.gross_pnl_usdt),
+        "fees_usdt": str(trade.fees_usdt),
+        "slippage_usdt": str(trade.slippage_usdt),
+        "net_pnl_usdt": str(trade.net_pnl_usdt),
+        "opened_ts_ms": trade.opened_ts_ms,
+        "closed_ts_ms": trade.closed_ts_ms,
+        "exit_reason": trade.exit_reason,
+    }
+
+
+def _shadow_trade_from_payload(payload: Mapping[str, object]) -> ShadowTrade:
+    return ShadowTrade(
+        shadow_trade_id=str(payload["shadow_trade_id"]),
+        strategy_id=str(payload["strategy_id"]),
+        profile=CostProfile(str(payload["profile"])),
+        symbol=str(payload["symbol"]),
+        side=Side(str(payload["side"])),
+        quantity=Decimal(str(payload["quantity"])),
+        entry_price=Decimal(str(payload["entry_price"])),
+        exit_price=Decimal(str(payload["exit_price"])),
+        gross_pnl_usdt=Decimal(str(payload["gross_pnl_usdt"])),
+        fees_usdt=Decimal(str(payload["fees_usdt"])),
+        slippage_usdt=Decimal(str(payload["slippage_usdt"])),
+        net_pnl_usdt=Decimal(str(payload["net_pnl_usdt"])),
+        opened_ts_ms=int(str(payload["opened_ts_ms"])),
+        closed_ts_ms=int(str(payload["closed_ts_ms"])),
+        exit_reason=str(payload["exit_reason"]),
+    )

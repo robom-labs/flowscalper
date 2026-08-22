@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
 from backend.app.candidates import CandidatePlan, TakeProfitTarget
 from backend.app.costing import CostModel, CostProfile
-from backend.app.domain.models import Side
+from backend.app.domain.models import Side, Venue
 from backend.app.execution.models import (
     BookSnapshot,
     ExitReason,
     Fill,
+    OrderIntent,
+    OrderStatus,
     PaperOrder,
     PaperTrade,
     ProtectedPosition,
@@ -216,6 +219,12 @@ class PaperPortfolioEngine:
         )
         managed.forced_exit_reason = reason
         managed.forced_exit_label = reason.value
+        self._audit(
+            "MAIN_MANUAL_EXIT_PENDING",
+            managed.plan,
+            account_id=self.main.account_id,
+            reason=reason.value,
+        )
         return True
 
     def evaluate_health(
@@ -418,6 +427,87 @@ class PaperPortfolioEngine:
             "equity": Decimal("1000") + realized + unrealized,
         }
 
+    def lifecycle_state(self) -> str:
+        """main 계좌의 재시작 지점을 모호하지 않은 한 상태로 축약한다."""
+
+        if self.main.position is not None:
+            return "EXIT_PENDING" if self.main.position.pending_exit is not None else "PROTECTED"
+        if self.main.pending_entry is not None:
+            return "ENTRY_PENDING"
+        return "SCANNING"
+
+    def recovery_state(self) -> dict[str, object]:
+        """main·shadow 실행계좌와 shadow 회계를 checksum 가능한 JSON 값으로 만든다."""
+
+        return {
+            "schema_version": 1,
+            "run_id": self.run_id,
+            "accounts": [
+                _execution_account_payload(account)
+                for account in sorted(self.accounts, key=lambda item: item.account_id)
+            ],
+            "shadow_ledger": self.shadow_ledger.recovery_state(),
+        }
+
+    def restore_state(self, payload: Mapping[str, object]) -> None:
+        """현재 Run·Registry와 정확히 일치하는 검증 snapshot만 복구한다."""
+
+        if int(str(payload.get("schema_version", 0))) != 1:
+            raise ValueError("지원하지 않는 PAPER 복구 snapshot 버전입니다.")
+        if str(payload.get("run_id")) != self.run_id:
+            raise ValueError("다른 Run의 PAPER 상태를 복구할 수 없습니다.")
+        account_rows = payload.get("accounts")
+        if not isinstance(account_rows, list):
+            raise ValueError("PAPER 복구 snapshot에 accounts가 없습니다.")
+        expected = {account.account_id: account for account in self.accounts}
+        seen: set[str] = set()
+        for value in account_rows:
+            if not isinstance(value, Mapping):
+                raise ValueError("PAPER 복구 계좌 형식이 잘못됐습니다.")
+            account_id = str(value.get("account_id"))
+            if account_id in seen or account_id not in expected:
+                raise ValueError(f"PAPER 복구 계좌가 중복되거나 미등록입니다: {account_id}")
+            seen.add(account_id)
+            _restore_execution_account(expected[account_id], value, run_id=self.run_id)
+        if seen != set(expected):
+            raise ValueError("PAPER 복구 snapshot 계좌 집합이 Strategy Registry와 다릅니다.")
+        shadow_payload = payload.get("shadow_ledger")
+        if not isinstance(shadow_payload, Mapping):
+            raise ValueError("PAPER 복구 snapshot에 shadow 원장이 없습니다.")
+        self.shadow_ledger.restore_state(shadow_payload)
+        self.audit_events = []
+        self._new_main_trades = []
+
+    def reconcile_persisted_main_trades(
+        self, rows: Sequence[Mapping[str, object]]
+    ) -> None:
+        """snapshot 직후 crash 창에서 이미 확정된 원장 거래를 최종 진실로 적용한다."""
+
+        trades = [_paper_trade_from_payload(row) for row in rows]
+        if len({trade.trade_id for trade in trades}) != len(trades):
+            raise ValueError("복구할 main PAPER 거래 ID가 중복됩니다.")
+        closed_ids = {trade.trade_id for trade in trades}
+        if (
+            self.main.position is not None
+            and self.main.position.protected.trade_id in closed_ids
+        ):
+            self.main.position = None
+        self.main.completed_trades = trades
+        risk = self.main.risk_state
+        realized = sum((trade.net_pnl_usdt for trade in trades), start=Decimal(0))
+        risk.current_equity = risk.starting_equity + realized
+        running = risk.starting_equity
+        peak = risk.starting_equity
+        for trade in sorted(trades, key=lambda item: (item.closed_ts_ms, item.trade_id)):
+            running += trade.net_pnl_usdt
+            peak = max(peak, running)
+        risk.peak_equity = peak
+        risk.realized_today = realized
+        risk.realized_week = realized
+        risk.daily_trade_count = len(trades) + int(self.main.position is not None)
+        risk.open_positions = int(self.main.position is not None)
+        risk.global_consecutive_losses = _trailing_losses(trades)
+
     def shadow_rows(self) -> list[dict[str, object]]:
         rows = self.shadow_ledger.rows()
         for row in rows:
@@ -543,6 +633,12 @@ class PaperPortfolioEngine:
                 best_executable,
                 book.ts_ms,
             )
+            self._audit(
+                "FORCED_EXIT_PENDING",
+                managed.plan,
+                account_id=account.account_id,
+                reason=managed.forced_exit_reason.value,
+            )
             return
         stop_hit = (
             best_executable <= managed.protected.current_stop
@@ -568,6 +664,12 @@ class PaperPortfolioEngine:
                 managed.protected.current_stop,
                 book.ts_ms,
             )
+            self._audit(
+                "STOP_EXIT_PENDING",
+                managed.plan,
+                account_id=account.account_id,
+                trigger_price=str(managed.protected.current_stop),
+            )
             return
         if target_hit and target is not None:
             managed.pending_exit = PendingExit(
@@ -579,6 +681,13 @@ class PaperPortfolioEngine:
                 ),
                 target.price,
                 book.ts_ms,
+            )
+            self._audit(
+                "TAKE_PROFIT_EXIT_PENDING",
+                managed.plan,
+                account_id=account.account_id,
+                label=target.label,
+                trigger_price=str(target.price),
             )
 
     def _execute_exit(
@@ -825,3 +934,543 @@ class PaperPortfolioEngine:
                 **payload,
             }
         )
+
+
+def _execution_account_payload(account: ExecutionAccount) -> dict[str, object]:
+    return {
+        "account_id": account.account_id,
+        "profile": account.profile.value,
+        "risk_state": _risk_state_payload(account.risk_state),
+        "pending_entry": _candidate_plan_payload(account.pending_entry.plan)
+        if account.pending_entry is not None
+        else None,
+        "position": _managed_position_payload(account.position)
+        if account.position is not None
+        else None,
+        "completed_trades": [
+            _paper_trade_payload(trade) for trade in account.completed_trades
+        ],
+        "entry_orders": [_paper_order_payload(order) for order in account.entry_orders],
+        "exit_orders": [_paper_order_payload(order) for order in account.exit_orders],
+    }
+
+
+def _restore_execution_account(
+    account: ExecutionAccount,
+    payload: Mapping[str, object],
+    *,
+    run_id: str,
+) -> None:
+    if CostProfile(str(payload.get("profile"))) is not account.profile:
+        raise ValueError(f"복구 계좌 비용 프로필 불일치: {account.account_id}")
+    risk_payload = payload.get("risk_state")
+    if not isinstance(risk_payload, Mapping):
+        raise ValueError("복구 계좌에 위험 상태가 없습니다.")
+    account.risk_state = _risk_state_from_payload(risk_payload)
+    pending = payload.get("pending_entry")
+    account.pending_entry = (
+        PendingEntry(_candidate_plan_from_payload(pending))
+        if isinstance(pending, Mapping)
+        else None
+    )
+    position = payload.get("position")
+    account.position = (
+        _managed_position_from_payload(position)
+        if isinstance(position, Mapping)
+        else None
+    )
+    completed = payload.get("completed_trades")
+    entries = payload.get("entry_orders")
+    exits = payload.get("exit_orders")
+    if (
+        not isinstance(completed, list)
+        or not isinstance(entries, list)
+        or not isinstance(exits, list)
+    ):
+        raise ValueError("복구 계좌의 거래·주문 목록 형식이 잘못됐습니다.")
+    account.completed_trades = [
+        _paper_trade_from_payload(value)
+        for value in completed
+        if isinstance(value, Mapping)
+    ]
+    account.entry_orders = [
+        _paper_order_from_payload(value) for value in entries if isinstance(value, Mapping)
+    ]
+    account.exit_orders = [
+        _paper_order_from_payload(value) for value in exits if isinstance(value, Mapping)
+    ]
+    if (
+        len(account.completed_trades) != len(completed)
+        or len(account.entry_orders) != len(entries)
+        or len(account.exit_orders) != len(exits)
+    ):
+        raise ValueError("복구 계좌의 거래·주문 행 형식이 잘못됐습니다.")
+    plans = [
+        account.pending_entry.plan if account.pending_entry is not None else None,
+        account.position.plan if account.position is not None else None,
+    ]
+    if any(plan is not None and plan.run_id != run_id for plan in plans):
+        raise ValueError("복구 계좌에 다른 Run의 계획이 포함됐습니다.")
+    if any(trade.run_id != run_id for trade in account.completed_trades):
+        raise ValueError("복구 계좌에 다른 Run의 거래가 포함됐습니다.")
+    expected_open = int(account.position is not None)
+    if account.risk_state.open_positions != expected_open:
+        raise ValueError("복구 계좌의 포지션 수와 위험 상태가 일치하지 않습니다.")
+    if account.pending_entry is not None and account.position is not None:
+        raise ValueError("복구 계좌가 진입 대기와 열린 포지션을 동시에 가질 수 없습니다.")
+
+
+def _risk_state_payload(state: RiskState) -> dict[str, object]:
+    return {
+        "starting_equity": str(state.starting_equity),
+        "current_equity": str(state.current_equity),
+        "peak_equity": str(state.peak_equity),
+        "realized_today": str(state.realized_today),
+        "realized_week": str(state.realized_week),
+        "daily_trade_count": state.daily_trade_count,
+        "open_positions": state.open_positions,
+        "global_consecutive_losses": state.global_consecutive_losses,
+        "paused": state.paused,
+        "faulted": state.faulted,
+        "cooldowns_until_ms": dict(state.cooldowns_until_ms),
+    }
+
+
+def _risk_state_from_payload(payload: Mapping[str, object]) -> RiskState:
+    cooldowns = payload.get("cooldowns_until_ms", {})
+    if not isinstance(cooldowns, Mapping):
+        raise ValueError("복구 위험상태 cooldown 형식이 잘못됐습니다.")
+    state = RiskState(
+        starting_equity=Decimal(str(payload["starting_equity"])),
+        current_equity=Decimal(str(payload["current_equity"])),
+        peak_equity=Decimal(str(payload["peak_equity"])),
+        realized_today=Decimal(str(payload["realized_today"])),
+        realized_week=Decimal(str(payload["realized_week"])),
+        daily_trade_count=int(str(payload["daily_trade_count"])),
+        open_positions=int(str(payload["open_positions"])),
+        global_consecutive_losses=int(str(payload["global_consecutive_losses"])),
+        paused=bool(payload["paused"]),
+        faulted=bool(payload["faulted"]),
+        cooldowns_until_ms={str(key): int(str(value)) for key, value in cooldowns.items()},
+    )
+    if state.current_equity > state.peak_equity or state.starting_equity <= 0:
+        raise ValueError("복구 위험상태의 자산 불변조건이 잘못됐습니다.")
+    return state
+
+
+def _managed_position_payload(position: ManagedPaperPosition) -> dict[str, object]:
+    return {
+        "plan": _candidate_plan_payload(position.plan),
+        "protected": _protected_position_payload(position.protected),
+        "original_quantity": str(position.original_quantity),
+        "remaining_quantity": str(position.remaining_quantity),
+        "target_remaining": {
+            key: str(value) for key, value in position.target_remaining.items()
+        },
+        "exit_legs": [_exit_leg_payload(leg) for leg in position.exit_legs],
+        "pending_exit": _pending_exit_payload(position.pending_exit)
+        if position.pending_exit is not None
+        else None,
+        "mfe_r": str(position.mfe_r),
+        "mae_r": str(position.mae_r),
+        "forced_exit_reason": position.forced_exit_reason.value
+        if position.forced_exit_reason is not None
+        else None,
+        "forced_exit_label": position.forced_exit_label,
+    }
+
+
+def _managed_position_from_payload(payload: Mapping[str, object]) -> ManagedPaperPosition:
+    plan_payload = payload.get("plan")
+    protected_payload = payload.get("protected")
+    remaining_payload = payload.get("target_remaining")
+    leg_rows = payload.get("exit_legs")
+    if (
+        not isinstance(plan_payload, Mapping)
+        or not isinstance(protected_payload, Mapping)
+        or not isinstance(remaining_payload, Mapping)
+        or not isinstance(leg_rows, list)
+    ):
+        raise ValueError("복구 포지션 payload 형식이 잘못됐습니다.")
+    plan = _candidate_plan_from_payload(plan_payload)
+    protected = _protected_position_from_payload(protected_payload)
+    original = Decimal(str(payload["original_quantity"]))
+    remaining = Decimal(str(payload["remaining_quantity"]))
+    if protected.run_id != plan.run_id or protected.symbol != plan.symbol:
+        raise ValueError("복구 포지션의 계획과 보호 주문이 일치하지 않습니다.")
+    if not Decimal(0) < remaining <= original or protected.quantity != original:
+        raise ValueError("복구 포지션의 수량 불변조건이 잘못됐습니다.")
+    pending = payload.get("pending_exit")
+    position = ManagedPaperPosition(
+        plan=plan,
+        protected=protected,
+        original_quantity=original,
+        remaining_quantity=remaining,
+        target_remaining={
+            str(key): Decimal(str(value)) for key, value in remaining_payload.items()
+        },
+        exit_legs=[
+            _exit_leg_from_payload(value) for value in leg_rows if isinstance(value, Mapping)
+        ],
+        pending_exit=_pending_exit_from_payload(pending)
+        if isinstance(pending, Mapping)
+        else None,
+        mfe_r=Decimal(str(payload["mfe_r"])),
+        mae_r=Decimal(str(payload["mae_r"])),
+        forced_exit_reason=ExitReason(str(payload["forced_exit_reason"]))
+        if payload.get("forced_exit_reason") is not None
+        else None,
+        forced_exit_label=str(payload["forced_exit_label"])
+        if payload.get("forced_exit_label") is not None
+        else None,
+    )
+    if len(position.exit_legs) != len(leg_rows):
+        raise ValueError("복구 포지션의 exit leg 형식이 잘못됐습니다.")
+    if (
+        position.pending_exit is not None
+        and position.pending_exit.requested_quantity > remaining
+    ):
+        raise ValueError("복구 포지션의 대기 청산 수량이 잔여 수량을 넘습니다.")
+    return position
+
+
+def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
+    return {
+        "candidate_id": plan.candidate_id,
+        "signal_event_id": plan.signal_event_id,
+        "run_id": plan.run_id,
+        "venue": plan.venue.value,
+        "symbol": plan.symbol,
+        "strategy_id": plan.strategy_id,
+        "strategy_version": plan.strategy_version,
+        "direction": plan.direction.value,
+        "signal_time_ms": plan.signal_time_ms,
+        "expires_at_ms": plan.expires_at_ms,
+        "regime": plan.regime.value,
+        "planned_entry": str(plan.planned_entry),
+        "worst_allowed_entry": str(plan.worst_allowed_entry),
+        "initial_stop": str(plan.initial_stop),
+        "noise_buffer": str(plan.noise_buffer),
+        "take_profit_targets": [
+            {
+                "label": target.label,
+                "price": str(target.price),
+                "quantity_fraction": str(target.quantity_fraction),
+            }
+            for target in plan.take_profit_targets
+        ],
+        "position_size": str(plan.position_size),
+        "minimum_quantity": str(plan.minimum_quantity),
+        "risk_budget": str(plan.risk_budget),
+        "max_planned_loss": str(plan.max_planned_loss),
+        "gross_reward_usdt": str(plan.gross_reward_usdt),
+        "expected_fees_usdt": str(plan.expected_fees_usdt),
+        "expected_slippage_usdt": str(plan.expected_slippage_usdt),
+        "net_reward_usdt": str(plan.net_reward_usdt),
+        "net_risk_usdt": str(plan.net_risk_usdt),
+        "net_reward_risk": str(plan.net_reward_risk),
+        "data_quality": str(plan.data_quality),
+        "signal_quality": str(plan.signal_quality),
+        "liquidity_quality": str(plan.liquidity_quality),
+        "cost_burden": str(plan.cost_burden),
+        "reason_codes": list(plan.reason_codes),
+        "plain_korean_explanation": list(plan.plain_korean_explanation),
+        "management_policy": list(plan.management_policy),
+        "main_eligible": plan.main_eligible,
+        "shadow_eligible": plan.shadow_eligible,
+    }
+
+
+def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan:
+    target_rows = payload.get("take_profit_targets")
+    if not isinstance(target_rows, list):
+        raise ValueError("복구 계획의 TP 목록 형식이 잘못됐습니다.")
+    targets = tuple(
+        TakeProfitTarget(
+            label=str(value["label"]),
+            price=Decimal(str(value["price"])),
+            quantity_fraction=Decimal(str(value["quantity_fraction"])),
+        )
+        for value in target_rows
+        if isinstance(value, Mapping)
+    )
+    if len(targets) != len(target_rows):
+        raise ValueError("복구 계획의 TP 행 형식이 잘못됐습니다.")
+    return CandidatePlan(
+        candidate_id=str(payload["candidate_id"]),
+        signal_event_id=str(payload["signal_event_id"]),
+        run_id=str(payload["run_id"]),
+        venue=Venue(str(payload["venue"])),
+        symbol=str(payload["symbol"]),
+        strategy_id=str(payload["strategy_id"]),
+        strategy_version=str(payload["strategy_version"]),
+        direction=Side(str(payload["direction"])),
+        signal_time_ms=int(str(payload["signal_time_ms"])),
+        expires_at_ms=int(str(payload["expires_at_ms"])),
+        regime=Regime(str(payload["regime"])),
+        planned_entry=Decimal(str(payload["planned_entry"])),
+        worst_allowed_entry=Decimal(str(payload["worst_allowed_entry"])),
+        initial_stop=Decimal(str(payload["initial_stop"])),
+        noise_buffer=Decimal(str(payload["noise_buffer"])),
+        take_profit_targets=targets,
+        position_size=Decimal(str(payload["position_size"])),
+        minimum_quantity=Decimal(str(payload["minimum_quantity"])),
+        risk_budget=Decimal(str(payload["risk_budget"])),
+        max_planned_loss=Decimal(str(payload["max_planned_loss"])),
+        gross_reward_usdt=Decimal(str(payload["gross_reward_usdt"])),
+        expected_fees_usdt=Decimal(str(payload["expected_fees_usdt"])),
+        expected_slippage_usdt=Decimal(str(payload["expected_slippage_usdt"])),
+        net_reward_usdt=Decimal(str(payload["net_reward_usdt"])),
+        net_risk_usdt=Decimal(str(payload["net_risk_usdt"])),
+        net_reward_risk=Decimal(str(payload["net_reward_risk"])),
+        data_quality=Decimal(str(payload["data_quality"])),
+        signal_quality=Decimal(str(payload["signal_quality"])),
+        liquidity_quality=Decimal(str(payload["liquidity_quality"])),
+        cost_burden=Decimal(str(payload["cost_burden"])),
+        reason_codes=_strings(payload, "reason_codes"),
+        plain_korean_explanation=_strings(payload, "plain_korean_explanation"),
+        management_policy=_strings(payload, "management_policy"),
+        main_eligible=bool(payload["main_eligible"]),
+        shadow_eligible=bool(payload["shadow_eligible"]),
+    )
+
+
+def _protected_position_payload(position: ProtectedPosition) -> dict[str, object]:
+    return {
+        "trade_id": position.trade_id,
+        "run_id": position.run_id,
+        "venue": position.venue.value,
+        "symbol": position.symbol,
+        "side": position.side.value,
+        "quantity": str(position.quantity),
+        "entry_reference_price": str(position.entry_reference_price),
+        "entry_fill": _fill_payload(position.entry_fill),
+        "initial_stop": str(position.initial_stop),
+        "current_stop": str(position.current_stop),
+        "take_profit": str(position.take_profit),
+        "protection_orders": [
+            _paper_order_payload(order) for order in position.protection_orders
+        ],
+        "opened_ts_ms": position.opened_ts_ms,
+        "profile": position.profile.value,
+    }
+
+
+def _protected_position_from_payload(payload: Mapping[str, object]) -> ProtectedPosition:
+    fill_payload = payload.get("entry_fill")
+    order_rows = payload.get("protection_orders")
+    if not isinstance(fill_payload, Mapping) or not isinstance(order_rows, list):
+        raise ValueError("복구 보호 포지션 형식이 잘못됐습니다.")
+    orders = tuple(
+        _paper_order_from_payload(value)
+        for value in order_rows
+        if isinstance(value, Mapping)
+    )
+    if len(orders) != 2 or len(order_rows) != 2:
+        raise ValueError("복구 보호 포지션에는 TP와 SL 두 주문이 필요합니다.")
+    return ProtectedPosition(
+        trade_id=str(payload["trade_id"]),
+        run_id=str(payload["run_id"]),
+        venue=Venue(str(payload["venue"])),
+        symbol=str(payload["symbol"]),
+        side=Side(str(payload["side"])),
+        quantity=Decimal(str(payload["quantity"])),
+        entry_reference_price=Decimal(str(payload["entry_reference_price"])),
+        entry_fill=_fill_from_payload(fill_payload),
+        initial_stop=Decimal(str(payload["initial_stop"])),
+        current_stop=Decimal(str(payload["current_stop"])),
+        take_profit=Decimal(str(payload["take_profit"])),
+        protection_orders=(orders[0], orders[1]),
+        opened_ts_ms=int(str(payload["opened_ts_ms"])),
+        profile=CostProfile(str(payload["profile"])),
+    )
+
+
+def _paper_order_payload(order: PaperOrder) -> dict[str, object]:
+    return {
+        "order_id": order.order_id,
+        "trade_id": order.trade_id,
+        "run_id": order.run_id,
+        "venue": order.venue.value,
+        "symbol": order.symbol,
+        "side": order.side,
+        "intent": order.intent.value,
+        "status": order.status.value,
+        "requested_quantity": str(order.requested_quantity),
+        "filled_quantity": str(order.filled_quantity),
+        "price_cap": str(order.price_cap) if order.price_cap is not None else None,
+        "trigger_price": str(order.trigger_price) if order.trigger_price is not None else None,
+        "fill": _fill_payload(order.fill) if order.fill is not None else None,
+        "created_ts_ms": order.created_ts_ms,
+        "arrival_ts_ms": order.arrival_ts_ms,
+        "reason_codes": list(order.reason_codes),
+    }
+
+
+def _paper_order_from_payload(payload: Mapping[str, object]) -> PaperOrder:
+    fill = payload.get("fill")
+    return PaperOrder(
+        order_id=str(payload["order_id"]),
+        trade_id=str(payload["trade_id"]),
+        run_id=str(payload["run_id"]),
+        venue=Venue(str(payload["venue"])),
+        symbol=str(payload["symbol"]),
+        side=str(payload["side"]),
+        intent=OrderIntent(str(payload["intent"])),
+        status=OrderStatus(str(payload["status"])),
+        requested_quantity=Decimal(str(payload["requested_quantity"])),
+        filled_quantity=Decimal(str(payload["filled_quantity"])),
+        price_cap=Decimal(str(payload["price_cap"]))
+        if payload.get("price_cap") is not None
+        else None,
+        trigger_price=Decimal(str(payload["trigger_price"]))
+        if payload.get("trigger_price") is not None
+        else None,
+        fill=_fill_from_payload(fill) if isinstance(fill, Mapping) else None,
+        created_ts_ms=int(str(payload["created_ts_ms"])),
+        arrival_ts_ms=int(str(payload["arrival_ts_ms"]))
+        if payload.get("arrival_ts_ms") is not None
+        else None,
+        reason_codes=_strings(payload, "reason_codes"),
+    )
+
+
+def _fill_payload(fill: Fill) -> dict[str, object]:
+    return {
+        "quantity": str(fill.quantity),
+        "average_price": str(fill.average_price),
+        "notional": str(fill.notional),
+        "fee_usdt": str(fill.fee_usdt),
+        "slippage_usdt": str(fill.slippage_usdt),
+        "levels_consumed": fill.levels_consumed,
+        "book_ts_ms": fill.book_ts_ms,
+    }
+
+
+def _fill_from_payload(payload: Mapping[str, object]) -> Fill:
+    return Fill(
+        quantity=Decimal(str(payload["quantity"])),
+        average_price=Decimal(str(payload["average_price"])),
+        notional=Decimal(str(payload["notional"])),
+        fee_usdt=Decimal(str(payload["fee_usdt"])),
+        slippage_usdt=Decimal(str(payload["slippage_usdt"])),
+        levels_consumed=int(str(payload["levels_consumed"])),
+        book_ts_ms=int(str(payload["book_ts_ms"])),
+    )
+
+
+def _pending_exit_payload(pending: PendingExit) -> dict[str, object]:
+    return {
+        "reason": pending.reason.value,
+        "label": pending.label,
+        "requested_quantity": str(pending.requested_quantity),
+        "trigger_reference_price": str(pending.trigger_reference_price),
+        "trigger_ts_ms": pending.trigger_ts_ms,
+    }
+
+
+def _pending_exit_from_payload(payload: Mapping[str, object]) -> PendingExit:
+    return PendingExit(
+        reason=ExitReason(str(payload["reason"])),
+        label=str(payload["label"]),
+        requested_quantity=Decimal(str(payload["requested_quantity"])),
+        trigger_reference_price=Decimal(str(payload["trigger_reference_price"])),
+        trigger_ts_ms=int(str(payload["trigger_ts_ms"])),
+    )
+
+
+def _exit_leg_payload(leg: ExitLeg) -> dict[str, object]:
+    return {
+        "label": leg.label,
+        "reason": leg.reason.value,
+        "fill": _fill_payload(leg.fill),
+    }
+
+
+def _exit_leg_from_payload(payload: Mapping[str, object]) -> ExitLeg:
+    fill = payload.get("fill")
+    if not isinstance(fill, Mapping):
+        raise ValueError("복구 exit leg에 fill이 없습니다.")
+    return ExitLeg(
+        label=str(payload["label"]),
+        reason=ExitReason(str(payload["reason"])),
+        fill=_fill_from_payload(fill),
+    )
+
+
+def _paper_trade_payload(trade: PaperTrade) -> dict[str, object]:
+    return {
+        "trade_id": trade.trade_id,
+        "run_id": trade.run_id,
+        "venue": trade.venue.value,
+        "symbol": trade.symbol,
+        "strategy_id": trade.strategy_id,
+        "side": trade.side.value,
+        "entry_price": str(trade.entry_price),
+        "exit_price": str(trade.exit_price),
+        "quantity": str(trade.quantity),
+        "initial_stop": str(trade.initial_stop),
+        "take_profit": str(trade.take_profit),
+        "exit_reason": trade.exit_reason.value,
+        "gross_pnl_usdt": str(trade.gross_pnl_usdt),
+        "fees_usdt": str(trade.fees_usdt),
+        "slippage_usdt": str(trade.slippage_usdt),
+        "net_pnl_usdt": str(trade.net_pnl_usdt),
+        "opened_ts_ms": trade.opened_ts_ms,
+        "closed_ts_ms": trade.closed_ts_ms,
+        "holding_ms": trade.holding_ms,
+        "regime": trade.regime,
+        "mae_r": str(trade.mae_r),
+        "mfe_r": str(trade.mfe_r),
+        "flags": list(trade.flags),
+        "profile": trade.profile.value,
+    }
+
+
+def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
+    opened = payload.get("opened_ts_ms", payload.get("entry_ts_ms"))
+    closed = payload.get("closed_ts_ms", payload.get("exit_ts_ms"))
+    if opened is None or closed is None:
+        raise ValueError("복구 거래의 진입·종료 시각이 없습니다.")
+    return PaperTrade(
+        trade_id=str(payload["trade_id"]),
+        run_id=str(payload["run_id"]),
+        venue=Venue(str(payload["venue"])),
+        symbol=str(payload["symbol"]),
+        strategy_id=str(payload["strategy_id"]),
+        side=Side(str(payload["side"])),
+        entry_price=Decimal(str(payload["entry_price"])),
+        exit_price=Decimal(str(payload["exit_price"])),
+        quantity=Decimal(str(payload["quantity"])),
+        initial_stop=Decimal(str(payload["initial_stop"])),
+        take_profit=Decimal(str(payload["take_profit"])),
+        exit_reason=ExitReason(str(payload["exit_reason"])),
+        gross_pnl_usdt=Decimal(str(payload["gross_pnl_usdt"])),
+        fees_usdt=Decimal(str(payload["fees_usdt"])),
+        slippage_usdt=Decimal(str(payload["slippage_usdt"])),
+        net_pnl_usdt=Decimal(str(payload["net_pnl_usdt"])),
+        opened_ts_ms=int(str(opened)),
+        closed_ts_ms=int(str(closed)),
+        holding_ms=int(str(payload["holding_ms"])),
+        regime=str(payload["regime"]),
+        mae_r=Decimal(str(payload["mae_r"])),
+        mfe_r=Decimal(str(payload["mfe_r"])),
+        flags=_strings(payload, "flags"),
+        profile=CostProfile(str(payload.get("profile", CostProfile.BASE.value))),
+    )
+
+
+def _trailing_losses(trades: list[PaperTrade]) -> int:
+    count = 0
+    for trade in sorted(trades, key=lambda item: (item.closed_ts_ms, item.trade_id), reverse=True):
+        if trade.net_pnl_usdt >= 0:
+            break
+        count += 1
+    return count
+
+
+def _strings(payload: Mapping[str, object], key: str) -> tuple[str, ...]:
+    values = payload.get(key, [])
+    if not isinstance(values, list | tuple):
+        raise ValueError(f"복구 payload의 {key} 형식이 잘못됐습니다.")
+    return tuple(str(value) for value in values)

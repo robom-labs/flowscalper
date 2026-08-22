@@ -97,3 +97,16 @@ Global PAUSED/FAULTED state must trigger on:
 - unsupported schema/protocol change.
 
 Recovery requires satisfying a deterministic health check, not merely a UI toggle.
+
+## 15.7 v0.2 implemented recovery contract
+
+- SQLite snapshot schema 1 stores the complete main and eight strategy/profile shadow execution accounts, immutable plans, fills, protection, remaining TP quantities, pending exits, risk state and completed PAPER trades.
+- Recovery accepts only a checksum-valid snapshot whose Run, venue, Strategy Registry account set, cost profiles and quantity invariants match the active Run.
+- Latest append-only completed trades override an older open-position snapshot from a crash window and rebuild realized equity, peak equity, drawdown and trade counts.
+- A recovered LIVE Run starts paused with `ENTRY_LOCK_RECOVERY_REVALIDATION`. Its position or pending-entry symbol is pinned into both wide and deep subscriptions, and the lock clears only after that exact symbol receives a fresh sequence-valid book on the same venue.
+- An active recovered lifecycle never fails over to another venue. If the original venue or recovered symbol is unavailable, the Run and PAPER state remain preserved and entry-locked.
+- A corrupt checksum or invalid account state starts the UI in READY fail-closed state with no new Run or fixture trade.
+- The storage guard checks the ledger volume at most once per second. Below 2GiB or 5% free by default, LIVE entries remain locked while existing PAPER position management stays independent of the browser.
+- A persistence write error faults the main risk state, keeps retry buffers bounded and cannot be cleared with the UI resume control.
+- CPU, process memory, thread count, uptime and disk figures on the System diagnostics screen come from the local process and filesystem rather than fixture constants.
+- Rolling public-event lag p95 above 1,500ms sets `CRITICAL_MARKET_LAG_ENTRY_LOCK` in both supervisor telemetry and the PAPER runtime. A fresh sequence-valid depth can clear the health flag after p95 recovery, but an automatically paused runtime still requires an explicit safe resume.

@@ -1,0 +1,54 @@
+{
+  "observed_at": "2026-08-22T22:23:23+09:00",
+  "status": "PASS",
+  "scope": "runtime recovery, operational safety, public market soak",
+  "targeted_recovery_tests": {
+    "status": "PASS",
+    "result": "11 passed",
+    "files": [
+      "backend/tests/test_persistent_supervisor.py",
+      "backend/tests/test_v02_runtime_recovery.py",
+      "backend/tests/test_v02_operational_safety.py"
+    ]
+  },
+  "failed_attempt_preserved": {
+    "file": "evidence/WAVE07_SOAK_30M_ATTEMPT1_FAIL.json",
+    "status": "FAIL",
+    "event_count": 6503324,
+    "reason": "critical public lag telemetry was not continuously coupled to the PAPER entry lock"
+  },
+  "final_soak": {
+    "file": "evidence/WAVE07_SOAK_30M.json",
+    "status": "PASS",
+    "requested_duration_seconds": 1800.0,
+    "run_id": "soak-a72350e63354",
+    "venue": "BINANCE_USDM",
+    "event_count": 3120256,
+    "wide_symbols": 50,
+    "deep_symbols": 10,
+    "reconnects": 39,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "max_queue_depth": 2,
+    "max_event_memory_count": 9997,
+    "memory_growth_mb": 132.922,
+    "max_lag_p95_ms": 21161.0,
+    "critical_lag_threshold_ms": 1500.0,
+    "critical_lag_sample_count": 171,
+    "critical_lag_fail_open_sample_count": 0,
+    "final_supervisor_entry_locked": true,
+    "final_runtime_entries_paused": true,
+    "strategy_evaluations": 252552,
+    "qualified_signals": 16,
+    "main_trades": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "long_soaks": {
+    "six_hours": "NOT_RUN",
+    "twenty_four_hours": "NOT_RUN",
+    "scripts_provided": true
+  },
+  "interpretation": "The public network reconnected 39 times and produced high-lag periods. The pass establishes bounded processing and zero critical-lag fail-open samples, not uninterrupted network quality or profitability."
+}

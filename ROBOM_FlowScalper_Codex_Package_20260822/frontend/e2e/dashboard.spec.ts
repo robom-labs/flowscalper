@@ -4,12 +4,13 @@ import path from 'node:path'
 
 test('PAPER 안전 상태와 실제 백엔드 워크플로가 반응형으로 작동한다', async ({ page }, testInfo) => {
   const consoleErrors: string[] = []
+  const captureEvidence = process.env.ROBOM_E2E_CAPTURE !== '0'
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text())
   })
   page.on('pageerror', (error) => consoleErrors.push(error.message))
   const captureDesktop = async (name: string) => {
-    if (testInfo.project.name !== 'desktop') return
+    if (!captureEvidence || testInfo.project.name !== 'desktop') return
     await page.evaluate(() => window.scrollTo(0, 0))
     await page.screenshot({ path: path.resolve('..', 'evidence', 'screenshots', `wave06-${name}-desktop.png`) })
   }
@@ -77,6 +78,9 @@ test('PAPER 안전 상태와 실제 백엔드 워크플로가 반응형으로 �
   }
   await page.getByText('고급 진단 보기').click()
   await expect(page.getByText('로컬 API 주소')).toBeVisible()
+  await expect(page.getByText('프로세스 CPU %')).toBeVisible()
+  const memoryValue = page.locator('.diagnostic-grid > div').filter({ hasText: '프로세스 메모리 MB' }).locator('b')
+  await expect(memoryValue).not.toHaveText('0')
   await captureDesktop('system-diagnostics')
 
   await page.getByRole('button', { name: '전략', exact: true }).click()
@@ -94,12 +98,14 @@ test('PAPER 안전 상태와 실제 백엔드 워크플로가 반응형으로 �
     .evaluateAll((targets) => targets.every((target) => target.getBoundingClientRect().height >= 48))
   expect(targetsAreLargeEnough).toBe(true)
 
-  const screenshotPath = path.resolve(
-    '..',
-    'evidence',
-    'screenshots',
-    `wave06-dashboard-${testInfo.project.name}.png`,
-  )
-  await page.screenshot({ path: screenshotPath, fullPage: testInfo.project.name !== 'desktop' })
+  if (captureEvidence) {
+    const screenshotPath = path.resolve(
+      '..',
+      'evidence',
+      'screenshots',
+      `wave06-dashboard-${testInfo.project.name}.png`,
+    )
+    await page.screenshot({ path: screenshotPath, fullPage: testInfo.project.name !== 'desktop' })
+  }
   expect(consoleErrors).toEqual([])
 })

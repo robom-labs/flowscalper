@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
@@ -38,9 +40,12 @@ from backend.app.market_data.supervisor import (
     BybitPersistentProvider,
     PersistentPublicSupervisor,
     ProviderSelection,
+    PublicStreamProvider,
 )
+from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
-from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.storage.parquet import ParquetEventStore
+from backend.app.storage.sqlite import RecoveryState, SQLiteLedger
 from backend.app.strategies.base import CandidateDecision
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal, StrategySignalEvaluator
@@ -58,6 +63,7 @@ class PaperRuntime:
     archived_run_ids: list[str] = field(default_factory=list)
     control_logs: list[dict[str, object]] = field(default_factory=list)
     ledger: SQLiteLedger | None = None
+    storage_guard: ParquetEventStore | None = None
     venue: Venue = Venue.NONE
     market_data_state: MarketDataState = MarketDataState.DISCONNECTED
     wide_symbol_count: int = 0
@@ -89,16 +95,28 @@ class PaperRuntime:
     candidate_planner: CandidatePlanner = field(default_factory=CandidatePlanner)
     plan_rejections: list[dict[str, object]] = field(default_factory=list)
     data_gap_since_ms: dict[str, int] = field(default_factory=dict)
+    strategy_evaluation_interval_ms: int = 250
+    _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
     _market_event_buffer: list[dict[str, object]] = field(default_factory=list)
     _candle_buffer: list[dict[str, object]] = field(default_factory=list)
     _persisted_main_order_ids: set[str] = field(default_factory=set)
     _persisted_main_trade_ids: set[str] = field(default_factory=set)
     _persisted_shadow_trade_ids: set[str] = field(default_factory=set)
     _persisted_audit_count: int = 0
+    _persistence_fault_count: int = 0
+    _persistence_buffer_dropped: int = 0
+    _last_persistence_error: str | None = None
+    _last_storage_check_ns: int | None = None
+    _storage_entry_allowed: bool = True
+    _storage_health_snapshot: dict[str, object] = field(default_factory=dict)
+    _recovery_revalidation_symbol: str | None = None
+    resource_sampler: ProcessResourceSampler = field(init=False, repr=False)
     _persistence_lock: RLock = field(default_factory=RLock, repr=False)
 
     def __post_init__(self) -> None:
         assert_paper_only(self.mode, os.environ)
+        storage_path = self.ledger.path.parent if self.ledger is not None else Path.cwd()
+        self.resource_sampler = ProcessResourceSampler(storage_path)
         self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
         self.paper_portfolio = PaperPortfolioEngine(
             run_id=self.run_id,
@@ -196,6 +214,159 @@ class PaperRuntime:
             health_flags=tuple(flags),
         )
 
+    def restore_recovery_state(self, recovered: RecoveryState) -> bool:
+        """checksum 검증된 최신 Run의 전략 설정·계좌·포지션·거래를 복구한다."""
+
+        if recovered.run_id != self.run_id or recovered.venue != self.venue.value:
+            self._lock_recovery("RECOVERY_RUN_OR_VENUE_MISMATCH")
+            return False
+        if self.ledger is None:
+            self._lock_recovery("RECOVERY_LEDGER_MISSING")
+            return False
+        try:
+            latest_settings: dict[str, Mapping[str, object]] = {}
+            for setting_row in self.ledger.list_strategy_settings(self.run_id):
+                latest_settings[str(setting_row["strategy_id"])] = setting_row
+            for strategy_id, latest_setting in latest_settings.items():
+                self.strategy_registry.configure(
+                    strategy_id,
+                    mode=StrategyMode(str(latest_setting["mode"])),
+                    long_enabled=bool(latest_setting["long_enabled"]),
+                    short_enabled=bool(latest_setting["short_enabled"]),
+                )
+            portfolio_payload = recovered.payload.get("portfolio")
+            if isinstance(portfolio_payload, Mapping):
+                self.paper_portfolio.restore_state(portfolio_payload)
+                self.paper_portfolio.reconcile_persisted_main_trades(
+                    self.ledger.list_trades(self.run_id)
+                )
+            elif recovered.lifecycle_state not in {"SCANNING", "CLOSED"}:
+                raise ValueError("열린 lifecycle snapshot에 복구 가능한 portfolio가 없습니다.")
+            self._persisted_main_order_ids = {
+                str(order["order_id"]) for order in self.ledger.list_orders(self.run_id)
+            }
+            self._persisted_main_trade_ids = {
+                str(trade["trade_id"]) for trade in self.ledger.list_trades(self.run_id)
+            }
+            self._persisted_shadow_trade_ids = {
+                str(trade["shadow_trade_id"])
+                for trade in self.ledger.list_shadow_trades(self.run_id)
+            }
+        except (KeyError, TypeError, ValueError) as error:
+            self._lock_recovery(f"RECOVERY_STATE_REJECTED:{type(error).__name__}")
+            return False
+        self.position_visible = self.paper_portfolio.main.position is not None
+        recovery_plan = (
+            self.paper_portfolio.main.position.plan
+            if self.paper_portfolio.main.position is not None
+            else self.paper_portfolio.main.pending_entry.plan
+            if self.paper_portfolio.main.pending_entry is not None
+            else None
+        )
+        if recovery_plan is not None:
+            plan = recovery_plan
+            self.selected_symbol = plan.symbol
+            snapshot_ts = int(
+                str(recovered.payload.get("snapshot_ts_ms", plan.signal_time_ms))
+            )
+            self.data_gap_since_ms[plan.symbol] = snapshot_ts
+            self._recovery_revalidation_symbol = plan.symbol
+        self.paused = True
+        self.runtime_health_flags = [
+            "PAPER_STATE_RECOVERED",
+            "ENTRY_LOCK_RECOVERY_REVALIDATION",
+        ]
+        self._log(
+            "RECOVERY",
+            f"{recovered.lifecycle_state} PAPER 상태 복구 · fresh 공개호가 전 신규진입 잠금",
+        )
+        return True
+
+    def _lock_recovery(self, reason: str) -> None:
+        self._recovery_revalidation_symbol = None
+        self.paused = True
+        self.position_visible = False
+        self.paper_portfolio.main.risk_state.faulted = True
+        self.runtime_health_flags = ["RECOVERY_FAIL_CLOSED", reason]
+        self._log("RECOVERY", f"복구 무결성 실패 · 신규 PAPER 진입 차단 · {reason}")
+
+    def _refresh_storage_safety(self, *, force: bool = False) -> bool:
+        if self.storage_guard is None:
+            self._storage_entry_allowed = True
+            self._storage_health_snapshot = {
+                "storage_entry_allowed": True,
+                "disk_pressure_entry_lock": False,
+                "storage_guard_enabled": False,
+            }
+            return True
+        now_ns = self.clock.monotonic_ns()
+        if (
+            not force
+            and self._last_storage_check_ns is not None
+            and now_ns - self._last_storage_check_ns < 1_000_000_000
+        ):
+            return self._storage_entry_allowed
+        self._last_storage_check_ns = now_ns
+        try:
+            health = self.storage_guard.health()
+            self._storage_entry_allowed = health.entry_allowed
+            self._storage_health_snapshot = {
+                "storage_entry_allowed": health.entry_allowed,
+                "disk_pressure_entry_lock": not health.entry_allowed,
+                "storage_guard_enabled": True,
+                "storage_free_bytes": health.free_bytes,
+                "storage_free_ratio": round(health.free_ratio, 6),
+                "storage_lock_reason": health.reason or "NONE",
+            }
+        except OSError as error:
+            self._storage_entry_allowed = False
+            self._storage_health_snapshot = {
+                "storage_entry_allowed": False,
+                "disk_pressure_entry_lock": True,
+                "storage_guard_enabled": True,
+                "storage_lock_reason": f"STORAGE_HEALTH_ERROR:{type(error).__name__}",
+            }
+        if (
+            not self._storage_entry_allowed
+            and self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+        ):
+            self.paused = True
+            if "STORAGE_PRESSURE_ENTRY_LOCK" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("STORAGE_PRESSURE_ENTRY_LOCK")
+        else:
+            self.runtime_health_flags = [
+                flag
+                for flag in self.runtime_health_flags
+                if flag != "STORAGE_PRESSURE_ENTRY_LOCK"
+            ]
+        return self._storage_entry_allowed
+
+    def _operational_diagnostics(self) -> dict[str, object]:
+        self._refresh_storage_safety()
+        return {
+            **self.resource_sampler.sample(),
+            **self._storage_health_snapshot,
+            "persistence_fault_count": self._persistence_fault_count,
+            "persistence_buffer_dropped": self._persistence_buffer_dropped,
+            "persistence_last_error": self._last_persistence_error or "NONE",
+            "event_memory_count": len(self._events),
+            "event_memory_limit": 10_000,
+            "market_persistence_buffer": len(self._market_event_buffer),
+            "candle_persistence_buffer": len(self._candle_buffer),
+        }
+
+    def _handle_persistence_fault(self, error: Exception) -> None:
+        self._persistence_fault_count += 1
+        self._last_persistence_error = f"{type(error).__name__}: {error}"
+        self.paused = True
+        self.paper_portfolio.main.risk_state.faulted = True
+        if "PERSISTENCE_FAULT_ENTRY_LOCK" not in self.runtime_health_flags:
+            self.runtime_health_flags.append("PERSISTENCE_FAULT_ENTRY_LOCK")
+        self._log(
+            "STORAGE",
+            f"원장 저장 실패 · 신규 PAPER 진입 영구 차단 · {type(error).__name__}",
+        )
+
     async def boot_live_public(self, probe: LiveBootstrapProbe | None = None) -> bool:
         if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
             raise ValueError("LIVE 부트스트랩은 LIVE_SHADOW_PAPER 모드에서만 가능합니다.")
@@ -244,14 +415,35 @@ class PaperRuntime:
         if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
             raise ValueError("지속 LIVE supervisor는 LIVE_SHADOW_PAPER에서만 시작합니다.")
         await self.shutdown_supervisor()
-        candidates = (
-            (Venue.BINANCE_USDM, BinancePersistentProvider()),
-            (Venue.BYBIT_LINEAR, BybitPersistentProvider()),
+        pinned_symbols = (
+            (self._recovery_revalidation_symbol,)
+            if self._recovery_revalidation_symbol is not None
+            else ()
+        )
+        providers: dict[Venue, PublicStreamProvider] = {
+            Venue.BINANCE_USDM: BinancePersistentProvider(pinned_symbols=pinned_symbols),
+            Venue.BYBIT_LINEAR: BybitPersistentProvider(pinned_symbols=pinned_symbols),
+        }
+        primary_venue = (
+            self.venue
+            if self.venue in providers
+            else Venue.BINANCE_USDM
+        )
+        candidate_venues = (
+            (primary_venue,)
+            if self._recovery_revalidation_symbol is not None
+            else (
+                primary_venue,
+                Venue.BYBIT_LINEAR
+                if primary_venue is Venue.BINANCE_USDM
+                else Venue.BINANCE_USDM,
+            )
         )
         self.market_data_state = MarketDataState.RECONNECTING
         self.paused = True
         self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
-        for candidate_venue, provider in candidates:
+        for candidate_venue in candidate_venues:
+            provider = providers[candidate_venue]
             if candidate_venue is not self.venue:
                 self._switch_venue_run(candidate_venue)
             supervisor = PersistentPublicSupervisor(
@@ -278,10 +470,19 @@ class PaperRuntime:
             )
             self.processing_lag_p95_ms = supervisor.telemetry.lag_p95_ms
             self.market_data_state = MarketDataState.LIVE
-            self.paused = supervisor.telemetry.entry_locked
+            self.paused = (
+                supervisor.telemetry.entry_locked
+                or self.paper_portfolio.main.risk_state.faulted
+                or self._recovery_revalidation_symbol is not None
+            )
             self.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
-            if self.paused:
-                self.runtime_health_flags.append("SUPERVISOR_ENTRY_LOCK")
+            self._refresh_supervisor_entry_safety()
+            if self.paper_portfolio.main.risk_state.faulted:
+                self.runtime_health_flags.append("RECOVERY_FAIL_CLOSED")
+            if self._recovery_revalidation_symbol is not None:
+                self.runtime_health_flags.append("ENTRY_LOCK_RECOVERY_REVALIDATION")
+            if not self._refresh_storage_safety(force=True):
+                self.paused = True
             self._log(
                 "MARKET_DATA",
                 f"{selection.venue.value} 지속 공개 supervisor 시작 · "
@@ -289,12 +490,15 @@ class PaperRuntime:
             )
             return True
         self.market_data_state = MarketDataState.DISCONNECTED
+        if self._recovery_revalidation_symbol is not None:
+            self.runtime_health_flags.append("RECOVERED_POSITION_PUBLIC_DATA_UNAVAILABLE")
         self.runtime_health_flags.append("PUBLIC_DATA_UNAVAILABLE")
         return False
 
     def ingest_live_event(self, event: MarketEvent) -> None:
         if event.run_id != self.run_id or event.venue is not self.venue:
             raise ValueError("다른 Run 또는 거래소 이벤트를 LIVE 런타임에 섞을 수 없습니다.")
+        self._refresh_supervisor_entry_safety()
         self._events.append(event)
         if self.ledger is not None and self.mode is not RuntimeMode.READY:
             with self._persistence_lock:
@@ -329,6 +533,38 @@ class PaperRuntime:
         if self._supervisor is not None:
             self.processing_lag_p95_ms = self._supervisor.telemetry.lag_p95_ms
 
+    def _refresh_supervisor_entry_safety(self) -> None:
+        """공개시장 지연 임계 초과를 신규 PAPER 진입 잠금에 즉시 연결한다."""
+
+        if self._supervisor is None:
+            return
+        telemetry = self._supervisor.telemetry
+        self.processing_lag_p95_ms = telemetry.lag_p95_ms
+        if telemetry.entry_locked:
+            self.paused = True
+            if "SUPERVISOR_ENTRY_LOCK" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("SUPERVISOR_ENTRY_LOCK")
+        else:
+            self.runtime_health_flags = [
+                flag
+                for flag in self.runtime_health_flags
+                if flag != "SUPERVISOR_ENTRY_LOCK"
+            ]
+        critical_lag = bool(
+            telemetry.lag_p95_ms is not None
+            and telemetry.lag_p95_ms > telemetry.critical_lag_threshold_ms
+        )
+        if critical_lag:
+            self.paused = True
+            if "CRITICAL_MARKET_LAG_ENTRY_LOCK" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("CRITICAL_MARKET_LAG_ENTRY_LOCK")
+            return
+        self.runtime_health_flags = [
+            flag
+            for flag in self.runtime_health_flags
+            if flag != "CRITICAL_MARKET_LAG_ENTRY_LOCK"
+        ]
+
     def _evaluate_book_event(self, event: MarketEvent) -> None:
         bids_value = event.data.get("bids")
         asks_value = event.data.get("asks")
@@ -353,7 +589,27 @@ class PaperRuntime:
         )
         self.latest_books[event.symbol] = book
         self.paper_portfolio.on_book(book)
-        self._persist_execution_state(event.venue_ts_ms)
+        self._persist_execution_state_safely(event.venue_ts_ms)
+        if (
+            self._recovery_revalidation_symbol == event.symbol
+            and event.quality.sequence_valid
+            and not event.quality.is_stale
+        ):
+            self._recovery_revalidation_symbol = None
+            self.runtime_health_flags = [
+                flag
+                for flag in self.runtime_health_flags
+                if flag != "ENTRY_LOCK_RECOVERY_REVALIDATION"
+            ]
+            self.paused = (
+                self.paper_portfolio.main.risk_state.faulted
+                or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
+                or not self._refresh_storage_safety(force=True)
+            )
+            self._log(
+                "RECOVERY",
+                f"{event.symbol} fresh sequence-valid 호가 재검증 완료",
+            )
         self.position_visible = self.paper_portfolio.main.position is not None
         portfolio_summary = self.paper_portfolio.main_summary(self._current_main_book())
         self.unrealized_pnl_usdt = float(portfolio_summary["unrealized"])
@@ -371,6 +627,14 @@ class PaperRuntime:
                     lag_ms=event.quality.lag_ms or 0.0,
                 )
             )
+            last_evaluation = self._last_strategy_evaluation_ms.get(event.symbol)
+            if (
+                last_evaluation is not None
+                and event.venue_ts_ms - last_evaluation
+                < self.strategy_evaluation_interval_ms
+            ):
+                return
+            self._last_strategy_evaluation_ms[event.symbol] = event.venue_ts_ms
             snapshot = engine.snapshot()
         except (FeatureInputError, KeyError, IndexError, ValueError) as error:
             self.paused = True
@@ -414,8 +678,12 @@ class PaperRuntime:
             )
             self.strategy_signals[key] = signal
         plans = self._build_candidate_plans(event, snapshot, regime, book, signals)
-        self.paper_portfolio.offer(plans, entries_paused=self.paused)
-        self._persist_execution_state(event.venue_ts_ms)
+        storage_ready = self._refresh_storage_safety()
+        self.paper_portfolio.offer(
+            plans,
+            entries_paused=self.paused or not storage_ready,
+        )
+        self._persist_execution_state_safely(event.venue_ts_ms)
 
     def _build_candidate_plans(
         self,
@@ -558,7 +826,7 @@ class PaperRuntime:
     def flush_storage(self) -> None:
         """현재 메모리 배치와 PAPER 실행 결과를 불변 원장에 반영한다."""
 
-        self._persist_execution_state(self.clock.utc_ms())
+        self._persist_execution_state_safely(self.clock.utc_ms())
         self._flush_persistence()
 
     def replay_stored_run(
@@ -803,7 +1071,7 @@ class PaperRuntime:
             }
             for candle in self.candles()
         )
-        diagnostics = (
+        diagnostics: dict[str, object] = (
             self._supervisor.telemetry.as_dict()
             if self._supervisor is not None
             else {
@@ -818,6 +1086,7 @@ class PaperRuntime:
                 "entry_locked": self.paused,
             }
         )
+        diagnostics.update(self._operational_diagnostics())
         current_position = self.paper_portfolio.main_position_snapshot(
             self._current_main_book()
         )
@@ -893,6 +1162,12 @@ class PaperRuntime:
             and (
                 self.market_data_state is not MarketDataState.LIVE
                 or "CRITICAL_MARKET_LAG_ENTRY_LOCK" in self.runtime_health_flags
+                or (
+                    self._supervisor is not None
+                    and self._supervisor.telemetry.entry_locked
+                )
+                or self.paper_portfolio.main.risk_state.faulted
+                or not self._refresh_storage_safety(force=True)
             )
         ):
             self.paused = True
@@ -1015,6 +1290,8 @@ class PaperRuntime:
         self.latest_books.clear()
         self.plan_rejections.clear()
         self.data_gap_since_ms.clear()
+        self._last_strategy_evaluation_ms.clear()
+        self._recovery_revalidation_symbol = None
         with self._persistence_lock:
             self._market_event_buffer.clear()
             self._candle_buffer.clear()
@@ -1129,6 +1406,14 @@ class PaperRuntime:
                 for candle in candles
             )
 
+    def _persist_execution_state_safely(self, ts_ms: int) -> bool:
+        try:
+            self._persist_execution_state(ts_ms)
+        except Exception as error:
+            self._handle_persistence_fault(error)
+            return False
+        return True
+
     def _persist_execution_state(self, ts_ms: int) -> None:
         if self.ledger is None or self.mode is RuntimeMode.READY:
             return
@@ -1193,21 +1478,19 @@ class PaperRuntime:
                         **account_row,
                     }
                 )
-            main_audit = any(
-                audit.get("account_id") == self.paper_portfolio.MAIN_ACCOUNT_ID
-                or str(audit.get("event", "")).startswith("MAIN_")
-                for audit in new_audits
+            position = self.paper_portfolio.main_position_snapshot(
+                self._current_main_book()
             )
-            if main_audit:
-                position = self.paper_portfolio.main_position_snapshot(
-                    self._current_main_book()
-                )
-                self.ledger.save_snapshot(
-                    self.run_id,
-                    lifecycle_state="PROTECTED" if position is not None else "SCANNING",
-                    ts_ms=ts_ms,
-                    payload={"open_position": position},
-                )
+            self.ledger.save_snapshot(
+                self.run_id,
+                lifecycle_state=self.paper_portfolio.lifecycle_state(),
+                ts_ms=ts_ms,
+                payload={
+                    "snapshot_ts_ms": ts_ms,
+                    "open_position": position,
+                    "portfolio": self.paper_portfolio.recovery_state(),
+                },
+            )
 
     @staticmethod
     def _paper_order_row(order: PaperOrder, fallback_ts_ms: int) -> dict[str, object]:
@@ -1250,11 +1533,19 @@ class PaperRuntime:
                 self.ledger.record_market_events(market_batch)
             if candle_batch:
                 self.ledger.record_candles(candle_batch)
-        except Exception:
+        except Exception as error:
             with self._persistence_lock:
-                self._market_event_buffer = [*market_batch, *self._market_event_buffer]
-                self._candle_buffer = [*candle_batch, *self._candle_buffer]
-            raise
+                market_rows = [*market_batch, *self._market_event_buffer]
+                candle_rows = [*candle_batch, *self._candle_buffer]
+                if len(market_rows) > 10_000:
+                    self._persistence_buffer_dropped += len(market_rows) - 10_000
+                    market_rows = market_rows[-10_000:]
+                if len(candle_rows) > 5_000:
+                    self._persistence_buffer_dropped += len(candle_rows) - 5_000
+                    candle_rows = candle_rows[-5_000:]
+                self._market_event_buffer = market_rows
+                self._candle_buffer = candle_rows
+            self._handle_persistence_fault(error)
 
     def _start_ledger_run(self) -> None:
         if self.ledger is None:
@@ -1291,6 +1582,17 @@ class PaperRuntime:
                     "short_enabled": row["short_enabled"],
                 }
             )
+        timestamp = self.clock.utc_ms()
+        self.ledger.save_snapshot(
+            self.run_id,
+            lifecycle_state="SCANNING",
+            ts_ms=timestamp,
+            payload={
+                "snapshot_ts_ms": timestamp,
+                "open_position": None,
+                "portfolio": self.paper_portfolio.recovery_state(),
+            },
+        )
 
     def _ensure_fixture_completed_trade(self) -> None:
         if self.ledger is None or self.ledger.list_trades(self.run_id):
@@ -1330,7 +1632,12 @@ class PaperRuntime:
             self.run_id,
             lifecycle_state="CLOSED",
             ts_ms=timestamp,
-            payload={"open_position": None, "last_exit_reason": "TAKE_PROFIT"},
+            payload={
+                "snapshot_ts_ms": timestamp,
+                "open_position": None,
+                "last_exit_reason": "TAKE_PROFIT",
+                "portfolio": self.paper_portfolio.recovery_state(),
+            },
         )
         self.ledger.record_order(
             {

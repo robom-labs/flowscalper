@@ -27,6 +27,30 @@ const diagnosticLabels: Record<string, string> = {
   disk_pressure_entry_lock: '디스크 압박 잠금',
   app_version: '앱 버전',
   runtime_ready: '시작 대기 상태',
+  process_cpu_percent: '프로세스 CPU %',
+  process_memory_mb: '프로세스 메모리 MB',
+  process_memory_source: '메모리 측정 기준',
+  process_threads: '프로세스 thread',
+  process_uptime_seconds: '프로세스 실행시간 초',
+  disk_total_mb: '디스크 전체 MB',
+  disk_used_mb: '디스크 사용 MB',
+  disk_free_mb: '디스크 여유 MB',
+  disk_free_ratio: '디스크 여유 비율',
+  storage_entry_allowed: '저장소 신규진입 허용',
+  storage_guard_enabled: '저장소 보호 활성',
+  storage_free_bytes: '보호기준 여유 byte',
+  storage_free_ratio: '보호기준 여유 비율',
+  storage_lock_reason: '저장소 잠금 사유',
+  persistence_fault_count: '원장 저장 실패',
+  persistence_last_error: '최근 원장 오류',
+  persistence_buffer_dropped: '저장 buffer 유실',
+  event_memory_count: '메모리 이벤트 수',
+  event_memory_limit: '메모리 이벤트 상한',
+  market_persistence_buffer: '시장 저장 대기',
+  candle_persistence_buffer: '캔들 저장 대기',
+  critical_lag_threshold_ms: '지연 잠금 기준 ms',
+  critical_lag_event_count: '지연 기준 초과 이벤트',
+  critical_lag_active: '지연 신규진입 잠금',
 }
 
 function readable(value: string | number | boolean) {
@@ -40,6 +64,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
   const reconnects = Number(data.system.reconnects ?? 0)
   const gaps = Number(data.system.sequence_gaps ?? 0)
   const storage = String(data.system.storage ?? '확인 중')
+  const storageAllowed = data.system.storage_entry_allowed !== false
   return (
     <section aria-labelledby="system-heading">
       <div className="page-heading"><div><p className="section-kicker">DIAGNOSTICS</p><h2 id="system-heading">시스템</h2><p className="heading-help">기본 화면은 운영 판단만 보여주고, 원시 값은 고급 진단에 분리합니다.</p></div><span className="page-note">자격 증명 전송 {data.system.auth_headers ? '감지됨' : '0건'}</span></div>
@@ -48,7 +73,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
         <article className="panel"><span>감시 / 정밀 분석</span><b>{data.status.wide_symbols} / {data.status.deep_symbols}종목</b><small>넓게 감시한 뒤 상위 종목을 정밀 분석</small></article>
         <article className="panel"><span>UI 마지막 갱신</span><b>{lastUpdateMs ? new Date(lastUpdateMs).toLocaleTimeString('ko-KR') : '대기 중'}</b><small>{connected ? '실시간 연결됨' : '자동 재연결 중'}</small></article>
         <article className="panel"><span>재연결 / 누락</span><b>{reconnects} / {gaps}건</b><small>누락 시 신규 PAPER 진입 잠금</small></article>
-        <article className="panel"><span>저장소</span><b>{storage.includes('SQLite') ? '정상 연결' : storage}</b><small>거래·시장 이벤트 불변 원장</small></article>
+        <article className="panel"><span>저장소</span><b className={storageAllowed ? '' : 'warning'}>{storageAllowed ? storage.includes('SQLite') ? '정상 연결' : storage : '신규 진입 잠금'}</b><small>{storageAllowed ? `${Number(data.system.disk_free_mb ?? 0).toFixed(0)}MB 여유 · 불변 원장` : String(data.system.storage_lock_reason ?? '디스크 압박')}</small></article>
         <article className="panel"><span>실제 주문 경로</span><b className="positive">0</b><small>private API · 인증 · 주문 전송 없음</small></article>
       </section>
       <section className="panel endpoint-panel"><h3>연결 진실성</h3><p>오프라인 DEMO는 LIVE로 표시하지 않습니다. LIVE 표시는 공개 REST 메타데이터와 첫 sequence-valid WebSocket 이벤트가 모두 확인된 뒤에만 가능합니다.</p><div className="health-row"><span>시장데이터 {healthy ? '검증됨' : '미검증'}</span><span>실행 PAPER 전용</span><span>실제 주문 DISABLED</span><span>로그인·API 키 불필요</span></div></section>

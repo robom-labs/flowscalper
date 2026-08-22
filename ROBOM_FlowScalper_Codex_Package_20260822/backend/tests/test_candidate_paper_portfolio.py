@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import FrozenInstanceError, replace
 from decimal import Decimal
 
@@ -229,3 +230,59 @@ def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exi
     engine.evaluate_health(adverse, Regime.SHOCK, now_ms=124_000)
     assert engine.main.position.pending_exit is not None
     assert engine.main.position.pending_exit.label == "EXIT_EDGE_DECAY"
+
+
+def test_pending_protected_and_exit_pending_accounts_roundtrip_for_restart() -> None:
+    plan = candidate_plan()
+    shadows = ShadowLedger((plan.strategy_id,))
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=shadows,
+    )
+
+    engine.offer((plan,), entries_paused=False)
+    pending_payload = json.loads(json.dumps(engine.recovery_state()))
+    pending_restored = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    pending_restored.restore_state(pending_payload)
+    assert pending_restored.lifecycle_state() == "ENTRY_PENDING"
+    assert pending_restored.recovery_state() == pending_payload
+
+    engine.on_book(book(1_250))
+    protected_payload = json.loads(json.dumps(engine.recovery_state()))
+    protected_restored = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    protected_restored.restore_state(protected_payload)
+    assert protected_restored.lifecycle_state() == "PROTECTED"
+    assert protected_restored.main.position is not None
+    assert protected_restored.main.position.protected.trade_id == (
+        engine.main.position.protected.trade_id if engine.main.position else None
+    )
+    assert protected_restored.shadow_ledger.recovery_state() == (
+        engine.shadow_ledger.recovery_state()
+    )
+
+    tp1 = plan.take_profit_targets[0].price
+    engine.on_book(
+        book(2_000, bids=((str(tp1 + Decimal("0.1")), "100"),), asks=(("107", "100"),))
+    )
+    exit_payload = json.loads(json.dumps(engine.recovery_state()))
+    exit_restored = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    exit_restored.restore_state(exit_payload)
+    assert exit_restored.lifecycle_state() == "EXIT_PENDING"
+    assert exit_restored.recovery_state() == exit_payload
+
+    exit_payload["run_id"] = "another-run"
+    with pytest.raises(ValueError, match="다른 Run"):
+        exit_restored.restore_state(exit_payload)

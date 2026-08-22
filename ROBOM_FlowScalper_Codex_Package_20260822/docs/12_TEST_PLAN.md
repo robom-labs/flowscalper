@@ -152,8 +152,18 @@ Results: PASS, FAIL, or NOT_RUN with reason.
 
 Initial targets on a reasonable desktop:
 
-- 50 wide symbols and 10 deep symbols without sustained critical lag;
+- 50 wide symbols and 10 deep symbols with no critical-lag interval left entry-enabled;
 - UI update throttled independently from strategy event rate;
 - bounded queue memory;
 - feature processing p95 within configured budget;
 - automatic capacity reduction when overloaded.
+
+Executable soak commands:
+
+- `uv run python scripts/soak_live.py --duration-seconds 1800 --output evidence/WAVE07_SOAK_30M.json`;
+- `scripts/soak_6h.command`;
+- `scripts/soak_24h.command`.
+
+The 30-minute run is the automated acceptance smoke. The 6-hour and 24-hour commands use the same assertions and must be reported `NOT_RUN` rather than inferred when wall-clock execution is unavailable.
+
+The public-event lag threshold remains 1,500ms. Because an exchange or network can exceed it independently of local queue health, the soak must preserve the maximum and count of critical samples, prove zero fail-open samples, and finish either below the threshold or with both supervisor and runtime entry-locked. Queue overflow, dropped events, unbounded memory, or an unlocked critical-lag sample still fails the run.

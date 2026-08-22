@@ -7,10 +7,17 @@ from collections.abc import AsyncIterator
 
 from backend.app.adapters.base import BackoffPolicy, ConnectionState
 from backend.app.clocks import TestClock as DeterministicClock
-from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
+from backend.app.domain.models import (
+    DataQuality,
+    MarketDataState,
+    MarketEvent,
+    RuntimeMode,
+    Venue,
+)
 from backend.app.market_data.supervisor import (
     PersistentPublicSupervisor,
     ProviderSelection,
+    _wide_and_deep,
 )
 from backend.app.runtime import PaperRuntime
 
@@ -63,6 +70,8 @@ def _event(
     symbol: str,
     clock: DeterministicClock,
     sequence: int,
+    *,
+    lag_ms: float = 5,
 ) -> MarketEvent:
     return MarketEvent(
         event_id=f"recorded-{sequence}",
@@ -78,7 +87,7 @@ def _event(
             is_live=True,
             is_stale=False,
             sequence_valid=True,
-            lag_ms=5,
+            lag_ms=lag_ms,
         ),
         data={"bid": "100", "bid_qty": "2", "ask": "100.1", "ask_qty": "2"},
     )
@@ -106,6 +115,11 @@ async def test_supervisor_remains_running_after_first_verified_event() -> None:
     assert len(delivered) == 2
     assert supervisor._tasks is not None
     assert all(not task.done() for task in supervisor._tasks)
+
+    provider.release.set()
+    await asyncio.sleep(0.01)
+    assert supervisor.telemetry.planned_rotation_count == 1
+    assert supervisor.telemetry.reconnect_count == 1
 
     await supervisor.stop()
     assert supervisor.telemetry.state is ConnectionState.DISCONNECTED
@@ -185,3 +199,98 @@ def test_runtime_builds_every_chart_interval_from_public_trades() -> None:
     for interval in (5, 15, 30, 60, 180, 300, 600, 900):
         runtime.set_chart_selection("BTCUSDT", interval)
         assert runtime.dashboard()["chart"]["interval"]
+
+
+def test_strategy_snapshot_work_is_bounded_to_250ms_but_every_book_reaches_execution() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-evaluation-cadence",
+        clock=clock,
+    )
+    first = _event(runtime.run_id, "BTCUSDT", clock, 0).model_copy(
+        update={"venue_ts_ms": 1_000}
+    )
+    second = _event(runtime.run_id, "BTCUSDT", clock, 1).model_copy(
+        update={"event_type": "DEPTH_UPDATE", "venue_ts_ms": 1_100}
+    )
+    third = _event(runtime.run_id, "BTCUSDT", clock, 2).model_copy(
+        update={"event_type": "DEPTH_UPDATE", "venue_ts_ms": 1_250}
+    )
+
+    runtime.ingest_live_event(first)
+    first_count = runtime.strategy_evaluation_count
+    runtime.ingest_live_event(second)
+    assert runtime.strategy_evaluation_count == first_count
+    assert runtime.latest_books["BTCUSDT"].ts_ms == 1_100
+    runtime.ingest_live_event(third)
+    assert runtime.strategy_evaluation_count > first_count
+    assert runtime.latest_books["BTCUSDT"].ts_ms == 1_250
+
+
+def test_recovered_position_symbol_is_pinned_into_wide_and_deep_selection() -> None:
+    ranked = tuple(f"S{index:02d}USDT" for index in range(60))
+
+    wide, deep = _wide_and_deep(
+        ranked,
+        50,
+        10,
+        pinned_symbols=("S59USDT",),
+    )
+
+    assert len(wide) == 50
+    assert len(deep) == 10
+    assert "S59USDT" in wide
+    assert deep[0] == "S59USDT"
+
+
+def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000)
+    provider = RecordedProvider()
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-critical-lag",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    supervisor = PersistentPublicSupervisor(
+        provider,
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    runtime._supervisor = supervisor
+    runtime.market_data_state = MarketDataState.LIVE
+
+    delayed = _event(
+        runtime.run_id,
+        "BTCUSDT",
+        clock,
+        0,
+        lag_ms=2_000,
+    )
+    supervisor._observe(delayed)
+    runtime.ingest_live_event(delayed)
+
+    assert supervisor.telemetry.entry_locked is True
+    assert supervisor.telemetry.critical_lag_event_count == 1
+    assert runtime.paused is True
+    assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" in runtime.runtime_health_flags
+    assert "SUPERVISOR_ENTRY_LOCK" in runtime.runtime_health_flags
+    runtime.set_paused(False)
+    assert runtime.paused is True
+
+    for sequence in range(1, 2_002):
+        supervisor._observe(
+            _event(runtime.run_id, "BTCUSDT", clock, sequence, lag_ms=5)
+        )
+    recovered_depth = _event(runtime.run_id, "BTCUSDT", clock, 0, lag_ms=5)
+    supervisor._observe(recovered_depth)
+    runtime.ingest_live_event(recovered_depth)
+
+    assert supervisor.telemetry.entry_locked is False
+    assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" not in runtime.runtime_health_flags
+    assert "SUPERVISOR_ENTRY_LOCK" not in runtime.runtime_health_flags
+    assert runtime.paused is True
+    runtime.set_paused(False)
+    assert runtime.paused is False
