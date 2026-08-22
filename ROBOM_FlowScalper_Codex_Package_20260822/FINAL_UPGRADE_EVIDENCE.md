@@ -221,6 +221,8 @@
 | KST 결정론 변환 | PASS, Unix epoch 0→09:00:00 KST |
 | 실제 주문·private API·인증 | 0, false, false 유지 |
 
+핫픽스 릴리스는 `21c4347071b494dd168999dd53930906f122893f`를 기준으로 238개 entry, 10,943,208 bytes로 생성했다. ZIP SHA-256는 `4448ae79f44ec23625965dd52a1edc7f7adb0e3020ceb7fca3fafde15591ab73`이고 `unzip -t` PASS다. 작업 복사본과 `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip`의 SHA-256가 일치한다.
+
 ### 화면 재검수 제한
 
 수정 후 localhost 애플리케이션은 `http://127.0.0.1:8870/`에서 실행 중이다. Codex in-app browser는 admin-enforced security policy 확인이 일시적으로 불가해 DOM snapshot과 수정 후 screenshot 캡처를 허용하지 않았다. 보안 제어를 우회하지 않았으며, 기존 Wave 06 screenshot을 수정 후 화면 증거로 잘못 재사용하지 않는다. 따라서 Wave 09 수정 후 screenshot 항목은 `BLOCKED`이고 API·소스·빌드·런타임 검증만 `PASS`다.

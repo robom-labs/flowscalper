@@ -26,6 +26,6 @@
 
 ## Validation
 
-- backend 94 tests PASS. persistence worker, wide/execution lag 격리, 다중 WebSocket client broadcast를 포함한다.
+- backend 95 tests PASS. persistence worker, wide/execution lag 격리, 다중 WebSocket client broadcast를 포함한다.
 - frontend Vitest 3 tests, ESLint, TypeScript, Vite build PASS. KST 변환 결정론 test를 포함한다.
 - 실제 Binance LIVE `run-ef96cc96a072`에서 wide 50·deep 10, queue/gap/drop/persistence fault 0, 저장 batch 진행 중 실행 경로 p95 0~1,224ms를 확인했다.
