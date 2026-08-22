@@ -10,4 +10,3 @@ from backend.app.domain.safety import assert_paper_only
 assert os.environ.get("REAL_TRADING", "false").lower() == "false"
 assert_paper_only(RuntimeMode.FIXTURE_OFFLINE, os.environ)
 print("PASS: PAPER 전용 빌드 불변조건")
-

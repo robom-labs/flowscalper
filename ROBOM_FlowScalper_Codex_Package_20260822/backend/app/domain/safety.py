@@ -20,4 +20,3 @@ def assert_paper_only(mode: RuntimeMode, environ: Mapping[str, str] | None = Non
     enabled = values.get("REAL_TRADING", "false").strip().lower()
     if enabled not in {"false", "0", "no", "off", ""}:
         raise RealTradingDisabledError("REAL_TRADING은 이 제품에서 영구 비활성화되어 있습니다.")
-

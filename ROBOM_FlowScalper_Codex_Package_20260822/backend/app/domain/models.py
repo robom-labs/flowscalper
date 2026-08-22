@@ -82,4 +82,3 @@ class SystemStatus(BaseModel):
     deep_symbols: int = Field(default=0, ge=0)
     processing_lag_p95_ms: float | None = Field(default=None, ge=0)
     health_flags: tuple[str, ...] = ()
-

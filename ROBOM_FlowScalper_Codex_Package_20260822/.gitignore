@@ -7,9 +7,11 @@ __pycache__/
 *.py[cod]
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 data/*.sqlite3
 data/parquet/
 artifacts/
 playwright-report/
 test-results/
-

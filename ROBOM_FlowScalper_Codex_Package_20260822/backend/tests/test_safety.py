@@ -30,4 +30,3 @@ def test_runtime_source_has_no_exchange_execution_routes() -> None:
     forbidden_fragments = ("/fapi/v1/order", "/v5/order/create", "api_secret", "withdraw")
     production = "\n".join(path.read_text() for path in root.rglob("*.py"))
     assert not any(fragment in production.lower() for fragment in forbidden_fragments)
-

@@ -35,4 +35,3 @@ class TestClock:
     def advance_ms(self, milliseconds: int) -> None:
         self.current_utc_ms += milliseconds
         self.current_monotonic_ns += milliseconds * 1_000_000
-

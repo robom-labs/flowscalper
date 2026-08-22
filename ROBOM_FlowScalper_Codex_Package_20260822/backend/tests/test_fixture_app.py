@@ -44,4 +44,3 @@ def test_fixture_events_are_deterministic() -> None:
     second.boot_fixture(20)
     assert first.events == second.events
     assert all(not event.quality.is_live for event in first.events)
-

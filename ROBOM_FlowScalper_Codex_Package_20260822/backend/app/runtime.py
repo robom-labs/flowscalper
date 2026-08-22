@@ -49,4 +49,3 @@ class PaperRuntime:
             deep_symbols=min(len(symbols), 10),
             health_flags=("OFFLINE_SIMULATION",),
         )
-

@@ -3,4 +3,3 @@
 from backend.app.adapters.fixture.generator import FixtureMarketData
 
 __all__ = ["FixtureMarketData"]
-

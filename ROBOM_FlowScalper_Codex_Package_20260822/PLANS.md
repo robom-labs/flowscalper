@@ -178,6 +178,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 
 - 2026-08-22: ADR-001에 따라 FastAPI 단일 프로세스와 정적 React 번들, 세 가지 PAPER 전용 런타임 모드, 거래소별 Run 격리를 채택했다.
 - 2026-08-22: Binance 2026 WebSocket `/public`·`/market` 분리와 Bybit V5 public linear snapshot/delta 계약을 공식 문서에서 재확인했다.
+- 2026-08-22: Binance 24시간 통계에는 최우선 호가가 없음을 실제 응답에서 확인해 `/ticker/24hr`와 공개 `/ticker/bookTicker`를 심볼별로 결합한다.
 
 ## Progress log
 
@@ -185,9 +186,9 @@ Codex must maintain a table with Wave, status, last commit, validation result, b
 
 | Wave | Status | Last commit | Validation result | Blockers | Next action |
 |---|---|---|---|---|---|
-| 00 | COMPLETE | Wave 00 commit | Backend 5 PASS; Ruff PASS; mypy PASS; ESLint PASS; TypeScript PASS; Vitest 1 PASS; Vite build PASS; fixture API/static boot PASS | 없음 | Wave 01 공개 시장데이터·호가장·유니버스 구현 |
-| 01 | IN_PROGRESS | - | 공식 endpoint 계약 재확인 완료 | 없음 | Binance/Bybit 어댑터와 결정적 호가장 테스트 |
-| 02 | PENDING | - | NOT_RUN | 없음 | Wave 01 출구 조건 후 시작 |
+| 00 | COMPLETE | 88f9624 | Backend 5 PASS; Ruff PASS; mypy PASS; ESLint PASS; TypeScript PASS; Vitest 1 PASS; Vite build PASS; fixture API/static boot PASS | 없음 | 완료 |
+| 01 | COMPLETE | Wave 01 commit | Backend 16 PASS; recorded gap/resync PASS; Ruff/mypy/frontend/build/e2e PASS; network smoke PASS, Binance 527 eligible, REST + WS 2 events, credentials false | 없음 | Wave 02 피처·레짐·후보 랭킹 구현 |
+| 02 | IN_PROGRESS | - | NOT_RUN | 없음 | 결정적 다중창 피처와 stale/degraded 차단 |
 | 03 | PENDING | - | NOT_RUN | 없음 | Wave 02 출구 조건 후 시작 |
 | 04 | PENDING | - | NOT_RUN | 없음 | Wave 03 출구 조건 후 시작 |
 | 05 | PENDING | - | NOT_RUN | 없음 | Wave 04 출구 조건 후 시작 |

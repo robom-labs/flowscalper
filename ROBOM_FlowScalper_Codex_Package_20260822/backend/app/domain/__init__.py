@@ -24,4 +24,3 @@ __all__ = [
     "Venue",
     "assert_paper_only",
 ]
-

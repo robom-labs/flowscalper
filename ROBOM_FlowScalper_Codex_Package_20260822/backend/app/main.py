@@ -100,4 +100,3 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
 
 
 app = create_app()
-

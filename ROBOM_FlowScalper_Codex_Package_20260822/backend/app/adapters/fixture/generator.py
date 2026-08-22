@@ -60,4 +60,3 @@ class FixtureMarketData:
                     "ask_qty": "11.8",
                 },
             )
-
