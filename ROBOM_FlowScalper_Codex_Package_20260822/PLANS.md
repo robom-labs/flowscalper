@@ -188,9 +188,9 @@ Codex must maintain a table with Wave, status, last commit, validation result, b
 |---|---|---|---|---|---|
 | 00 | COMPLETE | 88f9624 | Backend 5 PASS; Ruff PASS; mypy PASS; ESLint PASS; TypeScript PASS; Vitest 1 PASS; Vite build PASS; fixture API/static boot PASS | 없음 | 완료 |
 | 01 | COMPLETE | 29f94f7 | Backend 16 PASS; recorded gap/resync PASS; Ruff/mypy/frontend/build/e2e PASS; network smoke PASS, Binance 527 eligible, REST + WS 2 events, credentials false | 없음 | 완료 |
-| 02 | COMPLETE | Wave 02 commit | Backend 21 PASS; deterministic/finite feature and stale candidate gate PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | Wave 03 전략 A/B와 설명·비용/구조 게이트 구현 |
-| 03 | IN_PROGRESS | - | NOT_RUN | 없음 | 양방향 fixture 시나리오와 결정적 reason code |
-| 04 | PENDING | - | NOT_RUN | 없음 | Wave 03 출구 조건 후 시작 |
+| 02 | COMPLETE | d0ef16f | Backend 21 PASS; deterministic/finite feature and stale candidate gate PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | 완료 |
+| 03 | COMPLETE | Wave 03 commit | Backend 29 PASS; Strategy A/B long/short, positive/negative, cost/no-lookahead/determinism PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | Wave 04 비용·위험·페이퍼 체결 구현 |
+| 04 | IN_PROGRESS | - | NOT_RUN | 없음 | Decimal 위험수량, 지연 IOC depth 소진, 보호·회계 상태머신 |
 | 05 | PENDING | - | NOT_RUN | 없음 | Wave 04 출구 조건 후 시작 |
 | 06 | PENDING | - | NOT_RUN | 없음 | Wave 05 출구 조건 후 시작 |
 | 07 | PENDING | - | NOT_RUN | 없음 | Wave 06 출구 조건 후 시작 |
