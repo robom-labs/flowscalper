@@ -188,6 +188,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-22: 최종 fixture 증거는 계획 가격과 실제 체결 가격을 분리한 진입·청산 주문/체결, 수수료·슬리피지 합계, 단조 증가 상태 전이를 동일 Run 원장에 보존한다.
 - 2026-08-22: 거래의 `config_hash`는 예시 식별자가 아니라 소속 Run의 정규 설정 JSON SHA-256과 같아야 하며 테스트로 고정한다.
 - 2026-08-22: ADR-002에 따라 v0.2 기본 상태를 READY로 바꾸고, fixture는 DEMO 전용 Run으로 격리하며, A/B/C/D Registry와 지속 공개 WebSocket supervisor를 공통 런타임에 연결한다.
+- 2026-08-22: ADR-003에 따라 모든 적격 신호를 불변 CandidatePlan으로 고정한 뒤 지연된 실행가능 호가에서 main과 전략별 BASE·STRESS shadow를 동일하게 체결한다.
 
 ## v0.2 upgrade progress
 
@@ -197,7 +198,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 | Upgrade 01 | COMPLETE | 백엔드 60 PASS, 프런트 2 PASS, lint/typecheck/build/security PASS, fresh LIVE 1,000 USDT·손익·비용·거래 0과 DEMO 성과 격리 PASS | 없음 | 지속 supervisor와 캔들 구현 |
 | Upgrade 02 | COMPLETE | 백엔드 63 PASS, frontend test/lint/typecheck/build PASS, 실제 Binance 50 wide·10 deep·5초 지속 수신 29,351 events, book 18,348·depth 287·trade 765, 10종목 1초봉 생성, reconnect 0·gap 0·drop 0·lag P95 91ms | 없음 | Strategy Registry와 shadow 계좌 구현 |
 | Upgrade 03 | COMPLETE | 백엔드 71 PASS, ruff/mypy PASS, 실제 Binance LIVE에서 A/B/C/D 2,296회 평가·latest 80 경로 전부 보수적 REJECTED·가짜 TP 확률 0, 전략별 BASE/STRESS shadow 계좌 8개 격리 PASS | 없음 | 불변 계획·체결·포지션 연결 |
-| Upgrade 04 | PENDING | - | 없음 | 계획·체결·포지션 연결 |
+| Upgrade 04 | COMPLETE | 백엔드 75 PASS, frontend 2 PASS, ruff/mypy/ESLint/TypeScript/build/security PASS. 불변 plan·250/500ms 지연·실제 ask/bid·부분 진입·TP1/TP2·main 1개·shadow 격리·120초 초과 유지·edge decay·실시간 순손익 PASS. 실제 Binance 61,937 events, 평가 5,360회, 자연 적격신호·거래 0, reconnect/gap/drop 0, auth·실제주문 false | 없음 | 원장·리플레이·분석 연결 |
 | Upgrade 05 | PENDING | - | 없음 | 원장·리플레이·분석 연결 |
 | Upgrade 06 | PENDING | - | 없음 | 한국어 UI와 실제 차트 구현 |
 | Upgrade 07 | PENDING | - | 없음 | 복구·soak·보안 검증 |

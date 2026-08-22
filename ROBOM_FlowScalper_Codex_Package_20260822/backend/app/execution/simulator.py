@@ -144,13 +144,17 @@ class PaperExecutionEngine:
         reason: ExitReason,
         trigger_reference_price: Decimal,
         book_at_arrival: BookSnapshot,
+        requested_quantity: Decimal | None = None,
     ) -> ExitResult:
         self._validate_book(book_at_arrival, position.venue, position.symbol)
+        quantity = requested_quantity or position.quantity
+        if quantity <= 0 or quantity > position.quantity:
+            raise PaperExecutionError("청산 수량은 양수이고 잔여 포지션 이하여야 합니다.")
         buy = position.side is Side.SHORT
         levels = book_at_arrival.asks if buy else book_at_arrival.bids
         fill = self._consume(
             levels=levels,
-            requested_quantity=position.quantity,
+            requested_quantity=quantity,
             reference_price=trigger_reference_price,
             price_cap=None,
             buy=buy,
@@ -159,7 +163,7 @@ class PaperExecutionEngine:
         )
         filled = fill.quantity if fill else Decimal(0)
         remaining = position.quantity - filled
-        status = OrderStatus.FILLED if remaining == 0 else OrderStatus.PARTIALLY_FILLED
+        status = OrderStatus.FILLED if filled == quantity else OrderStatus.PARTIALLY_FILLED
         if fill is None:
             status = OrderStatus.REJECTED
         order = PaperOrder(
@@ -171,7 +175,7 @@ class PaperExecutionEngine:
             side="BUY" if buy else "SELL",
             intent=self._exit_intent(reason),
             status=status,
-            requested_quantity=position.quantity,
+            requested_quantity=quantity,
             filled_quantity=filled,
             price_cap=None,
             trigger_price=trigger_reference_price,

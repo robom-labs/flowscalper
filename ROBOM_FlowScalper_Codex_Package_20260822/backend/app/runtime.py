@@ -10,8 +10,9 @@ from uuid import uuid4
 from backend.app.adapters.fixture import FixtureMarketData
 from backend.app.api.dashboard import build_dashboard_snapshot
 from backend.app.build_identity import APP_VERSION, STRATEGY_VERSION, git_commit
+from backend.app.candidates import CandidatePlan, CandidatePlanner
 from backend.app.clocks import Clock, SystemClock
-from backend.app.domain.market import TradeTick
+from backend.app.domain.market import Instrument, TradeTick
 from backend.app.domain.models import (
     MarketDataState,
     MarketEvent,
@@ -20,6 +21,9 @@ from backend.app.domain.models import (
     Venue,
 )
 from backend.app.domain.safety import assert_paper_only
+from backend.app.execution import BookSnapshot, ExitReason
+from backend.app.execution.models import PaperTrade
+from backend.app.execution.portfolio import PaperPortfolioEngine
 from backend.app.features import BookFrame, FeatureEngine, FeatureInputError, FeatureSnapshot
 from backend.app.live_public import (
     LiveBootstrapProbe,
@@ -77,10 +81,20 @@ class PaperRuntime:
     )
     strategy_evaluation_count: int = 0
     shadow_ledger: ShadowLedger = field(init=False)
+    paper_portfolio: PaperPortfolioEngine = field(init=False)
+    latest_books: dict[str, BookSnapshot] = field(default_factory=dict)
+    candidate_planner: CandidatePlanner = field(default_factory=CandidatePlanner)
+    plan_rejections: list[dict[str, object]] = field(default_factory=list)
+    data_gap_since_ms: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         assert_paper_only(self.mode, os.environ)
         self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
+        self.paper_portfolio = PaperPortfolioEngine(
+            run_id=self.run_id,
+            strategy_ids=self.strategy_registry.strategy_ids,
+            shadow_ledger=self.shadow_ledger,
+        )
         if self.mode is RuntimeMode.READY:
             self.run_id = "ready"
             self.venue = Venue.NONE
@@ -136,12 +150,22 @@ class PaperRuntime:
         fees = 0.0
         slippage = 0.0
         trade_count = 0
-        if self.ledger is not None:
+        current_equity = 1000.0
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            summary = self.paper_portfolio.main_summary(self._current_main_book())
+            realized = float(summary["realized"])
+            self.unrealized_pnl_usdt = float(summary["unrealized"])
+            fees = float(summary["fees"])
+            slippage = float(summary["slippage"])
+            trade_count = int(summary["trade_count"])
+            current_equity = float(summary["equity"])
+        elif self.ledger is not None:
             trades = self.ledger.list_trades(self.run_id)
             trade_count = len(trades)
             realized = sum(float(str(trade["net_pnl_usdt"])) for trade in trades)
             fees = sum(float(str(trade["fees_usdt"])) for trade in trades)
             slippage = sum(float(str(trade["slippage_usdt"])) for trade in trades)
+            current_equity = 1000.0 + realized + self.unrealized_pnl_usdt
         flags = list(self.runtime_health_flags)
         if self.paused:
             flags.append("PAPER_ENTRIES_PAUSED")
@@ -150,7 +174,7 @@ class PaperRuntime:
             market_data_state=self.market_data_state,
             venue=self.venue,
             run_id=self.run_id,
-            current_equity_usdt=1000.0 + realized + self.unrealized_pnl_usdt,
+            current_equity_usdt=current_equity,
             realized_pnl_usdt=realized,
             unrealized_pnl_usdt=self.unrealized_pnl_usdt,
             cumulative_fees_usdt=fees,
@@ -262,6 +286,8 @@ class PaperRuntime:
         if event.run_id != self.run_id or event.venue is not self.venue:
             raise ValueError("다른 Run 또는 거래소 이벤트를 LIVE 런타임에 섞을 수 없습니다.")
         self._events.append(event)
+        if event.quality.is_stale or not event.quality.sequence_valid:
+            self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
         if len(self._events) > 10_000:
             del self._events[:2_500]
         if event.event_type == "TRADE":
@@ -299,6 +325,20 @@ class PaperRuntime:
             if isinstance(asks_value, list)
             else ((Decimal(str(event.data["ask"])), Decimal(str(event.data["ask_qty"]))),)
         )
+        book = BookSnapshot(
+            venue=event.venue,
+            symbol=event.symbol,
+            ts_ms=event.venue_ts_ms,
+            bids=bids,
+            asks=asks,
+            sequence_valid=event.quality.sequence_valid,
+            stale=event.quality.is_stale,
+        )
+        self.latest_books[event.symbol] = book
+        self.paper_portfolio.on_book(book)
+        self.position_visible = self.paper_portfolio.main.position is not None
+        portfolio_summary = self.paper_portfolio.main_summary(self._current_main_book())
+        self.unrealized_pnl_usdt = float(portfolio_summary["unrealized"])
         engine = self.feature_engines.setdefault(event.symbol, FeatureEngine())
         try:
             engine.ingest_book(
@@ -323,6 +363,15 @@ class PaperRuntime:
         regime = self.regime_classifier.classify(snapshot)
         self.latest_features[event.symbol] = snapshot
         self.latest_regimes[event.symbol] = regime
+        gap_started = self.data_gap_since_ms.pop(event.symbol, None)
+        self.paper_portfolio.evaluate_health(
+            snapshot,
+            regime,
+            now_ms=event.venue_ts_ms,
+            recovered_gap_duration_ms=(
+                max(0, event.venue_ts_ms - gap_started) if gap_started is not None else 0
+            ),
+        )
         instrument = (
             self.live_selection.instruments.get(event.symbol)
             if self.live_selection is not None
@@ -343,6 +392,66 @@ class PaperRuntime:
                 signal.decision.side.value,
             )
             self.strategy_signals[key] = signal
+        plans = self._build_candidate_plans(event, snapshot, regime, book, signals)
+        self.paper_portfolio.offer(plans, entries_paused=self.paused)
+
+    def _build_candidate_plans(
+        self,
+        event: MarketEvent,
+        snapshot: FeatureSnapshot,
+        regime: Regime,
+        book: BookSnapshot,
+        signals: tuple[EvaluatedSignal, ...],
+    ) -> tuple[CandidatePlan, ...]:
+        instrument = (
+            self.live_selection.instruments.get(event.symbol)
+            if self.live_selection is not None
+            else None
+        )
+        if instrument is None:
+            instrument = Instrument(
+                venue=event.venue,
+                symbol=event.symbol,
+                base_asset=event.symbol.removesuffix("USDT"),
+                quote_asset="USDT",
+                status="TEST",
+                contract_type="PAPER",
+                tick_size=Decimal("0.00000001"),
+                quantity_step=Decimal("0.001"),
+                minimum_quantity=Decimal("0.001"),
+            )
+        plans: list[CandidatePlan] = []
+        for signal in signals:
+            result = self.candidate_planner.build(
+                signal_event_id=event.event_id,
+                run_id=self.run_id,
+                venue=self.venue,
+                decision=signal.decision,
+                snapshot=snapshot,
+                regime=regime,
+                book=book,
+                instrument=instrument,
+                signal_time_ms=event.venue_ts_ms,
+                risk_state=self.paper_portfolio.main.risk_state,
+                main_eligible=signal.main_eligible,
+                shadow_eligible=signal.shadow_eligible,
+                strategy_version=STRATEGY_VERSION,
+            )
+            if result.plan is not None:
+                plans.append(result.plan)
+            elif result.rejection_codes != ("STRATEGY_NOT_QUALIFIED",):
+                self.plan_rejections.append(
+                    {
+                        "event_id": event.event_id,
+                        "symbol": event.symbol,
+                        "strategy_id": signal.decision.strategy_id,
+                        "side": signal.decision.side.value,
+                        "reason_codes": list(result.rejection_codes),
+                    }
+                )
+        if len(self.plan_rejections) > 2_000:
+            del self.plan_rejections[:500]
+        return tuple(plans)
 
     def configure_strategy(
         self,
@@ -403,6 +512,11 @@ class PaperRuntime:
             if self.ledger is not None and self.mode is not RuntimeMode.READY
             else ()
         )
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            persisted_trades = tuple(
+                self._paper_trade_row(trade)
+                for trade in self.paper_portfolio.main.completed_trades
+            )
         sample_type = (
             "DEMO_FIXTURE"
             if self.mode is RuntimeMode.DEMO_FIXTURE
@@ -447,6 +561,9 @@ class PaperRuntime:
                 "entry_locked": self.paused,
             }
         )
+        current_position = self.paper_portfolio.main_position_snapshot(
+            self._current_main_book()
+        )
         strategy_rows: list[dict[str, object]] = []
         for row in self.strategy_registry.rows():
             strategy_id = str(row["strategy_id"])
@@ -485,7 +602,9 @@ class PaperRuntime:
             chart_interval_seconds=self.selected_interval_seconds,
             runtime_diagnostics=diagnostics,
             strategies=tuple(strategy_rows),
-            shadow_accounts=tuple(self.shadow_ledger.rows()),
+            shadow_accounts=tuple(self.paper_portfolio.shadow_rows()),
+            current_position=current_position,
+            execution_audit=tuple(self.paper_portfolio.audit_events[-100:]),
             storage_label="SQLite transactional ledger"
             if self.ledger is not None
             else "fixture memory",
@@ -515,8 +634,20 @@ class PaperRuntime:
         self._log("RISK", "페이퍼 신규 진입 일시정지" if paused else "페이퍼 신규 진입 재개")
 
     def emergency_paper_close(self) -> None:
-        self.position_visible = False
-        self._log("EXIT", "현재 PAPER 포지션 비상종료 요청")
+        if self.mode is RuntimeMode.DEMO_FIXTURE:
+            self.position_visible = False
+            self._log("EXIT", "격리된 DEMO PAPER 포지션 표시 종료")
+            return
+        requested = self.paper_portfolio.request_main_exit(
+            now_ms=self.clock.utc_ms(),
+            reason=ExitReason.MANUAL_PAPER_EXIT,
+        )
+        self._log(
+            "EXIT",
+            "현재 PAPER 포지션 비상종료 지연 요청"
+            if requested
+            else "비상종료할 실제 PAPER 포지션 없음",
+        )
 
     async def start_live_run(self, probe: LiveBootstrapProbe | None = None) -> bool:
         self._archive_current_run("USER_START_LIVE")
@@ -605,7 +736,46 @@ class PaperRuntime:
         self.strategy_signals.clear()
         self.strategy_evaluator = StrategySignalEvaluator()
         self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
+        self.paper_portfolio = PaperPortfolioEngine(
+            run_id=self.run_id,
+            strategy_ids=self.strategy_registry.strategy_ids,
+            shadow_ledger=self.shadow_ledger,
+        )
+        self.latest_books.clear()
+        self.plan_rejections.clear()
+        self.data_gap_since_ms.clear()
         self.strategy_evaluation_count = 0
+
+    def _current_main_book(self) -> BookSnapshot | None:
+        position = self.paper_portfolio.main.position
+        if position is None:
+            return self.latest_books.get(self.selected_symbol)
+        return self.latest_books.get(position.plan.symbol)
+
+    @staticmethod
+    def _paper_trade_row(trade: PaperTrade) -> dict[str, object]:
+        return {
+            "trade_id": trade.trade_id,
+            "run_id": trade.run_id,
+            "venue": trade.venue.value,
+            "symbol": trade.symbol,
+            "strategy_id": trade.strategy_id,
+            "side": trade.side.value,
+            "entry_price": str(trade.entry_price),
+            "exit_price": str(trade.exit_price),
+            "initial_stop": str(trade.initial_stop),
+            "take_profit": str(trade.take_profit),
+            "quantity": str(trade.quantity),
+            "exit_reason": trade.exit_reason.value,
+            "gross_pnl_usdt": str(trade.gross_pnl_usdt),
+            "fees_usdt": str(trade.fees_usdt),
+            "slippage_usdt": str(trade.slippage_usdt),
+            "net_pnl_usdt": str(trade.net_pnl_usdt),
+            "holding_ms": trade.holding_ms,
+            "flags": list(trade.flags),
+            "profile": trade.profile.value,
+            "sample_type": "LIVE_PUBLIC",
+        }
 
     def _start_ledger_run(self) -> None:
         if self.ledger is None:

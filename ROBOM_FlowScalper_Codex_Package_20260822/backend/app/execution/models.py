@@ -140,6 +140,7 @@ class PaperTrade:
     run_id: str
     venue: Venue
     symbol: str
+    strategy_id: str
     side: Side
     entry_price: Decimal
     exit_price: Decimal

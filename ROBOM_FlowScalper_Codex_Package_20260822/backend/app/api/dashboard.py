@@ -25,6 +25,8 @@ def build_dashboard_snapshot(
     runtime_diagnostics: Mapping[str, object] | None = None,
     strategies: tuple[Mapping[str, object], ...] = (),
     shadow_accounts: tuple[Mapping[str, object], ...] = (),
+    current_position: Mapping[str, object] | None = None,
+    execution_audit: tuple[Mapping[str, object], ...] = (),
     storage_label: str = "fixture memory",
     api_host: str = "127.0.0.1:8765",
 ) -> dict[str, Any]:
@@ -96,7 +98,7 @@ def build_dashboard_snapshot(
         chart["symbol"] = chart_symbol
     chart["interval"] = _interval_label(chart_interval_seconds)
     chart["candles"] = [dict(row) for row in candle_rows]
-    position = None
+    position: dict[str, object] | None = None
     if position_visible and selected is not None and fixture_mode:
         bid = Decimal(str(selected.data["bid"]))
         ask = Decimal(str(selected.data["ask"]))
@@ -129,6 +131,18 @@ def build_dashboard_snapshot(
             },
             "management_reason": "진입 근거 유지 · 120초 강제종료 없음",
         }
+    elif current_position is not None:
+        position = dict(current_position)
+        chart["lines"] = {
+            "entry": float(str(current_position["actual_entry"])),
+            "take_profit": float(str(current_position["take_profit_1"])),
+            "take_profit_2": (
+                float(str(current_position["take_profit_2"]))
+                if current_position.get("take_profit_2") is not None
+                else None
+            ),
+            "stop": float(str(current_position["initial_stop"])),
+        }
     fixture_logs = [
         {
             "ts_ms": event.venue_ts_ms,
@@ -157,6 +171,7 @@ def build_dashboard_snapshot(
         "performance": _performance_rows(persisted_trades, fixture_mode=fixture_mode),
         "strategies": [dict(row) for row in strategies],
         "shadow_accounts": [dict(row) for row in shadow_accounts],
+        "execution_audit": [dict(row) for row in execution_audit],
         "risk": {
             "risk_per_trade": "0.10%",
             "max_positions": 1,

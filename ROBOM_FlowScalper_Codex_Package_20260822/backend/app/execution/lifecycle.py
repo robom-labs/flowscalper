@@ -175,6 +175,7 @@ class PaperTradeService:
             run_id=self.position.run_id,
             venue=self.position.venue,
             symbol=self.position.symbol,
+            strategy_id="LEGACY_V01",
             side=self.position.side,
             entry_price=entry_fill.average_price,
             exit_price=exit_fill.average_price,
