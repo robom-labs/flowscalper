@@ -187,9 +187,9 @@ Codex must maintain a table with Wave, status, last commit, validation result, b
 | Wave | Status | Last commit | Validation result | Blockers | Next action |
 |---|---|---|---|---|---|
 | 00 | COMPLETE | 88f9624 | Backend 5 PASS; Ruff PASS; mypy PASS; ESLint PASS; TypeScript PASS; Vitest 1 PASS; Vite build PASS; fixture API/static boot PASS | 없음 | 완료 |
-| 01 | COMPLETE | Wave 01 commit | Backend 16 PASS; recorded gap/resync PASS; Ruff/mypy/frontend/build/e2e PASS; network smoke PASS, Binance 527 eligible, REST + WS 2 events, credentials false | 없음 | Wave 02 피처·레짐·후보 랭킹 구현 |
-| 02 | IN_PROGRESS | - | NOT_RUN | 없음 | 결정적 다중창 피처와 stale/degraded 차단 |
-| 03 | PENDING | - | NOT_RUN | 없음 | Wave 02 출구 조건 후 시작 |
+| 01 | COMPLETE | 29f94f7 | Backend 16 PASS; recorded gap/resync PASS; Ruff/mypy/frontend/build/e2e PASS; network smoke PASS, Binance 527 eligible, REST + WS 2 events, credentials false | 없음 | 완료 |
+| 02 | COMPLETE | Wave 02 commit | Backend 21 PASS; deterministic/finite feature and stale candidate gate PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | Wave 03 전략 A/B와 설명·비용/구조 게이트 구현 |
+| 03 | IN_PROGRESS | - | NOT_RUN | 없음 | 양방향 fixture 시나리오와 결정적 reason code |
 | 04 | PENDING | - | NOT_RUN | 없음 | Wave 03 출구 조건 후 시작 |
 | 05 | PENDING | - | NOT_RUN | 없음 | Wave 04 출구 조건 후 시작 |
 | 06 | PENDING | - | NOT_RUN | 없음 | Wave 05 출구 조건 후 시작 |
