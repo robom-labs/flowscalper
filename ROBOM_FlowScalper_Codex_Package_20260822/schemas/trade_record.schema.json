@@ -10,6 +10,8 @@
     "venue": {"type": "string"},
     "symbol": {"type": "string"},
     "strategy_id": {"type": "string"},
+    "regime": {"type": "string"},
+    "profile": {"enum": ["BASE", "STRESS"]},
     "side": {"enum": ["LONG", "SHORT"]},
     "entry_ts_ms": {"type": "integer"},
     "exit_ts_ms": {"type": "integer"},

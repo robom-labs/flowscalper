@@ -1,11 +1,14 @@
 """오프라인 fixture가 PAPER 상태로 끝까지 부팅되는지 검증한다."""
 
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import RuntimeMode
 from backend.app.main import create_app
 from backend.app.runtime import PaperRuntime
+from backend.app.storage.sqlite import SQLiteLedger
 
 
 def test_fixture_boot_is_honestly_labeled() -> None:
@@ -62,3 +65,25 @@ def test_dashboard_controls_preserve_run_history() -> None:
     new_snapshot = client.post("/api/control/new-run").json()
     assert new_snapshot["status"]["run_id"] != "run-original"
     assert new_snapshot["history"][0]["run_id"] == "run-original"
+
+
+def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "runtime.sqlite3")
+    runtime = PaperRuntime(clock=DeterministicClock(), run_id="run-persisted", ledger=ledger)
+    runtime.boot_fixture()
+    client = TestClient(create_app(runtime))
+
+    before = client.get("/api/dashboard").json()
+    after = client.post("/api/control/new-run").json()
+
+    assert before["history"][0]["trade_id"] == "run-persisted-fixture-trade-001"
+    assert after["status"]["run_id"] != "run-persisted"
+    assert {row["run_id"] for row in after["history"]} == {
+        "run-persisted",
+        after["status"]["run_id"],
+    }
+    assert ledger.get_run("run-persisted")["finalized_ts_ms"] is not None
+    assert ledger.count("trades") == 2
+    assert ledger.count("transitions") == 10
+    assert ledger.count("snapshots") == 2
+    ledger.close()

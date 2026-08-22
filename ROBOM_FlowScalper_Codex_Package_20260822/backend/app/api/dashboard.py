@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any, cast
 
@@ -16,6 +17,8 @@ def build_dashboard_snapshot(
     position_visible: bool,
     control_logs: tuple[dict[str, object], ...],
     archived_run_ids: tuple[str, ...],
+    persisted_trades: tuple[Mapping[str, object], ...] = (),
+    storage_label: str = "fixture memory",
 ) -> dict[str, Any]:
     symbols = sorted({event.symbol for event in events})
     latest_by_symbol = {event.symbol: event for event in events}
@@ -97,35 +100,17 @@ def build_dashboard_snapshot(
         "chart": chart,
         "position": position,
         "logs": [*control_logs[-10:], *fixture_logs],
-        "history": [
-            {
-                "run_id": archived_run_ids[-1] if archived_run_ids else status.run_id,
-                "trade_id": "fixture-trade-001",
-                "symbol": "BTCUSDT",
-                "strategy": "LSA_REVERSAL_V1",
-                "side": "LONG",
-                "entry": "100.10",
-                "exit": "101.90",
-                "exit_reason": "TAKE_PROFIT",
-                "gross_pnl": "1.80",
-                "fees": "0.1212",
-                "slippage": "0.20",
-                "net_pnl": "1.6788",
-                "holding_seconds": 184,
-                "profile": "BASE",
-                "sample_type": "OFFLINE_FIXTURE",
-            }
-        ],
+        "history": _history_rows(status, archived_run_ids, persisted_trades),
         "performance": {
             "sample_size": 1,
             "gross_pnl": "1.80",
             "fees": "0.1212",
             "slippage": "0.20",
-            "net_pnl": "1.6788",
+            "net_pnl": "1.4788",
             "max_drawdown": "0.00",
             "win_rate": "표본 1건 · 연구 판단 금지",
             "calibration": "CALIBRATING",
-            "base_equity": "1001.6788",
+            "base_equity": "1001.4788",
             "stress_equity": "1001.2300",
         },
         "risk": {
@@ -145,10 +130,61 @@ def build_dashboard_snapshot(
             "sequence_gaps": 0,
             "resyncs": 0,
             "queue_depth": 0,
-            "storage": "fixture memory",
+            "storage": storage_label,
+            "retention_deep_book_days": 7,
+            "retention_feature_days": 90,
+            "trade_windows_retained": True,
+            "disk_pressure_entry_lock": True,
             "app_version": "0.1.0-paper",
         },
     }
+
+
+def _history_rows(
+    status: SystemStatus,
+    archived_run_ids: tuple[str, ...],
+    persisted_trades: tuple[Mapping[str, object], ...],
+) -> list[dict[str, object]]:
+    if persisted_trades:
+        return [
+            {
+                "run_id": str(trade["run_id"]),
+                "trade_id": str(trade["trade_id"]),
+                "symbol": str(trade["symbol"]),
+                "strategy": str(trade["strategy_id"]),
+                "side": str(trade["side"]),
+                "entry": str(trade["entry_price"]),
+                "exit": str(trade["exit_price"]),
+                "exit_reason": str(trade["exit_reason"]),
+                "gross_pnl": str(trade["gross_pnl_usdt"]),
+                "fees": str(trade["fees_usdt"]),
+                "slippage": str(trade["slippage_usdt"]),
+                "net_pnl": str(trade["net_pnl_usdt"]),
+                "holding_seconds": int(str(trade["holding_ms"])) // 1_000,
+                "profile": str(trade.get("profile", "BASE")),
+                "sample_type": "OFFLINE_FIXTURE",
+            }
+            for trade in reversed(persisted_trades)
+        ]
+    return [
+        {
+            "run_id": archived_run_ids[-1] if archived_run_ids else status.run_id,
+            "trade_id": "fixture-trade-001",
+            "symbol": "BTCUSDT",
+            "strategy": "LSA_REVERSAL_V1",
+            "side": "LONG",
+            "entry": "100.10",
+            "exit": "101.90",
+            "exit_reason": "TAKE_PROFIT",
+            "gross_pnl": "1.80",
+            "fees": "0.1212",
+            "slippage": "0.20",
+            "net_pnl": "1.4788",
+            "holding_seconds": 184,
+            "profile": "BASE",
+            "sample_type": "OFFLINE_FIXTURE",
+        }
+    ]
 
 
 def _chart_points(

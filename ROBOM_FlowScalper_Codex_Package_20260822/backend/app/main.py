@@ -7,14 +7,17 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.app.clocks import SystemClock
 from backend.app.domain.models import RuntimeMode
 from backend.app.runtime import PaperRuntime
+from backend.app.storage.sqlite import SQLiteLedger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -22,7 +25,38 @@ FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 def _runtime_from_environment() -> PaperRuntime:
     requested_mode = os.environ.get("ROBOM_MODE", RuntimeMode.FIXTURE_OFFLINE.value)
-    runtime = PaperRuntime(mode=RuntimeMode(requested_mode))
+    mode = RuntimeMode(requested_mode)
+    default_database = PROJECT_ROOT / "data" / "run-ledger.sqlite3"
+    database = Path(os.environ.get("ROBOM_DB_PATH", str(default_database)))
+    ledger = SQLiteLedger(database)
+    clock = SystemClock()
+    recovered = ledger.recover_latest(recovered_ts_ms=clock.utc_ms())
+    run_id = None
+    if recovered is not None:
+        run = ledger.get_run(recovered.run_id)
+        if run is not None and run["mode"] == mode.value:
+            run_id = recovered.run_id
+        else:
+            ledger.finalize_run(
+                recovered.run_id,
+                finalized_ts_ms=recovered.recovered_ts_ms,
+                summary={"reason": "RUNTIME_MODE_CHANGED", "preserved": True},
+            )
+    runtime = PaperRuntime(
+        mode=mode,
+        clock=clock,
+        run_id=run_id or f"run-{uuid4().hex[:12]}",
+        ledger=ledger,
+    )
+    if run_id is not None:
+        ledger.record_incident(
+            f"recovery-{run_id}-{runtime.clock.utc_ms()}",
+            run_id=run_id,
+            severity="INFO",
+            category="PAPER_RESTART_RECOVERY",
+            ts_ms=runtime.clock.utc_ms(),
+            payload={"lifecycle_state": recovered.lifecycle_state if recovered else "RUN_OPEN"},
+        )
     if runtime.mode is RuntimeMode.FIXTURE_OFFLINE:
         runtime.boot_fixture()
     return runtime
@@ -33,7 +67,11 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
+        try:
+            yield
+        finally:
+            if active_runtime.ledger is not None:
+                active_runtime.ledger.close()
 
     app = FastAPI(title="ROBOM FlowScalper", version="0.1.0-paper", lifespan=lifespan)
     app.state.runtime = active_runtime

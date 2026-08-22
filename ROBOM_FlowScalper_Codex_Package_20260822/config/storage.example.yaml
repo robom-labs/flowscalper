@@ -1,0 +1,11 @@
+# PAPER 시장데이터 보존과 저장소 압박 안전선을 정의한다.
+sqlite_path: data/run-ledger.sqlite3
+parquet_root: data/parquet
+retention:
+  deep_book_days: 7
+  feature_and_candle_days: 90
+  protect_candidate_and_trade_windows: true
+disk_pressure:
+  minimum_free_bytes: 2147483648
+  minimum_free_ratio: 0.05
+  lock_new_paper_entries: true
