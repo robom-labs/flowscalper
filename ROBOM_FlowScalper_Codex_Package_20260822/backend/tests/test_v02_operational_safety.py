@@ -141,3 +141,30 @@ async def test_market_persistence_worker_flushes_outside_ingest_loop(tmp_path: P
     assert ledger.count("market_events") == 500
     assert runtime._persistence_fault_count == 0
     ledger.close()
+
+
+def test_live_dashboard_never_waits_for_sqlite_writer_lock(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "dashboard-cache.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-dashboard-cache",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+
+    def fail_if_dashboard_reads(*_args, **_kwargs):
+        raise AssertionError("LIVE dashboard는 SQLite를 다시 읽으면 안 됩니다.")
+
+    monkeypatch.setattr(ledger, "list_trades", fail_if_dashboard_reads)
+    monkeypatch.setattr(ledger, "list_shadow_trades", fail_if_dashboard_reads)
+
+    dashboard = runtime.dashboard()
+
+    assert dashboard["status"]["mode"] == "LIVE_SHADOW_PAPER"
+    assert dashboard["history"] == []
+    assert len(dashboard["strategies"]) == 4
+    ledger.close()

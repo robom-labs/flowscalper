@@ -107,6 +107,12 @@ class PaperRuntime:
     _persistence_fault_count: int = 0
     _persistence_buffer_dropped: int = 0
     _last_persistence_error: str | None = None
+    _historical_live_trades: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
+    _historical_shadow_trades: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
     _last_storage_check_ns: int | None = None
     _storage_entry_allowed: bool = True
     _storage_health_snapshot: dict[str, object] = field(default_factory=dict)
@@ -156,6 +162,8 @@ class PaperRuntime:
             and self.ledger.get_run(self.run_id) is None
         ):
             self._start_ledger_run()
+        elif self.ledger is not None:
+            self._refresh_dashboard_trade_cache()
 
     def boot_demo(self, event_count: int = 40) -> None:
         if self.mode is not RuntimeMode.DEMO_FIXTURE:
@@ -781,15 +789,20 @@ class PaperRuntime:
             for _, signal in sorted(self.strategy_signals.items(), key=lambda item: item[0])
         )
 
-    def strategy_performance(self) -> list[dict[str, object]]:
+    def strategy_performance(
+        self, *, include_persisted: bool = True
+    ) -> list[dict[str, object]]:
         trades: list[dict[str, object]] = []
-        if self.ledger is not None:
+        if self.ledger is not None and include_persisted:
             trades.extend(
                 trade
                 for trade in self.ledger.list_trades()
                 if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
             )
             trades.extend(self.ledger.list_shadow_trades())
+        elif self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            trades.extend(self._dashboard_live_main_trades())
+            trades.extend(self._dashboard_live_shadow_trades())
         else:
             trades.extend(
                 self._paper_trade_row(trade)
@@ -1032,15 +1045,16 @@ class PaperRuntime:
         return tuple({**row, "rank": rank} for rank, row in enumerate(ordered, 1))
 
     def dashboard(self) -> dict[str, object]:
-        persisted_trades = (
-            tuple(self.ledger.list_trades(self.run_id))
-            if self.ledger is not None and self.mode is not RuntimeMode.READY
-            else ()
-        )
         if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
             persisted_trades = tuple(
                 self._paper_trade_row(trade)
                 for trade in self.paper_portfolio.main.completed_trades
+            )
+        else:
+            persisted_trades = (
+                tuple(self.ledger.list_trades(self.run_id))
+                if self.ledger is not None and self.mode is not RuntimeMode.READY
+                else ()
             )
         sample_type = (
             "DEMO_FIXTURE"
@@ -1049,15 +1063,18 @@ class PaperRuntime:
             if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
             else None
         )
-        history_trades = (
-            tuple(
-                trade
-                for trade in self.ledger.list_trades()
-                if trade.get("sample_type", "LIVE_PUBLIC") == sample_type
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            history_trades = self._dashboard_live_main_trades()
+        else:
+            history_trades = (
+                tuple(
+                    trade
+                    for trade in self.ledger.list_trades()
+                    if trade.get("sample_type", "LIVE_PUBLIC") == sample_type
+                )
+                if self.ledger is not None and sample_type is not None
+                else ()
             )
-            if self.ledger is not None and sample_type is not None
-            else ()
-        )
         candle_rows = tuple(
             {
                 "time": candle.open_ts_ms // 1_000,
@@ -1093,7 +1110,7 @@ class PaperRuntime:
         strategy_rows: list[dict[str, object]] = []
         performance_by_key = {
             (str(report["strategy_id"]), str(report["profile"])): report
-            for report in self.strategy_performance()
+            for report in self.strategy_performance(include_persisted=False)
         }
         for row in self.strategy_registry.rows():
             strategy_id = str(row["strategy_id"])
@@ -1609,6 +1626,44 @@ class PaperRuntime:
                 "portfolio": self.paper_portfolio.recovery_state(),
             },
         )
+        self._refresh_dashboard_trade_cache()
+
+    def _refresh_dashboard_trade_cache(self) -> None:
+        if self.ledger is None:
+            self._historical_live_trades = ()
+            self._historical_shadow_trades = ()
+            return
+        self._historical_live_trades = tuple(
+            trade
+            for trade in self.ledger.list_trades()
+            if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
+        )
+        self._historical_shadow_trades = tuple(self.ledger.list_shadow_trades())
+
+    def _dashboard_live_main_trades(self) -> tuple[dict[str, object], ...]:
+        rows = {
+            str(trade["trade_id"]): trade for trade in self._historical_live_trades
+        }
+        rows.update(
+            {
+                trade.trade_id: self._paper_trade_row(trade)
+                for trade in self.paper_portfolio.main.completed_trades
+            }
+        )
+        return tuple(rows.values())
+
+    def _dashboard_live_shadow_trades(self) -> tuple[dict[str, object], ...]:
+        rows = {
+            str(trade["trade_id"]): trade for trade in self._historical_shadow_trades
+        }
+        for account in self.paper_portfolio.shadows.values():
+            rows.update(
+                {
+                    trade.trade_id: self._paper_trade_row(trade)
+                    for trade in account.completed_trades
+                }
+            )
+        return tuple(rows.values())
 
     def _ensure_fixture_completed_trade(self) -> None:
         if self.ledger is None or self.ledger.list_trades(self.run_id):
