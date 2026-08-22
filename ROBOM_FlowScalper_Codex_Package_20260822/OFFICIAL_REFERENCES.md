@@ -72,12 +72,9 @@ Important current facts to re-check in code:
 - Long-horizon Codex tasks  
   https://developers.openai.com/blog/run-long-horizon-tasks-with-codex
 
-## Chart library
+## Chart implementation
 
-- TradingView Lightweight Charts open-source repository  
-  https://github.com/tradingview/lightweight-charts
-
-The project uses the open-source chart library only. It does not require a TradingView account, alert or webhook.
+The v0.1 dashboard uses a local SVG chart component and does not depend on TradingView, an account, alerts or webhooks.
 
 ## Primary market-microstructure research
 

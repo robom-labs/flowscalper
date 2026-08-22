@@ -3,17 +3,17 @@ PYTHON := .venv/bin/python
 UV := uv
 PNPM := pnpm
 
-.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke clean-data-safe
+.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke security-scan package-release clean-data-safe
 
 setup:
 	$(UV) sync --all-groups
 	cd frontend && $(PNPM) install --frozen-lockfile
 
 dev:
-	ROBOM_MODE=FIXTURE_OFFLINE $(UV) run uvicorn backend.app.main:app --host 127.0.0.1 --port 8765 --reload
+	ROBOM_MODE=FIXTURE_OFFLINE ROBOM_RELOAD=true $(UV) run python scripts/run_server.py
 
 run:
-	ROBOM_MODE=$${ROBOM_MODE:-FIXTURE_OFFLINE} $(UV) run uvicorn backend.app.main:app --host 127.0.0.1 --port 8765
+	ROBOM_MODE=$${ROBOM_MODE:-FIXTURE_OFFLINE} $(UV) run python scripts/run_server.py
 
 test:
 	$(UV) run pytest
@@ -36,10 +36,16 @@ e2e: build
 	cd frontend && $(PNPM) e2e
 
 fixture-demo: build
-	ROBOM_MODE=FIXTURE_OFFLINE $(UV) run uvicorn backend.app.main:app --host 127.0.0.1 --port 8765
+	ROBOM_MODE=FIXTURE_OFFLINE $(UV) run python scripts/run_server.py
 
 network-smoke:
 	$(UV) run python scripts/network_smoke.py
+
+security-scan:
+	$(UV) run python scripts/security_scan.py
+
+package-release: build security-scan
+	$(UV) run python scripts/package_release.py
 
 clean-data-safe:
 	@echo "기존 Run 데이터는 자동 삭제하지 않습니다. 내보내기 후 명시적으로 파일을 선택하세요."

@@ -7,6 +7,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -15,12 +16,23 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.clocks import SystemClock
-from backend.app.domain.models import RuntimeMode
+from backend.app.domain.models import RuntimeMode, Venue
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import SQLiteLedger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+
+
+def _local_browser_origin(origin: str | None) -> bool:
+    if origin is None:
+        return True
+    parsed = urlsplit(origin)
+    return parsed.scheme in {"http", "https"} and parsed.hostname in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }
 
 
 def _runtime_from_environment() -> PaperRuntime:
@@ -32,10 +44,12 @@ def _runtime_from_environment() -> PaperRuntime:
     clock = SystemClock()
     recovered = ledger.recover_latest(recovered_ts_ms=clock.utc_ms())
     run_id = None
+    run_venue = Venue.FIXTURE
     if recovered is not None:
         run = ledger.get_run(recovered.run_id)
         if run is not None and run["mode"] == mode.value:
             run_id = recovered.run_id
+            run_venue = Venue(str(run["venue"]))
         else:
             ledger.finalize_run(
                 recovered.run_id,
@@ -47,6 +61,7 @@ def _runtime_from_environment() -> PaperRuntime:
         clock=clock,
         run_id=run_id or f"run-{uuid4().hex[:12]}",
         ledger=ledger,
+        venue=run_venue,
     )
     if run_id is not None:
         ledger.record_incident(
@@ -68,6 +83,8 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
+            if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+                await active_runtime.boot_live_public()
             yield
         finally:
             if active_runtime.ledger is not None:
@@ -82,6 +99,7 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
             "http://localhost:8765",
             "http://localhost:5173",
         ],
+        allow_origin_regex=r"https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?",
         allow_credentials=False,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],
@@ -117,18 +135,14 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
     @app.post("/api/control/new-run")
     async def new_run() -> dict[str, object]:
         active_runtime.start_new_run()
+        if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            await active_runtime.boot_live_public()
         return active_runtime.dashboard()
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin")
-        allowed = {
-            None,
-            "http://127.0.0.1:8765",
-            "http://localhost:8765",
-            "http://localhost:5173",
-        }
-        if origin not in allowed:
+        if not _local_browser_origin(origin):
             await websocket.close(code=1008)
             return
         await websocket.accept()

@@ -8,6 +8,8 @@ import pytest
 
 from backend.app.domain.models import RuntimeMode
 from backend.app.domain.safety import RealTradingDisabledError, assert_paper_only
+from backend.app.main import _local_browser_origin
+from scripts.run_server import RemoteBindingDisabledError, validate_local_host
 
 
 def test_runtime_mode_has_no_real_trading_member() -> None:
@@ -30,3 +32,20 @@ def test_runtime_source_has_no_exchange_execution_routes() -> None:
     forbidden_fragments = ("/fapi/v1/order", "/v5/order/create", "api_secret", "withdraw")
     production = "\n".join(path.read_text() for path in root.rglob("*.py"))
     assert not any(fragment in production.lower() for fragment in forbidden_fragments)
+
+
+def test_supported_launcher_rejects_remote_bindings() -> None:
+    assert validate_local_host("127.0.0.1") == "127.0.0.1"
+    assert validate_local_host("localhost") == "localhost"
+    assert validate_local_host("::1") == "::1"
+    for host in ("0.0.0.0", "192.168.0.10", "example.com", ""):
+        with pytest.raises(RemoteBindingDisabledError):
+            validate_local_host(host)
+
+
+def test_websocket_origin_accepts_only_local_browser_hosts() -> None:
+    assert _local_browser_origin(None)
+    assert _local_browser_origin("http://127.0.0.1:8876")
+    assert _local_browser_origin("http://localhost:5173")
+    assert not _local_browser_origin("https://example.com")
+    assert not _local_browser_origin("file:///tmp/index.html")

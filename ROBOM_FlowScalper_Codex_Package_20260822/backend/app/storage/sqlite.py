@@ -416,6 +416,25 @@ class SQLiteLedger:
             rows = self._connection.execute(query, parameters).fetchall()
         return [json.loads(str(row["payload_json"])) for row in rows]
 
+    def list_transitions(self, run_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT sequence, state, ts_ms, payload_json
+                FROM transitions WHERE run_id = ? ORDER BY sequence
+                """,
+                (run_id,),
+            ).fetchall()
+        return [
+            {
+                "sequence": int(row["sequence"]),
+                "state": str(row["state"]),
+                "ts_ms": int(row["ts_ms"]),
+                "payload": json.loads(str(row["payload_json"])),
+            }
+            for row in rows
+        ]
+
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._connection.execute(

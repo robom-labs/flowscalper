@@ -8,6 +8,9 @@ type Props = { chart: ChartData; trade: HistoryRow | undefined }
 export function ReplayPage({ chart, trade }: Props) {
   const [playing, setPlaying] = useState(false)
   const [step, setStep] = useState(3)
+  if (!trade) {
+    return <section aria-labelledby="replay-heading"><div className="page-heading"><div><p className="section-kicker">EVENT-DRIVEN</p><h2 id="replay-heading">결정적 리플레이</h2></div><span className="page-note">선택된 거래 없음</span></div><div className="panel empty-state"><b>보존된 완료 PAPER 거래가 없습니다</b><p>실제 공개데이터 수신만으로 결정·체결 결과를 만들지 않습니다.</p></div></section>
+  }
   return (
     <section aria-labelledby="replay-heading">
       <div className="page-heading"><div><p className="section-kicker">EVENT-DRIVEN</p><h2 id="replay-heading">결정적 리플레이</h2></div><span className="page-note">{trade?.trade_id ?? '선택된 거래 없음'}</span></div>
@@ -18,4 +21,3 @@ export function ReplayPage({ chart, trade }: Props) {
     </section>
   )
 }
-

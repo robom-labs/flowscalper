@@ -23,7 +23,7 @@ export type ScannerRow = {
   depth: 'WIDE' | 'DEEP'
   regime: string
   strategy: string
-  side: 'LONG' | 'SHORT'
+  side: 'LONG' | 'SHORT' | 'NONE'
   score: number | null
   net_rr: number | null
   expected_cost_bps: number
@@ -47,7 +47,7 @@ export type ChartData = {
   symbol: string
   interval: string
   points: ChartPoint[]
-  lines: { entry: number; take_profit: number; stop: number }
+  lines: { entry: number | null; take_profit: number | null; stop: number | null }
   fixture: boolean
 }
 
@@ -120,4 +120,3 @@ export type DashboardData = {
   }
   system: Record<string, string | number | boolean>
 }
-

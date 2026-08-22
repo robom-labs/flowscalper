@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from backend.app.adapters.fixture import FixtureMarketData
 from backend.app.api.dashboard import build_dashboard_snapshot
+from backend.app.build_identity import APP_VERSION, STRATEGY_VERSION, git_commit
 from backend.app.clocks import Clock, SystemClock
 from backend.app.domain.models import (
     MarketDataState,
@@ -17,6 +18,11 @@ from backend.app.domain.models import (
     Venue,
 )
 from backend.app.domain.safety import assert_paper_only
+from backend.app.live_public import (
+    LiveBootstrapProbe,
+    LivePublicBootstrapper,
+    PublicDataUnavailable,
+)
 from backend.app.storage.sqlite import SQLiteLedger
 
 
@@ -31,9 +37,22 @@ class PaperRuntime:
     archived_run_ids: list[str] = field(default_factory=list)
     control_logs: list[dict[str, object]] = field(default_factory=list)
     ledger: SQLiteLedger | None = None
+    venue: Venue = Venue.FIXTURE
+    market_data_state: MarketDataState = MarketDataState.FIXTURE
+    wide_symbol_count: int = 0
+    deep_symbol_count: int = 0
+    processing_lag_p95_ms: float | None = None
+    runtime_health_flags: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         assert_paper_only(self.mode, os.environ)
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            if self.venue is Venue.FIXTURE:
+                self.venue = Venue.BINANCE_USDM
+            self.market_data_state = MarketDataState.DISCONNECTED
+            self.paused = True
+            self.position_visible = False
+            self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
         if self.ledger is not None and self.ledger.get_run(self.run_id) is None:
             self._start_ledger_run()
 
@@ -50,18 +69,74 @@ class PaperRuntime:
 
     def status(self) -> SystemStatus:
         symbols = {event.symbol for event in self._events}
-        flags = ["OFFLINE_SIMULATION"]
+        current_equity = 1000.0
+        if self.ledger is not None:
+            net = sum(
+                float(str(trade["net_pnl_usdt"])) for trade in self.ledger.list_trades(self.run_id)
+            )
+            current_equity += net
+        flags = (
+            ["OFFLINE_SIMULATION"]
+            if self.mode is RuntimeMode.FIXTURE_OFFLINE
+            else list(self.runtime_health_flags)
+        )
         if self.paused:
             flags.append("PAPER_ENTRIES_PAUSED")
         return SystemStatus(
             mode=self.mode,
-            market_data_state=MarketDataState.FIXTURE,
-            venue=Venue.FIXTURE,
+            market_data_state=self.market_data_state,
+            venue=self.venue,
             run_id=self.run_id,
-            wide_symbols=len(symbols),
-            deep_symbols=min(len(symbols), 10),
+            current_equity_usdt=current_equity,
+            wide_symbols=self.wide_symbol_count or len(symbols),
+            deep_symbols=self.deep_symbol_count or min(len(symbols), 10),
+            processing_lag_p95_ms=self.processing_lag_p95_ms,
             health_flags=tuple(flags),
         )
+
+    async def boot_live_public(self, probe: LiveBootstrapProbe | None = None) -> bool:
+        if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
+            raise ValueError("LIVE 부트스트랩은 LIVE_SHADOW_PAPER 모드에서만 가능합니다.")
+        active_probe = probe or LivePublicBootstrapper()
+        self.market_data_state = MarketDataState.RECONNECTING
+        self.paused = True
+        self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
+        other_venue = Venue.BYBIT_LINEAR if self.venue is Venue.BINANCE_USDM else Venue.BINANCE_USDM
+        for candidate_venue in (self.venue, other_venue):
+            if candidate_venue is not self.venue:
+                self._switch_venue_run(candidate_venue)
+            try:
+                result = await active_probe.bootstrap(
+                    candidate_venue, run_id=self.run_id, clock=self.clock
+                )
+            except PublicDataUnavailable as error:
+                self._record_public_failure(candidate_venue, error)
+                continue
+            if result.venue is not candidate_venue:
+                self._record_public_failure(
+                    candidate_venue,
+                    PublicDataUnavailable("probe 거래소 식별자 불일치"),
+                )
+                continue
+            self.venue = result.venue
+            self._events = list(result.events)
+            self.wide_symbol_count = result.wide_symbol_count
+            self.deep_symbol_count = result.deep_symbol_count
+            self.processing_lag_p95_ms = result.websocket_lag_ms
+            self.market_data_state = MarketDataState.LIVE
+            self.runtime_health_flags = ["PUBLIC_DATA_VERIFIED", "NO_AUTH_HEADERS"]
+            self.paused = result.websocket_lag_ms > 1_500
+            if self.paused:
+                self.runtime_health_flags.append("CRITICAL_MARKET_LAG_ENTRY_LOCK")
+            self._log(
+                "MARKET_DATA",
+                f"{result.venue.value} 공개 이벤트 검증 · "
+                f"{result.eligible_symbol_count}개 eligible · 자격 증명 없음",
+            )
+            return True
+        self.market_data_state = MarketDataState.DISCONNECTED
+        self.runtime_health_flags.append("PUBLIC_DATA_UNAVAILABLE")
+        return False
 
     def dashboard(self) -> dict[str, object]:
         persisted_trades = tuple(self.ledger.list_trades()) if self.ledger is not None else ()
@@ -76,9 +151,24 @@ class PaperRuntime:
             storage_label="SQLite transactional ledger"
             if self.ledger is not None
             else "fixture memory",
+            api_host=(
+                f"{os.environ.get('ROBOM_HOST', '127.0.0.1')}:"
+                f"{os.environ.get('ROBOM_PORT', '8765')}"
+            ),
         )
 
     def set_paused(self, paused: bool) -> None:
+        if (
+            not paused
+            and self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            and (
+                self.market_data_state is not MarketDataState.LIVE
+                or "CRITICAL_MARKET_LAG_ENTRY_LOCK" in self.runtime_health_flags
+            )
+        ):
+            self.paused = True
+            self._log("RISK", "검증된 LIVE 데이터가 없어 PAPER 진입 재개 차단")
+            return
         self.paused = paused
         self._log("RISK", "페이퍼 신규 진입 일시정지" if paused else "페이퍼 신규 진입 재개")
 
@@ -102,7 +192,12 @@ class PaperRuntime:
         self.position_visible = True
         if self.ledger is not None:
             self._start_ledger_run()
-        self.boot_fixture()
+        if self.mode is RuntimeMode.FIXTURE_OFFLINE:
+            self.boot_fixture()
+        else:
+            self.market_data_state = MarketDataState.DISCONNECTED
+            self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
+            self.paused = True
         self._log("RISK", "기존 Run 보존 후 새 PAPER Run 생성")
         return self.run_id
 
@@ -112,8 +207,15 @@ class PaperRuntime:
         self.ledger.start_run(
             self.run_id,
             mode=self.mode.value,
-            venue=Venue.FIXTURE.value,
-            config={"starting_equity_usdt": "1000", "execution": "PAPER", "seed": 20260822},
+            venue=self.venue.value,
+            config={
+                "starting_equity_usdt": "1000",
+                "execution": "PAPER",
+                "seed": 20260822,
+                "app_version": APP_VERSION,
+                "strategy_version": STRATEGY_VERSION,
+                "git_commit": git_commit(),
+            },
             started_ts_ms=self.clock.utc_ms(),
         )
 
@@ -175,6 +277,37 @@ class PaperRuntime:
                 "profile": "BASE",
             }
         )
+
+    def _switch_venue_run(self, venue: Venue) -> None:
+        previous_run_id = self.run_id
+        self.archived_run_ids.append(previous_run_id)
+        if self.ledger is not None:
+            self.ledger.finalize_run(
+                previous_run_id,
+                finalized_ts_ms=self.clock.utc_ms(),
+                summary={"reason": "PUBLIC_VENUE_FAILOVER", "preserved": True},
+            )
+        self.run_id = f"run-{uuid4().hex[:12]}"
+        self.venue = venue
+        self._events.clear()
+        self.wide_symbol_count = 0
+        self.deep_symbol_count = 0
+        if self.ledger is not None:
+            self._start_ledger_run()
+
+    def _record_public_failure(self, venue: Venue, error: PublicDataUnavailable) -> None:
+        flag = f"PUBLIC_DATA_BOOTSTRAP_FAILED_{venue.value}"
+        self.runtime_health_flags.append(flag)
+        self._log("MARKET_DATA", f"{flag} · LIVE 전환 차단")
+        if self.ledger is not None:
+            self.ledger.record_incident(
+                f"public-failure-{self.run_id}-{venue.value}-{uuid4().hex[:8]}",
+                run_id=self.run_id,
+                severity="WARN",
+                category="PUBLIC_DATA_BOOTSTRAP",
+                ts_ms=self.clock.utc_ms(),
+                payload={"venue": venue.value, "error_type": type(error).__name__},
+            )
 
     def _log(self, category: str, message: str) -> None:
         self.control_logs.append(
