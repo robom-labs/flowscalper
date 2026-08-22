@@ -1,6 +1,6 @@
 # ROBOM FlowScalper 0.2.0-paper 최종 업그레이드 증거
 
-작성일은 2026-08-22이며, 기준 소스는 기존 `0.1.0-paper`, 구현 기준은 `IMPLEMENT.md`와 `UPGRADE_EXEC_PLAN.md`, 진행 기준은 `PLANS.md`다. 문서에 없는 수익성·안전성·실기기 호환성은 주장하지 않는다.
+작성일은 2026-08-23이며, 기준 소스는 기존 `0.1.0-paper`, 구현 기준은 `IMPLEMENT.md`와 `UPGRADE_EXEC_PLAN.md`, 진행 기준은 `PLANS.md`다. 문서에 없는 수익성·안전성·실기기 호환성은 주장하지 않는다.
 
 ## 1. 제품 경계와 최종 상태
 
@@ -18,10 +18,10 @@
 |---|---|
 | 물리 외장하드 | `/Volumes/One Touch`, ExFAT, 약 4TB |
 | 전용 작업 이미지 | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/ROBOM_FlowScalper_Workspace.sparsebundle` |
-| 정식 APFS 작업공간 | `/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매` |
-| 정식 프로젝트 | `/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매/ROBOM_FlowScalper_Codex_Package_20260822` |
+| 정식 APFS 작업공간 | `/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매` |
+| 정식 프로젝트 | `/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822` |
 | Finder 실행기 | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/START_ROBOM_FlowScalper.command` |
-| 호환 링크 | `/Users/runner706/Documents/ChatGPT/자동매` → 외장 작업공간 |
+| 호환 링크 | `/Users/runner706/Documents/ChatGPT/자동매매` → 외장 작업공간 |
 
 정식 Git 작업과 완성본은 외장하드에 있다. ExFAT가 실행권한·심볼릭 링크를 보존하지 못하는 문제를 피하기 위해 실제 저장소는 외장하드 안의 APFS sparsebundle에 두었다. 실행기는 예상 APFS Volume UUID `CFA4ACD9-40F2-4825-845E-137F76AA1C62`가 일치할 때만 앱을 연다. 이동 증거는 `evidence/EXTERNAL_MIGRATION_EVIDENCE.json`에 있다.
 
@@ -60,7 +60,7 @@
 
 ### 원장·리플레이·성과
 
-- SQLite schema v3에 공개시장 event, candle, candidate, strategy setting/account, main·shadow trade를 Run 범위 불변 원장으로 저장한다.
+- SQLite schema v6에 PAPER 상태, candle, candidate, strategy setting/account, main·shadow trade, replay 목록용 `market_event_stats`와 불변 archive manifest를 Run 범위로 저장한다. 자동 서비스의 고빈도 공개시장 event는 외장 ZSTD Parquet으로 분리한다.
 - backend ReplayEngine은 저장 event를 같은 A/B/C/D·후보·PAPER 실행 경로에 다시 넣고 checksum과 결정 경로를 반환한다.
 - 전략별 표본, 승률, 기대값, Profit Factor, 총·순손익, 비용, drawdown, BASE·STRESS, `CALIBRATING` 상태를 계산한다.
 
@@ -121,14 +121,16 @@
 
 | 명령 또는 검증 | 상태 | 실제 결과 |
 |---|---|---|
-| `make test` | PASS | backend 96/96, frontend Vitest 3/3 |
-| `make lint` | PASS | Ruff와 ESLint 오류 0 |
-| `make typecheck` | PASS | mypy strict 68개 source 오류 0, TypeScript 오류 0 |
-| `make build` | PASS | Vite 39 modules, JS 424.05kB, gzip 134.22kB, PAPER build invariant PASS |
+| backend pytest / frontend Vitest | PASS | backend 105/105, frontend 5/5 |
+| Ruff / ESLint | PASS | 오류 0 |
+| mypy / TypeScript | PASS | mypy 68개 source 오류 0, TypeScript 오류 0 |
+| Vite production build | PASS | 39 modules, JS 431.18kB, gzip 135.95kB |
 | `make e2e` | PASS | fixture API 8/8, desktop·tablet·mobile Playwright 3/3 |
 | `make security-scan` | PASS | 88개 source, 위반·비밀 유사 파일·실제 주문 경로 0 |
 | `make network-smoke` | PASS | Binance 적격 527, 공개 WebSocket 2 events, p95 7,197.163ms, credentials false |
 | macOS root launcher smoke | PASS | `127.0.0.1:8890` 실제 부팅과 HTML 200. READY, 1,000 USDT, 손익·비용·거래 0, auth·real order false |
+| macOS LaunchAgent | PASS | `kr.robom.flowscalper` running, `RunAtLoad`·`KeepAlive`, 고정 `127.0.0.1:8870`, PID 종료 후 자동 복구 |
+| schema v6 archive replay | PASS | 최신 Run SQLite raw event 0, 외장 Parquet 77,274 events, row·batch checksum·경로 검증, `PRAGMA quick_check=ok` |
 | Windows setup/run 실제 실행 | NOT_RUN | macOS 환경이며 Windows 실기기 실행을 주장하지 않는다. |
 | 6시간 / 24시간 soak | NOT_RUN | 실행 스크립트 제공. 실제 경과시간 검증은 하지 않았다. |
 
@@ -177,7 +179,7 @@
 - 자연 적격신호가 없었던 공개시장 기록에서는 거래 0을 그대로 보존했다.
 - 6시간·24시간 soak와 Windows 실기기 실행은 `NOT_RUN`이다.
 - 거래소의 지역 제한·유지보수·protocol 변경은 로컬 코드로 없앨 수 없다. 연결이 검증되지 않으면 LIVE 대신 fail-closed 상태를 표시한다.
-- 외장 APFS 작업 이미지는 현재 약 32GiB 상한이며 약 31GiB가 비어 있다. 원시 장기수집으로 한계에 가까워지면 외장하드의 별도 데이터 볼륨으로 확장해야 한다.
+- 외장 APFS 작업 이미지는 현재 약 32GiB 상한이며 약 29GiB가 비어 있다. 장기수집으로 한계에 가까워지면 One Touch의 별도 데이터 볼륨으로 확장해야 한다.
 
 ## 12. Wave 09 LIVE 지연·차트·시각 핫픽스
 
@@ -244,3 +246,62 @@
 ### 화면 재검수 제한
 
 수정 후 localhost 애플리케이션은 `http://127.0.0.1:8870/`에서 실행 중이다. Codex in-app browser는 admin-enforced security policy 확인이 일시적으로 불가해 DOM snapshot과 수정 후 screenshot 캡처를 허용하지 않았다. 보안 제어를 우회하지 않았으며, 기존 Wave 06 screenshot을 수정 후 화면 증거로 잘못 재사용하지 않는다. 따라서 Wave 09 수정 후 screenshot 항목은 `BLOCKED`이고 API·소스·빌드·런타임 검증만 `PASS`다.
+
+## 13. Wave 10 항상 실행·초보자 화면·저장 병목 최종화
+
+2026-08-23 사용자의 사이트 미응답, 복잡한 scanner, 차트 비율 흔들림, 이동평균 부재, 어려운 PAPER 용어, 높은 지연과 내장 용량 부족 요청을 함께 수정했다.
+
+### UI와 자동 실행
+
+- 홈을 프로그램 상태, 진행 중 모의거래, 완료 거래, 현재 순손익, 정밀 관찰 종목 중심으로 단순화했다. `페이퍼 진입` 대신 `자동 관찰 시작`, `상승 관찰`·`하락 관찰`·`기다리기`를 사용한다.
+- scanner는 알파벳순 고정 목록과 내부 스크롤을 사용하고 종목·관찰 방향·진입 준비만 기본 노출한다. 전략, 점수, 비용, 손익비와 거절 이유는 `상세`를 열 때만 보인다.
+- chart와 scanner의 grid 높이를 분리하고, chart는 viewport 범위 안의 고정 높이와 animation-frame으로 병합된 ResizeObserver를 사용한다. 목록 행 수나 상세 열림이 chart 비율을 바꾸지 않는다.
+- Lightweight Charts 인스턴스를 snapshot마다 다시 만들지 않고 실제 candle·거래량을 갱신한다. 5선·10선은 기본, 20선·60선·호가선은 선택이며 각 숫자는 현재 시간구간의 candle 개수다.
+- 화면, chart axis, 이벤트와 시스템 시각은 `Asia/Seoul`로 통일했다.
+- 설치된 LaunchAgent `kr.robom.flowscalper`는 로그인 후 `127.0.0.1:8870`을 자동 시작하고 비정상 종료 후 다시 실행한다. Mac 전원이 꺼진 동안 localhost가 열릴 수 있다는 주장은 하지 않으며, 외장 APFS 소스가 마운트되어야 한다.
+
+### 병목 조사와 채택한 저장 구조
+
+- 기존 약 1.3GB SQLite의 Run별 `COUNT(*)`, event loop 안의 replay·analytics 조회, 매 이벤트 지연 표본 정렬, 반복 다중-window feature scan, 외장 sparsebundle의 WAL checkpoint를 각각 분리해 재현했다.
+- replay·analytics는 worker thread, 지연 p95는 256표본 cache, feature는 단일 순회와 500ms 전략 평가, PAPER 포지션 관리는 모든 250ms deep 호가 경로로 바꿨다.
+- transient critical lag가 회복돼도 `paused`가 남던 상태를 수동 일시정지와 안전 자동잠금으로 분리했다. 안전 지표가 회복되면 자동잠금만 풀리고 사용자가 누른 일시정지는 유지된다.
+- 활성 SQLite에는 PAPER 거래 상태·설정·통계·archive manifest만 둔다. 공개시장 원본은 리플레이에 필요한 상위 10단계 호가를 보존해 1,000건 단위 ZSTD Parquet으로 외장 `data/market-parquet-v6`에 기록한다.
+- 5,000건 batch는 p95 5,978ms와 자동 일시정지를 만들어 실패로 폐기했다. 1,000건 batch는 아래 최종 실행에서 통과했다.
+
+### 최종 실제 LIVE 공개시장 증거
+
+최종 Run ID는 `run-9b9d508c689d`다. Fresh 시작은 1,000.00 USDT, 손익·수수료·슬리피지·거래 0, wide 50, deep 10, auth false, real orders false였다.
+
+| 항목 | 실제 값 |
+|---|---:|
+| 연속 측정 구간 | 4분 이상, 13개 20초 표본 |
+| 측정 종료 events / p95 | 37,984 / 140ms |
+| 측정 중 p95 관찰 범위 | 33~140ms |
+| paused / drop / gap / reconnect / persistence fault | false / 0 / 0 / 0 / 0 |
+| 주기 dashboard 최대 / replay 최대 | 122.291ms / 62.307ms |
+| 내부 SQLite 증가 / 외장 archive 증가 | 1,232,896 bytes / 4,036KiB |
+| 측정 후 지속 저장 | 77,274 events, 147 Parquet, 7,987,803 bytes |
+| 최신 Run의 SQLite raw `market_events` | 0 |
+| `market_event_stats` / archive manifest 합계 | 77,274 / 77,274 |
+| SQLite / archive replay | `quick_check=ok` / 실제 timeline 20건 checksum 검증 반환 |
+| 현재 자산 / 손익 / 수수료 / 거래 | 1,000.00 / 0 / 0 / 0 |
+| 인증 / 실제 주문 | false / false |
+
+장시간 검증 후 병렬 회귀 테스트 부하 중 순간 p95 1,288ms도 1,500ms 잠금 기준 아래였고 `paused=false`, queue·drop·gap·reconnect·fault 0을 유지했다.
+
+시각은 dashboard 응답 왕복시간을 보정해 로컬 KST +22.7ms, Binance +43.6ms, Bybit +40.4ms 차이였다. 프로세스 실행을 포함한 별도 명령 시작시간을 서버 시각 차이로 잘못 계산하지 않았다.
+
+### 최종 회귀와 화면 증거 경계
+
+| 검증 | 결과 |
+|---|---|
+| backend pytest | PASS, 105 tests |
+| frontend Vitest | PASS, 3 files·5 tests |
+| Ruff / mypy / ESLint / TypeScript | PASS |
+| Vite production build | PASS, 39 modules, JS 431.18kB, gzip 135.95kB |
+| security scan | PASS, 88 source, 위반·비밀 유사 파일·실제 주문 경로 0 |
+| service shell syntax / installed plist | PASS / PASS |
+| `git diff --check` | PASS |
+| 수정 후 in-app browser DOM·screenshot | BLOCKED, admin-enforced policy 확인 불가 |
+
+localhost HTTP, WebSocket 데이터, 실제 LIVE API, 컴포넌트 테스트, production build와 원장 replay는 검증했다. 다만 수정 후 화면을 Codex in-app browser로 다시 캡처하는 작업은 보안 정책이 허용하지 않아 `BLOCKED`다. 다른 브라우저 자동화로 우회하지 않았고 과거 screenshot을 최신 화면 증거라고 주장하지 않는다.

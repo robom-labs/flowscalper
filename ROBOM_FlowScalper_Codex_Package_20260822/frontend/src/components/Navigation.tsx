@@ -2,12 +2,12 @@
 import type { PageId } from '../types'
 
 const items: { id: PageId; label: string }[] = [
-  { id: 'live', label: '라이브' },
-  { id: 'strategies', label: '전략' },
-  { id: 'history', label: '거래내역' },
-  { id: 'replay', label: '리플레이' },
-  { id: 'performance', label: '성과분석' },
-  { id: 'risk', label: '위험관리' },
+  { id: 'live', label: '홈' },
+  { id: 'strategies', label: '매매 설정' },
+  { id: 'history', label: '거래 기록' },
+  { id: 'replay', label: '과거 재생' },
+  { id: 'performance', label: '성과' },
+  { id: 'risk', label: '안전 설정' },
   { id: 'system', label: '시스템' },
 ]
 

@@ -17,6 +17,7 @@ from backend.app.domain.models import (
 from backend.app.market_data.supervisor import (
     PersistentPublicSupervisor,
     ProviderSelection,
+    SupervisorTelemetry,
     _wide_and_deep,
 )
 from backend.app.runtime import PaperRuntime
@@ -201,7 +202,7 @@ def test_runtime_builds_every_chart_interval_from_public_trades() -> None:
         assert runtime.dashboard()["chart"]["interval"]
 
 
-def test_strategy_snapshot_work_is_bounded_to_250ms_but_every_book_reaches_execution() -> None:
+def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execution() -> None:
     clock = DeterministicClock(current_utc_ms=1_000)
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
@@ -217,6 +218,9 @@ def test_strategy_snapshot_work_is_bounded_to_250ms_but_every_book_reaches_execu
     third = _event(runtime.run_id, "BTCUSDT", clock, 2).model_copy(
         update={"event_type": "DEPTH_UPDATE", "venue_ts_ms": 1_250}
     )
+    fourth = _event(runtime.run_id, "BTCUSDT", clock, 3).model_copy(
+        update={"event_type": "DEPTH_UPDATE", "venue_ts_ms": 1_500}
+    )
 
     runtime.ingest_live_event(first)
     first_count = runtime.strategy_evaluation_count
@@ -224,8 +228,11 @@ def test_strategy_snapshot_work_is_bounded_to_250ms_but_every_book_reaches_execu
     assert runtime.strategy_evaluation_count == first_count
     assert runtime.latest_books["BTCUSDT"].ts_ms == 1_100
     runtime.ingest_live_event(third)
-    assert runtime.strategy_evaluation_count > first_count
+    assert runtime.strategy_evaluation_count == first_count
     assert runtime.latest_books["BTCUSDT"].ts_ms == 1_250
+    runtime.ingest_live_event(fourth)
+    assert runtime.strategy_evaluation_count > first_count
+    assert runtime.latest_books["BTCUSDT"].ts_ms == 1_500
 
 
 def test_recovered_position_symbol_is_pinned_into_wide_and_deep_selection() -> None:
@@ -261,13 +268,13 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     )
     runtime._supervisor = supervisor
     runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
 
-    delayed = _event(
-        runtime.run_id,
-        "BTCUSDT",
-        clock,
-        0,
-        lag_ms=2_000,
+    initial_fresh = _event(runtime.run_id, "BTCUSDT", clock, 0, lag_ms=5)
+    supervisor._observe(initial_fresh)
+    runtime.ingest_live_event(initial_fresh)
+    delayed = _event(runtime.run_id, "BTCUSDT", clock, 1, lag_ms=2_000).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
     )
     supervisor._observe(delayed)
     runtime.ingest_live_event(delayed)
@@ -280,7 +287,7 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     runtime.set_paused(False)
     assert runtime.paused is True
 
-    for sequence in range(1, 2_002):
+    for sequence in range(2, 2_003):
         supervisor._observe(
             _event(runtime.run_id, "BTCUSDT", clock, sequence, lag_ms=5).model_copy(
                 update={"event_type": "DEPTH_UPDATE"}
@@ -293,9 +300,12 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert supervisor.telemetry.entry_locked is False
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" not in runtime.runtime_health_flags
-    assert runtime.paused is True
-    runtime.set_paused(False)
     assert runtime.paused is False
+
+    runtime.set_paused(True)
+    supervisor._observe(recovered_depth)
+    runtime.ingest_live_event(recovered_depth)
+    assert runtime.paused is True
 
 
 def test_wide_scanner_lag_is_visible_but_does_not_lock_executable_path() -> None:
@@ -316,3 +326,16 @@ def test_wide_scanner_lag_is_visible_but_does_not_lock_executable_path() -> None
     assert supervisor.telemetry.wide_lag_p95_ms == 9_000
     assert supervisor.telemetry.lag_p95_ms == 10
     assert supervisor.telemetry.entry_locked is False
+
+
+def test_lag_percentile_work_is_bounded_during_high_frequency_events() -> None:
+    telemetry = SupervisorTelemetry(lag_percentile_refresh_samples=256)
+
+    for sequence in range(2_000):
+        telemetry.observe_lag(float(sequence % 100), executable_path=True)
+        _ = telemetry.lag_p95_ms
+        _ = telemetry.lag_p50_ms
+
+    assert telemetry.lag_p95_ms == 94
+    assert telemetry.lag_p50_ms == 49
+    assert telemetry.lag_percentile_refresh_count < 10

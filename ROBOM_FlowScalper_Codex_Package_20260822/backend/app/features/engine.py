@@ -154,6 +154,67 @@ class FeatureEngine:
         mids = [
             (book.ts_ms, float((book.bids[0][0] + book.asks[0][0]) / 2)) for book in self._books
         ]
+        ofi_250ms = 0.0
+        ofi_1s = 0.0
+        ofi_3s = 0.0
+        ofi_10s = 0.0
+        for timestamp, value in reversed(self._ofi):
+            age_ms = latest.ts_ms - timestamp
+            if age_ms > 10_000:
+                break
+            ofi_10s += value
+            if age_ms <= 3_000:
+                ofi_3s += value
+            if age_ms <= 1_000:
+                ofi_1s += value
+            if age_ms <= 250:
+                ofi_250ms += value
+
+        trade_quantity_1s = Decimal(0)
+        trade_quantity_3s = Decimal(0)
+        trade_quantity_10s = Decimal(0)
+        signed_quantity_1s = Decimal(0)
+        signed_quantity_3s = Decimal(0)
+        signed_quantity_10s = Decimal(0)
+        signed_notional_3s = Decimal(0)
+        notional_10s = Decimal(0)
+        for trade in reversed(self._trades):
+            age_ms = latest.ts_ms - trade.trade_ts_ms
+            if age_ms > 10_000:
+                break
+            direction = Decimal(1) if trade.buyer_is_aggressor else Decimal(-1)
+            trade_quantity_10s += trade.quantity
+            signed_quantity_10s += trade.quantity * direction
+            notional_10s += trade.price * trade.quantity
+            if age_ms <= 3_000:
+                trade_quantity_3s += trade.quantity
+                signed_quantity_3s += trade.quantity * direction
+                signed_notional_3s += trade.price * trade.quantity * direction
+            if age_ms <= 1_000:
+                trade_quantity_1s += trade.quantity
+                signed_quantity_1s += trade.quantity * direction
+
+        additions_3s = 0.0
+        removals_3s = 0.0
+        for timestamp, additions, removals in reversed(self._depth_changes):
+            if latest.ts_ms - timestamp > 3_000:
+                break
+            additions_3s += additions
+            removals_3s += removals
+        depth_total_3s = additions_3s + removals_3s
+
+        values_3s = [value for timestamp, value in mids if timestamp >= latest.ts_ms - 3_000]
+        values_30s = [value for timestamp, value in mids if timestamp >= latest.ts_ms - 30_000]
+        values_120s = [
+            value for timestamp, value in mids if timestamp >= latest.ts_ms - 120_000
+        ]
+        volatility_30s = self._volatility_from_values(values_30s)
+        volatility_120s = self._volatility_from_values(values_120s)
+        path_30s = sum(
+            abs(current - previous)
+            for previous, current in zip(values_30s, values_30s[1:], strict=False)
+        )
+        ofi_3s_absolute = abs(ofi_3s)
         first_ts = self._books[0].ts_ms
         snapshot = FeatureSnapshot(
             venue=latest.venue,
@@ -172,36 +233,64 @@ class FeatureEngine:
             imbalance_top10=self._imbalance(latest, 10),
             microprice=float(microprice),
             microprice_minus_mid_bps=float((microprice - mid) / mid * Decimal(10_000)),
-            ofi_250ms=self._window_sum(self._ofi, latest.ts_ms, 250),
-            ofi_1s=self._window_sum(self._ofi, latest.ts_ms, 1_000),
-            ofi_3s=self._window_sum(self._ofi, latest.ts_ms, 3_000),
-            ofi_10s=self._window_sum(self._ofi, latest.ts_ms, 10_000),
-            trade_imbalance_1s=self._trade_imbalance(latest.ts_ms, 1_000),
-            trade_imbalance_3s=self._trade_imbalance(latest.ts_ms, 3_000),
-            trade_imbalance_10s=self._trade_imbalance(latest.ts_ms, 10_000),
-            signed_notional_3s=self._signed_notional(latest.ts_ms, 3_000),
-            refill_ratio=self._depth_ratio(latest.ts_ms, 3_000, refill=True),
-            cancel_ratio=self._depth_ratio(latest.ts_ms, 3_000, refill=False),
-            price_response_efficiency=self._price_response(mids, latest.ts_ms, 3_000),
-            realized_volatility_30s=self._realized_volatility(mids, latest.ts_ms, 30_000),
-            realized_volatility_120s=self._realized_volatility(mids, latest.ts_ms, 120_000),
-            compression_ratio=self._compression(mids, latest.ts_ms),
-            efficiency_ratio_30s=self._efficiency_ratio(mids, latest.ts_ms, 30_000),
-            micro_vwap_10s=self._micro_vwap(latest.ts_ms, 10_000, float(mid)),
+            ofi_250ms=ofi_250ms,
+            ofi_1s=ofi_1s,
+            ofi_3s=ofi_3s,
+            ofi_10s=ofi_10s,
+            trade_imbalance_1s=self._ratio(signed_quantity_1s, trade_quantity_1s),
+            trade_imbalance_3s=self._ratio(signed_quantity_3s, trade_quantity_3s),
+            trade_imbalance_10s=self._ratio(signed_quantity_10s, trade_quantity_10s),
+            signed_notional_3s=float(signed_notional_3s),
+            refill_ratio=additions_3s / depth_total_3s if depth_total_3s else 0.0,
+            cancel_ratio=removals_3s / depth_total_3s if depth_total_3s else 0.0,
+            price_response_efficiency=(
+                abs(values_3s[-1] - values_3s[0]) / ofi_3s_absolute
+                if len(values_3s) >= 2 and ofi_3s_absolute
+                else 0.0
+            ),
+            realized_volatility_30s=volatility_30s,
+            realized_volatility_120s=volatility_120s,
+            compression_ratio=(
+                volatility_30s / volatility_120s if volatility_120s > 0 else 0.0
+            ),
+            efficiency_ratio_30s=(
+                abs(values_30s[-1] - values_30s[0]) / path_30s
+                if len(values_30s) >= 2 and path_30s
+                else 0.0
+            ),
+            micro_vwap_10s=(
+                float(notional_10s / trade_quantity_10s)
+                if trade_quantity_10s
+                else float(mid)
+            ),
         )
         snapshot.assert_finite()
         return snapshot
 
     def _trim(self, now_ms: int) -> None:
-        cutoff = now_ms - self.retention_ms
-        while self._books and self._books[0].ts_ms < cutoff:
+        book_cutoff = now_ms - self.retention_ms
+        trade_cutoff = now_ms - min(self.retention_ms, 10_000)
+        depth_cutoff = now_ms - min(self.retention_ms, 3_000)
+        while self._books and self._books[0].ts_ms < book_cutoff:
             self._books.popleft()
-        while self._trades and self._trades[0].trade_ts_ms < cutoff:
+        while self._trades and self._trades[0].trade_ts_ms < trade_cutoff:
             self._trades.popleft()
-        while self._ofi and self._ofi[0][0] < cutoff:
+        while self._ofi and self._ofi[0][0] < trade_cutoff:
             self._ofi.popleft()
-        while self._depth_changes and self._depth_changes[0][0] < cutoff:
+        while self._depth_changes and self._depth_changes[0][0] < depth_cutoff:
             self._depth_changes.popleft()
+
+    @staticmethod
+    def _ratio(numerator: Decimal, denominator: Decimal) -> float:
+        return float(numerator / denominator) if denominator else 0.0
+
+    @staticmethod
+    def _volatility_from_values(values: list[float]) -> float:
+        returns = [
+            math.log(current / previous)
+            for previous, current in zip(values, values[1:], strict=False)
+        ]
+        return statistics.pstdev(returns) if len(returns) >= 2 else 0.0
 
     @staticmethod
     def _imbalance(frame: BookFrame, depth: int) -> float:

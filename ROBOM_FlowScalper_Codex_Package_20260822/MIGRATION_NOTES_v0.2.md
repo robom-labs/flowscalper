@@ -36,7 +36,7 @@ APFS 경계는 Python 가상환경, Node 심볼릭 링크, 실행권한, Git 객
 
 ## 데이터베이스 변화
 
-v0.2 원장은 schema version 3을 사용하며 기존 기본 테이블을 보존한 채 market events, candles, candidates, strategy settings, strategy account snapshots, shadow trades, replay runs를 추가한다. 기존 Run과 새 Run은 Run ID, venue, config hash, app·strategy version으로 분리된다.
+v0.2 원장은 schema version 6을 사용하며 기존 기본 테이블을 보존한 채 market events, candles, candidates, strategy settings, strategy account snapshots, shadow trades, replay runs, 빠른 `market_event_stats`와 불변 `market_event_archives` manifest를 추가한다. 신규 시장 이벤트 통계는 row trigger가 아니라 저장 batch 단위로 누적하고, 기존 대용량 Run은 업그레이드 때 전체 재계수하지 않아 부팅과 홈페이지를 보호한다. 고빈도 공개시장 이벤트는 1,000건 단위 ZSTD Parquet으로 외장에 저장하고 SQLite에는 PAPER 상태와 checksum manifest를 둔다. 기존 Run과 새 Run은 Run ID, venue, config hash, app·strategy version으로 분리된다.
 
 복구 snapshot payload는 schema version 1을 사용한다. 이것은 SQLite 전체 schema version과 다른 PAPER 상태 직렬화 버전이다. checksum이 맞더라도 Run, venue, 전략 계좌 집합, 비용 프로필, 수량, 위험상태 불변조건이 틀리면 복구를 거부한다.
 
@@ -61,4 +61,6 @@ make typecheck
 make security-scan
 ```
 
-macOS에서는 최상위 `ROBOM_FlowScalper.command`를 실행하고 READY 상태의 1,000 USDT와 모든 손익·비용·거래 0을 확인한다. 이후에만 `실시간 PAPER 시작`으로 새 공개시장 Run을 연다.
+macOS에서는 최상위 `ROBOM_FlowScalper.command`를 실행하고 READY 상태의 1,000 USDT와 모든 손익·비용·거래 0을 확인한다. 이후에만 `자동 관찰 시작`으로 새 공개시장 Run을 연다. 로그인 후 사이트를 자동 복구하려면 `./scripts/install_macos_service.sh`를 한 번 실행한다.
+
+자동 서비스는 `~/Library/Application Support/ROBOM FlowScalper/active-ledger/run-ledger.sqlite3`를 소형 활성 거래 원장으로 사용하고, 외장 `data/market-parquet-v6`를 공개시장 archive로 사용한다. macOS LaunchAgent가 One Touch 직접 쓰기를 차단하고 외장 디스크 이미지의 SQLite checkpoint가 실시간 유입량을 따라가지 못하는 것을 실측했기 때문이다. 내장·외장에 각각 여유공간 5GiB·4% 안전 잠금을 적용한다. 이전 진단 원장 `data/active/run-ledger.sqlite3`·`data/active-v5/run-ledger.sqlite3`·`data/active-v6/run-ledger.sqlite3`와 기존 대용량 `data/run-ledger.sqlite3`는 외장 과거 기록으로 보존한다. 로그인 후 빠른 시작을 위해 Python 실행환경만 내장 `~/Library/Application Support/ROBOM FlowScalper/runtime-venv`에 복사하고 소스·릴리스·고빈도 공개시장 데이터는 외장에 유지한다.

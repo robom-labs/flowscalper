@@ -194,6 +194,9 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-22: ADR-006에 따라 main·8개 shadow 실행계좌와 전략 설정을 checksum 검증 snapshot에서 복구하고, 공개지연 p95 1,500ms 초과·저장 실패·디스크 압박·복구 불일치를 UI로 우회할 수 없는 PAPER 신규진입 잠금으로 처리한다.
 - 2026-08-22: ADR-007에 따라 wide 1초·deep 250ms·trade 수신을 분리하고, SQLite batch를 event loop 밖에서 저장하며, 대시보드 snapshot·차트 인스턴스·KST 표시를 각각 한 번의 안정적인 수명주기로 운영한다.
 - 2026-08-22: ADR-007 보강에 따라 LIVE 대시보드의 SQLite 반복 조회를 제거하고 Run 시작 cache와 현재 메모리 거래를 결합해 WAL checkpoint 중에도 화면 snapshot이 멈추지 않게 한다.
+- 2026-08-23: ADR-008에 따라 대용량 원장 replay 목록을 schema v4 O(1) 통계와 worker thread로 분리하고, 로그인 후 자동 복구 LaunchAgent와 비전문가용 고정 scanner·차트·이동평균선 홈을 채택했다.
+- 2026-08-23: ADR-008 보강에 따라 지연 분위수 재정렬을 256표본 주기로 제한하되 단일 임계 지연은 즉시 fail-closed로 잠그고, 120초 피처는 동일 결과의 단일 순회 계산과 종목별 500ms 재평가로 바꿨다. deep 250ms 수신과 모든 호가의 PAPER 포지션 관리는 유지한다. 자동 서비스는 내장 실행환경 복사본과 소형 거래 상태·manifest용 SQLite, 외장 `data/market-parquet-v6` 고빈도 archive를 결합해 시작 지연·내장 용량 압박·외장 SQLite checkpoint·과거 1.3GB 원장 재스캔을 함께 피한다.
+- 2026-08-23: schema v6 hybrid 저장은 공개시장 이벤트를 상위 10호가·1,000건 단위 ZSTD Parquet으로 외장에 기록하고 row·batch checksum과 root 경로를 검증한다. 5,000건 batch는 p95 5,978ms로 실패해 폐기했고, 1,000건 batch는 4분 이상 LIVE에서 pause·drop·gap·reconnect·fault 0으로 통과했다.
 
 ## v0.2 upgrade progress
 
@@ -209,6 +212,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 | Upgrade 07 | COMPLETE | 백엔드 전체 92 PASS, frontend 2 PASS, targeted 복구·운영안전 11 PASS, ruff/mypy/ESLint/TypeScript/build/security/E2E 3 PASS. 실제 Binance 30분 3,120,256 events, reconnect 39, gap/resync/drop 0, queue max 2, memory +132.922MB, 임계 지연 표본 171개 fail-open 0, 종료 supervisor lock·runtime pause 유지 | 6시간·24시간 soak는 NOT_RUN | 최종 증거와 릴리스 |
 | Upgrade 08 | COMPLETE | macOS root launcher READY 1,000 USDT·성과 0 실제 부팅 PASS. 릴리스 234 entries·10,934,450 bytes, `unzip -t` PASS, 내부 checksum 233개 전수 PASS, 새 압축해제본 frozen 설치 후 backend 92·frontend 2 PASS, One Touch 복사본 SHA-256 일치 | Windows 실기기 실행 NOT_RUN | 완료 |
 | Upgrade 09 | COMPLETE | backend 96 PASS, frontend 3 PASS, lint/typecheck/build/security PASS. 실제 Binance wide 50·deep 10에서 625.957초·129,849 events·604 candles, 38회 UI API HTTP 200·최대 120.584ms, 최종 실행 경로 p95 71ms, queue/gap/drop/reconnect/fault 0, KST 차이 5ms·차트 높이·재생성 최적화 | 현재 in-app browser 보안 정책 확인 불가로 수정 후 screenshot 재캡처 BLOCKED | 완료 |
+| Upgrade 10 | COMPLETE | schema v6 hybrid 원장·LaunchAgent 자동복구·쉬운 홈·고정 scanner·실제 거래량·선택형 5/10/20/60선 구현. backend 105 PASS, frontend 5 PASS, lint/typecheck/build/security PASS. `run-9b9d508c689d` 4분 이상 37,984 events 측정에서 p95 140ms·pause false·queue/drop/gap/reconnect/fault 0, 이후 77,274 events를 외장 147 Parquet 7,987,803 bytes로 보존하고 SQLite raw event 0·quick check·replay PASS | in-app browser admin policy 확인 불가로 수정 후 DOM·screenshot 재캡처 BLOCKED | 완료 |
 
 ## Progress log
 

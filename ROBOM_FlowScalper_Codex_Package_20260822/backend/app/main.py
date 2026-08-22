@@ -70,7 +70,19 @@ def _runtime_from_environment() -> PaperRuntime:
     mode = RuntimeMode(requested_mode)
     default_database = PROJECT_ROOT / "data" / "run-ledger.sqlite3"
     database = Path(os.environ.get("ROBOM_DB_PATH", str(default_database)))
-    ledger = SQLiteLedger(database)
+    archive_path = os.environ.get("ROBOM_MARKET_ARCHIVE_PATH")
+    market_event_archive = (
+        ParquetEventStore(
+            Path(archive_path),
+            minimum_free_bytes=int(
+                os.environ.get("ROBOM_MIN_FREE_BYTES", str(2 * 1024**3))
+            ),
+            minimum_free_ratio=float(os.environ.get("ROBOM_MIN_FREE_RATIO", "0.05")),
+        )
+        if archive_path
+        else None
+    )
+    ledger = SQLiteLedger(database, market_event_archive=market_event_archive)
     clock = SystemClock()
     recovery_error: LedgerInvariantError | None = None
     try:
@@ -91,13 +103,15 @@ def _runtime_from_environment() -> PaperRuntime:
         clock=clock,
         run_id=run_id or ("ready" if mode is RuntimeMode.READY else f"run-{uuid4().hex[:12]}"),
         ledger=ledger,
-        storage_guard=ParquetEventStore(
+        storage_guard=market_event_archive
+        or ParquetEventStore(
             database.parent / "market-parquet",
             minimum_free_bytes=int(
                 os.environ.get("ROBOM_MIN_FREE_BYTES", str(2 * 1024**3))
             ),
             minimum_free_ratio=float(os.environ.get("ROBOM_MIN_FREE_RATIO", "0.05")),
         ),
+        market_event_archive=market_event_archive,
         venue=run_venue,
     )
     recovery_ok = True
@@ -264,17 +278,17 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
 
     @app.get("/api/analytics/strategies")
     async def strategy_analytics() -> list[dict[str, object]]:
-        return active_runtime.strategy_performance()
+        return await asyncio.to_thread(active_runtime.strategy_performance)
 
     @app.get("/api/replay/runs")
     async def replay_runs() -> list[dict[str, object]]:
-        return active_runtime.replayable_runs()
+        return await asyncio.to_thread(active_runtime.replayable_runs)
 
     @app.get("/api/replay/results")
     async def replay_results() -> list[dict[str, object]]:
         if active_runtime.ledger is None:
             return []
-        return active_runtime.ledger.list_replay_runs()
+        return await asyncio.to_thread(active_runtime.ledger.list_replay_runs)
 
     @app.get("/api/replay/{run_id}/timeline")
     async def replay_timeline(
@@ -288,7 +302,12 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
         limit: int = Query(default=2_000, ge=1, le=2_000),
     ) -> dict[str, object]:
         try:
-            return active_runtime.replay_timeline(run_id, symbol=symbol, limit=limit)
+            return await asyncio.to_thread(
+                active_runtime.replay_timeline,
+                run_id,
+                symbol=symbol,
+                limit=limit,
+            )
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
 

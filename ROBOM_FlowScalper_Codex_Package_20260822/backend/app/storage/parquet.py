@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -31,6 +32,15 @@ class StorageHealth:
     free_bytes: int
     free_ratio: float
     reason: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ArchivedEventBatch:
+    """외장 압축 이벤트 배치의 불변 manifest에 필요한 정보다."""
+
+    path: Path
+    checksum: str
+    event_count: int
 
 
 class ParquetEventStore:
@@ -101,6 +111,79 @@ class ParquetEventStore:
         table = pa.Table.from_pylist([dict(row) for row in rows])
         pq.write_table(table, destination, compression="zstd", write_statistics=True)
         return destination
+
+    def write_market_event_batch(
+        self,
+        rows: Sequence[Mapping[str, object]],
+    ) -> ArchivedEventBatch:
+        """리플레이 payload를 외장 Parquet에 순차 압축 저장한다."""
+
+        if not rows:
+            raise ValueError("빈 시장 이벤트 배치는 아카이브하지 않습니다.")
+        archived_rows: list[dict[str, object]] = []
+        row_checksums: list[str] = []
+        for row in rows:
+            payload_json = json.dumps(
+                row,
+                default=str,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            checksum = hashlib.sha256(payload_json.encode()).hexdigest()
+            row_checksums.append(checksum)
+            archived_rows.append(
+                {
+                    "ts_ms": int(str(row["venue_ts_ms"])),
+                    "payload_json": payload_json,
+                    "checksum": checksum,
+                }
+            )
+        path = self.write_events(
+            venue=str(rows[0]["venue"]),
+            symbol="MULTI",
+            event_type="MARKET_EVENT",
+            rows=archived_rows,
+        )
+        with path.open("rb") as handle:
+            os.fsync(handle.fileno())
+        return ArchivedEventBatch(
+            path=path,
+            checksum=hashlib.sha256("\n".join(row_checksums).encode()).hexdigest(),
+            event_count=len(archived_rows),
+        )
+
+    def read_market_event_batch(
+        self,
+        path: Path,
+        *,
+        expected_checksum: str,
+    ) -> list[dict[str, object]]:
+        """manifest 경로·배치·row checksum을 모두 검증해 리플레이한다."""
+
+        resolved_root = self.root.resolve()
+        resolved_path = path.resolve()
+        if not resolved_path.is_relative_to(resolved_root):
+            raise ValueError("시장 이벤트 배치가 허용된 저장소 밖을 참조합니다.")
+        table = pq.ParquetFile(resolved_path).read(
+            columns=["payload_json", "checksum"]
+        )
+        events: list[dict[str, object]] = []
+        row_checksums: list[str] = []
+        for row in table.to_pylist():
+            payload_json = str(row["payload_json"])
+            checksum = str(row["checksum"])
+            if hashlib.sha256(payload_json.encode()).hexdigest() != checksum:
+                raise ValueError("시장 이벤트 Parquet row checksum이 일치하지 않습니다.")
+            decoded = json.loads(payload_json)
+            if not isinstance(decoded, dict):
+                raise ValueError("시장 이벤트 Parquet payload는 객체여야 합니다.")
+            row_checksums.append(checksum)
+            events.append(decoded)
+        actual_checksum = hashlib.sha256("\n".join(row_checksums).encode()).hexdigest()
+        if actual_checksum != expected_checksum:
+            raise ValueError("시장 이벤트 Parquet 배치 checksum이 일치하지 않습니다.")
+        return events
 
     def apply_retention(
         self,

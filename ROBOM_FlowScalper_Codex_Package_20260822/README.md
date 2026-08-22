@@ -31,6 +31,22 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 
 현재 One Touch 설치는 `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/START_ROBOM_FlowScalper.command` 하나로 APFS 작업공간 마운트와 앱 실행을 처리합니다.
 
+### macOS 항상 켜지는 로컬 사이트
+
+최초 설치 후 다음 명령을 한 번 실행하면 로그인·재부팅·프로세스 종료 뒤 `http://127.0.0.1:8870/` 서버가 자동으로 복구됩니다.
+
+```bash
+./scripts/install_macos_service.sh
+```
+
+서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. canonical 소스·작업공간·릴리스와 고빈도 공개시장 기록은 외장에 보존합니다. macOS가 LaunchAgent의 One Touch 직접 쓰기를 차단하고 외장 디스크 이미지의 고빈도 SQLite 쓰기가 실시간 처리를 지연시킨 것이 실측되어, 자동 서비스의 소형 거래 상태·설정·archive manifest용 활성 SQLite, 약 283MB Python 실행환경 복사본, LaunchAgent plist와 운영 로그만 `~/Library/Application Support/ROBOM FlowScalper`에 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 외장 `data/market-parquet-v6`에 저장됩니다. 내장 또는 외장 여유공간이 5GiB 미만이거나 4% 미만이면 신규 진입을 fail-closed로 잠급니다. 이전 진단 원장 `data/active/run-ledger.sqlite3`·`data/active-v5/run-ledger.sqlite3`·`data/active-v6/run-ledger.sqlite3`와 기존 1.3GB `data/run-ledger.sqlite3`는 삭제하거나 덮어쓰지 않습니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
+
+자동 시작을 해제하되 거래 원장과 외장 파일을 보존하려면 다음 명령을 실행합니다.
+
+```bash
+./scripts/uninstall_macos_service.sh
+```
+
 ## Windows 첫 실행
 
 ```powershell
@@ -54,8 +70,10 @@ Windows Command Prompt에서는 `set ROBOM_MODE=LIVE_SHADOW_PAPER`를 실행한 
 
 ## 화면 구성
 
-- 라이브에서 최대 50개 wide·8~12개 deep 동적 종목 스캐너, bid/ask/mid/microprice, 실제 캔들, PAPER 진입·TP1·TP2·SL, 현재 거래, 이벤트 로그를 확인합니다.
-- 전략 관리에서 A/B/C/D의 ACTIVE·SHADOW·OFF와 LONG·SHORT를 독립 제어하고 BASE·STRESS shadow 계좌를 비교합니다.
+- 홈에서 프로그램 상태, 진행·완료 거래, 현재 순손익, 정밀 관찰 종목을 먼저 확인합니다.
+- 관찰 종목은 상승·하락 방향과 진입 준비 상태만 먼저 보이며, 전략·비용·손익비·거절 이유는 `상세`에서 확인합니다.
+- 실제 캔들·거래량·5선·10선이 기본 표시되고 20선·60선·호가선은 버튼으로 선택합니다. 이동평균은 선택한 차트 시간구간의 캔들 수 기준입니다.
+- 매매 설정에서 A/B/C/D의 `자동 모의매매`·`기록만 하기`·`사용 안 함`과 상승·하락 방향을 독립 제어합니다.
 - 거래내역은 총·순손익, 수수료, 슬리피지, 종료 사유를 구분합니다.
 - 리플레이는 저장 공개시장 이벤트를 같은 A/B/C/D·후보·PAPER 체결 파이프라인으로 다시 처리하고 입력 checksum과 결정 경로를 표시합니다.
 - 성과분석은 표본 수와 `CALIBRATING`, BASE/STRESS를 같이 표시합니다.
@@ -66,8 +84,8 @@ Windows Command Prompt에서는 `set ROBOM_MODE=LIVE_SHADOW_PAPER`를 실행한 
 
 ## 저장·복구·내보내기
 
-- `data/run-ledger.sqlite3`에 Run, 상태 전이, PAPER 주문·체결·거래, 위험 잠금과 사고를 WAL 트랜잭션으로 보존합니다.
-- 공개시장 event, candle, 후보, strategy account, replay 결과는 Run·venue·symbol 범위의 원장 테이블과 export 경계에 보존합니다.
+- 수동 실행은 `data/run-ledger.sqlite3`, macOS 자동 서비스는 `~/Library/Application Support/ROBOM FlowScalper/active-ledger/run-ledger.sqlite3`에 Run, 상태 전이, PAPER 주문·체결·거래, 위험 잠금, archive manifest와 사고를 WAL 트랜잭션으로 보존합니다.
+- 자동 서비스의 공개시장 event는 외장 `data/market-parquet-v6`에 ZSTD Parquet으로 보존합니다. 각 row와 batch checksum, root 경로 검증 뒤 SQLite event와 시간순 병합해 replay합니다. candle, 후보, strategy account와 replay 결과는 Run 범위의 SQLite 원장에 보존합니다.
 - 기본 보존기간은 deep-book 7일, 1초 특징·캔들 90일입니다. 후보·거래 창은 자동 정리에서 보호됩니다.
 - 저장소 여유 공간이 기준보다 작으면 원장을 우선 보호하고 신규 PAPER 진입을 잠깁니다.
 - CSV, JSON Run 요약, HTML, checksum 리플레이 ZIP, JSONL 진단로그를 내보낼 수 있습니다.
@@ -102,6 +120,7 @@ make package-release
 - sequence gap은 해당 호가를 stale로 표시하고 새 snapshot으로 재동기화합니다.
 - SQLite checksum 불일치·손상은 복구를 중단하고 신규 진입을 잠깁니다.
 - 최상위 실행기는 빈 localhost 포트를 자동 선택합니다. 수동 실행에서 포트를 고정하려면 `ROBOM_PORT=8876 make run`처럼 localhost 포트만 지정합니다.
+- 자동 실행 사이트가 열리지 않으면 `launchctl print gui/$(id -u)/kr.robom.flowscalper`와 `~/Library/Application Support/ROBOM FlowScalper/service-error.log`를 확인합니다.
 
 ## 알려진 제한
 

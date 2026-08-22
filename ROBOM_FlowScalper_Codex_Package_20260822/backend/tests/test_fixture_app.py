@@ -1,9 +1,12 @@
 """오프라인 fixture가 PAPER 상태로 끝까지 부팅되는지 검증한다."""
 
+import asyncio
 import json
+import threading
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
 from fastapi.testclient import TestClient
 
 from backend.app.clocks import TestClock as DeterministicClock
@@ -127,6 +130,29 @@ def test_dashboard_broadcaster_serves_multiple_local_clients() -> None:
     assert second_payload["type"] == "dashboard"
     assert first_payload["data"]["status"]["mode"] == "READY"
     assert second_payload["data"]["system"]["auth_headers"] is False
+
+
+async def test_slow_replay_listing_never_blocks_live_status(monkeypatch) -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_replay_listing(_runtime: PaperRuntime) -> list[dict[str, object]]:
+        started.set()
+        release.wait(timeout=2)
+        return []
+
+    monkeypatch.setattr(PaperRuntime, "replayable_runs", slow_replay_listing)
+    transport = httpx.ASGITransport(app=create_app(runtime))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        replay_request = asyncio.create_task(client.get("/api/replay/runs"))
+        assert await asyncio.to_thread(started.wait, 1)
+        status = await asyncio.wait_for(client.get("/api/status"), timeout=0.25)
+        release.set()
+        replay_response = await replay_request
+
+    assert status.status_code == 200
+    assert replay_response.status_code == 200
 
 
 def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:

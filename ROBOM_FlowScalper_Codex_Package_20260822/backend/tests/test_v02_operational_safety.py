@@ -143,6 +143,39 @@ async def test_market_persistence_worker_flushes_outside_ingest_loop(tmp_path: P
     ledger.close()
 
 
+def test_market_persistence_batch_is_bounded_on_slow_storage(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "bounded-worker.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-bounded-worker",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime._market_event_buffer = [
+        {
+            "event_id": f"wide-{index}",
+            "run_id": runtime.run_id,
+            "venue": runtime.venue.value,
+            "symbol": "BTCUSDT",
+            "event_type": "WIDE_TICKER",
+            "venue_ts_ms": index,
+            "receive_monotonic_ns": index,
+            "data": {"last_price": "100"},
+        }
+        for index in range(600)
+    ]
+
+    runtime._flush_persistence(500)
+
+    assert ledger.count("market_events") == 500
+    assert len(runtime._market_event_buffer) == 100
+    runtime._flush_persistence(500)
+    assert ledger.count("market_events") == 600
+    assert runtime._market_event_buffer == []
+    ledger.close()
+
+
 def test_live_dashboard_never_waits_for_sqlite_writer_lock(
     tmp_path: Path,
     monkeypatch,

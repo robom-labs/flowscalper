@@ -15,6 +15,7 @@ data/*.sqlite3-*
 data/**/*.sqlite3
 data/**/*.sqlite3-*
 data/parquet/
+data/market-parquet-v6/
 artifacts/
 playwright-report/
 test-results/

@@ -15,8 +15,8 @@ export function HistoryPage({ rows, onReplay }: Props) {
   return (
     <section aria-labelledby="history-heading">
       <div className="page-heading">
-        <div><p className="section-kicker">IMMUTABLE RECORDS</p><h2 id="history-heading">거래내역</h2><p className="heading-help">완전히 종료되어 원장에 저장된 PAPER 거래만 표시합니다.</p></div>
-        <label className="inline-filter">표본 구분<select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}><option value="ALL">전체</option><option value="LIVE_PUBLIC">공개시장 PAPER</option><option value="OFFLINE_FIXTURE">오프라인 DEMO</option></select></label>
+        <div><p className="section-kicker">TRADE HISTORY</p><h2 id="history-heading">거래 기록</h2><p className="heading-help">종료된 모의거래만 보관하고 표시합니다.</p></div>
+        <label className="inline-filter">기록 구분<select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}><option value="ALL">전체</option><option value="LIVE_PUBLIC">공개시장 모의거래</option><option value="OFFLINE_FIXTURE">샘플 거래</option></select></label>
       </div>
       <div className={selected ? 'history-layout drawer-open' : 'history-layout'}>
         <section className="panel wide-panel table-scroll">

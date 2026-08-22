@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 from decimal import Decimal
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
 from backend.app.replay.market import StoredMarketReplay
 from backend.app.runtime import PaperRuntime
+from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
 from backend.tests.test_candidate_paper_portfolio import book, candidate_plan
 from backend.tests.test_storage_replay_analytics import _sample_trade
@@ -67,7 +69,9 @@ def market_event(
     )
 
 
-def test_schema_v3_market_events_are_ordered_checksummed_and_immutable(tmp_path: Path) -> None:
+def test_schema_v6_market_events_are_ordered_checksummed_immutable_and_counted(
+    tmp_path: Path,
+) -> None:
     ledger = SQLiteLedger(tmp_path / "ledger.sqlite3")
     ledger.start_run(
         "run-market",
@@ -81,7 +85,9 @@ def test_schema_v3_market_events_are_ordered_checksummed_and_immutable(tmp_path:
     inserted = ledger.record_market_events(
         [later.model_dump(mode="json"), earlier.model_dump(mode="json")]
     )
-    assert ledger.schema_version == 3
+    assert ledger.schema_version == 6
+    assert ledger._connection.execute("PRAGMA synchronous").fetchone()[0] == 2
+    assert ledger._connection.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 1_000
     assert inserted == 2
     assert [row["event_id"] for row in ledger.list_market_events("run-market")] == [
         "event-1",
@@ -103,6 +109,12 @@ def test_schema_v3_market_events_are_ordered_checksummed_and_immutable(tmp_path:
     same_venue_event = market_event("run-market-2", event_id="event-1", ts_ms=1_000)
     assert ledger.record_market_events([same_venue_event.model_dump(mode="json")]) == 1
     assert ledger.count("market_events") == 3
+    summaries = ledger.list_replayable_run_summaries()
+    first_run = next(row for row in summaries if row["run_id"] == "run-market")
+    assert first_run["market_event_count"] == 2
+    assert ledger.market_event_symbols("run-market") == [
+        {"symbol": "BTCUSDT", "event_count": 2}
+    ]
     ledger.close()
 
     connection = sqlite3.connect(tmp_path / "ledger.sqlite3")
@@ -111,6 +123,69 @@ def test_schema_v3_market_events_are_ordered_checksummed_and_immutable(tmp_path:
             "UPDATE market_events SET payload_json = '{}' WHERE event_id = 'event-1'"
         )
     connection.close()
+
+
+def test_replayable_run_listing_does_not_force_live_buffer_flush(
+    tmp_path: Path,
+) -> None:
+    class NonFlushingRuntime(PaperRuntime):
+        def _flush_persistence(self, market_limit: int | None = None) -> None:
+            raise AssertionError("리플레이 목록 조회가 LIVE 저장 버퍼를 동기 flush했습니다.")
+
+    ledger = SQLiteLedger(tmp_path / "ledger.sqlite3")
+    ledger.start_run(
+        "run-listed",
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    event = market_event("run-listed", event_id="event-listed", ts_ms=1_000)
+    assert ledger.record_market_events([event.model_dump(mode="json")]) == 1
+    runtime = NonFlushingRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-listed",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+
+    assert runtime.replayable_runs()[0]["run_id"] == "run-listed"
+    ledger.close()
+
+
+def test_replayable_run_listing_does_not_wait_for_live_writer_lock(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "ledger.sqlite3")
+    ledger.start_run(
+        "run-readable",
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    event = market_event("run-readable", event_id="event-readable", ts_ms=1_000)
+    assert ledger.record_market_events([event.model_dump(mode="json")]) == 1
+    lock_acquired = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_writer_lock() -> None:
+        with ledger._lock:
+            lock_acquired.set()
+            release_lock.wait(timeout=2)
+
+    writer = threading.Thread(target=hold_writer_lock)
+    writer.start()
+    assert lock_acquired.wait(timeout=1)
+    try:
+        summaries = ledger.list_replayable_run_summaries()
+    finally:
+        release_lock.set()
+        writer.join(timeout=1)
+
+    assert summaries[0]["run_id"] == "run-readable"
+    ledger.close()
 
 
 def test_v2_global_event_identity_migrates_to_run_scoped_identity(tmp_path: Path) -> None:
@@ -181,7 +256,7 @@ def test_v2_global_event_identity_migrates_to_run_scoped_identity(tmp_path: Path
     connection.close()
 
     migrated = SQLiteLedger(database)
-    assert migrated.schema_version == 3
+    assert migrated.schema_version == 6
     assert migrated.list_market_events("legacy-run")[0]["event_id"] == "shared-event"
     migrated.start_run(
         "new-run",
@@ -244,6 +319,89 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.auth_required is False
     assert len(ledger.list_replay_runs(runtime.run_id)) == 2
     ledger.close()
+
+
+def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
+    tmp_path: Path,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "ledger.sqlite3",
+        market_event_archive=archive,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-parquet-market",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        market_event_archive=archive,
+        clock=DeterministicClock(),
+    )
+    events = [
+        market_event(
+            runtime.run_id,
+            event_id=f"event-{index}",
+            ts_ms=1_000 + index,
+            event_type="TRADE" if index % 2 else "DEPTH_UPDATE",
+        )
+        for index in range(4)
+    ]
+    persisted_rows = [
+        runtime._persistable_market_event(event) for event in reversed(events)
+    ]
+    runtime._market_event_buffer = list(persisted_rows)
+
+    runtime.flush_storage()
+
+    assert ledger.count("market_events") == 0
+    assert ledger.count("market_event_archives") == 1
+    assert ledger.market_event_symbols(runtime.run_id) == [
+        {"symbol": "BTCUSDT", "event_count": 4}
+    ]
+    assert [row["event_id"] for row in ledger.list_market_events(runtime.run_id)] == [
+        f"event-{index}" for index in range(4)
+    ]
+    assert len(
+        ledger.list_market_events(runtime.run_id, event_types=("TRADE",))
+    ) == 2
+    assert ledger.list_market_events(runtime.run_id, limit=2)[-1]["event_id"] == "event-1"
+    files = archive.dataset_files()
+    assert len(files) == 1
+    assert files[0].suffix == ".parquet"
+    assert files[0].stat().st_size > 0
+    repeated = archive.write_market_event_batch(persisted_rows)
+    assert ledger.record_market_event_archive(repeated, persisted_rows) == 0
+    with pytest.raises(ValueError, match="배치 checksum"):
+        archive.read_market_event_batch(files[0], expected_checksum="0" * 64)
+    replay = StoredMarketReplay().run(
+        ledger,
+        source_run_id=runtime.run_id,
+        created_ts_ms=3_000,
+    )
+    assert replay.event_count == 4
+    ledger.close()
+
+
+def test_runtime_persists_top10_book_without_mutating_live_event() -> None:
+    event = market_event("run-top10", event_id="depth-top10", ts_ms=1_000)
+    bids = [[str(100 - index / 10), "1"] for index in range(20)]
+    asks = [[str(100.1 + index / 10), "1"] for index in range(20)]
+    event.data["bids"] = bids
+    event.data["asks"] = asks
+
+    persisted = PaperRuntime._persistable_market_event(event)
+
+    assert len(event.data["bids"]) == 20
+    assert len(event.data["asks"]) == 20
+    assert isinstance(persisted["data"], dict)
+    assert len(persisted["data"]["bids"]) == 10
+    assert len(persisted["data"]["asks"]) == 10
+    assert persisted["data"]["bid"] == event.data["bid"]
+    assert persisted["data"]["ask"] == event.data["ask"]
 
 
 def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(

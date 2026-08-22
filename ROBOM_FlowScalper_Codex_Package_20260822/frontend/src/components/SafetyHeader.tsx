@@ -1,49 +1,61 @@
 // 데이터 진실성과 PAPER 전용 상태를 모든 화면 상단에 영구 표시한다.
 import type { DashboardData } from '../types'
+import { formatKstTime } from '../time'
 
 type Props = {
   data: DashboardData
   connected: boolean
   connectionState: 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
+  lastUpdateMs: number | null
 }
 
-export function SafetyHeader({ data, connected, connectionState }: Props) {
+export function SafetyHeader({ data, connected, connectionState, lastUpdateMs }: Props) {
   const { status } = data
   const live = status.market_data_state === 'LIVE'
   const publicMode = status.mode === 'LIVE_SHADOW_PAPER'
   const ready = status.mode === 'READY'
-  const venueLabel = status.venue === 'BINANCE_USDM' ? 'Binance 공개시장' : status.venue === 'BYBIT_LINEAR' ? 'Bybit 공개시장' : status.venue
   const sourceLabel = live
-    ? `LIVE DATA · ${venueLabel}`
+    ? data.paused ? '관찰 중 · 새 진입 멈춤' : '자동 관찰 중'
     : publicMode
-      ? `${status.market_data_state} · ${status.venue} · LIVE 아님`
+      ? '시장 연결 복구 중'
       : ready
-        ? 'READY · 아직 시작 안 함'
+        ? '시작 준비 완료'
         : status.mode === 'DEMO_FIXTURE'
-          ? 'OFFLINE DEMO · LIVE 아님'
-          : 'REPLAY · LIVE 아님'
+          ? '샘플 화면'
+          : '과거 데이터 재생'
+  const connectionLabel = connected
+    ? '화면 연결됨'
+    : connectionState === 'CONNECTING'
+      ? '화면 연결 중'
+      : '화면 다시 연결 중'
   return (
     <>
       <header className="topbar">
         <div>
-          <p className="eyebrow">ROBOM PAPER RESEARCH TERMINAL</p>
+          <p className="eyebrow">ROBOM 자동 관찰 프로그램</p>
           <h1>FlowScalper</h1>
         </div>
         <div className="badges" aria-label="운영 상태">
           <span className={live ? 'badge live' : 'badge fixture'}>{sourceLabel}</span>
-          <span className="badge paper">PAPER</span>
-          <span className="badge disabled">실제 주문 없음</span>
+          <span className="badge paper">모의매매 · PAPER</span>
+          <span className="badge disabled">실제 주문 0</span>
           <span className={connected ? 'badge socket-on' : 'badge socket-off'}>
-            UI {connected ? '실시간 연결' : connectionState === 'CONNECTING' ? '연결 중' : '재연결 중'}
+            {connectionLabel}
           </span>
         </div>
       </header>
-      <section className="safety" aria-label="영구 안전 상태">
-        <span><b>시장데이터</b> {live ? '검증된 공개 이벤트' : publicMode ? '검증 대기·신규 진입 차단' : ready ? '시작 대기' : '오프라인 시뮬레이션'}</span>
-        <span><b>실행</b> 내부 PAPER만</span>
-        <span><b>시작자산</b> {status.starting_equity_usdt.toFixed(2)} USDT</span>
-        <span><b>로그인 / API 키</b> 필요 없음</span>
-        <span><b>Run</b> {status.run_id}</span>
+      <section className="safety" aria-label="현재 프로그램 상태">
+        <span><b>프로그램</b> {sourceLabel}</span>
+        <span><b>진행 중 거래</b> {data.position ? '1건' : '0건'}</span>
+        <span><b>감시 종목</b> {status.deep_symbols || data.scanner.length}개 정밀 분석</span>
+        <span><b>현재 한국시간</b> {lastUpdateMs ? formatKstTime(lastUpdateMs) : '연결 대기'}</span>
+        <span><b>실제 돈</b> 움직이지 않음</span>
+        <details className="header-details">
+          <summary>운영 정보</summary>
+          <span>시작자산 {status.starting_equity_usdt.toFixed(2)} USDT</span>
+          <span>로그인·API 키 필요 없음</span>
+          <span>기록번호 {status.run_id}</span>
+        </details>
       </section>
     </>
   )

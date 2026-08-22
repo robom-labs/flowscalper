@@ -70,6 +70,98 @@ def test_features_are_deterministic_and_finite() -> None:
     )
 
 
+def test_single_pass_window_metrics_match_reference_calculations() -> None:
+    engine = build_engine()
+    snapshot = engine.snapshot()
+    latest = engine._books[-1]
+    mids = [
+        (book.ts_ms, float((book.bids[0][0] + book.asks[0][0]) / 2))
+        for book in engine._books
+    ]
+
+    assert snapshot.ofi_250ms == pytest.approx(
+        engine._window_sum(engine._ofi, latest.ts_ms, 250)
+    )
+    assert snapshot.ofi_1s == pytest.approx(
+        engine._window_sum(engine._ofi, latest.ts_ms, 1_000)
+    )
+    assert snapshot.ofi_3s == pytest.approx(
+        engine._window_sum(engine._ofi, latest.ts_ms, 3_000)
+    )
+    assert snapshot.ofi_10s == pytest.approx(
+        engine._window_sum(engine._ofi, latest.ts_ms, 10_000)
+    )
+    assert snapshot.trade_imbalance_1s == pytest.approx(
+        engine._trade_imbalance(latest.ts_ms, 1_000)
+    )
+    assert snapshot.trade_imbalance_3s == pytest.approx(
+        engine._trade_imbalance(latest.ts_ms, 3_000)
+    )
+    assert snapshot.trade_imbalance_10s == pytest.approx(
+        engine._trade_imbalance(latest.ts_ms, 10_000)
+    )
+    assert snapshot.signed_notional_3s == pytest.approx(
+        engine._signed_notional(latest.ts_ms, 3_000)
+    )
+    assert snapshot.refill_ratio == pytest.approx(
+        engine._depth_ratio(latest.ts_ms, 3_000, refill=True)
+    )
+    assert snapshot.cancel_ratio == pytest.approx(
+        engine._depth_ratio(latest.ts_ms, 3_000, refill=False)
+    )
+    assert snapshot.price_response_efficiency == pytest.approx(
+        engine._price_response(mids, latest.ts_ms, 3_000)
+    )
+    assert snapshot.realized_volatility_30s == pytest.approx(
+        engine._realized_volatility(mids, latest.ts_ms, 30_000)
+    )
+    assert snapshot.realized_volatility_120s == pytest.approx(
+        engine._realized_volatility(mids, latest.ts_ms, 120_000)
+    )
+    assert snapshot.compression_ratio == pytest.approx(
+        engine._compression(mids, latest.ts_ms)
+    )
+    assert snapshot.efficiency_ratio_30s == pytest.approx(
+        engine._efficiency_ratio(mids, latest.ts_ms, 30_000)
+    )
+    assert snapshot.micro_vwap_10s == pytest.approx(
+        engine._micro_vwap(latest.ts_ms, 10_000, snapshot.mid)
+    )
+
+
+def test_feature_history_retains_only_each_metric_maximum_window() -> None:
+    engine = FeatureEngine()
+    start = 1_000_000
+    for index in range(125):
+        timestamp = start + index * 1_000
+        midpoint = Decimal("100") + Decimal(index) * Decimal("0.01")
+        engine.ingest_book(
+            BookFrame.from_levels(
+                venue=Venue.FIXTURE,
+                symbol="BTCUSDT",
+                ts_ms=timestamp,
+                bids=[(midpoint - Decimal("0.01"), Decimal("10"))],
+                asks=[(midpoint + Decimal("0.01"), Decimal("10"))],
+            )
+        )
+        engine.ingest_trade(
+            TradeTick(
+                venue=Venue.FIXTURE,
+                symbol="BTCUSDT",
+                price=midpoint,
+                quantity=Decimal("1"),
+                trade_ts_ms=timestamp,
+                buyer_is_aggressor=True,
+            )
+        )
+
+    now_ms = start + 124_000
+    assert engine._books[0].ts_ms == now_ms - 120_000
+    assert engine._trades[0].trade_ts_ms == now_ms - 10_000
+    assert engine._ofi[0][0] == now_ms - 10_000
+    assert engine._depth_changes[0][0] == now_ms - 3_000
+
+
 def test_degraded_data_cannot_produce_candidate() -> None:
     snapshot = build_engine(stale_last=True).snapshot()
     regime = RegimeClassifier().classify(snapshot)

@@ -233,7 +233,8 @@ export type ReplayRun = {
   venue: string
   started_ts_ms: number
   finalized_ts_ms: number | null
-  market_event_count: number
+  market_event_count: number | null
+  events_saved: boolean
   trade_count: number
   shadow_trade_count: number
 }
@@ -270,9 +271,9 @@ export type ReplayMarketEvent = {
 export type ReplayTimeline = {
   run_id: string
   symbol: string | null
-  total_events: number
+  total_events: number | null
   truncated: boolean
-  available_symbols: { symbol: string; event_count: number }[]
+  available_symbols: { symbol: string; event_count: number | null; new_event_count?: number }[]
   events: ReplayMarketEvent[]
   candles: ChartData['candles']
 }

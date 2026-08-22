@@ -30,6 +30,13 @@ from backend.app.orderbook import BinanceOrderBook, BybitOrderBook, SequenceGap
 EventSink = Callable[[MarketEvent], Awaitable[None] | None]
 
 
+def _percentile_95(ordered: Sequence[float]) -> float | None:
+    if not ordered:
+        return None
+    index = max(0, min(len(ordered) - 1, round((len(ordered) - 1) * 0.95)))
+    return ordered[index]
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderSelection:
     venue: Venue
@@ -71,30 +78,64 @@ class SupervisorTelemetry:
     entry_locked: bool = True
     critical_lag_threshold_ms: float = 1_500.0
     critical_lag_event_count: int = 0
+    critical_lag_active: bool = False
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     wide_lag_samples_ms: deque[float] = field(
         default_factory=lambda: deque(maxlen=2_000)
     )
+    lag_percentile_refresh_samples: int = 256
+    lag_percentile_refresh_count: int = 0
+    _lag_p95_cache_ms: float | None = None
+    _lag_p50_cache_ms: float | None = None
+    _wide_lag_p95_cache_ms: float | None = None
+    _deep_samples_since_refresh: int = 0
+    _wide_samples_since_refresh: int = 0
+
+    def observe_lag(self, lag_ms: float, *, executable_path: bool) -> None:
+        """고빈도 이벤트마다 정렬하지 않고 제한된 주기로 지연 분위수를 갱신한다."""
+
+        if executable_path:
+            self.lag_samples_ms.append(lag_ms)
+            self._deep_samples_since_refresh += 1
+            if lag_ms > self.critical_lag_threshold_ms:
+                self.critical_lag_active = True
+            if (
+                self._lag_p95_cache_ms is None
+                or self._deep_samples_since_refresh >= self.lag_percentile_refresh_samples
+            ):
+                ordered = sorted(self.lag_samples_ms)
+                self._lag_p95_cache_ms = _percentile_95(ordered)
+                self._lag_p50_cache_ms = statistics.median(ordered)
+                self.critical_lag_active = bool(
+                    self._lag_p95_cache_ms is not None
+                    and self._lag_p95_cache_ms > self.critical_lag_threshold_ms
+                )
+                self._deep_samples_since_refresh = 0
+                self.lag_percentile_refresh_count += 1
+            return
+        self.wide_lag_samples_ms.append(lag_ms)
+        self._wide_samples_since_refresh += 1
+        if (
+            self._wide_lag_p95_cache_ms is None
+            or self._wide_samples_since_refresh >= self.lag_percentile_refresh_samples
+        ):
+            self._wide_lag_p95_cache_ms = _percentile_95(
+                sorted(self.wide_lag_samples_ms)
+            )
+            self._wide_samples_since_refresh = 0
+            self.lag_percentile_refresh_count += 1
 
     @property
     def lag_p95_ms(self) -> float | None:
-        if not self.lag_samples_ms:
-            return None
-        ordered = sorted(self.lag_samples_ms)
-        index = max(0, min(len(ordered) - 1, round((len(ordered) - 1) * 0.95)))
-        return ordered[index]
+        return self._lag_p95_cache_ms
 
     @property
     def lag_p50_ms(self) -> float | None:
-        return statistics.median(self.lag_samples_ms) if self.lag_samples_ms else None
+        return self._lag_p50_cache_ms
 
     @property
     def wide_lag_p95_ms(self) -> float | None:
-        if not self.wide_lag_samples_ms:
-            return None
-        ordered = sorted(self.wide_lag_samples_ms)
-        index = max(0, min(len(ordered) - 1, round((len(ordered) - 1) * 0.95)))
-        return ordered[index]
+        return self._wide_lag_p95_cache_ms
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -113,10 +154,8 @@ class SupervisorTelemetry:
             "entry_locked": self.entry_locked,
             "critical_lag_threshold_ms": self.critical_lag_threshold_ms,
             "critical_lag_event_count": self.critical_lag_event_count,
-            "critical_lag_active": bool(
-                self.lag_p95_ms is not None
-                and self.lag_p95_ms > self.critical_lag_threshold_ms
-            ),
+            "lag_percentile_refresh_count": self.lag_percentile_refresh_count,
+            "critical_lag_active": self.critical_lag_active,
             "last_error": self.last_error,
         }
 
@@ -238,17 +277,21 @@ class PersistentPublicSupervisor:
         self.telemetry.event_count += 1
         self.telemetry.last_event_monotonic_ns = event.receive_monotonic_ns
         if event.quality.lag_ms is not None:
-            if event.event_type in {"DEPTH_UPDATE", "ORDERBOOK", "TRADE"}:
-                self.telemetry.lag_samples_ms.append(event.quality.lag_ms)
+            executable_path = event.event_type in {"DEPTH_UPDATE", "ORDERBOOK", "TRADE"}
+            self.telemetry.observe_lag(
+                event.quality.lag_ms,
+                executable_path=executable_path,
+            )
+            if executable_path:
                 if event.quality.lag_ms > self.telemetry.critical_lag_threshold_ms:
                     self.telemetry.critical_lag_event_count += 1
-            else:
-                self.telemetry.wide_lag_samples_ms.append(event.quality.lag_ms)
         flags = set(event.quality.flags)
         if "SEQUENCE_GAP" in flags:
             self.telemetry.gap_count += 1
         if "BOOK_RESYNC" in flags:
             self.telemetry.resync_count += 1
+        lag_p95_ms = self.telemetry.lag_p95_ms
+        current_critical_lag = self.telemetry.critical_lag_active
         if (
             event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}
             and event.quality.is_live
@@ -257,15 +300,16 @@ class PersistentPublicSupervisor:
         ):
             self.telemetry.state = ConnectionState.LIVE
             self.telemetry.entry_locked = bool(
-                self.telemetry.lag_p95_ms is not None
-                and self.telemetry.lag_p95_ms
-                > self.telemetry.critical_lag_threshold_ms
+                current_critical_lag
+                or (
+                    lag_p95_ms is not None
+                    and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
+                )
             )
             self._ready.set()
-        elif (
-            self.telemetry.lag_p95_ms is not None
-            and self.telemetry.lag_p95_ms
-            > self.telemetry.critical_lag_threshold_ms
+        elif current_critical_lag or (
+            lag_p95_ms is not None
+            and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
         ):
             self.telemetry.entry_locked = True
 

@@ -87,7 +87,7 @@ export default function App() {
 
   return (
     <main>
-      <SafetyHeader data={data} connected={connected} connectionState={connectionState} />
+      <SafetyHeader data={data} connected={connected} connectionState={connectionState} lastUpdateMs={lastUpdateMs} />
       <Navigation page={page} onChange={changePage} />
       {controlError ? <p className="control-error" role="alert">{controlError}</p> : null}
       {page === 'live' ? <LivePage data={data} onPauseToggle={pauseToggle} onClose={emergencyClose} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} /> : null}

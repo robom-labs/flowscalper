@@ -75,7 +75,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
     : null
   return (
     <section aria-labelledby="system-heading">
-      <div className="page-heading"><div><p className="section-kicker">DIAGNOSTICS</p><h2 id="system-heading">시스템</h2><p className="heading-help">기본 화면은 운영 판단만 보여주고, 원시 값은 고급 진단에 분리합니다.</p></div><span className="page-note">자격 증명 전송 {data.system.auth_headers ? '감지됨' : '0건'}</span></div>
+      <div className="page-heading"><div><p className="section-kicker">SYSTEM STATUS</p><h2 id="system-heading">시스템 상태</h2><p className="heading-help">시장 연결, 시간, 저장공간, 자동 재연결 상태를 확인합니다.</p></div><span className="page-note">로그인 정보 전송 {data.system.auth_headers ? '감지됨' : '0건'}</span></div>
       <section className="system-summary-grid">
         <article className="panel"><span>시장데이터</span><b className={healthy ? 'positive' : 'warning'}>{healthy ? '정상' : data.status.mode === 'READY' ? '시작 대기' : '재연결 확인 필요'}</b><small>{data.status.mode === 'DEMO_FIXTURE' ? '오프라인 DEMO · LIVE 아님' : data.status.venue}</small></article>
         <article className="panel"><span>감시 / 정밀 분석</span><b>{data.status.wide_symbols} / {data.status.deep_symbols}종목</b><small>넓게 감시한 뒤 상위 종목을 정밀 분석</small></article>

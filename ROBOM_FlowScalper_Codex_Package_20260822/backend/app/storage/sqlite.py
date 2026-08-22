@@ -12,6 +12,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
+from backend.app.storage.parquet import ArchivedEventBatch, ParquetEventStore
+
 
 class LedgerInvariantError(RuntimeError):
     """감사 가능한 PAPER 원장의 불변조건을 어긴 작업을 차단한다."""
@@ -30,17 +32,33 @@ class RecoveryState:
 class SQLiteLedger:
     """WAL과 명시적 트랜잭션으로 PAPER 상태를 보존한다."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        market_event_archive: ParquetEventStore | None = None,
+    ) -> None:
         self.path = path
+        self.market_event_archive = market_event_archive
         path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
         self._connection = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._connection.row_factory = sqlite3.Row
         self._initialize()
+        self._read_lock = RLock()
+        self._read_connection = sqlite3.connect(
+            path,
+            check_same_thread=False,
+            isolation_level=None,
+        )
+        self._read_connection.row_factory = sqlite3.Row
+        self._read_connection.execute("PRAGMA query_only = ON")
 
     def close(self) -> None:
         with self._lock:
             self._connection.close()
+        with self._read_lock:
+            self._read_connection.close()
 
     def _initialize(self) -> None:
         with self._lock:
@@ -48,6 +66,7 @@ class SQLiteLedger:
                 """
                 PRAGMA journal_mode = WAL;
                 PRAGMA synchronous = FULL;
+                PRAGMA wal_autocheckpoint = 1000;
                 PRAGMA foreign_keys = ON;
 
                 CREATE TABLE IF NOT EXISTS runs (
@@ -169,6 +188,30 @@ class SQLiteLedger:
                 ON market_events(run_id, venue_ts_ms, receive_monotonic_ns, event_id);
                 CREATE INDEX IF NOT EXISTS market_events_symbol_type
                 ON market_events(run_id, symbol, event_type, venue_ts_ms);
+                CREATE TABLE IF NOT EXISTS market_event_stats (
+                    run_id TEXT NOT NULL REFERENCES runs(run_id),
+                    symbol TEXT NOT NULL,
+                    event_count INTEGER NOT NULL CHECK (event_count >= 0),
+                    first_ts_ms INTEGER,
+                    last_ts_ms INTEGER,
+                    count_complete INTEGER NOT NULL CHECK (count_complete IN (0, 1)),
+                    PRIMARY KEY (run_id, symbol)
+                );
+                CREATE TABLE IF NOT EXISTS market_event_archives (
+                    batch_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL REFERENCES runs(run_id),
+                    path TEXT NOT NULL,
+                    event_count INTEGER NOT NULL CHECK (event_count > 0),
+                    first_ts_ms INTEGER NOT NULL,
+                    last_ts_ms INTEGER NOT NULL,
+                    symbols_json TEXT NOT NULL,
+                    event_types_json TEXT NOT NULL,
+                    checksum TEXT NOT NULL,
+                    UNIQUE (run_id, path),
+                    CHECK (last_ts_ms >= first_ts_ms)
+                );
+                CREATE INDEX IF NOT EXISTS market_event_archives_run_order
+                ON market_event_archives(run_id, first_ts_ms, batch_id);
                 CREATE TABLE IF NOT EXISTS candles (
                     run_id TEXT NOT NULL REFERENCES runs(run_id),
                     symbol TEXT NOT NULL,
@@ -251,6 +294,16 @@ class SQLiteLedger:
                 BEGIN
                     SELECT RAISE(ABORT, 'market event deletion is prohibited');
                 END;
+                CREATE TRIGGER IF NOT EXISTS market_event_archive_is_immutable_update
+                BEFORE UPDATE ON market_event_archives
+                BEGIN
+                    SELECT RAISE(ABORT, 'market event archive is immutable');
+                END;
+                CREATE TRIGGER IF NOT EXISTS market_event_archive_is_immutable_delete
+                BEFORE DELETE ON market_event_archives
+                BEGIN
+                    SELECT RAISE(ABORT, 'market event archive deletion is prohibited');
+                END;
                 CREATE TRIGGER IF NOT EXISTS shadow_trade_is_immutable_update
                 BEFORE UPDATE ON shadow_trades
                 BEGIN
@@ -264,7 +317,8 @@ class SQLiteLedger:
                 """
             )
             self._migrate_market_event_identity()
-            self._connection.execute("PRAGMA user_version = 3")
+            self._initialize_market_event_statistics()
+            self._connection.execute("PRAGMA user_version = 6")
 
     @property
     def schema_version(self) -> int:
@@ -319,6 +373,29 @@ class SQLiteLedger:
                 SELECT RAISE(ABORT, 'market event deletion is prohibited');
             END;
             PRAGMA user_version = 3;
+            COMMIT;
+            """
+        )
+
+    def _initialize_market_event_statistics(self) -> None:
+        """기존 대용량 원장을 재계수하지 않고 배치 단위로 신규 이벤트를 집계한다."""
+
+        self._connection.executescript(
+            """
+            BEGIN IMMEDIATE;
+            INSERT OR IGNORE INTO market_event_stats (
+                run_id, symbol, event_count, first_ts_ms, last_ts_ms, count_complete
+            )
+            SELECT r.run_id, '*', 0, NULL, NULL, 0
+            FROM runs r
+            WHERE EXISTS (
+                SELECT 1 FROM market_events e WHERE e.run_id = r.run_id LIMIT 1
+            )
+              AND NOT EXISTS (
+                SELECT 1 FROM market_event_stats s WHERE s.run_id = r.run_id
+            );
+            DROP TRIGGER IF EXISTS market_event_stats_insert;
+            PRAGMA user_version = 5;
             COMMIT;
             """
         )
@@ -536,7 +613,127 @@ class SQLiteLedger:
                         raise LedgerInvariantError(
                             f"중복 시장 이벤트 payload 불일치: {row[0]}"
                         )
+                self._rebuild_market_event_stats(connection, run_id)
+            else:
+                self._increment_market_event_stats(connection, rows)
         return inserted
+
+    def record_market_event_archive(
+        self,
+        batch: ArchivedEventBatch,
+        events: Sequence[Mapping[str, object]],
+    ) -> int:
+        """외장 Parquet 배치 manifest와 종목별 건수만 내장 SQLite에 기록한다."""
+
+        if not events or batch.event_count != len(events):
+            raise LedgerInvariantError("시장 이벤트 아카이브 배치 건수가 일치하지 않습니다.")
+        run_ids = {str(event["run_id"]) for event in events}
+        if len(run_ids) != 1:
+            raise LedgerInvariantError("한 아카이브에 여러 Run을 섞을 수 없습니다.")
+        run_id = next(iter(run_ids))
+        timestamps = [int(str(event["venue_ts_ms"])) for event in events]
+        symbols = sorted({str(event["symbol"]) for event in events})
+        event_types = sorted({str(event["event_type"]) for event in events})
+        path = str(batch.path.resolve())
+        batch_id = hashlib.sha256(f"{run_id}\n{path}\n{batch.checksum}".encode()).hexdigest()
+        manifest = (
+            batch_id,
+            run_id,
+            path,
+            batch.event_count,
+            min(timestamps),
+            max(timestamps),
+            _canonical_json(symbols),
+            _canonical_json(event_types),
+            batch.checksum,
+        )
+        stat_rows = [
+            (
+                str(event["event_id"]),
+                run_id,
+                str(event["venue"]),
+                str(event["symbol"]),
+                str(event["event_type"]),
+                int(str(event["venue_ts_ms"])),
+            )
+            for event in events
+        ]
+        with self._transaction() as connection:
+            self._assert_open_run(connection, run_id)
+            before = connection.total_changes
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO market_event_archives (
+                    batch_id, run_id, path, event_count, first_ts_ms, last_ts_ms,
+                    symbols_json, event_types_json, checksum
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                manifest,
+            )
+            inserted = connection.total_changes - before
+            if inserted == 0:
+                existing = connection.execute(
+                    """
+                    SELECT run_id, path, event_count, first_ts_ms, last_ts_ms,
+                           symbols_json, event_types_json, checksum
+                    FROM market_event_archives WHERE batch_id = ?
+                    """,
+                    (batch_id,),
+                ).fetchone()
+                if existing is None or tuple(existing) != manifest[1:]:
+                    raise LedgerInvariantError("중복 시장 아카이브 manifest 불일치")
+                return 0
+            self._increment_market_event_stats(connection, stat_rows)
+        return batch.event_count
+
+    @staticmethod
+    def _increment_market_event_stats(
+        connection: sqlite3.Connection,
+        rows: Sequence[tuple[object, ...]],
+    ) -> None:
+        """외장 디스크의 row별 trigger 쓰기를 피해 종목별로 한 번만 집계한다."""
+
+        aggregates: dict[tuple[str, str], list[int]] = {}
+        for row in rows:
+            key = (str(row[1]), str(row[3]))
+            venue_ts_ms = int(str(row[5]))
+            aggregate = aggregates.setdefault(key, [0, venue_ts_ms, venue_ts_ms])
+            aggregate[0] += 1
+            aggregate[1] = min(aggregate[1], venue_ts_ms)
+            aggregate[2] = max(aggregate[2], venue_ts_ms)
+        connection.executemany(
+            """
+            INSERT INTO market_event_stats (
+                run_id, symbol, event_count, first_ts_ms, last_ts_ms, count_complete
+            ) VALUES (?, ?, ?, ?, ?, 1)
+            ON CONFLICT(run_id, symbol) DO UPDATE SET
+                event_count = event_count + excluded.event_count,
+                first_ts_ms = MIN(first_ts_ms, excluded.first_ts_ms),
+                last_ts_ms = MAX(last_ts_ms, excluded.last_ts_ms)
+            """,
+            (
+                (run_id, symbol, count, first_ts_ms, last_ts_ms)
+                for (run_id, symbol), (count, first_ts_ms, last_ts_ms) in aggregates.items()
+            ),
+        )
+
+    @staticmethod
+    def _rebuild_market_event_stats(connection: sqlite3.Connection, run_id: str) -> None:
+        """중복 삽입 경로에서만 해당 Run의 정확한 집계를 복구한다."""
+
+        connection.execute("DELETE FROM market_event_stats WHERE run_id = ?", (run_id,))
+        connection.execute(
+            """
+            INSERT INTO market_event_stats (
+                run_id, symbol, event_count, first_ts_ms, last_ts_ms, count_complete
+            )
+            SELECT run_id, symbol, COUNT(*), MIN(venue_ts_ms), MAX(venue_ts_ms), 1
+            FROM market_events
+            WHERE run_id = ?
+            GROUP BY run_id, symbol
+            """,
+            (run_id,),
+        )
 
     def list_market_events(
         self,
@@ -556,7 +753,15 @@ class SQLiteLedger:
             query += f" AND event_type IN ({placeholders})"
             parameters.extend(event_types)
         query += " ORDER BY venue_ts_ms, receive_monotonic_ns, event_id"
-        if limit is not None:
+        with self._read_lock:
+            archive_rows = self._read_connection.execute(
+                """
+                SELECT path, checksum FROM market_event_archives
+                WHERE run_id = ? ORDER BY first_ts_ms, batch_id
+                """,
+                (run_id,),
+            ).fetchall()
+        if limit is not None and not archive_rows:
             if limit <= 0:
                 raise ValueError("limit은 양수여야 합니다.")
             query += " LIMIT ?"
@@ -572,24 +777,84 @@ class SQLiteLedger:
             if not isinstance(decoded, dict):
                 raise LedgerInvariantError("시장 이벤트 payload는 객체여야 합니다.")
             result.append(decoded)
-        return result
+        if archive_rows:
+            if self.market_event_archive is None:
+                raise LedgerInvariantError("시장 이벤트 아카이브 저장소가 없습니다.")
+            try:
+                for archive in archive_rows:
+                    for decoded in self.market_event_archive.read_market_event_batch(
+                        Path(str(archive["path"])),
+                        expected_checksum=str(archive["checksum"]),
+                    ):
+                        if str(decoded.get("run_id")) != run_id:
+                            raise LedgerInvariantError(
+                                "시장 이벤트 아카이브에 다른 Run이 섞였습니다."
+                            )
+                        if symbol is not None and str(decoded.get("symbol")) != symbol:
+                            continue
+                        if event_types and str(decoded.get("event_type")) not in event_types:
+                            continue
+                        result.append(decoded)
+            except (OSError, ValueError) as error:
+                raise LedgerInvariantError(
+                    f"시장 이벤트 아카이브 검증 실패: {error}"
+                ) from error
+        result.sort(
+            key=lambda event: (
+                int(str(event["venue_ts_ms"])),
+                int(str(event["receive_monotonic_ns"])),
+                str(event["event_id"]),
+            )
+        )
+        return result[:limit] if limit is not None else result
 
     def market_event_symbols(self, run_id: str) -> list[dict[str, object]]:
-        """저장 Run의 종목별 이벤트 수를 리플레이 선택용으로 반환한다."""
+        """대용량 본문을 스캔하지 않고 종목별 저장 상태를 반환한다."""
 
         with self._lock:
-            rows = self._connection.execute(
+            incomplete = self._connection.execute(
                 """
-                SELECT symbol, COUNT(*) AS event_count
-                FROM market_events
-                WHERE run_id = ?
-                GROUP BY symbol
-                ORDER BY event_count DESC, symbol
+                SELECT 1 FROM market_event_stats
+                WHERE run_id = ? AND count_complete = 0 LIMIT 1
                 """,
                 (run_id,),
+            ).fetchone()
+            if incomplete is None:
+                rows = self._connection.execute(
+                    """
+                    SELECT symbol, event_count
+                    FROM market_event_stats
+                    WHERE run_id = ? AND symbol != '*'
+                    ORDER BY event_count DESC, symbol
+                    """,
+                    (run_id,),
+                ).fetchall()
+                return [
+                    {
+                        "symbol": str(row["symbol"]),
+                        "event_count": int(row["event_count"]),
+                    }
+                    for row in rows
+                ]
+            rows = self._connection.execute(
+                """
+                SELECT c.symbol, s.event_count
+                FROM (
+                    SELECT DISTINCT symbol FROM candles
+                    WHERE run_id = ? AND interval_seconds = 1
+                ) c
+                LEFT JOIN market_event_stats s
+                  ON s.run_id = ? AND s.symbol = c.symbol
+                ORDER BY c.symbol
+                """,
+                (run_id, run_id),
             ).fetchall()
         return [
-            {"symbol": str(row["symbol"]), "event_count": int(row["event_count"])}
+            {
+                "symbol": str(row["symbol"]),
+                "event_count": None,
+                "new_event_count": int(row["event_count"] or 0),
+            }
             for row in rows
         ]
 
@@ -814,6 +1079,39 @@ class SQLiteLedger:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def list_replayable_run_summaries(self) -> list[dict[str, Any]]:
+        """시장 이벤트 본문 COUNT 없이 리플레이 가능한 Run을 빠르게 조회한다."""
+
+        with self._read_lock:
+            rows = self._read_connection.execute(
+                """
+                SELECT r.*,
+                  CASE
+                    WHEN EXISTS (
+                      SELECT 1 FROM market_event_stats incomplete
+                      WHERE incomplete.run_id = r.run_id
+                        AND incomplete.count_complete = 0
+                    ) THEN NULL
+                    ELSE (
+                      SELECT COALESCE(SUM(stats.event_count), 0)
+                      FROM market_event_stats stats
+                      WHERE stats.run_id = r.run_id AND stats.symbol != '*'
+                    )
+                  END AS market_event_count,
+                  EXISTS (
+                    SELECT 1 FROM market_event_stats any_stats
+                    WHERE any_stats.run_id = r.run_id
+                  ) AS has_market_events,
+                  (SELECT COUNT(*) FROM trades t WHERE t.run_id = r.run_id)
+                    AS trade_count,
+                  (SELECT COUNT(*) FROM shadow_trades s WHERE s.run_id = r.run_id)
+                    AS shadow_trade_count
+                FROM runs r
+                ORDER BY r.started_ts_ms DESC, r.run_id
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def record_incident(
         self,
         incident_id: str,
@@ -949,6 +1247,8 @@ class SQLiteLedger:
             "incidents",
             "risk_locks",
             "market_events",
+            "market_event_stats",
+            "market_event_archives",
             "candles",
             "strategy_settings",
             "strategy_account_snapshots",
@@ -1065,7 +1365,7 @@ class _Transaction:
             self._lock.release()
 
 
-def _canonical_json(value: Mapping[str, object]) -> str:
+def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
 
 
