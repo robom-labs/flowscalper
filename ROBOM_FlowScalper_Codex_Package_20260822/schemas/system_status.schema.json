@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robom.local/schemas/system_status.schema.json",
+  "title": "SystemStatus",
+  "type": "object",
+  "required": ["mode", "market_data_state", "execution_state", "venue", "run_id", "real_orders_enabled", "auth_required"],
+  "properties": {
+    "mode": {"enum": ["FIXTURE_OFFLINE", "LIVE_SHADOW_PAPER", "REPLAY"]},
+    "market_data_state": {"enum": ["LIVE", "RECONNECTING", "STALE", "DISCONNECTED", "FIXTURE"]},
+    "execution_state": {"const": "PAPER"},
+    "venue": {"enum": ["BINANCE_USDM", "BYBIT_LINEAR", "FIXTURE"]},
+    "run_id": {"type": "string"},
+    "real_orders_enabled": {"const": false},
+    "auth_required": {"const": false},
+    "starting_equity_usdt": {"type": "number", "minimum": 0},
+    "current_equity_usdt": {"type": "number"},
+    "wide_symbols": {"type": "integer", "minimum": 0},
+    "deep_symbols": {"type": "integer", "minimum": 0},
+    "processing_lag_p95_ms": {"type": ["number", "null"], "minimum": 0},
+    "health_flags": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

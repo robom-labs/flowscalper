@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robom.local/schemas/candidate_signal.schema.json",
+  "title": "CandidateSignal",
+  "type": "object",
+  "required": ["candidate_id", "run_id", "venue", "symbol", "strategy_id", "side", "signal_ts_ms", "status", "reason_codes", "data_health"],
+  "properties": {
+    "candidate_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "venue": {"type": "string"},
+    "symbol": {"type": "string"},
+    "strategy_id": {"type": "string"},
+    "side": {"enum": ["LONG", "SHORT"]},
+    "regime": {"enum": ["TREND_UP", "TREND_DOWN", "RANGE", "SHOCK", "DEGRADED", "WARMUP"]},
+    "signal_ts_ms": {"type": "integer", "minimum": 0},
+    "status": {"enum": ["OBSERVING", "QUALIFIED", "REJECTED", "EXECUTED", "EXPIRED"]},
+    "candidate_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "planned_entry": {"type": ["string", "null"]},
+    "worst_allowed_entry": {"type": ["string", "null"]},
+    "initial_stop": {"type": ["string", "null"]},
+    "take_profit": {"type": ["string", "null"]},
+    "noise_buffer": {"type": ["string", "null"]},
+    "expected_cost_bps": {"type": ["number", "null"], "minimum": 0},
+    "net_reward_risk": {"type": ["number", "null"]},
+    "calibration_status": {"enum": ["CALIBRATING", "VALIDATED_RULE_ONLY", "VALIDATED_MODEL"]},
+    "tp_probability": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "reason_codes": {"type": "array", "items": {"type": "string"}},
+    "rejection_codes": {"type": "array", "items": {"type": "string"}},
+    "data_health": {"enum": ["HEALTHY", "STALE", "GAP", "DEGRADED"]},
+    "feature_snapshot": {"type": "object"}
+  },
+  "additionalProperties": false
+}

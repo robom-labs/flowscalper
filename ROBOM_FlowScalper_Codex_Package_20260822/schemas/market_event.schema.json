@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robom.local/schemas/market_event.schema.json",
+  "title": "NormalizedMarketEvent",
+  "type": "object",
+  "required": ["event_id", "run_id", "venue", "symbol", "event_type", "venue_ts_ms", "receive_monotonic_ns", "payload_version", "quality"],
+  "properties": {
+    "event_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "venue": {"enum": ["BINANCE_USDM", "BYBIT_LINEAR", "FIXTURE"]},
+    "symbol": {"type": "string", "minLength": 1},
+    "event_type": {"enum": ["BOOK_SNAPSHOT", "BOOK_DELTA", "BOOK_TICKER", "TRADE", "MARK_PRICE", "INSTRUMENT", "HEALTH"]},
+    "venue_ts_ms": {"type": "integer", "minimum": 0},
+    "transaction_ts_ms": {"type": ["integer", "null"], "minimum": 0},
+    "receive_monotonic_ns": {"type": "integer", "minimum": 0},
+    "sequence_start": {"type": ["integer", "null"]},
+    "sequence_end": {"type": ["integer", "null"]},
+    "previous_sequence_end": {"type": ["integer", "null"]},
+    "payload_version": {"type": "string"},
+    "quality": {
+      "type": "object",
+      "required": ["is_live", "is_stale", "sequence_valid"],
+      "properties": {
+        "is_live": {"type": "boolean"},
+        "is_stale": {"type": "boolean"},
+        "sequence_valid": {"type": "boolean"},
+        "lag_ms": {"type": ["number", "null"], "minimum": 0},
+        "flags": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "data": {"type": "object"}
+  },
+  "additionalProperties": false
+}

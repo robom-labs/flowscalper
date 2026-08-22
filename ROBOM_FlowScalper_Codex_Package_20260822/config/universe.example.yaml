@@ -1,0 +1,30 @@
+universe:
+  instrument_type: USDT_PERPETUAL
+  wide_scan_max_symbols: 50
+  deep_scan_max_symbols: 10
+  candidate_shortlist_max: 3
+  required_observation_warmup_minutes: 10
+  minimum_listing_age_days: 90
+  minimum_24h_quote_turnover_usdt: 20000000
+  maximum_median_spread_bps: 8.0
+  maximum_current_spread_bps: 12.0
+  minimum_deep_scan_dwell_seconds: 60
+  deep_scan_change_limit_per_minute: 6
+  priority_symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+  deny_underlyings:
+    - USDC
+    - FDUSD
+    - TUSD
+    - USDP
+  deny_symbol_patterns:
+    - "*UPUSDT"
+    - "*DOWNUSDT"
+    - "*BULLUSDT"
+    - "*BEARUSDT"
+  capacity:
+    auto_reduce_on_lag: true
+    minimum_wide_symbols: 10
+    minimum_deep_symbols: 3

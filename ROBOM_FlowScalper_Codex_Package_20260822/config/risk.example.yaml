@@ -1,0 +1,25 @@
+risk:
+  risk_per_trade_fraction: 0.001
+  max_open_positions: 1
+  max_daily_trades: 12
+  daily_loss_limit_usdt: 5.0
+  weekly_loss_limit_usdt: 15.0
+  maximum_drawdown_lock_fraction: 0.03
+  maximum_gross_notional_fraction_at_1x: 0.50
+  maximum_order_fraction_of_executable_depth: 0.02
+  consecutive_losses_global_pause:
+    count: 3
+    pause_minutes: 60
+  symbol_strategy_loss_pause:
+    count: 2
+    pause_minutes: 120
+  prohibit:
+    averaging_down: true
+    martingale: true
+    pyramiding: true
+    stop_widening: true
+    automatic_risk_increase: true
+  entry_cost_gates:
+    minimum_net_reward_risk: 1.20
+    maximum_cost_fraction_of_gross_target: 0.30
+    maximum_p95_slippage_fraction_of_stop: 0.15

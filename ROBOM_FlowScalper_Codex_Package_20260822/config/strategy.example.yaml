@@ -1,0 +1,39 @@
+strategy:
+  common:
+    warmup_minutes: 30
+    candidate_confirmation_ms: 500
+    confirmation_range_ms: [300, 1000]
+    noise_buffer:
+      minimum_ticks: 2
+      spread_multiplier: 1.5
+      micro_noise_quantile: 0.80
+      include_exit_slippage_buffer: true
+    edge_decay_persistence_ms: 800
+    emergency_stale_absolute_seconds: 900
+    no_fixed_120_second_exit: true
+
+  liquidity_sweep_absorption:
+    enabled: true
+    strategy_id: LSA_REVERSAL_V1
+    permitted_regimes: [RANGE, TREND_UP, TREND_DOWN]
+    structural_lookback_minutes: [5, 15, 30]
+    sweep_extension_noise_units: [0.5, 2.5]
+    aggressive_flow_robust_z_min: 1.8
+    price_response_efficiency_max_quantile: 0.30
+    refill_window_ms: [500, 3000]
+    require_ofi_flip: true
+    require_microprice_reclaim: true
+    require_range_reentry: true
+
+  compression_breakout_reacceleration:
+    enabled: true
+    strategy_id: CBR_CONTINUATION_V1
+    permitted_regimes: [TREND_UP, TREND_DOWN]
+    compression_windows_seconds: [30, 60, 120]
+    compression_quantile_max: 0.20
+    pullback_wait_seconds: [1, 10]
+    pullback_retrace_fraction: [0.20, 0.60]
+    aggressive_flow_robust_z_min: 1.5
+    require_counterflow_price_impact_failure: true
+    require_ofi_reacceleration: true
+    require_microprice_alignment: true

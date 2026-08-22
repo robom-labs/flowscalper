@@ -1,0 +1,16 @@
+cost_model:
+  name: CONSERVATIVE_ASSUMED_V1
+  values_are_assumptions: true
+  entry_fee_bps: 6.0
+  exit_fee_bps: 6.0
+  additional_safety_bps: 1.0
+  decision_to_arrival_latency_ms: 250
+  cancel_latency_ms: 150
+  stop_processing_latency_ms: 250
+  maximum_entry_price_ticks: 3
+  maximum_entry_price_fraction_of_stop: 0.10
+  pessimistic_ambiguous_ordering: true
+  stress:
+    fee_multiplier: 2.0
+    latency_multiplier: 2.0
+    additional_stop_slippage_multiplier: 2.0

@@ -1,0 +1,27 @@
+# 17. Glossary
+
+- **Aggressive buy/sell**: A trade that executes against resting ask/bid liquidity.
+- **Ask**: Lowest currently offered sell price.
+- **Bid**: Highest currently offered buy price.
+- **bps**: Basis points. 1 bp = 0.01%.
+- **Candidate**: A setup that has not yet passed every entry gate.
+- **Deep scan**: Higher-detail order-book analysis for a smaller symbol subset.
+- **Edge decay**: Loss of the original statistical/structural reason to hold a trade.
+- **Executable price**: A price available on the correct side of the book for the needed quantity.
+- **Fill**: Executed quantity and price in the paper simulator.
+- **IOC**: Immediate-or-cancel behavior; fill available quantity within a price cap and cancel the rest.
+- **MAE**: Maximum adverse excursion after entry.
+- **MFE**: Maximum favorable excursion after entry.
+- **Microprice**: A top-of-book imbalance-adjusted short-horizon price estimate.
+- **Micro-VWAP**: Short-horizon volume-weighted price derived from observed public trades.
+- **Mid**: Average of best bid and ask.
+- **OFI**: Order flow imbalance from bid/ask queue changes and order-book events.
+- **Paper execution**: Internal simulated execution with no real order.
+- **Range re-entry**: Price returns inside a prior boundary after a failed sweep/breakout.
+- **Regime**: Classified market state such as trend, range, shock or degraded.
+- **Run**: Immutable experiment with one venue and one config/cost/strategy snapshot.
+- **Sequence gap**: Missing order-book update continuity.
+- **Slippage**: Difference between reference/expected price and simulated actual fill.
+- **Spread**: Difference between best ask and best bid.
+- **Sweep**: Short-lived trade through a structural high/low and nearby liquidity.
+- **Wide scan**: Lightweight monitoring of a larger symbol universe.

@@ -1,0 +1,39 @@
+app:
+  name: ROBOM FlowScalper
+  mode: LIVE_SHADOW_PAPER
+  locale: ko-KR
+  bind_host: 127.0.0.1
+  bind_port: 8765
+  auto_open_browser: true
+  real_trading_enabled: false
+  require_credentials: false
+
+venue:
+  provider: AUTO
+  primary: BINANCE_USDM_PUBLIC
+  fallback: BYBIT_LINEAR_PUBLIC
+  prohibit_cross_venue_run_mix: true
+  reconnect:
+    initial_delay_ms: 500
+    maximum_delay_ms: 30000
+    jitter: true
+    planned_rotation_minutes: 1380
+
+paper_account:
+  starting_equity_usdt: 1000.0
+  base_currency: USDT
+  simulated_leverage: 1.0
+  comparison_profiles:
+    - id: STRESS
+      fee_multiplier: 2.0
+      latency_multiplier: 2.0
+    - id: LEVERAGE_2X_SHADOW
+      simulated_leverage: 2.0
+      preserve_same_dollar_risk: true
+
+runtime:
+  ui_broadcast_interval_ms: 250
+  critical_processing_lag_ms: 500
+  warning_processing_lag_ms: 250
+  persist_market_data: true
+  fixture_fallback_requires_explicit_badge: true

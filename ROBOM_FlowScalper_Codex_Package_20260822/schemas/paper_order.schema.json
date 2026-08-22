@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robom.local/schemas/paper_order.schema.json",
+  "title": "PaperOrder",
+  "type": "object",
+  "required": ["order_id", "run_id", "trade_id", "venue", "symbol", "side", "intent", "status", "requested_qty", "created_ts_ms"],
+  "properties": {
+    "order_id": {"type": "string"},
+    "run_id": {"type": "string"},
+    "trade_id": {"type": "string"},
+    "venue": {"type": "string"},
+    "symbol": {"type": "string"},
+    "side": {"enum": ["BUY", "SELL"]},
+    "intent": {"enum": ["ENTRY_IOC", "TAKE_PROFIT", "STOP_EXIT", "EDGE_DECAY_EXIT", "EMERGENCY_EXIT", "MANUAL_PAPER_EXIT"]},
+    "status": {"enum": ["CREATED", "PENDING_LATENCY", "PARTIALLY_FILLED", "FILLED", "CANCELED", "REJECTED", "FINALIZED"]},
+    "requested_qty": {"type": "string"},
+    "filled_qty": {"type": "string", "default": "0"},
+    "price_cap": {"type": ["string", "null"]},
+    "trigger_price": {"type": ["string", "null"]},
+    "average_fill_price": {"type": ["string", "null"]},
+    "created_ts_ms": {"type": "integer", "minimum": 0},
+    "arrival_ts_ms": {"type": ["integer", "null"], "minimum": 0},
+    "finalized_ts_ms": {"type": ["integer", "null"], "minimum": 0},
+    "fee_usdt": {"type": "string", "default": "0"},
+    "slippage_usdt": {"type": "string", "default": "0"},
+    "reason_codes": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}
