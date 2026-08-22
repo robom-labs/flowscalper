@@ -1,5 +1,7 @@
 # PLANS.md — Execution Plan and Progress Source of Truth
 
+> v0.2 업그레이드의 세부 실행계획과 현재 관찰 결과는 `UPGRADE_EXEC_PLAN.md`가 우선한다. 아래 0.1 Wave 기록은 완료된 기준선으로 보존한다.
+
 This file is the source of truth for long-horizon implementation. Codex must continuously update status, decisions, validation evidence, and remaining work.
 
 ## Global definition of done
@@ -185,6 +187,21 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-22: v0.1 LIVE 부트스트랩은 50 wide book-ticker와 1 sequence-valid deep book만 검증하고, 50 wide/10 deep 지속 성능은 알려진 제한으로 남긴다.
 - 2026-08-22: 최종 fixture 증거는 계획 가격과 실제 체결 가격을 분리한 진입·청산 주문/체결, 수수료·슬리피지 합계, 단조 증가 상태 전이를 동일 Run 원장에 보존한다.
 - 2026-08-22: 거래의 `config_hash`는 예시 식별자가 아니라 소속 Run의 정규 설정 JSON SHA-256과 같아야 하며 테스트로 고정한다.
+- 2026-08-22: ADR-002에 따라 v0.2 기본 상태를 READY로 바꾸고, fixture는 DEMO 전용 Run으로 격리하며, A/B/C/D Registry와 지속 공개 WebSocket supervisor를 공통 런타임에 연결한다.
+
+## v0.2 upgrade progress
+
+| Wave | Status | Validation | Blockers | Next action |
+|---|---|---|---|---|
+| Upgrade 00 | IN_PROGRESS | 패키지 전체 완독, ZIP 안전검사 PASS, 0.1 기준선 test/lint/typecheck/build/security/network PASS | 기준선 E2E는 기존 8765 사용자 프로세스와 포트 충돌 | v0.2 계약·테스트 작성 |
+| Upgrade 01 | PENDING | - | 없음 | READY와 fresh Run 구현 |
+| Upgrade 02 | PENDING | - | 없음 | 지속 supervisor와 캔들 구현 |
+| Upgrade 03 | PENDING | - | 없음 | Strategy Registry와 shadow 계좌 구현 |
+| Upgrade 04 | PENDING | - | 없음 | 계획·체결·포지션 연결 |
+| Upgrade 05 | PENDING | - | 없음 | 원장·리플레이·분석 연결 |
+| Upgrade 06 | PENDING | - | 없음 | 한국어 UI와 실제 차트 구현 |
+| Upgrade 07 | PENDING | - | 없음 | 복구·soak·보안 검증 |
+| Upgrade 08 | PENDING | - | 없음 | 최종 증거와 릴리스 |
 
 ## Progress log
 
