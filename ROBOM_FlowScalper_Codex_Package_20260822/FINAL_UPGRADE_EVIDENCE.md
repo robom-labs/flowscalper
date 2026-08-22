@@ -31,7 +31,7 @@
 |---|---|
 | 버전 | `0.2.0-paper` |
 | 기준 커밋 | `c1de1165bd25d4ebba7346416f2fb6aa8f1e69d7` |
-| 릴리스 소스 커밋 | `9584ddc681a412a8e54df4defff2a3ae34d980af` |
+| 릴리스 소스 커밋 | `6a3eb0e9d781dca54ba1aca766264c3998ba34ee` |
 | 운영체제 | macOS 26.5.2, build 25F84, arm64 |
 | Python / uv | 3.12.13 / 0.11.26 |
 | Node.js / pnpm | 26.4.0 / 9.15.9 |
@@ -121,12 +121,12 @@
 
 | 명령 또는 검증 | 상태 | 실제 결과 |
 |---|---|---|
-| `make test` | PASS | backend 92/92, frontend Vitest 2/2 |
+| `make test` | PASS | backend 96/96, frontend Vitest 3/3 |
 | `make lint` | PASS | Ruff와 ESLint 오류 0 |
 | `make typecheck` | PASS | mypy strict 68개 source 오류 0, TypeScript 오류 0 |
-| `make build` | PASS | Vite 38 modules, JS 421.97kB, gzip 133.57kB, PAPER build invariant PASS |
+| `make build` | PASS | Vite 39 modules, JS 424.05kB, gzip 134.22kB, PAPER build invariant PASS |
 | `make e2e` | PASS | fixture API 8/8, desktop·tablet·mobile Playwright 3/3 |
-| `make security-scan` | PASS | 87개 source, 위반·비밀 유사 파일·실제 주문 경로 0 |
+| `make security-scan` | PASS | 88개 source, 위반·비밀 유사 파일·실제 주문 경로 0 |
 | `make network-smoke` | PASS | Binance 적격 527, 공개 WebSocket 2 events, p95 7,197.163ms, credentials false |
 | macOS root launcher smoke | PASS | `127.0.0.1:8890` 실제 부팅과 HTML 200. READY, 1,000 USDT, 손익·비용·거래 0, auth·real order false |
 | Windows setup/run 실제 실행 | NOT_RUN | macOS 환경이며 Windows 실기기 실행을 주장하지 않는다. |
@@ -162,12 +162,12 @@
 |---|---|
 | ZIP | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip` |
 | checksum 파일 | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip.sha256` |
-| ZIP SHA-256 | `2ebc3b9b33ac2935e57a4678b51aacda27d356e9e5a51f0601e4bd4f43772f8f` |
-| 크기 / 파일 수 | 10,934,450 bytes / 234 ZIP entries |
-| 내부 BUILD_COMMIT | `9584ddc681a412a8e54df4defff2a3ae34d980af` |
+| ZIP SHA-256 | `4215e5570f6f283c2f7c9de742db1dad5b49334af3e629b06c2cc0a6f6a98acc` |
+| 크기 / 파일 수 | 10,944,817 bytes / 238 ZIP entries |
+| 내부 BUILD_COMMIT | `6a3eb0e9d781dca54ba1aca766264c3998ba34ee` |
 | `unzip -t` | PASS, 압축 데이터 오류 0 |
-| 내부 `SHA256SUMS.txt` 전수검사 | PASS, 233개 entry 전부 일치 |
-| 새 압축해제본 테스트 | PASS, uv/pnpm frozen 설치 후 backend 92/92·frontend 2/2 |
+| 내부 `SHA256SUMS.txt` 전수검사 | PASS, 237개 entry 전부 일치 |
+| 패키징 직전 소스 회귀 | PASS, backend 96/96·frontend 3/3·lint·typecheck·build·security |
 
 릴리스에는 backend·frontend 소스와 테스트, 빌드된 frontend, macOS·Windows 실행기, 설정, fixture, migration, 문서, 스크린샷, notices, third-party licenses, 내부 checksum이 포함된다. `.venv`, `node_modules`, 캐시, SQLite/Parquet 원시 실행데이터, 비밀 유사 파일은 제외한다.
 
@@ -239,7 +239,7 @@
 | KST 결정론 변환 | PASS, Unix epoch 0→09:00:00 KST |
 | 실제 주문·private API·인증 | 0, false, false 유지 |
 
-장시간 UI 응답 fix의 구현 커밋은 `3d5792bfc96d3116a1bfd422a7b9ab380c86755f`다. 최종 릴리스 ZIP의 크기·entry·SHA-256·내부 BUILD_COMMIT은 아래 릴리스 갱신 절차에서 다시 생성해 기록한다.
+장시간 UI 응답 fix의 구현 커밋은 `3d5792bfc96d3116a1bfd422a7b9ab380c86755f`다. 최종 릴리스는 증거 커밋 `6a3eb0e9d781dca54ba1aca766264c3998ba34ee`를 내부 BUILD_COMMIT으로 포함하며 238개 entry, 10,944,817 bytes다. ZIP SHA-256은 `4215e5570f6f283c2f7c9de742db1dad5b49334af3e629b06c2cc0a6f6a98acc`이고 `unzip -t`와 내부 checksum 237개가 모두 PASS다. 작업공간과 One Touch 복사본의 SHA-256도 일치한다.
 
 ### 화면 재검수 제한
 

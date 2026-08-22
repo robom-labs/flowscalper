@@ -32,6 +32,13 @@
   "dashboard_burst_failures": 0,
   "server_to_local_delta_ms": 5,
   "display_timezone": "Asia/Seoul",
+  "implementation_commit": "3d5792bfc96d3116a1bfd422a7b9ab380c86755f",
+  "release_build_commit": "6a3eb0e9d781dca54ba1aca766264c3998ba34ee",
+  "release_sha256": "4215e5570f6f283c2f7c9de742db1dad5b49334af3e629b06c2cc0a6f6a98acc",
+  "release_bytes": 10944817,
+  "release_zip_entries": 238,
+  "release_internal_checks": 237,
+  "release_internal_checksum_failures": 0,
   "paused": false,
   "health_flags": [
     "PUBLIC_SUPERVISOR_RUNNING",
