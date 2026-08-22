@@ -1,6 +1,6 @@
 # ROBOM FlowScalper v0.2 업그레이드 실행계획
 
-- 상태: Wave 07 완료, Wave 08 릴리스 진행 중
+- 상태: Wave 00~08 완료
 - 기준 소스: `0.1.0-paper`, 기준 커밋 `c1de1165bd25d4ebba7346416f2fb6aa8f1e69d7`
 - 목표 버전: `0.2.0-paper`
 - 데이터 경계: 공개 REST/WebSocket만 사용
