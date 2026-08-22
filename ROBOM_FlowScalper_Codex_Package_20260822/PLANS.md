@@ -179,6 +179,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-22: ADR-001에 따라 FastAPI 단일 프로세스와 정적 React 번들, 세 가지 PAPER 전용 런타임 모드, 거래소별 Run 격리를 채택했다.
 - 2026-08-22: Binance 2026 WebSocket `/public`·`/market` 분리와 Bybit V5 public linear snapshot/delta 계약을 공식 문서에서 재확인했다.
 - 2026-08-22: Binance 24시간 통계에는 최우선 호가가 없음을 실제 응답에서 확인해 `/ticker/24hr`와 공개 `/ticker/bookTicker`를 심볼별로 결합한다.
+- 2026-08-22: Wave 06 대시보드는 초기 snapshot 1회와 WebSocket 갱신을 공유하고, 차트는 별도 무거운 의존성 없이 메모이제이션된 SVG로 구성했다.
 
 ## Progress log
 
@@ -191,7 +192,7 @@ Codex must maintain a table with Wave, status, last commit, validation result, b
 | 02 | COMPLETE | d0ef16f | Backend 21 PASS; deterministic/finite feature and stale candidate gate PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | 완료 |
 | 03 | COMPLETE | ee1cfb2 | Backend 29 PASS; Strategy A/B long/short, positive/negative, cost/no-lookahead/determinism PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | 완료 |
 | 04 | COMPLETE | 1c237f1 | Backend 37 PASS; latency/IOC partial/full/multilevel/protection/fee/slippage/ambiguity/risk lock/end-to-end accounting PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | 완료 |
-| 05 | COMPLETE | Wave 05 commit | Backend 44 PASS; >120s hold, persistent edge decay, profit protection, stop non-widening, same-venue stale/emergency, cooldown PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | Wave 06 한국어 대시보드·사용자 흐름 구현 |
-| 06 | IN_PROGRESS | - | NOT_RUN | 없음 | 6개 화면, 실제 차트선·설명, WebSocket 갱신, 반응형·접근성 e2e |
-| 07 | PENDING | - | NOT_RUN | 없음 | Wave 06 출구 조건 후 시작 |
+| 05 | COMPLETE | 207eac3 | Backend 44 PASS; >120s hold, persistent edge decay, profit protection, stop non-widening, same-venue stale/emergency, cooldown PASS; Ruff/mypy/frontend/build/e2e PASS | 없음 | 완료 |
+| 06 | COMPLETE | Wave 06 commit | Backend 45 PASS; Vitest 2 PASS; Playwright desktop/tablet/mobile 3 PASS; console error 0; permanent PAPER/FIXTURE, chart lines, rejected reason, 48px controls PASS | 없음 | 완료 |
+| 07 | IN_PROGRESS | - | NOT_RUN | 없음 | SQLite·Parquet·DuckDB 저장, 복구, 리플레이, 성과 집계 |
 | 08 | PENDING | - | NOT_RUN | 없음 | Wave 07 출구 조건 후 시작 |

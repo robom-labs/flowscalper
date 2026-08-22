@@ -31,8 +31,9 @@ build:
 	cd frontend && $(PNPM) build
 	REAL_TRADING=false $(UV) run python scripts/assert_build_safety.py
 
-e2e:
+e2e: build
 	$(UV) run pytest backend/tests/test_fixture_app.py
+	cd frontend && $(PNPM) e2e
 
 fixture-demo: build
 	ROBOM_MODE=FIXTURE_OFFLINE $(UV) run uvicorn backend.app.main:app --host 127.0.0.1 --port 8765
@@ -42,4 +43,3 @@ network-smoke:
 
 clean-data-safe:
 	@echo "기존 Run 데이터는 자동 삭제하지 않습니다. 내보내기 후 명시적으로 파일을 선택하세요."
-

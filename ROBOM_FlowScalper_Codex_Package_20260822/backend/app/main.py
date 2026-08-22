@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -56,6 +57,30 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
     async def events() -> list[dict[str, object]]:
         return [event.model_dump(mode="json") for event in active_runtime.events[-100:]]
 
+    @app.get("/api/dashboard")
+    async def dashboard() -> dict[str, object]:
+        return active_runtime.dashboard()
+
+    @app.post("/api/control/pause")
+    async def pause_entries() -> dict[str, object]:
+        active_runtime.set_paused(True)
+        return active_runtime.dashboard()
+
+    @app.post("/api/control/resume")
+    async def resume_entries() -> dict[str, object]:
+        active_runtime.set_paused(False)
+        return active_runtime.dashboard()
+
+    @app.post("/api/control/emergency-close")
+    async def emergency_paper_close() -> dict[str, object]:
+        active_runtime.emergency_paper_close()
+        return active_runtime.dashboard()
+
+    @app.post("/api/control/new-run")
+    async def new_run() -> dict[str, object]:
+        active_runtime.start_new_run()
+        return active_runtime.dashboard()
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin")
@@ -70,19 +95,9 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
             return
         await websocket.accept()
         try:
-            await websocket.send_json(
-                {"type": "status", "data": active_runtime.status().model_dump(mode="json")}
-            )
-            await websocket.send_json(
-                {
-                    "type": "events",
-                    "data": [
-                        event.model_dump(mode="json") for event in active_runtime.events[-20:]
-                    ],
-                }
-            )
             while True:
-                await websocket.receive_text()
+                await websocket.send_json({"type": "dashboard", "data": active_runtime.dashboard()})
+                await asyncio.sleep(0.5)
         except WebSocketDisconnect:
             return
 

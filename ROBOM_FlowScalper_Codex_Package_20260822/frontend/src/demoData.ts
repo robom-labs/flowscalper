@@ -1,0 +1,60 @@
+// 네트워크 응답 전에도 LIVE로 오인되지 않는 최소 fixture 상태를 제공한다.
+import type { DashboardData } from './types'
+
+export const initialDashboard: DashboardData = {
+  status: {
+    mode: 'FIXTURE_OFFLINE',
+    market_data_state: 'FIXTURE',
+    execution_state: 'PAPER',
+    venue: 'FIXTURE',
+    run_id: 'loading',
+    starting_equity_usdt: 1000,
+    current_equity_usdt: 1000,
+    real_orders_enabled: false,
+    auth_required: false,
+    wide_symbols: 0,
+    deep_symbols: 0,
+    processing_lag_p95_ms: null,
+    health_flags: ['OFFLINE_SIMULATION'],
+  },
+  paused: false,
+  scanner: [],
+  chart: {
+    symbol: 'BTCUSDT',
+    interval: '1s',
+    points: [],
+    lines: { entry: 100, take_profit: 100.75, stop: 99.55 },
+    fixture: true,
+  },
+  position: null,
+  logs: [],
+  history: [],
+  performance: {
+    sample_size: 0,
+    gross_pnl: '0',
+    fees: '0',
+    slippage: '0',
+    net_pnl: '0',
+    max_drawdown: '0',
+    win_rate: '표본 없음',
+    calibration: 'CALIBRATING',
+    base_equity: '1000',
+    stress_equity: '1000',
+  },
+  risk: {
+    risk_per_trade: '0.10%',
+    max_positions: 1,
+    daily_loss_limit: '5 USDT',
+    weekly_loss_limit: '15 USDT',
+    drawdown_lock: '3%',
+    active_locks: ['PAPER_ONLY'],
+    immutable_run: true,
+  },
+  system: {
+    api_host: '127.0.0.1:8765',
+    auth_headers: false,
+    storage: 'loading',
+    app_version: '0.1.0-paper',
+  },
+}
+

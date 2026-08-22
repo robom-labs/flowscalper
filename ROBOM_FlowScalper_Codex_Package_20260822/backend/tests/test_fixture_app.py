@@ -44,3 +44,21 @@ def test_fixture_events_are_deterministic() -> None:
     second.boot_fixture(20)
     assert first.events == second.events
     assert all(not event.quality.is_live for event in first.events)
+
+
+def test_dashboard_controls_preserve_run_history() -> None:
+    runtime = PaperRuntime(clock=DeterministicClock(), run_id="run-original")
+    runtime.boot_fixture()
+    client = TestClient(create_app(runtime))
+
+    dashboard = client.get("/api/dashboard").json()
+    assert dashboard["chart"]["lines"].keys() == {"entry", "take_profit", "stop"}
+    assert dashboard["position"]["elapsed_seconds"] == 121
+    assert dashboard["status"]["market_data_state"] == "FIXTURE"
+
+    assert client.post("/api/control/pause").json()["paused"] is True
+    assert client.post("/api/control/resume").json()["paused"] is False
+    assert client.post("/api/control/emergency-close").json()["position"] is None
+    new_snapshot = client.post("/api/control/new-run").json()
+    assert new_snapshot["status"]["run_id"] != "run-original"
+    assert new_snapshot["history"][0]["run_id"] == "run-original"
