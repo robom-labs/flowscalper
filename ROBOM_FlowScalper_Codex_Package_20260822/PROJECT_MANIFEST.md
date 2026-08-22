@@ -1,12 +1,15 @@
-# Package Manifest
+# ROBOM FlowScalper v0.2 Package Manifest
 
-This package is an implementation contract, not the finished trading application.
+이 패키지는 구현 지시서만 있는 초기 계약이 아니라 빌드된 프런트엔드, PAPER backend, 실행기, 테스트, 문서, 검증 증거를 포함하는 0.2.0-paper 릴리스 소스다.
 
-Core launcher:
+## 사용자 실행기
 
-- `01_CODEX_원샷_실행프롬프트_KO.txt`
+- `ROBOM_FlowScalper.app`
+- `ROBOM_FlowScalper.command`
+- `scripts/run_macos.command`
+- `scripts/run_windows.bat`
 
-Persistent agent guidance:
+## 개발·안전 지침
 
 - `AGENTS.md`
 - `PLANS.md`
@@ -32,15 +35,27 @@ Detailed specifications:
 - `docs/16_MODEL_CALIBRATION.md`
 - `docs/17_GLOSSARY.md`
 
-Supporting contracts:
+## Supporting contracts
 
 - `config/*.yaml`
 - `schemas/*.json`
 - `templates/*.md`
 - `OFFICIAL_REFERENCES.md`
 - `CHECKLIST_FOR_USER.md`
+- `THIRD_PARTY_NOTICES.md`
+- `THIRD_PARTY_LICENSES/`
 
-Visual references:
+## 사용자 문서와 증거
+
+- `00_사용법_먼저읽기.md`
+- `RUNBOOK_LIVE_SHADOW_PAPER.md`
+- `STRATEGY_CATALOG_KO.md`
+- `UI_USER_GUIDE_KO.md`
+- `MIGRATION_NOTES_v0.2.md`
+- `SOAK_TEST_REPORT.md`
+- `FINAL_UPGRADE_EVIDENCE.md`
+
+## Visual references
 
 - `ui_reference/reference_dark_dashboard.jpg`
 - `ui_reference/reference_trade_chart.jpg`

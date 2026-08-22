@@ -100,7 +100,7 @@ README must cover:
 Version:
 
 ```text
-0.1.0-paper
+0.2.0-paper
 ```
 
 Record app version, strategy version, config hash and Git commit in every Run.

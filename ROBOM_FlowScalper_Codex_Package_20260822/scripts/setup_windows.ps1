@@ -6,8 +6,15 @@ Set-Location $ProjectDir
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     throw "uv가 필요합니다. https://docs.astral.sh/uv/ 에서 설치하세요."
 }
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw "Node.js 22.13 이상 또는 24 이상이 필요합니다."
+}
 if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
     throw "pnpm이 필요합니다. https://pnpm.io/installation 에서 설치하세요."
+}
+$NodeVersion = [version]((node --version).TrimStart("v"))
+if (-not (($NodeVersion.Major -eq 22 -and $NodeVersion.Minor -ge 13) -or $NodeVersion.Major -ge 24)) {
+    throw "Node.js 22.13 이상 또는 24 이상이 필요합니다."
 }
 
 uv sync --frozen --all-groups

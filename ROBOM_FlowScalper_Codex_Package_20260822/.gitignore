@@ -12,6 +12,8 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 data/*.sqlite3
 data/*.sqlite3-*
+data/**/*.sqlite3
+data/**/*.sqlite3-*
 data/parquet/
 artifacts/
 playwright-report/

@@ -1,0 +1,7 @@
+#!/bin/zsh
+# macOS 앱 아이콘에서 프로젝트의 검증된 Terminal 런처를 연다.
+set -euo pipefail
+
+EXECUTABLE_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$EXECUTABLE_DIR/../../.." && pwd)"
+open -a Terminal "$PROJECT_DIR/ROBOM_FlowScalper.command"

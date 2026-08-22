@@ -1,0 +1,41 @@
+{
+  "observed_at": "2026-08-22T21:57:07+09:00",
+  "physical_volume": {
+    "path": "/Volumes/One Touch",
+    "device": "/dev/disk4s2",
+    "filesystem": "ExFAT",
+    "size_bytes": 4000575389696,
+    "free_bytes": 1771513839616
+  },
+  "workspace_image": {
+    "path": "/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/ROBOM_FlowScalper_Workspace.sparsebundle",
+    "image_type": "sparse bundle disk image",
+    "mounted_path": "/Volumes/ROBOM_FLOWSCALPER",
+    "mounted_device": "/dev/disk8s1",
+    "filesystem": "APFS",
+    "volume_uuid": "CFA4ACD9-40F2-4825-845E-137F76AA1C62",
+    "size_bytes": 34149982208,
+    "free_bytes": 32870580224
+  },
+  "canonical_workspace": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매",
+  "canonical_project": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822",
+  "internal_compatibility_symlink": {
+    "path": "/Users/runner706/Documents/ChatGPT/자동매매",
+    "target": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매"
+  },
+  "moved_inputs": {
+    "directory": "/Volumes/ROBOM_FLOWSCALPER/00_INPUTS",
+    "download_candidates_remaining": 0,
+    "v0_1_zip_sha256": "74c45412645b02a598a29d9aebc8b00111e4bda8a731f9734bbca30989d1a220",
+    "v0_2_upgrade_zip_sha256": "b48dcadfe3654f003fa3530ea8956c2d1fca809676147c5d2be5d1f82d673237"
+  },
+  "external_launcher": "/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/START_ROBOM_FlowScalper.command",
+  "validation": {
+    "git_fsck": "PASS",
+    "external_backend_baseline": "PASS",
+    "launcher_shell_syntax": "PASS",
+    "launcher_volume_uuid_match": "PASS",
+    "source_removed_after_verified_move": true,
+    "canonical_work_continues_on_external_apfs": true
+  }
+}

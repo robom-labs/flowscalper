@@ -31,6 +31,8 @@ Generated from the locked local environment on 2026-08-22. The authoritative com
 |---|---:|---|
 | React | 19.2.8 | MIT |
 | React DOM | 19.2.8 | MIT |
+| Lightweight Charts | 5.2.1 | Apache-2.0 |
+| fancy-canvas | 2.1.0 | MIT |
 | Vite | 8.2.2 | MIT |
 | @vitejs/plugin-react | 6.1.0 | MIT |
 
@@ -54,4 +56,4 @@ Generated from the locked local environment on 2026-08-22. The authoritative com
 | typescript-eslint | 8.67.0 | MIT |
 | Vitest | 4.1.11 | MIT |
 
-The application does not bundle an exchange SDK or a remote telemetry SDK. The production browser bundle contains React and application code; testing tools are not required by the normal Python runtime.
+The application does not bundle an exchange SDK or a remote telemetry SDK. The production browser bundle contains React, React DOM, scheduler, Lightweight Charts, fancy-canvas and application code; testing tools are not required by the normal Python runtime. Redistributed runtime license texts are in `THIRD_PARTY_LICENSES/`.

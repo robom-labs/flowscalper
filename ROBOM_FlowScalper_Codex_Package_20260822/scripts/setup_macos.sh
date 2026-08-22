@@ -7,8 +7,14 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
 command -v uv >/dev/null || { echo "uv가 필요합니다: https://docs.astral.sh/uv/"; exit 1; }
+command -v node >/dev/null || { echo "Node.js 22.13 이상 또는 24 이상이 필요합니다."; exit 1; }
 command -v pnpm >/dev/null || { echo "pnpm이 필요합니다: https://pnpm.io/installation"; exit 1; }
+node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (!((major === 22 && minor >= 13) || major >= 24)) process.exit(1)' || {
+  echo "Node.js 22.13 이상 또는 24 이상이 필요합니다."
+  exit 1
+}
 
+export UV_LINK_MODE="${UV_LINK_MODE:-copy}"
 uv sync --frozen --all-groups
 pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend build
