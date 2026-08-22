@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>FlowScalper Wave 06 design comparison</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 18px; color: #dfeaf2; background: #050c11; font-family: -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif; }
+      h1 { margin: 0 0 14px; font-size: 20px; }
+      .comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      figure { margin: 0; min-width: 0; border: 1px solid #244654; border-radius: 10px; overflow: hidden; background: #08151c; }
+      figcaption { padding: 9px 12px; color: #68d8c4; font-size: 13px; font-weight: 800; letter-spacing: .06em; }
+      img { display: block; width: 100%; height: auto; border-top: 1px solid #18333e; }
+      .note { margin: 12px 0 0; color: #91a9b5; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>동일 상태 전체화면 비교 · OFFLINE DEMO PAPER · 데스크톱</h1>
+    <div class="comparison">
+      <figure>
+        <figcaption>SOURCE VISUAL TRUTH · 2806 × 1424</figcaption>
+        <img src="file:///var/folders/qn/2pmsy6s14ss1swss6c965cxc0000gn/T/codex-clipboard-4b8fba08-4404-4a4d-bad5-bf7c419c4a6b.png" alt="사용자가 제공한 FlowScalper 기준 화면" />
+      </figure>
+      <figure>
+        <figcaption>IMPLEMENTATION · 2816 × 1428</figcaption>
+        <img src="screenshots/wave06-dashboard-desktop.png" alt="Wave 06 브라우저 구현 화면" />
+      </figure>
+    </div>
+    <p class="note">원본과 구현은 모두 약 1408 × 714 CSS viewport의 2배 밀도 캡처다. 구현은 v0.2 기능을 위해 전략 탭, 시간구간 선택, TP2, 실제 캔들·호가 레이어를 추가했다.</p>
+  </body>
+</html>

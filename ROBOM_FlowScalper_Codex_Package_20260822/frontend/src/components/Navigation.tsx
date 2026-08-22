@@ -1,8 +1,9 @@
-// 여섯 사용자 화면을 키보드로 접근 가능한 탭 형태로 제공한다.
+// 일곱 사용자 화면을 키보드로 접근 가능한 탭 형태로 제공한다.
 import type { PageId } from '../types'
 
 const items: { id: PageId; label: string }[] = [
   { id: 'live', label: '라이브' },
+  { id: 'strategies', label: '전략' },
   { id: 'history', label: '거래내역' },
   { id: 'replay', label: '리플레이' },
   { id: 'performance', label: '성과분석' },
@@ -29,4 +30,3 @@ export function Navigation({ page, onChange }: Props) {
     </nav>
   )
 }
-

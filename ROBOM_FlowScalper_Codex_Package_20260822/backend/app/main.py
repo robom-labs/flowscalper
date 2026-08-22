@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -203,6 +203,22 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
         if active_runtime.ledger is None:
             return []
         return active_runtime.ledger.list_replay_runs()
+
+    @app.get("/api/replay/{run_id}/timeline")
+    async def replay_timeline(
+        run_id: str,
+        symbol: str | None = Query(
+            default=None,
+            min_length=3,
+            max_length=30,
+            pattern=r"^[A-Za-z0-9]+$",
+        ),
+        limit: int = Query(default=2_000, ge=1, le=2_000),
+    ) -> dict[str, object]:
+        try:
+            return active_runtime.replay_timeline(run_id, symbol=symbol, limit=limit)
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.post("/api/replay/{run_id}")
     async def replay_run(run_id: str, request: ReplayRequest) -> dict[str, object]:

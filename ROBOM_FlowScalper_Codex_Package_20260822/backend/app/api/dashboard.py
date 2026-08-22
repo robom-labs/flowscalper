@@ -23,6 +23,7 @@ def build_dashboard_snapshot(
     chart_symbol: str | None = None,
     chart_interval_seconds: int = 1,
     runtime_diagnostics: Mapping[str, object] | None = None,
+    scanner_rows: tuple[Mapping[str, object], ...] | None = None,
     strategies: tuple[Mapping[str, object], ...] = (),
     shadow_accounts: tuple[Mapping[str, object], ...] = (),
     current_position: Mapping[str, object] | None = None,
@@ -87,12 +88,22 @@ def build_dashboard_snapshot(
                 "calibration": "CALIBRATING",
             }
         )
+    if scanner_rows is not None:
+        scanner = [dict(row) for row in scanner_rows]
     depth_events = [event for event in events if event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}]
     selected = (
         depth_events[-1]
         if depth_events
         else latest_by_symbol.get("SOLUSDT") or (events[-1] if events else None)
     )
+    if chart_symbol is not None:
+        selected_events = [
+            event
+            for event in quoted_events
+            if event.symbol == chart_symbol
+        ]
+        if selected_events:
+            selected = selected_events[-1]
     chart = _chart_points(selected, events, fixture_mode=fixture_mode)
     if chart_symbol is not None:
         chart["symbol"] = chart_symbol
@@ -112,6 +123,8 @@ def build_dashboard_snapshot(
             "planned_entry": str(entry),
             "actual_entry": str(entry + Decimal("0.01")),
             "take_profit": str(entry + Decimal("0.75")),
+            "take_profit_1": str(entry + Decimal("0.45")),
+            "take_profit_2": str(entry + Decimal("0.75")),
             "initial_stop": str(entry - Decimal("0.45")),
             "quantity": "0.869",
             "notional": str((entry * Decimal("0.869")).quantize(Decimal("0.01"))),
@@ -220,6 +233,11 @@ def _history_rows(
                 "side": str(trade["side"]),
                 "entry": str(trade["entry_price"]),
                 "exit": str(trade["exit_price"]),
+                "entry_ts_ms": int(str(trade["entry_ts_ms"])),
+                "exit_ts_ms": int(str(trade["exit_ts_ms"])),
+                "initial_stop": str(trade.get("initial_stop", "—")),
+                "take_profit": str(trade.get("take_profit", "—")),
+                "quantity": str(trade.get("quantity", "—")),
                 "exit_reason": str(trade["exit_reason"]),
                 "gross_pnl": str(trade["gross_pnl_usdt"]),
                 "fees": str(trade["fees_usdt"]),
@@ -242,6 +260,11 @@ def _history_rows(
             "side": "LONG",
             "entry": "100.10",
             "exit": "101.90",
+            "entry_ts_ms": 1_721_000_001_000,
+            "exit_ts_ms": 1_721_000_185_000,
+            "initial_stop": "99.65",
+            "take_profit": "101.85",
+            "quantity": "0.869",
             "exit_reason": "TAKE_PROFIT",
             "gross_pnl": "1.80",
             "fees": "0.1212",
@@ -347,7 +370,8 @@ def _chart_points(
         "points": points,
         "lines": {
             "entry": entry if fixture_mode and points else None,
-            "take_profit": entry + 0.75 if fixture_mode and points else None,
+            "take_profit": entry + 0.45 if fixture_mode and points else None,
+            "take_profit_2": entry + 0.75 if fixture_mode and points else None,
             "stop": entry - 0.45 if fixture_mode and points else None,
         },
         "fixture": is_fixture,

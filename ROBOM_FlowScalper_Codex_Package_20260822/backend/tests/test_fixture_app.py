@@ -71,7 +71,12 @@ def test_dashboard_controls_preserve_run_history() -> None:
     client = TestClient(create_app(runtime))
 
     dashboard = client.get("/api/dashboard").json()
-    assert dashboard["chart"]["lines"].keys() == {"entry", "take_profit", "stop"}
+    assert dashboard["chart"]["lines"].keys() == {
+        "entry",
+        "take_profit",
+        "take_profit_2",
+        "stop",
+    }
     assert dashboard["position"]["elapsed_seconds"] == 121
     assert dashboard["status"]["market_data_state"] == "FIXTURE"
 
@@ -241,6 +246,7 @@ async def test_live_status_requires_verified_event_and_failover_starts_new_run()
     assert dashboard["chart"]["lines"] == {
         "entry": None,
         "take_profit": None,
+        "take_profit_2": None,
         "stop": None,
     }
     assert all(row["status"] == "CALIBRATING" for row in dashboard["scanner"])

@@ -190,6 +190,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-22: ADR-002에 따라 v0.2 기본 상태를 READY로 바꾸고, fixture는 DEMO 전용 Run으로 격리하며, A/B/C/D Registry와 지속 공개 WebSocket supervisor를 공통 런타임에 연결한다.
 - 2026-08-22: ADR-003에 따라 모든 적격 신호를 불변 CandidatePlan으로 고정한 뒤 지연된 실행가능 호가에서 main과 전략별 BASE·STRESS shadow를 동일하게 체결한다.
 - 2026-08-22: ADR-004에 따라 공개시장 이벤트를 Run 범위 불변 원장에 배치 저장하고 동일 A/B/C/D·PAPER 런타임으로 checksum 리플레이하며, 전략별 기대값·PF·비용·낙폭·표본상태를 함께 계산한다.
+- 2026-08-22: ADR-005에 따라 v0.2는 기존 SVG 관찰 차트를 Lightweight Charts 실제 candle·bid·ask·microprice로 교체하고, 일곱 한국어 화면을 같은 backend 원장·ReplayEngine·Strategy Registry에 연결한다.
 
 ## v0.2 upgrade progress
 
@@ -201,7 +202,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 | Upgrade 03 | COMPLETE | 백엔드 71 PASS, ruff/mypy PASS, 실제 Binance LIVE에서 A/B/C/D 2,296회 평가·latest 80 경로 전부 보수적 REJECTED·가짜 TP 확률 0, 전략별 BASE/STRESS shadow 계좌 8개 격리 PASS | 없음 | 불변 계획·체결·포지션 연결 |
 | Upgrade 04 | COMPLETE | 백엔드 75 PASS, frontend 2 PASS, ruff/mypy/ESLint/TypeScript/build/security PASS. 불변 plan·250/500ms 지연·실제 ask/bid·부분 진입·TP1/TP2·main 1개·shadow 격리·120초 초과 유지·edge decay·실시간 순손익 PASS. 실제 Binance 61,937 events, 평가 5,360회, 자연 적격신호·거래 0, reconnect/gap/drop 0, auth·실제주문 false | 없음 | 원장·리플레이·분석 연결 |
 | Upgrade 05 | COMPLETE | 백엔드 81 PASS, frontend 2 PASS, lint/typecheck/build/security PASS. schema v3 migration·시장 이벤트 checksum·캔들·후보·main/shadow 실제 원장·HTTP replay/analytics PASS. 실제 Binance 50종목 21,620 events·53 candles 저장, 두 replay 21,620건·3,224 전략평가·적격/거래 0·checksum 일치, auth/실제주문 false | 없음 | 한국어 UI와 실제 차트 구현 |
-| Upgrade 06 | PENDING | - | 없음 | 한국어 UI와 실제 차트 구현 |
+| Upgrade 06 | COMPLETE | 백엔드 82 PASS, frontend 2 PASS, ruff/mypy/ESLint/TypeScript/build/security PASS, Playwright 데스크톱·태블릿·모바일 3 PASS·console/page error 0·48px controls·root overflow 0. 실제 candle·bid·ask·microprice와 entry·TP1·TP2·SL·체결 marker, A/B/C/D 제어, 거래원장, backend replay, 전략별 성과 화면 및 디자인 비교 PASS | 없음 | 복구·soak·보안 검증 |
 | Upgrade 07 | PENDING | - | 없음 | 복구·soak·보안 검증 |
 | Upgrade 08 | PENDING | - | 없음 | 최종 증거와 릴리스 |
 

@@ -1,0 +1,100 @@
+{
+  "observed_at": "2026-08-22T20:23:47+09:00",
+  "runtime": "isolated OFFLINE DEMO PAPER server on 127.0.0.1:8876",
+  "production_port_8765_touched": false,
+  "frontend": {
+    "framework": "React",
+    "chart_library": "lightweight-charts 5.2.1",
+    "pages": [
+      "live",
+      "strategies",
+      "history",
+      "replay",
+      "performance",
+      "risk",
+      "system"
+    ],
+    "chart_layers": [
+      "candles",
+      "bid",
+      "ask",
+      "microprice",
+      "entry",
+      "TP1",
+      "TP2",
+      "SL",
+      "paper fill markers",
+      "paper exit markers"
+    ]
+  },
+  "validation": {
+    "backend_pytest": "82 passed",
+    "frontend_vitest": "2 passed",
+    "ruff": "PASS",
+    "mypy_strict": "PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "PASS",
+    "security_scan": "PASS, 85 source files, 0 violations, real_order_path false",
+    "paper_build_invariant": "PASS",
+    "playwright": "3 passed",
+    "browser_console_errors": 0,
+    "browser_page_errors": 0,
+    "document_root_horizontal_overflow": false,
+    "visible_button_and_select_min_height_px": 48,
+    "design_qa": "passed"
+  },
+  "viewports": [
+    {
+      "name": "desktop",
+      "css": "1408x714",
+      "device_scale_factor": 2,
+      "capture_pixels": "2816x1428"
+    },
+    {
+      "name": "tablet",
+      "css": "820x1180",
+      "device_scale_factor": 1,
+      "capture_pixels": "820x2541 full page"
+    },
+    {
+      "name": "mobile",
+      "css": "390x844",
+      "device_scale_factor": 1,
+      "capture_pixels": "390x2933 full page"
+    }
+  ],
+  "primary_interactions": [
+    "PAPER pause and resume",
+    "scanner symbol selection",
+    "1s and 5s interval selection",
+    "strategy ACTIVE and SHADOW mode",
+    "strategy LONG gate",
+    "ledger trade detail",
+    "backend ReplayEngine execution",
+    "replay event step",
+    "performance and risk navigation",
+    "advanced diagnostics expansion"
+  ],
+  "screenshots": {
+    "dashboard_desktop": "66f6f5777e2d9bb781d7f1e04f1efd9da9062e62dda2c3b081251a75d91151c5",
+    "dashboard_tablet": "62449852224cbff2df2d04639e222cb8559883f1e8dc10e13693c8c0857e3bea",
+    "dashboard_mobile": "f139dba8c0da8b5ada83b3bf8286cdbe14c0491bd6d826d2c60d4b47aa19817f",
+    "strategies_desktop": "b4fd4eff49ebecf355b1a9c09c6dcb2e2dc27d63350dff063530c12a5ba94c74",
+    "history_desktop": "2d493774842fffc26c321718e7b09cc294788a2c4213000a6f22aab0a2f5be7f",
+    "replay_desktop": "b93c19c78642bc4da6e7b3433697c6fd5c505ee0d1179a6bf8523fde50da1d10",
+    "performance_desktop": "1d5a4a89e1c35d917e98b4c877eaaea83e60b3460c850e894ed63873f83d8fd3",
+    "risk_desktop": "01622db3454ba099b8c58308938c5f3c593fb63a526bb5002c514b9d2dad93eb",
+    "system_desktop": "dfe0b5cee37a79c7255d574fc1ab264296c404a8c9153ad88f6bbf4be92cdc93",
+    "system_diagnostics_desktop": "689e6ed67bf6f7a57876f2bdef342b6d47a8748c1d6a514fcaa576593c51fcaf",
+    "source_implementation_full": "db575a7249d2f732d9f38b80a6d583872459ba9d934567aade76241447eabedb",
+    "source_implementation_focused": "d413935790a29502f2e6607c41cdd7fc2c760379d0bece2355b3b360f263dc82"
+  },
+  "safety": {
+    "paper_only": true,
+    "real_order_path": false,
+    "private_api_path": false,
+    "credential_input": false,
+    "offline_demo_separated_from_live": true
+  }
+}

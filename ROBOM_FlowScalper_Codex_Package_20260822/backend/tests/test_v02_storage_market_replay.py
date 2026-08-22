@@ -15,6 +15,7 @@ from backend.app.analytics.reports import TradeAnalytics
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
 from backend.app.main import create_app
+from backend.app.market_data.supervisor import ProviderSelection
 from backend.app.replay.market import StoredMarketReplay
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
@@ -360,6 +361,16 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     replay = client.post(f"/api/replay/{runtime.run_id}", json={})
     assert replay.status_code == 200
     assert replay.json()["event_count"] == 1
+    timeline = client.get(f"/api/replay/{runtime.run_id}/timeline")
+    assert timeline.status_code == 200
+    assert timeline.json()["symbol"] == "BTCUSDT"
+    assert timeline.json()["total_events"] == 1
+    assert timeline.json()["events"][0]["event_id"] == "api-depth"
+    assert timeline.json()["available_symbols"] == [
+        {"symbol": "BTCUSDT", "event_count": 1}
+    ]
+    missing_timeline = client.get("/api/replay/unknown/timeline")
+    assert missing_timeline.status_code == 404
     results = client.get("/api/replay/results")
     assert results.status_code == 200
     assert results.json()[0]["checksum"] == replay.json()["checksum"]
@@ -367,3 +378,32 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     assert analytics.status_code == 200
     assert len(analytics.json()) == 8
     ledger.close()
+
+
+def test_live_scanner_uses_actual_strategy_decision_without_fake_score() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-scanner",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    runtime.live_selection = ProviderSelection(
+        venue=Venue.BINANCE_USDM,
+        instruments={},
+        tickers={},
+        wide_symbols=("BTCUSDT",),
+        deep_symbols=("BTCUSDT",),
+        bootstrap_events=(),
+    )
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="scanner-depth", ts_ms=1_000)
+    )
+
+    scanner = runtime.dashboard()["scanner"]
+    assert isinstance(scanner, list)
+    assert len(scanner) == 1
+    assert scanner[0]["symbol"] == "BTCUSDT"
+    assert scanner[0]["score"] is None
+    assert scanner[0]["status"] in {"QUALIFIED", "REJECTED"}
+    assert scanner[0]["reason_codes"]
+    assert scanner[0]["strategy"] != "WARMUP"

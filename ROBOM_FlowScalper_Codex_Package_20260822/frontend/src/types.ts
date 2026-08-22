@@ -1,5 +1,12 @@
 // 대시보드 API와 React 화면 사이의 타입 계약을 정의한다.
-export type PageId = 'live' | 'history' | 'replay' | 'performance' | 'risk' | 'system'
+export type PageId =
+  | 'live'
+  | 'strategies'
+  | 'history'
+  | 'replay'
+  | 'performance'
+  | 'risk'
+  | 'system'
 
 export type SystemStatus = {
   mode: 'READY' | 'LIVE_SHADOW_PAPER' | 'DEMO_FIXTURE' | 'REPLAY'
@@ -36,6 +43,7 @@ export type ScannerRow = {
   data_health: string
   status: string
   reason: string
+  reason_codes?: string[]
   calibration: 'CALIBRATING'
 }
 
@@ -62,7 +70,12 @@ export type ChartData = {
     volume: number
     trade_count: number
   }[]
-  lines: { entry: number | null; take_profit: number | null; stop: number | null }
+  lines: {
+    entry: number | null
+    take_profit: number | null
+    take_profit_2?: number | null
+    stop: number | null
+  }
   fixture: boolean
 }
 
@@ -75,8 +88,12 @@ export type CurrentPosition = {
   planned_entry: string
   actual_entry: string
   take_profit: string
+  take_profit_1?: string
+  take_profit_2?: string | null
   initial_stop: string
+  current_stop?: string
   quantity: string
+  remaining_quantity?: string
   notional: string
   risk_budget: string
   maximum_planned_loss: string
@@ -85,9 +102,10 @@ export type CurrentPosition = {
   fees: string
   slippage: string
   elapsed_seconds: number
-  expected_resolution: string
-  health: Record<string, number>
+  expected_resolution?: string
+  health?: Record<string, number>
   management_reason: string
+  management_policy?: string[]
 }
 
 export type LogItem = {
@@ -105,6 +123,11 @@ export type HistoryRow = {
   side: string
   entry: string
   exit: string
+  entry_ts_ms: number
+  exit_ts_ms: number
+  initial_stop: string
+  take_profit: string
+  quantity: string
   exit_reason: string
   gross_pnl: string
   fees: string
@@ -130,6 +153,42 @@ export type StrategyRow = {
   qualified_paths: number
   latest_status: string
   latest_reasons: string[]
+  performance: Record<'BASE' | 'STRESS', StrategyPerformance>
+}
+
+export type StrategyPerformance = {
+  strategy_id: string
+  profile: 'BASE' | 'STRESS'
+  sample_size: number
+  wins: number
+  losses: number
+  win_rate: number | null
+  win_rate_ci95: [number, number] | null
+  average_win_usdt: string | null
+  average_loss_usdt: string | null
+  payoff_ratio: string | null
+  expectancy_usdt: string | null
+  expectancy_r: string | null
+  expectancy_bps: string | null
+  profit_factor: string | null
+  gross_pnl: string
+  fees: string
+  slippage: string
+  net_pnl: string
+  cost_burden: string | null
+  maximum_drawdown: string
+  median_hold_ms: number | null
+  p90_hold_ms: number | null
+  sample_status: string
+  sample_span_days: number
+  regime_count: number
+  regimes: string[]
+  symbols: string[]
+  sides: Record<'LONG' | 'SHORT', number>
+  stress_verified: boolean
+  recommendation: string
+  recommendation_is_advisory: true
+  windows: Record<string, Record<string, unknown>>
 }
 
 export type ShadowAccount = {
@@ -166,4 +225,54 @@ export type DashboardData = {
     immutable_run: boolean
   }
   system: Record<string, string | number | boolean>
+}
+
+export type ReplayRun = {
+  run_id: string
+  mode: string
+  venue: string
+  started_ts_ms: number
+  finalized_ts_ms: number | null
+  market_event_count: number
+  trade_count: number
+  shadow_trade_count: number
+}
+
+export type ReplayResult = {
+  replay_id: string
+  source_run_id: string
+  created_ts_ms: number
+  checksum: string
+  event_count: number
+  first_ts_ms: number | null
+  last_ts_ms: number | null
+  event_type_counts: Record<string, number>
+  symbol_counts: Record<string, number>
+  strategy_evaluation_count: number
+  qualified_signal_count: number
+  candidate_plan_count: number
+  main_trade_count: number
+  shadow_trade_count: number
+  decision_path: string[]
+  final_state: string
+  real_orders_enabled: false
+  auth_required: false
+}
+
+export type ReplayMarketEvent = {
+  event_id: string
+  symbol: string
+  event_type: string
+  venue_ts_ms: number
+  data: Record<string, string | number | boolean | unknown[]>
+}
+
+export type ReplayTimeline = {
+  run_id: string
+  symbol: string | null
+  total_events: number
+  truncated: boolean
+  available_symbols: { symbol: string; event_count: number }[]
+  events: ReplayMarketEvent[]
+  candles: ChartData['candles']
 }

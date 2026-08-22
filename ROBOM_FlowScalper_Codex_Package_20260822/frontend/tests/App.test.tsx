@@ -1,13 +1,17 @@
 // 대시보드가 PAPER 안전 문구를 영구 표시하는지 검증한다.
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from '../src/App'
 import { initialDashboard } from '../src/demoData'
 
 class FakeWebSocket extends EventTarget {
   close() {}
 }
+
+beforeEach(() => {
+  vi.stubGlobal('scrollTo', vi.fn())
+})
 
 afterEach(() => {
   cleanup()
@@ -33,6 +37,7 @@ test('navigates all workflows while keeping the paper banner', async () => {
   vi.stubGlobal('WebSocket', FakeWebSocket)
   render(<App />)
   for (const [button, heading] of [
+    ['전략', '전략 관리'],
     ['거래내역', '거래내역'],
     ['리플레이', '결정적 리플레이'],
     ['성과분석', '성과분석'],

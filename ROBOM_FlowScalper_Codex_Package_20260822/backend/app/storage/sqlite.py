@@ -574,6 +574,25 @@ class SQLiteLedger:
             result.append(decoded)
         return result
 
+    def market_event_symbols(self, run_id: str) -> list[dict[str, object]]:
+        """저장 Run의 종목별 이벤트 수를 리플레이 선택용으로 반환한다."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT symbol, COUNT(*) AS event_count
+                FROM market_events
+                WHERE run_id = ?
+                GROUP BY symbol
+                ORDER BY event_count DESC, symbol
+                """,
+                (run_id,),
+            ).fetchall()
+        return [
+            {"symbol": str(row["symbol"]), "event_count": int(row["event_count"])}
+            for row in rows
+        ]
+
     def record_candles(self, candles: Sequence[Mapping[str, object]]) -> int:
         if not candles:
             return 0

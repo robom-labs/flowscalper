@@ -580,6 +580,72 @@ class PaperRuntime:
         )
         return result.as_dict()
 
+    def replay_timeline(
+        self,
+        source_run_id: str,
+        *,
+        symbol: str | None = None,
+        limit: int = 2_000,
+    ) -> dict[str, object]:
+        """저장된 공개시장 이벤트와 실제 집계 캔들을 UI 재생 프레임으로 제공한다."""
+
+        if self.ledger is None:
+            raise ValueError("영속 원장이 없어 리플레이할 수 없습니다.")
+        if self.ledger.get_run(source_run_id) is None:
+            raise ValueError(f"저장 Run을 찾을 수 없습니다: {source_run_id}")
+        available_symbols = self.ledger.market_event_symbols(source_run_id)
+        selected_symbol = symbol.strip().upper() if symbol else None
+        if selected_symbol is None and available_symbols:
+            selected_symbol = str(available_symbols[0]["symbol"])
+        if selected_symbol is not None and selected_symbol not in {
+            str(row["symbol"]) for row in available_symbols
+        }:
+            raise ValueError(f"저장 Run에 없는 종목입니다: {selected_symbol}")
+        events = self.ledger.list_market_events(
+            source_run_id,
+            symbol=selected_symbol,
+            limit=limit,
+        )
+        stored_candles = (
+            self.ledger.list_candles(
+                source_run_id,
+                symbol=selected_symbol,
+                interval_seconds=1,
+            )
+            if selected_symbol is not None
+            else []
+        )
+        candles = [
+            {
+                "time": int(str(candle["open_ts_ms"])) // 1_000,
+                "open_ts_ms": int(str(candle["open_ts_ms"])),
+                "open": float(str(candle["open"])),
+                "high": float(str(candle["high"])),
+                "low": float(str(candle["low"])),
+                "close": float(str(candle["close"])),
+                "volume": float(str(candle["volume"])),
+                "trade_count": int(str(candle["trade_count"])),
+            }
+            for candle in stored_candles
+        ]
+        total_events = next(
+            (
+                int(str(row["event_count"]))
+                for row in available_symbols
+                if row["symbol"] == selected_symbol
+            ),
+            0,
+        )
+        return {
+            "run_id": source_run_id,
+            "symbol": selected_symbol,
+            "total_events": total_events,
+            "truncated": total_events > len(events),
+            "available_symbols": available_symbols,
+            "events": events,
+            "candles": candles,
+        }
+
     def candles(
         self,
         symbol: str | None = None,
@@ -608,6 +674,94 @@ class PaperRuntime:
     async def shutdown(self) -> None:
         await self.shutdown_supervisor()
         self._flush_persistence()
+
+    def _live_scanner_rows(self) -> tuple[dict[str, object], ...]:
+        """정밀 분석 종목의 실제 전략 판단과 비용을 확률 없이 UI 행으로 만든다."""
+
+        if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
+            return ()
+        deep_symbols = (
+            self.live_selection.deep_symbols if self.live_selection is not None else ()
+        )
+        unsorted: list[dict[str, object]] = []
+        for symbol in deep_symbols:
+            feature = self.latest_features.get(symbol)
+            regime = self.latest_regimes.get(symbol)
+            signals = [
+                signal
+                for signal in self.strategy_signals.values()
+                if signal.symbol == symbol
+            ]
+            if feature is None or regime is None or not signals:
+                unsorted.append(
+                    {
+                        "rank": 0,
+                        "symbol": symbol,
+                        "depth": "DEEP",
+                        "regime": "WARMUP",
+                        "strategy": "분석 준비",
+                        "side": "NONE",
+                        "score": None,
+                        "net_rr": None,
+                        "expected_cost_bps": 0.0,
+                        "spread_bps": round(feature.spread_bps, 4) if feature else 0.0,
+                        "data_health": "HEALTHY"
+                        if feature and feature.data_healthy
+                        else "WARMUP",
+                        "status": "CALIBRATING",
+                        "reason": "실제 정밀 호가·체결 이력을 축적하는 중",
+                        "reason_codes": ["CALIBRATING"],
+                        "calibration": "CALIBRATING",
+                    }
+                )
+                continue
+            selected = min(
+                signals,
+                key=lambda signal: (
+                    signal.decision.status.value != "QUALIFIED",
+                    -float(signal.decision.net_reward_risk or Decimal(0)),
+                    float(signal.decision.expected_cost_bps),
+                    signal.decision.strategy_id,
+                    signal.decision.side.value,
+                ),
+            )
+            decision = selected.decision
+            reason_codes = list(decision.reason_codes or decision.rejection_codes)
+            unsorted.append(
+                {
+                    "rank": 0,
+                    "symbol": symbol,
+                    "depth": "DEEP",
+                    "regime": regime.value,
+                    "strategy": self.strategy_registry.descriptor(
+                        decision.strategy_id
+                    ).short_name,
+                    "side": decision.side.value,
+                    "score": None,
+                    "net_rr": float(decision.net_reward_risk)
+                    if decision.net_reward_risk is not None
+                    else None,
+                    "expected_cost_bps": float(decision.expected_cost_bps),
+                    "spread_bps": round(feature.spread_bps, 4),
+                    "data_health": "HEALTHY" if feature.data_healthy else "STALE",
+                    "status": decision.status.value,
+                    "reason": " · ".join(reason_codes)
+                    if reason_codes
+                    else "구조·체결흐름 조건 확인 중",
+                    "reason_codes": reason_codes,
+                    "calibration": decision.calibration_status,
+                }
+            )
+        ordered = sorted(
+            unsorted,
+            key=lambda row: (
+                row["status"] != "QUALIFIED",
+                -(float(str(row["net_rr"])) if row["net_rr"] is not None else -1.0),
+                float(str(row["expected_cost_bps"])),
+                str(row["symbol"]),
+            ),
+        )
+        return tuple({**row, "rank": rank} for rank, row in enumerate(ordered, 1))
 
     def dashboard(self) -> dict[str, object]:
         persisted_trades = (
@@ -712,6 +866,9 @@ class PaperRuntime:
             chart_symbol=self.selected_symbol,
             chart_interval_seconds=self.selected_interval_seconds,
             runtime_diagnostics=diagnostics,
+            scanner_rows=self._live_scanner_rows()
+            if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            else None,
             strategies=tuple(strategy_rows),
             shadow_accounts=tuple(self.paper_portfolio.shadow_rows()),
             current_position=current_position,
