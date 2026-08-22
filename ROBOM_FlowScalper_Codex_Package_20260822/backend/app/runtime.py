@@ -20,6 +20,7 @@ from backend.app.domain.models import (
     Venue,
 )
 from backend.app.domain.safety import assert_paper_only
+from backend.app.features import BookFrame, FeatureEngine, FeatureInputError, FeatureSnapshot
 from backend.app.live_public import (
     LiveBootstrapProbe,
     LivePublicBootstrapper,
@@ -32,7 +33,12 @@ from backend.app.market_data.supervisor import (
     PersistentPublicSupervisor,
     ProviderSelection,
 )
+from backend.app.regime import Regime, RegimeClassifier
 from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.strategies.base import CandidateDecision
+from backend.app.strategies.registry import StrategyMode, StrategyRegistry
+from backend.app.strategies.runtime_evaluator import EvaluatedSignal, StrategySignalEvaluator
+from backend.app.strategies.shadow import ShadowLedger
 
 
 @dataclass(slots=True)
@@ -60,9 +66,21 @@ class PaperRuntime:
     _supervisor: PersistentPublicSupervisor | None = field(
         default=None, init=False, repr=False
     )
+    strategy_registry: StrategyRegistry = field(default_factory=StrategyRegistry)
+    strategy_evaluator: StrategySignalEvaluator = field(default_factory=StrategySignalEvaluator)
+    regime_classifier: RegimeClassifier = field(default_factory=RegimeClassifier)
+    feature_engines: dict[str, FeatureEngine] = field(default_factory=dict)
+    latest_features: dict[str, FeatureSnapshot] = field(default_factory=dict)
+    latest_regimes: dict[str, Regime] = field(default_factory=dict)
+    strategy_signals: dict[tuple[str, str, str], EvaluatedSignal] = field(
+        default_factory=dict
+    )
+    strategy_evaluation_count: int = 0
+    shadow_ledger: ShadowLedger = field(init=False)
 
     def __post_init__(self) -> None:
         assert_paper_only(self.mode, os.environ)
+        self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
         if self.mode is RuntimeMode.READY:
             self.run_id = "ready"
             self.venue = Venue.NONE
@@ -256,12 +274,100 @@ class PaperRuntime:
                 buyer_is_aggressor=bool(event.data["buyer_is_aggressor"]),
             )
             self.candle_builder.add(trade)
+            feature_engine = self.feature_engines.get(event.symbol)
+            if feature_engine is not None:
+                feature_engine.ingest_trade(trade)
+        elif event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}:
+            self._evaluate_book_event(event)
         if event.event_type == "HEALTH" or not event.quality.sequence_valid:
             self.paused = True
             if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
                 self.runtime_health_flags.append("ENTRY_LOCK_DATA_HEALTH")
         if self._supervisor is not None:
             self.processing_lag_p95_ms = self._supervisor.telemetry.lag_p95_ms
+
+    def _evaluate_book_event(self, event: MarketEvent) -> None:
+        bids_value = event.data.get("bids")
+        asks_value = event.data.get("asks")
+        bids = (
+            tuple((Decimal(str(row[0])), Decimal(str(row[1]))) for row in bids_value)
+            if isinstance(bids_value, list)
+            else ((Decimal(str(event.data["bid"])), Decimal(str(event.data["bid_qty"]))),)
+        )
+        asks = (
+            tuple((Decimal(str(row[0])), Decimal(str(row[1]))) for row in asks_value)
+            if isinstance(asks_value, list)
+            else ((Decimal(str(event.data["ask"])), Decimal(str(event.data["ask_qty"]))),)
+        )
+        engine = self.feature_engines.setdefault(event.symbol, FeatureEngine())
+        try:
+            engine.ingest_book(
+                BookFrame.from_levels(
+                    venue=event.venue,
+                    symbol=event.symbol,
+                    ts_ms=event.venue_ts_ms,
+                    bids=bids,
+                    asks=asks,
+                    sequence_valid=event.quality.sequence_valid,
+                    stale=event.quality.is_stale,
+                    lag_ms=event.quality.lag_ms or 0.0,
+                )
+            )
+            snapshot = engine.snapshot()
+        except (FeatureInputError, KeyError, IndexError, ValueError) as error:
+            self.paused = True
+            if "ENTRY_LOCK_FEATURE_INPUT" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("ENTRY_LOCK_FEATURE_INPUT")
+            self._log("MARKET_DATA", f"{event.symbol} 피처 입력 거부 · {type(error).__name__}")
+            return
+        regime = self.regime_classifier.classify(snapshot)
+        self.latest_features[event.symbol] = snapshot
+        self.latest_regimes[event.symbol] = regime
+        instrument = (
+            self.live_selection.instruments.get(event.symbol)
+            if self.live_selection is not None
+            else None
+        )
+        tick_size = instrument.tick_size if instrument is not None else Decimal("0.00000001")
+        signals = self.strategy_evaluator.evaluate(
+            self.strategy_registry,
+            snapshot,
+            regime,
+            tick_size=tick_size,
+        )
+        self.strategy_evaluation_count += len(signals)
+        for signal in signals:
+            key = (
+                signal.symbol,
+                signal.decision.strategy_id,
+                signal.decision.side.value,
+            )
+            self.strategy_signals[key] = signal
+
+    def configure_strategy(
+        self,
+        strategy_id: str,
+        *,
+        mode: StrategyMode,
+        long_enabled: bool,
+        short_enabled: bool,
+    ) -> None:
+        self.strategy_registry.configure(
+            strategy_id,
+            mode=mode,
+            long_enabled=long_enabled,
+            short_enabled=short_enabled,
+        )
+        self._log(
+            "STRATEGY",
+            f"{strategy_id} {mode.value} · LONG {long_enabled} · SHORT {short_enabled}",
+        )
+
+    def strategy_decisions(self) -> tuple[CandidateDecision, ...]:
+        return tuple(
+            signal.decision
+            for _, signal in sorted(self.strategy_signals.items(), key=lambda item: item[0])
+        )
 
     def candles(
         self,
@@ -341,6 +447,30 @@ class PaperRuntime:
                 "entry_locked": self.paused,
             }
         )
+        strategy_rows: list[dict[str, object]] = []
+        for row in self.strategy_registry.rows():
+            strategy_id = str(row["strategy_id"])
+            signals = [
+                signal
+                for signal in self.strategy_signals.values()
+                if signal.decision.strategy_id == strategy_id
+            ]
+            latest = max(signals, key=lambda item: item.decision.expected_cost_bps, default=None)
+            strategy_rows.append(
+                {
+                    **row,
+                    "evaluated_paths": len(signals),
+                    "qualified_paths": sum(
+                        signal.decision.status.value == "QUALIFIED" for signal in signals
+                    ),
+                    "latest_status": latest.decision.status.value if latest else "WAITING_DATA",
+                    "latest_reasons": list(
+                        latest.decision.reason_codes or latest.decision.rejection_codes
+                    )
+                    if latest
+                    else [],
+                }
+            )
         return build_dashboard_snapshot(
             self.status(),
             self.events,
@@ -354,6 +484,8 @@ class PaperRuntime:
             chart_symbol=self.selected_symbol,
             chart_interval_seconds=self.selected_interval_seconds,
             runtime_diagnostics=diagnostics,
+            strategies=tuple(strategy_rows),
+            shadow_accounts=tuple(self.shadow_ledger.rows()),
             storage_label="SQLite transactional ledger"
             if self.ledger is not None
             else "fixture memory",
@@ -393,6 +525,7 @@ class PaperRuntime:
         self.venue = Venue.BINANCE_USDM
         self.market_data_state = MarketDataState.DISCONNECTED
         self._events.clear()
+        self._reset_research_state()
         self.paused = True
         self.position_visible = False
         self.unrealized_pnl_usdt = 0.0
@@ -413,6 +546,7 @@ class PaperRuntime:
         self.venue = Venue.FIXTURE
         self.market_data_state = MarketDataState.FIXTURE
         self._events.clear()
+        self._reset_research_state()
         self.paused = False
         self.position_visible = True
         self.unrealized_pnl_usdt = 0.0
@@ -436,6 +570,7 @@ class PaperRuntime:
             )
         self.run_id = f"run-{uuid4().hex[:12]}"
         self._events.clear()
+        self._reset_research_state()
         self.paused = False
         self.position_visible = True
         if self.ledger is not None:
@@ -461,6 +596,16 @@ class PaperRuntime:
             finalized_ts_ms=self.clock.utc_ms(),
             summary={"reason": reason, "preserved": True},
         )
+
+    def _reset_research_state(self) -> None:
+        self.candle_builder = CandleBuilder()
+        self.feature_engines.clear()
+        self.latest_features.clear()
+        self.latest_regimes.clear()
+        self.strategy_signals.clear()
+        self.strategy_evaluator = StrategySignalEvaluator()
+        self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
+        self.strategy_evaluation_count = 0
 
     def _start_ledger_run(self) -> None:
         if self.ledger is None:
@@ -646,6 +791,7 @@ class PaperRuntime:
         self.run_id = f"run-{uuid4().hex[:12]}"
         self.venue = venue
         self._events.clear()
+        self._reset_research_state()
         self.wide_symbol_count = 0
         self.deep_symbol_count = 0
         if self.ledger is not None:

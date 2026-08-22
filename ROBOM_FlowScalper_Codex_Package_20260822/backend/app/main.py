@@ -20,6 +20,7 @@ from backend.app.clocks import SystemClock
 from backend.app.domain.models import RuntimeMode, Venue
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.strategies.registry import StrategyMode
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -30,6 +31,14 @@ class ChartSelectionRequest(BaseModel):
 
     symbol: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9]+$")
     interval_seconds: int
+
+
+class StrategyConfigurationRequest(BaseModel):
+    """전략의 main·shadow 참여와 양방향 허용을 명시적으로 변경한다."""
+
+    mode: StrategyMode
+    long_enabled: bool
+    short_enabled: bool
 
 
 def _local_browser_origin(origin: str | None) -> bool:
@@ -151,6 +160,22 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
             active_runtime.set_chart_selection(request.symbol, request.interval_seconds)
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+        return active_runtime.dashboard()
+
+    @app.post("/api/strategies/{strategy_id}")
+    async def configure_strategy(
+        strategy_id: str,
+        request: StrategyConfigurationRequest,
+    ) -> dict[str, object]:
+        try:
+            active_runtime.configure_strategy(
+                strategy_id,
+                mode=request.mode,
+                long_enabled=request.long_enabled,
+                short_enabled=request.short_enabled,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
         return active_runtime.dashboard()
 
     @app.post("/api/control/new-run")

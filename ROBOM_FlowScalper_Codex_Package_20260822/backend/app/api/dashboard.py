@@ -23,6 +23,8 @@ def build_dashboard_snapshot(
     chart_symbol: str | None = None,
     chart_interval_seconds: int = 1,
     runtime_diagnostics: Mapping[str, object] | None = None,
+    strategies: tuple[Mapping[str, object], ...] = (),
+    shadow_accounts: tuple[Mapping[str, object], ...] = (),
     storage_label: str = "fixture memory",
     api_host: str = "127.0.0.1:8765",
 ) -> dict[str, Any]:
@@ -153,6 +155,8 @@ def build_dashboard_snapshot(
             persisted_trades if history_trades is None else history_trades,
         ),
         "performance": _performance_rows(persisted_trades, fixture_mode=fixture_mode),
+        "strategies": [dict(row) for row in strategies],
+        "shadow_accounts": [dict(row) for row in shadow_accounts],
         "risk": {
             "risk_per_trade": "0.10%",
             "max_positions": 1,

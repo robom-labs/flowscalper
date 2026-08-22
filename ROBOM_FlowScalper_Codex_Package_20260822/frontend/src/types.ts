@@ -115,6 +115,36 @@ export type HistoryRow = {
   sample_type: string
 }
 
+export type StrategyRow = {
+  strategy_id: string
+  display_name_ko: string
+  short_name: string
+  summary_ko: string
+  stability: 'STABLE' | 'EXPERIMENTAL'
+  supported_regimes: string[]
+  paper_only: true
+  mode: 'ACTIVE' | 'SHADOW' | 'OFF'
+  long_enabled: boolean
+  short_enabled: boolean
+  evaluated_paths: number
+  qualified_paths: number
+  latest_status: string
+  latest_reasons: string[]
+}
+
+export type ShadowAccount = {
+  strategy_id: string
+  profile: 'BASE' | 'STRESS'
+  starting_equity_usdt: string
+  current_equity_usdt: string
+  realized_pnl_usdt: string
+  fees_usdt: string
+  slippage_usdt: string
+  maximum_drawdown_usdt: string
+  closed_trades: number
+  open_position: string | null
+}
+
 export type DashboardData = {
   status: SystemStatus
   paused: boolean
@@ -123,6 +153,8 @@ export type DashboardData = {
   position: CurrentPosition | null
   logs: LogItem[]
   history: HistoryRow[]
+  strategies: StrategyRow[]
+  shadow_accounts: ShadowAccount[]
   performance: Record<string, string | number>
   risk: {
     risk_per_trade: string

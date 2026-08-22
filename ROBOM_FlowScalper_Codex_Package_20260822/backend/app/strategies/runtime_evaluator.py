@@ -1,0 +1,215 @@
+"""LIVE 피처를 A/B/C/D 전략 문맥으로 변환하되 현재값 이전 이력만 사용한다."""
+
+from __future__ import annotations
+
+from collections import defaultdict, deque
+from dataclasses import dataclass
+from decimal import Decimal
+
+from backend.app.domain.models import Side
+from backend.app.features import FeatureSnapshot
+from backend.app.regime import Regime
+from backend.app.strategies.base import CandidateDecision, PlanInputs
+from backend.app.strategies.compression_breakout import (
+    CompressionBreakoutContext,
+    CompressionBreakoutStrategy,
+)
+from backend.app.strategies.liquidity_sweep import (
+    LiquiditySweepContext,
+    LiquiditySweepStrategy,
+)
+from backend.app.strategies.ofi_pullback import OfiPullbackContext, OfiPullbackStrategy
+from backend.app.strategies.registry import StrategyRegistry
+from backend.app.strategies.statistics import robust_z, rolling_percentile
+from backend.app.strategies.vwap_exhaustion import (
+    VwapExhaustionContext,
+    VwapExhaustionStrategy,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluatedSignal:
+    symbol: str
+    regime: Regime
+    decision: CandidateDecision
+    main_eligible: bool
+    shadow_eligible: bool
+
+
+class StrategySignalEvaluator:
+    """전략별 평가를 동일 snapshot과 동일 비용 가정에서 결정적으로 실행한다."""
+
+    def __init__(self, history_limit: int = 1_200) -> None:
+        self._history: dict[str, deque[FeatureSnapshot]] = defaultdict(
+            lambda: deque(maxlen=history_limit)
+        )
+
+    def evaluate(
+        self,
+        registry: StrategyRegistry,
+        snapshot: FeatureSnapshot,
+        regime: Regime,
+        *,
+        tick_size: Decimal = Decimal("0.00000001"),
+    ) -> tuple[EvaluatedSignal, ...]:
+        history = list(self._history[snapshot.symbol])
+        results: list[EvaluatedSignal] = []
+        for strategy_id in registry.strategy_ids:
+            descriptor = registry.descriptor(strategy_id)
+            for side in Side:
+                if not registry.evaluation_enabled(strategy_id, side):
+                    continue
+                decision = self._evaluate_one(
+                    descriptor.evaluator,
+                    side,
+                    snapshot,
+                    regime,
+                    history,
+                    tick_size=tick_size,
+                )
+                results.append(
+                    EvaluatedSignal(
+                        symbol=snapshot.symbol,
+                        regime=regime,
+                        decision=decision,
+                        main_eligible=registry.main_enabled(strategy_id, side),
+                        shadow_eligible=registry.shadow_enabled(strategy_id, side),
+                    )
+                )
+        self._history[snapshot.symbol].append(snapshot)
+        return tuple(results)
+
+    def _evaluate_one(
+        self,
+        evaluator: object,
+        side: Side,
+        snapshot: FeatureSnapshot,
+        regime: Regime,
+        history: list[FeatureSnapshot],
+        *,
+        tick_size: Decimal,
+    ) -> CandidateDecision:
+        plan = _plan(snapshot, side, tick_size)
+        flow_history = [abs(item.signed_notional_3s) for item in history]
+        flow_z = abs(robust_z(flow_history, abs(snapshot.signed_notional_3s)))
+        deviation_bps = (snapshot.mid - snapshot.micro_vwap_10s) / snapshot.mid * 10_000
+        deviation_history = [
+            abs((item.mid - item.micro_vwap_10s) / item.mid * 10_000)
+            for item in history
+            if item.mid > 0
+        ]
+        deviation_z = abs(robust_z(deviation_history, abs(deviation_bps)))
+        price_response_history = [item.price_response_efficiency for item in history]
+        price_response_percentile = rolling_percentile(
+            price_response_history,
+            snapshot.price_response_efficiency,
+        )
+        compression_percentile = rolling_percentile(
+            [item.compression_ratio for item in history],
+            snapshot.compression_ratio,
+        )
+        efficiency_percentile = rolling_percentile(
+            [item.efficiency_ratio_30s for item in history],
+            snapshot.efficiency_ratio_30s,
+        )
+        direction = 1 if side is Side.LONG else -1
+        ofi_short = snapshot.ofi_250ms * direction
+        ofi_medium = snapshot.ofi_3s * direction
+        trade_flow = snapshot.trade_imbalance_3s * direction
+        microprice_alignment = (snapshot.microprice - snapshot.mid) * direction > 0
+        if isinstance(evaluator, LiquiditySweepStrategy):
+            sweep_context = LiquiditySweepContext(
+                side=side,
+                features=snapshot,
+                regime=regime,
+                plan=plan,
+                sweep_extension_noise_units=abs(deviation_bps)
+                / max(snapshot.spread_bps, 0.01),
+                aggressive_flow_robust_z=flow_z,
+                price_response_efficiency_quantile=price_response_percentile,
+                refill_persistence_ms=1_000 if snapshot.refill_ratio >= 0.55 else 0,
+                reentry_confirmation_ms=500
+                if abs(deviation_bps) <= max(2.0, snapshot.spread_bps * 3)
+                else 0,
+                ofi_flip=ofi_short > 0 and ofi_medium < 0,
+                microprice_reclaimed=microprice_alignment,
+                range_reentered=abs(deviation_bps) <= max(2.0, snapshot.spread_bps * 3),
+            )
+            return evaluator.evaluate(sweep_context)
+        if isinstance(evaluator, CompressionBreakoutStrategy):
+            breakout_context = CompressionBreakoutContext(
+                side=side,
+                features=snapshot,
+                regime=regime,
+                plan=plan,
+                compression_quantile=compression_percentile,
+                breakout_confirmed=ofi_medium > 0 and trade_flow > 0.15,
+                initial_impulse_extended=snapshot.realized_volatility_30s >= 0.0015,
+                pullback_seconds=3.0,
+                pullback_retrace_fraction=0.40,
+                counterflow_price_impact_weak=snapshot.price_response_efficiency <= 0.50,
+                refill_recovered=snapshot.refill_ratio >= 0.50,
+                ofi_reaccelerated=ofi_short > 0 and ofi_medium > 0,
+                microprice_aligned=microprice_alignment,
+                confirmation_ms=500 if ofi_short > 0 else 0,
+            )
+            return evaluator.evaluate(breakout_context)
+        if isinstance(evaluator, VwapExhaustionStrategy):
+            excursion_valid = deviation_bps < 0 if side is Side.LONG else deviation_bps > 0
+            vwap_context = VwapExhaustionContext(
+                side=side,
+                features=snapshot,
+                regime=regime,
+                plan=plan,
+                vwap_deviation_robust_z=deviation_z,
+                excursion_direction_valid=excursion_valid,
+                aggressive_flow_robust_z=flow_z,
+                price_progress_stalled=price_response_percentile <= 0.30,
+                opposite_depth_refilled=snapshot.refill_ratio >= 0.55,
+                ofi_reversed=ofi_short > 0 and ofi_medium < 0,
+                microprice_reversed=microprice_alignment,
+                structure_reentered=abs(deviation_bps) <= max(8.0, snapshot.spread_bps * 8),
+                confirmation_ms=500 if microprice_alignment else 0,
+            )
+            return evaluator.evaluate(vwap_context)
+        if isinstance(evaluator, OfiPullbackStrategy):
+            ofi_context = OfiPullbackContext(
+                side=side,
+                features=snapshot,
+                regime=regime,
+                plan=plan,
+                multi_window_ofi_aligned=ofi_short > 0 and ofi_medium > 0,
+                aggressive_trade_aligned=trade_flow > 0.15,
+                microprice_aligned=microprice_alignment,
+                price_efficiency_percentile=efficiency_percentile,
+                pullback_seconds=5.0,
+                pullback_retrace_fraction=0.35,
+                counterflow_price_impact_weak=snapshot.price_response_efficiency <= 0.50,
+                original_flow_reaccelerated=ofi_short > 0 and ofi_short >= ofi_medium * 0.1,
+                confirmation_ms=500 if ofi_short > 0 else 0,
+            )
+            return evaluator.evaluate(ofi_context)
+        raise TypeError(f"지원하지 않는 전략 evaluator: {type(evaluator).__name__}")
+
+
+def _plan(snapshot: FeatureSnapshot, side: Side, tick_size: Decimal) -> PlanInputs:
+    entry = Decimal(str(snapshot.mid))
+    spread = entry * Decimal(str(snapshot.spread_bps)) / Decimal(10_000)
+    noise = max(tick_size * 2, spread * Decimal("1.5"), entry * Decimal("0.0002"))
+    risk_distance = max(noise * Decimal("1.2"), entry * Decimal("0.0015"))
+    target_distance = risk_distance * Decimal("3.2")
+    if side is Side.LONG:
+        stop = entry - risk_distance
+        target = entry + target_distance
+    else:
+        stop = entry + risk_distance
+        target = entry - target_distance
+    return PlanInputs(
+        entry=entry,
+        structural_stop=stop,
+        target=target,
+        expected_total_cost_bps=max(
+            Decimal("13"),
+            Decimal(str(snapshot.spread_bps)) + Decimal("12"),
+        ),
+    )

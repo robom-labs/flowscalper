@@ -35,6 +35,8 @@ export const initialDashboard: DashboardData = {
   position: null,
   logs: [],
   history: [],
+  strategies: [],
+  shadow_accounts: [],
   performance: {
     sample_size: 0,
     gross_pnl: '0',

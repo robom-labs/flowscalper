@@ -13,7 +13,11 @@ from backend.app.strategies import (
     CompressionBreakoutStrategy,
     LiquiditySweepContext,
     LiquiditySweepStrategy,
+    OfiPullbackContext,
+    OfiPullbackStrategy,
     PlanInputs,
+    VwapExhaustionContext,
+    VwapExhaustionStrategy,
 )
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.statistics import robust_z, rolling_percentile
@@ -181,3 +185,58 @@ def test_robust_thresholds_only_use_supplied_history_prefix() -> None:
     assert robust_z(prefix, 2.0) == z_before_future
     assert rolling_percentile(prefix, 2.0) == percentile_before_future
     assert robust_z(prefix + future, 2.0) != z_before_future
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_strategy_c_vwap_exhaustion_is_symmetric_and_cost_gated(side: Side) -> None:
+    context = VwapExhaustionContext(
+        side=side,
+        features=features(),
+        regime=Regime.RANGE,
+        plan=plan(side),
+        vwap_deviation_robust_z=2.4,
+        excursion_direction_valid=True,
+        aggressive_flow_robust_z=2.0,
+        price_progress_stalled=True,
+        opposite_depth_refilled=True,
+        ofi_reversed=True,
+        microprice_reversed=True,
+        structure_reentered=True,
+        confirmation_ms=500,
+    )
+    decision = VwapExhaustionStrategy().evaluate(context)
+    assert decision.status is CandidateStatus.QUALIFIED
+    assert decision.tp_probability is None
+    rejected = VwapExhaustionStrategy().evaluate(
+        replace(context, regime=Regime.SHOCK, structure_reentered=False)
+    )
+    assert rejected.status is CandidateStatus.REJECTED
+    assert {"REGIME_NOT_RANGE", "STRUCTURE_REENTRY_NOT_CONFIRMED"}.issubset(
+        rejected.rejection_codes
+    )
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_strategy_d_ofi_pullback_is_symmetric_and_requires_structure(side: Side) -> None:
+    context = OfiPullbackContext(
+        side=side,
+        features=features(),
+        regime=Regime.TREND_UP if side is Side.LONG else Regime.TREND_DOWN,
+        plan=plan(side),
+        multi_window_ofi_aligned=True,
+        aggressive_trade_aligned=True,
+        microprice_aligned=True,
+        price_efficiency_percentile=0.75,
+        pullback_seconds=5,
+        pullback_retrace_fraction=0.35,
+        counterflow_price_impact_weak=True,
+        original_flow_reaccelerated=True,
+        confirmation_ms=500,
+    )
+    decision = OfiPullbackStrategy().evaluate(context)
+    assert decision.status is CandidateStatus.QUALIFIED
+    rejected = OfiPullbackStrategy().evaluate(
+        replace(context, plan=plan(side, stop="NONE"), features=features(spread_bps=20))
+    )
+    assert rejected.status is CandidateStatus.REJECTED
+    assert {"NO_STRUCTURAL_STOP", "WIDE_SPREAD"}.issubset(rejected.rejection_codes)

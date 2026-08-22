@@ -83,6 +83,32 @@ def test_dashboard_controls_preserve_run_history() -> None:
     assert new_snapshot["history"][0]["run_id"] == "run-original"
 
 
+def test_strategy_configuration_api_is_explicit_and_validated() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    client = TestClient(create_app(runtime))
+    assert len(client.get("/api/dashboard").json()["strategies"]) == 4
+
+    changed = client.post(
+        "/api/strategies/VWAP_EXHAUSTION_REVERSION_V1",
+        json={"mode": "SHADOW", "long_enabled": True, "short_enabled": False},
+    )
+    assert changed.status_code == 200
+    row = next(
+        item
+        for item in changed.json()["strategies"]
+        if item["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert (row["mode"], row["long_enabled"], row["short_enabled"]) == (
+        "SHADOW",
+        True,
+        False,
+    )
+    assert client.post(
+        "/api/strategies/UNKNOWN",
+        json={"mode": "OFF", "long_enabled": False, "short_enabled": False},
+    ).status_code == 404
+
+
 def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "runtime.sqlite3")
     runtime = PaperRuntime(
