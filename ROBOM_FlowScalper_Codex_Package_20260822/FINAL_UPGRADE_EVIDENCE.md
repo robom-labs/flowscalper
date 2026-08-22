@@ -162,16 +162,18 @@
 
 | 항목 | 실제 값 |
 |---|---|
-| ZIP | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip` |
-| checksum 파일 | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip.sha256` |
-| ZIP SHA-256 | `4215e5570f6f283c2f7c9de742db1dad5b49334af3e629b06c2cc0a6f6a98acc` |
-| 크기 / 파일 수 | 10,944,817 bytes / 238 ZIP entries |
-| 내부 BUILD_COMMIT | `6a3eb0e9d781dca54ba1aca766264c3998ba34ee` |
+| One Touch ZIP | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper-wave10-20260823.zip` |
+| APFS ZIP | `/Volumes/ROBOM_FLOWSCALPER/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper-wave10-20260823.zip` |
+| checksum 파일 | 각 ZIP 옆의 동일 이름 `.zip.sha256` |
+| ZIP SHA-256 | `1f433e47f4b3e405dcc483239206e13a3bbd9caa244a4b7b84a52ee70f7ccfe9` |
+| 크기 / 파일 수 | 10,970,142 bytes / 243 ZIP entries |
+| 내부 BUILD_COMMIT | `23a709ca2e40f39c16e20f28b960f67492bbb1f6` |
 | `unzip -t` | PASS, 압축 데이터 오류 0 |
-| 내부 `SHA256SUMS.txt` 전수검사 | PASS, 237개 entry 전부 일치 |
-| 패키징 직전 소스 회귀 | PASS, backend 96/96·frontend 3/3·lint·typecheck·build·security |
+| 내부 `SHA256SUMS.txt` 전수검사 | PASS, 242개 entry 전부 일치 |
+| APFS·One Touch 복사본 비교 | PASS, 두 복사본과 작업공간 생성본 SHA-256 일치 |
+| 패키징 직전 소스 회귀 | PASS, backend 105/105·frontend 5/5·lint·typecheck·build·security |
 
-릴리스에는 backend·frontend 소스와 테스트, 빌드된 frontend, macOS·Windows 실행기, 설정, fixture, migration, 문서, 스크린샷, notices, third-party licenses, 내부 checksum이 포함된다. `.venv`, `node_modules`, 캐시, SQLite/Parquet 원시 실행데이터, 비밀 유사 파일은 제외한다.
+릴리스에는 backend·frontend 소스와 테스트, 빌드된 frontend, macOS LaunchAgent 설치·해제 스크립트, macOS·Windows 실행기, 설정, fixture, migration, 문서, 스크린샷, notices, third-party licenses와 내부 checksum이 포함된다. `.venv`, `node_modules`, 캐시, SQLite/Parquet 원시 실행데이터와 비밀 유사 파일은 제외한다. 기존 Wave 09 표준 이름 ZIP은 덮어쓰지 않고 보존했다.
 
 ## 11. 알려진 제한
 
