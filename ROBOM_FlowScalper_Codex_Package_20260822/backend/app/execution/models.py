@@ -100,6 +100,8 @@ class PaperOrder:
     price_cap: Decimal | None
     trigger_price: Decimal | None
     fill: Fill | None
+    created_ts_ms: int
+    arrival_ts_ms: int | None
     reason_codes: tuple[str, ...] = ()
 
 
@@ -152,6 +154,11 @@ class PaperTrade:
     fees_usdt: Decimal
     slippage_usdt: Decimal
     net_pnl_usdt: Decimal
+    opened_ts_ms: int
+    closed_ts_ms: int
     holding_ms: int
+    regime: str
+    mae_r: Decimal
+    mfe_r: Decimal
     flags: tuple[str, ...]
     profile: CostProfile

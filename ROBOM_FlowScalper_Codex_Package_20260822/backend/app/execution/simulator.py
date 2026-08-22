@@ -100,6 +100,7 @@ class PaperExecutionEngine:
                 quantity=fill.quantity,
                 stop=initial_stop,
                 target=take_profit,
+                created_ts_ms=book_at_arrival.ts_ms,
             )
             position = ProtectedPosition(
                 trade_id=trade_id,
@@ -133,6 +134,8 @@ class PaperExecutionEngine:
             price_cap=price_cap,
             trigger_price=None,
             fill=fill,
+            created_ts_ms=decision_ts_ms,
+            arrival_ts_ms=book_at_arrival.ts_ms,
             reason_codes=reasons,
         )
         return EntryResult(entry_order=order, position=position)
@@ -145,6 +148,7 @@ class PaperExecutionEngine:
         trigger_reference_price: Decimal,
         book_at_arrival: BookSnapshot,
         requested_quantity: Decimal | None = None,
+        decision_ts_ms: int | None = None,
     ) -> ExitResult:
         self._validate_book(book_at_arrival, position.venue, position.symbol)
         quantity = requested_quantity or position.quantity
@@ -180,6 +184,8 @@ class PaperExecutionEngine:
             price_cap=None,
             trigger_price=trigger_reference_price,
             fill=fill,
+            created_ts_ms=decision_ts_ms or book_at_arrival.ts_ms,
+            arrival_ts_ms=book_at_arrival.ts_ms,
             reason_codes=("PARTIAL_EXIT",) if remaining else (),
         )
         return ExitResult(order, filled, remaining)
@@ -279,6 +285,7 @@ class PaperExecutionEngine:
         quantity: Decimal,
         stop: Decimal,
         target: Decimal,
+        created_ts_ms: int,
     ) -> tuple[PaperOrder, PaperOrder]:
         exit_side = "SELL" if side is Side.LONG else "BUY"
         take_profit = PaperOrder(
@@ -295,6 +302,8 @@ class PaperExecutionEngine:
             price_cap=None,
             trigger_price=target,
             fill=None,
+            created_ts_ms=created_ts_ms,
+            arrival_ts_ms=None,
             reason_codes=(),
         )
         stop_exit = PaperOrder(
@@ -311,6 +320,8 @@ class PaperExecutionEngine:
             price_cap=None,
             trigger_price=stop,
             fill=None,
+            created_ts_ms=created_ts_ms,
+            arrival_ts_ms=None,
             reason_codes=(),
         )
         return take_profit, stop_exit

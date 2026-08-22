@@ -41,6 +41,17 @@ class StrategyConfigurationRequest(BaseModel):
     short_enabled: bool
 
 
+class ReplayRequest(BaseModel):
+    """저장 Run 전체 또는 특정 종목을 같은 PAPER 파이프라인으로 재처리한다."""
+
+    symbol: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=30,
+        pattern=r"^[A-Za-z0-9]+$",
+    )
+
+
 def _local_browser_origin(origin: str | None) -> bool:
     if origin is None:
         return True
@@ -151,6 +162,7 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
 
     @app.post("/api/control/start-demo")
     async def start_demo() -> dict[str, object]:
+        await active_runtime.shutdown_supervisor()
         active_runtime.start_demo_run()
         return active_runtime.dashboard()
 
@@ -177,6 +189,31 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         return active_runtime.dashboard()
+
+    @app.get("/api/analytics/strategies")
+    async def strategy_analytics() -> list[dict[str, object]]:
+        return active_runtime.strategy_performance()
+
+    @app.get("/api/replay/runs")
+    async def replay_runs() -> list[dict[str, object]]:
+        return active_runtime.replayable_runs()
+
+    @app.get("/api/replay/results")
+    async def replay_results() -> list[dict[str, object]]:
+        if active_runtime.ledger is None:
+            return []
+        return active_runtime.ledger.list_replay_runs()
+
+    @app.post("/api/replay/{run_id}")
+    async def replay_run(run_id: str, request: ReplayRequest) -> dict[str, object]:
+        try:
+            return await asyncio.to_thread(
+                active_runtime.replay_stored_run,
+                run_id,
+                symbol=request.symbol,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
 
     @app.post("/api/control/new-run")
     async def new_run() -> dict[str, object]:

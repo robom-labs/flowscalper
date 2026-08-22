@@ -1,0 +1,31 @@
+{
+  "observed_at": "2026-08-22T19:35:25+09:00",
+  "source": "BINANCE_USDM public REST and public WebSocket",
+  "source_run_id": "wave05-recorded-public",
+  "database_path_at_validation": "/var/folders/qn/2pmsy6s14ss1swss6c965cxc0000gn/T/robom-wave05-live-lz2ms3fz/recorded-public.sqlite3",
+  "database_bytes_after_close": 23490560,
+  "database_sha256_after_close": "fee911e295563ad0105c1f0c291b45774a9fb1c3ad574812c6c69cf647a3afcd",
+  "schema_version": 3,
+  "stored_market_events": 21620,
+  "stored_candles": 53,
+  "event_type_counts": {
+    "BOOK_TICKER": 20511,
+    "DEPTH_UPDATE": 403,
+    "REST_BOOK_TICKER_BOOTSTRAP": 50,
+    "TRADE": 656
+  },
+  "symbols": 50,
+  "strategy_evaluations": 3224,
+  "qualified_signals": 0,
+  "candidate_plans": 0,
+  "main_trades": 0,
+  "shadow_trades": 0,
+  "final_state": "OBSERVING_NO_MAIN_TRADE",
+  "replay_count": 2,
+  "checksum_equal_two_runs": true,
+  "checksum": "b3eae11e3f77b9ea741197436619b8bcd3bf2c056246957d21dac14b99aab247",
+  "two_replays_elapsed_seconds": 1.119,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "interpretation": "자연 적격신호가 없어 문턱을 낮추지 않았으며 거래 0을 동일하게 재현했다."
+}

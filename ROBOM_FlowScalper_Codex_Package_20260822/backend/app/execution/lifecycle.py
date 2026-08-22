@@ -187,7 +187,12 @@ class PaperTradeService:
             fees_usdt=fees,
             slippage_usdt=entry_fill.slippage_usdt + exit_fill.slippage_usdt,
             net_pnl_usdt=net,
+            opened_ts_ms=self.position.opened_ts_ms,
+            closed_ts_ms=book_at_arrival.ts_ms,
             holding_ms=max(0, book_at_arrival.ts_ms - self.position.opened_ts_ms),
+            regime="UNKNOWN",
+            mae_r=Decimal(0),
+            mfe_r=Decimal(0),
             flags=flags,
             profile=self.profile,
         )

@@ -24,6 +24,20 @@ class ReplayResult:
     seed: int
 
 
+@dataclass(frozen=True, slots=True)
+class MarketReplayDigest:
+    checksum: str
+    event_count: int
+    first_ts_ms: int | None
+    last_ts_ms: int | None
+    event_type_counts: dict[str, int]
+    symbol_counts: dict[str, int]
+    decision_path: tuple[str, ...]
+    final_state: str
+    strategy_version: str
+    seed: int
+
+
 class ReplayEngine:
     """순서화된 이벤트를 정렬해 같은 결정 경로와 checksum을 만든다."""
 
@@ -62,6 +76,60 @@ class ReplayEngine:
             checksum=checksum,
             event_count=len(ordered),
             decision_path=decision_path,
+            final_state=final_state,
+            strategy_version=strategy_version,
+            seed=seed,
+        )
+
+    def replay_market_path(
+        self,
+        events: Sequence[Mapping[str, object]],
+        *,
+        config: Mapping[str, object],
+        strategy_version: str,
+        seed: int,
+        decision_path: Sequence[str],
+        final_state: str,
+    ) -> MarketReplayDigest:
+        """저장된 공개시장 이벤트와 재처리 결정 경로를 하나의 checksum으로 묶는다."""
+
+        ordered = sorted(
+            (_normalize_market_event(event) for event in events),
+            key=lambda event: (
+                int(str(event["venue_ts_ms"])),
+                int(str(event["receive_monotonic_ns"])),
+                str(event["event_id"]),
+            ),
+        )
+        event_ids = [str(event["event_id"]) for event in ordered]
+        if len(event_ids) != len(set(event_ids)):
+            raise ReplayIntegrityError("시장 리플레이에 중복 event_id가 있습니다.")
+        event_type_counts: dict[str, int] = {}
+        symbol_counts: dict[str, int] = {}
+        for event in ordered:
+            event_type = str(event["event_type"])
+            symbol = str(event["symbol"])
+            event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
+            symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+        normalized_path = tuple(str(item) for item in decision_path)
+        material = {
+            "schema_version": 2,
+            "strategy_version": strategy_version,
+            "seed": seed,
+            "config": dict(config),
+            "events": ordered,
+            "decision_path": normalized_path,
+            "final_state": final_state,
+        }
+        checksum = hashlib.sha256(_canonical_json(material).encode()).hexdigest()
+        return MarketReplayDigest(
+            checksum=checksum,
+            event_count=len(ordered),
+            first_ts_ms=int(str(ordered[0]["venue_ts_ms"])) if ordered else None,
+            last_ts_ms=int(str(ordered[-1]["venue_ts_ms"])) if ordered else None,
+            event_type_counts=dict(sorted(event_type_counts.items())),
+            symbol_counts=dict(sorted(symbol_counts.items())),
+            decision_path=normalized_path,
             final_state=final_state,
             strategy_version=strategy_version,
             seed=seed,
@@ -125,6 +193,29 @@ def _normalize_event(event: Mapping[str, object]) -> dict[str, object]:
         "state": str(event["state"]),
         "reason_code": str(event.get("reason_code", "NONE")),
         "payload": event.get("payload", {}),
+    }
+
+
+def _normalize_market_event(event: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "event_id": str(event["event_id"]),
+        "run_id": str(event["run_id"]),
+        "venue": str(event["venue"]),
+        "symbol": str(event["symbol"]),
+        "event_type": str(event["event_type"]),
+        "venue_ts_ms": int(str(event["venue_ts_ms"])),
+        "transaction_ts_ms": (
+            int(str(event["transaction_ts_ms"]))
+            if event.get("transaction_ts_ms") is not None
+            else None
+        ),
+        "receive_monotonic_ns": int(str(event["receive_monotonic_ns"])),
+        "sequence_start": event.get("sequence_start"),
+        "sequence_end": event.get("sequence_end"),
+        "previous_sequence_end": event.get("previous_sequence_end"),
+        "payload_version": str(event.get("payload_version", "1")),
+        "quality": event.get("quality", {}),
+        "data": event.get("data", {}),
     }
 
 

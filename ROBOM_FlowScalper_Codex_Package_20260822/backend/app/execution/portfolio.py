@@ -188,6 +188,7 @@ class PaperPortfolioEngine:
             self.audit_events.append(
                 {
                     "event": "BOOK_REJECTED_FOR_EXECUTION",
+                    "run_id": self.run_id,
                     "symbol": book.symbol,
                     "ts_ms": book.ts_ms,
                 }
@@ -608,6 +609,7 @@ class PaperPortfolioEngine:
                 trigger_reference_price=trigger_reference,
                 book_at_arrival=book,
                 requested_quantity=min(pending.requested_quantity, managed.remaining_quantity),
+                decision_ts_ms=pending.trigger_ts_ms,
             )
         except (PaperExecutionError, ValueError) as error:
             managed.pending_exit = None
@@ -714,7 +716,12 @@ class PaperPortfolioEngine:
             fees_usdt=fees,
             slippage_usdt=slippage,
             net_pnl_usdt=gross - fees - slippage,
+            opened_ts_ms=managed.protected.opened_ts_ms,
+            closed_ts_ms=closed_ts_ms,
             holding_ms=max(0, closed_ts_ms - managed.protected.opened_ts_ms),
+            regime=managed.plan.regime.value,
+            mae_r=managed.mae_r,
+            mfe_r=managed.mfe_r,
             flags=tuple(leg.label for leg in managed.exit_legs),
             profile=managed.protected.profile,
         )
