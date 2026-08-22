@@ -80,6 +80,7 @@ def test_universe_filters_and_ranks_without_venue_mix() -> None:
 
 def test_candles_use_only_observed_trades() -> None:
     builder = CandleBuilder()
+    assert builder.ALLOWED_INTERVALS == (1, 5, 15, 30, 60, 180, 300, 600, 900)
     builder.add(TradeTick(Venue.FIXTURE, "BTCUSDT", Decimal("100"), Decimal("2"), 1_000, True))
     builder.add(TradeTick(Venue.FIXTURE, "BTCUSDT", Decimal("101"), Decimal("3"), 1_500, True))
     completed = builder.add(
@@ -93,6 +94,7 @@ def test_candles_use_only_observed_trades() -> None:
         Decimal("101"),
     )
     assert one_second.volume == Decimal("5")
+    assert builder.series("BTCUSDT", 1) == (one_second, builder.snapshot("BTCUSDT")[0])
 
 
 def test_connection_rotation_staleness_and_venue_guard() -> None:

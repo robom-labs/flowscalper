@@ -37,9 +37,9 @@ def test_binance_routes_public_and_market_streams_separately() -> None:
         ["btcusdt@depth@100ms", "ethusdt@bookTicker", "solusdt@depth", "btcusdt@aggTrade"]
     )
     assert urls == [
-        "wss://fstream.binance.com/public/stream?streams=btcusdt@depth@100ms/ethusdt@bookticker",
+        "wss://fstream.binance.com/public/stream?streams=btcusdt@depth@100ms/ethusdt@bookTicker",
         "wss://fstream.binance.com/public/stream?streams=solusdt@depth",
-        "wss://fstream.binance.com/market/stream?streams=btcusdt@aggtrade",
+        "wss://fstream.binance.com/market/stream?streams=btcusdt@aggTrade",
     ]
     assert router.subscription_payload(["BTCUSDT@DEPTH"]) == {
         "method": "SUBSCRIBE",

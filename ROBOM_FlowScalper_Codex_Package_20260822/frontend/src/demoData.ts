@@ -28,6 +28,7 @@ export const initialDashboard: DashboardData = {
     symbol: 'BTCUSDT',
     interval: '1s',
     points: [],
+    candles: [],
     lines: { entry: null, take_profit: null, stop: null },
     fixture: false,
   },

@@ -110,7 +110,13 @@ class BinanceOrderBook(LocalOrderBook):
         ):
             return False
         if not self._bridged_snapshot:
-            if first_update_id > self.last_update_id or final_update_id < self.last_update_id:
+            snapshot_bridge = self.last_update_id
+            next_bridge = self.last_update_id + 1
+            bridges_snapshot = (
+                first_update_id <= snapshot_bridge <= final_update_id
+                or first_update_id <= next_bridge <= final_update_id
+            )
+            if not bridges_snapshot:
                 self._mark_gap("첫 delta가 snapshot update ID를 연결하지 않습니다.")
             self._bridged_snapshot = True
         elif previous_final_update_id != self.last_update_id:

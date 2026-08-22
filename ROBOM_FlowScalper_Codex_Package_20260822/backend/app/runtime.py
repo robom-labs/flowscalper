@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from decimal import Decimal
 from uuid import uuid4
 
 from backend.app.adapters.fixture import FixtureMarketData
 from backend.app.api.dashboard import build_dashboard_snapshot
 from backend.app.build_identity import APP_VERSION, STRATEGY_VERSION, git_commit
 from backend.app.clocks import Clock, SystemClock
+from backend.app.domain.market import TradeTick
 from backend.app.domain.models import (
     MarketDataState,
     MarketEvent,
@@ -22,6 +24,13 @@ from backend.app.live_public import (
     LiveBootstrapProbe,
     LivePublicBootstrapper,
     PublicDataUnavailable,
+)
+from backend.app.market_data.candles import Candle, CandleBuilder
+from backend.app.market_data.supervisor import (
+    BinancePersistentProvider,
+    BybitPersistentProvider,
+    PersistentPublicSupervisor,
+    ProviderSelection,
 )
 from backend.app.storage.sqlite import SQLiteLedger
 
@@ -44,6 +53,13 @@ class PaperRuntime:
     processing_lag_p95_ms: float | None = None
     runtime_health_flags: list[str] = field(default_factory=list)
     unrealized_pnl_usdt: float = 0.0
+    candle_builder: CandleBuilder = field(default_factory=CandleBuilder)
+    selected_symbol: str = "BTCUSDT"
+    selected_interval_seconds: int = 1
+    live_selection: ProviderSelection | None = None
+    _supervisor: PersistentPublicSupervisor | None = field(
+        default=None, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         assert_paper_only(self.mode, os.environ)
@@ -172,6 +188,109 @@ class PaperRuntime:
         self.runtime_health_flags.append("PUBLIC_DATA_UNAVAILABLE")
         return False
 
+    async def start_persistent_live(self) -> bool:
+        if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
+            raise ValueError("지속 LIVE supervisor는 LIVE_SHADOW_PAPER에서만 시작합니다.")
+        await self.shutdown_supervisor()
+        candidates = (
+            (Venue.BINANCE_USDM, BinancePersistentProvider()),
+            (Venue.BYBIT_LINEAR, BybitPersistentProvider()),
+        )
+        self.market_data_state = MarketDataState.RECONNECTING
+        self.paused = True
+        self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
+        for candidate_venue, provider in candidates:
+            if candidate_venue is not self.venue:
+                self._switch_venue_run(candidate_venue)
+            supervisor = PersistentPublicSupervisor(
+                provider,
+                run_id=self.run_id,
+                clock=self.clock,
+                sink=self.ingest_live_event,
+            )
+            try:
+                selection = await supervisor.start()
+            except PublicDataUnavailable as error:
+                await supervisor.stop()
+                self._record_public_failure(candidate_venue, error)
+                continue
+            self._supervisor = supervisor
+            self.live_selection = selection
+            self.venue = selection.venue
+            self.wide_symbol_count = len(selection.wide_symbols)
+            self.deep_symbol_count = len(selection.deep_symbols)
+            self.selected_symbol = (
+                "BTCUSDT"
+                if "BTCUSDT" in selection.deep_symbols
+                else selection.deep_symbols[0]
+            )
+            self.processing_lag_p95_ms = supervisor.telemetry.lag_p95_ms
+            self.market_data_state = MarketDataState.LIVE
+            self.paused = supervisor.telemetry.entry_locked
+            self.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
+            if self.paused:
+                self.runtime_health_flags.append("SUPERVISOR_ENTRY_LOCK")
+            self._log(
+                "MARKET_DATA",
+                f"{selection.venue.value} 지속 공개 supervisor 시작 · "
+                f"wide {len(selection.wide_symbols)} · deep {len(selection.deep_symbols)}",
+            )
+            return True
+        self.market_data_state = MarketDataState.DISCONNECTED
+        self.runtime_health_flags.append("PUBLIC_DATA_UNAVAILABLE")
+        return False
+
+    def ingest_live_event(self, event: MarketEvent) -> None:
+        if event.run_id != self.run_id or event.venue is not self.venue:
+            raise ValueError("다른 Run 또는 거래소 이벤트를 LIVE 런타임에 섞을 수 없습니다.")
+        self._events.append(event)
+        if len(self._events) > 10_000:
+            del self._events[:2_500]
+        if event.event_type == "TRADE":
+            trade = TradeTick(
+                venue=event.venue,
+                symbol=event.symbol,
+                price=Decimal(str(event.data["price"])),
+                quantity=Decimal(str(event.data["quantity"])),
+                trade_ts_ms=int(event.transaction_ts_ms or event.venue_ts_ms),
+                buyer_is_aggressor=bool(event.data["buyer_is_aggressor"]),
+            )
+            self.candle_builder.add(trade)
+        if event.event_type == "HEALTH" or not event.quality.sequence_valid:
+            self.paused = True
+            if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("ENTRY_LOCK_DATA_HEALTH")
+        if self._supervisor is not None:
+            self.processing_lag_p95_ms = self._supervisor.telemetry.lag_p95_ms
+
+    def candles(
+        self,
+        symbol: str | None = None,
+        interval_seconds: int | None = None,
+    ) -> tuple[Candle, ...]:
+        return self.candle_builder.series(
+            symbol or self.selected_symbol,
+            interval_seconds or self.selected_interval_seconds,
+        )
+
+    def set_chart_selection(self, symbol: str, interval_seconds: int) -> None:
+        normalized = symbol.strip().upper()
+        if self.live_selection is not None and normalized not in self.live_selection.wide_symbols:
+            raise ValueError("현재 wide 유니버스에 없는 종목입니다.")
+        if interval_seconds not in CandleBuilder.ALLOWED_INTERVALS:
+            raise ValueError("지원하지 않는 캔들 시간구간입니다.")
+        self.selected_symbol = normalized
+        self.selected_interval_seconds = interval_seconds
+
+    async def shutdown_supervisor(self) -> None:
+        supervisor = self._supervisor
+        self._supervisor = None
+        if supervisor is not None:
+            await supervisor.stop()
+
+    async def shutdown(self) -> None:
+        await self.shutdown_supervisor()
+
     def dashboard(self) -> dict[str, object]:
         persisted_trades = (
             tuple(self.ledger.list_trades(self.run_id))
@@ -194,6 +313,34 @@ class PaperRuntime:
             if self.ledger is not None and sample_type is not None
             else ()
         )
+        candle_rows = tuple(
+            {
+                "time": candle.open_ts_ms // 1_000,
+                "open_ts_ms": candle.open_ts_ms,
+                "open": float(candle.open),
+                "high": float(candle.high),
+                "low": float(candle.low),
+                "close": float(candle.close),
+                "volume": float(candle.volume),
+                "trade_count": candle.trade_count,
+            }
+            for candle in self.candles()
+        )
+        diagnostics = (
+            self._supervisor.telemetry.as_dict()
+            if self._supervisor is not None
+            else {
+                "connection_state": self.market_data_state.value,
+                "event_count": len(self._events),
+                "reconnects": 0,
+                "sequence_gaps": 0,
+                "resyncs": 0,
+                "dropped_events": 0,
+                "queue_depth": 0,
+                "queue_capacity": 0,
+                "entry_locked": self.paused,
+            }
+        )
         return build_dashboard_snapshot(
             self.status(),
             self.events,
@@ -203,6 +350,10 @@ class PaperRuntime:
             archived_run_ids=tuple(self.archived_run_ids),
             persisted_trades=persisted_trades,
             history_trades=history_trades,
+            candle_rows=candle_rows,
+            chart_symbol=self.selected_symbol,
+            chart_interval_seconds=self.selected_interval_seconds,
+            runtime_diagnostics=diagnostics,
             storage_label="SQLite transactional ledger"
             if self.ledger is not None
             else "fixture memory",
@@ -251,7 +402,9 @@ class PaperRuntime:
         self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
         self._start_ledger_run()
         self._log("RUN", "Fresh LIVE PAPER Run 생성 · 자산과 손익·비용·거래 0")
-        return await self.boot_live_public(probe)
+        if probe is not None:
+            return await self.boot_live_public(probe)
+        return await self.start_persistent_live()
 
     def start_demo_run(self) -> str:
         self._archive_current_run("USER_START_DEMO")

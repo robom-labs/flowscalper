@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from backend.app.clocks import SystemClock
 from backend.app.domain.models import RuntimeMode, Venue
@@ -22,6 +23,13 @@ from backend.app.storage.sqlite import SQLiteLedger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+
+
+class ChartSelectionRequest(BaseModel):
+    """사용자가 볼 공개 종목과 로컬 캔들 시간구간을 제한한다."""
+
+    symbol: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9]+$")
+    interval_seconds: int
 
 
 def _local_browser_origin(origin: str | None) -> bool:
@@ -78,9 +86,10 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         try:
             if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
-                await active_runtime.boot_live_public()
+                await active_runtime.start_persistent_live()
             yield
         finally:
+            await active_runtime.shutdown()
             if active_runtime.ledger is not None:
                 active_runtime.ledger.close()
 
@@ -136,14 +145,23 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
         active_runtime.start_demo_run()
         return active_runtime.dashboard()
 
+    @app.post("/api/control/chart")
+    async def select_chart(request: ChartSelectionRequest) -> dict[str, object]:
+        try:
+            active_runtime.set_chart_selection(request.symbol, request.interval_seconds)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return active_runtime.dashboard()
+
     @app.post("/api/control/new-run")
     async def new_run() -> dict[str, object]:
+        await active_runtime.shutdown_supervisor()
         try:
             active_runtime.start_new_run()
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
-            await active_runtime.boot_live_public()
+            await active_runtime.start_persistent_live()
         return active_runtime.dashboard()
 
     @app.websocket("/ws")

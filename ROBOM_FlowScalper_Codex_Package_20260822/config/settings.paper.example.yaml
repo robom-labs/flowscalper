@@ -37,3 +37,6 @@ runtime:
   warning_processing_lag_ms: 250
   persist_market_data: true
   fixture_fallback_requires_explicit_badge: true
+  public_event_queue_capacity: 4096
+  in_memory_event_limit: 10000
+  candle_intervals: [1s, 5s, 15s, 30s, 1m, 3m, 5m, 10m, 15m]

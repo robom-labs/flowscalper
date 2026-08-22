@@ -156,10 +156,35 @@ class BinanceStreamRouter:
             return "market"
         raise BinanceProtocolError(f"지원하지 않는 공개 스트림입니다: {stream}")
 
+    @staticmethod
+    def normalize(stream: str) -> str:
+        """심볼만 소문자화하고 공식 stream 이름의 대소문자는 보존한다."""
+
+        value = stream.strip()
+        if not value:
+            raise BinanceProtocolError("빈 공개 스트림입니다.")
+        if value.startswith("!"):
+            return "!bookTicker" if value.lower() == "!bookticker" else value
+        symbol, separator, topic = value.partition("@")
+        if not separator:
+            raise BinanceProtocolError(f"심볼 토픽 형식이 아닙니다: {stream}")
+        topic_lower = topic.lower()
+        if topic_lower.startswith("aggtrade"):
+            topic = "aggTrade" + topic[len("aggtrade") :]
+        elif topic_lower.startswith("bookticker"):
+            topic = "bookTicker" + topic[len("bookticker") :]
+        elif topic_lower.startswith("markprice"):
+            topic = "markPrice" + topic[len("markprice") :]
+        elif topic_lower.startswith("miniticker"):
+            topic = "miniTicker" + topic[len("miniticker") :]
+        else:
+            topic = topic_lower
+        return f"{symbol.lower()}@{topic}"
+
     def urls(self, streams: Iterable[str]) -> list[str]:
         grouped: dict[str, list[str]] = {"public": [], "market": []}
         for stream in streams:
-            normalized = stream.lower()
+            normalized = self.normalize(stream)
             grouped[self.family(normalized)].append(normalized)
         urls: list[str] = []
         for family, values in grouped.items():
@@ -173,7 +198,7 @@ class BinanceStreamRouter:
     def subscription_payload(streams: Iterable[str], request_id: int = 1) -> dict[str, object]:
         return {
             "method": "SUBSCRIBE",
-            "params": [item.lower() for item in streams],
+            "params": [BinanceStreamRouter.normalize(item) for item in streams],
             "id": request_id,
         }
 
@@ -181,6 +206,6 @@ class BinanceStreamRouter:
     def unsubscription_payload(streams: Iterable[str], request_id: int = 1) -> dict[str, object]:
         return {
             "method": "UNSUBSCRIBE",
-            "params": [item.lower() for item in streams],
+            "params": [BinanceStreamRouter.normalize(item) for item in streams],
             "id": request_id,
         }

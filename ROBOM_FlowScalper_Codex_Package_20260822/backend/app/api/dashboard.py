@@ -19,13 +19,20 @@ def build_dashboard_snapshot(
     archived_run_ids: tuple[str, ...],
     persisted_trades: tuple[Mapping[str, object], ...] = (),
     history_trades: tuple[Mapping[str, object], ...] | None = None,
+    candle_rows: tuple[Mapping[str, object], ...] = (),
+    chart_symbol: str | None = None,
+    chart_interval_seconds: int = 1,
+    runtime_diagnostics: Mapping[str, object] | None = None,
     storage_label: str = "fixture memory",
     api_host: str = "127.0.0.1:8765",
 ) -> dict[str, Any]:
     fixture_mode = status.mode.value == "DEMO_FIXTURE"
     ready_mode = status.mode.value == "READY"
-    symbols = sorted({event.symbol for event in events})
-    latest_by_symbol = {event.symbol: event for event in events}
+    quoted_events = [
+        event for event in events if "bid" in event.data and "ask" in event.data
+    ]
+    symbols = sorted({event.symbol for event in quoted_events})
+    latest_by_symbol = {event.symbol: event for event in quoted_events}
     scanner: list[dict[str, object]] = []
     regimes = ("RANGE", "TREND_UP", "TREND_DOWN", "WARMUP")
     for rank, symbol in enumerate(symbols, start=1):
@@ -83,6 +90,10 @@ def build_dashboard_snapshot(
         else latest_by_symbol.get("SOLUSDT") or (events[-1] if events else None)
     )
     chart = _chart_points(selected, events, fixture_mode=fixture_mode)
+    if chart_symbol is not None:
+        chart["symbol"] = chart_symbol
+    chart["interval"] = _interval_label(chart_interval_seconds)
+    chart["candles"] = [dict(row) for row in candle_rows]
     position = None
     if position_visible and selected is not None and fixture_mode:
         bid = Decimal(str(selected.data["bid"]))
@@ -170,6 +181,7 @@ def build_dashboard_snapshot(
             "disk_pressure_entry_lock": True,
             "app_version": "0.2.0-paper",
             "runtime_ready": ready_mode,
+            **dict(runtime_diagnostics or {}),
         },
     }
 
@@ -321,3 +333,18 @@ def _chart_points(
         },
         "fixture": is_fixture,
     }
+
+
+def _interval_label(seconds: int) -> str:
+    labels = {
+        1: "1s",
+        5: "5s",
+        15: "15s",
+        30: "30s",
+        60: "1m",
+        180: "3m",
+        300: "5m",
+        600: "10m",
+        900: "15m",
+    }
+    return labels.get(seconds, f"{seconds}s")

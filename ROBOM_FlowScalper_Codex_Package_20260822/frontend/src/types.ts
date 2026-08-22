@@ -52,6 +52,16 @@ export type ChartData = {
   symbol: string
   interval: string
   points: ChartPoint[]
+  candles: {
+    time: number
+    open_ts_ms: number
+    open: number
+    high: number
+    low: number
+    close: number
+    volume: number
+    trade_count: number
+  }[]
   lines: { entry: number | null; take_profit: number | null; stop: number | null }
   fixture: boolean
 }
