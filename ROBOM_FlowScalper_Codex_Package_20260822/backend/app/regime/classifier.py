@@ -48,4 +48,3 @@ class RegimeClassifier:
             if direction <= 0 and aligned_flow < 0:
                 return Regime.TREND_DOWN
         return Regime.RANGE
-

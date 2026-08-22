@@ -3,4 +3,3 @@
 from backend.app.candidates.ranker import CandidateRanker, CandidateSeed, RankedCandidate
 
 __all__ = ["CandidateRanker", "CandidateSeed", "RankedCandidate"]
-

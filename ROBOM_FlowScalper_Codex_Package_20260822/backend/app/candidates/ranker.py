@@ -96,4 +96,3 @@ class CandidateRanker:
             components=components,
             rejection_codes=tuple(rejections),
         )
-

@@ -126,4 +126,3 @@ def test_candidate_ranking_is_stable() -> None:
         [(seed_a, snapshot, Regime.RANGE), (seed_b, snapshot, Regime.RANGE)]
     )
     assert [item.symbol for item in ranked] == ["BTCUSDT", "ETHUSDT"]
-
