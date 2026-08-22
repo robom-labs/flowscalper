@@ -331,6 +331,9 @@ class PaperRuntime:
                 "ts_ms": timestamp,
             }
         )
+        run_record = self.ledger.get_run(self.run_id)
+        if run_record is None:
+            raise RuntimeError(f"fixture 거래가 참조할 Run이 없습니다: {self.run_id}")
         self.ledger.record_trade(
             {
                 "trade_id": f"{self.run_id}-fixture-trade-001",
@@ -355,7 +358,7 @@ class PaperRuntime:
                 "mfe_r": 1.41,
                 "holding_ms": 184_000,
                 "flags": ["OFFLINE_FIXTURE"],
-                "config_hash": "fixture-config-sha256",
+                "config_hash": str(run_record["config_hash"]),
                 "strategy_version": "1",
                 "regime": "RANGE",
                 "profile": "BASE",

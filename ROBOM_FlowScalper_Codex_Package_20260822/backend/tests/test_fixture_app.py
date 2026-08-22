@@ -98,6 +98,7 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
     orders = ledger.list_orders("run-persisted")
     fills = ledger.list_fills("run-persisted")
     trade = ledger.list_trades("run-persisted")[0]
+    assert trade["config_hash"] == ledger.get_run("run-persisted")["config_hash"]
     assert [order["intent"] for order in orders] == ["ENTRY_IOC", "TAKE_PROFIT"]
     assert [(fill["planned_price"], fill["price"]) for fill in fills] == [
         ("100.00", "100.10"),
