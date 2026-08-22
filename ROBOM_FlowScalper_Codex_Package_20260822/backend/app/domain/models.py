@@ -9,12 +9,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class RuntimeMode(StrEnum):
-    FIXTURE_OFFLINE = "FIXTURE_OFFLINE"
+    READY = "READY"
     LIVE_SHADOW_PAPER = "LIVE_SHADOW_PAPER"
+    DEMO_FIXTURE = "DEMO_FIXTURE"
     REPLAY = "REPLAY"
+
+    # 0.1 소스 호환용 이름이며 직렬화 값은 DEMO_FIXTURE다.
+    FIXTURE_OFFLINE = "DEMO_FIXTURE"
 
 
 class Venue(StrEnum):
+    NONE = "NONE"
     BINANCE_USDM = "BINANCE_USDM"
     BYBIT_LINEAR = "BYBIT_LINEAR"
     FIXTURE = "FIXTURE"
@@ -78,6 +83,11 @@ class SystemStatus(BaseModel):
     auth_required: bool = False
     starting_equity_usdt: float = Field(default=1000.0, ge=0)
     current_equity_usdt: float = 1000.0
+    realized_pnl_usdt: float = 0.0
+    unrealized_pnl_usdt: float = 0.0
+    cumulative_fees_usdt: float = Field(default=0.0, ge=0)
+    cumulative_slippage_usdt: float = Field(default=0.0, ge=0)
+    trade_count: int = Field(default=0, ge=0)
     wide_symbols: int = Field(default=0, ge=0)
     deep_symbols: int = Field(default=0, ge=0)
     processing_lag_p95_ms: float | None = Field(default=None, ge=0)

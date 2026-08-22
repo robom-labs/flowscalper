@@ -2,13 +2,18 @@
 export type PageId = 'live' | 'history' | 'replay' | 'performance' | 'risk' | 'system'
 
 export type SystemStatus = {
-  mode: 'FIXTURE_OFFLINE' | 'LIVE_SHADOW_PAPER' | 'REPLAY'
+  mode: 'READY' | 'LIVE_SHADOW_PAPER' | 'DEMO_FIXTURE' | 'REPLAY'
   market_data_state: 'LIVE' | 'RECONNECTING' | 'STALE' | 'DISCONNECTED' | 'FIXTURE'
   execution_state: 'PAPER'
-  venue: 'BINANCE_USDM' | 'BYBIT_LINEAR' | 'FIXTURE'
+  venue: 'NONE' | 'BINANCE_USDM' | 'BYBIT_LINEAR' | 'FIXTURE'
   run_id: string
   starting_equity_usdt: number
   current_equity_usdt: number
+  realized_pnl_usdt: number
+  unrealized_pnl_usdt: number
+  cumulative_fees_usdt: number
+  cumulative_slippage_usdt: number
+  trade_count: number
   real_orders_enabled: false
   auth_required: false
   wide_symbols: number

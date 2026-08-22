@@ -1,4 +1,4 @@
-"""페이퍼 전용 런의 상태와 fixture 수직 슬라이스를 관리한다."""
+"""READY·LIVE·DEMO·REPLAY를 격리한 페이퍼 전용 Run 상태를 관리한다."""
 
 from __future__ import annotations
 
@@ -28,40 +28,69 @@ from backend.app.storage.sqlite import SQLiteLedger
 
 @dataclass(slots=True)
 class PaperRuntime:
-    mode: RuntimeMode = RuntimeMode.FIXTURE_OFFLINE
+    mode: RuntimeMode = RuntimeMode.READY
     clock: Clock = field(default_factory=SystemClock)
-    run_id: str = field(default_factory=lambda: f"run-{uuid4().hex[:12]}")
+    run_id: str = "ready"
     _events: list[MarketEvent] = field(default_factory=list)
-    paused: bool = False
-    position_visible: bool = True
+    paused: bool = True
+    position_visible: bool = False
     archived_run_ids: list[str] = field(default_factory=list)
     control_logs: list[dict[str, object]] = field(default_factory=list)
     ledger: SQLiteLedger | None = None
-    venue: Venue = Venue.FIXTURE
-    market_data_state: MarketDataState = MarketDataState.FIXTURE
+    venue: Venue = Venue.NONE
+    market_data_state: MarketDataState = MarketDataState.DISCONNECTED
     wide_symbol_count: int = 0
     deep_symbol_count: int = 0
     processing_lag_p95_ms: float | None = None
     runtime_health_flags: list[str] = field(default_factory=list)
+    unrealized_pnl_usdt: float = 0.0
 
     def __post_init__(self) -> None:
         assert_paper_only(self.mode, os.environ)
-        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+        if self.mode is RuntimeMode.READY:
+            self.run_id = "ready"
+            self.venue = Venue.NONE
+            self.market_data_state = MarketDataState.DISCONNECTED
+            self.paused = True
+            self.position_visible = False
+            self.runtime_health_flags = ["READY_NOT_STARTED"]
+        elif self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
             if self.venue is Venue.FIXTURE:
+                self.venue = Venue.BINANCE_USDM
+            if self.venue is Venue.NONE:
                 self.venue = Venue.BINANCE_USDM
             self.market_data_state = MarketDataState.DISCONNECTED
             self.paused = True
             self.position_visible = False
             self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
-        if self.ledger is not None and self.ledger.get_run(self.run_id) is None:
+        elif self.mode is RuntimeMode.DEMO_FIXTURE:
+            self.venue = Venue.FIXTURE
+            self.market_data_state = MarketDataState.FIXTURE
+            self.paused = False
+            self.position_visible = True
+            self.runtime_health_flags = ["OFFLINE_DEMO_ISOLATED"]
+        elif self.mode is RuntimeMode.REPLAY:
+            self.paused = True
+            self.position_visible = False
+            self.runtime_health_flags = ["REPLAY_READ_ONLY"]
+        if (
+            self.mode is not RuntimeMode.READY
+            and self.ledger is not None
+            and self.ledger.get_run(self.run_id) is None
+        ):
             self._start_ledger_run()
 
-    def boot_fixture(self, event_count: int = 40) -> None:
-        if self.mode is not RuntimeMode.FIXTURE_OFFLINE:
-            raise ValueError("fixture 부팅은 FIXTURE_OFFLINE 모드에서만 가능합니다.")
+    def boot_demo(self, event_count: int = 40) -> None:
+        if self.mode is not RuntimeMode.DEMO_FIXTURE:
+            raise ValueError("fixture 부팅은 DEMO_FIXTURE 모드에서만 가능합니다.")
         generator = FixtureMarketData(self.clock, self.run_id)
         self._events.extend(generator.events(event_count))
         self._ensure_fixture_completed_trade()
+
+    def boot_fixture(self, event_count: int = 40) -> None:
+        """0.1 호출 호환용 별칭이며 DEMO_FIXTURE에서만 동작한다."""
+
+        self.boot_demo(event_count)
 
     @property
     def events(self) -> tuple[MarketEvent, ...]:
@@ -69,17 +98,17 @@ class PaperRuntime:
 
     def status(self) -> SystemStatus:
         symbols = {event.symbol for event in self._events}
-        current_equity = 1000.0
+        realized = 0.0
+        fees = 0.0
+        slippage = 0.0
+        trade_count = 0
         if self.ledger is not None:
-            net = sum(
-                float(str(trade["net_pnl_usdt"])) for trade in self.ledger.list_trades(self.run_id)
-            )
-            current_equity += net
-        flags = (
-            ["OFFLINE_SIMULATION"]
-            if self.mode is RuntimeMode.FIXTURE_OFFLINE
-            else list(self.runtime_health_flags)
-        )
+            trades = self.ledger.list_trades(self.run_id)
+            trade_count = len(trades)
+            realized = sum(float(str(trade["net_pnl_usdt"])) for trade in trades)
+            fees = sum(float(str(trade["fees_usdt"])) for trade in trades)
+            slippage = sum(float(str(trade["slippage_usdt"])) for trade in trades)
+        flags = list(self.runtime_health_flags)
         if self.paused:
             flags.append("PAPER_ENTRIES_PAUSED")
         return SystemStatus(
@@ -87,7 +116,12 @@ class PaperRuntime:
             market_data_state=self.market_data_state,
             venue=self.venue,
             run_id=self.run_id,
-            current_equity_usdt=current_equity,
+            current_equity_usdt=1000.0 + realized + self.unrealized_pnl_usdt,
+            realized_pnl_usdt=realized,
+            unrealized_pnl_usdt=self.unrealized_pnl_usdt,
+            cumulative_fees_usdt=fees,
+            cumulative_slippage_usdt=slippage,
+            trade_count=trade_count,
             wide_symbols=self.wide_symbol_count or len(symbols),
             deep_symbols=self.deep_symbol_count or min(len(symbols), 10),
             processing_lag_p95_ms=self.processing_lag_p95_ms,
@@ -139,7 +173,27 @@ class PaperRuntime:
         return False
 
     def dashboard(self) -> dict[str, object]:
-        persisted_trades = tuple(self.ledger.list_trades()) if self.ledger is not None else ()
+        persisted_trades = (
+            tuple(self.ledger.list_trades(self.run_id))
+            if self.ledger is not None and self.mode is not RuntimeMode.READY
+            else ()
+        )
+        sample_type = (
+            "DEMO_FIXTURE"
+            if self.mode is RuntimeMode.DEMO_FIXTURE
+            else "LIVE_PUBLIC"
+            if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            else None
+        )
+        history_trades = (
+            tuple(
+                trade
+                for trade in self.ledger.list_trades()
+                if trade.get("sample_type", "LIVE_PUBLIC") == sample_type
+            )
+            if self.ledger is not None and sample_type is not None
+            else ()
+        )
         return build_dashboard_snapshot(
             self.status(),
             self.events,
@@ -148,6 +202,7 @@ class PaperRuntime:
             control_logs=tuple(self.control_logs),
             archived_run_ids=tuple(self.archived_run_ids),
             persisted_trades=persisted_trades,
+            history_trades=history_trades,
             storage_label="SQLite transactional ledger"
             if self.ledger is not None
             else "fixture memory",
@@ -158,6 +213,10 @@ class PaperRuntime:
         )
 
     def set_paused(self, paused: bool) -> None:
+        if self.mode is RuntimeMode.READY:
+            self.paused = True
+            self._log("RISK", "실시간 PAPER 시작 전에는 진입할 수 없음")
+            return
         if (
             not paused
             and self.mode is RuntimeMode.LIVE_SHADOW_PAPER
@@ -174,9 +233,45 @@ class PaperRuntime:
 
     def emergency_paper_close(self) -> None:
         self.position_visible = False
-        self._log("EXIT", "현재 fixture 페이퍼 포지션 비상종료 시뮬레이션")
+        self._log("EXIT", "현재 PAPER 포지션 비상종료 요청")
+
+    async def start_live_run(self, probe: LiveBootstrapProbe | None = None) -> bool:
+        self._archive_current_run("USER_START_LIVE")
+        self.mode = RuntimeMode.LIVE_SHADOW_PAPER
+        self.run_id = f"run-{uuid4().hex[:12]}"
+        self.venue = Venue.BINANCE_USDM
+        self.market_data_state = MarketDataState.DISCONNECTED
+        self._events.clear()
+        self.paused = True
+        self.position_visible = False
+        self.unrealized_pnl_usdt = 0.0
+        self.wide_symbol_count = 0
+        self.deep_symbol_count = 0
+        self.processing_lag_p95_ms = None
+        self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
+        self._start_ledger_run()
+        self._log("RUN", "Fresh LIVE PAPER Run 생성 · 자산과 손익·비용·거래 0")
+        return await self.boot_live_public(probe)
+
+    def start_demo_run(self) -> str:
+        self._archive_current_run("USER_START_DEMO")
+        self.mode = RuntimeMode.DEMO_FIXTURE
+        self.run_id = f"demo-{uuid4().hex[:12]}"
+        self.venue = Venue.FIXTURE
+        self.market_data_state = MarketDataState.FIXTURE
+        self._events.clear()
+        self.paused = False
+        self.position_visible = True
+        self.unrealized_pnl_usdt = 0.0
+        self.runtime_health_flags = ["OFFLINE_DEMO_ISOLATED"]
+        self._start_ledger_run()
+        self.boot_demo()
+        self._log("RUN", "LIVE 성과와 분리된 오프라인 DEMO Run 생성")
+        return self.run_id
 
     def start_new_run(self) -> str:
+        if self.mode is RuntimeMode.READY:
+            raise ValueError("READY에서는 먼저 LIVE 또는 DEMO를 시작해야 합니다.")
         previous_run_id = self.run_id
         self.archived_run_ids.append(self.run_id)
         if self.ledger is not None:
@@ -192,14 +287,27 @@ class PaperRuntime:
         self.position_visible = True
         if self.ledger is not None:
             self._start_ledger_run()
-        if self.mode is RuntimeMode.FIXTURE_OFFLINE:
-            self.boot_fixture()
+        if self.mode is RuntimeMode.DEMO_FIXTURE:
+            self.boot_demo()
         else:
             self.market_data_state = MarketDataState.DISCONNECTED
             self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
             self.paused = True
         self._log("RISK", "기존 Run 보존 후 새 PAPER Run 생성")
         return self.run_id
+
+    def _archive_current_run(self, reason: str) -> None:
+        if self.mode is RuntimeMode.READY or self.ledger is None:
+            return
+        current = self.ledger.get_run(self.run_id)
+        if current is None or current["finalized_ts_ms"] is not None:
+            return
+        self.archived_run_ids.append(self.run_id)
+        self.ledger.finalize_run(
+            self.run_id,
+            finalized_ts_ms=self.clock.utc_ms(),
+            summary={"reason": reason, "preserved": True},
+        )
 
     def _start_ledger_run(self) -> None:
         if self.ledger is None:
@@ -211,6 +319,13 @@ class PaperRuntime:
             config={
                 "starting_equity_usdt": "1000",
                 "execution": "PAPER",
+                "sample_type": (
+                    "DEMO_FIXTURE"
+                    if self.mode is RuntimeMode.DEMO_FIXTURE
+                    else "LIVE_PUBLIC"
+                    if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                    else "REPLAY"
+                ),
                 "seed": 20260822,
                 "app_version": APP_VERSION,
                 "strategy_version": STRATEGY_VERSION,
@@ -358,6 +473,7 @@ class PaperRuntime:
                 "mfe_r": 1.41,
                 "holding_ms": 184_000,
                 "flags": ["OFFLINE_FIXTURE"],
+                "sample_type": "DEMO_FIXTURE",
                 "config_hash": str(run_record["config_hash"]),
                 "strategy_version": "1",
                 "regime": "RANGE",

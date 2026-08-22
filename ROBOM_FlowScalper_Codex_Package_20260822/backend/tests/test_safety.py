@@ -14,8 +14,9 @@ from scripts.run_server import RemoteBindingDisabledError, validate_local_host
 
 def test_runtime_mode_has_no_real_trading_member() -> None:
     assert {mode.value for mode in RuntimeMode} == {
-        "FIXTURE_OFFLINE",
+        "READY",
         "LIVE_SHADOW_PAPER",
+        "DEMO_FIXTURE",
         "REPLAY",
     }
     with pytest.raises(ValueError):
@@ -24,7 +25,7 @@ def test_runtime_mode_has_no_real_trading_member() -> None:
 
 def test_real_trading_environment_is_rejected() -> None:
     with pytest.raises(RealTradingDisabledError):
-        assert_paper_only(RuntimeMode.FIXTURE_OFFLINE, {"REAL_TRADING": "true"})
+        assert_paper_only(RuntimeMode.READY, {"REAL_TRADING": "true"})
 
 
 def test_runtime_source_has_no_exchange_execution_routes() -> None:

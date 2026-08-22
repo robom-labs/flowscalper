@@ -6,8 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
-APP_VERSION = "0.1.0-paper"
-STRATEGY_VERSION = "LSA_REVERSAL_V1+CBR_BREAKOUT_V1"
+APP_VERSION = "0.2.0-paper"
+STRATEGY_VERSION = "LSA_REVERSAL_V1+CBR_BREAKOUT_V1+VWAP_EXHAUSTION_V1+OFI_PULLBACK_V1"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 

@@ -10,10 +10,10 @@ setup:
 	cd frontend && $(PNPM) install --frozen-lockfile
 
 dev:
-	ROBOM_MODE=FIXTURE_OFFLINE ROBOM_RELOAD=true $(UV) run python scripts/run_server.py
+	ROBOM_MODE=READY ROBOM_RELOAD=true $(UV) run python scripts/run_server.py
 
 run:
-	ROBOM_MODE=$${ROBOM_MODE:-FIXTURE_OFFLINE} $(UV) run python scripts/run_server.py
+	ROBOM_MODE=$${ROBOM_MODE:-READY} $(UV) run python scripts/run_server.py
 
 test:
 	$(UV) run pytest
@@ -36,7 +36,7 @@ e2e: build
 	cd frontend && $(PNPM) e2e
 
 fixture-demo: build
-	ROBOM_MODE=FIXTURE_OFFLINE $(UV) run python scripts/run_server.py
+	ROBOM_MODE=DEMO_FIXTURE $(UV) run python scripts/run_server.py
 
 network-smoke:
 	$(UV) run python scripts/network_smoke.py

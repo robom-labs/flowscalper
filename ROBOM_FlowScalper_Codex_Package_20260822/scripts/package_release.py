@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.1.0-paper"
+VERSION = "0.2.0-paper"
 ARCHIVE_ROOT = f"ROBOM_FlowScalper_{VERSION}"
 ROOT_FILES = (
     ".gitignore",

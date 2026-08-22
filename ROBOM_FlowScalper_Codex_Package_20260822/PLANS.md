@@ -193,8 +193,8 @@ Codex must append concise dated entries here or link ADRs when a material choice
 
 | Wave | Status | Validation | Blockers | Next action |
 |---|---|---|---|---|
-| Upgrade 00 | IN_PROGRESS | 패키지 전체 완독, ZIP 안전검사 PASS, 0.1 기준선 test/lint/typecheck/build/security/network PASS | 기준선 E2E는 기존 8765 사용자 프로세스와 포트 충돌 | v0.2 계약·테스트 작성 |
-| Upgrade 01 | PENDING | - | 없음 | READY와 fresh Run 구현 |
+| Upgrade 00 | COMPLETE | 패키지 전체 완독, ZIP 안전검사 PASS, 0.1 기준선 test/lint/typecheck/build/security/network PASS | 기준선 E2E는 기존 8765 사용자 프로세스와 포트 충돌 | 완료 |
+| Upgrade 01 | COMPLETE | 백엔드 60 PASS, 프런트 2 PASS, lint/typecheck/build/security PASS, fresh LIVE 1,000 USDT·손익·비용·거래 0과 DEMO 성과 격리 PASS | 없음 | 지속 supervisor와 캔들 구현 |
 | Upgrade 02 | PENDING | - | 없음 | 지속 supervisor와 캔들 구현 |
 | Upgrade 03 | PENDING | - | 없음 | Strategy Registry와 shadow 계좌 구현 |
 | Upgrade 04 | PENDING | - | 없음 | 계획·체결·포지션 연결 |

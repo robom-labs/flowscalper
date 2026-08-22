@@ -14,7 +14,7 @@ if not exist ".venv\Scripts\python.exe" (
   if errorlevel 1 exit /b 1
 )
 
-if "%ROBOM_MODE%"=="" set ROBOM_MODE=FIXTURE_OFFLINE
+if "%ROBOM_MODE%"=="" set ROBOM_MODE=READY
 set ROBOM_OPEN_BROWSER=true
 uv run python scripts\run_server.py
 endlocal

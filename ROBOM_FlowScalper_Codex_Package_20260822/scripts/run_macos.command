@@ -10,6 +10,6 @@ if [[ ! -x .venv/bin/python || ! -d frontend/dist ]]; then
   "$SCRIPT_DIR/setup_macos.sh"
 fi
 
-export ROBOM_MODE="${ROBOM_MODE:-FIXTURE_OFFLINE}"
+export ROBOM_MODE="${ROBOM_MODE:-READY}"
 export ROBOM_OPEN_BROWSER=true
 uv run python scripts/run_server.py

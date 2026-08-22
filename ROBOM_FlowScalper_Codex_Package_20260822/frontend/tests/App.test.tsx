@@ -14,13 +14,14 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test('renders permanent paper-only status', async () => {
+test('renders permanent paper-only READY status', async () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
   vi.stubGlobal('WebSocket', FakeWebSocket)
   render(<App />)
   expect(screen.getByText('PAPER')).toBeInTheDocument()
   expect(screen.getByText('실제 주문 없음')).toBeInTheDocument()
-  expect(screen.getAllByText(/OFFLINE FIXTURE/).length).toBeGreaterThan(0)
+  expect(screen.getAllByText(/READY/).length).toBeGreaterThan(0)
+  expect(screen.getByRole('button', { name: '실시간 PAPER 시작' })).toBeInTheDocument()
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
 })
 

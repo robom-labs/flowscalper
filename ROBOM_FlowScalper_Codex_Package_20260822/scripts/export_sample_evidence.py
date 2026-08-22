@@ -47,7 +47,7 @@ def main() -> None:
             for row in transitions
         ]
         config = {
-            "mode": "FIXTURE_OFFLINE",
+            "mode": "DEMO_FIXTURE",
             "fee_model": "recorded",
             "latency_model": "recorded",
             "risk_per_trade": "0.10%",

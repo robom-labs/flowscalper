@@ -1,6 +1,6 @@
 app:
   name: ROBOM FlowScalper
-  mode: LIVE_SHADOW_PAPER
+  mode: READY
   locale: ko-KR
   bind_host: 127.0.0.1
   bind_port: 8765

@@ -16,7 +16,7 @@ from backend.app.storage.sqlite import SQLiteLedger
 
 def test_fixture_boot_is_honestly_labeled() -> None:
     runtime = PaperRuntime(
-        mode=RuntimeMode.FIXTURE_OFFLINE,
+        mode=RuntimeMode.DEMO_FIXTURE,
         clock=DeterministicClock(),
         run_id="run-test",
     )
@@ -27,7 +27,7 @@ def test_fixture_boot_is_honestly_labeled() -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "mode": "FIXTURE_OFFLINE",
+        "mode": "DEMO_FIXTURE",
         "market_data_state": "FIXTURE",
         "execution_state": "PAPER",
         "venue": "FIXTURE",
@@ -36,16 +36,25 @@ def test_fixture_boot_is_honestly_labeled() -> None:
         "auth_required": False,
         "starting_equity_usdt": 1000.0,
         "current_equity_usdt": 1000.0,
+        "realized_pnl_usdt": 0.0,
+        "unrealized_pnl_usdt": 0.0,
+        "cumulative_fees_usdt": 0.0,
+        "cumulative_slippage_usdt": 0.0,
+        "trade_count": 0,
         "wide_symbols": 10,
         "deep_symbols": 10,
         "processing_lag_p95_ms": None,
-        "health_flags": ["OFFLINE_SIMULATION"],
+        "health_flags": ["OFFLINE_DEMO_ISOLATED"],
     }
 
 
 def test_fixture_events_are_deterministic() -> None:
-    first = PaperRuntime(clock=DeterministicClock(), run_id="run-a")
-    second = PaperRuntime(clock=DeterministicClock(), run_id="run-a")
+    first = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE, clock=DeterministicClock(), run_id="run-a"
+    )
+    second = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE, clock=DeterministicClock(), run_id="run-a"
+    )
     first.boot_fixture(20)
     second.boot_fixture(20)
     assert first.events == second.events
@@ -53,7 +62,11 @@ def test_fixture_events_are_deterministic() -> None:
 
 
 def test_dashboard_controls_preserve_run_history() -> None:
-    runtime = PaperRuntime(clock=DeterministicClock(), run_id="run-original")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        clock=DeterministicClock(),
+        run_id="run-original",
+    )
     runtime.boot_fixture()
     client = TestClient(create_app(runtime))
 
@@ -72,7 +85,12 @@ def test_dashboard_controls_preserve_run_history() -> None:
 
 def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "runtime.sqlite3")
-    runtime = PaperRuntime(clock=DeterministicClock(), run_id="run-persisted", ledger=ledger)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        clock=DeterministicClock(),
+        run_id="run-persisted",
+        ledger=ledger,
+    )
     runtime.boot_fixture()
     client = TestClient(create_app(runtime))
 
@@ -81,8 +99,9 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
     after = client.post("/api/control/new-run").json()
 
     assert before["history"][0]["trade_id"] == "run-persisted-fixture-trade-001"
-    assert run_config["app_version"] == "0.1.0-paper"
+    assert run_config["app_version"] == "0.2.0-paper"
     assert "LSA_REVERSAL_V1" in run_config["strategy_version"]
+    assert run_config["sample_type"] == "DEMO_FIXTURE"
     assert run_config["git_commit"]
     assert after["status"]["run_id"] != "run-persisted"
     assert {row["run_id"] for row in after["history"]} == {
@@ -113,6 +132,49 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
     assert transition_times[2] == orders[0]["created_ts_ms"]
     assert transition_times[3] == fills[0]["ts_ms"]
     assert transition_times[-1] == fills[-1]["ts_ms"]
+    ledger.close()
+
+
+async def test_fresh_live_run_starts_zero_and_excludes_demo_performance(tmp_path: Path) -> None:
+    clock = DeterministicClock()
+    ledger = SQLiteLedger(tmp_path / "fresh-live.sqlite3")
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=clock, ledger=ledger)
+    runtime.start_demo_run()
+    assert ledger.count("trades") == 1
+
+    class VerifiedProbe:
+        async def bootstrap(
+            self, venue: Venue, *, run_id: str, clock: DeterministicClock
+        ) -> LiveBootstrapResult:
+            return _verified_live_result(venue, run_id, clock, lag_ms=25)
+
+    assert await runtime.start_live_run(VerifiedProbe())
+    status = runtime.status()
+    dashboard = runtime.dashboard()
+
+    assert status.mode is RuntimeMode.LIVE_SHADOW_PAPER
+    assert status.starting_equity_usdt == 1000
+    assert status.current_equity_usdt == 1000
+    assert status.realized_pnl_usdt == 0
+    assert status.unrealized_pnl_usdt == 0
+    assert status.cumulative_fees_usdt == 0
+    assert status.cumulative_slippage_usdt == 0
+    assert status.trade_count == 0
+    assert dashboard["history"] == []
+    assert dashboard["performance"] == {
+        "sample_size": 0,
+        "gross_pnl": "0",
+        "fees": "0",
+        "slippage": "0",
+        "net_pnl": "0",
+        "max_drawdown": "0",
+        "win_rate": "표본 없음",
+        "calibration": "CALIBRATING",
+        "base_equity": "1000",
+        "stress_equity": "표본 없음",
+    }
+    assert ledger.count("trades") == 1
+    assert ledger.list_trades()[0]["sample_type"] == "DEMO_FIXTURE"
     ledger.close()
 
 

@@ -16,7 +16,9 @@ export default function App() {
   const [controlError, setControlError] = useState('')
   const { data, connected, control } = useDashboard()
 
-  const runControl = async (action: 'pause' | 'resume' | 'emergency-close' | 'new-run') => {
+  const runControl = async (
+    action: 'pause' | 'resume' | 'emergency-close' | 'new-run' | 'start-live' | 'start-demo',
+  ) => {
     try {
       setControlError('')
       await control(action)
@@ -42,7 +44,7 @@ export default function App() {
       <SafetyHeader data={data} connected={connected} />
       <Navigation page={page} onChange={setPage} />
       {controlError ? <p className="control-error" role="alert">{controlError}</p> : null}
-      {page === 'live' ? <LivePage data={data} onPauseToggle={pauseToggle} onClose={emergencyClose} /> : null}
+      {page === 'live' ? <LivePage data={data} onPauseToggle={pauseToggle} onClose={emergencyClose} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} /> : null}
       {page === 'history' ? <HistoryPage rows={data.history} onReplay={() => setPage('replay')} /> : null}
       {page === 'replay' ? <ReplayPage chart={data.chart} trade={data.history[0]} /> : null}
       {page === 'performance' ? <PerformancePage performance={data.performance} /> : null}
@@ -51,4 +53,3 @@ export default function App() {
     </main>
   )
 }
-

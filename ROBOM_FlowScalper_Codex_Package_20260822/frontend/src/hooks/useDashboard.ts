@@ -3,7 +3,13 @@ import { useCallback, useEffect, useState } from 'react'
 import { initialDashboard } from '../demoData'
 import type { DashboardData } from '../types'
 
-type ControlAction = 'pause' | 'resume' | 'emergency-close' | 'new-run'
+type ControlAction =
+  | 'pause'
+  | 'resume'
+  | 'emergency-close'
+  | 'new-run'
+  | 'start-live'
+  | 'start-demo'
 
 export function useDashboard() {
   const [data, setData] = useState<DashboardData>(initialDashboard)

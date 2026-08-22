@@ -18,10 +18,12 @@ def build_dashboard_snapshot(
     control_logs: tuple[dict[str, object], ...],
     archived_run_ids: tuple[str, ...],
     persisted_trades: tuple[Mapping[str, object], ...] = (),
+    history_trades: tuple[Mapping[str, object], ...] | None = None,
     storage_label: str = "fixture memory",
     api_host: str = "127.0.0.1:8765",
 ) -> dict[str, Any]:
-    fixture_mode = status.mode.value == "FIXTURE_OFFLINE"
+    fixture_mode = status.mode.value == "DEMO_FIXTURE"
+    ready_mode = status.mode.value == "READY"
     symbols = sorted({event.symbol for event in events})
     latest_by_symbol = {event.symbol: event for event in events}
     scanner: list[dict[str, object]] = []
@@ -80,7 +82,7 @@ def build_dashboard_snapshot(
         if depth_events
         else latest_by_symbol.get("SOLUSDT") or (events[-1] if events else None)
     )
-    chart = _chart_points(selected, events)
+    chart = _chart_points(selected, events, fixture_mode=fixture_mode)
     position = None
     if position_visible and selected is not None and fixture_mode:
         bid = Decimal(str(selected.data["bid"]))
@@ -134,7 +136,11 @@ def build_dashboard_snapshot(
         "chart": chart,
         "position": position,
         "logs": [*control_logs[-10:], *fixture_logs],
-        "history": _history_rows(status, archived_run_ids, persisted_trades),
+        "history": _history_rows(
+            status,
+            archived_run_ids,
+            persisted_trades if history_trades is None else history_trades,
+        ),
         "performance": _performance_rows(persisted_trades, fixture_mode=fixture_mode),
         "risk": {
             "risk_per_trade": "0.10%",
@@ -162,7 +168,8 @@ def build_dashboard_snapshot(
             "retention_feature_days": 90,
             "trade_windows_retained": True,
             "disk_pressure_entry_lock": True,
-            "app_version": "0.1.0-paper",
+            "app_version": "0.2.0-paper",
+            "runtime_ready": ready_mode,
         },
     }
 
@@ -189,11 +196,11 @@ def _history_rows(
                 "net_pnl": str(trade["net_pnl_usdt"]),
                 "holding_seconds": int(str(trade["holding_ms"])) // 1_000,
                 "profile": str(trade.get("profile", "BASE")),
-                "sample_type": "OFFLINE_FIXTURE",
+                "sample_type": str(trade.get("sample_type", "LIVE_PUBLIC")),
             }
             for trade in reversed(persisted_trades)
         ]
-    if status.mode.value != "FIXTURE_OFFLINE":
+    if status.mode.value != "DEMO_FIXTURE":
         return []
     return [
         {
@@ -279,6 +286,8 @@ def _performance_rows(
 def _chart_points(
     selected: MarketEvent | None,
     events: tuple[MarketEvent, ...],
+    *,
+    fixture_mode: bool,
 ) -> dict[str, object]:
     symbol = selected.symbol if selected is not None else "BTCUSDT"
     matching = [event for event in events if event.symbol == symbol]
@@ -300,15 +309,15 @@ def _chart_points(
             }
         )
     entry = cast(float, points[-1]["mid"]) if points else 100.0
-    is_fixture = selected is None or not selected.quality.is_live
+    is_fixture = fixture_mode
     return {
         "symbol": symbol,
         "interval": "1s",
         "points": points,
         "lines": {
-            "entry": entry if is_fixture else None,
-            "take_profit": entry + 0.75 if is_fixture else None,
-            "stop": entry - 0.45 if is_fixture else None,
+            "entry": entry if fixture_mode and points else None,
+            "take_profit": entry + 0.75 if fixture_mode and points else None,
+            "stop": entry - 0.45 if fixture_mode and points else None,
         },
         "fixture": is_fixture,
     }
