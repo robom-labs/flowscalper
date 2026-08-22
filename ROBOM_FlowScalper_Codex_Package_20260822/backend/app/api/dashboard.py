@@ -344,13 +344,21 @@ def _chart_points(
     fixture_mode: bool,
 ) -> dict[str, object]:
     symbol = selected.symbol if selected is not None else "BTCUSDT"
-    matching = [event for event in events if event.symbol == symbol]
+    matching = [
+        event
+        for event in events
+        if event.symbol == symbol and "bid" in event.data and "ask" in event.data
+    ]
     if not matching:
-        matching = list(events[-20:])
+        matching = [
+            event
+            for event in events[-20:]
+            if "bid" in event.data and "ask" in event.data
+        ]
     points: list[dict[str, object]] = []
     for index, event in enumerate(matching[-30:]):
-        bid = Decimal(str(event.data.get("bid", "100")))
-        ask = Decimal(str(event.data.get("ask", "100.02")))
+        bid = Decimal(str(event.data["bid"]))
+        ask = Decimal(str(event.data["ask"]))
         mid = (bid + ask) / 2
         points.append(
             {

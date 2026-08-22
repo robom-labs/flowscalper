@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -344,6 +345,8 @@ class PaperRuntime:
     def _operational_diagnostics(self) -> dict[str, object]:
         self._refresh_storage_safety()
         return {
+            "server_time_ms": self.clock.utc_ms(),
+            "display_timezone": "Asia/Seoul",
             **self.resource_sampler.sample(),
             **self._storage_health_snapshot,
             "persistence_fault_count": self._persistence_fault_count,
@@ -503,9 +506,6 @@ class PaperRuntime:
         if self.ledger is not None and self.mode is not RuntimeMode.READY:
             with self._persistence_lock:
                 self._market_event_buffer.append(event.model_dump(mode="json"))
-                should_flush = len(self._market_event_buffer) >= 500
-            if should_flush:
-                self._flush_persistence()
         if event.quality.is_stale or not event.quality.sequence_valid:
             self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
         if len(self._events) > 10_000:
@@ -1546,6 +1546,22 @@ class PaperRuntime:
                 self._market_event_buffer = market_rows
                 self._candle_buffer = candle_rows
             self._handle_persistence_fault(error)
+
+    async def run_persistence_worker(self, stop: asyncio.Event) -> None:
+        """시장 직렬화·fsync를 시장데이터 이벤트 루프 밖에서 실행한다."""
+
+        while not stop.is_set():
+            with self._persistence_lock:
+                should_flush = (
+                    len(self._market_event_buffer) >= 500
+                    and self._persistence_fault_count == 0
+                )
+            if should_flush:
+                await asyncio.to_thread(self._flush_persistence)
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=0.25)
+            except TimeoutError:
+                continue
 
     def _start_ledger_run(self) -> None:
         if self.ledger is None:

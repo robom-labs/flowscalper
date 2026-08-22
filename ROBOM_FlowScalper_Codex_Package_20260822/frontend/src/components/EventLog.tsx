@@ -1,5 +1,6 @@
 // 시장·후보·체결·위험 이벤트를 구조화된 시간순 로그로 표시한다.
 import type { LogItem } from '../types'
+import { formatKstDateTime, formatKstTime } from '../time'
 
 type Props = { logs: LogItem[] }
 
@@ -10,7 +11,9 @@ export function EventLog({ logs }: Props) {
       <div className="log-list">
         {logs.map((log, index) => (
           <article key={`${log.ts_ms}-${index}`}>
-            <time>{new Date(log.ts_ms).toLocaleTimeString('ko-KR')}</time>
+            <time dateTime={new Date(log.ts_ms).toISOString()} title={formatKstDateTime(log.ts_ms)}>
+              {formatKstTime(log.ts_ms)}
+            </time>
             <span className="log-category">{log.category}</span>
             <p>{log.message}</p>
           </article>
@@ -20,4 +23,3 @@ export function EventLog({ logs }: Props) {
     </section>
   )
 }
-

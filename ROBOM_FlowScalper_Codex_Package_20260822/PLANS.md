@@ -192,6 +192,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-22: ADR-004에 따라 공개시장 이벤트를 Run 범위 불변 원장에 배치 저장하고 동일 A/B/C/D·PAPER 런타임으로 checksum 리플레이하며, 전략별 기대값·PF·비용·낙폭·표본상태를 함께 계산한다.
 - 2026-08-22: ADR-005에 따라 v0.2는 기존 SVG 관찰 차트를 Lightweight Charts 실제 candle·bid·ask·microprice로 교체하고, 일곱 한국어 화면을 같은 backend 원장·ReplayEngine·Strategy Registry에 연결한다.
 - 2026-08-22: ADR-006에 따라 main·8개 shadow 실행계좌와 전략 설정을 checksum 검증 snapshot에서 복구하고, 공개지연 p95 1,500ms 초과·저장 실패·디스크 압박·복구 불일치를 UI로 우회할 수 없는 PAPER 신규진입 잠금으로 처리한다.
+- 2026-08-22: ADR-007에 따라 wide 1초·deep 250ms·trade 수신을 분리하고, SQLite batch를 event loop 밖에서 저장하며, 대시보드 snapshot·차트 인스턴스·KST 표시를 각각 한 번의 안정적인 수명주기로 운영한다.
 
 ## v0.2 upgrade progress
 
@@ -206,6 +207,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 | Upgrade 06 | COMPLETE | 백엔드 82 PASS, frontend 2 PASS, ruff/mypy/ESLint/TypeScript/build/security PASS, Playwright 데스크톱·태블릿·모바일 3 PASS·console/page error 0·48px controls·root overflow 0. 실제 candle·bid·ask·microprice와 entry·TP1·TP2·SL·체결 marker, A/B/C/D 제어, 거래원장, backend replay, 전략별 성과 화면 및 디자인 비교 PASS | 없음 | 복구·soak·보안 검증 |
 | Upgrade 07 | COMPLETE | 백엔드 전체 92 PASS, frontend 2 PASS, targeted 복구·운영안전 11 PASS, ruff/mypy/ESLint/TypeScript/build/security/E2E 3 PASS. 실제 Binance 30분 3,120,256 events, reconnect 39, gap/resync/drop 0, queue max 2, memory +132.922MB, 임계 지연 표본 171개 fail-open 0, 종료 supervisor lock·runtime pause 유지 | 6시간·24시간 soak는 NOT_RUN | 최종 증거와 릴리스 |
 | Upgrade 08 | COMPLETE | macOS root launcher READY 1,000 USDT·성과 0 실제 부팅 PASS. 릴리스 234 entries·10,934,450 bytes, `unzip -t` PASS, 내부 checksum 233개 전수 PASS, 새 압축해제본 frozen 설치 후 backend 92·frontend 2 PASS, One Touch 복사본 SHA-256 일치 | Windows 실기기 실행 NOT_RUN | 완료 |
+| Upgrade 09 | COMPLETE | backend 94 PASS, frontend 3 PASS, lint/typecheck/build PASS. 실제 Binance wide 50·deep 10에서 저장·다중 UI 연결 중 queue/gap/drop/fault 0, 실행 경로 p95 0~1,224ms, KST·차트 높이·재생성 최적화 | 현재 in-app browser 보안 정책 확인 불가로 수정 후 screenshot 재캡처 BLOCKED | 릴리스·증거 갱신 |
 
 ## Progress log
 

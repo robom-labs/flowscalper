@@ -282,7 +282,9 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
 
     for sequence in range(1, 2_002):
         supervisor._observe(
-            _event(runtime.run_id, "BTCUSDT", clock, sequence, lag_ms=5)
+            _event(runtime.run_id, "BTCUSDT", clock, sequence, lag_ms=5).model_copy(
+                update={"event_type": "DEPTH_UPDATE"}
+            )
         )
     recovered_depth = _event(runtime.run_id, "BTCUSDT", clock, 0, lag_ms=5)
     supervisor._observe(recovered_depth)
@@ -294,3 +296,23 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert runtime.paused is True
     runtime.set_paused(False)
     assert runtime.paused is False
+
+
+def test_wide_scanner_lag_is_visible_but_does_not_lock_executable_path() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000)
+    provider = RecordedProvider()
+    supervisor = PersistentPublicSupervisor(
+        provider,
+        run_id="run-wide-lag",
+        clock=clock,
+        sink=lambda _: None,
+    )
+
+    wide = _event("run-wide-lag", "ETHUSDT", clock, 1, lag_ms=9_000)
+    supervisor._observe(wide)
+    fresh_depth = _event("run-wide-lag", "BTCUSDT", clock, 0, lag_ms=10)
+    supervisor._observe(fresh_depth)
+
+    assert supervisor.telemetry.wide_lag_p95_ms == 9_000
+    assert supervisor.telemetry.lag_p95_ms == 10
+    assert supervisor.telemetry.entry_locked is False

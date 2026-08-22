@@ -178,3 +178,49 @@
 - 6시간·24시간 soak와 Windows 실기기 실행은 `NOT_RUN`이다.
 - 거래소의 지역 제한·유지보수·protocol 변경은 로컬 코드로 없앨 수 없다. 연결이 검증되지 않으면 LIVE 대신 fail-closed 상태를 표시한다.
 - 외장 APFS 작업 이미지는 현재 약 32GiB 상한이며 약 31GiB가 비어 있다. 원시 장기수집으로 한계에 가까워지면 외장하드의 별도 데이터 볼륨으로 확장해야 한다.
+
+## 12. Wave 09 LIVE 지연·차트·시각 핫픽스
+
+2026-08-22 사용자 화면에서 확인된 13~23초 지연, scanner 높이로 늘어난 chart, UTC/KST 불일치를 수정했다. 세부 결정은 `docs/adr/ADR-007-live-backpressure-chart-and-kst.md`에 기록했다.
+
+### 원인과 수정
+
+- 50개 real-time `bookTicker`과 10개 `depth@100ms`가 WebSocket 내부 queue에 백로그를 만들었다. wide 1초 `24hrTicker`, deep 250ms depth, real-time trade를 세 경로로 분리했다.
+- sequence가 없는 wide event ID가 충돌해 SQLite batch가 매 이벤트마다 재시도되었다. 수신 monotonic nanosecond를 ID에 포함하고, 저장은 독립 worker thread에서 bounded batch로 수행한다.
+- UI client마다 dashboard를 새로 계산·JSON 직렬화했다. 0.5초마다 snapshot과 JSON을 한 번만 만들어 모든 localhost client에 broadcast한다.
+- 차트를 snapshot마다 remove/create하던 효과를 없애고 series·marker·plan line만 갱신한다. CSS grid는 `align-items: start`와 영역 배치를 쓰고 chart는 viewport 기반 360~560px로 제한한다.
+- chart axis, event log, replay, system 시각을 `Asia/Seoul` KST로 고정했다. system 화면은 server snapshot과 browser 수신 시각 차이도 표시한다.
+- quote가 없는 trade event에 bid/ask 100 기본값을 넣어 차트 선을 튀게 만들 수 있던 오류를 제거했다.
+
+### 실제 LIVE 결과
+
+`run-ef96cc96a072`를 1,000 USDT, 손익·비용·거래 0에서 새로 시작한 후 176.709초 실제 Binance 공개시장을 측정했다.
+
+| 항목 | 실제 값 |
+|---|---:|
+| wide / deep | 50 / 10 |
+| 처리 events / candles / chart points | 35,966 / 156 / 30 |
+| 실행 경로 p50 / p95 | 0ms / 0ms |
+| 넓은 감시 age p95 | 1,355ms |
+| queue / reconnect / gap / resync / drop | 0 / 0 / 0 / 0 / 0 |
+| persistence fault / buffer drop | 0 / 0 |
+| CPU / memory | 41.432% / 231.344MB |
+| paused / auth headers / real orders | false / false / false |
+
+전체 표본에서 저장 batch 전후 실행 경로 p95는 0~1,224ms였고 1,500ms 진입잠금 기준 이하였다. 원본 값은 `evidence/WAVE09_LIVE_UI_LATENCY_FIX.json`에 보존했다.
+
+### 회귀 검증
+
+| 검증 | 결과 |
+|---|---|
+| backend pytest | PASS, 95 tests |
+| frontend Vitest | PASS, 3 tests |
+| Ruff / ESLint | PASS, 오류 0 |
+| TypeScript / Vite build | PASS, 39 modules, JS 424.05kB, gzip 134.22kB |
+| localhost WebSocket 다중 client | PASS, 두 client에 같은 PAPER snapshot 전달 |
+| KST 결정론 변환 | PASS, Unix epoch 0→09:00:00 KST |
+| 실제 주문·private API·인증 | 0, false, false 유지 |
+
+### 화면 재검수 제한
+
+수정 후 localhost 애플리케이션은 `http://127.0.0.1:8870/`에서 실행 중이다. Codex in-app browser는 admin-enforced security policy 확인이 일시적으로 불가해 DOM snapshot과 수정 후 screenshot 캡처를 허용하지 않았다. 보안 제어를 우회하지 않았으며, 기존 Wave 06 screenshot을 수정 후 화면 증거로 잘못 재사용하지 않는다. 따라서 Wave 09 수정 후 screenshot 항목은 `BLOCKED`이고 API·소스·빌드·런타임 검증만 `PASS`다.

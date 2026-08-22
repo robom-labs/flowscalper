@@ -114,6 +114,21 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     ).status_code == 404
 
 
+def test_dashboard_broadcaster_serves_multiple_local_clients() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    with TestClient(create_app(runtime)) as client:
+        headers = {"origin": "http://127.0.0.1:8870"}
+        with client.websocket_connect("/ws", headers=headers) as first:
+            with client.websocket_connect("/ws", headers=headers) as second:
+                first_payload = first.receive_json()
+                second_payload = second.receive_json()
+
+    assert first_payload["type"] == "dashboard"
+    assert second_payload["type"] == "dashboard"
+    assert first_payload["data"]["status"]["mode"] == "READY"
+    assert second_payload["data"]["system"]["auth_headers"] is False
+
+
 def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "runtime.sqlite3")
     runtime = PaperRuntime(

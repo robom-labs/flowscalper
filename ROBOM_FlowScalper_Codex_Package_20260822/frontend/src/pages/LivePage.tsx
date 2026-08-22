@@ -35,7 +35,7 @@ export function LivePage({ data, onPauseToggle, onClose, onStartLive, onStartDem
         <article><span>현재 포함 순손익</span><b>{(data.status.realized_pnl_usdt + data.status.unrealized_pnl_usdt).toFixed(4)} USDT</b></article>
         <article><span>누적 수수료</span><b>{data.status.cumulative_fees_usdt.toFixed(4)} USDT</b></article>
         <article><span>Drawdown</span><b>{String(data.performance.max_drawdown)} USDT</b></article>
-        <article><span>데이터 지연 p95</span><b>{latency}</b></article>
+        <article><span>정밀 경로 지연 p95</span><b className={data.status.processing_lag_p95_ms !== null && data.status.processing_lag_p95_ms > 1500 ? 'warning' : ''}>{latency}</b></article>
       </section>
       <section className="chart-toolbar" aria-label="차트 선택">
         <label>차트 종목<select value={data.chart.symbol} onChange={(event) => onChartChange(event.target.value, currentInterval)}>{symbols.map((symbol) => <option value={symbol} key={symbol}>{symbol}</option>)}</select></label>

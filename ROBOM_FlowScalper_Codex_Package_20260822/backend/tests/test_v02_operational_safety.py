@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from pathlib import Path
 
 from backend.app.clocks import TestClock as DeterministicClock
-from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
+from backend.app.domain.models import DataQuality, MarketDataState, MarketEvent, RuntimeMode, Venue
 from backend.app.ops import ProcessResourceSampler
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import DiskUsage, ParquetEventStore
@@ -94,4 +95,49 @@ def test_sqlite_write_fault_fails_closed_and_bounds_retry_buffer(
     assert runtime._persistence_buffer_dropped == 2_000
     assert len(runtime._market_event_buffer) == 10_000
     assert "OSError" in str(runtime.dashboard()["system"]["persistence_last_error"])
+    ledger.close()
+
+
+async def test_market_persistence_worker_flushes_outside_ingest_loop(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "worker.sqlite3")
+    clock = DeterministicClock()
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-persistence-worker",
+        venue=Venue.BINANCE_USDM,
+        clock=clock,
+        ledger=ledger,
+    )
+    for index in range(500):
+        runtime.ingest_live_event(
+            MarketEvent(
+                event_id=f"wide-{index}",
+                run_id=runtime.run_id,
+                venue=runtime.venue,
+                symbol="BTCUSDT",
+                event_type="WIDE_TICKER",
+                venue_ts_ms=index,
+                receive_monotonic_ns=index,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=False,
+                    sequence_valid=True,
+                    lag_ms=0,
+                ),
+                data={"last_price": "100"},
+            )
+        )
+
+    assert ledger.count("market_events") == 0
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    for _ in range(100):
+        if ledger.count("market_events") == 500:
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert ledger.count("market_events") == 500
+    assert runtime._persistence_fault_count == 0
     ledger.close()

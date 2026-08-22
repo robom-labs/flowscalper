@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -132,14 +133,54 @@ def _runtime_from_environment() -> PaperRuntime:
 
 def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
     active_runtime = runtime or _runtime_from_environment()
+    websocket_clients: set[WebSocket] = set()
+
+    def dashboard_message() -> str:
+        return json.dumps(
+            {"type": "dashboard", "data": active_runtime.dashboard()},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+    async def broadcast_dashboard() -> None:
+        """연결 수와 무관하게 snapshot을 한 번만 생성·직렬화한다."""
+
+        while True:
+            if websocket_clients:
+                payload = dashboard_message()
+                clients = tuple(websocket_clients)
+                results = await asyncio.gather(
+                    *(client.send_text(payload) for client in clients),
+                    return_exceptions=True,
+                )
+                for client, result in zip(clients, results, strict=True):
+                    if isinstance(result, Exception):
+                        websocket_clients.discard(client)
+            await asyncio.sleep(0.5)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        broadcaster: asyncio.Task[None] | None = None
+        persistence_stop = asyncio.Event()
+        persistence_worker: asyncio.Task[None] | None = None
         try:
             if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
                 await active_runtime.start_persistent_live()
+            persistence_worker = asyncio.create_task(
+                active_runtime.run_persistence_worker(persistence_stop),
+                name="persistence-worker",
+            )
+            broadcaster = asyncio.create_task(
+                broadcast_dashboard(), name="dashboard-broadcaster"
+            )
             yield
         finally:
+            if broadcaster is not None:
+                broadcaster.cancel()
+                await asyncio.gather(broadcaster, return_exceptions=True)
+            persistence_stop.set()
+            if persistence_worker is not None:
+                await asyncio.gather(persistence_worker, return_exceptions=True)
             await active_runtime.shutdown()
             if active_runtime.ledger is not None:
                 active_runtime.ledger.close()
@@ -281,11 +322,14 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
             return
         await websocket.accept()
         try:
+            await websocket.send_text(dashboard_message())
+            websocket_clients.add(websocket)
             while True:
-                await websocket.send_json({"type": "dashboard", "data": active_runtime.dashboard()})
-                await asyncio.sleep(0.5)
+                await websocket.receive_text()
         except WebSocketDisconnect:
             return
+        finally:
+            websocket_clients.discard(websocket)
 
     if (
         (FRONTEND_DIST / "assets").is_dir()

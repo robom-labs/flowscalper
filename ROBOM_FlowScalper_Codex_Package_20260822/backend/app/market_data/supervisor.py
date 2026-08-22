@@ -72,6 +72,9 @@ class SupervisorTelemetry:
     critical_lag_threshold_ms: float = 1_500.0
     critical_lag_event_count: int = 0
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
+    wide_lag_samples_ms: deque[float] = field(
+        default_factory=lambda: deque(maxlen=2_000)
+    )
 
     @property
     def lag_p95_ms(self) -> float | None:
@@ -85,6 +88,14 @@ class SupervisorTelemetry:
     def lag_p50_ms(self) -> float | None:
         return statistics.median(self.lag_samples_ms) if self.lag_samples_ms else None
 
+    @property
+    def wide_lag_p95_ms(self) -> float | None:
+        if not self.wide_lag_samples_ms:
+            return None
+        ordered = sorted(self.wide_lag_samples_ms)
+        index = max(0, min(len(ordered) - 1, round((len(ordered) - 1) * 0.95)))
+        return ordered[index]
+
     def as_dict(self) -> dict[str, object]:
         return {
             "connection_state": self.state.value,
@@ -97,6 +108,7 @@ class SupervisorTelemetry:
             "queue_capacity": self.queue_capacity,
             "lag_p50_ms": self.lag_p50_ms,
             "lag_p95_ms": self.lag_p95_ms,
+            "wide_lag_p95_ms": self.wide_lag_p95_ms,
             "planned_rotations": self.planned_rotation_count,
             "entry_locked": self.entry_locked,
             "critical_lag_threshold_ms": self.critical_lag_threshold_ms,
@@ -226,9 +238,12 @@ class PersistentPublicSupervisor:
         self.telemetry.event_count += 1
         self.telemetry.last_event_monotonic_ns = event.receive_monotonic_ns
         if event.quality.lag_ms is not None:
-            self.telemetry.lag_samples_ms.append(event.quality.lag_ms)
-            if event.quality.lag_ms > self.telemetry.critical_lag_threshold_ms:
-                self.telemetry.critical_lag_event_count += 1
+            if event.event_type in {"DEPTH_UPDATE", "ORDERBOOK", "TRADE"}:
+                self.telemetry.lag_samples_ms.append(event.quality.lag_ms)
+                if event.quality.lag_ms > self.telemetry.critical_lag_threshold_ms:
+                    self.telemetry.critical_lag_event_count += 1
+            else:
+                self.telemetry.wide_lag_samples_ms.append(event.quality.lag_ms)
         flags = set(event.quality.flags)
         if "SEQUENCE_GAP" in flags:
             self.telemetry.gap_count += 1
@@ -285,7 +300,7 @@ class PersistentPublicSupervisor:
 
 
 class BinancePersistentProvider:
-    """Binance public·market 경로를 분리하고 50 wide·10 deep을 유지한다."""
+    """wide 1초 ticker와 deep depth·trade를 독립 연결로 감독한다."""
 
     venue = Venue.BINANCE_USDM
 
@@ -345,29 +360,35 @@ class BinancePersistentProvider:
         clock: Clock,
     ) -> AsyncIterator[MarketEvent]:
         router = BinanceStreamRouter(maximum_streams_per_connection=100)
-        public_url = router.urls(
-            (
-                *(f"{symbol}@bookTicker" for symbol in selection.wide_symbols),
-                *(f"{symbol}@depth@100ms" for symbol in selection.deep_symbols),
-            )
+        wide_url = router.urls(
+            f"{symbol}@ticker" for symbol in selection.wide_symbols
         )[0]
-        market_url = router.urls(
+        depth_url = router.urls(
+            f"{symbol}@depth" for symbol in selection.deep_symbols
+        )[0]
+        trade_url = router.urls(
             f"{symbol}@aggTrade" for symbol in selection.deep_symbols
         )[0]
         started = asyncio.get_running_loop().time()
         async with websockets.connect(
-            public_url,
+            wide_url,
             max_size=2_000_000,
-            max_queue=2_048,
+            max_queue=512,
             ping_interval=20,
             additional_headers=None,
-        ) as public_socket, websockets.connect(
-            market_url,
+        ) as wide_socket, websockets.connect(
+            depth_url,
             max_size=2_000_000,
-            max_queue=2_048,
+            max_queue=512,
             ping_interval=20,
             additional_headers=None,
-        ) as market_socket, BinancePublicAdapter() as adapter:
+        ) as depth_socket, websockets.connect(
+            trade_url,
+            max_size=2_000_000,
+            max_queue=512,
+            ping_interval=20,
+            additional_headers=None,
+        ) as trade_socket, BinancePublicAdapter() as adapter:
             snapshot_values = await asyncio.gather(
                 *(adapter.fetch_depth(symbol, limit=1000) for symbol in selection.deep_symbols)
             )
@@ -378,7 +399,11 @@ class BinancePersistentProvider:
                     int(snapshot["lastUpdateId"]), snapshot["bids"], snapshot["asks"]
                 )
                 books[symbol] = book
-            sockets: dict[str, Any] = {"public": public_socket, "market": market_socket}
+            sockets: dict[str, Any] = {
+                "wide": wide_socket,
+                "depth": depth_socket,
+                "trade": trade_socket,
+            }
             pending: dict[asyncio.Task[str | bytes], str] = {
                 asyncio.create_task(socket.recv()): name for name, socket in sockets.items()
             }
@@ -427,6 +452,27 @@ class BinancePersistentProvider:
             sequence_valid=True,
             lag_ms=max(0.0, float(clock.utc_ms() - venue_ts_ms)),
         )
+        if event_name == "24hrTicker":
+            receive_monotonic_ns = clock.monotonic_ns()
+            yield MarketEvent(
+                event_id=(
+                    f"binance-wide-{symbol}-{venue_ts_ms}-{receive_monotonic_ns}"
+                ),
+                run_id=run_id,
+                venue=self.venue,
+                symbol=symbol,
+                event_type="WIDE_TICKER",
+                venue_ts_ms=venue_ts_ms,
+                receive_monotonic_ns=receive_monotonic_ns,
+                quality=quality,
+                data={
+                    "last_price": str(data["c"]),
+                    "base_volume_24h": str(data["v"]),
+                    "quote_volume_24h": str(data["q"]),
+                    "trade_count_24h": int(data.get("n", 0)),
+                },
+            )
+            return
         if event_name == "bookTicker":
             yield MarketEvent(
                 event_id=f"binance-book-{symbol}-{data.get('u', venue_ts_ms)}",

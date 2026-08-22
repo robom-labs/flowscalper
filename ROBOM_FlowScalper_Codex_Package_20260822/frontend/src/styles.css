@@ -64,11 +64,11 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .chart-toolbar label, .inline-filter, .replay-runbar label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
 .chart-toolbar select, .inline-filter select, .replay-runbar select { min-width: 150px; min-height: 48px; border: 1px solid #31505f; border-radius: 8px; padding: 0 34px 0 11px; color: #d9e5eb; background: #0e2029; }
 .chart-toolbar > span { margin-left: auto; padding-bottom: 14px; color: #829aa7; font-size: 10px; }
-.live-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(420px, 1.55fr) minmax(280px, .8fr); gap: 8px; align-items: stretch; }
-.scanner-panel { grid-column: 1; }
-.chart-panel { grid-column: 2; display: flex; flex-direction: column; }
-.position-panel { grid-column: 3; }
-.log-panel { grid-column: 1 / -1; }
+.live-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(420px, 1.55fr) minmax(280px, .8fr); grid-template-areas: "scanner chart position" "scanner log log"; gap: 8px; align-items: start; }
+.scanner-panel { grid-area: scanner; }
+.chart-panel { grid-area: chart; display: flex; flex-direction: column; align-self: start; }
+.position-panel { grid-area: position; }
+.log-panel { grid-area: log; }
 .table-scroll { overflow-x: auto; }
 .scanner-table, .history-table, .performance-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .scanner-table th, .scanner-table td, .history-table th, .history-table td, .performance-table th, .performance-table td { padding: 11px 8px; border-bottom: 1px solid #152a35; text-align: left; vertical-align: middle; }
@@ -80,7 +80,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .chip { white-space: nowrap; }
 .symbol-button { display: grid; min-width: 108px; min-height: 48px; align-content: center; border: 0; padding: 0; color: #e5edf5; background: transparent; text-align: left; cursor: pointer; }
 .symbol-button small { font-weight: 500; }
-.chart-wrap { position: relative; min-height: 340px; flex: 1; margin-top: 10px; border-radius: 8px; overflow: hidden; background: #071219; }
+.chart-wrap { position: relative; height: clamp(360px, 48vh, 560px); min-height: 0; flex: none; margin-top: 10px; border-radius: 8px; overflow: hidden; background: #071219; }
 .chart-empty { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; gap: 5px; color: #6f8998; text-align: center; pointer-events: none; }
 .chart-empty b { color: #9cb0ba; font-size: 12px; }
 .chart-empty span { font-size: 10px; }
@@ -205,8 +205,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .control-error { border: 1px solid #82434b; border-radius: 8px; padding: 10px; color: #ffc2c7; background: #2c171b; }
 
 @media (max-width: 1280px) {
-  .live-grid { grid-template-columns: minmax(0, 1fr) minmax(440px, 1.5fr); }
-  .position-panel { grid-column: 1 / -1; }
+  .live-grid { grid-template-columns: minmax(0, 1fr) minmax(440px, 1.5fr); grid-template-areas: "scanner chart" "scanner position" "log log"; }
   .position-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 18px; }
   .metric-strip, .analytics-grid, .system-summary-grid { grid-template-columns: repeat(3, 1fr); }
   .strategy-metrics { grid-template-columns: repeat(2, 1fr); }
@@ -218,11 +217,11 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .badges { justify-content: flex-start; }
   .live-grid, .replay-layout, .risk-layout, .history-layout.drawer-open { grid-template-columns: 1fr; }
-  .scanner-panel, .chart-panel, .position-panel, .log-panel { grid-column: 1; }
+  .live-grid { grid-template-areas: "scanner" "chart" "position" "log"; }
   .metric-strip, .analytics-grid, .system-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .strategy-grid { grid-template-columns: 1fr; }
   .log-list { grid-template-columns: 1fr; }
-  .chart-wrap { min-height: 310px; }
+  .chart-wrap { height: clamp(310px, 52vh, 500px); }
   .risk-layout .panel { min-height: auto; }
   .trade-drawer { position: static; }
   .replay-runbar { grid-template-columns: 1fr 1fr; }
@@ -243,7 +242,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .position-grid { grid-template-columns: 1fr; }
   .health-grid, .profile-comparison, .diagnostic-columns, .replay-proof-grid { grid-template-columns: 1fr; }
   .log-list article { grid-template-columns: 62px 72px 1fr; padding: 7px 2px; }
-  .chart-wrap { min-height: 280px; }
+  .chart-wrap { height: 320px; }
   .navigation { margin-inline: -2px; }
   .nav-button { padding-inline: 13px; }
   .strategy-card-heading { flex-direction: column; }
