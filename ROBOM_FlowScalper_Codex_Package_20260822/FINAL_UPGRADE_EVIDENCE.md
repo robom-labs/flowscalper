@@ -31,7 +31,7 @@
 |---|---|
 | 버전 | `0.2.0-paper` |
 | 기준 커밋 | `c1de1165bd25d4ebba7346416f2fb6aa8f1e69d7` |
-| 릴리스 소스 커밋 | `d459895a31217906267d5a39285cf6eba48e4573` |
+| 릴리스 소스 커밋 | `9584ddc681a412a8e54df4defff2a3ae34d980af` |
 | 운영체제 | macOS 26.5.2, build 25F84, arm64 |
 | Python / uv | 3.12.13 / 0.11.26 |
 | Node.js / pnpm | 26.4.0 / 9.15.9 |
@@ -160,11 +160,11 @@
 
 | 항목 | 실제 값 |
 |---|---|
-| ZIP | `artifacts/release/ROBOM_FlowScalper_0.2.0-paper.zip`과 One Touch `02_RELEASES` 복사본 |
-| checksum 파일 | `ROBOM_FlowScalper_0.2.0-paper.zip.sha256` sidecar |
-| ZIP SHA-256 | ZIP은 자신의 checksum을 내부에 포함할 수 없으므로 외부 sidecar를 권위 있는 값으로 사용한다. |
-| 크기 / 파일 수 | 릴리스 생성 출력과 외부 sidecar에서 확정한다. |
-| 내부 BUILD_COMMIT | ZIP 내부 `BUILD_COMMIT`에서 확정한다. |
+| ZIP | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip` |
+| checksum 파일 | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip.sha256` |
+| ZIP SHA-256 | `2ebc3b9b33ac2935e57a4678b51aacda27d356e9e5a51f0601e4bd4f43772f8f` |
+| 크기 / 파일 수 | 10,934,450 bytes / 234 ZIP entries |
+| 내부 BUILD_COMMIT | `9584ddc681a412a8e54df4defff2a3ae34d980af` |
 | `unzip -t` | PASS, 압축 데이터 오류 0 |
 | 내부 `SHA256SUMS.txt` 전수검사 | PASS, 233개 entry 전부 일치 |
 | 새 압축해제본 테스트 | PASS, uv/pnpm frozen 설치 후 backend 92/92·frontend 2/2 |
