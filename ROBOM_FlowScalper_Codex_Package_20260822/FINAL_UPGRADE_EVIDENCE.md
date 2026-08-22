@@ -188,6 +188,7 @@
 - 50개 real-time `bookTicker`과 10개 `depth@100ms`가 WebSocket 내부 queue에 백로그를 만들었다. wide 1초 `24hrTicker`, deep 250ms depth, real-time trade를 세 경로로 분리했다.
 - sequence가 없는 wide event ID가 충돌해 SQLite batch가 매 이벤트마다 재시도되었다. 수신 monotonic nanosecond를 ID에 포함하고, 저장은 독립 worker thread에서 bounded batch로 수행한다.
 - UI client마다 dashboard를 새로 계산·JSON 직렬화했다. 0.5초마다 snapshot과 JSON을 한 번만 만들어 모든 localhost client에 broadcast한다.
+- SQLite WAL checkpoint 중 대시보드가 같은 ledger lock을 기다리며 멈출 수 있었다. LIVE Run 시작 시 이전 거래를 cache하고 화면 snapshot은 cache와 현재 메모리 거래만 사용해 거래 원장 API와 UI 갱신 경로를 분리했다.
 - 차트를 snapshot마다 remove/create하던 효과를 없애고 series·marker·plan line만 갱신한다. CSS grid는 `align-items: start`와 영역 배치를 쓰고 chart는 viewport 기반 360~560px로 제한한다.
 - chart axis, event log, replay, system 시각을 `Asia/Seoul` KST로 고정했다. system 화면은 server snapshot과 browser 수신 시각 차이도 표시한다.
 - quote가 없는 trade event에 bid/ask 100 기본값을 넣어 차트 선을 튀게 만들 수 있던 오류를 제거했다.
@@ -209,11 +210,28 @@
 
 전체 표본에서 저장 batch 전후 실행 경로 p95는 0~1,224ms였고 1,500ms 진입잠금 기준 이하였다. 원본 값은 `evidence/WAVE09_LIVE_UI_LATENCY_FIX.json`에 보존했다.
 
+이후 SQLite checkpoint와 장시간 화면 응답을 다시 검증하기 위해 최신 코드로 `run-b74c8bad6fca`를 625.957초 연속 실행했다.
+
+| 항목 | 실제 값 |
+|---|---:|
+| 처리 events / candles / chart points | 129,849 / 604 / 30 |
+| 실행 경로 p50 / p95 | 20ms / 71ms |
+| 화면 API 주기 표본 | 38/38 HTTP 200 |
+| 주기 표본 최대 응답 | 120.584ms |
+| 별도 100회 연속 API 평균 / 최대 / 실패 | 8.883ms / 20.293ms / 0 |
+| server와 local 수신 시각 차이 / 표시 시간대 | 5ms / Asia/Seoul |
+| queue / reconnect / gap / resync / drop | 0 / 0 / 0 / 0 / 0 |
+| persistence fault / buffer drop | 0 / 0 |
+| CPU / memory | 52.921% / 250.984MB |
+| paused / auth headers / real orders | false / false / false |
+
+기존 멈춤이 발생했던 약 10분 구간을 넘겼고, 저장 buffer는 증가 후 반복적으로 정상 배출되었다. LIVE 대시보드가 SQLite writer lock을 읽지 않는 회귀테스트도 추가했다.
+
 ### 회귀 검증
 
 | 검증 | 결과 |
 |---|---|
-| backend pytest | PASS, 95 tests |
+| backend pytest | PASS, 96 tests |
 | frontend Vitest | PASS, 3 tests |
 | Ruff / ESLint | PASS, 오류 0 |
 | TypeScript / Vite build | PASS, 39 modules, JS 424.05kB, gzip 134.22kB |
@@ -221,7 +239,7 @@
 | KST 결정론 변환 | PASS, Unix epoch 0→09:00:00 KST |
 | 실제 주문·private API·인증 | 0, false, false 유지 |
 
-핫픽스 릴리스는 `21c4347071b494dd168999dd53930906f122893f`를 기준으로 238개 entry, 10,943,208 bytes로 생성했다. ZIP SHA-256는 `4448ae79f44ec23625965dd52a1edc7f7adb0e3020ceb7fca3fafde15591ab73`이고 `unzip -t` PASS다. 작업 복사본과 `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/02_RELEASES/ROBOM_FlowScalper_0.2.0-paper.zip`의 SHA-256가 일치한다.
+장시간 UI 응답 fix의 구현 커밋은 `3d5792bfc96d3116a1bfd422a7b9ab380c86755f`다. 최종 릴리스 ZIP의 크기·entry·SHA-256·내부 BUILD_COMMIT은 아래 릴리스 갱신 절차에서 다시 생성해 기록한다.
 
 ### 화면 재검수 제한
 

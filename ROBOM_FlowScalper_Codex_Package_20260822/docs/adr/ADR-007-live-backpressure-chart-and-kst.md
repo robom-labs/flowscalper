@@ -19,6 +19,7 @@
 5. 대시보드 WebSocket은 연결된 브라우저 수와 무관하게 0.5초마다 snapshot과 JSON을 한 번만 생성해 broadcast한다.
 6. Lightweight Charts는 component mount/data-ready 전환에서만 생성하고, 이후에는 series·marker·price line만 갱신한다. chart panel은 scanner와 stretch하지 않고 viewport 기반 360~560px 높이를 쓴다.
 7. 차트 시간축, event log, replay, 시스템 시각은 모두 `Asia/Seoul` KST로 표시하고 서버 snapshot과 UI 수신 시각 차이를 시스템 화면에 보여준다.
+8. LIVE 대시보드는 SQLite writer의 WAL checkpoint를 기다리지 않는다. Run 시작 시 이전 LIVE 거래를 불변 메모리 cache로 읽고, 이후 화면 snapshot은 cache와 현재 Run의 메모리 거래만 결합한다. 거래 원장 API와 replay는 계속 SQLite를 직접 읽는다.
 
 ## Safety impact
 
@@ -26,6 +27,7 @@
 
 ## Validation
 
-- backend 95 tests PASS. persistence worker, wide/execution lag 격리, 다중 WebSocket client broadcast를 포함한다.
+- backend 96 tests PASS. persistence worker, wide/execution lag 격리, 다중 WebSocket client broadcast, LIVE dashboard의 SQLite writer lock 비의존 회귀검사를 포함한다.
 - frontend Vitest 3 tests, ESLint, TypeScript, Vite build PASS. KST 변환 결정론 test를 포함한다.
 - 실제 Binance LIVE `run-ef96cc96a072`에서 wide 50·deep 10, queue/gap/drop/persistence fault 0, 저장 batch 진행 중 실행 경로 p95 0~1,224ms를 확인했다.
+- 최종 `run-b74c8bad6fca`를 625.957초 실행해 129,849 events와 604 candles를 처리했다. 38회 화면 API 표본은 전부 HTTP 200, 최대 120.584ms였고 최종 실행 경로 p95 71ms, queue/reconnect/gap/drop/persistence fault 0이었다.
