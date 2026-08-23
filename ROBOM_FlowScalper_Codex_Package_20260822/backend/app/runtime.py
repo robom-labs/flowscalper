@@ -17,6 +17,8 @@ from backend.app.api.dashboard import build_dashboard_snapshot
 from backend.app.build_identity import APP_VERSION, STRATEGY_VERSION, git_commit
 from backend.app.candidates import CandidatePlan, CandidatePlanner
 from backend.app.clocks import Clock, SystemClock
+from backend.app.control.operations import ProgressCallback
+from backend.app.costing import CostProfile
 from backend.app.domain.market import Instrument, TradeTick
 from backend.app.domain.models import (
     MarketDataState,
@@ -166,14 +168,28 @@ class PaperRuntime:
         elif self.ledger is not None:
             self._refresh_dashboard_trade_cache()
 
-    def boot_demo(self, event_count: int = 40) -> None:
+    def boot_demo(self, event_count: int = 240) -> None:
         if self.mode is not RuntimeMode.DEMO_FIXTURE:
             raise ValueError("fixture 부팅은 DEMO_FIXTURE 모드에서만 가능합니다.")
         generator = FixtureMarketData(self.clock, self.run_id)
-        self._events.extend(generator.events(event_count))
+        events = tuple(generator.events(event_count))
+        self._events.extend(events)
+        for index, event in enumerate(events):
+            bid = Decimal(str(event.data["bid"]))
+            ask = Decimal(str(event.data["ask"]))
+            self.candle_builder.add(
+                TradeTick(
+                    venue=event.venue,
+                    symbol=event.symbol,
+                    price=(bid + ask) / Decimal(2),
+                    quantity=Decimal("0.1") + Decimal(index % 5) / Decimal(100),
+                    trade_ts_ms=event.venue_ts_ms,
+                    buyer_is_aggressor=index % 2 == 0,
+                )
+            )
         self._ensure_fixture_completed_trade()
 
-    def boot_fixture(self, event_count: int = 40) -> None:
+    def boot_fixture(self, event_count: int = 240) -> None:
         """0.1 호출 호환용 별칭이며 DEMO_FIXTURE에서만 동작한다."""
 
         self.boot_demo(event_count)
@@ -445,7 +461,10 @@ class PaperRuntime:
         self.runtime_health_flags.append("PUBLIC_DATA_UNAVAILABLE")
         return False
 
-    async def start_persistent_live(self) -> bool:
+    async def start_persistent_live(
+        self,
+        progress: ProgressCallback | None = None,
+    ) -> bool:
         if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
             raise ValueError("지속 LIVE supervisor는 LIVE_SHADOW_PAPER에서만 시작합니다.")
         await self.shutdown_supervisor()
@@ -466,7 +485,14 @@ class PaperRuntime:
         self.market_data_state = MarketDataState.RECONNECTING
         self.paused = True
         self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
-        for candidate_venue in candidate_venues:
+        for index, candidate_venue in enumerate(candidate_venues):
+            if progress is not None:
+                await progress(
+                    "CONNECTING_PRIMARY" if index == 0 else "CONNECTING_FALLBACK",
+                    "주 거래소 공개시장과 정상 호가를 확인하고 있습니다"
+                    if index == 0
+                    else "대체 거래소 공개시장과 정상 호가를 확인하고 있습니다",
+                )
             provider = providers[candidate_venue]
             if candidate_venue is not self.venue:
                 self._switch_venue_run(candidate_venue)
@@ -478,6 +504,12 @@ class PaperRuntime:
             )
             try:
                 selection = await supervisor.start()
+            except asyncio.CancelledError:
+                await supervisor.stop()
+                self.paused = True
+                self.market_data_state = MarketDataState.DISCONNECTED
+                self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
+                raise
             except PublicDataUnavailable as error:
                 await supervisor.stop()
                 self._record_public_failure(candidate_venue, error)
@@ -1215,6 +1247,7 @@ class PaperRuntime:
             league_positions=tuple(
                 self.paper_portfolio.league_position_rows(self.latest_books)
             ),
+            risk_contract=self._risk_dashboard_contract(),
             current_position=current_position,
             execution_audit=tuple(self.paper_portfolio.audit_events[-100:]),
             storage_label="SQLite transactional ledger"
@@ -1265,7 +1298,13 @@ class PaperRuntime:
             else "비상종료할 실제 PAPER 포지션 없음",
         )
 
-    async def start_live_run(self, probe: LiveBootstrapProbe | None = None) -> bool:
+    async def start_live_run(
+        self,
+        probe: LiveBootstrapProbe | None = None,
+        progress: ProgressCallback | None = None,
+    ) -> bool:
+        if progress is not None:
+            await progress("PREPARING", "새 PAPER Run을 준비하고 있습니다")
         await self.shutdown_supervisor()
         self._archive_current_run("USER_START_LIVE")
         self.mode = RuntimeMode.LIVE_SHADOW_PAPER
@@ -1286,7 +1325,92 @@ class PaperRuntime:
         self._log("RUN", "Fresh LIVE PAPER Run 생성 · 자산과 손익·비용·거래 0")
         if probe is not None:
             return await self.boot_live_public(probe)
-        return await self.start_persistent_live()
+        return await self.start_persistent_live(progress=progress)
+
+    def live_start_block(self) -> tuple[str, str] | None:
+        """공개시장 연결 전에 해제할 수 없는 안전잠금만 제어 API에 설명한다."""
+
+        blocked_flags = {
+            "RECOVERY_FAIL_CLOSED": (
+                "RECOVERY_SAFETY_LOCK",
+                "복구 안전검사가 완료되지 않아 자동 관찰을 시작할 수 없습니다.",
+            ),
+            "PERSISTENCE_FAULT_ENTRY_LOCK": (
+                "PERSISTENCE_SAFETY_LOCK",
+                "저장 안전오류가 있어 자동 관찰을 시작할 수 없습니다.",
+            ),
+            "STORAGE_PRESSURE_ENTRY_LOCK": (
+                "STORAGE_SAFETY_LOCK",
+                "저장공간 안전잠금이 있어 자동 관찰을 시작할 수 없습니다.",
+            ),
+        }
+        for flag in self.runtime_health_flags:
+            if flag in blocked_flags:
+                return blocked_flags[flag]
+        if self.paper_portfolio.main.risk_state.faulted:
+            return (
+                "PAPER_RECOVERY_SAFETY_LOCK",
+                "PAPER 계좌 복구 안전잠금이 있어 자동 관찰을 시작할 수 없습니다.",
+            )
+        return None
+
+    def _risk_dashboard_contract(self) -> dict[str, object]:
+        """실제 실행 상수에서 Shared Capital과 Strategy League 위험표를 만든다."""
+
+        shared = self.paper_portfolio.risk_manager.limits
+        league = self.paper_portfolio.league_risk_manager.limits
+        cost = self.paper_portfolio.cost_model
+        starting = self.paper_portfolio.main.risk_state.starting_equity
+
+        def percentage(value: Decimal) -> str:
+            return f"{value * 100:.2f}%"
+
+        def bps(value: Decimal) -> str:
+            return f"{value.normalize()}bp"
+
+        return {
+            "paper_only": True,
+            "active_locks": ["PAPER_ONLY", *self.runtime_health_flags],
+            "immutable_run": True,
+            "shared_capital": {
+                "starting_equity_usdt": str(starting),
+                "risk_per_position": percentage(shared.risk_per_trade_fraction),
+                "max_positions": shared.max_open_positions,
+                "daily_loss_limit": (
+                    f"{(starting * shared.daily_loss_limit_fraction).normalize()} USDT"
+                ),
+                "weekly_loss_limit": (
+                    f"{(starting * shared.weekly_loss_limit_fraction).normalize()} USDT"
+                ),
+                "drawdown_lock": percentage(shared.maximum_drawdown_fraction),
+            },
+            "strategy_league": {
+                "account_count": len(self.paper_portfolio.shadows),
+                "starting_equity_per_account_usdt": str(starting),
+                "risk_per_position": percentage(league.risk_per_trade_fraction),
+                "max_positions_per_account": league.max_open_positions,
+                "maximum_total_open_risk": percentage(
+                    league.maximum_total_open_risk_fraction
+                ),
+                "maximum_effective_leverage": (
+                    f"{league.maximum_gross_notional_fraction:.2f}x"
+                ),
+                "maximum_depth_fraction": percentage(
+                    league.maximum_order_fraction_of_executable_depth
+                ),
+                "daily_loss_limit": percentage(league.daily_loss_limit_fraction),
+                "weekly_loss_limit": percentage(league.weekly_loss_limit_fraction),
+                "drawdown_lock": percentage(league.maximum_drawdown_fraction),
+                "base_entry_fee": bps(cost.fee_bps(entry=True, profile=CostProfile.BASE)),
+                "base_exit_fee": bps(cost.fee_bps(entry=False, profile=CostProfile.BASE)),
+                "stress_entry_fee": bps(
+                    cost.fee_bps(entry=True, profile=CostProfile.STRESS)
+                ),
+                "stress_exit_fee": bps(
+                    cost.fee_bps(entry=False, profile=CostProfile.STRESS)
+                ),
+            },
+        }
 
     def start_demo_run(self) -> str:
         self._archive_current_run("USER_START_DEMO")

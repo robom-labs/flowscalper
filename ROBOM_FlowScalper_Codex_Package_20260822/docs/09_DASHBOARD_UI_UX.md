@@ -219,3 +219,25 @@ Charts and metrics:
 - responsive for common desktop widths;
 - no critical controls hidden behind hover only;
 - confirmation for destructive paper reset/close actions.
+
+## 9.12 Phase 02 current screen contract
+
+The current beginner navigation is `홈`, `전략 리그`, `진행 거래`, `거래 기록`, `과거 재생`,
+`성과`, `안전 설정`, `고급 터미널`, `시스템`. The home separates the six BASE
+account total from the 1,000 USDT Shared Capital Benchmark and always explains that
+6,000 USDT is the sum of six independent accounts.
+
+The Strategy League shows six Registry cards. `ACTIVE` is `리그 + 공동계좌`,
+`SHADOW` is `리그에서만 테스트`, and `OFF` is `사용 안 함`. BASE/STRESS analytics
+open in an accessible fixed drawer. League positions default to BASE and contain no manual
+real buy or sell action.
+
+The advanced terminal owns scanner, chart, current PAPER position and recent events. The
+scanner uses stable venue/symbol row keys, fixed 64px rows, fixed columns, rate-limited rank
+updates and a fixed drawer that never changes chart dimensions. The chart uses candles,
+volume, MA5/20 by default and optional MA10/60, EMA20, VWAP, Bollinger, bid/ask/microprice,
+RSI and MACD panes. Indicator choices do not change strategy entry criteria. Pan, return to
+real time, crosshair KST tooltip and fullscreen/CSS fallback are required.
+
+All visible buttons and selects are at least 48px high. Desktop 1408×900, tablet 820×1180
+and mobile 390×844 must have no document-level horizontal overflow.

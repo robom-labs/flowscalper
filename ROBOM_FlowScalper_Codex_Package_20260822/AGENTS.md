@@ -101,6 +101,17 @@ Every strategy change must include:
 Strategy League changes must additionally test account isolation, three-symbol limits,
 BASE/STRESS cost separation, real event-time confirmation and recovery compatibility.
 
+Control and dashboard changes must additionally keep long-running Run changes behind an
+asynchronous operation contract. Submission returns `202`, duplicate actions reuse the
+same operation, conflicting actions return `409`, cancellation cleans unregistered
+supervisors, and retry/blocked errors remain explicit Korean UI states.
+
+The default UI uses `league_accounts` and `league_positions`, keeps the beginner home
+separate from the advanced terminal, and never calls SHADOW “record only”. Scanner rows
+must not resize during snapshots or drawer use. A normal update to the same chart selection
+must use incremental series updates instead of rebuilding the chart or repeating full
+`setData` calls.
+
 ## Completion rule
 
 Do not state DONE until `FINAL_UPGRADE_EVIDENCE.md` exists and the acceptance matrix is populated with PASS, NOT_RUN, or BLOCKED plus evidence. Never convert NOT_RUN into PASS.

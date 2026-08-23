@@ -2,11 +2,40 @@
 export type PageId =
   | 'live'
   | 'strategies'
+  | 'positions'
   | 'history'
   | 'replay'
   | 'performance'
   | 'risk'
+  | 'terminal'
   | 'system'
+
+export type ControlAction = 'START_LIVE' | 'START_DEMO' | 'NEW_RUN'
+
+export type ControlState =
+  | 'REQUESTED'
+  | 'PREPARING'
+  | 'CONNECTING_PRIMARY'
+  | 'CONNECTING_FALLBACK'
+  | 'COMPLETED'
+  | 'FAILED_RETRYABLE'
+  | 'FAILED_BLOCKED'
+  | 'CANCELLING'
+  | 'CANCELLED'
+
+export type ControlOperation = {
+  operation_id: string
+  action: ControlAction
+  state: ControlState
+  stage_ko: string
+  started_ts_ms: number
+  updated_ts_ms: number
+  finished_ts_ms: number | null
+  retryable: boolean
+  error_code: string | null
+  error_message_ko: string | null
+  history: { state: ControlState; stage_ko: string; ts_ms: number }[]
+}
 
 export type SystemStatus = {
   mode: 'READY' | 'LIVE_SHADOW_PAPER' | 'DEMO_FIXTURE' | 'REPLAY'
@@ -177,6 +206,8 @@ export type StrategyPerformance = {
   net_pnl: string
   cost_burden: string | null
   maximum_drawdown: string
+  mae_r_mean: string | null
+  mfe_r_mean: string | null
   median_hold_ms: number | null
   p90_hold_ms: number | null
   sample_status: string
@@ -204,6 +235,59 @@ export type ShadowAccount = {
   open_position: string | null
 }
 
+export type LeagueAccount = {
+  account_id: string
+  strategy_id: string
+  profile: 'BASE' | 'STRESS'
+  starting_equity_usdt: string
+  current_equity_usdt: string
+  realized_pnl_usdt: string
+  unrealized_pnl_usdt: string
+  fees_usdt: string
+  slippage_usdt: string
+  trade_count: number
+  wins: number
+  losses: number
+  win_rate: string | null
+  open_positions: number
+  pending_entries: number
+  gross_notional_usdt: string
+  effective_leverage: string
+  maximum_effective_leverage: string
+  maximum_drawdown_usdt: string
+  paused: boolean
+  faulted: boolean
+}
+
+export type LeaguePosition = {
+  trade_id: string
+  candidate_id: string
+  account_id: string
+  strategy_id: string
+  profile: 'BASE' | 'STRESS'
+  symbol: string
+  side: 'LONG' | 'SHORT'
+  signal_time: number
+  opened_ts_ms: number
+  actual_entry: string
+  current_mark: string
+  initial_stop: string
+  current_stop: string
+  TP1: string
+  TP2: string
+  original_quantity: string
+  remaining_quantity: string
+  notional: string
+  effective_leverage: string
+  gross_pnl: string
+  fees: string
+  slippage: string
+  net_pnl: string
+  elapsed_seconds: number
+  exit_style: string
+  management_reason: string
+}
+
 export type DashboardData = {
   status: SystemStatus
   paused: boolean
@@ -214,15 +298,38 @@ export type DashboardData = {
   history: HistoryRow[]
   strategies: StrategyRow[]
   shadow_accounts: ShadowAccount[]
+  league_accounts: LeagueAccount[]
+  league_positions: LeaguePosition[]
+  control_operation: ControlOperation | null
   performance: Record<string, string | number>
   risk: {
-    risk_per_trade: string
-    max_positions: number
-    daily_loss_limit: string
-    weekly_loss_limit: string
-    drawdown_lock: string
+    paper_only: true
     active_locks: string[]
     immutable_run: boolean
+    shared_capital: {
+      starting_equity_usdt: string
+      risk_per_position: string
+      max_positions: number
+      daily_loss_limit: string
+      weekly_loss_limit: string
+      drawdown_lock: string
+    }
+    strategy_league: {
+      account_count: number
+      starting_equity_per_account_usdt: string
+      risk_per_position: string
+      max_positions_per_account: number
+      maximum_total_open_risk: string
+      maximum_effective_leverage: string
+      maximum_depth_fraction: string
+      daily_loss_limit: string
+      weekly_loss_limit: string
+      drawdown_lock: string
+      base_entry_fee: string
+      base_exit_fee: string
+      stress_entry_fee: string
+      stress_exit_fee: string
+    }
   }
   system: Record<string, string | number | boolean>
 }

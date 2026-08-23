@@ -1,13 +1,15 @@
-// 일곱 사용자 화면을 키보드로 접근 가능한 탭 형태로 제공한다.
+// 쉬운 화면과 고급 터미널을 구분한 아홉 PAPER 화면을 제공한다.
 import type { PageId } from '../types'
 
 const items: { id: PageId; label: string }[] = [
   { id: 'live', label: '홈' },
-  { id: 'strategies', label: '매매 설정' },
+  { id: 'strategies', label: '전략 리그' },
+  { id: 'positions', label: '진행 거래' },
   { id: 'history', label: '거래 기록' },
   { id: 'replay', label: '과거 재생' },
   { id: 'performance', label: '성과' },
   { id: 'risk', label: '안전 설정' },
+  { id: 'terminal', label: '고급 터미널' },
   { id: 'system', label: '시스템' },
 ]
 

@@ -785,13 +785,18 @@ class PaperPortfolioEngine:
                     )
                 rows.append(
                     {
+                        "trade_id": managed.protected.trade_id,
+                        "candidate_id": plan.candidate_id,
                         "account_id": account.account_id,
                         "strategy_id": plan.strategy_id,
                         "profile": account.profile.value,
                         "symbol": plan.symbol,
                         "side": plan.direction.value,
+                        "signal_time": plan.signal_time_ms,
+                        "opened_ts_ms": managed.protected.opened_ts_ms,
                         "actual_entry": str(entry),
                         "current_mark": str(mark),
+                        "initial_stop": str(plan.initial_stop),
                         "current_stop": str(managed.protected.current_stop),
                         "TP1": str(plan.take_profit_targets[0].price),
                         "TP2": str(plan.take_profit_targets[1].price),
@@ -807,6 +812,12 @@ class PaperPortfolioEngine:
                         "fees": str(current["fees"] + current["estimated_exit_fee"]),
                         "slippage": str(current["slippage"]),
                         "net_pnl": str(current["net"]),
+                        "exit_style": plan.exit_style.value,
+                        "management_reason": (
+                            "종료 체결 지연 대기 중"
+                            if managed.pending_exit is not None
+                            else "TP·SL·근거감쇠 자동 관리"
+                        ),
                         "elapsed_seconds": max(
                             0,
                             (

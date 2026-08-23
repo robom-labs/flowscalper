@@ -85,3 +85,18 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 6. Expose `league_accounts` and `league_positions` through the existing dashboard output.
 7. Validate with the four commands in `docs/19_STRATEGY_LEAGUE_SPEC_KO.md`. This Wave
    does not run or claim frontend, browser, network, soak or release validation.
+
+## Strategy League UI and asynchronous control Wave
+
+1. Preserve the A-F and 12-account backend and expose long Run mutations as bounded
+   `ControlOperation` background tasks with `202`, deduplication, conflict, cancel and retry.
+2. Use the WebSocket dashboard operation as the UI source of truth. Never show fixture data
+   as LIVE or a failed connection as completed.
+3. Keep the first screen beginner-readable. Put account detail in drawers and market detail
+   in the advanced terminal without changing the underlying Strategy League entry rules.
+4. Keep scanner order and dimensions stable. Use the installed Lightweight Charts 5.2.1
+   instance once per selection and update ordinary candles and indicators incrementally.
+5. Validate backend tests, frontend unit tests, static checks, build, desktop/tablet/mobile
+   Playwright, a separate real local-browser review, safety scan and repository hygiene.
+6. Record unresolved external checks as `NOT_RUN` or `BLOCKED`; do not infer soak, network,
+   Release, GitHub push or Actions results from local tests.

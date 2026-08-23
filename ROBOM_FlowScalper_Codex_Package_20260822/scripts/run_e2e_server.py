@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import os
 from pathlib import Path
 
@@ -116,7 +117,36 @@ def main() -> None:
     os.environ["ROBOM_MODE"] = RuntimeMode.DEMO_FIXTURE.value
     os.environ["ROBOM_PORT"] = str(arguments.port)
     os.environ["ROBOM_DB_PATH"] = str(arguments.database)
-    uvicorn.run("backend.app.main:app", host="127.0.0.1", port=arguments.port)
+    from backend.app.control import (
+        ControlAction,
+        ControlOperationFailure,
+    )
+    from backend.app.control.operations import ProgressCallback
+    from backend.app.main import _runtime_from_environment, create_app
+
+    runtime = _runtime_from_environment()
+    runtime.runtime_health_flags.append("E2E_CONTROL_DRIVER")
+    live_attempts = 0
+
+    async def e2e_start_live(progress: ProgressCallback) -> None:
+        """공개망 없이 취소와 재시도 오류를 결정적으로 재현한다."""
+
+        nonlocal live_attempts
+        live_attempts += 1
+        await progress("PREPARING", "E2E 공개시장 연결 절차를 준비하고 있습니다")
+        if live_attempts == 1:
+            await asyncio.Event().wait()
+        raise ControlOperationFailure(
+            code="E2E_PUBLIC_DATA_UNAVAILABLE",
+            message_ko="E2E 재시도 가능한 공개시장 연결 오류입니다.",
+            retryable=True,
+        )
+
+    app = create_app(
+        runtime,
+        control_runners={ControlAction.START_LIVE: e2e_start_live},
+    )
+    uvicorn.run(app, host="127.0.0.1", port=arguments.port)
 
 
 if __name__ == "__main__":

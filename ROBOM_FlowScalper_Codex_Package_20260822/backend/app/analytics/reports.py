@@ -312,6 +312,8 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
             "net_pnl": "0",
             "cost_burden": None,
             "maximum_drawdown": "0",
+            "mae_r_mean": None,
+            "mfe_r_mean": None,
             "median_hold_ms": None,
             "p90_hold_ms": None,
         }
@@ -354,6 +356,16 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         peak = max(peak, equity)
         maximum_drawdown = max(maximum_drawdown, peak - equity)
     holds = sorted(int(str(trade["holding_ms"])) for trade in trades)
+    mae_values = [
+        Decimal(str(trade["mae_r"]))
+        for trade in trades
+        if trade.get("mae_r") is not None
+    ]
+    mfe_values = [
+        Decimal(str(trade["mfe_r"]))
+        for trade in trades
+        if trade.get("mfe_r") is not None
+    ]
     cost_denominator = sum((abs(value) for value in pnl), Decimal(0)) + fees + slippage
     return {
         "sample_size": len(pnl),
@@ -380,6 +392,12 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         if cost_denominator > 0
         else None,
         "maximum_drawdown": str(maximum_drawdown),
+        "mae_r_mean": str(sum(mae_values, Decimal(0)) / len(mae_values))
+        if mae_values
+        else None,
+        "mfe_r_mean": str(sum(mfe_values, Decimal(0)) / len(mfe_values))
+        if mfe_values
+        else None,
         "median_hold_ms": int(median(holds)),
         "p90_hold_ms": _percentile(holds, 0.90),
     }

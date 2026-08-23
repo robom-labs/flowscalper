@@ -28,6 +28,9 @@ export function SafetyHeader({ data, connected, connectionState, lastUpdateMs }:
     : connectionState === 'CONNECTING'
       ? '화면 연결 중'
       : '화면 다시 연결 중'
+  const leagueOpenPositions = data.league_accounts
+    .filter((account) => account.profile === 'BASE')
+    .reduce((total, account) => total + account.open_positions, 0)
   return (
     <>
       <header className="topbar">
@@ -46,10 +49,11 @@ export function SafetyHeader({ data, connected, connectionState, lastUpdateMs }:
       </header>
       <section className="safety" aria-label="현재 프로그램 상태">
         <span><b>프로그램</b> {sourceLabel}</span>
-        <span><b>진행 중 거래</b> {data.position ? '1건' : '0건'}</span>
+        <span><b>진행 중 전략 거래</b> {leagueOpenPositions}건</span>
         <span><b>감시 종목</b> {status.deep_symbols || data.scanner.length}개 정밀 분석</span>
         <span><b>현재 한국시간</b> {lastUpdateMs ? formatKstTime(lastUpdateMs) : '연결 대기'}</span>
         <span><b>실제 돈</b> 움직이지 않음</span>
+        {data.control_operation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(data.control_operation.state) ? <span><b>현재 작업</b> {data.control_operation.stage_ko}</span> : null}
         <details className="header-details">
           <summary>운영 정보</summary>
           <span>시작자산 {status.starting_equity_usdt.toFixed(2)} USDT</span>

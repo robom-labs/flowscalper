@@ -1,6 +1,6 @@
 // 단순 종목 목록이 방향·진입 상태와 펼침 상세를 정확히 보여주는지 검증한다.
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ScannerTable } from '../src/components/ScannerTable'
 import type { ScannerRow } from '../src/types'
@@ -46,22 +46,37 @@ const rows: ScannerRow[] = [
 
 test('shows stable easy direction and entry labels', () => {
   const onSelect = vi.fn()
-  render(<ScannerTable rows={rows} selectedSymbol="BTCUSDT" onSelect={onSelect} />)
+  render(<ScannerTable rows={rows} venue="BINANCE_FUTURES" selectedSymbol="BTCUSDT" onSelect={onSelect} />)
 
   expect(screen.getByText('상승 관찰')).toBeInTheDocument()
   expect(screen.getByText('하락 관찰')).toBeInTheDocument()
-  expect(screen.getByText('진입 준비됨')).toBeInTheDocument()
-  expect(screen.getByText('조건 확인 중')).toBeInTheDocument()
+  expect(screen.getByText('진입 준비')).toBeInTheDocument()
+  expect(screen.getByText('확인 중')).toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: /BTCUSDT.*횡보/ }))
   expect(onSelect).toHaveBeenCalledWith('BTCUSDT')
 })
 
 test('keeps technical fields behind the detail control', () => {
-  render(<ScannerTable rows={rows} selectedSymbol="BTCUSDT" onSelect={vi.fn()} />)
+  render(<ScannerTable rows={rows} venue="BINANCE_FUTURES" selectedSymbol="BTCUSDT" onSelect={vi.fn()} />)
   expect(screen.queryByText('비용 후 손익비')).not.toBeInTheDocument()
 
   fireEvent.click(screen.getByRole('button', { name: 'BTCUSDT 상세 정보 보기' }))
   expect(screen.getByText('비용 후 손익비')).toBeInTheDocument()
   expect(screen.getByText('1.58')).toBeInTheDocument()
+  expect(document.querySelectorAll('.scanner-item')).toHaveLength(2)
+  expect(document.querySelector('.scanner-item .drawer-detail-list')).toBeNull()
+})
+
+test('keeps the locked order and appends a newly discovered symbol at the bottom', () => {
+  vi.useFakeTimers()
+  const { container, rerender } = render(<ScannerTable rows={rows} venue="BINANCE_FUTURES" selectedSymbol="BTCUSDT" onSelect={vi.fn()} />)
+  const order = () => [...container.querySelectorAll('.scanner-item')].map((item) => item.getAttribute('data-row-key'))
+  expect(order()).toEqual(['BINANCE_FUTURES:BTCUSDT', 'BINANCE_FUTURES:ETHUSDT'])
+
+  const newRow = { ...rows[0], rank: 1, symbol: 'XRPUSDT' }
+  rerender(<ScannerTable rows={[{ ...rows[0], rank: 1 }, { ...rows[1], rank: 3 }, newRow]} venue="BINANCE_FUTURES" selectedSymbol="BTCUSDT" onSelect={vi.fn()} />)
+  act(() => vi.runOnlyPendingTimers())
+  expect(order()).toEqual(['BINANCE_FUTURES:BTCUSDT', 'BINANCE_FUTURES:ETHUSDT', 'BINANCE_FUTURES:XRPUSDT'])
+  vi.useRealTimers()
 })

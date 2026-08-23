@@ -1,0 +1,2 @@
+# macOS Finder 메타데이터를 GitHub 소스에서 제외한다.
+.DS_Store

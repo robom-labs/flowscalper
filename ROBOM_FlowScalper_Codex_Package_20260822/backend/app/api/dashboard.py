@@ -28,6 +28,7 @@ def build_dashboard_snapshot(
     shadow_accounts: tuple[Mapping[str, object], ...] = (),
     league_accounts: tuple[Mapping[str, object], ...] = (),
     league_positions: tuple[Mapping[str, object], ...] = (),
+    risk_contract: Mapping[str, object] | None = None,
     current_position: Mapping[str, object] | None = None,
     execution_audit: tuple[Mapping[str, object], ...] = (),
     storage_label: str = "fixture memory",
@@ -189,15 +190,7 @@ def build_dashboard_snapshot(
         "league_accounts": [dict(row) for row in league_accounts],
         "league_positions": [dict(row) for row in league_positions],
         "execution_audit": [dict(row) for row in execution_audit],
-        "risk": {
-            "risk_per_trade": "0.10%",
-            "max_positions": 1,
-            "daily_loss_limit": "5 USDT",
-            "weekly_loss_limit": "15 USDT",
-            "drawdown_lock": "3%",
-            "active_locks": ["PAPER_ONLY"],
-            "immutable_run": True,
-        },
+        "risk": dict(risk_contract or _default_risk_contract()),
         "system": {
             "api_host": api_host,
             "public_endpoint_family": (
@@ -218,6 +211,40 @@ def build_dashboard_snapshot(
             "app_version": "0.2.0-paper",
             "runtime_ready": ready_mode,
             **dict(runtime_diagnostics or {}),
+        },
+    }
+
+
+def _default_risk_contract() -> dict[str, object]:
+    """직접 serializer를 호출하는 격리 fixture에도 PAPER 기본계약을 제공한다."""
+
+    return {
+        "paper_only": True,
+        "active_locks": ["PAPER_ONLY"],
+        "immutable_run": True,
+        "shared_capital": {
+            "starting_equity_usdt": "1000",
+            "risk_per_position": "0.10%",
+            "max_positions": 1,
+            "daily_loss_limit": "5 USDT",
+            "weekly_loss_limit": "15 USDT",
+            "drawdown_lock": "3.00%",
+        },
+        "strategy_league": {
+            "account_count": 12,
+            "starting_equity_per_account_usdt": "1000",
+            "risk_per_position": "0.50%",
+            "max_positions_per_account": 3,
+            "maximum_total_open_risk": "1.50%",
+            "maximum_effective_leverage": "5.00x",
+            "maximum_depth_fraction": "2.00%",
+            "daily_loss_limit": "2.00%",
+            "weekly_loss_limit": "5.00%",
+            "drawdown_lock": "8.00%",
+            "base_entry_fee": "6bp",
+            "base_exit_fee": "6bp",
+            "stress_entry_fee": "12bp",
+            "stress_exit_fee": "12bp",
         },
     }
 

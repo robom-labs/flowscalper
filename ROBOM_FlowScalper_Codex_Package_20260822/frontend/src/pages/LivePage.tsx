@@ -1,85 +1,62 @@
-// 비전문가가 실행 상태·관찰 종목·차트·진행 거래를 한눈에 확인하는 홈 화면이다.
-import { EventLog } from '../components/EventLog'
-import { PositionPanel } from '../components/PositionPanel'
-import { PriceChart } from '../components/PriceChart'
-import { ScannerTable } from '../components/ScannerTable'
-import type { DashboardData } from '../types'
+// 비전문가가 자동 관찰 상태와 독립 전략·공동계좌 결과를 혼동 없이 보는 홈이다.
+import { modeLabels, orderedStrategies } from '../strategyPresentation'
+import { formatKstTime } from '../time'
+import type { ControlOperation, DashboardData, PageId } from '../types'
 
 type Props = {
   data: DashboardData
+  operation: ControlOperation | null
+  busyAction: string | null
+  connectionError: string
+  requestError: string
   onPauseToggle: () => void
-  onClose: () => void
   onStartLive: () => void
   onStartDemo: () => void
-  onChartChange: (symbol: string, intervalSeconds: number) => void
+  onCancel: () => void
+  onRetry: () => void
+  onNavigate: (page: PageId) => void
 }
 
-const intervals = [
-  [1, '1초'], [5, '5초'], [15, '15초'], [30, '30초'], [60, '1분'], [180, '3분'], [300, '5분'], [600, '10분'], [900, '15분'],
-] as const
+const terminalStates = new Set(['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'])
 
-const intervalSeconds = (label: string) => intervals.find(([, item]) => item.replace('초', 's').replace('분', 'm') === label)?.[0] ?? 1
+function sum(rows: { current_equity_usdt: string; starting_equity_usdt: string }[], field: 'current' | 'pnl') {
+  return rows.reduce((total, row) => total + (field === 'current' ? Number(row.current_equity_usdt) : Number(row.current_equity_usdt) - Number(row.starting_equity_usdt)), 0)
+}
 
-export function LivePage({ data, onPauseToggle, onClose, onStartLive, onStartDemo, onChartChange }: Props) {
+export function LivePage({ data, operation, busyAction, connectionError, requestError, onPauseToggle, onStartLive, onStartDemo, onCancel, onRetry, onNavigate }: Props) {
   const ready = data.status.mode === 'READY'
-  const symbols = [...new Set([data.chart.symbol, ...data.scanner.map((row) => row.symbol)])]
-  const currentInterval = intervalSeconds(data.chart.interval)
-  const openTrades = data.position ? 1 : 0
-  const watchCount = data.status.deep_symbols || data.scanner.length
-  const netPnl = data.status.realized_pnl_usdt + data.status.unrealized_pnl_usdt
-  const activityLabel = ready
-    ? '시작 전'
-    : data.paused
-      ? '관찰 중 · 새 진입 멈춤'
-      : data.status.market_data_state === 'LIVE'
-        ? '자동 관찰 중'
-        : '시장 연결 확인 중'
-  const latency = data.status.processing_lag_p95_ms === null
-    ? ready ? '시작 후 측정' : '측정 중'
-    : `${data.status.processing_lag_p95_ms.toFixed(0)} ms`
+  const demo = data.status.mode === 'DEMO_FIXTURE'
+  const activeOperation = operation && !terminalStates.has(operation.state)
+  const baseAccounts = data.league_accounts.filter((account) => account.profile === 'BASE')
+  const ordered = orderedStrategies(data.strategies)
+  const leadingAccount = [...baseAccounts].sort((left, right) => {
+    const equity = Number(right.current_equity_usdt) - Number(left.current_equity_usdt)
+    if (equity !== 0) return equity
+    return ordered.findIndex((strategy) => strategy.strategy_id === left.strategy_id) - ordered.findIndex((strategy) => strategy.strategy_id === right.strategy_id)
+  })[0]
+  const leadingStrategy = ordered.find((strategy) => strategy.strategy_id === leadingAccount?.strategy_id)
+  const sharedPnl = data.status.current_equity_usdt - data.status.starting_equity_usdt
   return (
     <section aria-labelledby="live-heading">
       <div className="page-heading">
-        <div>
-          <p className="section-kicker">HOME</p>
-          <h2 id="live-heading">자동 관찰 홈</h2>
-          <p className="heading-help">공개시장 데이터를 보며 모의로만 거래합니다. 실제 돈은 움직이지 않습니다.</p>
+        <div><p className="section-kicker">HOME</p><h2 id="live-heading">자동 관찰 홈</h2><p className="heading-help">공개시장 데이터를 보며 모의로만 거래합니다. 실제 돈은 움직이지 않습니다.</p></div>
+        <div className="control-row home-controls">
+          {activeOperation ? <button type="button" className="secondary-button" onClick={onCancel} disabled={operation.state === 'CANCELLING'}>{operation.state === 'CANCELLING' ? '취소 중' : '연결 취소'}</button> : ready || demo ? <button type="button" className="primary-button" onClick={onStartLive} disabled={busyAction !== null}>{demo ? '실제 공개시장으로 시작' : '자동 관찰 시작'}</button> : <button type="button" className={data.paused ? 'primary-button' : 'secondary-button'} onClick={onPauseToggle}>{data.paused ? '자동 관찰 계속하기' : '새 진입 잠시 멈추기'}</button>}
+          {!activeOperation && ready ? <button type="button" className="secondary-button" onClick={onStartDemo} disabled={busyAction !== null}>샘플 화면 보기</button> : null}
         </div>
-        {ready ? (
-          <div className="control-row">
-            <button type="button" className="primary-button" onClick={onStartLive}>자동 관찰 시작</button>
-            <button type="button" className="secondary-button" onClick={onStartDemo}>샘플 화면 보기</button>
-          </div>
-        ) : (
-          <button type="button" className={data.paused ? 'primary-button' : 'secondary-button'} onClick={onPauseToggle}>
-            {data.paused ? '자동 관찰 계속하기' : '새 진입 잠시 멈추기'}
-          </button>
-        )}
       </div>
-      <section className="metric-strip home-summary" aria-label="자동 관찰 요약">
-        <article><span>프로그램 상태</span><b>{activityLabel}</b></article>
-        <article><span>진행 중인 거래</span><b>{openTrades}건</b></article>
-        <article><span>완료한 거래</span><b>{data.status.trade_count}건</b></article>
-        <article><span>현재 순손익</span><b className={netPnl > 0 ? 'positive' : netPnl < 0 ? 'negative' : ''}>{netPnl.toFixed(4)} USDT</b></article>
-        <article><span>정밀 관찰 종목</span><b>{watchCount}개</b></article>
+      {connectionError ? <p className="connection-error" role="alert"><b>연결 상태</b> {connectionError}</p> : null}
+      {requestError ? <p className="control-error" role="alert">{requestError}</p> : null}
+      {operation ? <section className={`panel operation-card ${operation.state.toLowerCase()}`} aria-live="polite"><div><span>현재 작업</span><h3>{operation.stage_ko}</h3><small>시작 {formatKstTime(operation.started_ts_ms)} · 마지막 변경 {formatKstTime(operation.updated_ts_ms)}</small></div><span className="operation-state">{operation.state}</span>{operation.error_message_ko ? <p>{operation.error_message_ko}</p> : null}{operation.state === 'FAILED_RETRYABLE' ? <button type="button" className="primary-button" onClick={onRetry}>다시 시도</button> : null}</section> : null}
+      <section className="metric-strip league-home-summary" aria-label="독립 전략 리그 요약">
+        <article><span>6개 독립 전략 합계</span><b>{sum(baseAccounts, 'current').toFixed(2)} USDT</b><small>한 개의 실제 1,000 USDT 계좌 결과가 아닙니다.</small></article>
+        <article><span>BASE 누적 순손익</span><b>{sum(baseAccounts, 'pnl').toFixed(4)} USDT</b></article>
+        <article><span>진행 중 전략 거래</span><b>{baseAccounts.reduce((total, account) => total + account.open_positions, 0)}건</b></article>
+        <article><span>완료한 전략 거래</span><b>{baseAccounts.reduce((total, account) => total + account.trade_count, 0)}건</b></article>
+        <article><span>현재 1위 전략</span><b>{leadingStrategy ? `${leadingStrategy.short_name} · ${leadingStrategy.display_name_ko}` : '표본 없음'}</b><small>{leadingStrategy ? modeLabels[leadingStrategy.mode] : '데이터를 기다리는 중'}</small></article>
       </section>
-      <details className="connection-details">
-        <summary>연결과 지연 상태 보기</summary>
-        <span>시장 데이터 {data.status.market_data_state === 'LIVE' ? '정상 연결' : data.status.market_data_state}</span>
-        <span>처리 지연 최근 95% 기준 {latency}</span>
-        <span>누적 비용 {(data.status.cumulative_fees_usdt + data.status.cumulative_slippage_usdt).toFixed(4)} USDT</span>
-      </details>
-      <section className="chart-toolbar" aria-label="차트 선택">
-        <label>볼 종목<select value={data.chart.symbol} onChange={(event) => onChartChange(event.target.value, currentInterval)}>{symbols.map((symbol) => <option value={symbol} key={symbol}>{symbol}</option>)}</select></label>
-        <label>차트 간격<select value={currentInterval} onChange={(event) => onChartChange(data.chart.symbol, Number(event.target.value))}>{intervals.map(([seconds, label]) => <option value={seconds} key={seconds}>{label}</option>)}</select></label>
-        <span>{data.chart.candles.length > 0 ? `시장 캔들 ${data.chart.candles.length}개` : '시장 캔들 준비 중'}</span>
-      </section>
-      <div className="live-grid">
-        <ScannerTable rows={data.scanner} selectedSymbol={data.chart.symbol} onSelect={(symbol) => onChartChange(symbol, currentInterval)} />
-        <PriceChart chart={data.chart} position={data.position} history={data.history} />
-        <PositionPanel position={data.position} onClose={onClose} />
-        <EventLog logs={data.logs} />
-      </div>
+      <section className="panel shared-benchmark-card"><div><p className="section-kicker">SHARED CAPITAL BENCHMARK</p><h3>공동계좌 비교 기준</h3><p>전략 경쟁 결과와 분리된 1,000 USDT PAPER 기준계좌입니다.</p></div><dl><div><dt>시작자산</dt><dd>{data.status.starting_equity_usdt.toFixed(2)} USDT</dd></div><div><dt>현재자산</dt><dd>{data.status.current_equity_usdt.toFixed(2)} USDT</dd></div><div><dt>순손익</dt><dd>{sharedPnl.toFixed(4)} USDT</dd></div><div><dt>열린 포지션</dt><dd>{data.position ? 1 : 0}건</dd></div></dl></section>
+      <section className="home-shortcuts" aria-label="주요 화면 바로가기"><button type="button" className="primary-button" onClick={() => onNavigate('strategies')}>전략 리그 보기</button><button type="button" className="secondary-button" onClick={() => onNavigate('positions')}>진행 거래 보기</button><button type="button" className="secondary-button" onClick={() => onNavigate('terminal')}>고급 터미널 열기</button></section>
     </section>
   )
 }

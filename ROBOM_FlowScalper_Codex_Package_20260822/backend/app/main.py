@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -18,6 +18,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.app.clocks import SystemClock
+from backend.app.control import (
+    ControlAction,
+    ControlOperationConflict,
+    ControlOperationFailure,
+    ControlOperationManager,
+)
+from backend.app.control.operations import ControlRunner, ProgressCallback
 from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
@@ -145,13 +152,24 @@ def _runtime_from_environment() -> PaperRuntime:
     return runtime
 
 
-def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
+def create_app(
+    runtime: PaperRuntime | None = None,
+    *,
+    control_runners: Mapping[ControlAction, ControlRunner] | None = None,
+) -> FastAPI:
     active_runtime = runtime or _runtime_from_environment()
+    operation_manager = ControlOperationManager(active_runtime.clock.utc_ms)
     websocket_clients: set[WebSocket] = set()
+
+    def dashboard_snapshot() -> dict[str, object]:
+        return {
+            **active_runtime.dashboard(),
+            "control_operation": operation_manager.current_public(),
+        }
 
     def dashboard_message() -> str:
         return json.dumps(
-            {"type": "dashboard", "data": active_runtime.dashboard()},
+            {"type": "dashboard", "data": dashboard_snapshot()},
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -189,6 +207,7 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
             )
             yield
         finally:
+            await operation_manager.shutdown()
             if broadcaster is not None:
                 broadcaster.cancel()
                 await asyncio.gather(broadcaster, return_exceptions=True)
@@ -201,6 +220,7 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
 
     app = FastAPI(title="ROBOM FlowScalper", version="0.2.0-paper", lifespan=lifespan)
     app.state.runtime = active_runtime
+    app.state.control_operation_manager = operation_manager
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -224,41 +244,143 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
 
     @app.get("/api/dashboard")
     async def dashboard() -> dict[str, object]:
-        return active_runtime.dashboard()
+        return dashboard_snapshot()
 
     @app.post("/api/control/pause")
     async def pause_entries() -> dict[str, object]:
         active_runtime.set_paused(True)
-        return active_runtime.dashboard()
+        return dashboard_snapshot()
 
     @app.post("/api/control/resume")
     async def resume_entries() -> dict[str, object]:
         active_runtime.set_paused(False)
-        return active_runtime.dashboard()
+        return dashboard_snapshot()
 
     @app.post("/api/control/emergency-close")
     async def emergency_paper_close() -> dict[str, object]:
         active_runtime.emergency_paper_close()
-        return active_runtime.dashboard()
+        return dashboard_snapshot()
 
-    @app.post("/api/control/start-live")
-    async def start_live() -> dict[str, object]:
-        await active_runtime.start_live_run()
-        return active_runtime.dashboard()
+    async def start_live_runner(progress: ProgressCallback) -> None:
+        blocked = active_runtime.live_start_block()
+        if blocked is not None:
+            raise ControlOperationFailure(
+                code=blocked[0],
+                message_ko=blocked[1],
+                retryable=False,
+            )
+        started = await active_runtime.start_live_run(progress=progress)
+        if not started:
+            raise ControlOperationFailure(
+                code="PUBLIC_DATA_UNAVAILABLE",
+                message_ko=(
+                    "공개시장에 연결하지 못했습니다. 네트워크 상태를 확인한 뒤 "
+                    "다시 시도하세요."
+                ),
+                retryable=True,
+            )
 
-    @app.post("/api/control/start-demo")
-    async def start_demo() -> dict[str, object]:
+    async def start_demo_runner(progress: ProgressCallback) -> None:
+        await progress("PREPARING", "샘플 PAPER Run을 준비하고 있습니다")
         await active_runtime.shutdown_supervisor()
         active_runtime.start_demo_run()
-        return active_runtime.dashboard()
+
+    async def new_run_runner(progress: ProgressCallback) -> None:
+        await progress("PREPARING", "기존 기록을 보존하고 새 PAPER Run을 준비합니다")
+        await active_runtime.shutdown_supervisor()
+        try:
+            active_runtime.start_new_run()
+        except ValueError as error:
+            raise ControlOperationFailure(
+                code="NEW_RUN_BLOCKED",
+                message_ko=str(error),
+                retryable=False,
+            ) from error
+        if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            started = await active_runtime.start_persistent_live(progress=progress)
+            if not started:
+                raise ControlOperationFailure(
+                    code="PUBLIC_DATA_UNAVAILABLE",
+                    message_ko=(
+                        "공개시장에 연결하지 못했습니다. 네트워크 상태를 확인한 뒤 "
+                        "다시 시도하세요."
+                    ),
+                    retryable=True,
+                )
+
+    async def submit_operation(
+        action: ControlAction,
+        runner: ControlRunner,
+    ) -> dict[str, object]:
+        try:
+            return await operation_manager.submit(action, runner)
+        except ControlOperationConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "CONTROL_OPERATION_CONFLICT",
+                    "error_message_ko": "다른 PAPER 실행 작업이 진행 중입니다.",
+                    "retryable": False,
+                    "current_operation": error.current_operation,
+                },
+            ) from error
+
+    @app.post("/api/control/start-live", status_code=202)
+    async def start_live() -> dict[str, object]:
+        runner = (control_runners or {}).get(ControlAction.START_LIVE, start_live_runner)
+        return await submit_operation(ControlAction.START_LIVE, runner)
+
+    @app.post("/api/control/start-demo", status_code=202)
+    async def start_demo() -> dict[str, object]:
+        runner = (control_runners or {}).get(ControlAction.START_DEMO, start_demo_runner)
+        return await submit_operation(ControlAction.START_DEMO, runner)
+
+    @app.get("/api/control/operations/current")
+    async def current_operation() -> dict[str, object] | None:
+        return operation_manager.current_public()
+
+    @app.get("/api/control/operations/{operation_id}")
+    async def operation_by_id(operation_id: str) -> dict[str, object]:
+        operation = operation_manager.get_public(operation_id)
+        if operation is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "CONTROL_OPERATION_NOT_FOUND",
+                    "error_message_ko": "요청한 실행 작업을 찾을 수 없습니다.",
+                    "retryable": False,
+                },
+            )
+        return operation
+
+    @app.post("/api/control/operations/{operation_id}/cancel", status_code=202)
+    async def cancel_operation(operation_id: str) -> dict[str, object]:
+        operation = await operation_manager.cancel(operation_id)
+        if operation is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "CONTROL_OPERATION_NOT_FOUND",
+                    "error_message_ko": "취소할 실행 작업을 찾을 수 없습니다.",
+                    "retryable": False,
+                },
+            )
+        return operation
 
     @app.post("/api/control/chart")
     async def select_chart(request: ChartSelectionRequest) -> dict[str, object]:
         try:
             active_runtime.set_chart_selection(request.symbol, request.interval_seconds)
         except ValueError as error:
-            raise HTTPException(status_code=422, detail=str(error)) from error
-        return active_runtime.dashboard()
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "INVALID_CHART_SELECTION",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        return dashboard_snapshot()
 
     @app.post("/api/strategies/{strategy_id}")
     async def configure_strategy(
@@ -273,8 +395,15 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
                 short_enabled=request.short_enabled,
             )
         except ValueError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
-        return active_runtime.dashboard()
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "STRATEGY_NOT_FOUND",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        return dashboard_snapshot()
 
     @app.get("/api/analytics/strategies")
     async def strategy_analytics() -> list[dict[str, object]]:
@@ -309,7 +438,14 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
                 limit=limit,
             )
         except ValueError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "REPLAY_TIMELINE_NOT_FOUND",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
 
     @app.post("/api/replay/{run_id}")
     async def replay_run(run_id: str, request: ReplayRequest) -> dict[str, object]:
@@ -320,18 +456,19 @@ def create_app(runtime: PaperRuntime | None = None) -> FastAPI:
                 symbol=request.symbol,
             )
         except ValueError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "REPLAY_RUN_NOT_FOUND",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
 
-    @app.post("/api/control/new-run")
+    @app.post("/api/control/new-run", status_code=202)
     async def new_run() -> dict[str, object]:
-        await active_runtime.shutdown_supervisor()
-        try:
-            active_runtime.start_new_run()
-        except ValueError as error:
-            raise HTTPException(status_code=409, detail=str(error)) from error
-        if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
-            await active_runtime.start_persistent_live()
-        return active_runtime.dashboard()
+        runner = (control_runners or {}).get(ControlAction.NEW_RUN, new_run_runner)
+        return await submit_operation(ControlAction.NEW_RUN, runner)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:

@@ -1,9 +1,11 @@
-// 일곱 PAPER 사용자 화면과 실제 백엔드 제어를 조합하는 애플리케이션 루트다.
+// 아홉 PAPER 화면과 비동기 제어 상태를 조합하는 애플리케이션 루트다.
 import { useState } from 'react'
 import { Navigation } from './components/Navigation'
 import { SafetyHeader } from './components/SafetyHeader'
 import { useDashboard } from './hooks/useDashboard'
+import { AdvancedTerminalPage } from './pages/AdvancedTerminalPage'
 import { HistoryPage } from './pages/HistoryPage'
+import { LeaguePositionsPage } from './pages/LeaguePositionsPage'
 import { LivePage } from './pages/LivePage'
 import { PerformancePage } from './pages/PerformancePage'
 import { ReplayPage } from './pages/ReplayPage'
@@ -14,72 +16,69 @@ import type { HistoryRow, PageId } from './types'
 
 export default function App() {
   const [page, setPage] = useState<PageId>('live')
-  const [controlError, setControlError] = useState('')
   const [replayTrade, setReplayTrade] = useState<HistoryRow | undefined>()
   const {
     data,
     connected,
     connectionState,
+    bootstrapState,
     lastUpdateMs,
+    connectionError,
+    requestError,
+    busyAction,
+    controlOperation,
     control,
+    cancelControl,
+    retryControl,
     selectChart,
     configureStrategy,
+    clearError,
   } = useDashboard()
 
-  const runControl = async (
-    action: 'pause' | 'resume' | 'emergency-close' | 'new-run' | 'start-live' | 'start-demo',
-  ) => {
+  const runControl = async (action: 'pause' | 'resume' | 'emergency-close' | 'new-run' | 'start-live' | 'start-demo') => {
     try {
-      setControlError('')
+      clearError()
       await control(action)
     } catch {
-      setControlError('PAPER 제어 요청이 실패했습니다. 시스템 연결을 확인하세요.')
+      // useDashboard가 서버의 실제 한국어 오류를 화면 상태로 보존한다.
     }
   }
-
   const pauseToggle = () => void runControl(data.paused ? 'resume' : 'pause')
   const emergencyClose = () => {
-    if (window.confirm('현재 PAPER 포지션만 시뮬레이션 종료할까요?')) {
-      void runControl('emergency-close')
-    }
+    if (window.confirm('현재 공동계좌 PAPER 포지션만 시뮬레이션 종료할까요?')) void runControl('emergency-close')
   }
   const newRun = () => {
-    if (window.confirm('기존 Run 기록을 보존하고 새 PAPER Run을 만들까요?')) {
-      void runControl('new-run')
-    }
+    if (window.confirm('기존 Run 기록을 보존하고 새 PAPER Run을 만들까요?')) void runControl('new-run')
   }
-
   const changeChart = async (symbol: string, intervalSeconds: number) => {
     try {
-      setControlError('')
+      clearError()
       await selectChart(symbol, intervalSeconds)
     } catch {
-      setControlError('차트 종목·시간구간을 적용하지 못했습니다.')
+      // 오류 본문은 useDashboard가 requestError로 표시한다.
     }
   }
-
   const changeStrategy = async (
     strategyId: string,
-    configuration: {
-      mode: 'ACTIVE' | 'SHADOW' | 'OFF'
-      long_enabled: boolean
-      short_enabled: boolean
-    },
+    configuration: { mode: 'ACTIVE' | 'SHADOW' | 'OFF'; long_enabled: boolean; short_enabled: boolean },
   ) => {
     try {
-      setControlError('')
+      clearError()
       return await configureStrategy(strategyId, configuration)
-    } catch (error) {
-      setControlError('전략 설정을 저장하지 못했습니다. 연결을 확인하세요.')
-      throw error
+    } catch {
+      return null
     }
   }
-
+  const cancelOperation = async () => {
+    try { await cancelControl() } catch { /* useDashboard가 오류를 표시한다. */ }
+  }
+  const retryOperation = async () => {
+    try { await retryControl() } catch { /* useDashboard가 오류를 표시한다. */ }
+  }
   const changePage = (nextPage: PageId) => {
     setPage(nextPage)
     window.scrollTo(0, 0)
   }
-
   const openReplay = (trade: HistoryRow) => {
     setReplayTrade(trade)
     changePage('replay')
@@ -89,13 +88,17 @@ export default function App() {
     <main>
       <SafetyHeader data={data} connected={connected} connectionState={connectionState} lastUpdateMs={lastUpdateMs} />
       <Navigation page={page} onChange={changePage} />
-      {controlError ? <p className="control-error" role="alert">{controlError}</p> : null}
-      {page === 'live' ? <LivePage data={data} onPauseToggle={pauseToggle} onClose={emergencyClose} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} /> : null}
-      {page === 'strategies' ? <StrategiesPage strategies={data.strategies} shadowAccounts={data.shadow_accounts} onConfigure={changeStrategy} /> : null}
+      {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}
+      {bootstrapState === 'ERROR' ? <p className="connection-error" role="alert">프로그램 서버에 연결하지 못했습니다. 실행 상태를 확인하세요.</p> : null}
+      {requestError && page !== 'live' ? <p className="control-error" role="alert">{requestError}</p> : null}
+      {page === 'live' ? <LivePage data={data} operation={controlOperation} busyAction={busyAction} connectionError={connectionError} requestError={requestError} onPauseToggle={pauseToggle} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} onNavigate={changePage} /> : null}
+      {page === 'strategies' ? <StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} onConfigure={changeStrategy} /> : null}
+      {page === 'positions' ? <LeaguePositionsPage positions={data.league_positions} strategies={data.strategies} /> : null}
       {page === 'history' ? <HistoryPage rows={data.history} onReplay={openReplay} /> : null}
       {page === 'replay' ? <ReplayPage trade={replayTrade} /> : null}
-      {page === 'performance' ? <PerformancePage performance={data.performance} strategies={data.strategies} shadowAccounts={data.shadow_accounts} history={data.history} /> : null}
+      {page === 'performance' ? <PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={data.history} /> : null}
       {page === 'risk' ? <RiskPage data={data} onPauseToggle={pauseToggle} onNewRun={newRun} /> : null}
+      {page === 'terminal' ? <AdvancedTerminalPage data={data} onClose={emergencyClose} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} /> : null}
       {page === 'system' ? <SystemPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} /> : null}
     </main>
   )

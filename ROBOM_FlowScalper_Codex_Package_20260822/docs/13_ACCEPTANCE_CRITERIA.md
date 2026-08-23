@@ -92,3 +92,19 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Dependency/license notices exist.
 - [ ] `FINAL_UPGRADE_EVIDENCE.md` exists with actual results.
 - [ ] Git working tree is clean.
+
+## K. Phase 02 asynchronous control and Strategy League UI
+
+- [ ] Start LIVE, demo and new Run submit immediately as `202 ControlOperation`.
+- [ ] Duplicate, conflict, ordered stage, cancel, retryable and blocked outcomes are tested.
+- [ ] Cancellation leaves no unregistered supervisor and never lies about LIVE state.
+- [ ] Six Strategy cards and twelve independent BASE/STRESS accounts are connected.
+- [ ] ACTIVE, SHADOW and OFF use beginner-readable meanings without `기록만 하기`.
+- [ ] Home separates six-account totals from the Shared Capital Benchmark.
+- [ ] League positions default to BASE and expose no real buy/sell action.
+- [ ] Scanner order, row size and chart dimensions remain stable while data and drawers change.
+- [ ] MA, EMA, VWAP, Bollinger, RSI and MACD are selectable without changing strategy rules.
+- [ ] Same-selection data uses incremental update; selection changes use bounded full setData.
+- [ ] Crosshair, current-to-realtime and fullscreen return work in a real browser.
+- [ ] Desktop, tablet and mobile have 48px controls, no root overflow and no runtime errors.
+- [ ] Core and Browser GitHub Actions pass on the final GitHub main commit.

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import threading
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,6 +16,20 @@ from backend.app.live_public import LiveBootstrapResult, PublicDataUnavailable
 from backend.app.main import create_app
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import SQLiteLedger
+
+
+def _wait_control(client: TestClient, operation_id: str) -> dict[str, object]:
+    for _ in range(50):
+        operation = client.get(f"/api/control/operations/{operation_id}").json()
+        if operation["state"] in {
+            "COMPLETED",
+            "FAILED_RETRYABLE",
+            "FAILED_BLOCKED",
+            "CANCELLED",
+        }:
+            return operation
+        time.sleep(0.01)
+    raise AssertionError("control operation이 종료되지 않았습니다.")
 
 
 def test_fixture_boot_is_honestly_labeled() -> None:
@@ -71,22 +86,33 @@ def test_dashboard_controls_preserve_run_history() -> None:
         run_id="run-original",
     )
     runtime.boot_fixture()
-    client = TestClient(create_app(runtime))
+    with TestClient(create_app(runtime)) as client:
+        dashboard = client.get("/api/dashboard").json()
+        assert dashboard["chart"]["lines"].keys() == {
+            "entry",
+            "take_profit",
+            "take_profit_2",
+            "stop",
+        }
+        assert dashboard["position"]["elapsed_seconds"] == 121
+        assert dashboard["status"]["market_data_state"] == "FIXTURE"
+        assert len(dashboard["chart"]["candles"]) >= 20
 
-    dashboard = client.get("/api/dashboard").json()
-    assert dashboard["chart"]["lines"].keys() == {
-        "entry",
-        "take_profit",
-        "take_profit_2",
-        "stop",
-    }
-    assert dashboard["position"]["elapsed_seconds"] == 121
-    assert dashboard["status"]["market_data_state"] == "FIXTURE"
+        interval_chart = client.post(
+            "/api/control/chart",
+            json={"symbol": "BTCUSDT", "interval_seconds": 15},
+        ).json()["chart"]
+        assert interval_chart["interval"] == "15s"
+        assert len(interval_chart["candles"]) >= 14
+        assert all(float(row["close"]) > 0 for row in interval_chart["candles"])
 
-    assert client.post("/api/control/pause").json()["paused"] is True
-    assert client.post("/api/control/resume").json()["paused"] is False
-    assert client.post("/api/control/emergency-close").json()["position"] is None
-    new_snapshot = client.post("/api/control/new-run").json()
+        assert client.post("/api/control/pause").json()["paused"] is True
+        assert client.post("/api/control/resume").json()["paused"] is False
+        assert client.post("/api/control/emergency-close").json()["position"] is None
+        submitted = client.post("/api/control/new-run")
+        assert submitted.status_code == 202
+        _wait_control(client, submitted.json()["operation_id"])
+        new_snapshot = client.get("/api/dashboard").json()
     assert new_snapshot["status"]["run_id"] != "run-original"
     assert new_snapshot["history"][0]["run_id"] == "run-original"
 
@@ -164,47 +190,51 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
         ledger=ledger,
     )
     runtime.boot_fixture()
-    client = TestClient(create_app(runtime))
-
-    before = client.get("/api/dashboard").json()
-    run_config = json.loads(ledger.get_run("run-persisted")["config_json"])
-    after = client.post("/api/control/new-run").json()
-
-    assert before["history"][0]["trade_id"] == "run-persisted-fixture-trade-001"
-    assert run_config["app_version"] == "0.2.0-paper"
-    assert "LSA_REVERSAL_V1" in run_config["strategy_version"]
-    assert run_config["sample_type"] == "DEMO_FIXTURE"
-    assert run_config["git_commit"]
-    assert after["status"]["run_id"] != "run-persisted"
-    assert {row["run_id"] for row in after["history"]} == {
-        "run-persisted",
-        after["status"]["run_id"],
-    }
-    assert ledger.get_run("run-persisted")["finalized_ts_ms"] is not None
-    assert ledger.count("trades") == 2
-    assert ledger.count("transitions") == 10
-    assert ledger.count("snapshots") == 4
-    assert ledger.count("paper_orders") == 4
-    assert ledger.count("fills") == 4
-    orders = ledger.list_orders("run-persisted")
-    fills = ledger.list_fills("run-persisted")
-    trade = ledger.list_trades("run-persisted")[0]
-    assert trade["config_hash"] == ledger.get_run("run-persisted")["config_hash"]
-    assert [order["intent"] for order in orders] == ["ENTRY_IOC", "TAKE_PROFIT"]
-    assert [(fill["planned_price"], fill["price"]) for fill in fills] == [
-        ("100.00", "100.10"),
-        ("102.00", "101.90"),
-    ]
-    assert sum(Decimal(fill["fee_usdt"]) for fill in fills) == Decimal(trade["fees_usdt"])
-    assert sum(Decimal(fill["slippage_usdt"]) for fill in fills) == Decimal(trade["slippage_usdt"])
-    transition_times = [
-        transition["ts_ms"] for transition in ledger.list_transitions("run-persisted")
-    ]
-    assert transition_times == sorted(transition_times)
-    assert transition_times[2] == orders[0]["created_ts_ms"]
-    assert transition_times[3] == fills[0]["ts_ms"]
-    assert transition_times[-1] == fills[-1]["ts_ms"]
-    ledger.close()
+    with TestClient(create_app(runtime)) as client:
+        before = client.get("/api/dashboard").json()
+        run_config = json.loads(ledger.get_run("run-persisted")["config_json"])
+        submitted = client.post("/api/control/new-run")
+        assert submitted.status_code == 202
+        _wait_control(client, submitted.json()["operation_id"])
+        after = client.get("/api/dashboard").json()
+        assert before["history"][0]["trade_id"] == "run-persisted-fixture-trade-001"
+        assert run_config["app_version"] == "0.2.0-paper"
+        assert "LSA_REVERSAL_V1" in run_config["strategy_version"]
+        assert run_config["sample_type"] == "DEMO_FIXTURE"
+        assert run_config["git_commit"]
+        assert after["status"]["run_id"] != "run-persisted"
+        assert {row["run_id"] for row in after["history"]} == {
+            "run-persisted",
+            after["status"]["run_id"],
+        }
+        assert ledger.get_run("run-persisted")["finalized_ts_ms"] is not None
+        assert ledger.count("trades") == 2
+        assert ledger.count("transitions") == 10
+        assert ledger.count("snapshots") == 4
+        assert ledger.count("paper_orders") == 4
+        assert ledger.count("fills") == 4
+        orders = ledger.list_orders("run-persisted")
+        fills = ledger.list_fills("run-persisted")
+        trade = ledger.list_trades("run-persisted")[0]
+        assert trade["config_hash"] == ledger.get_run("run-persisted")["config_hash"]
+        assert [order["intent"] for order in orders] == ["ENTRY_IOC", "TAKE_PROFIT"]
+        assert [(fill["planned_price"], fill["price"]) for fill in fills] == [
+            ("100.00", "100.10"),
+            ("102.00", "101.90"),
+        ]
+        assert sum(Decimal(fill["fee_usdt"]) for fill in fills) == Decimal(
+            trade["fees_usdt"]
+        )
+        assert sum(Decimal(fill["slippage_usdt"]) for fill in fills) == Decimal(
+            trade["slippage_usdt"]
+        )
+        transition_times = [
+            transition["ts_ms"] for transition in ledger.list_transitions("run-persisted")
+        ]
+        assert transition_times == sorted(transition_times)
+        assert transition_times[2] == orders[0]["created_ts_ms"]
+        assert transition_times[3] == fills[0]["ts_ms"]
+        assert transition_times[-1] == fills[-1]["ts_ms"]
 
 
 async def test_fresh_live_run_starts_zero_and_excludes_demo_performance(tmp_path: Path) -> None:

@@ -89,3 +89,12 @@ uv run pytest backend/tests -q
 ```
 
 - UI, browser, network, 30분·6시간·24시간 soak는 1차 Strategy League 백엔드 범위가 아니다.
+
+## 10. 2차 UI·제어 연결
+
+- `league_accounts` 12행은 6개 전략 카드와 BASE/STRESS 상세의 계좌 원본이다.
+- `league_positions`는 BASE/STRESS 필터, 종목·방향 필터와 차트 계획선의 원본이다.
+- ACTIVE는 main Shared Capital Benchmark와 League, SHADOW는 League만 유지한다.
+- 표시 mode를 바꾸는 UI는 기존 Registry 설정 API를 사용하며 별도 체결 엔진을 만들지 않는다.
+- 차트 지표는 화면 참고용이고 A-F 진입 threshold를 변경하지 않는다.
+- 시작·새 Run은 비동기 operation으로 제어하되 12계좌 위험·복구·원장 경계는 이 문서 1차 계약을 그대로 유지한다.

@@ -14,7 +14,8 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL,
-    trace: 'off',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   webServer: {
     command:
@@ -24,7 +25,7 @@ export default defineConfig({
     timeout: 30_000,
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1408, height: 714 }, deviceScaleFactor: 2 } },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1408, height: 900 }, deviceScaleFactor: 2 } },
     { name: 'tablet', use: { viewport: { width: 820, height: 1180 } } },
     { name: 'mobile', use: { viewport: { width: 390, height: 844 }, isMobile: true } },
   ],

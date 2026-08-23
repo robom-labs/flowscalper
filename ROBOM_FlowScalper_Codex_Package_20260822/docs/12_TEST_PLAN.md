@@ -167,3 +167,22 @@ Executable soak commands:
 The 30-minute run is the automated acceptance smoke. The 6-hour and 24-hour commands use the same assertions and must be reported `NOT_RUN` rather than inferred when wall-clock execution is unavailable.
 
 The public-event lag threshold remains 1,500ms. Because an exchange or network can exceed it independently of local queue health, the soak must preserve the maximum and count of critical samples, prove zero fail-open samples, and finish either below the threshold or with both supervisor and runtime entry-locked. Queue overflow, dropped events, unbounded memory, or an unlocked critical-lag sample still fails the run.
+
+## 12.14 Phase 02 control and UI regression
+
+- Backend tests cover immediate `202`, same-action deduplication, different-action conflict,
+  bounded history, ordered stages, retryable/blocked failures, cancellation cleanup, current
+  and missing operations, dashboard/WebSocket output, the 12 League accounts, extended
+  positions, split risk contracts and PAPER/auth invariants.
+- Frontend tests cover bootstrap failure, HTTP timeout and typed error bodies, duplicate
+  protection, cancel/retry, malformed WebSocket recovery, six strategies and 12 account
+  pairing, beginner copy, scanner stability, indicators without input mutation and chart
+  instance/series update behavior.
+- Deterministic Playwright covers the 45 accepted interactions across desktop, tablet and
+  mobile. It records console errors, page errors and failed requests, requires 48px controls,
+  verifies per-page overflow, scanner/chart size invariance, current-to-realtime and
+  fullscreen return, and creates only new `phase02-*` screenshots.
+- A separate local-browser pass repeats the user-visible home, operation, League drawer,
+  positions, terminal indicators, fullscreen and responsive checks against port 8870.
+- Public network smoke, 30-minute, 6-hour and 24-hour soaks and a Release ZIP remain separate
+  and must be `NOT_RUN` unless executed during the same evidence pass.

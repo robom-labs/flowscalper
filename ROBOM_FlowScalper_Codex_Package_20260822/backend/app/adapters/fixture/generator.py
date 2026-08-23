@@ -34,6 +34,8 @@ class FixtureMarketData:
         }
 
     def events(self, count: int = 20) -> Iterator[MarketEvent]:
+        base_ts_ms = self._clock.utc_ms()
+        base_monotonic_ns = self._clock.monotonic_ns()
         for index in range(count):
             symbol = DEFAULT_SYMBOLS[index % len(DEFAULT_SYMBOLS)]
             self._sequence += 1
@@ -47,8 +49,8 @@ class FixtureMarketData:
                 venue=Venue.FIXTURE,
                 symbol=symbol,
                 event_type="BOOK_TICKER",
-                venue_ts_ms=self._clock.utc_ms(),
-                receive_monotonic_ns=self._clock.monotonic_ns(),
+                venue_ts_ms=base_ts_ms - (count - index - 1) * 1_000,
+                receive_monotonic_ns=base_monotonic_ns + index,
                 sequence_start=self._sequence,
                 sequence_end=self._sequence,
                 previous_sequence_end=self._sequence - 1 if self._sequence > 1 else None,
