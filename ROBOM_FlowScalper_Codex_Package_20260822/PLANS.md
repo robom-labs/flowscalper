@@ -200,6 +200,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-23: ADR-009에 따라 `main`은 현재 실행 소스 한 벌만 유지하고, 과거 source는 Git history·tag, 배포물은 Release, 사용자용 변화는 짧은 `CHANGELOG.md`로 보존한다. 운영 구형 데이터는 삭제하지 않고 프로젝트 밖 migration archive로 이동하며 repository hygiene 검사를 CI와 release gate에 추가한다.
 - 2026-08-23: 2차 UI는 장시간 Run 변경을 `202 ControlOperation`으로 분리하고, 초보자 홈·Strategy League·진행 거래를 고급 터미널과 분리한다. 스캐너는 고정 행·순서를, 차트는 선택 변경 외 `update`를 사용하며 보조지표는 전략 threshold와 분리한다.
 - 2026-08-23: ADR-010에 따라 3차 UI는 5개 compact 메뉴와 시장 기본화면, Binance 전체 PAPER catalog, Upbit KRW 관찰 catalog, deep 20 안전회전, 전략×종목 성과와 실제 fill 기반 공용 포지션 집중·거래 단위 replay를 채택한다.
+- 2026-08-24: ADR-011에 따라 Run별 Parquet partition, 250ms 방향별 체결 VWAP 병합, snapshot 통계 공유, 2,000건 비동기 저장과 종료 잔여 flush를 채택한다. 완료 거래 replay에는 저장 PAPER 원장 진입·종료 전환을 포함하고 DEMO는 LIVE 지연 telemetry를 상속하지 않는다.
 
 ## v0.2 upgrade progress
 
@@ -218,6 +219,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 | Upgrade 10 | COMPLETE | schema v6 hybrid 원장·LaunchAgent 자동복구·쉬운 홈·고정 scanner·실제 거래량·선택형 5/10/20/60선 구현. backend 105 PASS, frontend 5 PASS, lint/typecheck/build/security PASS. `run-9b9d508c689d` 4분 이상 37,984 events 측정에서 p95 140ms·pause false·queue/drop/gap/reconnect/fault 0, 이후 77,274 events를 외장 147 Parquet 7,987,803 bytes로 보존하고 SQLite raw event 0·quick check·replay PASS | in-app browser admin policy 확인 불가로 수정 후 DOM·screenshot 재캡처 BLOCKED | 완료 |
 | Upgrade 11 | COMPLETE | ControlOperation 202·중복·충돌·취소·재시도, 6전략·12계좌 쉬운 UI, 고정 scanner·drawer, 증분 chart·MA/EMA/VWAP/볼린저/RSI/MACD를 구현했다. backend 150, frontend 24, Playwright 3 PASS, 실제 8870 browser desktop/tablet/mobile, GitHub Core·Browser Actions PASS를 완료했다. | network·30분·6시간·24시간 soak·Release ZIP NOT_RUN | 완료 |
 | Upgrade 12 | COMPLETE | compact 시장·전체 Binance/Upbit catalog·3분봉 200·MA10/20·deep 20 회전·전략별 종목성과·FocusPosition·거래 중심 0.5~80x replay를 구현했다. backend 157·frontend 27·E2E 3, 실제 network Binance 696/Upbit 285·양쪽 candle 200 PASS, 30분 811,154 events·rotation 1·drop/gap 0 PASS, actual Chrome·GitHub Actions PASS다. | 자연 공개시장 PAPER fill NOT_OBSERVED, 6시간·24시간·Release ZIP NOT_RUN | 완료 |
+| Upgrade 13 | COMPLETE | LIVE 병목 profiling 후 Run별 archive·체결 병합·통계 공유·호가 계산·저장 batch를 최적화했다. backend 162·frontend 29·E2E 3 PASS, 실제 180초 p95 최대 458ms·queue 최대 2·fault/drop/reconnect 0, 실제 브라우저 50개 조작 실패 0, DEMO/LIVE 모바일 진실표시와 완료 거래 종료 replay PASS다. | 자연 공개시장 PAPER fill NOT_OBSERVED, 6시간·24시간·Release ZIP NOT_RUN | GitHub main 동기화와 Actions 확인 |
 
 ## Progress log
 
@@ -235,3 +237,4 @@ Codex must maintain a table with Wave, status, last commit, validation result, b
 | 07 | COMPLETE | de12d0e | Backend 55 PASS including 9 storage/replay tests; four lifecycle restart states, corrupt snapshot fail-closed, immutable Run/trade, Parquet retention/protection, DuckDB metrics, disk-pressure lock, deterministic replay/export PASS; frontend/build/e2e PASS | 없음 | 완료 |
 | 08 | COMPLETE | 9398f00 | Backend 59 PASS including fixture order/fill/accounting chronology and Run config-hash binding; macOS setup PASS; fixture restart recovery PASS; final live app Binance 524 crypto eligible, 50 wide/1 deep, verified LIVE p95 6ms; final network smoke 527 exchange-eligible, raw-first-event p95 8231.569ms; Playwright 3 PASS; security/audits PASS; release/evidence generated | Windows execution NOT_RUN on macOS; sustained 50 wide/10 deep NOT_RUN | 완료 |
 | 12 | COMPLETE | bfd19a4 | Backend·frontend·Playwright·actual Chrome·public network·30분 soak·GitHub Actions PASS | 자연 공개시장 PAPER fill NOT_OBSERVED; 6h·24h·Release NOT_RUN | 완료 |
+| 13 | COMPLETE | pending | Backend 162, frontend 29, Playwright 3, security 106 source, actual browser 50 controls, public network와 180초 integrated LIVE PASS | 자연 공개시장 PAPER fill NOT_OBSERVED; 6h·24h·Release NOT_RUN | 최종 commit·push·Actions |

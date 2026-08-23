@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-08-23T15:56:48.474Z",
+  "browser": "Codex in-app browser",
+  "local_url": "http://127.0.0.1:8870/",
+  "demo_run_id": "demo-d2dab5b7ebc0",
+  "mode": "DEMO_FIXTURE",
+  "viewport_checks": [
+    "1408x900",
+    "820x1180",
+    "390x844"
+  ],
+  "result_count": 50,
+  "results": [
+    {
+      "control": "nav-strategy",
+      "pass": true
+    },
+    {
+      "control": "strategy-LSA-shadow",
+      "pass": true
+    },
+    {
+      "control": "strategy-LSA-off",
+      "pass": true
+    },
+    {
+      "control": "strategy-long-off",
+      "pass": true
+    },
+    {
+      "control": "strategy-short-off",
+      "pass": true
+    },
+    {
+      "control": "strategy-LSA-restored",
+      "pass": true
+    },
+    {
+      "control": "strategy-detail-open",
+      "pass": true
+    },
+    {
+      "control": "strategy-detail",
+      "pass": true
+    },
+    {
+      "control": "strategy-open-positions",
+      "pass": true
+    },
+    {
+      "control": "nav-records",
+      "pass": true
+    },
+    {
+      "control": "record-filter-all-options",
+      "pass": true
+    },
+    {
+      "control": "backend-replay",
+      "pass": true
+    },
+    {
+      "control": "replay-button-recovers",
+      "pass": true
+    },
+    {
+      "control": "replay-speeds-0.5-to-80",
+      "pass": true
+    },
+    {
+      "control": "replay-step",
+      "pass": true
+    },
+    {
+      "control": "replay-play-pause",
+      "pass": true
+    },
+    {
+      "control": "replay-slider-end-home",
+      "pass": true
+    },
+    {
+      "control": "nav-analysis",
+      "pass": true
+    },
+    {
+      "control": "analysis-by-symbol",
+      "pass": true
+    },
+    {
+      "control": "analysis-filters",
+      "pass": true
+    },
+    {
+      "control": "nav-settings",
+      "pass": true
+    },
+    {
+      "control": "settings-safety",
+      "pass": true
+    },
+    {
+      "control": "paper-pause-resume",
+      "pass": true
+    },
+    {
+      "control": "settings-system",
+      "pass": true
+    },
+    {
+      "control": "advanced-diagnostics-toggle",
+      "pass": true
+    },
+    {
+      "control": "nav-market",
+      "pass": true
+    },
+    {
+      "control": "market-search",
+      "pass": true
+    },
+    {
+      "control": "market-select-btc",
+      "pass": true
+    },
+    {
+      "control": "market-upbit-reference",
+      "pass": true
+    },
+    {
+      "control": "market-select-upbit-btc",
+      "pass": true
+    },
+    {
+      "control": "market-binance-restore",
+      "pass": true
+    },
+    {
+      "control": "chart-all-timeframes",
+      "pass": true
+    },
+    {
+      "control": "chart-all-indicators-toggle",
+      "pass": true
+    },
+    {
+      "control": "chart-fullscreen-open-close",
+      "pass": true
+    },
+    {
+      "control": "tablet-820-market-drawer",
+      "pass": true
+    },
+    {
+      "control": "mobile-390-layout",
+      "pass": true
+    },
+    {
+      "control": "mobile-ready-start-controls",
+      "pass": true
+    },
+    {
+      "control": "demo-fixture-isolation",
+      "pass": true
+    },
+    {
+      "control": "nav-replay",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-plan-sheet",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-pnl-sheet",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-speeds",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-step-entry-exit-signal",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-play-core-end",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-mobile-responsive",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-tablet-responsive",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-desktop-responsive",
+      "pass": true
+    },
+    {
+      "control": "secondary-navigation-no-overlap",
+      "pass": true
+    },
+    {
+      "control": "focus-replay-exit-ledger-frame",
+      "pass": true
+    },
+    {
+      "control": "live-paper-mobile-truth-banner",
+      "pass": true
+    }
+  ],
+  "backend_replay": {
+    "source_run_id": "run-d431b64c13b2",
+    "selected_symbol": "TRUMPUSDT",
+    "replay_id": "replay-b00234a8e1f74cca",
+    "input_checksum": "1412cc3450f7ed0739b458b25d2a86f171692cb56838770fc976be7dc4348e96",
+    "strategy_evaluation_count": 7764,
+    "candidate_plan_count": 0,
+    "main_trade_count": 0,
+    "shadow_trade_count": 0,
+    "actual_order_path_count": 0,
+    "auth_path_count": 0
+  },
+  "focus_replay": {
+    "source": "DEMO_FIXTURE stored PAPER ledger and market events",
+    "frames": 26,
+    "speeds": [
+      0.5,
+      1,
+      2,
+      5,
+      10,
+      20,
+      40,
+      80
+    ],
+    "paper_only": true,
+    "actual_orders": 0,
+    "auth_paths": 0
+  },
+  "screenshots": [
+    "evidence/PHASE03_UI_DEMO_MOBILE_390x844.png",
+    "evidence/PHASE03_ACTUAL_FOCUS_REPLAY_DESKTOP_1408x900.png",
+    "evidence/PHASE03_ACTUAL_FOCUS_REPLAY_TABLET_820x1180.png",
+    "evidence/PHASE03_ACTUAL_FOCUS_REPLAY_MOBILE_390x844.png",
+    "evidence/PHASE03_ACTUAL_LIVE_MOBILE_390x844.png"
+  ],
+  "notes": [
+    "Actual in-app browser controls were clicked individually.",
+    "DEMO_FIXTURE is explicitly separated from LIVE PAPER.",
+    "No strategy thresholds were lowered; natural public-market fill was not observed."
+  ],
+  "final_live": {
+    "run_id": "run-f14214b3b1dd",
+    "mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "venue": "BINANCE_USDM",
+    "starting_equity_usdt": 1000,
+    "current_equity_usdt": 1000,
+    "realized_pnl_usdt": 0,
+    "unrealized_pnl_usdt": 0,
+    "cumulative_fees_usdt": 0,
+    "cumulative_slippage_usdt": 0,
+    "trade_count": 0,
+    "wide_symbols": 50,
+    "deep_symbols": 20,
+    "processing_lag_p95_ms": 14,
+    "event_count": 4235,
+    "queue_depth": 0,
+    "dropped_events": 0,
+    "reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "persistence_fault_count": 0,
+    "actual_orders": false,
+    "auth_required": false
+  }
+}

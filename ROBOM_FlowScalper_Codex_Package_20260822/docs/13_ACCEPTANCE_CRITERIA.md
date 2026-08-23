@@ -121,3 +121,13 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Trade replay uses stored public events, hides future markers, bounds frames and preserves ordered 0.5x–80x playback.
 - [ ] Desktop focus chart is at least 960px wide and root scroll is zero; tablet/mobile sheets do not change chart width.
 - [ ] Actual order, private API, API Key, secret, wallet and manual buy/sell controls remain zero.
+
+## M. Phase 03 latency and mobile truth hardening
+
+- [ ] Active Run Parquet writes are Run-partitioned and replay remains compatible with stored earlier partitions.
+- [ ] Trade coalescing preserves direction, quantity, notional and VWAP without lowering a strategy or fill threshold.
+- [ ] Integrated public-market lag stays below the 1,500ms entry-lock threshold or fails closed; queue/drop/gap/fault evidence is recorded.
+- [ ] DEMO never inherits LIVE lag or universe counts and cannot be mistaken for LIVE on phone, tablet or desktop.
+- [ ] READY start controls and LIVE PAPER observation state remain visible at phone width.
+- [ ] Completed trade replay exposes entry and exit ledger transitions even when the market-event post-roll ends early.
+- [ ] Actual browser control evidence distinguishes deterministic DEMO replay from a naturally observed LIVE PAPER fill.

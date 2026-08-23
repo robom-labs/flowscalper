@@ -194,3 +194,14 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 - Playwright covers 1408×900, 820×1180 and 390×844 market screens, catalog switching, 3-minute defaults, indicator pane add/remove, strategy-symbol navigation, focus dimensions, mobile/tablet detail sheets and replay 80x state.
 - `make network-smoke` writes `evidence/PHASE03_PUBLIC_MARKET_SMOKE.json` and must validate Binance/Upbit catalog counts, two Binance symbols, KRW-BTC candles, public WebSocket events and auth false.
 - `make soak-30m` writes `evidence/PHASE03_SOAK_30M.json`. It must complete actual 1,800 seconds and observe at least one bounded rotation with drop/gap/fail-open all zero.
+
+## 12.16 Phase 03 latency and actual-control regression
+
+- Verify coalesced trades preserve side, quantity, notional and VWAP, including mixed-side timestamp ordering.
+- Verify strategy history statistics are computed once per snapshot and shared by all strategy-direction evaluations.
+- Verify market Parquet files are separated by Run and both old and new Run replay reads remain exact.
+- Verify a persistence worker flushes threshold batches outside ingest and flushes a final sub-threshold batch on shutdown.
+- Verify DEMO clears LIVE-only lag, universe and selection state, and permanently renders `샘플 PAPER · LIVE 아님 · 실제 주문 0` at phone width.
+- Verify a completed trade focus session contains PRE_ENTRY, OPEN and CLOSED, with no future marker and an exit ledger transition when no market event exists after exit.
+- In the actual in-app browser, click navigation, strategy modes/directions, record filters, replay controls, analytics filters, safety controls, market search/source/symbol, all intervals, all indicators, fullscreen, drawer, focus sheets and responsive states. Write PASS/FAIL per control to `evidence/PHASE03_ACTUAL_UI_SIMULATION.json`.
+- The integrated post-fix public run evidence is `evidence/PHASE03_INTEGRATED_LIVE_POSTFIX_180S.json`. Six-hour and 24-hour results remain `NOT_RUN` unless actually completed.

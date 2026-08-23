@@ -6,6 +6,9 @@
 
 ## 아직 배포하지 않음
 
+- 장시간 LIVE 처리지연 병목을 Run별 archive, 250ms 방향별 체결 VWAP 병합, 전략 통계 공유, 상위 호가 계산과 비동기 2,000건 저장으로 개선했다.
+- 모바일 시작 버튼과 LIVE/샘플 PAPER 상태를 항상 보이게 하고 하위 메뉴가 거래 집중 제목을 가리던 반응형 겹침을 제거했다.
+- DEMO가 LIVE 지연·wide/deep 수치를 상속하지 않게 했고, 완료 거래 replay의 진입·종료 PAPER 원장 전환을 항상 이동할 수 있게 했다.
 - 첫 화면을 5개 메뉴의 compact 시장 작업공간으로 바꾸고 Binance USD-M 전체 catalog와 Upbit KRW 관찰 전용 catalog를 추가했다.
 - 기본 3분봉 200개, 거래량 overlay, MA10·MA20, 동적 RSI·MACD pane과 고정 종목 rail을 구현했다.
 - deep 20 안전 회전, 전략별 종목 성과, 실제 fill 기반 포지션 집중 3열 화면과 0.5~80배 거래 단위 replay를 연결했다.

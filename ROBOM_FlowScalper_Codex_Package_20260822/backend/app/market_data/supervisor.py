@@ -10,6 +10,7 @@ import statistics
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Protocol
 
 import httpx
@@ -76,6 +77,8 @@ class SupervisorTelemetry:
     last_event_monotonic_ns: int | None = None
     last_error: str | None = None
     planned_rotation_count: int = 0
+    trade_source_event_count: int = 0
+    trade_output_event_count: int = 0
     entry_locked: bool = True
     critical_lag_threshold_ms: float = 1_500.0
     critical_lag_event_count: int = 0
@@ -150,6 +153,8 @@ class SupervisorTelemetry:
             "lag_p95_ms": self.lag_p95_ms,
             "wide_lag_p95_ms": self.wide_lag_p95_ms,
             "planned_rotations": self.planned_rotation_count,
+            "trade_source_events": self.trade_source_event_count,
+            "trade_output_events": self.trade_output_event_count,
             "entry_locked": self.entry_locked,
             "critical_lag_threshold_ms": self.critical_lag_threshold_ms,
             "critical_lag_event_count": self.critical_lag_event_count,
@@ -290,6 +295,11 @@ class PersistentPublicSupervisor:
 
     def _observe(self, event: MarketEvent) -> None:
         self.telemetry.event_count += 1
+        if event.event_type == "TRADE":
+            self.telemetry.trade_source_event_count += int(
+                event.data.get("source_event_count", 1)
+            )
+            self.telemetry.trade_output_event_count += 1
         self.telemetry.last_event_monotonic_ns = event.receive_monotonic_ns
         if event.quality.lag_ms is not None:
             executable_path = event.event_type in {"DEPTH_UPDATE", "ORDERBOOK", "TRADE"}
@@ -435,6 +445,7 @@ class BinancePersistentProvider:
         depth_url = router.urls(f"{symbol}@depth" for symbol in selection.deep_symbols)[0]
         trade_url = router.urls(f"{symbol}@aggTrade" for symbol in selection.deep_symbols)[0]
         started = asyncio.get_running_loop().time()
+        trade_coalescer = BinanceTradeCoalescer(bucket_ms=250)
         async with (
             websockets.connect(
                 wide_url,
@@ -492,7 +503,13 @@ class BinancePersistentProvider:
                             run_id=run_id,
                             clock=clock,
                         ):
-                            yield event
+                            if event.event_type == "TRADE":
+                                for aggregate in trade_coalescer.push(event):
+                                    yield aggregate
+                            else:
+                                yield event
+                for aggregate in trade_coalescer.flush():
+                    yield aggregate
             finally:
                 for task in pending:
                     task.cancel()
@@ -639,6 +656,101 @@ class BinancePersistentProvider:
                 "ask_qty": str(asks[0][1]),
                 "bids": [[str(price), str(quantity)] for price, quantity in bids],
                 "asks": [[str(price), str(quantity)] for price, quantity in asks],
+            },
+        )
+
+
+@dataclass(slots=True)
+class _TradeAggregate:
+    """같은 종목·방향의 짧은 공개 체결 묶음을 손실 없이 합산한다."""
+
+    first: MarketEvent
+    last: MarketEvent
+    quantity: Decimal
+    notional: Decimal
+    source_event_count: int = 1
+
+
+class BinanceTradeCoalescer:
+    """고빈도 aggTrade를 짧은 VWAP 묶음으로 줄여 깊은 호가 수신을 보호한다."""
+
+    def __init__(self, *, bucket_ms: int = 100) -> None:
+        if bucket_ms <= 0:
+            raise ValueError("trade bucket은 양수여야 합니다.")
+        self.bucket_ms = bucket_ms
+        self._buckets: dict[tuple[str, bool, int], _TradeAggregate] = {}
+        self._latest_bucket = -1
+
+    def push(self, event: MarketEvent) -> tuple[MarketEvent, ...]:
+        if event.event_type != "TRADE":
+            raise ValueError("TRADE 이벤트만 합산할 수 있습니다.")
+        buyer_is_aggressor = bool(event.data["buyer_is_aggressor"])
+        timestamp = int(event.transaction_ts_ms or event.venue_ts_ms)
+        bucket = timestamp // self.bucket_ms
+        completed: tuple[MarketEvent, ...] = ()
+        if bucket > self._latest_bucket:
+            completed = self._flush_before(bucket)
+            self._latest_bucket = bucket
+        key = (event.symbol, buyer_is_aggressor, bucket)
+        quantity = Decimal(str(event.data["quantity"]))
+        notional = Decimal(str(event.data["price"])) * quantity
+        aggregate = self._buckets.get(key)
+        if aggregate is None:
+            self._buckets[key] = _TradeAggregate(
+                first=event,
+                last=event,
+                quantity=quantity,
+                notional=notional,
+            )
+        else:
+            aggregate.last = event
+            aggregate.quantity += quantity
+            aggregate.notional += notional
+            aggregate.source_event_count += 1
+        return completed
+
+    def flush(self) -> tuple[MarketEvent, ...]:
+        return self._flush_before(self._latest_bucket + 1)
+
+    def _flush_before(self, bucket: int) -> tuple[MarketEvent, ...]:
+        ready_keys = [key for key in self._buckets if key[2] < bucket]
+        ready = [self._buckets.pop(key) for key in ready_keys]
+        ready.sort(
+            key=lambda aggregate: (
+                int(aggregate.last.transaction_ts_ms or aggregate.last.venue_ts_ms),
+                aggregate.last.receive_monotonic_ns,
+                aggregate.last.symbol,
+            )
+        )
+        events = tuple(self._event(aggregate) for aggregate in ready)
+        return events
+
+    @staticmethod
+    def _event(aggregate: _TradeAggregate) -> MarketEvent:
+        first = aggregate.first
+        last = aggregate.last
+        first_sequence = first.sequence_end
+        last_sequence = last.sequence_end
+        return MarketEvent(
+            event_id=(
+                f"binance-trade-bucket-{last.symbol}-"
+                f"{first_sequence or first.venue_ts_ms}-{last_sequence or last.venue_ts_ms}"
+            ),
+            run_id=last.run_id,
+            venue=last.venue,
+            symbol=last.symbol,
+            event_type="TRADE",
+            venue_ts_ms=last.venue_ts_ms,
+            transaction_ts_ms=last.transaction_ts_ms,
+            receive_monotonic_ns=last.receive_monotonic_ns,
+            sequence_start=first_sequence,
+            sequence_end=last_sequence,
+            quality=last.quality,
+            data={
+                "price": str(aggregate.notional / aggregate.quantity),
+                "quantity": str(aggregate.quantity),
+                "buyer_is_aggressor": bool(last.data["buyer_is_aggressor"]),
+                "source_event_count": aggregate.source_event_count,
             },
         )
 

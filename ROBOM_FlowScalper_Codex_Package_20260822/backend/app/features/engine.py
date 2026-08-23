@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import statistics
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, fields
@@ -290,7 +289,11 @@ class FeatureEngine:
             math.log(current / previous)
             for previous, current in zip(values, values[1:], strict=False)
         ]
-        return statistics.pstdev(returns) if len(returns) >= 2 else 0.0
+        if len(returns) < 2:
+            return 0.0
+        mean = math.fsum(returns) / len(returns)
+        variance = math.fsum((value - mean) ** 2 for value in returns) / len(returns)
+        return math.sqrt(variance)
 
     @staticmethod
     def _imbalance(frame: BookFrame, depth: int) -> float:
@@ -379,11 +382,7 @@ class FeatureEngine:
     @staticmethod
     def _realized_volatility(mids: list[tuple[int, float]], now_ms: int, window_ms: int) -> float:
         values = [value for timestamp, value in mids if timestamp >= now_ms - window_ms]
-        returns = [
-            math.log(current / previous)
-            for previous, current in zip(values, values[1:], strict=False)
-        ]
-        return statistics.pstdev(returns) if len(returns) >= 2 else 0.0
+        return FeatureEngine._volatility_from_values(values)
 
     def _compression(self, mids: list[tuple[int, float]], now_ms: int) -> float:
         short = self._realized_volatility(mids, now_ms, 30_000)

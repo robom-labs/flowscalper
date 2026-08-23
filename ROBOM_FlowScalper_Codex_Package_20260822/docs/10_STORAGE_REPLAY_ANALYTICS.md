@@ -123,3 +123,10 @@ No personal credentials exist in exports.
 - A replay focus request uses at least 20 minutes pre-roll and 5 minutes post-roll where stored events exist. Frames are capped at 50,000; state changes and first/last frames are preserved while market-only frames may be downsampled.
 - Replay markers are cursor-bounded. Entry, partial fill and exit information cannot appear before its event timestamp.
 - `ReplayClock` uses `performance.now`, frame timestamp deltas and allowed speeds 0.5/1/2/5/10/20/40/80. Speed changes presentation only.
+
+## 10.9 Phase 03 latency and replay hardening
+
+- New market-event files partition by `venue/run/date/symbol/hour/event_type`; the Run dimension prevents an active Run from repeatedly scanning or appending into another Run's dense partition.
+- The live persistence worker writes at 2,000-event thresholds, records flush count/last/max milliseconds and flushes a final sub-threshold batch on shutdown.
+- Binance trade coalescing is exact within symbol, aggressor side and 250ms bucket. Quantity and notional are summed, price is VWAP and source/output counts remain observable.
+- Focus replay inserts deterministic `PAPER_LEDGER_TRANSITION` frames at the stored entry and exit timestamps. These frames originate from the immutable PAPER trade/fill ledger, never from invented market prices, and guarantee an honest CLOSED review even when post-roll market events are absent.

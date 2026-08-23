@@ -107,6 +107,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
   const lastFocus = useRef<FocusPosition | null>(initialFocused)
   const interval = selectedInterval
   const explorerEnabled = data.status.mode !== 'DEMO_FIXTURE' || data.status.health_flags.includes('E2E_MARKET_EXPLORER')
+  const fixture = data.status.mode === 'DEMO_FIXTURE'
 
   useEffect(() => {
     try { globalThis.localStorage?.setItem(marketPreferenceKey, JSON.stringify({ ...selectedMarket, interval })) } catch { /* 저장이 막힌 브라우저에서는 현재 세션 선택만 유지한다. */ }
@@ -193,10 +194,12 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
   }
   const activeRows = !explorerEnabled ? fallbackCatalog(data) : catalog.length ? catalog : fallbackCatalog(data)
   return <section className={displayedFocus ? 'market-workspace focus-mode' : 'market-workspace'} aria-labelledby="market-heading">
-    <header className="market-toolbar">
+    {fixture ? <p className="mode-truth-banner" role="status">샘플 PAPER 데이터 · LIVE 아님 · 실제 주문 0</p> : null}
+    {data.status.market_data_state === 'LIVE' ? <p className="mode-truth-banner live-truth" role="status">공개시장 자동 관찰 중 · PAPER · 실제 주문 0</p> : null}
+    <header className={data.status.mode === 'READY' ? 'market-toolbar ready-mode' : 'market-toolbar'}>
       <div><h2 id="market-heading">{displayedFocus ? `${displayedFocus.symbol} 포지션 집중` : `${selectedMarket.symbol} 시장`}</h2><span>{displayedFocus ? `${displayedFocus.side} · ${displayedFocus.strategy_display_name_ko} · ${displayedFocus.profile} · PAPER` : selectedMarket.source === 'UPBIT_KRW' ? '관찰 전용 · KRW 현물' : data.status.market_data_state === 'LIVE' ? '실제 공개시장 · PAPER만' : data.status.mode === 'DEMO_FIXTURE' ? '샘플 · LIVE 아님' : '공개시장 연결 대기'}</span></div>
       <label>시간<select aria-label="차트 시간" value={interval} onChange={(event) => { const next = Number(event.target.value); setSelectedInterval(next); if (selectedMarket.source === 'BINANCE_USDM') onChartChange(selectedMarket.symbol, next) }}>{intervals.map(([seconds, label]) => <option key={seconds} value={seconds}>{label}</option>)}</select></label>
-      {data.status.mode === 'READY' ? <><button type="button" className="workspace-button selected" disabled={busy} onClick={onStartLive}>공개시장 시작</button><button type="button" className="workspace-button" disabled={busy} onClick={onStartDemo}>샘플로 보기</button></> : <button type="button" className="workspace-button" onClick={onPauseToggle}>{data.paused ? '새 진입 다시 시작' : '새 진입 잠시 멈춤'}</button>}
+      {data.status.mode === 'READY' ? <div className="ready-actions" aria-label="시작 선택"><button type="button" className="workspace-button selected" disabled={busy} onClick={onStartLive}>공개시장 시작</button><button type="button" className="workspace-button" disabled={busy} onClick={onStartDemo}>샘플로 보기</button></div> : <button type="button" className="workspace-button" onClick={onPauseToggle}>{fixture ? data.paused ? '샘플 다시 재생' : '샘플 재생 멈춤' : data.paused ? '새 진입 다시 시작' : '새 진입 잠시 멈춤'}</button>}
       {data.focus_positions.length ? <label>포지션<select aria-label="집중 포지션" value={focusKey ?? ''} onChange={(event) => setFocusKey(event.target.value || null)}><option value="">시장 보기</option>{data.focus_positions.map((position) => <option value={position.focus_key} key={position.focus_key}>{position.symbol} · {position.profile}</option>)}</select></label> : null}
       {displayedFocus ? <><button type="button" className={focusLocked ? 'workspace-button selected' : 'workspace-button'} aria-pressed={focusLocked} onClick={() => setFocusLocked((value) => !value)}>{focusLocked ? '현재 거래 고정됨' : '현재 거래 고정'}</button><button type="button" className="workspace-button" onClick={() => { setFocusKey(null); setClosedReview(null); setFocusNotice('') }}>시장으로</button></> : null}
       <button type="button" className="workspace-button market-drawer-button" onClick={() => setMarketDrawer(true)}>종목</button>

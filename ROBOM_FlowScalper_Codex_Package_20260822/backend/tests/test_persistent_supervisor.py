@@ -15,6 +15,7 @@ from backend.app.domain.models import (
     Venue,
 )
 from backend.app.market_data.supervisor import (
+    BinanceTradeCoalescer,
     PersistentPublicSupervisor,
     ProviderSelection,
     SupervisorTelemetry,
@@ -198,6 +199,108 @@ def test_runtime_builds_every_chart_interval_from_public_trades() -> None:
     for interval in (5, 15, 30, 60, 180, 300, 600, 900):
         runtime.set_chart_selection("BTCUSDT", interval)
         assert runtime.dashboard()["chart"]["interval"]
+
+
+def test_binance_trade_coalescer_preserves_side_quantity_and_vwap() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000)
+    coalescer = BinanceTradeCoalescer(bucket_ms=100)
+
+    def trade(
+        sequence: int,
+        *,
+        timestamp: int,
+        price: str,
+        quantity: str,
+        buyer_is_aggressor: bool,
+    ) -> MarketEvent:
+        return MarketEvent(
+            event_id=f"trade-{sequence}",
+            run_id="run-coalesced-trades",
+            venue=Venue.BINANCE_USDM,
+            symbol="BTCUSDT",
+            event_type="TRADE",
+            venue_ts_ms=timestamp,
+            transaction_ts_ms=timestamp,
+            receive_monotonic_ns=clock.monotonic_ns(),
+            sequence_end=sequence,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=5,
+            ),
+            data={
+                "price": price,
+                "quantity": quantity,
+                "buyer_is_aggressor": buyer_is_aggressor,
+            },
+        )
+
+    assert coalescer.push(
+        trade(1, timestamp=1_000, price="100", quantity="1", buyer_is_aggressor=True)
+    ) == ()
+    assert coalescer.push(
+        trade(2, timestamp=1_050, price="102", quantity="3", buyer_is_aggressor=True)
+    ) == ()
+    sell_pending = coalescer.push(
+        trade(3, timestamp=1_080, price="99", quantity="2", buyer_is_aggressor=False)
+    )
+    assert sell_pending == ()
+    completed = coalescer.push(
+        trade(4, timestamp=1_100, price="101", quantity="1", buyer_is_aggressor=True)
+    )
+
+    assert len(completed) == 2
+    buy = next(event for event in completed if event.data["buyer_is_aggressor"])
+    sell_event = next(
+        event for event in completed if not event.data["buyer_is_aggressor"]
+    )
+    assert buy.data == {
+        "price": "101.5",
+        "quantity": "4",
+        "buyer_is_aggressor": True,
+        "source_event_count": 2,
+    }
+    assert buy.sequence_start == 1
+    assert buy.sequence_end == 2
+    assert sell_event.data["quantity"] == "2"
+    assert sell_event.data["source_event_count"] == 1
+    assert len(coalescer.flush()) == 1
+
+
+def test_binance_trade_coalescer_flushes_mixed_sides_in_timestamp_order() -> None:
+    quality = DataQuality(
+        is_live=True,
+        is_stale=False,
+        sequence_valid=True,
+        lag_ms=5,
+    )
+    coalescer = BinanceTradeCoalescer(bucket_ms=250)
+
+    def trade(sequence: int, timestamp: int, buyer: bool) -> MarketEvent:
+        return MarketEvent(
+            event_id=f"trade-{sequence}",
+            run_id="run-ordered-trades",
+            venue=Venue.BINANCE_USDM,
+            symbol="BTCUSDT",
+            event_type="TRADE",
+            venue_ts_ms=timestamp,
+            transaction_ts_ms=timestamp,
+            receive_monotonic_ns=timestamp * 1_000_000,
+            sequence_end=sequence,
+            quality=quality,
+            data={
+                "price": "100",
+                "quantity": "1",
+                "buyer_is_aggressor": buyer,
+            },
+        )
+
+    assert coalescer.push(trade(1, 1_240, True)) == ()
+    assert coalescer.push(trade(2, 1_010, False)) == ()
+    completed = coalescer.push(trade(3, 1_250, True))
+
+    assert [event.transaction_ts_ms for event in completed] == [1_010, 1_240]
 
 
 def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execution() -> None:

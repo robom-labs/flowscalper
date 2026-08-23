@@ -71,8 +71,10 @@ class LocalOrderBook:
     def top(
         self, depth: int = 20
     ) -> tuple[list[tuple[Decimal, Decimal]], list[tuple[Decimal, Decimal]]]:
-        bids = sorted(self.bids.items(), reverse=True)[:depth]
-        asks = sorted(self.asks.items())[:depth]
+        bid_prices = sorted(self.bids, reverse=True)[:depth]
+        ask_prices = sorted(self.asks)[:depth]
+        bids = [(price, self.bids[price]) for price in bid_prices]
+        asks = [(price, self.asks[price]) for price in ask_prices]
         return bids, asks
 
 

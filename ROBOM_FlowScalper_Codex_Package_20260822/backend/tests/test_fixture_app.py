@@ -79,6 +79,27 @@ def test_fixture_events_are_deterministic() -> None:
     assert all(not event.quality.is_live for event in first.events)
 
 
+def test_start_demo_run_clears_live_only_telemetry() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-live-before-demo",
+    )
+    runtime.wide_symbol_count = 50
+    runtime.deep_symbol_count = 20
+    runtime.processing_lag_p95_ms = 16_250
+    runtime.live_selection = object()  # type: ignore[assignment]
+
+    runtime.start_demo_run()
+
+    status = runtime.status()
+    assert status.mode is RuntimeMode.DEMO_FIXTURE
+    assert status.wide_symbols == 10
+    assert status.deep_symbols == 10
+    assert status.processing_lag_p95_ms is None
+    assert runtime.live_selection is None
+
+
 def test_dashboard_controls_preserve_run_history() -> None:
     runtime = PaperRuntime(
         mode=RuntimeMode.DEMO_FIXTURE,

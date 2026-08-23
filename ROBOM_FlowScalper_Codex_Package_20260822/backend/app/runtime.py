@@ -55,7 +55,8 @@ from backend.app.strategies.registry import StrategyMode, StrategyRegistry
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal, StrategySignalEvaluator
 from backend.app.strategies.shadow import ShadowLedger
 
-_MARKET_PERSISTENCE_BATCH_SIZE = 1_000
+_MARKET_PERSISTENCE_FLUSH_THRESHOLD = 2_000
+_MARKET_PERSISTENCE_BATCH_SIZE = 2_000
 
 
 @dataclass(slots=True)
@@ -109,6 +110,9 @@ class PaperRuntime:
     _persistence_fault_count: int = 0
     _persistence_buffer_dropped: int = 0
     _last_persistence_error: str | None = None
+    _persistence_flush_count: int = 0
+    _persistence_flush_last_ms: float = 0.0
+    _persistence_flush_max_ms: float = 0.0
     _historical_live_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
@@ -414,6 +418,9 @@ class PaperRuntime:
             "persistence_fault_count": self._persistence_fault_count,
             "persistence_buffer_dropped": self._persistence_buffer_dropped,
             "persistence_last_error": self._last_persistence_error or "NONE",
+            "persistence_flush_count": self._persistence_flush_count,
+            "persistence_flush_last_ms": round(self._persistence_flush_last_ms, 3),
+            "persistence_flush_max_ms": round(self._persistence_flush_max_ms, 3),
             "event_memory_count": len(self._events),
             "event_memory_limit": 10_000,
             "market_persistence_buffer": len(self._market_event_buffer),
@@ -606,20 +613,37 @@ class PaperRuntime:
     def _persistable_market_event(event: MarketEvent) -> dict[str, object]:
         """리플레이에 필요한 상위 10단계 호가만 저장하고 LIVE 원본은 유지한다."""
 
-        payload: dict[str, object] = event.model_dump(mode="json")
+        data = dict(event.data)
+        payload: dict[str, object] = {
+            "event_id": event.event_id,
+            "run_id": event.run_id,
+            "venue": event.venue.value,
+            "symbol": event.symbol,
+            "event_type": event.event_type,
+            "venue_ts_ms": event.venue_ts_ms,
+            "transaction_ts_ms": event.transaction_ts_ms,
+            "receive_monotonic_ns": event.receive_monotonic_ns,
+            "sequence_start": event.sequence_start,
+            "sequence_end": event.sequence_end,
+            "previous_sequence_end": event.previous_sequence_end,
+            "payload_version": event.payload_version,
+            "quality": {
+                "is_live": event.quality.is_live,
+                "is_stale": event.quality.is_stale,
+                "sequence_valid": event.quality.sequence_valid,
+                "lag_ms": event.quality.lag_ms,
+                "flags": list(event.quality.flags),
+            },
+            "data": data,
+        }
         if event.event_type not in {"DEPTH_UPDATE", "ORDERBOOK"}:
             return payload
-        data_value = payload.get("data")
-        if not isinstance(data_value, dict):
-            return payload
-        data = dict(data_value)
         bids = data.get("bids")
         asks = data.get("asks")
         if isinstance(bids, list):
             data["bids"] = bids[:10]
         if isinstance(asks, list):
             data["asks"] = asks[:10]
-        payload["data"] = data
         return payload
 
     def _refresh_supervisor_entry_safety(self) -> None:
@@ -1718,6 +1742,10 @@ class PaperRuntime:
         self.run_id = f"demo-{uuid4().hex[:12]}"
         self.venue = Venue.FIXTURE
         self.market_data_state = MarketDataState.FIXTURE
+        self.live_selection = None
+        self.wide_symbol_count = 0
+        self.deep_symbol_count = 0
+        self.processing_lag_p95_ms = None
         self._events.clear()
         self._reset_research_state()
         self.paused = False
@@ -2069,20 +2097,33 @@ class PaperRuntime:
     async def run_persistence_worker(self, stop: asyncio.Event) -> None:
         """시장 직렬화·fsync를 시장데이터 이벤트 루프 밖에서 실행한다."""
 
+        async def flush(limit: int | None) -> None:
+            started = asyncio.get_running_loop().time()
+            await asyncio.to_thread(self._flush_persistence, limit)
+            elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+            self._persistence_flush_count += 1
+            self._persistence_flush_last_ms = elapsed_ms
+            self._persistence_flush_max_ms = max(
+                self._persistence_flush_max_ms,
+                elapsed_ms,
+            )
+
         while not stop.is_set():
             with self._persistence_lock:
                 should_flush = (
-                    len(self._market_event_buffer) >= 500 and self._persistence_fault_count == 0
+                    len(self._market_event_buffer) >= _MARKET_PERSISTENCE_FLUSH_THRESHOLD
+                    and self._persistence_fault_count == 0
                 )
             if should_flush:
-                await asyncio.to_thread(
-                    self._flush_persistence,
-                    _MARKET_PERSISTENCE_BATCH_SIZE,
-                )
+                await flush(_MARKET_PERSISTENCE_BATCH_SIZE)
             try:
                 await asyncio.wait_for(stop.wait(), timeout=0.25)
             except TimeoutError:
                 continue
+        with self._persistence_lock:
+            has_pending = bool(self._market_event_buffer or self._candle_buffer)
+        if has_pending and self._persistence_fault_count == 0:
+            await flush(None)
 
     def _start_ledger_run(self) -> None:
         if self.ledger is None:

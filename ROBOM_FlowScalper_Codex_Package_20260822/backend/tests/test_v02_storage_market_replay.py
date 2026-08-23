@@ -386,6 +386,50 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
     ledger.close()
 
 
+def test_market_archive_separates_runtime_partitions_and_replays_both(
+    tmp_path: Path,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    first_rows = [
+        {
+            "run_id": "run-first",
+            "event_id": "event-first",
+            "venue": "BINANCE_USDM",
+            "symbol": "BTCUSDT",
+            "event_type": "TRADE",
+            "venue_ts_ms": 1_000,
+            "recv_ts_ms": 1_001,
+            "data": {"price": "100"},
+        }
+    ]
+    second_rows = [
+        {
+            **first_rows[0],
+            "run_id": "run-second",
+            "event_id": "event-second",
+        }
+    ]
+
+    first = archive.write_market_event_batch(first_rows)
+    second = archive.write_market_event_batch(second_rows)
+
+    assert "run=RUN-FIRST" in first.path.parts
+    assert "run=RUN-SECOND" in second.path.parts
+    assert first.path.parent != second.path.parent
+    assert archive.read_market_event_batch(
+        first.path,
+        expected_checksum=first.checksum,
+    ) == first_rows
+    assert archive.read_market_event_batch(
+        second.path,
+        expected_checksum=second.checksum,
+    ) == second_rows
+
+
 def test_runtime_persists_top10_book_without_mutating_live_event() -> None:
     event = market_event("run-top10", event_id="depth-top10", ts_ms=1_000)
     bids = [[str(100 - index / 10), "1"] for index in range(20)]
@@ -402,6 +446,10 @@ def test_runtime_persists_top10_book_without_mutating_live_event() -> None:
     assert len(persisted["data"]["asks"]) == 10
     assert persisted["data"]["bid"] == event.data["bid"]
     assert persisted["data"]["ask"] == event.data["ask"]
+    expected = event.model_dump(mode="json")
+    expected["data"]["bids"] = bids[:10]
+    expected["data"]["asks"] = asks[:10]
+    assert persisted == expected
 
 
 def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(

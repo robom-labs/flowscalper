@@ -46,6 +46,7 @@ Detailed specifications:
 - `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`
 - `docs/19_STRATEGY_LEAGUE_SPEC_KO.md`
 - `docs/adr/ADR-010-compact-market-workspace-full-catalog-strategy-symbol-analytics.md`
+- `docs/adr/ADR-011-runtime-latency-partitioning-and-ledger-replay-transitions.md`
 
 ## Supporting contracts
 
@@ -69,6 +70,13 @@ Detailed specifications:
 - `design-qa.md`
 - `evidence/PHASE03_PUBLIC_MARKET_SMOKE.json`
 - `evidence/PHASE03_SOAK_30M.json`
+- `evidence/PHASE03_INTEGRATED_LIVE_POSTFIX_180S.json`
+- `evidence/PHASE03_ACTUAL_UI_SIMULATION.json`
+- `evidence/PHASE03_ACTUAL_LIVE_MOBILE_390x844.png`
+- `evidence/PHASE03_UI_DEMO_MOBILE_390x844.png`
+- `evidence/PHASE03_ACTUAL_FOCUS_REPLAY_DESKTOP_1408x900.png`
+- `evidence/PHASE03_ACTUAL_FOCUS_REPLAY_TABLET_820x1180.png`
+- `evidence/PHASE03_ACTUAL_FOCUS_REPLAY_MOBILE_390x844.png`
 
 ## Visual references
 

@@ -25,6 +25,7 @@ test('renders permanent paper-only ready status and market controls', async () =
   expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/시작 준비 완료/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '공개시장 시작' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '샘플로 보기' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
 })
@@ -57,4 +58,70 @@ test('shows an explicit initial backend failure instead of pretending LIVE', asy
   expect(alerts.some((alert) => alert.textContent?.includes('프로그램 서버에 연결하지 못했습니다.'))).toBe(true)
   expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
+})
+
+test('keeps demo truth visible in both the permanent header and market workspace', async () => {
+  const demoDashboard = {
+    ...initialDashboard,
+    status: {
+      ...initialDashboard.status,
+      mode: 'DEMO_FIXTURE' as const,
+      market_data_state: 'FIXTURE' as const,
+      venue: 'FIXTURE',
+      processing_lag_p95_ms: null,
+      health_flags: ['OFFLINE_DEMO_ISOLATED'],
+    },
+    chart: { ...initialDashboard.chart, fixture: true },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => demoDashboard })),
+  )
+  class DemoWebSocket extends EventTarget {
+    close() {}
+    constructor() {
+      super()
+      queueMicrotask(() => {
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'dashboard', data: demoDashboard }) }))
+      })
+    }
+  }
+  vi.stubGlobal('WebSocket', DemoWebSocket)
+
+  render(<App />)
+
+  expect(await screen.findByText('샘플 PAPER 데이터 · LIVE 아님 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('샘플 PAPER · LIVE 아님 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '샘플 재생 멈춤' })).toBeInTheDocument()
+})
+
+test('renders an explicit compact LIVE PAPER observation banner', async () => {
+  const liveDashboard = {
+    ...initialDashboard,
+    status: {
+      ...initialDashboard.status,
+      mode: 'LIVE_SHADOW_PAPER' as const,
+      market_data_state: 'LIVE' as const,
+      venue: 'BINANCE_USDM',
+      health_flags: ['PUBLIC_SUPERVISOR_RUNNING', 'NO_AUTH_HEADERS'],
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => liveDashboard })),
+  )
+  class LiveWebSocket extends EventTarget {
+    close() {}
+    constructor() {
+      super()
+      queueMicrotask(() => {
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'dashboard', data: liveDashboard }) }))
+      })
+    }
+  }
+  vi.stubGlobal('WebSocket', LiveWebSocket)
+
+  render(<App />)
+
+  expect(await screen.findByText('공개시장 자동 관찰 중 · PAPER · 실제 주문 0')).toBeInTheDocument()
 })

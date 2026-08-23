@@ -23,15 +23,16 @@ const secondary: Partial<Record<PageId, { id: PageId; label: string }[]>> = {
 type Props = { page: PageId; onChange: (page: PageId) => void }
 
 export function Navigation({ page, onChange }: Props) {
+  const hasSecondary = Boolean(secondary[page])
   return (
-    <div className="navigation-shell">
+    <div className={hasSecondary ? 'navigation-shell has-secondary' : 'navigation-shell'}>
       <nav className="navigation" aria-label="주요 화면">
         {items.map((item) => {
           const active = item.pages.includes(page)
           return <button type="button" key={item.id} className={active ? 'nav-button active' : 'nav-button'} aria-current={active ? 'page' : undefined} onClick={() => onChange(item.id)}>{item.label}</button>
         })}
       </nav>
-      {secondary[page] ? <nav className="secondary-navigation" aria-label="하위 화면">{secondary[page]?.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => onChange(item.id)}>{item.label}</button>)}</nav> : null}
+      {hasSecondary ? <nav className="secondary-navigation" aria-label="하위 화면">{secondary[page]?.map((item) => <button type="button" key={item.id} className={page === item.id ? 'active' : ''} onClick={() => onChange(item.id)}>{item.label}</button>)}</nav> : null}
     </div>
   )
 }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import backend.app.strategies.runtime_evaluator as runtime_evaluator_module
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.costing import CostProfile
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side
@@ -59,6 +60,40 @@ def test_registry_exposes_six_strategies_and_honors_mode_and_direction() -> None
     assert not any(
         item.decision.strategy_id == "VWAP_EXHAUSTION_REVERSION_V1" for item in decisions
     )
+
+
+def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch) -> None:
+    robust_calls = 0
+    percentile_calls = 0
+    original_robust_z = runtime_evaluator_module.robust_z
+    original_percentile = runtime_evaluator_module.rolling_percentile
+
+    def counted_robust_z(history: list[float], current: float) -> float:
+        nonlocal robust_calls
+        robust_calls += 1
+        return original_robust_z(history, current)
+
+    def counted_percentile(history: list[float], current: float) -> float:
+        nonlocal percentile_calls
+        percentile_calls += 1
+        return original_percentile(history, current)
+
+    monkeypatch.setattr(runtime_evaluator_module, "robust_z", counted_robust_z)
+    monkeypatch.setattr(
+        runtime_evaluator_module,
+        "rolling_percentile",
+        counted_percentile,
+    )
+
+    decisions = StrategySignalEvaluator().evaluate(
+        StrategyRegistry(),
+        features(),
+        Regime.RANGE,
+    )
+
+    assert len(decisions) == 12
+    assert robust_calls == 4
+    assert percentile_calls == 3
 
 
 def test_shadow_accounts_are_independent_by_strategy_and_cost_profile() -> None:

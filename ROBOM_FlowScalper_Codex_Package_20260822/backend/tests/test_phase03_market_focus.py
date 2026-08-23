@@ -225,6 +225,17 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(tmp_path: 
         all(marker["ts_ms"] <= frame["ts_ms"] for marker in frame["markers"])
         for frame in session["frames"]
     )
+    assert {frame["phase"] for frame in session["frames"]} == {
+        "PRE_ENTRY",
+        "OPEN",
+        "CLOSED",
+    }
+    assert session["frames"][-1]["event_type"] == "PAPER_LEDGER_TRANSITION"
+    assert session["frames"][-1]["phase"] == "CLOSED"
+    assert [marker["kind"] for marker in session["frames"][-1]["markers"]] == [
+        "ENTRY",
+        "EXIT",
+    ]
 
 
 def test_universe_snapshots_are_append_only(tmp_path: Path) -> None:

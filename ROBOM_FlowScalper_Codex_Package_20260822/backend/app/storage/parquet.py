@@ -84,6 +84,7 @@ class ParquetEventStore:
         symbol: str,
         event_type: str,
         rows: Sequence[Mapping[str, object]],
+        partition_run_id: str | None = None,
     ) -> Path:
         if not rows:
             raise ValueError("빈 이벤트 묶음은 저장하지 않습니다.")
@@ -96,9 +97,11 @@ class ParquetEventStore:
             for timestamp in timestamps
         ):
             raise ValueError("하나의 파일은 같은 UTC 날짜·시간에만 속해야 합니다.")
+        partition = self.root / f"venue={_safe_partition(venue)}"
+        if partition_run_id is not None:
+            partition /= f"run={_safe_partition(partition_run_id)}"
         partition = (
-            self.root
-            / f"venue={_safe_partition(venue)}"
+            partition
             / f"date={first:%Y-%m-%d}"
             / f"symbol={_safe_partition(symbol)}"
             / f"hour={first:%H}"
@@ -144,6 +147,7 @@ class ParquetEventStore:
             symbol="MULTI",
             event_type="MARKET_EVENT",
             rows=archived_rows,
+            partition_run_id=str(rows[0]["run_id"]),
         )
         with path.open("rb") as handle:
             os.fsync(handle.fileno())

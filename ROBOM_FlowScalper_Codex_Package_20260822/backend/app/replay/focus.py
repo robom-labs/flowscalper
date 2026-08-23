@@ -65,6 +65,19 @@ class ReplayFocusSessionBuilder:
         frames = [self._frame(event, trade, trade_fills) for event in window]
         if not frames:
             raise ValueError("거래 시간대의 저장 공개시장 이벤트가 없습니다.")
+        frames.extend(
+            (
+                self._ledger_transition_frame(trade, trade_fills, transition="ENTRY"),
+                self._ledger_transition_frame(trade, trade_fills, transition="EXIT"),
+            )
+        )
+        frames.sort(
+            key=lambda frame: (
+                int(str(frame["ts_ms"])),
+                1 if frame["event_type"] == "PAPER_LEDGER_TRANSITION" else 0,
+                str(frame["event_id"]),
+            )
+        )
         frames = self._bounded_frames(frames, maximum=50_000)
         keyframes = [
             {"frame_index": index, "ts_ms": int(str(frame["ts_ms"]))}
@@ -194,6 +207,51 @@ class ReplayFocusSessionBuilder:
             "phase": "PRE_ENTRY" if ts_ms < entry_ts else "OPEN" if ts_ms < exit_ts else "CLOSED",
             "markers": markers,
             "fills": visible_fills,
+        }
+
+    @staticmethod
+    def _ledger_transition_frame(
+        trade: Mapping[str, object],
+        fills: list[dict[str, Any]],
+        *,
+        transition: str,
+    ) -> dict[str, object]:
+        """시장 이벤트가 거래 종료보다 먼저 끝나도 저장 원장 체결 전환은 숨기지 않는다."""
+
+        entry_ts = int(str(trade["entry_ts_ms"]))
+        exit_ts = int(str(trade["exit_ts_ms"]))
+        ts_ms = entry_ts if transition == "ENTRY" else exit_ts
+        entry_marker = {
+            "kind": "ENTRY",
+            "ts_ms": entry_ts,
+            "price": str(trade["entry_price"]),
+            "label": "PAPER 진입 체결",
+        }
+        markers = [entry_marker]
+        if transition == "EXIT":
+            markers.append(
+                {
+                    "kind": "EXIT",
+                    "ts_ms": exit_ts,
+                    "price": str(trade["exit_price"]),
+                    "label": "PAPER 종료 체결",
+                }
+            )
+        return {
+            "ts_ms": ts_ms,
+            "event_id": (
+                f"{trade.get('trade_id', trade.get('shadow_trade_id', 'trade'))}"
+                f":{transition}"
+            ),
+            "event_type": "PAPER_LEDGER_TRANSITION",
+            "data": {
+                "price": str(
+                    trade["entry_price"] if transition == "ENTRY" else trade["exit_price"]
+                )
+            },
+            "phase": "OPEN" if transition == "ENTRY" else "CLOSED",
+            "markers": markers,
+            "fills": [fill for fill in fills if int(str(fill["ts_ms"])) <= ts_ms],
         }
 
     @staticmethod
