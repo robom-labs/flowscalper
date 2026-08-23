@@ -6,6 +6,8 @@ ROBOM FlowScalper는 실제 공개 암호화폐 USDT 무기한선물 시장데�
 
 현재 `main`에는 최신 실행 소스 한 벌만 둡니다. 과거 버전은 복사 폴더로 쌓지 않고 `CHANGELOG.md`의 짧은 요약, Git tag·history와 GitHub Release의 ZIP·checksum으로 보존합니다.
 
+GitHub 저장소 최상위에는 이 프로그램 폴더와 GitHub가 자동화를 인식하는 숨김 메타폴더 `.github`만 있습니다. 제품 소스·문서·실행파일은 모두 이 프로그램 폴더 안에 있고, 최상위 `.github`에는 CI와 PR checklist만 있습니다.
+
 이 제품은 거래소 로그인, API 키, OpenAI 키, TradingView 계정, 지갑을 요구하지 않습니다. 실제 주문·인출·이체·사설 API 호출 경로는 소스와 UI에 없으며, `REAL_TRADING=true`는 부팅과 빌드에서 거부됩니다.
 
 ## 제품 경계

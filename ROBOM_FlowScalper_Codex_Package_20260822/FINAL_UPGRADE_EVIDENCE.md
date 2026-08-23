@@ -339,7 +339,9 @@ LaunchAgent PID 51549의 열린 파일을 확인해 현재 활성 원장이 `~/L
 | security scan | PASS, 88 source, 위반·비밀 유사 파일·실제 주문 경로 0 |
 | package release 대상 | PASS, AI 인계·GPT 요청·CHANGELOG·VERSION·버전정책·ADR-009 포함 |
 | GitHub source push | PASS, private `robom-labs/flowscalper` main `7aef302ceb0251e774f031efbed4f0aa30379bb9` |
-| GitHub 최상위 구조 | PASS, `ROBOM_FlowScalper_Codex_Package_20260822` 폴더 하나 |
+| GitHub 최상위 구조 | PASS, 프로그램 폴더 하나 + GitHub 필수 자동화 메타폴더 `.github` |
+
+초기 push 뒤 프로그램 폴더 내부 `.github/workflows`는 GitHub Actions가 자동 발견하지 않는 구조임을 확인했다. workflow와 PR template은 저장소 최상위 `.github`로 옮기고 제품 자료는 계속 `ROBOM_FlowScalper_Codex_Package_20260822` 한 폴더에만 유지했다. 최상위 `.github`에는 CI·PR checklist 외 제품 파일이 없다.
 
 ### 현재 장시간 runtime 재관찰
 

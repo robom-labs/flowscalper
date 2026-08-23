@@ -19,6 +19,7 @@
 | 위치 | 보존하는 것 | 두지 않는 것 |
 |---|---|---|
 | GitHub `main` | 최신 backend·frontend·설정·schema·테스트·현재 문서 | 구버전 소스 폴더, 복사본, ZIP, 운영 DB, cache |
+| 저장소 최상위 `.github` | GitHub Actions workflow와 PR checklist | 제품 source·runtime data |
 | `CHANGELOG.md` | 버전별 중요한 변화 3~7줄 | commit 전체 복사, 장문의 테스트 로그 |
 | Git tag | 특정 버전의 정확한 source commit | 이동하는 최신 포인터 |
 | GitHub Release | 그 tag의 배포 ZIP·SHA-256·최종 증거 | 원시 운영 SQLite·Parquet·로그 |

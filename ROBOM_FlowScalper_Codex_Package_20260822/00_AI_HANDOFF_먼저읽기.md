@@ -22,6 +22,7 @@
 | 저장 | PAPER 상태 SQLite + 외장 공개시장 ZSTD Parquet |
 | GitHub | `robom-labs/flowscalper`, 비공개 |
 | GitHub 폴더 | `ROBOM_FlowScalper_Codex_Package_20260822/` |
+| GitHub 자동화 | 저장소 최상위 `.github/`, CI·PR checklist만 보존 |
 | 최종 실행 ZIP | GitHub Release `v0.2.0-paper-wave10` |
 
 `LIVE`라는 단어는 실제 주문을 뜻하지 않는다. 실제 공개시장 데이터를 받고 있다는 뜻이며 주문·체결·손익은 항상 내부 PAPER 계좌에서만 계산한다.

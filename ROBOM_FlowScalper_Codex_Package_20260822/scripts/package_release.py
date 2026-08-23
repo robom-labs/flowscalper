@@ -50,7 +50,6 @@ ROOT_FILES = (
     "uv.lock",
 )
 DIRECTORIES = (
-    ".github",
     "ROBOM_FlowScalper.app",
     "THIRD_PARTY_LICENSES",
     "artifacts/screenshots",

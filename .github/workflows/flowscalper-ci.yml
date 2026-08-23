@@ -1,0 +1,35 @@
+# PAPER 전용 앱의 저장소 위생과 결정적 검증을 실행한다.
+name: flowscalper-ci
+on:
+  push:
+    paths:
+      - "ROBOM_FlowScalper_Codex_Package_20260822/**"
+      - ".github/workflows/flowscalper-ci.yml"
+  pull_request:
+    paths:
+      - "ROBOM_FlowScalper_Codex_Package_20260822/**"
+      - ".github/workflows/flowscalper-ci.yml"
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ROBOM_FlowScalper_Codex_Package_20260822
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ROBOM_FlowScalper_Codex_Package_20260822/frontend/pnpm-lock.yaml
+      - run: uv sync --all-groups --locked
+      - run: pnpm install --frozen-lockfile
+        working-directory: ROBOM_FlowScalper_Codex_Package_20260822/frontend
+      - run: make repo-hygiene
+      - run: make lint typecheck test build
