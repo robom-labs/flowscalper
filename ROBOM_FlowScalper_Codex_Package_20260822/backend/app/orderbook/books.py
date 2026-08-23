@@ -39,13 +39,19 @@ class LocalOrderBook:
     asks: dict[Decimal, Decimal] = field(default_factory=dict)
     sequence_valid: bool = False
     stale: bool = True
+    _top_bid_prices: list[Decimal] = field(default_factory=list, init=False, repr=False)
+    _top_ask_prices: list[Decimal] = field(default_factory=list, init=False, repr=False)
+    _cached_depth: int = field(default=20, init=False, repr=False)
 
     def _apply_levels(
         self,
         bid_updates: Iterable[Iterable[object]],
         ask_updates: Iterable[Iterable[object]],
     ) -> None:
-        for side, updates in ((self.bids, bid_updates), (self.asks, ask_updates)):
+        changed: list[set[Decimal]] = [set(), set()]
+        for index, (side, updates) in enumerate(
+            ((self.bids, bid_updates), (self.asks, ask_updates))
+        ):
             for row in updates:
                 pair = tuple(row)
                 if len(pair) != 2:
@@ -58,12 +64,52 @@ class LocalOrderBook:
                     side.pop(price, None)
                 else:
                     side[price] = quantity
+                changed[index].add(price)
+        self._refresh_top_cache(changed[0], changed[1])
         self._validate_uncrossed()
+
+    def _reset_top_cache(self) -> None:
+        self._top_bid_prices = sorted(self.bids, reverse=True)[: self._cached_depth]
+        self._top_ask_prices = sorted(self.asks)[: self._cached_depth]
+
+    def _refresh_top_cache(
+        self,
+        changed_bids: set[Decimal],
+        changed_asks: set[Decimal],
+    ) -> None:
+        self._top_bid_prices = self._refresh_side_cache(
+            self.bids,
+            self._top_bid_prices,
+            changed_bids,
+            reverse=True,
+        )
+        self._top_ask_prices = self._refresh_side_cache(
+            self.asks,
+            self._top_ask_prices,
+            changed_asks,
+            reverse=False,
+        )
+
+    def _refresh_side_cache(
+        self,
+        side: dict[Decimal, Decimal],
+        cached: list[Decimal],
+        changed: set[Decimal],
+        *,
+        reverse: bool,
+    ) -> list[Decimal]:
+        if not cached or any(price in cached and price not in side for price in changed):
+            return sorted(side, reverse=reverse)[: self._cached_depth]
+        candidates = set(cached)
+        candidates.update(price for price in changed if price in side)
+        return sorted(candidates, reverse=reverse)[: self._cached_depth]
 
     def _validate_uncrossed(self) -> None:
         if not self.bids or not self.asks:
             raise InvalidBook("호가 양쪽에 한 레벨 이상이 필요합니다.")
-        if max(self.bids) >= min(self.asks):
+        if not self._top_bid_prices or not self._top_ask_prices:
+            self._reset_top_cache()
+        if self._top_bid_prices[0] >= self._top_ask_prices[0]:
             self.sequence_valid = False
             self.stale = True
             raise InvalidBook("교차 호가장은 사용할 수 없습니다.")
@@ -71,8 +117,16 @@ class LocalOrderBook:
     def top(
         self, depth: int = 20
     ) -> tuple[list[tuple[Decimal, Decimal]], list[tuple[Decimal, Decimal]]]:
-        bid_prices = sorted(self.bids, reverse=True)[:depth]
-        ask_prices = sorted(self.asks)[:depth]
+        if depth <= 0:
+            return [], []
+        if not self._top_bid_prices or not self._top_ask_prices:
+            self._reset_top_cache()
+        if depth <= self._cached_depth:
+            bid_prices = self._top_bid_prices[:depth]
+            ask_prices = self._top_ask_prices[:depth]
+        else:
+            bid_prices = sorted(self.bids, reverse=True)[:depth]
+            ask_prices = sorted(self.asks)[:depth]
         bids = [(price, self.bids[price]) for price in bid_prices]
         asks = [(price, self.asks[price]) for price in ask_prices]
         return bids, asks
@@ -91,6 +145,7 @@ class BinanceOrderBook(LocalOrderBook):
     ) -> None:
         self.bids = _levels(bids)
         self.asks = _levels(asks)
+        self._reset_top_cache()
         self.last_update_id = last_update_id
         self._bridged_snapshot = False
         self._validate_uncrossed()
@@ -151,6 +206,7 @@ class BybitOrderBook(LocalOrderBook):
         if message_type == "snapshot" or update_id == 1:
             self.bids = _levels(bids)
             self.asks = _levels(asks)
+            self._reset_top_cache()
             self.update_id = update_id
             self.cross_sequence = cross_sequence
             self._validate_uncrossed()

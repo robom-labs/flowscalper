@@ -16,8 +16,12 @@ export function SafetyHeader({ data, connected, connectionState, lastUpdateMs, o
   const fixture = status.mode === 'DEMO_FIXTURE'
   const publicMode = status.mode === 'LIVE_SHADOW_PAPER'
   const ready = status.mode === 'READY'
+  const operationState = data.operation_status.state
   const sourceLabel = live
-    ? data.paused ? '관찰 중 · 새 진입 멈춤' : '자동 관찰 중'
+    ? operationState === 'RUNNING' ? '작동 중'
+      : operationState === 'MANUALLY_PAUSED' ? '관찰 중 · 내가 일시정지'
+        : operationState === 'SAFETY_BLOCKED' ? '관찰 중 · 안전 확인 필요'
+          : '관찰 중 · 자동 안전 대기'
     : publicMode
       ? '시장 연결 복구 중'
       : ready

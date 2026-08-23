@@ -304,3 +304,11 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 - 전략별 종목 성과는 `backend/app/analytics/reports.py`와 `frontend/src/pages/StrategySymbolPage.tsx`다.
 - 3차 결정과 화면 비교는 ADR-010과 `design-qa.md`, 실제 결과는 `FINAL_UPGRADE_EVIDENCE.md`의 3차 표를 본다.
 - Upbit는 관찰 전용이고 실제 주문·private API·API Key·wallet 기능은 여전히 0이다.
+
+## 18. 시작 상태와 장시간 지연 보강 코드 지도
+
+- 초보자 운영 상태 패널은 `frontend/src/components/OperationStatusPanel.tsx`, 화면 조합은 `frontend/src/pages/MarketPage.tsx`다.
+- READY·RUNNING·사용자 일시정지·자동 안전 대기 계약은 `backend/app/api/dashboard.py`의 `operation_status`가 원본이다.
+- 지연 안전잠금과 자동 복귀는 `backend/app/runtime.py`의 `_refresh_supervisor_entry_safety()`가 담당하며, 저장 실패·복구 불일치는 자동 해제하지 않는다.
+- 1,000단계 호가장 상위 20단계 캐시는 `backend/app/orderbook/books.py`에 있고, 추가·수정·삭제 뒤 전체 정렬과 정확히 같은지 `backend/tests/test_orderbook.py`에서 검증한다.
+- 결정은 ADR-012, 실제 시작 클릭과 연속 관찰 결과는 `FINAL_UPGRADE_EVIDENCE.md`의 4차 보강과 `evidence/PHASE04_START_STATUS_AND_SOAK.json`을 본다.

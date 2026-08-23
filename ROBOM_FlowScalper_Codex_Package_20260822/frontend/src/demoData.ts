@@ -23,6 +23,16 @@ export const initialDashboard: DashboardData = {
     health_flags: ['READY_NOT_STARTED'],
   },
   paused: false,
+  operation_status: {
+    state: 'READY',
+    title_ko: '시작 전',
+    detail_ko: '자동 관찰 시작을 한 번 누르면 공개시장 연결을 계속 유지합니다.',
+    market_observation_active: false,
+    paper_entry_active: false,
+    automatic_recovery: true,
+    recommended_action: 'START',
+    lag_p95_ms: null,
+  },
   scanner: [],
   chart: {
     symbol: 'BTCUSDT',

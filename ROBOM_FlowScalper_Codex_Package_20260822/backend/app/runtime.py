@@ -426,6 +426,8 @@ class PaperRuntime:
             "market_persistence_buffer": len(self._market_event_buffer),
             "candle_persistence_buffer": len(self._candle_buffer),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
+            "manual_pause_requested": self._manual_pause_requested,
+            "automatic_recovery_enabled": True,
         }
 
     def _handle_persistence_fault(self, error: Exception) -> None:

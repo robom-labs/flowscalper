@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-24T07:49:32+09:00",
+  "scope": "explicit start state, manual versus automatic pause, order-book top cache, actual local browser controls, and bounded public-market observation",
+  "paper_only_invariants": {
+    "real_orders_enabled": false,
+    "auth_headers": false,
+    "private_api": false,
+    "api_key": false,
+    "secret": false,
+    "wallet_path": false
+  },
+  "before_fix_actual_service": {
+    "run_id": "run-00765f8de10a",
+    "mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "paused": true,
+    "processing_lag_p95_ms": 7352.0,
+    "event_count": 3152446,
+    "process_cpu_percent": 65.685,
+    "health_flags": [
+      "PUBLIC_SUPERVISOR_RUNNING",
+      "NO_AUTH_HEADERS",
+      "SUPERVISOR_ENTRY_LOCK",
+      "CRITICAL_MARKET_LAG_ENTRY_LOCK",
+      "PAPER_ENTRIES_PAUSED"
+    ],
+    "finding": "The public supervisor was still observing, but the UI collapsed automatic entry safety waiting into an ambiguous stopped state."
+  },
+  "orderbook_benchmark": {
+    "book_levels_per_side": 1000,
+    "requested_top_depth": 20,
+    "iterations": 10000,
+    "full_sort_seconds": 0.275076,
+    "cached_top_seconds": 0.010393,
+    "speedup": 26.47,
+    "result_equivalent": true,
+    "random_add_update_remove_steps": 500,
+    "random_sequence_exact_full_sort_match": true
+  },
+  "actual_browser_control": {
+    "viewport_pixels": [415, 734],
+    "ready_state_visible": true,
+    "start_click_count": 1,
+    "connecting_state_visible_immediately": true,
+    "running_state_visible_after_about_seconds": 10,
+    "manual_pause_click_count": 1,
+    "manual_pause_state_visible": true,
+    "market_observation_remained_active_while_manually_paused": true,
+    "resume_click_count": 1,
+    "running_state_restored": true,
+    "browser_reload_kept_running_state": true,
+    "screenshots": [
+      {
+        "path": "evidence/screenshots/phase04-start-ready-mobile.png",
+        "sha256": "2b93f0b78859b72f7e1594299a906a9b3ae903048e44d06ae5eddf3daeb31f1f"
+      },
+      {
+        "path": "evidence/screenshots/phase04-start-running-mobile.png",
+        "sha256": "28af1665e868e9a3de96c5718b65af2e87aa2fb908aefafa9e29e564767eff93"
+      }
+    ]
+  },
+  "bounded_actual_public_market_observation": {
+    "run_id": "run-c42789c17473",
+    "process_uptime_seconds_at_final_sample": 746.33,
+    "sample_window_first_kst": "07:34:51",
+    "sample_window_last_kst": "07:45:04",
+    "sample_count": 21,
+    "event_count_at_final_sample": 97920,
+    "operation_state_all_samples": "RUNNING",
+    "paused_all_samples": false,
+    "processing_lag_p95_max_observed_ms": 1144.0,
+    "entry_lock_threshold_ms": 1500,
+    "queue_depth_max": 2,
+    "dropped_events": 0,
+    "reconnects": 0,
+    "sequence_gaps": 0,
+    "persistence_fault_count": 0,
+    "critical_lag_active_at_final_check": false,
+    "note": "This is a bounded 12-minute observation and is not a 6-hour or 24-hour soak claim."
+  },
+  "final_actual_service": {
+    "run_id": "run-7525441a7665",
+    "mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "operation_state": "RUNNING",
+    "paused": false,
+    "processing_lag_p95_ms": 0.0,
+    "event_count": 3811,
+    "queue_depth": 0,
+    "dropped_events": 0,
+    "reconnects": 0,
+    "sequence_gaps": 0,
+    "persistence_fault_count": 0,
+    "current_equity_usdt": 1000.0,
+    "realized_pnl_usdt": 0.0,
+    "cumulative_fees_usdt": 0.0,
+    "trade_count": 0,
+    "real_orders_enabled": false,
+    "auth_headers": false
+  },
+  "automated_validation": {
+    "repository_hygiene": "PASS",
+    "ruff": "PASS",
+    "mypy_source_files": 75,
+    "backend_pytest_passed": 164,
+    "frontend_vitest_files": 10,
+    "frontend_vitest_passed": 31,
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build_modules": 47,
+    "paper_build_safety": "PASS",
+    "security_source_files": 107,
+    "security_violations": 0,
+    "playwright_viewports_passed": 3
+  },
+  "not_run": [
+    "6-hour public-market soak",
+    "24-hour public-market soak",
+    "new Release ZIP"
+  ]
+}

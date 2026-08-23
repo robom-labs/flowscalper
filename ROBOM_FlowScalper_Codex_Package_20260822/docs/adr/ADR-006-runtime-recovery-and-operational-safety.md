@@ -20,7 +20,7 @@
 8. 시스템 고급진단은 현재 프로세스 CPU, max RSS/Windows working set, thread, uptime, 전체·사용·여유 디스크, storage guard, 저장 buffer와 오류를 실제 측정값으로 표시한다.
 9. Binance와 Bybit 공개 WebSocket은 24시간 제한 전에 23시간 45분에 계획 rotation한다. fixture에서 rotation·disconnect·bounded queue를 시간 압축 검증한다.
 10. `soak_live.py`는 원장을 키우지 않는 공개시장 자원진단으로 30분·6시간·24시간을 같은 코드로 실행한다. 6시간·24시간 macOS 실행기는 별도 `.command`로 제공하며 실제 미실행은 `NOT_RUN`으로 기록한다.
-11. 공개 이벤트 지연 p95가 1,500ms를 넘으면 supervisor와 런타임이 모두 신규 PAPER 진입을 잠근다. 기준을 낮추지 않으며, 정상 지연의 fresh sequence-valid depth가 돌아오고 사용자가 재개하기 전까지 런타임은 paused 상태를 유지한다. 실제 네트워크 soak는 외부 지연이 전혀 없음을 합격조건으로 오인하지 않고, 모든 임계 초과 표본에서 fail-open이 0인지와 종료 시 지연이 정상 또는 진입잠금 상태인지 검사한다.
+11. 공개 이벤트 지연 p95가 1,500ms를 넘으면 supervisor와 런타임이 모두 신규 PAPER 진입을 잠근다. 기준을 낮추지 않으며, 정상 지연의 fresh sequence-valid depth가 돌아올 때까지 런타임은 paused 상태를 유지한다. 실제 네트워크 soak는 외부 지연이 전혀 없음을 합격조건으로 오인하지 않고, 모든 임계 초과 표본에서 fail-open이 0인지와 종료 시 지연이 정상 또는 진입잠금 상태인지 검사한다. 2026-08-24 ADR-012가 자동 회복 가능한 지연잠금의 수동 재개 요구를 대체한다. 사용자가 직접 누른 일시정지는 계속 명시적으로 재개해야 하고 저장 실패·복구 불일치는 자동 해제하지 않는다.
 
 ## Safety impact
 

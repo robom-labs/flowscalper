@@ -24,7 +24,7 @@ test('renders permanent paper-only ready status and market controls', async () =
   render(<App />)
   expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/시작 준비 완료/)).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '공개시장 시작' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '자동 관찰 시작' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '샘플로 보기' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
@@ -72,6 +72,16 @@ test('keeps demo truth visible in both the permanent header and market workspace
       health_flags: ['OFFLINE_DEMO_ISOLATED'],
     },
     chart: { ...initialDashboard.chart, fixture: true },
+    operation_status: {
+      ...initialDashboard.operation_status,
+      state: 'DEMO_RUNNING' as const,
+      title_ko: '샘플 작동 중',
+      detail_ko: '저장된 샘플 PAPER 화면이며 실제 공개시장은 아닙니다.',
+      market_observation_active: true,
+      paper_entry_active: true,
+      automatic_recovery: false,
+      recommended_action: 'PAUSE' as const,
+    },
   }
   vi.stubGlobal(
     'fetch',
@@ -92,10 +102,10 @@ test('keeps demo truth visible in both the permanent header and market workspace
 
   expect(await screen.findByText('샘플 PAPER 데이터 · LIVE 아님 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText('샘플 PAPER · LIVE 아님 · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '샘플 재생 멈춤' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '샘플 멈춤' })).toBeInTheDocument()
 })
 
-test('renders an explicit compact LIVE PAPER observation banner', async () => {
+test('renders an explicit LIVE operating state', async () => {
   const liveDashboard = {
     ...initialDashboard,
     status: {
@@ -104,6 +114,16 @@ test('renders an explicit compact LIVE PAPER observation banner', async () => {
       market_data_state: 'LIVE' as const,
       venue: 'BINANCE_USDM',
       health_flags: ['PUBLIC_SUPERVISOR_RUNNING', 'NO_AUTH_HEADERS'],
+    },
+    operation_status: {
+      ...initialDashboard.operation_status,
+      state: 'RUNNING' as const,
+      title_ko: '작동 중',
+      detail_ko: '공개시장을 계속 관찰하며 조건이 맞을 때만 PAPER 진입을 기록합니다.',
+      market_observation_active: true,
+      paper_entry_active: true,
+      recommended_action: 'PAUSE' as const,
+      lag_p95_ms: 120,
     },
   }
   vi.stubGlobal(
@@ -123,5 +143,7 @@ test('renders an explicit compact LIVE PAPER observation banner', async () => {
 
   render(<App />)
 
-  expect(await screen.findByText('공개시장 자동 관찰 중 · PAPER · 실제 주문 0')).toBeInTheDocument()
+  expect(await screen.findByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중')
+  expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('시장 관찰계속 작동')
+  expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('새 PAPER 진입작동')
 })

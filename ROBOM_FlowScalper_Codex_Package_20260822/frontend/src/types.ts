@@ -413,6 +413,7 @@ export type StrategySymbolPerformance = {
 export type DashboardData = {
   status: SystemStatus
   paused: boolean
+  operation_status: OperationStatus
   scanner: ScannerRow[]
   chart: ChartData
   position: CurrentPosition | null
@@ -455,6 +456,17 @@ export type DashboardData = {
     }
   }
   system: Record<string, string | number | boolean>
+}
+
+export type OperationStatus = {
+  state: 'READY' | 'RUNNING' | 'SAFETY_WAITING' | 'SAFETY_BLOCKED' | 'MANUALLY_PAUSED' | 'RECONNECTING' | 'DEMO_RUNNING' | 'DEMO_PAUSED' | 'REPLAY_RUNNING' | 'REPLAY_PAUSED'
+  title_ko: string
+  detail_ko: string
+  market_observation_active: boolean
+  paper_entry_active: boolean
+  automatic_recovery: boolean
+  recommended_action: 'START' | 'PAUSE' | 'RESUME' | 'NONE'
+  lag_p95_ms: number | null
 }
 
 export type ReplayRun = {

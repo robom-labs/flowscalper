@@ -172,9 +172,11 @@ def build_dashboard_snapshot(
         }
         for event in events[-6:]
     ]
+    diagnostics = dict(runtime_diagnostics or {})
     return {
         "status": status.model_dump(mode="json"),
         "paused": paused,
+        "operation_status": _operation_status(status, paused, diagnostics),
         "scanner": scanner,
         "chart": chart,
         "position": position,
@@ -210,8 +212,125 @@ def build_dashboard_snapshot(
             "disk_pressure_entry_lock": True,
             "app_version": "0.2.0-paper",
             "runtime_ready": ready_mode,
-            **dict(runtime_diagnostics or {}),
+            **diagnostics,
         },
+    }
+
+
+def _operation_status(
+    status: SystemStatus,
+    paused: bool,
+    diagnostics: Mapping[str, object],
+) -> dict[str, object]:
+    """초보자 화면에서 관찰 지속 여부와 PAPER 진입 상태를 분리한다."""
+
+    mode = status.mode.value
+    market_state = status.market_data_state.value
+    flags = set(status.health_flags)
+    lag = status.processing_lag_p95_ms
+    if mode == "READY":
+        return {
+            "state": "READY",
+            "title_ko": "시작 전",
+            "detail_ko": "자동 관찰 시작을 한 번 누르면 공개시장 연결을 계속 유지합니다.",
+            "market_observation_active": False,
+            "paper_entry_active": False,
+            "automatic_recovery": True,
+            "recommended_action": "START",
+            "lag_p95_ms": lag,
+        }
+    if mode == "DEMO_FIXTURE":
+        return {
+            "state": "DEMO_PAUSED" if paused else "DEMO_RUNNING",
+            "title_ko": "샘플 멈춤" if paused else "샘플 작동 중",
+            "detail_ko": "저장된 샘플 PAPER 화면이며 실제 공개시장은 아닙니다.",
+            "market_observation_active": not paused,
+            "paper_entry_active": not paused,
+            "automatic_recovery": False,
+            "recommended_action": "RESUME" if paused else "PAUSE",
+            "lag_p95_ms": lag,
+        }
+    hard_blocked = bool(
+        flags
+        & {
+            "PERSISTENCE_FAULT_ENTRY_LOCK",
+            "RECOVERY_FAIL_CLOSED",
+        }
+    )
+    if mode == "LIVE_SHADOW_PAPER" and paused and hard_blocked:
+        return {
+            "state": "SAFETY_BLOCKED",
+            "title_ko": "작동 중 · 안전 확인 필요",
+            "detail_ko": (
+                "시장 관찰은 계속 중이지만 저장 또는 복구 안전문제로 "
+                "새 PAPER 진입을 막았습니다."
+            ),
+            "market_observation_active": market_state == "LIVE",
+            "paper_entry_active": False,
+            "automatic_recovery": False,
+            "recommended_action": "NONE",
+            "lag_p95_ms": lag,
+        }
+    if mode == "LIVE_SHADOW_PAPER" and market_state != "LIVE":
+        return {
+            "state": "RECONNECTING",
+            "title_ko": "시장 다시 연결 중",
+            "detail_ko": "연결이 돌아오면 시장 관찰과 안전 확인을 자동으로 이어갑니다.",
+            "market_observation_active": False,
+            "paper_entry_active": False,
+            "automatic_recovery": True,
+            "recommended_action": "NONE",
+            "lag_p95_ms": lag,
+        }
+    if mode == "LIVE_SHADOW_PAPER" and paused:
+        manual_pause = bool(diagnostics.get("manual_pause_requested", False))
+        if manual_pause:
+            return {
+                "state": "MANUALLY_PAUSED",
+                "title_ko": "사용자가 일시정지",
+                "detail_ko": (
+                    "시장 관찰은 계속 중입니다. 버튼을 누르면 "
+                    "새 PAPER 진입을 다시 시작합니다."
+                ),
+                "market_observation_active": True,
+                "paper_entry_active": False,
+                "automatic_recovery": False,
+                "recommended_action": "RESUME",
+                "lag_p95_ms": lag,
+            }
+        return {
+            "state": "SAFETY_WAITING",
+            "title_ko": "작동 중 · 안전 대기",
+            "detail_ko": (
+                "시장 관찰은 계속 중입니다. 데이터가 정상화되면 "
+                "새 PAPER 진입도 자동으로 다시 시작합니다."
+            ),
+            "market_observation_active": True,
+            "paper_entry_active": False,
+            "automatic_recovery": True,
+            "recommended_action": "NONE",
+            "lag_p95_ms": lag,
+        }
+    if mode == "LIVE_SHADOW_PAPER":
+        return {
+            "state": "RUNNING",
+            "title_ko": "작동 중",
+            "detail_ko": "공개시장을 계속 관찰하며 조건이 맞을 때만 PAPER 진입을 기록합니다.",
+            "market_observation_active": True,
+            "paper_entry_active": True,
+            "automatic_recovery": True,
+            "recommended_action": "PAUSE",
+            "lag_p95_ms": lag,
+        }
+    return {
+        "state": "REPLAY_RUNNING" if not paused else "REPLAY_PAUSED",
+        "title_ko": "리플레이 작동 중" if not paused else "리플레이 멈춤",
+        "detail_ko": "저장된 공개시장 이벤트를 PAPER 경로로 재생하고 있습니다.",
+        "market_observation_active": not paused,
+        "paper_entry_active": not paused,
+        "automatic_recovery": False,
+        "recommended_action": "RESUME" if paused else "PAUSE",
+        "lag_p95_ms": lag,
     }
 
 

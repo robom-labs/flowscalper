@@ -79,14 +79,14 @@ test('posts start-live once, renders 202 operation updates and cancels it', asyn
   })
   vi.stubGlobal('fetch', fetchMock)
   render(<App />)
-  const start = await screen.findByRole('button', { name: '공개시장 시작' })
+  const start = await screen.findByRole('button', { name: '자동 관찰 시작' })
   fireEvent.click(start)
   fireEvent.click(start)
   await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/control/start-live')).toHaveLength(1))
-  await waitFor(() => expect(document.querySelector('.market-operation')).toHaveTextContent('요청을 받았습니다'))
+  await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('요청을 받았습니다'))
 
   FakeWebSocket.instances[0].dashboard({ ...data, control_operation: operation('PREPARING') })
-  await waitFor(() => expect(document.querySelector('.market-operation')).toHaveTextContent('공개시장 연결 준비 중'))
+  await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('공개시장 연결 준비 중'))
   fireEvent.click(screen.getByRole('button', { name: '연결 취소' }))
   await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path).endsWith('/cancel'))).toBe(true))
 })
@@ -101,7 +101,9 @@ test('retries FAILED_RETRYABLE with a new start-live request', async () => {
   ))
   vi.stubGlobal('fetch', fetchMock)
   render(<App />)
-  fireEvent.click(await screen.findByRole('button', { name: '다시 시도' }))
+  const retry = await screen.findByRole('button', { name: '다시 연결' })
+  expect(screen.queryByRole('button', { name: '자동 관찰 시작' })).not.toBeInTheDocument()
+  fireEvent.click(retry)
   await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/control/start-live')).toBe(true))
 })
 
@@ -113,9 +115,9 @@ test('recovers the button and shows Korean detail after HTTP 500', async () => {
       : response({ detail: { error_code: 'CONTROL_FAILED', error_message_ko: '서버가 실행 작업을 완료하지 못했습니다.', retryable: true } }, 500)
   )))
   render(<App />)
-  fireEvent.click(await screen.findByRole('button', { name: '공개시장 시작' }))
+  fireEvent.click(await screen.findByRole('button', { name: '자동 관찰 시작' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('서버가 실행 작업을 완료하지 못했습니다.')
-  expect(screen.getByRole('button', { name: '공개시장 시작' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '자동 관찰 시작' })).toBeEnabled()
 })
 
 test('aborts a stalled control after 15 seconds and restores the button', async () => {
@@ -129,12 +131,12 @@ test('aborts a stalled control after 15 seconds and restores the button', async 
   }))
   render(<App />)
   await act(async () => Promise.resolve())
-  const start = screen.getByRole('button', { name: '공개시장 시작' })
+  const start = screen.getByRole('button', { name: '자동 관찰 시작' })
   fireEvent.click(start)
   expect(start).toBeDisabled()
   await act(async () => { await vi.advanceTimersByTimeAsync(15_001) })
   expect(screen.getByRole('alert')).toHaveTextContent('요청 시간이 초과되었습니다.')
-  expect(screen.getByRole('button', { name: '공개시장 시작' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: '자동 관찰 시작' })).toBeEnabled()
 })
 
 test('marks malformed WebSocket data as reconnecting and recovers on a valid socket', async () => {
@@ -152,4 +154,87 @@ test('marks malformed WebSocket data as reconnecting and recovers on a valid soc
   act(() => { recovered.open(); recovered.dashboard(data) })
   expect(document.querySelector('.connection-error')).toBeNull()
   expect(screen.getByText('화면 연결됨')).toBeInTheDocument()
+})
+
+test('shows automatic safety waiting without a misleading manual resume button', async () => {
+  const base = dashboardFixture()
+  const safetyWaiting: DashboardData = {
+    ...base,
+    paused: true,
+    status: {
+      ...base.status,
+      mode: 'LIVE_SHADOW_PAPER',
+      market_data_state: 'LIVE',
+      venue: 'BINANCE_USDM',
+      processing_lag_p95_ms: 2_140,
+      health_flags: ['PUBLIC_SUPERVISOR_RUNNING', 'CRITICAL_MARKET_LAG_ENTRY_LOCK', 'PAPER_ENTRIES_PAUSED'],
+    },
+    operation_status: {
+      state: 'SAFETY_WAITING',
+      title_ko: '작동 중 · 안전 대기',
+      detail_ko: '시장 관찰은 계속 중입니다. 데이터가 정상화되면 새 PAPER 진입도 자동으로 다시 시작합니다.',
+      market_observation_active: true,
+      paper_entry_active: false,
+      automatic_recovery: true,
+      recommended_action: 'NONE',
+      lag_p95_ms: 2_140,
+    },
+  }
+  vi.stubGlobal('fetch', vi.fn(async () => response(safetyWaiting)))
+
+  render(<App />)
+
+  const panel = await screen.findByLabelText('프로그램 작동 상태')
+  await waitFor(() => expect(panel).toHaveTextContent('작동 중 · 안전 대기'))
+  expect(panel).toHaveTextContent('시장 관찰계속 작동')
+  expect(panel).toHaveTextContent('정상화되면 자동으로 다시 시작합니다.')
+  expect(screen.queryByRole('button', { name: '새 진입 다시 시작' })).not.toBeInTheDocument()
+})
+
+test('shows a manual pause clearly and resumes it with one click', async () => {
+  const base = dashboardFixture()
+  const manuallyPaused: DashboardData = {
+    ...base,
+    paused: true,
+    status: {
+      ...base.status,
+      mode: 'LIVE_SHADOW_PAPER',
+      market_data_state: 'LIVE',
+      venue: 'BINANCE_USDM',
+      health_flags: ['PUBLIC_SUPERVISOR_RUNNING', 'PAPER_ENTRIES_PAUSED'],
+    },
+    operation_status: {
+      state: 'MANUALLY_PAUSED',
+      title_ko: '사용자가 일시정지',
+      detail_ko: '시장 관찰은 계속 중입니다. 버튼을 누르면 새 PAPER 진입을 다시 시작합니다.',
+      market_observation_active: true,
+      paper_entry_active: false,
+      automatic_recovery: false,
+      recommended_action: 'RESUME',
+      lag_p95_ms: 110,
+    },
+  }
+  const running: DashboardData = {
+    ...manuallyPaused,
+    paused: false,
+    operation_status: {
+      ...manuallyPaused.operation_status,
+      state: 'RUNNING',
+      title_ko: '작동 중',
+      detail_ko: '공개시장을 계속 관찰하며 조건이 맞을 때만 PAPER 진입을 기록합니다.',
+      paper_entry_active: true,
+      automatic_recovery: true,
+      recommended_action: 'PAUSE',
+    },
+  }
+  const fetchMock = vi.fn(async (path: RequestInfo | URL) => (
+    String(path) === '/api/control/resume' ? response(running) : response(manuallyPaused)
+  ))
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: '새 진입 다시 시작' }))
+
+  await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/control/resume')).toBe(true))
+  await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중'))
 })

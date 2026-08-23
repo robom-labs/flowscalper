@@ -76,6 +76,8 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeVisible()
   await expect(page.getByText('샘플 PAPER · LIVE 아님 · 실제 주문 0')).toBeVisible()
+  await expect(page.getByLabel('프로그램 작동 상태')).toContainText('샘플 작동 중')
+  await expect(page.getByLabel('프로그램 작동 상태')).toContainText('시장 관찰계속 작동')
   await expect(page.getByRole('navigation', { name: '주요 화면' }).getByRole('button')).toHaveCount(5)
   await expect(page.getByText('전략 리그')).toHaveCount(0)
   await expect(page.getByText('고급 터미널')).toHaveCount(0)

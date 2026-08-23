@@ -383,6 +383,11 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert runtime.paused is True
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" in runtime.runtime_health_flags
+    safety_status = runtime.dashboard()["operation_status"]
+    assert safety_status["state"] == "SAFETY_WAITING"
+    assert safety_status["market_observation_active"] is True
+    assert safety_status["paper_entry_active"] is False
+    assert safety_status["automatic_recovery"] is True
     runtime.set_paused(False)
     assert runtime.paused is True
 
@@ -400,11 +405,15 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert runtime.paused is False
+    assert runtime.dashboard()["operation_status"]["state"] == "RUNNING"
 
     runtime.set_paused(True)
     supervisor._observe(recovered_depth)
     runtime.ingest_live_event(recovered_depth)
     assert runtime.paused is True
+    manual_status = runtime.dashboard()["operation_status"]
+    assert manual_status["state"] == "MANUALLY_PAUSED"
+    assert manual_status["recommended_action"] == "RESUME"
 
 
 def test_wide_scanner_lag_is_visible_but_does_not_lock_executable_path() -> None:

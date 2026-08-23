@@ -110,3 +110,12 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 5. Normalize main and BASE/STRESS positions into `focus_positions`. Auto focus only a newly observed actual `trade_id` fill and persist the user's focus lock.
 6. Build trade-centered replay from stored public events. Bound frames at 50,000, preserve state transitions, hide future markers and use timestamp-based 0.5x–80x playback.
 7. Run local static/unit/E2E checks, separate actual Chrome review, public network smoke and genuine 30-minute soak. Leave 6h, 24h and Release as `NOT_RUN` when not executed.
+
+## Explicit start status and automatic safety recovery Wave
+
+1. Expose a beginner-readable operation contract that separates market observation from new PAPER entry activity.
+2. Show READY, asynchronous connection progress, RUNNING, manual pause, automatic safety wait, hard safety block and reconnect as distinct Korean states.
+3. Never offer a misleading resume button while a recoverable safety lock is active. Keep the supervisor observing and automatically reopen PAPER entry only after every existing safety gate clears.
+4. Cache the exact top 20 prices of each full local order book and fall back to a full recomputation whenever a cached price is removed.
+5. Validate exact order-book equivalence, pause-cause contracts, frontend one-click behavior, actual browser controls and a measured public-market observation window.
+6. Keep 6-hour and 24-hour claims as `NOT_RUN` unless their full wall-clock duration is actually completed.

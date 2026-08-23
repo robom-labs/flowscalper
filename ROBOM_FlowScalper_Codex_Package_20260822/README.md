@@ -45,7 +45,7 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 ./scripts/install_macos_service.sh
 ```
 
-서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. canonical 소스·작업공간·릴리스와 고빈도 공개시장 기록은 외장에 보존합니다. macOS가 LaunchAgent의 One Touch 직접 쓰기를 차단하고 외장 디스크 이미지의 고빈도 SQLite 쓰기가 실시간 처리를 지연시킨 것이 실측되어, 자동 서비스의 소형 거래 상태·설정·archive manifest용 활성 SQLite, 약 283MB Python 실행환경 복사본, LaunchAgent plist와 운영 로그만 `~/Library/Application Support/ROBOM FlowScalper`에 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 외장 `data/market-parquet-v6`에 저장됩니다. 내장 또는 외장 여유공간이 5GiB 미만이거나 4% 미만이면 신규 진입을 fail-closed로 잠급니다. 더는 현재 서비스가 읽지 않는 이전 진단 원장과 과거 build·test 산출물은 삭제하지 않고 `/Volumes/ROBOM_FLOWSCALPER/04_MIGRATION_ARCHIVE/legacy-project-state-20260823`으로 옮겼으며 `MANIFEST.md`에 원래 경로·크기·checksum을 기록했습니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
+서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. 한 번 누르면 `연결 중`을 거쳐 `작동 중`이 표시되고, 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. canonical 소스·작업공간·릴리스와 고빈도 공개시장 기록은 외장에 보존합니다. macOS가 LaunchAgent의 One Touch 직접 쓰기를 차단하고 외장 디스크 이미지의 고빈도 SQLite 쓰기가 실시간 처리를 지연시킨 것이 실측되어, 자동 서비스의 소형 거래 상태·설정·archive manifest용 활성 SQLite, 약 283MB Python 실행환경 복사본, LaunchAgent plist와 운영 로그만 `~/Library/Application Support/ROBOM FlowScalper`에 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 외장 `data/market-parquet-v6`에 저장됩니다. 내장 또는 외장 여유공간이 5GiB 미만이거나 4% 미만이면 신규 진입을 fail-closed로 잠급니다. 더는 현재 서비스가 읽지 않는 이전 진단 원장과 과거 build·test 산출물은 삭제하지 않고 `/Volumes/ROBOM_FLOWSCALPER/04_MIGRATION_ARCHIVE/legacy-project-state-20260823`으로 옮겼으며 `MANIFEST.md`에 원래 경로·크기·checksum을 기록했습니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
 
 자동 시작을 해제하되 거래 원장과 외장 파일을 보존하려면 다음 명령을 실행합니다.
 

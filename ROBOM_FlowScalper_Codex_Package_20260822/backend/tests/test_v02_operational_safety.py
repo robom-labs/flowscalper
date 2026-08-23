@@ -56,6 +56,8 @@ def test_disk_pressure_is_connected_to_runtime_entry_gate_and_dashboard(
     assert dashboard["system"]["disk_pressure_entry_lock"] is True
     assert dashboard["system"]["storage_lock_reason"] == "FREE_BYTES_BELOW_LIMIT"
     assert float(str(dashboard["system"]["process_memory_mb"])) > 0
+    assert dashboard["operation_status"]["state"] == "SAFETY_WAITING"
+    assert dashboard["operation_status"]["automatic_recovery"] is True
 
     plan = replace(
         candidate_plan(),
@@ -94,7 +96,10 @@ def test_sqlite_write_fault_fails_closed_and_bounds_retry_buffer(
     assert runtime._persistence_fault_count == 1
     assert runtime._persistence_buffer_dropped == 2_000
     assert len(runtime._market_event_buffer) == 10_000
-    assert "OSError" in str(runtime.dashboard()["system"]["persistence_last_error"])
+    dashboard = runtime.dashboard()
+    assert "OSError" in str(dashboard["system"]["persistence_last_error"])
+    assert dashboard["operation_status"]["state"] == "SAFETY_BLOCKED"
+    assert dashboard["operation_status"]["automatic_recovery"] is False
     ledger.close()
 
 

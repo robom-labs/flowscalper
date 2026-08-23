@@ -47,6 +47,7 @@ Detailed specifications:
 - `docs/19_STRATEGY_LEAGUE_SPEC_KO.md`
 - `docs/adr/ADR-010-compact-market-workspace-full-catalog-strategy-symbol-analytics.md`
 - `docs/adr/ADR-011-runtime-latency-partitioning-and-ledger-replay-transitions.md`
+- `docs/adr/ADR-012-explicit-operation-state-and-orderbook-top-cache.md`
 
 ## Supporting contracts
 
@@ -77,6 +78,9 @@ Detailed specifications:
 - `evidence/PHASE03_ACTUAL_FOCUS_REPLAY_DESKTOP_1408x900.png`
 - `evidence/PHASE03_ACTUAL_FOCUS_REPLAY_TABLET_820x1180.png`
 - `evidence/PHASE03_ACTUAL_FOCUS_REPLAY_MOBILE_390x844.png`
+- `evidence/PHASE04_START_STATUS_AND_SOAK.json`
+- `evidence/screenshots/phase04-start-ready-mobile.png`
+- `evidence/screenshots/phase04-start-running-mobile.png`
 
 ## Visual references
 

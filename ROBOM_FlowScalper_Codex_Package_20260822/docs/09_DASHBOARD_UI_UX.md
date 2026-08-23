@@ -250,3 +250,13 @@ and mobile 390×844 must have no document-level horizontal overflow.
 - An actual new PAPER `trade_id` fill may open focus mode. Candidate, qualified signal and pending entry never do. The user can lock the current trade or select another BASE/STRESS position.
 - Focus desktop is 176px plan rail, flexible central chart and 208px PnL rail. Tablet/mobile keep the chart width and open plan/PnL details as sheets.
 - Focus has no buy, sell, real-order or API-key controls. Missing funding is omitted rather than displayed as a fake zero cost.
+
+## 9.14 시작·작동·안전 대기 상태 계약
+
+- 시장 첫 화면은 큰 운영 상태 패널에서 프로그램 결과를 즉시 보여준다. `자동 관찰 시작`을 누른 뒤에는 `연결 중`과 서버의 실제 단계 문구를 표시하고 중복 시작을 막는다.
+- `작동 중`은 공개시장 관찰과 새 PAPER 진입 경로가 모두 작동 중일 때만 사용한다.
+- 지연이나 일시적인 안전잠금에서는 `작동 중 · 안전 대기`로 표시하고 `시장 관찰 계속 작동`, `새 PAPER 진입 안전 대기`, `자동 복구 켜짐`을 함께 보여준다. 이 상태에 수동 재개 버튼을 표시하지 않는다.
+- 사용자 버튼으로 멈춘 경우에만 `사용자가 일시정지`와 `새 진입 다시 시작`을 표시한다.
+- 저장 실패나 복구 불일치처럼 자동 해제하지 않는 잠금은 `작동 중 · 안전 확인 필요`로 표시하고 고급진단 확인을 안내한다.
+- 데이터 지연 p95는 같은 패널에 밀리초로 표시하며, 아직 표본이 없을 때는 `측정 대기`로 표시한다.
+- 모든 상태에서 PAPER 전용과 실제 주문 0 표시는 유지한다.
