@@ -219,6 +219,7 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 
 ## 11. 현재 알려진 한계
 
+- 2026-08-23 장시간 유지 중인 `run-9b9d508c689d`의 별도 현재 snapshot에서 처리 지연 p95가 54,760ms로 다시 상승했다. 공개시장 상태는 LIVE였지만 `CRITICAL_MARKET_LAG_ENTRY_LOCK`·`PAPER_ENTRIES_PAUSED`가 정상적으로 적용됐고 실제 주문·인증은 false였다. Wave 10의 4분 측정 p95 140ms는 당시 검증 구간의 PASS이고, 이 장시간 재발을 해결했다는 증거가 아니다. 다음 runtime upgrade의 P0 조사 대상이다.
 - Mac 전원이 꺼져 있으면 이 Mac의 localhost 사이트는 제공되지 않는다.
 - 로그인했고 외장 APFS 소스가 마운트되어야 LaunchAgent가 프로그램을 실행할 수 있다.
 - 6시간·24시간 실제 벽시계 soak는 제공된 스크립트가 있어도 수행 전까지 `NOT_RUN`이다.
