@@ -17,7 +17,7 @@ jobs:
         working-directory: ROBOM_FlowScalper_Codex_Package_20260822
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           python-version: "3.12"
       - uses: pnpm/action-setup@v6
