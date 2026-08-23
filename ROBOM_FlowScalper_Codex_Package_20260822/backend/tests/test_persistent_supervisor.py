@@ -32,9 +32,7 @@ class RecordedProvider:
         self.connection_count = 0
         self.release = asyncio.Event()
 
-    async def prepare(
-        self, *, run_id: str, clock: DeterministicClock
-    ) -> ProviderSelection:
+    async def prepare(self, *, run_id: str, clock: DeterministicClock) -> ProviderSelection:
         del run_id, clock
         wide = tuple(f"S{index:02d}USDT" for index in range(50))
         return ProviderSelection(
@@ -209,9 +207,7 @@ def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execu
         run_id="run-evaluation-cadence",
         clock=clock,
     )
-    first = _event(runtime.run_id, "BTCUSDT", clock, 0).model_copy(
-        update={"venue_ts_ms": 1_000}
-    )
+    first = _event(runtime.run_id, "BTCUSDT", clock, 0).model_copy(update={"venue_ts_ms": 1_000})
     second = _event(runtime.run_id, "BTCUSDT", clock, 1).model_copy(
         update={"event_type": "DEPTH_UPDATE", "venue_ts_ms": 1_100}
     )
@@ -338,4 +334,16 @@ def test_lag_percentile_work_is_bounded_during_high_frequency_events() -> None:
 
     assert telemetry.lag_p95_ms == 94
     assert telemetry.lag_p50_ms == 49
-    assert telemetry.lag_percentile_refresh_count < 10
+    assert telemetry.lag_percentile_refresh_count <= 12
+
+
+def test_transient_first_lag_recovers_during_warmup_without_waiting_256_events() -> None:
+    telemetry = SupervisorTelemetry(lag_percentile_refresh_samples=256)
+
+    telemetry.observe_lag(12_000, executable_path=True)
+    for _ in range(15):
+        telemetry.observe_lag(15, executable_path=True)
+
+    assert telemetry.lag_p95_ms == 15
+    assert telemetry.lag_p50_ms == 15
+    assert telemetry.critical_lag_active is False

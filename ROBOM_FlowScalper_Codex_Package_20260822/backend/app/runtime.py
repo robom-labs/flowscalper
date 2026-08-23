@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from threading import RLock
+from typing import Any
 from uuid import uuid4
 
 from backend.app.adapters.fixture import FixtureMarketData
@@ -79,7 +80,7 @@ class PaperRuntime:
     unrealized_pnl_usdt: float = 0.0
     candle_builder: CandleBuilder = field(default_factory=CandleBuilder)
     selected_symbol: str = "BTCUSDT"
-    selected_interval_seconds: int = 1
+    selected_interval_seconds: int = 180
     live_selection: ProviderSelection | None = None
     _supervisor: PersistentPublicSupervisor | None = field(default=None, init=False, repr=False)
     strategy_registry: StrategyRegistry = field(default_factory=StrategyRegistry)
@@ -187,6 +188,21 @@ class PaperRuntime:
                     buyer_is_aggressor=index % 2 == 0,
                 )
             )
+        if self.ledger is not None:
+            with self._persistence_lock:
+                self._market_event_buffer.extend(
+                    self._persistable_market_event(event) for event in events
+                )
+            fixture_symbols = sorted({event.symbol for event in events})
+            self._buffer_completed_candles(
+                [
+                    candle
+                    for symbol in fixture_symbols
+                    for interval in (1, 180)
+                    for candle in self.candle_builder.series(symbol, interval)
+                ]
+            )
+            self._flush_persistence()
         self._ensure_fixture_completed_trade()
 
     def boot_fixture(self, event_count: int = 240) -> None:
@@ -501,6 +517,7 @@ class PaperRuntime:
                 run_id=self.run_id,
                 clock=self.clock,
                 sink=self.ingest_live_event,
+                protected_symbols=self._protected_deep_symbols,
             )
             try:
                 selection = await supervisor.start()
@@ -516,6 +533,7 @@ class PaperRuntime:
                 continue
             self._supervisor = supervisor
             self.live_selection = selection
+            self._record_universe_selection(selection, reason="INITIAL_DEEP_SELECTION")
             self.venue = selection.venue
             self.wide_symbol_count = len(selection.wide_symbols)
             self.deep_symbol_count = len(selection.deep_symbols)
@@ -609,6 +627,12 @@ class PaperRuntime:
 
         if self._supervisor is None:
             return
+        selection = self._supervisor.selection
+        if selection is not None and selection is not self.live_selection:
+            self.live_selection = selection
+            self.wide_symbol_count = len(selection.wide_symbols)
+            self.deep_symbol_count = len(selection.deep_symbols)
+            self._record_universe_selection(selection, reason="SAFE_DEEP_ROTATION")
         telemetry = self._supervisor.telemetry
         self.processing_lag_p95_ms = telemetry.lag_p95_ms
         if telemetry.entry_locked:
@@ -649,6 +673,44 @@ class PaperRuntime:
             and self._storage_entry_allowed
         ):
             self.paused = False
+
+    def _protected_deep_symbols(self) -> tuple[str, ...]:
+        protected = [self.selected_symbol]
+        pending = self.paper_portfolio.main.pending_entry
+        if pending is not None:
+            protected.append(pending.plan.symbol)
+        position = self.paper_portfolio.main.position
+        if position is not None:
+            protected.append(position.plan.symbol)
+        for account in self.paper_portfolio.shadows.values():
+            protected.extend(entry.plan.symbol for entry in account.pending_entries.values())
+            protected.extend(item.plan.symbol for item in account.positions.values())
+        return tuple(dict.fromkeys(protected))
+
+    def _record_universe_selection(
+        self,
+        selection: ProviderSelection,
+        *,
+        reason: str,
+    ) -> None:
+        if self.ledger is None or self.mode is RuntimeMode.READY:
+            return
+        timestamp = self.clock.utc_ms()
+        self.ledger.record_universe_snapshot(
+            {
+                "snapshot_id": f"universe-{self.run_id}-{timestamp}-{uuid4().hex[:6]}",
+                "run_id": self.run_id,
+                "ts_ms": timestamp,
+                "venue": selection.venue.value,
+                "wide_symbols": list(selection.wide_symbols),
+                "deep_symbols": list(selection.deep_symbols),
+                "reason": reason,
+                "rotation_interval_seconds": 900,
+                "minimum_residency_seconds": 1800,
+                "maximum_replacements": 4,
+                "protected_symbols": list(self._protected_deep_symbols()),
+            }
+        )
 
     def _evaluate_book_event(self, event: MarketEvent) -> None:
         bids_value = event.data.get("bids")
@@ -892,6 +954,221 @@ class PaperRuntime:
             strategy_ids=self.strategy_registry.strategy_ids,
         )
 
+    def strategy_symbol_performance(self) -> list[dict[str, object]]:
+        """실제 원장 거래만 전략·프로필·종목별로 분리해 보여준다."""
+
+        if self.ledger is None:
+            trades = [
+                self._paper_trade_row(trade)
+                for trade in self.paper_portfolio.main.completed_trades
+            ]
+            for account in self.paper_portfolio.shadows.values():
+                trades.extend(self._paper_trade_row(trade) for trade in account.completed_trades)
+        else:
+            trades = [
+                trade
+                for trade in self.ledger.list_trades()
+                if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
+            ]
+            trades.extend(self.ledger.list_shadow_trades())
+        return TradeAnalytics().strategy_symbol_reports(trades)
+
+    def focus_positions(self) -> list[dict[str, object]]:
+        """체결이 확인된 공동계좌와 전략계좌 포지션을 한 계약으로 정규화한다."""
+
+        stage_names = {
+            "ENTRY_FILLED": "진입 체결",
+            "PROTECTION_ACTIVE": "익절·손절 보호 중",
+            "TP1_FILLED": "1차 익절 완료",
+            "RUNNER_ACTIVE": "남은 수량 추세 추적",
+            "STOP_TIGHTENED": "손절선 조정",
+            "EXIT_PENDING": "종료 체결 대기",
+            "DATA_LOCKED": "데이터 안전잠금",
+            "RECOVERED_REVALIDATING": "재시작 후 공개호가 확인 중",
+        }
+
+        def stage_for(managed: Any) -> str:
+            pending_exit = getattr(managed, "pending_exit", None)
+            if pending_exit is not None:
+                return "EXIT_PENDING"
+            protected = managed.protected
+            plan = managed.plan
+            if protected.current_stop != plan.initial_stop:
+                return "STOP_TIGHTENED"
+            if managed.remaining_quantity < managed.original_quantity:
+                return "RUNNER_ACTIVE"
+            return "PROTECTION_ACTIVE"
+
+        def health() -> str:
+            locked = self.paused or (
+                self._supervisor is not None and self._supervisor.telemetry.entry_locked
+            )
+            return "신규진입 안전잠금" if locked else "정상"
+
+        rows: list[dict[str, object]] = []
+        main = self.paper_portfolio.main_position_snapshot(self._current_main_book())
+        if main is not None:
+            managed = self.paper_portfolio.main.position
+            assert managed is not None
+            descriptor = self.strategy_registry.descriptor(str(main["strategy"]))
+            stage = stage_for(managed)
+            summary = self.paper_portfolio.main_summary(self._current_main_book())
+            entry_fee = managed.protected.entry_fill.fee_usdt
+            realized_exit_fees = sum(
+                (leg.fill.fee_usdt for leg in managed.exit_legs), start=Decimal(0)
+            )
+            remaining_fraction = (
+                managed.remaining_quantity / managed.original_quantity
+                if managed.original_quantity > 0
+                else Decimal(0)
+            )
+            effective_leverage = (
+                Decimal(str(main["notional"])) / Decimal(str(summary["equity"]))
+                if Decimal(str(summary["equity"])) > 0
+                else Decimal(0)
+            )
+            rows.append(
+                {
+                    **main,
+                    "focus_key": f"MAIN:{main['trade_id']}",
+                    "account_id": "SHARED_PAPER",
+                    "profile": "BASE",
+                    "strategy_id": str(main["strategy"]),
+                    "strategy_display_name_ko": descriptor.display_name_ko,
+                    "exit_style": descriptor.exit_style.value,
+                    "opened_ts_ms": managed.protected.opened_ts_ms,
+                    "current_mark": str(
+                        self.latest_books[str(main["symbol"])].bids[0][0]
+                        if str(main["symbol"]) in self.latest_books
+                        and str(main["side"]) == "LONG"
+                        else self.latest_books[str(main["symbol"])].asks[0][0]
+                        if str(main["symbol"]) in self.latest_books
+                        else main["actual_entry"]
+                    ),
+                    "stage": stage,
+                    "stage_ko": stage_names[stage],
+                    "effective_leverage": str(min(effective_leverage, Decimal(5))),
+                    "margin_usdt": str(
+                        Decimal(str(main["notional"]))
+                        / max(effective_leverage, Decimal(1))
+                    ),
+                    "margin_used_usdt": str(
+                        Decimal(str(main["notional"]))
+                        / max(effective_leverage, Decimal(1))
+                    ),
+                    "original_quantity": str(main["quantity"]),
+                    "entry_fee_usdt": str(entry_fee),
+                    "realized_exit_fees_usdt": str(realized_exit_fees),
+                    "estimated_exit_fee_usdt": str(main["estimated_exit_fee"]),
+                    "slippage_usdt": str(main["slippage"]),
+                    "gross_pnl_usdt": str(main["gross_pnl"]),
+                    "net_pnl_usdt": str(main["net_pnl"]),
+                    "return_on_margin_pct": str(
+                        Decimal(str(main["net_pnl"]))
+                        / max(Decimal(str(main["notional"])), Decimal("0.00000001"))
+                        * Decimal(100)
+                    ),
+                    "account_starting_equity_usdt": "1000",
+                    "account_current_equity_usdt": str(summary["equity"]),
+                    "remaining_planned_loss_usdt": str(
+                        Decimal(str(main["maximum_planned_loss"])) * remaining_fraction
+                    ),
+                    "maximum_planned_loss_usdt": str(main["maximum_planned_loss"]),
+                    "risk_budget_usdt": str(main["risk_budget"]),
+                    "notional_usdt": str(main["notional"]),
+                    "signal_ts_ms": int(str(main["signal_time"])),
+                    "management_reason_ko": str(main["management_reason"]),
+                    "data_health": health(),
+                    "recovered": False,
+                    "auto_focus_eligible": True,
+                    "paper_only": True,
+                    "real_orders_enabled": False,
+                    "auth_required": False,
+                }
+            )
+        league_accounts = {
+            str(row["account_id"]): row
+            for row in self.paper_portfolio.league_account_rows(self.latest_books)
+        }
+        for position in self.paper_portfolio.league_position_rows(self.latest_books):
+            account_id = str(position["account_id"])
+            account = self.paper_portfolio.shadows[account_id]
+            managed = account.positions[str(position["symbol"])]
+            plan = managed.plan
+            descriptor = self.strategy_registry.descriptor(str(position["strategy_id"]))
+            account_row = league_accounts[account_id]
+            stage = stage_for(managed)
+            entry_fee = managed.protected.entry_fill.fee_usdt
+            realized_exit_fees = sum(
+                (leg.fill.fee_usdt for leg in managed.exit_legs), start=Decimal(0)
+            )
+            total_fees = Decimal(str(position["fees"]))
+            estimated_exit_fee = max(Decimal(0), total_fees - entry_fee - realized_exit_fees)
+            remaining_fraction = (
+                managed.remaining_quantity / managed.original_quantity
+                if managed.original_quantity > 0
+                else Decimal(0)
+            )
+            margin = Decimal(str(position["notional"])) / max(
+                Decimal(str(position["effective_leverage"])), Decimal(1)
+            )
+            rows.append(
+                {
+                    **position,
+                    "focus_key": f"{position['account_id']}:{position['trade_id']}",
+                    "strategy": position["strategy_id"],
+                    "strategy_display_name_ko": descriptor.display_name_ko,
+                    "venue": plan.venue.value,
+                    "planned_entry": position["actual_entry"],
+                    "take_profit": position["TP1"],
+                    "take_profit_1": position["TP1"],
+                    "take_profit_2": position["TP2"],
+                    "quantity": position["original_quantity"],
+                    "risk_budget": str(plan.risk_budget),
+                    "risk_budget_usdt": str(plan.risk_budget),
+                    "maximum_planned_loss": str(plan.max_planned_loss),
+                    "maximum_planned_loss_usdt": str(plan.max_planned_loss),
+                    "remaining_planned_loss_usdt": str(
+                        plan.max_planned_loss * remaining_fraction
+                    ),
+                    "margin_usdt": str(margin),
+                    "margin_used_usdt": str(margin),
+                    "notional_usdt": str(position["notional"]),
+                    "signal_ts_ms": int(str(position["signal_time"])),
+                    "entry_fee_usdt": str(entry_fee),
+                    "realized_exit_fees_usdt": str(realized_exit_fees),
+                    "estimated_exit_fee_usdt": str(estimated_exit_fee),
+                    "slippage_usdt": str(position["slippage"]),
+                    "gross_pnl_usdt": str(position["gross_pnl"]),
+                    "net_pnl_usdt": str(position["net_pnl"]),
+                    "return_on_margin_pct": str(
+                        Decimal(str(position["net_pnl"]))
+                        / max(margin, Decimal("0.00000001"))
+                        * Decimal(100)
+                    ),
+                    "account_starting_equity_usdt": str(account_row["starting_equity_usdt"]),
+                    "account_current_equity_usdt": str(account_row["current_equity_usdt"]),
+                    "management_reason_ko": str(position["management_reason"]),
+                    "stage": stage,
+                    "stage_ko": stage_names[stage],
+                    "data_health": health(),
+                    "recovered": False,
+                    "auto_focus_eligible": position["profile"] == "BASE",
+                    "paper_only": True,
+                    "real_orders_enabled": False,
+                    "auth_required": False,
+                }
+            )
+        return sorted(
+            rows,
+            key=lambda row: (
+                row["profile"] != "BASE",
+                row["account_id"] != "SHARED_PAPER",
+                int(str(row.get("opened_ts_ms", row.get("signal_time", 0)))),
+                str(row["focus_key"]),
+            ),
+        )
+
     def replayable_runs(self) -> list[dict[str, object]]:
         if self.ledger is None:
             return []
@@ -1022,6 +1299,28 @@ class PaperRuntime:
             "candles": candles,
         }
 
+    def replay_focus_session(
+        self,
+        source_run_id: str,
+        *,
+        trade_id: str,
+        profile: str = "BASE",
+    ) -> dict[str, object]:
+        """저장된 실제 PAPER 거래의 포지션 집중 리플레이를 생성한다."""
+
+        if self.ledger is None:
+            raise ValueError("영속 원장이 없어 리플레이할 수 없습니다.")
+        self._flush_persistence()
+        from backend.app.replay.focus import ReplayFocusSessionBuilder
+
+        return ReplayFocusSessionBuilder().build(
+            self.ledger,
+            run_id=source_run_id,
+            trade_id=trade_id,
+            profile=profile,
+            created_ts_ms=self.clock.utc_ms(),
+        )
+
     def candles(
         self,
         symbol: str | None = None,
@@ -1034,8 +1333,6 @@ class PaperRuntime:
 
     def set_chart_selection(self, symbol: str, interval_seconds: int) -> None:
         normalized = symbol.strip().upper()
-        if self.live_selection is not None and normalized not in self.live_selection.wide_symbols:
-            raise ValueError("현재 wide 유니버스에 없는 종목입니다.")
         if interval_seconds not in CandleBuilder.ALLOWED_INTERVALS:
             raise ValueError("지원하지 않는 캔들 시간구간입니다.")
         self.selected_symbol = normalized
@@ -1223,7 +1520,7 @@ class PaperRuntime:
                     },
                 }
             )
-        return build_dashboard_snapshot(
+        snapshot = build_dashboard_snapshot(
             self.status(),
             self.events,
             paused=self.paused,
@@ -1258,6 +1555,8 @@ class PaperRuntime:
                 f"{os.environ.get('ROBOM_PORT', '8765')}"
             ),
         )
+        snapshot["focus_positions"] = self.focus_positions()
+        return snapshot
 
     def set_paused(self, paused: bool) -> None:
         if self.mode is RuntimeMode.READY:

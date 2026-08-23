@@ -11,13 +11,22 @@ export const strategyOrder = [
 ] as const
 
 export const modeLabels: Record<StrategyRow['mode'], string> = {
-  ACTIVE: '리그 + 공동계좌',
-  SHADOW: '리그에서만 테스트',
+  ACTIVE: '사용 중',
+  SHADOW: '관찰만',
   OFF: '사용 안 함',
 }
 
+const fallbackLabels: Record<string, string> = {
+  LSA_REVERSAL_V1: 'LSA 반전 · 급락·급등 쓸기 반전',
+  CBR_CONTINUATION_V1: 'CBR 돌파 · 압축 돌파 재가속',
+  VWAP_EXHAUSTION_REVERSION_V1: 'VWAP 소진 · 과도이탈 평균복귀',
+  OFI_CONTINUATION_PULLBACK_V1: 'OFI 눌림 · 추세 눌림 지속',
+  QUEUE_MICROPRICE_MOMENTUM_V1: '호가 쏠림 · 순간추세',
+  AGGRESSOR_FLOW_CONTINUATION_V1: '체결흐름 · 강한 체결 지속',
+}
+
 export function strategyLabel(strategy: StrategyRow | undefined, strategyId: string) {
-  return strategy ? `${strategy.short_name} · ${strategy.display_name_ko}` : strategyId
+  return strategy ? `${strategy.short_name} · ${strategy.display_name_ko}` : fallbackLabels[strategyId] ?? strategyId
 }
 
 export function orderedStrategies(strategies: StrategyRow[]) {

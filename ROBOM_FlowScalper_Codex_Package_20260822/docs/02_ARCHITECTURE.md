@@ -184,3 +184,11 @@ Read-only/control APIs may include:
 - configuration preview.
 
 No real order, credential, transfer or withdrawal endpoint may exist.
+
+## 2.11 Phase 03 market and focus services
+
+- `MarketExplorerService` owns read-only Binance USD-M and Upbit KRW catalogs plus historical candles. It is isolated from the PAPER execution venue adapter.
+- `PersistentPublicSupervisor` keeps wide and deep streams; market catalog browsing never subscribes every symbol to depth.
+- `PaperRuntime.focus_positions()` is the typed dashboard source for main and BASE/STRESS positions after actual fills.
+- `ReplayFocusSessionBuilder` reads stored public events and bounded candles, then exposes timestamp-ordered frames. It does not create a second execution database.
+- The React shell has five navigation groups. `MarketPage`, `PositionFocusWorkspace` and `ReplayPage` share `PriceChart` and indicator functions.

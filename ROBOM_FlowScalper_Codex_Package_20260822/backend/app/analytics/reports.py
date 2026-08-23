@@ -189,6 +189,87 @@ class TradeAnalytics:
                 )
         return reports
 
+    def strategy_symbol_reports(
+        self,
+        trades: Sequence[Mapping[str, object]],
+        *,
+        minimum_research_sample: int = 30,
+    ) -> list[dict[str, object]]:
+        """전략·비용프로필·종목 조합을 표본상태와 함께 보수적으로 순위화한다."""
+
+        normalized = [_normalize_trade(trade) for trade in trades]
+        keys = sorted(
+            {
+                (str(trade["strategy_id"]), str(trade["profile"]), str(trade["symbol"]))
+                for trade in normalized
+            }
+        )
+        rows: list[dict[str, object]] = []
+        for strategy_id, profile, symbol in keys:
+            group = [
+                trade
+                for trade in normalized
+                if trade["strategy_id"] == strategy_id
+                and trade["profile"] == profile
+                and trade["symbol"] == symbol
+            ]
+            metrics = _window_metrics(
+                sorted(group, key=lambda trade: (trade["exit_ts_ms"], trade["trade_id"]))
+            )
+            sample_size = len(group)
+            expectancy = metrics["expectancy_usdt"]
+            profit_factor = metrics["profit_factor"]
+            eligible = sample_size >= minimum_research_sample
+            score = None
+            if eligible and expectancy is not None:
+                score = float(str(expectancy)) * min(sample_size, 100) / 100
+                if profit_factor is not None:
+                    score *= min(float(str(profit_factor)), 3.0)
+            rows.append(
+                {
+                    "strategy_id": strategy_id,
+                    "profile": profile,
+                    "symbol": symbol,
+                    "sample_size": sample_size,
+                    "sample_status": "RESEARCH_SAMPLE" if eligible else "CALIBRATING",
+                    "ranking_eligible": eligible,
+                    "rank_score": round(score, 8) if score is not None else None,
+                    "win_rate": metrics["win_rate"],
+                    "expectancy_usdt": expectancy,
+                    "profit_factor": profit_factor,
+                    "fees": metrics["fees"],
+                    "slippage": metrics["slippage"],
+                    "net_pnl": metrics["net_pnl"],
+                    "maximum_drawdown": metrics["maximum_drawdown"],
+                }
+            )
+        eligible_rows = sorted(
+            (row for row in rows if row["ranking_eligible"]),
+            key=lambda row: (
+                -float(str(row["rank_score"])),
+                str(row["strategy_id"]),
+                str(row["symbol"]),
+            ),
+        )
+        rank_by_key = {
+            (row["strategy_id"], row["profile"], row["symbol"]): index
+            for index, row in enumerate(eligible_rows, start=1)
+        }
+        for row in rows:
+            row["rank"] = rank_by_key.get(
+                (row["strategy_id"], row["profile"], row["symbol"])
+            )
+        return sorted(
+            rows,
+            key=lambda row: (
+                row["rank"] is None,
+                int(str(row["rank"] or 0)),
+                str(row["strategy_id"]),
+                str(row["profile"]),
+                str(row["symbol"]),
+            ),
+        )
+
 
 def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
     return {

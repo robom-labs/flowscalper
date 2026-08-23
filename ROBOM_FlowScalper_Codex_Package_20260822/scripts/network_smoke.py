@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import socket
 import statistics
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -16,19 +18,29 @@ from backend.app.adapters.binance_usdm import BinancePublicAdapter
 from backend.app.adapters.binance_usdm.public import MARKET_WS_BASE, PUBLIC_WS_BASE
 from backend.app.adapters.bybit_linear import BybitPublicAdapter
 from backend.app.adapters.bybit_linear.public import PUBLIC_LINEAR_WS
+from backend.app.market_explorer import MarketExplorerService
 
 
-async def _receive(url: str, subscribe: dict[str, object] | None = None) -> dict[str, Any]:
+async def _receive(
+    url: str,
+    subscribe: dict[str, object] | None = None,
+    *,
+    sample_count: int = 8,
+) -> list[dict[str, Any]]:
     async with asyncio.timeout(20):
         async with websockets.connect(url, max_size=1_000_000, ping_interval=20) as websocket:
             if subscribe is not None:
                 await websocket.send(json.dumps(subscribe))
+            samples: list[dict[str, Any]] = []
             while True:
                 payload = json.loads(await websocket.recv())
                 if isinstance(payload, dict) and payload.get("success") is True:
                     continue
                 if isinstance(payload, dict):
-                    return payload
+                    payload["_client_receive_ts_ms"] = time.time() * 1_000
+                    samples.append(payload)
+                    if len(samples) >= sample_count:
+                        return samples
 
 
 def _lag_ms(payload: dict[str, Any]) -> float | None:
@@ -38,7 +50,10 @@ def _lag_ms(payload: dict[str, Any]) -> float | None:
     timestamp = data.get("E") or data.get("T") or payload.get("ts") or data.get("ts")
     if not isinstance(timestamp, int):
         return None
-    return max(0.0, time.time() * 1000 - timestamp)
+    received_ts_ms = payload.get("_client_receive_ts_ms")
+    if not isinstance(received_ts_ms, int | float):
+        received_ts_ms = time.time() * 1_000
+    return max(0.0, float(received_ts_ms) - timestamp)
 
 
 async def _binance() -> dict[str, object]:
@@ -57,20 +72,56 @@ async def _binance() -> dict[str, object]:
     }
     ticker_symbols = {item.symbol for item in tickers}
     eligible = active & ticker_symbols
-    public_event, market_event = await asyncio.gather(
+    explorer = MarketExplorerService()
+    catalog, btc_candles, upbit_candles = await asyncio.gather(
+        explorer.catalog(force=True),
+        explorer.candles("BINANCE_USDM", "BTCUSDT", 180, 200),
+        explorer.candles("UPBIT_KRW", "KRW-BTC", 180, 200),
+    )
+    catalog_rows = catalog["rows"]
+    if not isinstance(catalog_rows, list):
+        raise ValueError("공개시장 catalog 응답이 배열이 아닙니다.")
+    binance_symbols = [
+        str(row["symbol"])
+        for row in catalog_rows
+        if isinstance(row, dict) and row.get("venue") == "BINANCE_USDM"
+    ]
+    upbit_symbols = [
+        str(row["symbol"])
+        for row in catalog_rows
+        if isinstance(row, dict) and row.get("venue") == "UPBIT_KRW"
+    ]
+    if not binance_symbols or len(upbit_symbols) <= 50:
+        raise ValueError("Binance 또는 Upbit 공개시장 catalog가 수용기준보다 작습니다.")
+    catalog_tail = binance_symbols[-1]
+    tail_candles = await explorer.candles("BINANCE_USDM", catalog_tail, 180, 200)
+    public_events, market_events = await asyncio.gather(
         _receive(f"{PUBLIC_WS_BASE}/stream?streams=btcusdt@depth@100ms"),
         _receive(f"{MARKET_WS_BASE}/stream?streams=btcusdt@aggTrade"),
     )
-    lags = [lag for lag in (_lag_ms(public_event), _lag_ms(market_event)) if lag is not None]
+    lags = [
+        lag
+        for lag in (_lag_ms(event) for event in [*public_events, *market_events])
+        if lag is not None
+    ]
     return {
         "status": "PASS",
         "venue": "BINANCE_USDM",
         "eligible_symbol_count": len(eligible),
-        "websocket_events": 2,
+        "binance_catalog_count": len(binance_symbols),
+        "upbit_krw_catalog_count": len(upbit_symbols),
+        "binance_btcusdt_3m_candle_count": btc_candles["count"],
+        "binance_catalog_tail_symbol": catalog_tail,
+        "binance_catalog_tail_3m_candle_count": tail_candles["count"],
+        "upbit_krw_btc_3m_candle_count": upbit_candles["count"],
+        "websocket_events": len(public_events) + len(market_events),
         "lag_p50_ms": round(statistics.median(lags), 3) if lags else None,
         "lag_p95_ms": round(max(lags), 3) if lags else None,
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
         "credentials_sent": False,
+        "authorization_header_sent": False,
+        "auth_required": False,
+        "real_orders_enabled": False,
     }
 
 
@@ -89,41 +140,49 @@ async def _bybit() -> dict[str, object]:
         and item.quote_asset == "USDT"
     }
     ticker_symbols = {item.symbol for item in tickers}
-    event = await _receive(
+    events = await _receive(
         PUBLIC_LINEAR_WS,
         {"op": "subscribe", "args": ["orderbook.50.BTCUSDT"]},
     )
-    lag = _lag_ms(event)
+    lags = [lag for lag in (_lag_ms(event) for event in events) if lag is not None]
     return {
         "status": "PASS",
         "venue": "BYBIT_LINEAR",
         "eligible_symbol_count": len(active & ticker_symbols),
-        "websocket_events": 1,
-        "lag_p50_ms": round(lag, 3) if lag is not None else None,
-        "lag_p95_ms": round(lag, 3) if lag is not None else None,
+        "websocket_events": len(events),
+        "lag_p50_ms": round(statistics.median(lags), 3) if lags else None,
+        "lag_p95_ms": round(max(lags), 3) if lags else None,
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
         "credentials_sent": False,
     }
 
 
-async def main() -> None:
-    failures: list[str] = []
-    for probe in (_binance, _bybit):
-        try:
-            result = await probe()
-        except (OSError, TimeoutError, ValueError, httpx.HTTPError) as exc:
-            failures.append(f"{probe.__name__}: {type(exc).__name__}: {exc}")
-            continue
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return
-    print(
-        json.dumps(
-            {"status": "NOT_RUN", "reason": "공개 네트워크 연결 실패", "failures": failures},
-            ensure_ascii=False,
-            indent=2,
+async def probe_public_network() -> dict[str, object]:
+    try:
+        return await _binance()
+    except (OSError, TimeoutError, ValueError, RuntimeError, httpx.HTTPError) as exc:
+        return {
+            "status": "FAIL",
+            "reason": "Binance·Upbit 필수 공개 네트워크 검증 실패",
+            "failure": f"{type(exc).__name__}: {exc}",
+            "credentials_sent": False,
+            "authorization_header_sent": False,
+        }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", type=Path)
+    arguments = parser.parse_args()
+    result = asyncio.run(probe_public_network())
+    if arguments.output is not None:
+        arguments.output.parent.mkdir(parents=True, exist_ok=True)
+        arguments.output.write_text(
+            json.dumps(result, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
-    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

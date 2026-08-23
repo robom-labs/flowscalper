@@ -1,11 +1,12 @@
 // 대시보드 API와 React 화면 사이의 타입 계약을 정의한다.
 export type PageId =
-  | 'live'
+  | 'summary'
   | 'strategies'
   | 'positions'
   | 'history'
   | 'replay'
   | 'performance'
+  | 'strategy-symbol'
   | 'risk'
   | 'terminal'
   | 'system'
@@ -288,6 +289,127 @@ export type LeaguePosition = {
   management_reason: string
 }
 
+export type FocusPosition = {
+  focus_key: string
+  trade_id: string
+  candidate_id: string
+  run_id?: string
+  account_id: string
+  profile: 'BASE' | 'STRESS'
+  venue: string
+  symbol: string
+  side: 'LONG' | 'SHORT'
+  strategy: string
+  strategy_id: string
+  strategy_display_name_ko: string
+  exit_style: string
+  signal_time: number
+  signal_ts_ms: number
+  opened_ts_ms?: number
+  planned_entry: string
+  actual_entry: string
+  current_mark: string
+  initial_stop: string
+  current_stop: string
+  take_profit: string
+  take_profit_1: string
+  take_profit_2: string | null
+  quantity: string
+  original_quantity: string
+  remaining_quantity: string
+  notional: string
+  notional_usdt: string
+  margin_usdt: string
+  margin_used_usdt: string
+  risk_budget: string
+  risk_budget_usdt: string
+  maximum_planned_loss: string
+  maximum_planned_loss_usdt: string
+  remaining_planned_loss_usdt: string
+  effective_leverage: string
+  gross_pnl: string
+  gross_pnl_usdt: string
+  fees: string
+  entry_fee_usdt: string
+  realized_exit_fees_usdt: string
+  estimated_exit_fee_usdt: string
+  slippage: string
+  slippage_usdt: string
+  net_pnl: string
+  net_pnl_usdt: string
+  return_on_margin_pct: string
+  account_starting_equity_usdt: string
+  account_current_equity_usdt: string
+  elapsed_seconds: number
+  management_reason: string
+  management_reason_ko: string
+  stage: string
+  stage_ko: string
+  data_health: string
+  recovered: boolean
+  auto_focus_eligible: boolean
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
+  funding_usdt?: string
+}
+
+export type MarketCatalogRow = {
+  venue: 'BINANCE_USDM' | 'UPBIT_KRW'
+  symbol: string
+  display_symbol: string
+  base_asset: string
+  quote_asset: string
+  market_role: 'PAPER_EXECUTION' | 'OBSERVATION_ONLY'
+  last: number
+  bid: number
+  ask: number
+  change_percent: number
+  quote_volume_24h: number
+  trade_count_24h: number
+  status: string
+  korean_name?: string
+  english_name?: string
+  strategy_eligible?: boolean
+}
+
+export type MarketCatalog = {
+  source?: 'ALL_PUBLIC' | 'BINANCE_USDM' | 'UPBIT_KRW'
+  count?: number
+  rows: MarketCatalogRow[]
+  counts: { BINANCE_USDM: number; UPBIT_KRW: number; total: number }
+  paper_execution_venue: 'BINANCE_USDM'
+  observation_only_venues: ['UPBIT_KRW']
+  auth_required: false
+  real_orders_enabled: false
+}
+
+export type StrategySymbolResponse = {
+  generated_ts_ms: number
+  rows: StrategySymbolPerformance[]
+  ranking_rule: string
+  real_orders_enabled: false
+  auth_required: false
+}
+
+export type StrategySymbolPerformance = {
+  strategy_id: string
+  profile: 'BASE' | 'STRESS'
+  symbol: string
+  sample_size: number
+  sample_status: string
+  ranking_eligible: boolean
+  rank_score: number | null
+  rank: number | null
+  win_rate: string | null
+  expectancy_usdt: string | null
+  profit_factor: string | null
+  fees: string
+  slippage: string
+  net_pnl: string
+  maximum_drawdown: string
+}
+
 export type DashboardData = {
   status: SystemStatus
   paused: boolean
@@ -300,6 +422,7 @@ export type DashboardData = {
   shadow_accounts: ShadowAccount[]
   league_accounts: LeagueAccount[]
   league_positions: LeaguePosition[]
+  focus_positions: FocusPosition[]
   control_operation: ControlOperation | null
   performance: Record<string, string | number>
   risk: {
@@ -383,4 +506,48 @@ export type ReplayTimeline = {
   available_symbols: { symbol: string; event_count: number | null; new_event_count?: number }[]
   events: ReplayMarketEvent[]
   candles: ChartData['candles']
+}
+
+export type ReplayFocusFrame = {
+  ts_ms: number
+  event_id: string
+  event_type: string
+  data: Record<string, unknown>
+  phase: 'PRE_ENTRY' | 'OPEN' | 'CLOSED'
+  markers: { kind: 'ENTRY' | 'EXIT'; ts_ms: number; price: string; label?: string }[]
+  fills: Record<string, unknown>[]
+}
+
+export type ReplayFocusSession = {
+  session_version: 1
+  run_id: string
+  trade_id: string
+  profile: 'BASE' | 'STRESS'
+  symbol: string
+  side: 'LONG' | 'SHORT'
+  strategy_id: string
+  start_ts_ms: number
+  entry_ts_ms: number
+  exit_ts_ms: number
+  end_ts_ms: number
+  default_speed: 5
+  speeds: number[]
+  frames: ReplayFocusFrame[]
+  candles: ChartData['candles']
+  keyframes: { frame_index: number; ts_ms: number }[]
+  trade: Record<string, unknown>
+  fills: Record<string, unknown>[]
+  profile_comparison: { profile: string; trade_id: string; fees: string; slippage: string; net_pnl: string }[]
+  reconciliation: {
+    applicable: boolean
+    sample_type: string
+    matched: boolean | null
+    reason: string
+    replay_checksum: string
+    replay_final_state: string
+  }
+  checksum: string
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
 }

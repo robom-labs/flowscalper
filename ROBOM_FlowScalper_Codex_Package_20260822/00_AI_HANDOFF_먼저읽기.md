@@ -295,3 +295,12 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 - 저장소는 비공개이므로 GPT 계정 또는 connector에 `robom-labs/flowscalper` 읽기 권한이 있어야 한다.
 
 읽기 권한이 없으면 접근했다고 가정하지 말고 ZIP이나 문서를 직접 첨부해야 한다.
+
+## 17. 3차 현재 화면과 코드 지도
+
+- 기본 시장 화면은 `frontend/src/pages/MarketPage.tsx`, 전체 공개 catalog는 `backend/app/market_explorer/service.py`다.
+- 실제 fill 뒤 공용 집중 화면은 `frontend/src/components/PositionFocusWorkspace.tsx`, backend 원본은 `PaperRuntime.focus_positions()`다.
+- 거래 단위 replay는 `backend/app/replay/focus.py`, `frontend/src/pages/ReplayPage.tsx`, `frontend/src/replay/ReplayClock.ts`다.
+- 전략별 종목 성과는 `backend/app/analytics/reports.py`와 `frontend/src/pages/StrategySymbolPage.tsx`다.
+- 3차 결정과 화면 비교는 ADR-010과 `design-qa.md`, 실제 결과는 `FINAL_UPGRADE_EVIDENCE.md`의 3차 표를 본다.
+- Upbit는 관찰 전용이고 실제 주문·private API·API Key·wallet 기능은 여전히 0이다.

@@ -125,7 +125,7 @@ def main() -> None:
     from backend.app.main import _runtime_from_environment, create_app
 
     runtime = _runtime_from_environment()
-    runtime.runtime_health_flags.append("E2E_CONTROL_DRIVER")
+    runtime.runtime_health_flags.extend(["E2E_CONTROL_DRIVER", "E2E_MARKET_EXPLORER"])
     live_attempts = 0
 
     async def e2e_start_live(progress: ProgressCallback) -> None:

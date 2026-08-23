@@ -23,7 +23,7 @@ class Candle:
 
 
 class CandleBuilder:
-    ALLOWED_INTERVALS = (1, 5, 15, 30, 60, 180, 300, 600, 900)
+    ALLOWED_INTERVALS = (1, 5, 15, 30, 60, 180, 300, 600, 900, 3600)
 
     def __init__(self, maximum_bars: int = 1_000) -> None:
         if maximum_bars <= 0:

@@ -39,7 +39,7 @@ fixture-demo: build
 	ROBOM_MODE=DEMO_FIXTURE $(UV) run python scripts/run_server.py
 
 network-smoke:
-	$(UV) run python scripts/network_smoke.py
+	$(UV) run python scripts/network_smoke.py --output evidence/PHASE03_PUBLIC_MARKET_SMOKE.json
 
 security-scan:
 	$(UV) run python scripts/security_scan.py
@@ -48,7 +48,7 @@ repo-hygiene:
 	$(UV) run python scripts/check_repository_hygiene.py
 
 soak-30m:
-	$(UV) run python scripts/soak_live.py --duration-seconds 1800 --sample-seconds 10 --output evidence/WAVE07_SOAK_30M.json
+	$(UV) run python scripts/soak_live.py --duration-seconds 1800 --sample-seconds 10 --output evidence/PHASE03_SOAK_30M.json
 
 soak-6h:
 	./scripts/soak_6h.command

@@ -28,6 +28,7 @@ from backend.app.live_public import PublicDataUnavailable, _eligible_tickers, _t
 from backend.app.orderbook import BinanceOrderBook, BybitOrderBook, SequenceGap
 
 EventSink = Callable[[MarketEvent], Awaitable[None] | None]
+ProtectedSymbolSource = Callable[[], Sequence[str]]
 
 
 def _percentile_95(ordered: Sequence[float]) -> float | None:
@@ -80,9 +81,7 @@ class SupervisorTelemetry:
     critical_lag_event_count: int = 0
     critical_lag_active: bool = False
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
-    wide_lag_samples_ms: deque[float] = field(
-        default_factory=lambda: deque(maxlen=2_000)
-    )
+    wide_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     lag_percentile_refresh_samples: int = 256
     lag_percentile_refresh_count: int = 0
     _lag_p95_cache_ms: float | None = None
@@ -92,15 +91,16 @@ class SupervisorTelemetry:
     _wide_samples_since_refresh: int = 0
 
     def observe_lag(self, lag_ms: float, *, executable_path: bool) -> None:
-        """고빈도 이벤트마다 정렬하지 않고 제한된 주기로 지연 분위수를 갱신한다."""
+        """초기 1·4·16표본과 이후 제한 주기에만 지연 분위수를 갱신한다."""
 
         if executable_path:
             self.lag_samples_ms.append(lag_ms)
             self._deep_samples_since_refresh += 1
             if lag_ms > self.critical_lag_threshold_ms:
                 self.critical_lag_active = True
+            warmup_refresh = len(self.lag_samples_ms) in {1, 4, 16}
             if (
-                self._lag_p95_cache_ms is None
+                warmup_refresh
                 or self._deep_samples_since_refresh >= self.lag_percentile_refresh_samples
             ):
                 ordered = sorted(self.lag_samples_ms)
@@ -115,13 +115,12 @@ class SupervisorTelemetry:
             return
         self.wide_lag_samples_ms.append(lag_ms)
         self._wide_samples_since_refresh += 1
+        warmup_refresh = len(self.wide_lag_samples_ms) in {1, 4, 16}
         if (
-            self._wide_lag_p95_cache_ms is None
+            warmup_refresh
             or self._wide_samples_since_refresh >= self.lag_percentile_refresh_samples
         ):
-            self._wide_lag_p95_cache_ms = _percentile_95(
-                sorted(self.wide_lag_samples_ms)
-            )
+            self._wide_lag_p95_cache_ms = _percentile_95(sorted(self.wide_lag_samples_ms))
             self._wide_samples_since_refresh = 0
             self.lag_percentile_refresh_count += 1
 
@@ -175,6 +174,7 @@ class PersistentPublicSupervisor:
         critical_lag_threshold_ms: float = 1_500.0,
         backoff: BackoffPolicy | None = None,
         rng: random.Random | None = None,
+        protected_symbols: ProtectedSymbolSource | None = None,
     ) -> None:
         if queue_capacity <= 0:
             raise ValueError("queue_capacity은 양수여야 합니다.")
@@ -187,6 +187,7 @@ class PersistentPublicSupervisor:
         self.startup_timeout_seconds = startup_timeout_seconds
         self.backoff = backoff or BackoffPolicy()
         self.rng = rng or random.Random(20260822)
+        self.protected_symbols = protected_symbols
         self.telemetry = SupervisorTelemetry(
             queue_capacity=queue_capacity,
             critical_lag_threshold_ms=critical_lag_threshold_ms,
@@ -203,6 +204,7 @@ class PersistentPublicSupervisor:
                 raise RuntimeError("supervisor 시작 상태가 불완전합니다.")
             return self.selection
         self.telemetry.state = ConnectionState.CONNECTING
+        self._update_provider_protection()
         self.selection = await self.provider.prepare(run_id=self.run_id, clock=self.clock)
         for event in self.selection.bootstrap_events:
             await self._deliver(event)
@@ -237,9 +239,7 @@ class PersistentPublicSupervisor:
                 return
             try:
                 self.telemetry.state = (
-                    ConnectionState.CONNECTING
-                    if attempt == 0
-                    else ConnectionState.RECONNECTING
+                    ConnectionState.CONNECTING if attempt == 0 else ConnectionState.RECONNECTING
                 )
                 async for event in self.provider.events(
                     self.selection,
@@ -253,7 +253,15 @@ class PersistentPublicSupervisor:
                     self._enqueue(event)
                 if not self._stopping.is_set():
                     self.telemetry.planned_rotation_count += 1
-                    raise ConnectionError("planned public WebSocket rotation")
+                    self._update_provider_protection()
+                    self.selection = await self.provider.prepare(
+                        run_id=self.run_id,
+                        clock=self.clock,
+                    )
+                    self.telemetry.reconnect_count += 1
+                    self.telemetry.entry_locked = True
+                    # 즉시 정상 종료하는 공급자가 event loop를 독점하지 않게 한다.
+                    await asyncio.sleep(0.05)
             except asyncio.CancelledError:
                 raise
             except (
@@ -272,6 +280,13 @@ class PersistentPublicSupervisor:
                 delay = self.backoff.delay_ms(attempt, self.rng) / 1_000
                 attempt += 1
                 await asyncio.sleep(delay)
+
+    def _update_provider_protection(self) -> None:
+        if self.protected_symbols is None:
+            return
+        updater = getattr(self.provider, "update_pinned_symbols", None)
+        if callable(updater):
+            updater(tuple(dict.fromkeys(self.protected_symbols())))
 
     def _observe(self, event: MarketEvent) -> None:
         self.telemetry.event_count += 1
@@ -302,14 +317,12 @@ class PersistentPublicSupervisor:
             self.telemetry.entry_locked = bool(
                 current_critical_lag
                 or (
-                    lag_p95_ms is not None
-                    and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
+                    lag_p95_ms is not None and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
                 )
             )
             self._ready.set()
         elif current_critical_lag or (
-            lag_p95_ms is not None
-            and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
+            lag_p95_ms is not None and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
         ):
             self.telemetry.entry_locked = True
 
@@ -352,16 +365,21 @@ class BinancePersistentProvider:
         self,
         *,
         wide_max: int = 50,
-        deep_max: int = 10,
-        planned_rotation_seconds: float = 23 * 60 * 60 + 45 * 60,
+        deep_max: int = 20,
+        planned_rotation_seconds: float = 15 * 60,
         pinned_symbols: tuple[str, ...] = (),
     ) -> None:
-        if not 8 <= deep_max <= 12:
-            raise ValueError("deep_max는 8..12 범위여야 합니다.")
+        if not 10 <= deep_max <= 30:
+            raise ValueError("deep_max는 10..30 범위여야 합니다.")
         self.wide_max = wide_max
         self.deep_max = deep_max
         self.planned_rotation_seconds = planned_rotation_seconds
         self.pinned_symbols = tuple(dict.fromkeys(pinned_symbols))
+        self._previous_deep: tuple[str, ...] = ()
+        self._deep_since_ms: dict[str, int] = {}
+
+    def update_pinned_symbols(self, symbols: Sequence[str]) -> None:
+        self.pinned_symbols = tuple(dict.fromkeys(symbols))
 
     async def prepare(self, *, run_id: str, clock: Clock) -> ProviderSelection:
         try:
@@ -380,6 +398,15 @@ class BinancePersistentProvider:
             self.deep_max,
             pinned_symbols=self.pinned_symbols,
         )
+        deep = _safe_rotate_deep(
+            self._previous_deep,
+            deep,
+            ranked_symbols=wide,
+            now_ms=clock.utc_ms(),
+            since_ms=self._deep_since_ms,
+            pinned_symbols=self.pinned_symbols,
+        )
+        self._previous_deep = deep
         by_symbol = {item.symbol: item for item in instruments if item.symbol in set(wide)}
         return ProviderSelection(
             venue=self.venue,
@@ -404,35 +431,34 @@ class BinancePersistentProvider:
         clock: Clock,
     ) -> AsyncIterator[MarketEvent]:
         router = BinanceStreamRouter(maximum_streams_per_connection=100)
-        wide_url = router.urls(
-            f"{symbol}@ticker" for symbol in selection.wide_symbols
-        )[0]
-        depth_url = router.urls(
-            f"{symbol}@depth" for symbol in selection.deep_symbols
-        )[0]
-        trade_url = router.urls(
-            f"{symbol}@aggTrade" for symbol in selection.deep_symbols
-        )[0]
+        wide_url = router.urls(f"{symbol}@ticker" for symbol in selection.wide_symbols)[0]
+        depth_url = router.urls(f"{symbol}@depth" for symbol in selection.deep_symbols)[0]
+        trade_url = router.urls(f"{symbol}@aggTrade" for symbol in selection.deep_symbols)[0]
         started = asyncio.get_running_loop().time()
-        async with websockets.connect(
-            wide_url,
-            max_size=2_000_000,
-            max_queue=512,
-            ping_interval=20,
-            additional_headers=None,
-        ) as wide_socket, websockets.connect(
-            depth_url,
-            max_size=2_000_000,
-            max_queue=512,
-            ping_interval=20,
-            additional_headers=None,
-        ) as depth_socket, websockets.connect(
-            trade_url,
-            max_size=2_000_000,
-            max_queue=512,
-            ping_interval=20,
-            additional_headers=None,
-        ) as trade_socket, BinancePublicAdapter() as adapter:
+        async with (
+            websockets.connect(
+                wide_url,
+                max_size=2_000_000,
+                max_queue=512,
+                ping_interval=20,
+                additional_headers=None,
+            ) as wide_socket,
+            websockets.connect(
+                depth_url,
+                max_size=2_000_000,
+                max_queue=512,
+                ping_interval=20,
+                additional_headers=None,
+            ) as depth_socket,
+            websockets.connect(
+                trade_url,
+                max_size=2_000_000,
+                max_queue=512,
+                ping_interval=20,
+                additional_headers=None,
+            ) as trade_socket,
+            BinancePublicAdapter() as adapter,
+        ):
             snapshot_values = await asyncio.gather(
                 *(adapter.fetch_depth(symbol, limit=1000) for symbol in selection.deep_symbols)
             )
@@ -499,9 +525,7 @@ class BinancePersistentProvider:
         if event_name == "24hrTicker":
             receive_monotonic_ns = clock.monotonic_ns()
             yield MarketEvent(
-                event_id=(
-                    f"binance-wide-{symbol}-{venue_ts_ms}-{receive_monotonic_ns}"
-                ),
+                event_id=(f"binance-wide-{symbol}-{venue_ts_ms}-{receive_monotonic_ns}"),
                 run_id=run_id,
                 venue=self.venue,
                 symbol=symbol,
@@ -568,9 +592,7 @@ class BinancePersistentProvider:
             )
         except SequenceGap:
             snapshot = await adapter.fetch_depth(symbol, limit=1000)
-            book.reset_snapshot(
-                int(snapshot["lastUpdateId"]), snapshot["bids"], snapshot["asks"]
-            )
+            book.reset_snapshot(int(snapshot["lastUpdateId"]), snapshot["bids"], snapshot["asks"])
             yield MarketEvent(
                 event_id=f"binance-resync-{symbol}-{venue_ts_ms}",
                 run_id=run_id,
@@ -630,16 +652,21 @@ class BybitPersistentProvider:
         self,
         *,
         wide_max: int = 50,
-        deep_max: int = 10,
-        planned_rotation_seconds: float = 23 * 60 * 60 + 45 * 60,
+        deep_max: int = 20,
+        planned_rotation_seconds: float = 15 * 60,
         pinned_symbols: tuple[str, ...] = (),
     ) -> None:
-        if not 8 <= deep_max <= 12:
-            raise ValueError("deep_max는 8..12 범위여야 합니다.")
+        if not 10 <= deep_max <= 30:
+            raise ValueError("deep_max는 10..30 범위여야 합니다.")
         self.wide_max = wide_max
         self.deep_max = deep_max
         self.planned_rotation_seconds = planned_rotation_seconds
         self.pinned_symbols = tuple(dict.fromkeys(pinned_symbols))
+        self._previous_deep: tuple[str, ...] = ()
+        self._deep_since_ms: dict[str, int] = {}
+
+    def update_pinned_symbols(self, symbols: Sequence[str]) -> None:
+        self.pinned_symbols = tuple(dict.fromkeys(symbols))
 
     async def prepare(self, *, run_id: str, clock: Clock) -> ProviderSelection:
         try:
@@ -658,6 +685,15 @@ class BybitPersistentProvider:
             self.deep_max,
             pinned_symbols=self.pinned_symbols,
         )
+        deep = _safe_rotate_deep(
+            self._previous_deep,
+            deep,
+            ranked_symbols=wide,
+            now_ms=clock.utc_ms(),
+            since_ms=self._deep_since_ms,
+            pinned_symbols=self.pinned_symbols,
+        )
+        self._previous_deep = deep
         return ProviderSelection(
             venue=self.venue,
             instruments={item.symbol: item for item in instruments if item.symbol in set(wide)},
@@ -815,6 +851,58 @@ def _wide_and_deep(
             deep_values.append(priority)
     deep_values.extend(symbol for symbol in wide_values if symbol not in deep_values)
     return tuple(wide_values), tuple(deep_values[:deep_max])
+
+
+def _safe_rotate_deep(
+    previous: Sequence[str],
+    proposed: Sequence[str],
+    *,
+    ranked_symbols: Sequence[str],
+    now_ms: int,
+    since_ms: dict[str, int],
+    pinned_symbols: Sequence[str] = (),
+    minimum_residency_ms: int = 30 * 60 * 1_000,
+    replacement_limit: int = 4,
+) -> tuple[str, ...]:
+    """진행·고정 종목과 최소 체류시간을 지키며 한 번에 네 종목만 교체한다."""
+
+    target_size = len(proposed)
+    if not previous:
+        result = tuple(proposed)
+        since_ms.update({symbol: now_ms for symbol in result})
+        return result
+    ranked = tuple(dict.fromkeys(ranked_symbols))
+    protected = set(pinned_symbols)
+    retained = [
+        symbol
+        for symbol in previous
+        if symbol in ranked
+        and (symbol in protected or now_ms - since_ms.get(symbol, now_ms) < minimum_residency_ms)
+    ]
+    removable = [
+        symbol for symbol in reversed(previous) if symbol in ranked and symbol not in retained
+    ]
+    desired_new = [
+        symbol for symbol in proposed if symbol not in previous and symbol not in retained
+    ][:replacement_limit]
+    keep = [symbol for symbol in previous if symbol in ranked]
+    for symbol in desired_new:
+        if not removable:
+            break
+        removed = removable.pop(0)
+        keep.remove(removed)
+        since_ms.pop(removed, None)
+        keep.append(symbol)
+        since_ms[symbol] = now_ms
+    for symbol in ranked:
+        if len(keep) >= target_size:
+            break
+        if symbol not in keep:
+            keep.append(symbol)
+            since_ms[symbol] = now_ms
+    result = tuple(sorted(keep[:target_size], key=ranked.index))
+    since_ms.update({symbol: since_ms.get(symbol, now_ms) for symbol in result})
+    return result
 
 
 def _json_object(payload: str | bytes) -> dict[str, Any]:

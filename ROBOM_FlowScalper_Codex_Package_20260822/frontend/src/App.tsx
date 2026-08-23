@@ -1,9 +1,9 @@
-// 아홉 PAPER 화면과 비동기 제어 상태를 조합하는 애플리케이션 루트다.
+// 시장을 기본으로 다섯 개 주 메뉴와 PAPER 제어 상태를 조합하는 애플리케이션 루트다.
 import { useState } from 'react'
 import { Navigation } from './components/Navigation'
 import { SafetyHeader } from './components/SafetyHeader'
 import { useDashboard } from './hooks/useDashboard'
-import { AdvancedTerminalPage } from './pages/AdvancedTerminalPage'
+import { MarketPage } from './pages/MarketPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { LeaguePositionsPage } from './pages/LeaguePositionsPage'
 import { LivePage } from './pages/LivePage'
@@ -11,11 +11,12 @@ import { PerformancePage } from './pages/PerformancePage'
 import { ReplayPage } from './pages/ReplayPage'
 import { RiskPage } from './pages/RiskPage'
 import { StrategiesPage } from './pages/StrategiesPage'
+import { StrategySymbolPage } from './pages/StrategySymbolPage'
 import { SystemPage } from './pages/SystemPage'
 import type { HistoryRow, PageId } from './types'
 
 export default function App() {
-  const [page, setPage] = useState<PageId>('live')
+  const [page, setPage] = useState<PageId>('terminal')
   const [replayTrade, setReplayTrade] = useState<HistoryRow | undefined>()
   const {
     data,
@@ -44,9 +45,6 @@ export default function App() {
     }
   }
   const pauseToggle = () => void runControl(data.paused ? 'resume' : 'pause')
-  const emergencyClose = () => {
-    if (window.confirm('현재 공동계좌 PAPER 포지션만 시뮬레이션 종료할까요?')) void runControl('emergency-close')
-  }
   const newRun = () => {
     if (window.confirm('기존 Run 기록을 보존하고 새 PAPER Run을 만들까요?')) void runControl('new-run')
   }
@@ -85,20 +83,22 @@ export default function App() {
   }
 
   return (
-    <main>
-      <SafetyHeader data={data} connected={connected} connectionState={connectionState} lastUpdateMs={lastUpdateMs} />
+    <main className="app-shell">
+      <SafetyHeader data={data} connected={connected} connectionState={connectionState} lastUpdateMs={lastUpdateMs} onSummary={() => changePage('summary')} />
       <Navigation page={page} onChange={changePage} />
+      {connectionError ? <p className="connection-error" role="alert">{connectionError}</p> : null}
       {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}
       {bootstrapState === 'ERROR' ? <p className="connection-error" role="alert">프로그램 서버에 연결하지 못했습니다. 실행 상태를 확인하세요.</p> : null}
-      {requestError && page !== 'live' ? <p className="control-error" role="alert">{requestError}</p> : null}
-      {page === 'live' ? <LivePage data={data} operation={controlOperation} busyAction={busyAction} connectionError={connectionError} requestError={requestError} onPauseToggle={pauseToggle} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} onNavigate={changePage} /> : null}
+      {requestError ? <p className="control-error" role="alert">{requestError}</p> : null}
+      {page === 'summary' ? <LivePage data={data} onNavigate={changePage} /> : null}
       {page === 'strategies' ? <StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} onConfigure={changeStrategy} /> : null}
       {page === 'positions' ? <LeaguePositionsPage positions={data.league_positions} strategies={data.strategies} /> : null}
       {page === 'history' ? <HistoryPage rows={data.history} onReplay={openReplay} /> : null}
       {page === 'replay' ? <ReplayPage trade={replayTrade} /> : null}
       {page === 'performance' ? <PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={data.history} /> : null}
+      {page === 'strategy-symbol' ? <StrategySymbolPage strategies={data.strategies} /> : null}
       {page === 'risk' ? <RiskPage data={data} onPauseToggle={pauseToggle} onNewRun={newRun} /> : null}
-      {page === 'terminal' ? <AdvancedTerminalPage data={data} onClose={emergencyClose} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} /> : null}
+      {page === 'terminal' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onPauseToggle={pauseToggle} busy={busyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
       {page === 'system' ? <SystemPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} /> : null}
     </main>
   )

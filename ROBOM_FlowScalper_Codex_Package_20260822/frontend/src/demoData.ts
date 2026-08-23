@@ -26,7 +26,7 @@ export const initialDashboard: DashboardData = {
   scanner: [],
   chart: {
     symbol: 'BTCUSDT',
-    interval: '1s',
+    interval: '3m',
     points: [],
     candles: [],
     lines: { entry: null, take_profit: null, stop: null },
@@ -39,6 +39,7 @@ export const initialDashboard: DashboardData = {
   shadow_accounts: [],
   league_accounts: [],
   league_positions: [],
+  focus_positions: [],
   control_operation: null,
   performance: {
     sample_size: 0,

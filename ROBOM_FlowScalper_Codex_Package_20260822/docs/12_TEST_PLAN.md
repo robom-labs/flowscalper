@@ -186,3 +186,11 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
   positions, terminal indicators, fullscreen and responsive checks against port 8870.
 - Public network smoke, 30-minute, 6-hour and 24-hour soaks and a Release ZIP remain separate
   and must be `NOT_RUN` unless executed during the same evidence pass.
+
+## 12.15 Phase 03 validation
+
+- Backend tests cover public role separation, candle validation/deduplication, deep rotation protection, append-only universe snapshots, 30-sample analytics, FocusPosition PAPER contract and future-marker-free deterministic replay.
+- Frontend tests cover default MA10/MA20, chart instance/update behavior and timestamp-based 80x ReplayClock ordering.
+- Playwright covers 1408×900, 820×1180 and 390×844 market screens, catalog switching, 3-minute defaults, indicator pane add/remove, strategy-symbol navigation, focus dimensions, mobile/tablet detail sheets and replay 80x state.
+- `make network-smoke` writes `evidence/PHASE03_PUBLIC_MARKET_SMOKE.json` and must validate Binance/Upbit catalog counts, two Binance symbols, KRW-BTC candles, public WebSocket events and auth false.
+- `make soak-30m` writes `evidence/PHASE03_SOAK_30M.json`. It must complete actual 1,800 seconds and observe at least one bounded rotation with drop/gap/fail-open all zero.

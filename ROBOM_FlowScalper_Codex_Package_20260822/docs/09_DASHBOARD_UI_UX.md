@@ -241,3 +241,12 @@ real time, crosshair KST tooltip and fullscreen/CSS fallback are required.
 
 All visible buttons and selects are at least 48px high. Desktop 1408×900, tablet 820×1180
 and mobile 390×844 must have no document-level horizontal overflow.
+
+## 9.13 Phase 03 compact market and focus contract
+
+- User navigation is `시장`, `전략`, `기록`, `분석`, `설정`; market is the default. Old user-facing League and advanced-terminal wording is removed.
+- At 1408×900 the market rail is 260px and the chart uses the remaining width without root scroll. Tablet and mobile use an overlay market sheet.
+- The default chart is 3-minute, 200 historical candles, MA10/MA20 and volume overlay. RSI and MACD panes are created only while enabled and the popover never resizes the chart.
+- An actual new PAPER `trade_id` fill may open focus mode. Candidate, qualified signal and pending entry never do. The user can lock the current trade or select another BASE/STRESS position.
+- Focus desktop is 176px plan rail, flexible central chart and 208px PnL rail. Tablet/mobile keep the chart width and open plan/PnL details as sheets.
+- Focus has no buy, sell, real-order or API-key controls. Missing funding is omitted rather than displayed as a fake zero cost.

@@ -6,6 +6,12 @@
 
 ## 아직 배포하지 않음
 
+- 첫 화면을 5개 메뉴의 compact 시장 작업공간으로 바꾸고 Binance USD-M 전체 catalog와 Upbit KRW 관찰 전용 catalog를 추가했다.
+- 기본 3분봉 200개, 거래량 overlay, MA10·MA20, 동적 RSI·MACD pane과 고정 종목 rail을 구현했다.
+- deep 20 안전 회전, 전략별 종목 성과, 실제 fill 기반 포지션 집중 3열 화면과 0.5~80배 거래 단위 replay를 연결했다.
+- 태블릿·모바일에서 chart 폭을 유지하는 계획·손익 sheet와 비용 포함 순손익 rail을 추가했다.
+- 실제 주문, private API, 인증 경로는 계속 0이며 Upbit는 PAPER 실행에 사용하지 않는다.
+
 - Strategy Registry를 A-F 6개로 확장하고 A/B는 ACTIVE, C/D/E/F는 SHADOW로 시작한다.
 - 전략별 BASE/STRESS 12개 1,000 USDT PAPER 계좌가 서로 다른 종목을 3개까지 독립 체결한다.
 - 위험기반 최대 5배 상한, 1.5% 총 계획위험, 계좌별 손실, drawdown, cooldown 잠금을 추가했다.

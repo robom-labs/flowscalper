@@ -112,6 +112,13 @@ must not resize during snapshots or drawer use. A normal update to the same char
 must use incremental series updates instead of rebuilding the chart or repeating full
 `setData` calls.
 
+Phase 03 uses five user-facing navigation groups with `시장` as the default. Binance
+USD-M full catalog is PAPER eligible, while Upbit KRW is observation-only and must never
+feed a PAPER position. The chart defaults to 3-minute, 200 historical candles, MA10/MA20
+and volume overlay. Actual fills, not candidates or pending entries, are the only automatic
+trigger for `PositionFocusWorkspace`. Replay markers must never reveal future events, and
+0.5x through 80x must preserve the same ordered keyframes and final checksum.
+
 ## Completion rule
 
 Do not state DONE until `FINAL_UPGRADE_EVIDENCE.md` exists and the acceptance matrix is populated with PASS, NOT_RUN, or BLOCKED plus evidence. Never convert NOT_RUN into PASS.

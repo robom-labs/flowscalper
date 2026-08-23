@@ -108,3 +108,16 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Crosshair, current-to-realtime and fullscreen return work in a real browser.
 - [ ] Desktop, tablet and mobile have 48px controls, no root overflow and no runtime errors.
 - [ ] Core and Browser GitHub Actions pass on the final GitHub main commit.
+
+## L. Phase 03 market, position focus and trade replay
+
+- [ ] Five compact navigation groups with market as default and no old user-facing League/advanced-terminal copy.
+- [ ] Binance active USDT perpetual full catalog and Upbit KRW observation-only full catalog work without authentication.
+- [ ] Default 3-minute candles count 200 with MA10, MA20 and volume; RSI/MACD add and remove real panes without resizing the chart.
+- [ ] Wide 50+ and deep 20 remain bounded; rotation protects pin/open/pending symbols and appends snapshots.
+- [ ] Strategy×symbol report withholds rank below 30 samples and includes expectancy, PF, costs, drawdown and sample status.
+- [ ] Actual fills, not candidates or pending entries, trigger focus. BASE priority, focus lock, selector and 15-second closed review work.
+- [ ] Focus shows actual entry, initial/current stop, TP1/TP2, quantities, planned loss, fee/slippage, net PnL, equity, stage and data health.
+- [ ] Trade replay uses stored public events, hides future markers, bounds frames and preserves ordered 0.5x–80x playback.
+- [ ] Desktop focus chart is at least 960px wide and root scroll is zero; tablet/mobile sheets do not change chart width.
+- [ ] Actual order, private API, API Key, secret, wallet and manual buy/sell controls remain zero.

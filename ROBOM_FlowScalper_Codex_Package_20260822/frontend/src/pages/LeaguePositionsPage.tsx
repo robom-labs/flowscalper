@@ -1,4 +1,4 @@
-// Strategy League의 진행 중 PAPER 거래를 BASE 기본 필터로 비교한다.
+// 전략별 진행 중 PAPER 거래를 BASE 기본 필터로 비교한다.
 import { memo, useMemo, useState } from 'react'
 import { strategyLabel } from '../strategyPresentation'
 import type { LeaguePosition, StrategyRow } from '../types'

@@ -152,3 +152,10 @@ Provide a diagnostics page and CLI command that reports:
 - universe symbol count;
 - endpoint used;
 - failure reason without exposing private data.
+
+## 3.10 Phase 03 public catalog contract
+
+- Binance catalog includes every active USD-M USDT perpetual returned by public metadata and ticker endpoints. It is the only catalog with `PAPER_EXECUTION` role.
+- Upbit catalog includes every public `KRW-*` market with Korean and English names. Its role is always `OBSERVATION_ONLY`; it cannot become a strategy or PAPER venue.
+- Historical chart REST accepts 20..500 candles and defaults to 200 at 3 minutes. Responses are sorted and deduplicated by open timestamp.
+- No request carries Authorization, API Key, cookie-based exchange login or private endpoint parameters.

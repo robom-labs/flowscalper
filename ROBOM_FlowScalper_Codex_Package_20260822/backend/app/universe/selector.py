@@ -42,7 +42,7 @@ class UniverseSelector:
         self,
         *,
         wide_max: int = 50,
-        deep_max: int = 10,
+        deep_max: int = 20,
         minimum_turnover: Decimal = Decimal("20000000"),
         maximum_spread_bps: Decimal = Decimal("12"),
         minimum_warmup_minutes: float = 10.0,

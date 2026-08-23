@@ -7,9 +7,10 @@ type Props = {
   connected: boolean
   connectionState: 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
   lastUpdateMs: number | null
+  onSummary: () => void
 }
 
-export function SafetyHeader({ data, connected, connectionState, lastUpdateMs }: Props) {
+export function SafetyHeader({ data, connected, connectionState, lastUpdateMs, onSummary }: Props) {
   const { status } = data
   const live = status.market_data_state === 'LIVE'
   const publicMode = status.mode === 'LIVE_SHADOW_PAPER'
@@ -28,39 +29,20 @@ export function SafetyHeader({ data, connected, connectionState, lastUpdateMs }:
     : connectionState === 'CONNECTING'
       ? '화면 연결 중'
       : '화면 다시 연결 중'
-  const leagueOpenPositions = data.league_accounts
+  const openPositions = data.league_accounts
     .filter((account) => account.profile === 'BASE')
     .reduce((total, account) => total + account.open_positions, 0)
   return (
-    <>
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">ROBOM 자동 관찰 프로그램</p>
-          <h1>FlowScalper</h1>
-        </div>
-        <div className="badges" aria-label="운영 상태">
-          <span className={live ? 'badge live' : 'badge fixture'}>{sourceLabel}</span>
-          <span className="badge paper">모의매매 · PAPER</span>
-          <span className="badge disabled">실제 주문 0</span>
-          <span className={connected ? 'badge socket-on' : 'badge socket-off'}>
-            {connectionLabel}
-          </span>
-        </div>
-      </header>
-      <section className="safety" aria-label="현재 프로그램 상태">
-        <span><b>프로그램</b> {sourceLabel}</span>
-        <span><b>진행 중 전략 거래</b> {leagueOpenPositions}건</span>
-        <span><b>감시 종목</b> {status.deep_symbols || data.scanner.length}개 정밀 분석</span>
-        <span><b>현재 한국시간</b> {lastUpdateMs ? formatKstTime(lastUpdateMs) : '연결 대기'}</span>
-        <span><b>실제 돈</b> 움직이지 않음</span>
-        {data.control_operation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(data.control_operation.state) ? <span><b>현재 작업</b> {data.control_operation.stage_ko}</span> : null}
-        <details className="header-details">
-          <summary>운영 정보</summary>
-          <span>시작자산 {status.starting_equity_usdt.toFixed(2)} USDT</span>
-          <span>로그인·API 키 필요 없음</span>
-          <span>기록번호 {status.run_id}</span>
-        </details>
-      </section>
-    </>
+    <header className="topbar">
+      <div className="brand-lockup"><h1>FlowScalper</h1><button type="button" className="summary-link" onClick={onSummary}>요약</button></div>
+      <div className="header-status" aria-label="운영 상태">
+        <span className={live ? 'status-dot live' : 'status-dot'}>{sourceLabel}</span>
+        <span>진행 {openPositions}건</span>
+        <span>정밀 {status.deep_symbols || data.scanner.length}개</span>
+        <span>{lastUpdateMs ? formatKstTime(lastUpdateMs) : '시간 연결 대기'}</span>
+        <span className="paper-lock">PAPER · 실제 주문 0</span>
+        <span className={connected ? 'connection-on' : 'connection-off'}>{connectionLabel}</span>
+      </div>
+    </header>
   )
 }

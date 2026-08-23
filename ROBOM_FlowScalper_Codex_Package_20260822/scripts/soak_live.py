@@ -72,9 +72,7 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
                 )
     finally:
         supervisor_snapshot = (
-            dict(runtime._supervisor.telemetry.as_dict())
-            if runtime._supervisor is not None
-            else {}
+            dict(runtime._supervisor.telemetry.as_dict()) if runtime._supervisor is not None else {}
         )
         await runtime.shutdown()
     final_resources = runtime.resource_sampler.sample()
@@ -83,9 +81,7 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
     queue_depths = [int(str(sample["queue_depth"])) for sample in samples]
     event_memory = [int(str(sample["event_memory_count"])) for sample in samples]
     lag_values = [
-        float(str(sample["lag_p95_ms"]))
-        for sample in samples
-        if sample["lag_p95_ms"] is not None
+        float(str(sample["lag_p95_ms"])) for sample in samples if sample["lag_p95_ms"] is not None
     ]
     critical_lag_threshold_ms = float(
         str(supervisor_snapshot.get("critical_lag_threshold_ms", 1_500))
@@ -105,21 +101,16 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
     final_lag_below_threshold = final_lag_p95_ms <= critical_lag_threshold_ms
     final_lag_safe_or_locked = bool(
         final_lag_below_threshold
-        or (
-            supervisor_snapshot.get("entry_locked") is True
-            and runtime.paused
-        )
+        or (supervisor_snapshot.get("entry_locked") is True and runtime.paused)
     )
     memory_growth = (
-        max(memory_values) - float(str(baseline["process_memory_mb"]))
-        if memory_values
-        else 0.0
+        max(memory_values) - float(str(baseline["process_memory_mb"])) if memory_values else 0.0
     )
     checks = {
         "public_live_started": started,
         "requested_duration_completed": completed,
         "wide_symbols_at_least_50": runtime.wide_symbol_count >= 50,
-        "deep_symbols_between_8_and_12": 8 <= runtime.deep_symbol_count <= 12,
+        "deep_symbols_between_10_and_30": 10 <= runtime.deep_symbol_count <= 30,
         "events_continued": bool(event_counts and event_counts[-1] > event_counts[0]),
         "event_memory_bounded": max(event_memory, default=0) <= 10_000,
         "queue_bounded": max(queue_depths, default=0)

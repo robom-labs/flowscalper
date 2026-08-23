@@ -44,6 +44,8 @@ Detailed specifications:
 - `docs/16_MODEL_CALIBRATION.md`
 - `docs/17_GLOSSARY.md`
 - `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`
+- `docs/19_STRATEGY_LEAGUE_SPEC_KO.md`
+- `docs/adr/ADR-010-compact-market-workspace-full-catalog-strategy-symbol-analytics.md`
 
 ## Supporting contracts
 
@@ -64,6 +66,9 @@ Detailed specifications:
 - `MIGRATION_NOTES_v0.2.md`
 - `SOAK_TEST_REPORT.md`
 - `FINAL_UPGRADE_EVIDENCE.md`
+- `design-qa.md`
+- `evidence/PHASE03_PUBLIC_MARKET_SMOKE.json`
+- `evidence/PHASE03_SOAK_30M.json`
 
 ## Visual references
 

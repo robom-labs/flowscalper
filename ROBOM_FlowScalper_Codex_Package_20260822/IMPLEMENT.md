@@ -100,3 +100,13 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
    Playwright, a separate real local-browser review, safety scan and repository hygiene.
 6. Record unresolved external checks as `NOT_RUN` or `BLOCKED`; do not infer soak, network,
    Release, GitHub push or Actions results from local tests.
+
+## Compact market and position focus Wave
+
+1. Keep the existing Registry, PAPER execution, risk, storage and replay engines. Add one read-only full-market explorer around public Binance and Upbit endpoints.
+2. Use the five-group compact shell and fixed market rail/chart workspace. Default to 3-minute candles, MA10/MA20 and volume overlay.
+3. Maintain deep 20 with dwell, protected symbols and bounded rotation; append every selected universe snapshot.
+4. Publish strategy×symbol analytics only from completed ledger trades and withhold ranking below 30 samples.
+5. Normalize main and BASE/STRESS positions into `focus_positions`. Auto focus only a newly observed actual `trade_id` fill and persist the user's focus lock.
+6. Build trade-centered replay from stored public events. Bound frames at 50,000, preserve state transitions, hide future markers and use timestamp-based 0.5x–80x playback.
+7. Run local static/unit/E2E checks, separate actual Chrome review, public network smoke and genuine 30-minute soak. Leave 6h, 24h and Release as `NOT_RUN` when not executed.

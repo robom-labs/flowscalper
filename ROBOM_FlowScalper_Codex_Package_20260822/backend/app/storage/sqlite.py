@@ -946,6 +946,49 @@ class SQLiteLedger:
                 ),
             )
 
+    def list_candidates(self, run_id: str) -> list[dict[str, Any]]:
+        """전략·종목 분석이 사용할 불변 후보 계획을 시간순으로 읽는다."""
+
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT payload_json FROM candidates
+                WHERE run_id = ? ORDER BY ts_ms, candidate_id
+                """,
+                (run_id,),
+            ).fetchall()
+        return [json.loads(str(row["payload_json"])) for row in rows]
+
+    def record_universe_snapshot(self, snapshot: Mapping[str, object]) -> None:
+        """deep 유니버스 회전 결과를 수정 불가능한 새 행으로 남긴다."""
+
+        run_id = str(snapshot["run_id"])
+        with self._transaction() as connection:
+            self._assert_open_run(connection, run_id)
+            connection.execute(
+                """
+                INSERT INTO universe_snapshots (snapshot_id, run_id, ts_ms, payload_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    str(snapshot["snapshot_id"]),
+                    run_id,
+                    int(str(snapshot["ts_ms"])),
+                    _canonical_json(snapshot),
+                ),
+            )
+
+    def list_universe_snapshots(self, run_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT payload_json FROM universe_snapshots
+                WHERE run_id = ? ORDER BY ts_ms, snapshot_id
+                """,
+                (run_id,),
+            ).fetchall()
+        return [json.loads(str(row["payload_json"])) for row in rows]
+
     def record_strategy_setting(self, setting: Mapping[str, object]) -> None:
         self._record_versioned_payload(
             "strategy_settings",

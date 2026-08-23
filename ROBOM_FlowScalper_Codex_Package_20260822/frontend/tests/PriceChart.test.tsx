@@ -6,6 +6,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const chartMocks = vi.hoisted(() => ({
   createChart: vi.fn(),
   createSeriesMarkers: vi.fn(),
+  removePane: vi.fn(),
+  setVisibleLogicalRange: vi.fn(),
   series: [] as {
     kind: string
     pane: number
@@ -48,13 +50,27 @@ function chart(symbol = 'BTCUSDT', count = 30): ChartData {
 
 beforeEach(() => {
   chartMocks.series.length = 0
+  chartMocks.removePane.mockReset()
+  chartMocks.setVisibleLogicalRange.mockReset()
   chartMocks.createSeriesMarkers.mockImplementation(() => ({ setMarkers: vi.fn() }))
   chartMocks.createChart.mockImplementation(() => {
-    const panes = Array.from({ length: 4 }, () => ({ setHeight: vi.fn() }))
+    const panes: { setHeight: ReturnType<typeof vi.fn>; paneIndex: () => number; getSeries: () => typeof chartMocks.series; priceScale: () => { applyOptions: ReturnType<typeof vi.fn> } }[] = []
+    const pane = () => {
+      const current = {
+        setHeight: vi.fn(),
+        paneIndex: () => panes.indexOf(current),
+        getSeries: () => chartMocks.series.filter((series) => series.pane === panes.indexOf(current)),
+        priceScale: () => ({ applyOptions: vi.fn() }),
+      }
+      return current
+    }
+    const value = pane()
+    panes.push(value)
     const timeScale = {
       subscribeVisibleLogicalRangeChange: vi.fn(),
       unsubscribeVisibleLogicalRangeChange: vi.fn(),
       fitContent: vi.fn(),
+      setVisibleLogicalRange: chartMocks.setVisibleLogicalRange,
       applyOptions: vi.fn(),
       scrollToRealTime: vi.fn(),
       scrollPosition: vi.fn(() => 0),
@@ -79,6 +95,8 @@ beforeEach(() => {
       unsubscribeCrosshairMove: vi.fn(),
       applyOptions: vi.fn(),
       panes: () => panes,
+      addPane: vi.fn(() => { const next = pane(); panes.push(next); return next }),
+      removePane: vi.fn((index: number) => { chartMocks.removePane(index); panes.splice(index, 1) }),
       remove: vi.fn(),
     }
   })
@@ -114,18 +132,25 @@ test('reuses one chart and updates the newest candle without full setData', asyn
   rerender(<PriceChart chart={chart('ETHUSDT')} />)
   await waitFor(() => expect(setDataCount()).toBeGreaterThan(initialSetData))
   expect(chartMocks.createChart).toHaveBeenCalledTimes(1)
-  expect(chartMocks.series.some((series) => series.pane === 2)).toBe(true)
-  expect(chartMocks.series.some((series) => series.pane === 3)).toBe(true)
+  expect(chartMocks.series.some((series) => series.pane === 1)).toBe(false)
 })
 
 test('exposes MA and lower-pane indicator toggles with aria-pressed', async () => {
   render(<PriceChart chart={chart()} />)
   await waitFor(() => expect(chartMocks.createChart).toHaveBeenCalled())
-  expect(screen.getByRole('button', { name: 'MA5' })).toHaveAttribute('aria-pressed', 'true')
-  expect(screen.getByRole('button', { name: 'MA10' })).toHaveAttribute('aria-pressed', 'false')
-  for (const label of ['MA10', 'EMA20', 'VWAP', '볼린저', 'RSI', 'MACD']) {
+  expect(screen.getByRole('button', { name: 'MA5' })).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.getByRole('button', { name: 'MA10' })).toHaveAttribute('aria-pressed', 'true')
+  for (const label of ['MA5', 'EMA20', 'VWAP', '볼린저', 'RSI', 'MACD']) {
     const button = screen.getByRole('button', { name: label })
     fireEvent.click(button)
     expect(button).toHaveAttribute('aria-pressed', 'true')
   }
+  expect(chartMocks.series.some((series) => series.pane > 0)).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'RSI' }))
+  expect(chartMocks.removePane).toHaveBeenCalled()
+})
+
+test('shows only the latest 120 candles on the first 200-candle load', async () => {
+  render(<PriceChart chart={chart('BTCUSDT', 200)} />)
+  await waitFor(() => expect(chartMocks.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 80, to: 199 }))
 })

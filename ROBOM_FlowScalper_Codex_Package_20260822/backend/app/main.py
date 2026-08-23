@@ -11,6 +11,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -26,6 +27,7 @@ from backend.app.control import (
 )
 from backend.app.control.operations import ControlRunner, ProgressCallback
 from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
+from backend.app.market_explorer import MarketExplorerService
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
@@ -40,6 +42,15 @@ class ChartSelectionRequest(BaseModel):
 
     symbol: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9]+$")
     interval_seconds: int
+
+
+class MarketSelectionRequest(BaseModel):
+    """공개 시장 보기 선택만 바꾸고 거래 action을 만들지 않는다."""
+
+    source: str = Field(pattern=r"^(BINANCE_USDM|UPBIT_KRW)$")
+    symbol: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9-]+$")
+    interval_seconds: int = 180
+    pin_for_analysis: bool = False
 
 
 class StrategyConfigurationRequest(BaseModel):
@@ -81,9 +92,7 @@ def _runtime_from_environment() -> PaperRuntime:
     market_event_archive = (
         ParquetEventStore(
             Path(archive_path),
-            minimum_free_bytes=int(
-                os.environ.get("ROBOM_MIN_FREE_BYTES", str(2 * 1024**3))
-            ),
+            minimum_free_bytes=int(os.environ.get("ROBOM_MIN_FREE_BYTES", str(2 * 1024**3))),
             minimum_free_ratio=float(os.environ.get("ROBOM_MIN_FREE_RATIO", "0.05")),
         )
         if archive_path
@@ -113,9 +122,7 @@ def _runtime_from_environment() -> PaperRuntime:
         storage_guard=market_event_archive
         or ParquetEventStore(
             database.parent / "market-parquet",
-            minimum_free_bytes=int(
-                os.environ.get("ROBOM_MIN_FREE_BYTES", str(2 * 1024**3))
-            ),
+            minimum_free_bytes=int(os.environ.get("ROBOM_MIN_FREE_BYTES", str(2 * 1024**3))),
             minimum_free_ratio=float(os.environ.get("ROBOM_MIN_FREE_RATIO", "0.05")),
         ),
         market_event_archive=market_event_archive,
@@ -156,8 +163,10 @@ def create_app(
     runtime: PaperRuntime | None = None,
     *,
     control_runners: Mapping[ControlAction, ControlRunner] | None = None,
+    market_explorer: MarketExplorerService | None = None,
 ) -> FastAPI:
     active_runtime = runtime or _runtime_from_environment()
+    active_market_explorer = market_explorer or MarketExplorerService()
     operation_manager = ControlOperationManager(active_runtime.clock.utc_ms)
     websocket_clients: set[WebSocket] = set()
 
@@ -202,9 +211,7 @@ def create_app(
                 active_runtime.run_persistence_worker(persistence_stop),
                 name="persistence-worker",
             )
-            broadcaster = asyncio.create_task(
-                broadcast_dashboard(), name="dashboard-broadcaster"
-            )
+            broadcaster = asyncio.create_task(broadcast_dashboard(), name="dashboard-broadcaster")
             yield
         finally:
             await operation_manager.shutdown()
@@ -246,6 +253,81 @@ def create_app(
     async def dashboard() -> dict[str, object]:
         return dashboard_snapshot()
 
+    @app.get("/api/markets/catalog")
+    async def market_catalog(
+        source: str | None = Query(default=None, pattern=r"^(BINANCE_USDM|UPBIT_KRW)$"),
+        refresh: bool = Query(default=False),
+    ) -> dict[str, object]:
+        try:
+            return await active_market_explorer.catalog(source=source, force=refresh)
+        except (OSError, httpx.HTTPError, RuntimeError, ValueError) as error:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error_code": "PUBLIC_MARKET_CATALOG_UNAVAILABLE",
+                    "error_message_ko": "공개 시장 목록을 불러오지 못했습니다.",
+                    "retryable": True,
+                },
+            ) from error
+
+    @app.get("/api/markets/candles")
+    async def market_candles(
+        source: str = Query(default="BINANCE_USDM", pattern=r"^(BINANCE_USDM|UPBIT_KRW)$"),
+        symbol: str = Query(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9-]+$"),
+        interval_seconds: int = Query(default=180),
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> dict[str, object]:
+        try:
+            return await active_market_explorer.candles(
+                source,
+                symbol,
+                interval_seconds,
+                limit,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "INVALID_MARKET_CANDLE_REQUEST",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        except (OSError, httpx.HTTPError) as error:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error_code": "PUBLIC_MARKET_CANDLES_UNAVAILABLE",
+                    "error_message_ko": "공개 시장 캔들을 불러오지 못했습니다.",
+                    "retryable": True,
+                },
+            ) from error
+
+    @app.post("/api/markets/select")
+    async def select_market(request: MarketSelectionRequest) -> dict[str, object]:
+        if request.source == "BINANCE_USDM":
+            active_runtime.set_chart_selection(request.symbol, request.interval_seconds)
+        return {
+            "source": request.source,
+            "symbol": request.symbol.upper(),
+            "interval_seconds": request.interval_seconds,
+            "pin_for_analysis": request.pin_for_analysis and request.source == "BINANCE_USDM",
+            "observation_only": request.source == "UPBIT_KRW",
+            "auth_required": False,
+            "real_orders_enabled": False,
+        }
+
+    @app.get("/api/markets/status")
+    async def market_status() -> dict[str, object]:
+        catalog = await active_market_explorer.catalog()
+        return {
+            "catalog_healthy": True,
+            "catalog_counts": catalog["counts"],
+            "candle_cache_count": 0,
+            "auth_required": False,
+            "real_orders_enabled": False,
+        }
+
     @app.post("/api/control/pause")
     async def pause_entries() -> dict[str, object]:
         active_runtime.set_paused(True)
@@ -274,8 +356,7 @@ def create_app(
             raise ControlOperationFailure(
                 code="PUBLIC_DATA_UNAVAILABLE",
                 message_ko=(
-                    "공개시장에 연결하지 못했습니다. 네트워크 상태를 확인한 뒤 "
-                    "다시 시도하세요."
+                    "공개시장에 연결하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요."
                 ),
                 retryable=True,
             )
@@ -302,8 +383,7 @@ def create_app(
                 raise ControlOperationFailure(
                     code="PUBLIC_DATA_UNAVAILABLE",
                     message_ko=(
-                        "공개시장에 연결하지 못했습니다. 네트워크 상태를 확인한 뒤 "
-                        "다시 시도하세요."
+                        "공개시장에 연결하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도하세요."
                     ),
                     retryable=True,
                 )
@@ -409,6 +489,17 @@ def create_app(
     async def strategy_analytics() -> list[dict[str, object]]:
         return await asyncio.to_thread(active_runtime.strategy_performance)
 
+    @app.get("/api/analytics/strategy-symbols")
+    async def strategy_symbol_analytics() -> dict[str, object]:
+        rows = await asyncio.to_thread(active_runtime.strategy_symbol_performance)
+        return {
+            "generated_ts_ms": active_runtime.clock.utc_ms(),
+            "rows": rows,
+            "ranking_rule": "표본 30건 이상에서 기대값·Profit Factor·표본을 함께 비교",
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+
     @app.get("/api/replay/runs")
     async def replay_runs() -> list[dict[str, object]]:
         return await asyncio.to_thread(active_runtime.replayable_runs)
@@ -442,6 +533,29 @@ def create_app(
                 status_code=404,
                 detail={
                     "error_code": "REPLAY_TIMELINE_NOT_FOUND",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+
+    @app.get("/api/replay/{run_id}/focus")
+    async def replay_focus(
+        run_id: str,
+        trade_id: str = Query(min_length=3, max_length=120),
+        profile: str = Query(default="BASE", pattern=r"^(BASE|STRESS)$"),
+    ) -> dict[str, object]:
+        try:
+            return await asyncio.to_thread(
+                active_runtime.replay_focus_session,
+                run_id,
+                trade_id=trade_id,
+                profile=profile,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "REPLAY_FOCUS_NOT_FOUND",
                     "error_message_ko": str(error),
                     "retryable": False,
                 },
@@ -487,10 +601,23 @@ def create_app(
         finally:
             websocket_clients.discard(websocket)
 
-    if (
-        (FRONTEND_DIST / "assets").is_dir()
-        and (FRONTEND_DIST / "index.html").is_file()
-    ):
+    @app.websocket("/ws/markets")
+    async def market_websocket(websocket: WebSocket) -> None:
+        """인증 없는 catalog snapshot을 dashboard 채널과 분리해 보낸다."""
+
+        if not _local_browser_origin(websocket.headers.get("origin")):
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        try:
+            catalog = await active_market_explorer.catalog()
+            await websocket.send_json({"type": "catalog_snapshot", "data": catalog})
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            return
+
+    if (FRONTEND_DIST / "assets").is_dir() and (FRONTEND_DIST / "index.html").is_file():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
         @app.get("/{path:path}")

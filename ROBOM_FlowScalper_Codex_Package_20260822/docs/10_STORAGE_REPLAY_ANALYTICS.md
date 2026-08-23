@@ -115,3 +115,11 @@ Provide export to:
 - diagnostic logs.
 
 No personal credentials exist in exports.
+
+## 10.8 Phase 03 trade focus and strategy-symbol analytics
+
+- `focus_positions` normalizes actual entry, initial/current stop, TP1/TP2, quantities, planned loss, fee/slippage, net PnL, account equity, stage, data health and permanent PAPER flags.
+- Strategy×symbol reports group completed ledger trades by strategy, profile and symbol. Ranking is withheld below 30 samples and always shows costs and sample status.
+- A replay focus request uses at least 20 minutes pre-roll and 5 minutes post-roll where stored events exist. Frames are capped at 50,000; state changes and first/last frames are preserved while market-only frames may be downsampled.
+- Replay markers are cursor-bounded. Entry, partial fill and exit information cannot appear before its event timestamp.
+- `ReplayClock` uses `performance.now`, frame timestamp deltas and allowed speeds 0.5/1/2/5/10/20/40/80. Speed changes presentation only.

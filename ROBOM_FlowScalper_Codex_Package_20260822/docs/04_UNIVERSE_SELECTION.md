@@ -105,3 +105,11 @@ Expose deterministic codes and Korean descriptions:
 ## 4.9 Symbol aliases and multipliers
 
 Do not assume a symbol's displayed name equals one base token. Contracts such as multiplier-prefixed symbols must use venue metadata for contract size and display. Never infer economic exposure from the name string alone.
+
+## 4.10 Phase 03 deep rotation
+
+- Wide observation remains at least 50 symbols and deep analysis defaults to 20, bounded to 10..30.
+- Deep selection has a 15-minute minimum dwell. A rotation changes at most four symbols and at most 30 percent of the set.
+- User-pinned chart symbols plus open and pending PAPER symbols are protected from demotion.
+- Each selection is appended as an immutable universe snapshot for later audit and replay context.
+- Catalog browsing does not imply deep subscription and cannot bypass strategy, cost, stale-data or risk gates.

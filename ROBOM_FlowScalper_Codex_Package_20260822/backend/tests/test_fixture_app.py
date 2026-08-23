@@ -96,7 +96,8 @@ def test_dashboard_controls_preserve_run_history() -> None:
         }
         assert dashboard["position"]["elapsed_seconds"] == 121
         assert dashboard["status"]["market_data_state"] == "FIXTURE"
-        assert len(dashboard["chart"]["candles"]) >= 20
+        assert dashboard["chart"]["interval"] == "3m"
+        assert len(dashboard["chart"]["candles"]) >= 3
 
         interval_chart = client.post(
             "/api/control/chart",

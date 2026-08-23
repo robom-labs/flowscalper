@@ -98,3 +98,10 @@ uv run pytest backend/tests -q
 - 표시 mode를 바꾸는 UI는 기존 Registry 설정 API를 사용하며 별도 체결 엔진을 만들지 않는다.
 - 차트 지표는 화면 참고용이고 A-F 진입 threshold를 변경하지 않는다.
 - 시작·새 Run은 비동기 operation으로 제어하되 12계좌 위험·복구·원장 경계는 이 문서 1차 계약을 그대로 유지한다.
+
+## 11. 3차 사용자 표현과 종목별 성과
+
+- 사용자 메뉴와 화면에서는 `전략`으로 줄여 표시하고, 내부 Registry·DB·개발문서의 Strategy League 식별자는 호환을 위해 유지한다.
+- 전략 설정은 6개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. A-F threshold와 위험값은 바꾸지 않는다.
+- `전략별 종목 성과`는 BASE/STRESS를 분리하고 실제 완료 PAPER 거래만 집계한다. 30건 미만 조합은 관찰 표본이며 순위에서 제외한다.
+- 포지션 집중 selector는 BASE를 먼저 정렬하지만 모든 계좌는 독립 회계와 최대 5배 위험 상한을 그대로 유지한다.

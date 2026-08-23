@@ -9,6 +9,7 @@ import {
   createChart,
   createSeriesMarkers,
   type IChartApi,
+  type AutoscaleInfoProvider,
   type IPriceLine,
   type ISeriesApi,
   type SeriesMarker,
@@ -31,9 +32,11 @@ export type ChartOverlay = {
   tp1: number
   tp2: number | null
   stop: number
+  initialStop?: number
+  currentStop?: number
 }
 
-type Props = { chart: ChartData; overlay?: ChartOverlay | null; history?: HistoryRow[]; replay?: boolean }
+type Props = { chart: ChartData; overlay?: ChartOverlay | null; history?: HistoryRow[]; replay?: boolean; compact?: boolean }
 type QuotePoint = { time: UTCTimestamp; value: number }
 type LineApi = ISeriesApi<'Line', Time>
 type CandleApi = ISeriesApi<'Candlestick', Time>
@@ -47,7 +50,16 @@ const colors: Record<IndicatorKey, string> = {
 }
 
 const defaultVisible: Record<IndicatorKey, boolean> = {
-  MA5: true, MA10: false, MA20: true, MA60: false, EMA20: false, VWAP: false, BOLLINGER: false, BID: false, ASK: false, MICROPRICE: false, RSI: false, MACD: false,
+  MA5: false, MA10: true, MA20: true, MA60: false, EMA20: false, VWAP: false, BOLLINGER: false, BID: false, ASK: false, MICROPRICE: false, RSI: false, MACD: false,
+}
+
+function initialIndicators() {
+  try {
+    const saved = JSON.parse(globalThis.localStorage?.getItem('robom.market.indicators.v1') ?? '{}') as Partial<Record<IndicatorKey, unknown>>
+    return Object.fromEntries(Object.entries(defaultVisible).map(([key, value]) => [key, typeof saved[key as IndicatorKey] === 'boolean' ? saved[key as IndicatorKey] : value])) as Record<IndicatorKey, boolean>
+  } catch {
+    return defaultVisible
+  }
 }
 
 function quoteSeries(points: ChartData['points'], key: 'bid' | 'ask' | 'microprice') {
@@ -70,8 +82,8 @@ function last<T>(values: T[]) {
   return values.at(-1)
 }
 
-export const PriceChart = memo(function PriceChart({ chart, overlay = null, history = [], replay = false }: Props) {
-  const [visible, setVisible] = useState(defaultVisible)
+export const PriceChart = memo(function PriceChart({ chart, overlay = null, history = [], replay = false, compact = false }: Props) {
+  const [visible, setVisible] = useState(initialIndicators)
   const [showReturn, setShowReturn] = useState(false)
   const [fullWindow, setFullWindow] = useState(false)
   const panelRef = useRef<HTMLElement>(null)
@@ -90,6 +102,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
   const markerSignatureRef = useRef('')
   const tooltipFrameRef = useRef(0)
   const visibleRef = useRef(visible)
+  const studyPanesRef = useRef<Record<'RSI' | 'MACD', number | null>>({ RSI: null, MACD: null })
 
   const candles = useMemo<IndicatorCandle[]>(() => chart.candles.map((candle) => ({ time: candle.time, open: candle.open, high: candle.high, low: candle.low, close: candle.close, volume: candle.volume })).sort((left, right) => left.time - right.time), [chart.candles])
   const candleData = useMemo(() => candles.map((candle) => ({ time: candle.time as UTCTimestamp, open: candle.open, high: candle.high, low: candle.low, close: candle.close })), [candles])
@@ -118,7 +131,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
       timeScale: { borderColor: '#1b3441', timeVisible: true, secondsVisible: true, rightOffset: 3, tickMarkFormatter: formatChartKstTime }, handleScroll: true, handleScale: true,
     })
     const candle = api.addSeries(CandlestickSeries, { upColor: '#64d9be', downColor: '#ff7e87', borderVisible: false, wickUpColor: '#64d9be', wickDownColor: '#ff7e87', priceLineVisible: false }, 0)
-    const volume = api.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false }, 1)
+    const volume = api.addSeries(HistogramSeries, { priceScaleId: 'volume', priceFormat: { type: 'volume' }, priceLineVisible: false, lastValueVisible: false }, 0)
     const addLine = (name: string, color: string, pane = 0, lineWidth: 1 | 2 = 1) => {
       const series = api.addSeries(LineSeries, { color, lineWidth, priceLineVisible: false, lastValueVisible: false }, pane)
       lineRefs.current[name] = series
@@ -131,12 +144,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
     addLine('BID', colors.BID)
     addLine('ASK', colors.ASK)
     const micro = addLine('MICROPRICE', colors.MICROPRICE)
-    addLine('RSI', colors.RSI, 2, 2)
-    addLine('RSI70', '#8b6b42', 2)
-    addLine('RSI30', '#426b8b', 2)
-    addLine('MACD', colors.MACD, 3, 2)
-    addLine('MACD_SIGNAL', '#f1c96d', 3)
-    histogramRefs.current.MACD = api.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, 3)
+    api.panes()[0]?.priceScale('volume').applyOptions({ scaleMargins: { top: 0.78, bottom: 0 } })
     chartApiRef.current = api
     candleRef.current = candle
     volumeRef.current = volume
@@ -183,7 +191,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
       observer.disconnect()
       api.timeScale().unsubscribeVisibleLogicalRangeChange(visibleRangeHandler)
       api.unsubscribeCrosshairMove(crosshairHandler)
-      chartApiRef.current = null; candleRef.current = null; volumeRef.current = null; lineRefs.current = {}; histogramRefs.current = {}; candleMarkersRef.current = null; microMarkersRef.current = null; priceLinesRef.current = {}; previousCandlesRef.current = []; previousSelectionRef.current = ''; markerSignatureRef.current = ''
+      chartApiRef.current = null; candleRef.current = null; volumeRef.current = null; lineRefs.current = {}; histogramRefs.current = {}; studyPanesRef.current = { RSI: null, MACD: null }; candleMarkersRef.current = null; microMarkersRef.current = null; priceLinesRef.current = {}; previousCandlesRef.current = []; previousSelectionRef.current = ''; markerSignatureRef.current = ''
       api.remove()
     }
   }, [hasData])
@@ -206,7 +214,8 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
       const rsiTimes = indicatorData.RSI
       lineRefs.current.RSI70?.setData(rsiTimes.map((point) => ({ time: point.time, value: 70 })))
       lineRefs.current.RSI30?.setData(rsiTimes.map((point) => ({ time: point.time, value: 30 })))
-      api.timeScale().fitContent()
+      if (candleData.length > 120) api.timeScale().setVisibleLogicalRange({ from: candleData.length - 120, to: candleData.length - 1 })
+      else api.timeScale().fitContent()
       markerSignatureRef.current = ''
     } else if (mode === 'UPDATE') {
       const latestCandle = last(candleData); const latestVolume = last(volumeData)
@@ -238,21 +247,87 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
 
   useEffect(() => {
     visibleRef.current = visible
+    const api = chartApiRef.current
+    if (!api) return
+    const addStudy = (study: 'RSI' | 'MACD') => {
+      if (studyPanesRef.current[study] !== null) return
+      const pane = api.addPane(true)
+      const paneIndex = pane.paneIndex()
+      studyPanesRef.current[study] = paneIndex
+      if (study === 'RSI') {
+        lineRefs.current.RSI = api.addSeries(LineSeries, { color: colors.RSI, lineWidth: 2, priceLineVisible: false, lastValueVisible: false }, paneIndex)
+        lineRefs.current.RSI70 = api.addSeries(LineSeries, { color: '#8b6b42', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, paneIndex)
+        lineRefs.current.RSI30 = api.addSeries(LineSeries, { color: '#426b8b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, paneIndex)
+        lineRefs.current.RSI.setData(indicatorData.RSI)
+        lineRefs.current.RSI70.setData(indicatorData.RSI.map((point) => ({ time: point.time, value: 70 })))
+        lineRefs.current.RSI30.setData(indicatorData.RSI.map((point) => ({ time: point.time, value: 30 })))
+        pane.setHeight(110)
+      } else {
+        lineRefs.current.MACD = api.addSeries(LineSeries, { color: colors.MACD, lineWidth: 2, priceLineVisible: false, lastValueVisible: false }, paneIndex)
+        lineRefs.current.MACD_SIGNAL = api.addSeries(LineSeries, { color: '#f1c96d', lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, paneIndex)
+        histogramRefs.current.MACD = api.addSeries(HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, paneIndex)
+        lineRefs.current.MACD.setData(indicatorData.MACD)
+        lineRefs.current.MACD_SIGNAL.setData(indicatorData.MACD_SIGNAL)
+        histogramRefs.current.MACD.setData(indicatorData.MACD_HISTOGRAM)
+        pane.setHeight(120)
+      }
+    }
+    const removeStudy = (study: 'RSI' | 'MACD') => {
+      const series = lineRefs.current[study]
+      if (!series) return
+      const paneIndex = api.panes().findIndex((pane) => pane.getSeries().includes(series))
+      if (paneIndex > 0) api.removePane(paneIndex)
+      if (study === 'RSI') {
+        delete lineRefs.current.RSI; delete lineRefs.current.RSI70; delete lineRefs.current.RSI30
+      } else {
+        delete lineRefs.current.MACD; delete lineRefs.current.MACD_SIGNAL; delete histogramRefs.current.MACD
+      }
+      studyPanesRef.current[study] = null
+      const other: 'RSI' | 'MACD' = study === 'RSI' ? 'MACD' : 'RSI'
+      const otherSeries = lineRefs.current[other]
+      studyPanesRef.current[other] = otherSeries ? api.panes().findIndex((pane) => pane.getSeries().includes(otherSeries)) : null
+    }
+    if (visible.RSI) addStudy('RSI'); else removeStudy('RSI')
+    if (visible.MACD) addStudy('MACD'); else removeStudy('MACD')
     for (const key of ['MA5', 'MA10', 'MA20', 'MA60', 'EMA20', 'VWAP', 'BID', 'ASK', 'MICROPRICE'] as const) lineRefs.current[key]?.applyOptions({ visible: visible[key] })
     for (const key of ['BOLLINGER_MIDDLE', 'BOLLINGER_UPPER', 'BOLLINGER_LOWER']) lineRefs.current[key]?.applyOptions({ visible: visible.BOLLINGER })
-    for (const key of ['RSI', 'RSI70', 'RSI30']) lineRefs.current[key]?.applyOptions({ visible: visible.RSI })
-    for (const key of ['MACD', 'MACD_SIGNAL']) lineRefs.current[key]?.applyOptions({ visible: visible.MACD })
-    histogramRefs.current.MACD?.applyOptions({ visible: visible.MACD })
-    const panes = chartApiRef.current?.panes() ?? []
-    panes[1]?.setHeight(90); panes[2]?.setHeight(visible.RSI ? 110 : 1); panes[3]?.setHeight(visible.MACD ? 120 : 1)
+  }, [indicatorData, visible])
+
+  useEffect(() => {
+    try { globalThis.localStorage?.setItem('robom.market.indicators.v1', JSON.stringify(visible)) } catch { /* 저장이 막힌 브라우저에서는 현재 세션 상태만 유지한다. */ }
   }, [visible])
 
-  const lineValues = overlay ? { entry: overlay.entry, tp1: overlay.tp1, tp2: overlay.tp2, stop: overlay.stop } : { entry: chart.lines.entry, tp1: chart.lines.take_profit, tp2: chart.lines.take_profit_2 ?? null, stop: chart.lines.stop }
+  const lineValues = useMemo(
+    () => overlay ? { entry: overlay.entry, tp1: overlay.tp1, tp2: overlay.tp2, initialStop: overlay.initialStop ?? overlay.stop, currentStop: overlay.currentStop ?? overlay.stop } : { entry: chart.lines.entry, tp1: chart.lines.take_profit, tp2: chart.lines.take_profit_2 ?? null, initialStop: chart.lines.stop, currentStop: chart.lines.stop },
+    [chart.lines.entry, chart.lines.stop, chart.lines.take_profit, chart.lines.take_profit_2, overlay],
+  )
   useEffect(() => {
     const series = candleRef.current ?? lineRefs.current.MICROPRICE
     if (!series) return
-    const definitions = { entry: [lineValues.entry, '진입', '#64d9be'], tp1: [lineValues.tp1, 'TP1', '#69bff8'], tp2: [lineValues.tp2, 'TP2', '#4be0ea'], stop: [lineValues.stop, '손절', '#ff7e87'] } as const
-    for (const [key, [value, title, color]] of Object.entries(definitions)) {
+    const planPrices = Object.values(lineValues).filter((value): value is number => value !== null && Number.isFinite(value))
+    series.applyOptions({
+      autoscaleInfoProvider: ((baseImplementation) => {
+        const base = baseImplementation()
+        if (!base?.priceRange || planPrices.length === 0) return base
+        return {
+          ...base,
+          priceRange: {
+            minValue: Math.min(base.priceRange.minValue, ...planPrices),
+            maxValue: Math.max(base.priceRange.maxValue, ...planPrices),
+          },
+          margins: { above: 16, below: 16 },
+        }
+      }) satisfies AutoscaleInfoProvider,
+    })
+    const separateCurrentStop = lineValues.currentStop !== lineValues.initialStop
+    const definitions = {
+      entry: [lineValues.entry, '진입', '#69bff8', LineStyle.Solid],
+      initialStop: [lineValues.initialStop, '초기 손절', '#ff7e87', LineStyle.Dashed],
+      currentStop: [separateCurrentStop ? lineValues.currentStop : null, '현재 손절', '#f1c96d', LineStyle.Solid],
+      tp1: [lineValues.tp1, 'TP1', '#7bd1ff', LineStyle.Dashed],
+      tp2: [lineValues.tp2, 'TP2', '#64d9be', LineStyle.Dashed],
+    } as const
+    for (const [key, [value, title, color, lineStyle]] of Object.entries(definitions)) {
       const current = priceLinesRef.current[key]
       if (value === null || !Number.isFinite(value)) {
         if (current) current.series.removePriceLine(current.api)
@@ -261,10 +336,10 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
         if (current.value !== value) { current.api.applyOptions({ price: value }); current.value = value }
       } else {
         if (current) current.series.removePriceLine(current.api)
-        priceLinesRef.current[key] = { series, value, api: series.createPriceLine({ price: value, color, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title }) }
+        priceLinesRef.current[key] = { series, value, api: series.createPriceLine({ price: value, color, lineWidth: 1, lineStyle, axisLabelVisible: true, title }) }
       }
     }
-  }, [lineValues.entry, lineValues.stop, lineValues.tp1, lineValues.tp2])
+  }, [lineValues])
 
   useEffect(() => {
     const candleMarkers = candleMarkersRef.current; const microMarkers = microMarkersRef.current
@@ -307,10 +382,8 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
     { label: '하단 지표', items: [['RSI', 'RSI', '최근 상승·하락 힘'], ['MACD', 'MACD', '추세 변화 참고']] },
   ]
   return (
-    <section ref={panelRef} className={`panel chart-panel${fullWindow ? ' chart-full-window' : ''}`} aria-labelledby={replay ? 'replay-chart-title' : 'chart-title'}>
-      <div className="panel-title chart-title-row"><div><p className="section-kicker">{replay ? 'PAST PLAYBACK' : 'PROFESSIONAL PAPER CHART'}</p><h2 id={replay ? 'replay-chart-title' : 'chart-title'}>{chart.symbol} · {chart.interval}</h2></div><div className="chart-title-actions"><span className="fixture-note">{chart.fixture ? '샘플 데이터 · LIVE 아님' : '공개시장 데이터'} · 한국시간</span><button type="button" className="secondary-button" onClick={() => void toggleFullscreen()}>{fullWindow ? '전체화면 닫기' : '전체화면'}</button></div></div>
-      <div className="indicator-controls" aria-label="차트 보조지표 선택">{groups.map((group) => <div className="indicator-group" key={group.label}><span>{group.label}</span>{group.items.map(([key, label, help]) => <button type="button" key={key} className={visible[key] ? 'selected' : ''} aria-pressed={visible[key]} title={help} style={{ '--line-color': colors[key] } as CSSProperties} onClick={() => toggle(key)}>{label}</button>)}</div>)}</div>
-      <p className="indicator-notice">보조지표는 화면 참고용이며 Strategy League 진입기준을 자동 변경하지 않습니다.</p>
+    <section ref={panelRef} className={`panel chart-panel${compact ? ' compact-chart' : ''}${fullWindow ? ' chart-full-window' : ''}`} aria-labelledby={replay ? 'replay-chart-title' : 'chart-title'}>
+      <div className="panel-title chart-title-row"><div>{!compact ? <p className="section-kicker">{replay ? 'PAST PLAYBACK' : '시장 차트'}</p> : null}<h2 id={replay ? 'replay-chart-title' : 'chart-title'}>{chart.symbol} · {chart.interval}</h2></div><div className="chart-title-actions"><span className="fixture-note">{chart.fixture ? '샘플 · LIVE 아님' : '공개시장'} · 한국시간</span><details className="indicator-popover"><summary>지표</summary><div className="indicator-controls" aria-label="차트 보조지표 선택">{groups.map((group) => <div className="indicator-group" key={group.label}><span>{group.label}</span>{group.items.map(([key, label, help]) => <button type="button" key={key} className={visible[key] ? 'selected' : ''} aria-pressed={visible[key]} title={help} style={{ '--line-color': colors[key] } as CSSProperties} onClick={() => toggle(key)}>{label}</button>)}</div>)}</div><p className="indicator-notice">화면 표시만 바뀌며 전략 기준은 바뀌지 않습니다.</p></details><button type="button" className="secondary-button" onClick={() => void toggleFullscreen()}>{fullWindow ? '전체화면 닫기' : '전체화면'}</button></div></div>
       {latestCandle ? <dl className="chart-stats"><div><dt>현재</dt><dd>{latestCandle.close.toLocaleString()}</dd></div><div><dt>시가</dt><dd>{latestCandle.open.toLocaleString()}</dd></div><div><dt>고가</dt><dd>{latestCandle.high.toLocaleString()}</dd></div><div><dt>저가</dt><dd>{latestCandle.low.toLocaleString()}</dd></div><div><dt>거래량</dt><dd>{latestCandle.volume.toLocaleString()}</dd></div></dl> : null}
       <div ref={containerRef} className="chart-wrap" role="img" aria-label={`${chart.symbol} 실제 캔들·거래량·전문 보조지표 PAPER 차트`}>
         {!hasData ? <div className="chart-empty"><b>시장 캔들을 기다리고 있습니다.</b><span>실제 공개시장 데이터가 도착하면 자동으로 표시됩니다.</span></div> : null}
