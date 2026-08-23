@@ -1,4 +1,4 @@
-"""LIVE 피처를 A/B/C/D 전략 문맥으로 변환하되 현재값 이전 이력만 사용한다."""
+"""LIVE 피처를 A/B/C/D/E/F 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
 
 from __future__ import annotations
 
@@ -9,6 +9,11 @@ from decimal import Decimal
 from backend.app.domain.models import Side
 from backend.app.features import FeatureSnapshot
 from backend.app.regime import Regime
+from backend.app.strategies.aggressor_flow import (
+    AggressorFlowContext,
+    AggressorFlowStrategy,
+    aggressor_alignment_ready,
+)
 from backend.app.strategies.base import CandidateDecision, PlanInputs
 from backend.app.strategies.compression_breakout import (
     CompressionBreakoutContext,
@@ -19,6 +24,11 @@ from backend.app.strategies.liquidity_sweep import (
     LiquiditySweepStrategy,
 )
 from backend.app.strategies.ofi_pullback import OfiPullbackContext, OfiPullbackStrategy
+from backend.app.strategies.queue_microprice import (
+    QueueMicropriceContext,
+    QueueMicropriceStrategy,
+    queue_alignment_ready,
+)
 from backend.app.strategies.registry import StrategyRegistry
 from backend.app.strategies.statistics import robust_z, rolling_percentile
 from backend.app.strategies.vwap_exhaustion import (
@@ -43,6 +53,7 @@ class StrategySignalEvaluator:
         self._history: dict[str, deque[FeatureSnapshot]] = defaultdict(
             lambda: deque(maxlen=history_limit)
         )
+        self._confirmation_started_ms: dict[tuple[str, str, Side], int] = {}
 
     def evaluate(
         self,
@@ -189,7 +200,75 @@ class StrategySignalEvaluator:
                 confirmation_ms=500 if ofi_short > 0 else 0,
             )
             return evaluator.evaluate(ofi_context)
+        if isinstance(evaluator, QueueMicropriceStrategy):
+            plan = _momentum_plan(snapshot, side, tick_size)
+            aligned = queue_alignment_ready(side, snapshot, regime)
+            confirmation_ms = self._confirmation_ms(
+                evaluator.strategy_id,
+                snapshot.symbol,
+                side,
+                snapshot.ts_ms,
+                aligned=aligned,
+            )
+            return evaluator.evaluate(
+                QueueMicropriceContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=plan,
+                    confirmation_ms=confirmation_ms,
+                )
+            )
+        if isinstance(evaluator, AggressorFlowStrategy):
+            plan = _momentum_plan(snapshot, side, tick_size)
+            directional_history = [item.signed_notional_3s * direction for item in history]
+            directional_flow_z = robust_z(
+                directional_history,
+                snapshot.signed_notional_3s * direction,
+            )
+            aligned = aggressor_alignment_ready(
+                side,
+                snapshot,
+                regime,
+                directional_flow_z,
+            )
+            confirmation_ms = self._confirmation_ms(
+                evaluator.strategy_id,
+                snapshot.symbol,
+                side,
+                snapshot.ts_ms,
+                aligned=aligned,
+            )
+            return evaluator.evaluate(
+                AggressorFlowContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=plan,
+                    aggressive_signed_notional_robust_z=directional_flow_z,
+                    confirmation_ms=confirmation_ms,
+                )
+            )
         raise TypeError(f"지원하지 않는 전략 evaluator: {type(evaluator).__name__}")
+
+    def _confirmation_ms(
+        self,
+        strategy_id: str,
+        symbol: str,
+        side: Side,
+        timestamp_ms: int,
+        *,
+        aligned: bool,
+    ) -> int:
+        key = (strategy_id, symbol, side)
+        if not aligned:
+            self._confirmation_started_ms.pop(key, None)
+            return 0
+        started = self._confirmation_started_ms.get(key)
+        if started is None or timestamp_ms < started:
+            self._confirmation_started_ms[key] = timestamp_ms
+            return 0
+        return timestamp_ms - started
 
 
 def _plan(snapshot: FeatureSnapshot, side: Side, tick_size: Decimal) -> PlanInputs:
@@ -197,6 +276,35 @@ def _plan(snapshot: FeatureSnapshot, side: Side, tick_size: Decimal) -> PlanInpu
     spread = entry * Decimal(str(snapshot.spread_bps)) / Decimal(10_000)
     noise = max(tick_size * 2, spread * Decimal("1.5"), entry * Decimal("0.0002"))
     risk_distance = max(noise * Decimal("1.2"), entry * Decimal("0.0015"))
+    target_distance = risk_distance * Decimal("3.2")
+    if side is Side.LONG:
+        stop = entry - risk_distance
+        target = entry + target_distance
+    else:
+        stop = entry + risk_distance
+        target = entry - target_distance
+    return PlanInputs(
+        entry=entry,
+        structural_stop=stop,
+        target=target,
+        expected_total_cost_bps=max(
+            Decimal("13"),
+            Decimal(str(snapshot.spread_bps)) + Decimal("12"),
+        ),
+    )
+
+
+def _momentum_plan(
+    snapshot: FeatureSnapshot,
+    side: Side,
+    tick_size: Decimal,
+) -> PlanInputs:
+    """E/F의 3.2R 구조 target이 보수적 비용 gate를 통과하는 stop을 산정한다."""
+
+    entry = Decimal(str(snapshot.mid))
+    spread = entry * Decimal(str(snapshot.spread_bps)) / Decimal(10_000)
+    noise = max(tick_size * 2, spread * Decimal("1.5"), entry * Decimal("0.0002"))
+    risk_distance = max(noise * Decimal("1.2"), entry * Decimal("0.0020"))
     target_distance = risk_distance * Decimal("3.2")
     if side is Side.LONG:
         stop = entry - risk_distance

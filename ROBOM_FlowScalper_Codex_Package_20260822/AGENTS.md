@@ -16,6 +16,9 @@ Build a production-quality **real-market-data / paper-execution-only** crypto sc
 8. No fixed 120-second forced exit. Exit by TP, SL, edge decay, data safety, or emergency stale policy.
 9. Keep data from different venues and experiment Runs separate.
 10. Never claim profitability or safety guarantees.
+11. Keep the Shared Capital Benchmark at one position and each Strategy League account at three different symbols maximum.
+12. Strategy League accounts are `strategy_id:BASE` and `strategy_id:STRESS`; capital, risk, fees, cooldowns, orders and PnL must never cross accounts.
+13. A/B default to `ACTIVE`; C/D/E/F default to `SHADOW`. Every strategy and profile remains PAPER-only.
 
 ## Source of truth
 
@@ -94,6 +97,9 @@ Every strategy change must include:
 - cost-aware rejection tests
 - no-lookahead tests
 - parameter/config documentation
+
+Strategy League changes must additionally test account isolation, three-symbol limits,
+BASE/STRESS cost separation, real event-time confirmation and recovery compatibility.
 
 ## Completion rule
 

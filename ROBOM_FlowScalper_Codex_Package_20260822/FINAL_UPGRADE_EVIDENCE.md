@@ -346,3 +346,22 @@ LaunchAgent PID 51549의 열린 파일을 확인해 현재 활성 원장이 `~/L
 ### 현재 장시간 runtime 재관찰
 
 GitHub 정리 뒤 실행 중인 `run-9b9d508c689d`를 다시 읽었을 때 mode는 `LIVE_SHADOW_PAPER`, 공개시장 상태는 LIVE, 실행은 PAPER, 실제 주문·인증은 false였다. 그러나 처리 지연 p95는 54,760ms였고 `CRITICAL_MARKET_LAG_ENTRY_LOCK`, `PAPER_ENTRIES_PAUSED`가 적용됐다. 이는 안전잠금이 작동했다는 PASS이지 장시간 지연 문제가 해결됐다는 PASS가 아니다. Wave 10의 4분 p95 140ms와 이 현재 장시간 재발을 구분하며 다음 runtime upgrade의 P0로 남긴다.
+
+## 15. Strategy League 1차 백엔드 증거
+
+2026-08-23 기준 전략 A-F, 전략별 BASE/STRESS 12계좌, 다중 포지션·위험·복구 v2를 기존 PAPER 런타임에 통합했다. 시작 HEAD는 `eb7455b11e16a3a2f2e752c4932bb0b1cbcc14a9`였다.
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| 직접 관련 pytest | PASS | 67 passed |
+| `uv run ruff check backend` | PASS | 오류 0 |
+| `uv run mypy` | PASS | 70 source files, 오류 0 |
+| `uv run pytest backend/tests -q` | PASS | 144 passed |
+| `make security-scan` | PASS | 90 source, 위반·비밀 유사 파일·실제 주문 경로 0 |
+| `make repo-hygiene` | PASS | 위반 0 |
+| E/F 500ms·reset·대칭·거부 | PASS | 전용 신호 테스트 포함 |
+| 12계좌·3종목·partial·v1/v2 복구 | PASS | 전용 포트폴리오 테스트 포함 |
+| UI·browser·network·30분·6시간·24시간 soak | NOT_RUN | 1차 백엔드 범위 제외 |
+| Release ZIP | NOT_RUN | 1차 범위에서 금지 |
+
+이 섹션의 PASS는 위 명령을 이번 작업에서 실제로 실행한 결과만 뜻한다. 기존 UI·LIVE·soak 수치를 이번 Strategy League 변경의 재검증 결과로 쓰지 않는다. 실제 주문·private API·API Key·secret·wallet 기능은 추가하지 않았다.

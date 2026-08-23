@@ -14,6 +14,7 @@ from backend.app.features import FeatureSnapshot
 from backend.app.regime import Regime
 from backend.app.risk import RiskManager, RiskSizingInput, RiskState
 from backend.app.strategies.base import CandidateDecision, CandidateStatus
+from backend.app.strategies.registry import ExitStyle
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +41,7 @@ class CandidatePlan:
     symbol: str
     strategy_id: str
     strategy_version: str
+    exit_style: ExitStyle
     direction: Side
     signal_time_ms: int
     expires_at_ms: int
@@ -50,7 +52,9 @@ class CandidatePlan:
     noise_buffer: Decimal
     take_profit_targets: tuple[TakeProfitTarget, ...]
     position_size: Decimal
+    quantity_step: Decimal
     minimum_quantity: Decimal
+    executable_depth_quantity: Decimal
     risk_budget: Decimal
     max_planned_loss: Decimal
     gross_reward_usdt: Decimal
@@ -148,6 +152,7 @@ class CandidatePlanner:
         risk_state: RiskState,
         main_eligible: bool,
         shadow_eligible: bool,
+        exit_style: ExitStyle = ExitStyle.REVERSION_70_30,
         strategy_version: str = "1",
     ) -> PlanBuildResult:
         if decision.status is not CandidateStatus.QUALIFIED:
@@ -187,9 +192,10 @@ class CandidatePlanner:
             return PlanBuildResult(None, ("WORST_ENTRY_REACHES_TARGET",))
 
         targets = self._targets(
-            strategy_id=decision.strategy_id,
+            exit_style=exit_style,
             side=side,
             entry=entry,
+            worst_entry=worst_entry,
             stop=stop,
             final_target=final_target,
             micro_vwap=Decimal(str(snapshot.micro_vwap_10s)),
@@ -271,6 +277,7 @@ class CandidatePlanner:
             symbol=instrument.symbol,
             strategy_id=decision.strategy_id,
             strategy_version=strategy_version,
+            exit_style=exit_style,
             direction=side,
             signal_time_ms=signal_time_ms,
             expires_at_ms=signal_time_ms + self.validity_ms,
@@ -281,7 +288,9 @@ class CandidatePlanner:
             noise_buffer=noise_buffer,
             take_profit_targets=targets,
             position_size=quantity,
+            quantity_step=instrument.quantity_step,
             minimum_quantity=instrument.minimum_quantity,
+            executable_depth_quantity=executable_depth,
             risk_budget=sizing.risk_budget,
             max_planned_loss=sizing.planned_loss,
             gross_reward_usdt=gross_reward,
@@ -298,7 +307,9 @@ class CandidatePlanner:
             plain_korean_explanation=explanation,
             management_policy=(
                 "NO_FIXED_TIME_EXIT",
-                "STATIC_STOP_AFTER_TP1",
+                "FEE_ADJUSTED_BREAKEVEN_AFTER_TP1"
+                if exit_style is ExitStyle.TREND_40_60
+                else "STRUCTURAL_REVERSION_EXIT",
                 "STOP_NEVER_WIDENS",
                 "EXIT_ON_PERSISTENT_EDGE_DECAY",
             ),
@@ -310,38 +321,44 @@ class CandidatePlanner:
     @staticmethod
     def _targets(
         *,
-        strategy_id: str,
+        exit_style: ExitStyle,
         side: Side,
         entry: Decimal,
+        worst_entry: Decimal,
         stop: Decimal,
         final_target: Decimal,
         micro_vwap: Decimal,
         expected_cost_bps: Decimal,
     ) -> tuple[TakeProfitTarget, ...]:
-        risk_distance = abs(entry - stop)
+        risk_distance = abs(worst_entry - stop)
         minimum_reward = entry * expected_cost_bps / Decimal(10_000) * Decimal(2)
-        structural_tp1 = (
-            entry + risk_distance * Decimal("1.5")
-            if side is Side.LONG
-            else entry - risk_distance * Decimal("1.5")
-        )
-        if strategy_id == "VWAP_EXHAUSTION_REVERSION_V1":
+        direction = Decimal(1) if side is Side.LONG else Decimal(-1)
+        if exit_style is ExitStyle.REVERSION_70_30:
+            structural_tp1 = entry + direction * risk_distance * Decimal("1.2")
+            # QUALIFIED strategy decision always carries a structural target.
+            # The 2.2R fallback is reserved for a future target-less policy.
+            structural_tp2 = final_target
             candidate_tp1 = micro_vwap
             valid_micro_vwap = (
-                entry + minimum_reward < candidate_tp1 < final_target
+                entry + minimum_reward < candidate_tp1 < structural_tp2
                 if side is Side.LONG
-                else final_target < candidate_tp1 < entry - minimum_reward
+                else structural_tp2 < candidate_tp1 < entry - minimum_reward
             )
             if valid_micro_vwap:
                 structural_tp1 = candidate_tp1
-        valid_split = (
-            entry + minimum_reward < structural_tp1 < final_target
-            if side is Side.LONG
-            else final_target < structural_tp1 < entry - minimum_reward
-        )
-        if valid_split:
             return (
-                TakeProfitTarget("TP1", structural_tp1, Decimal("0.5")),
-                TakeProfitTarget("TP2", final_target, Decimal("0.5")),
+                TakeProfitTarget("TP1", structural_tp1, Decimal("0.70")),
+                TakeProfitTarget("TP2", structural_tp2, Decimal("0.30")),
             )
-        return (TakeProfitTarget("TP1", final_target, Decimal(1)),)
+        return (
+            TakeProfitTarget(
+                "TP1",
+                entry + direction * risk_distance * Decimal("1.5"),
+                Decimal("0.40"),
+            ),
+            TakeProfitTarget(
+                "TP2",
+                entry + direction * risk_distance * Decimal("3.0"),
+                Decimal("0.60"),
+            ),
+        )

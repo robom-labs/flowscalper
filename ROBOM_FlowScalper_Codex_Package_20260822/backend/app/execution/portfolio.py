@@ -28,7 +28,13 @@ from backend.app.positions import (
     PositionManager,
 )
 from backend.app.regime import Regime
-from backend.app.risk import RiskManager, RiskState
+from backend.app.risk import (
+    STRATEGY_LEAGUE_RISK_LIMITS,
+    RiskManager,
+    RiskSizingInput,
+    RiskState,
+)
+from backend.app.strategies.registry import ExitStyle
 from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 
 
@@ -66,6 +72,7 @@ class ManagedPaperPosition:
     mae_r: Decimal = Decimal(0)
     forced_exit_reason: ExitReason | None = None
     forced_exit_label: str | None = None
+    edge_decay_evaluations: int = 0
 
     def next_target(self) -> TakeProfitTarget | None:
         for target in self.plan.take_profit_targets:
@@ -79,11 +86,28 @@ class ExecutionAccount:
     account_id: str
     profile: CostProfile
     risk_state: RiskState = field(default_factory=RiskState)
-    pending_entry: PendingEntry | None = None
-    position: ManagedPaperPosition | None = None
+    pending_entries: dict[str, PendingEntry] = field(default_factory=dict)
+    positions: dict[str, ManagedPaperPosition] = field(default_factory=dict)
     completed_trades: list[PaperTrade] = field(default_factory=list)
     entry_orders: list[PaperOrder] = field(default_factory=list)
     exit_orders: list[PaperOrder] = field(default_factory=list)
+    max_positions: int = 1
+
+    @property
+    def pending_entry(self) -> PendingEntry | None:
+        """main 단일 계좌의 기존 읽기 계약만 유지한다."""
+
+        if self.max_positions != 1:
+            raise AttributeError("Strategy League 계좌는 pending_entries를 사용해야 합니다.")
+        return next(iter(self.pending_entries.values()), None)
+
+    @property
+    def position(self) -> ManagedPaperPosition | None:
+        """main 단일 계좌의 기존 읽기 계약만 유지한다."""
+
+        if self.max_positions != 1:
+            raise AttributeError("Strategy League 계좌는 positions를 사용해야 합니다.")
+        return next(iter(self.positions.values()), None)
 
 
 class PaperPortfolioEngine:
@@ -97,21 +121,30 @@ class PaperPortfolioEngine:
         run_id: str,
         strategy_ids: tuple[str, ...],
         shadow_ledger: ShadowLedger,
+        venue: Venue | None = None,
         execution_engine: PaperExecutionEngine | None = None,
         risk_manager: RiskManager | None = None,
         cost_model: CostModel | None = None,
         position_manager: PositionManager | None = None,
     ) -> None:
         self.run_id = run_id
+        self.venue = venue
         self.shadow_ledger = shadow_ledger
         self.execution_engine = execution_engine or PaperExecutionEngine()
         self.risk_manager = risk_manager or RiskManager()
+        self.league_risk_manager = RiskManager(STRATEGY_LEAGUE_RISK_LIMITS)
         self.cost_model = cost_model or self.execution_engine.cost_model
         self.position_manager = position_manager or PositionManager()
-        self.main = ExecutionAccount(self.MAIN_ACCOUNT_ID, CostProfile.BASE)
+        self.main = ExecutionAccount(
+            self.MAIN_ACCOUNT_ID,
+            CostProfile.BASE,
+            max_positions=1,
+        )
         self.shadows = {
             self._shadow_account_id(strategy_id, profile): ExecutionAccount(
-                self._shadow_account_id(strategy_id, profile), profile
+                self._shadow_account_id(strategy_id, profile),
+                profile,
+                max_positions=3,
             )
             for strategy_id in strategy_ids
             for profile in CostProfile
@@ -126,21 +159,50 @@ class PaperPortfolioEngine:
     def offer(self, plans: tuple[CandidatePlan, ...], *, entries_paused: bool) -> None:
         """현재 호가에서 체결하지 않고 다음 유효 호가까지 pending으로 둔다."""
 
-        valid = tuple(plan for plan in plans if plan.run_id == self.run_id)
-        if not entries_paused and self._account_available(self.main):
+        valid = tuple(
+            plan
+            for plan in plans
+            if plan.run_id == self.run_id
+            and (self.venue is None or plan.venue is self.venue)
+        )
+        if entries_paused:
+            if valid:
+                self._audit(
+                    "SYSTEM_ENTRY_PAUSED",
+                    sorted(valid, key=CandidatePlan.arbitration_key)[0],
+                )
+            return
+        if self._account_available(self.main):
+            selected: CandidatePlan | None = None
             eligible = sorted(
                 (plan for plan in valid if plan.main_eligible),
                 key=CandidatePlan.arbitration_key,
             )
             if eligible:
-                selected = eligible[0]
+                selected = self._plan_for_account(eligible[0], self.main)
+                if selected is None:
+                    self._audit("MAIN_SIZING_REJECTED", eligible[0])
+                    selected = None
+                if selected is None:
+                    eligible = []
+            if eligible and selected is not None:
                 rejections = self.risk_manager.entry_rejections(
                     self.main.risk_state,
                     f"{selected.symbol}:{selected.strategy_id}",
                     selected.signal_time_ms,
                 )
+                rejections += self.risk_manager.pending_rejections(
+                    self.main.risk_state,
+                    planned_risk=selected.max_planned_loss,
+                    planned_notional=selected.position_size * selected.worst_allowed_entry,
+                )
                 if not rejections:
-                    self.main.pending_entry = PendingEntry(selected)
+                    self.main.pending_entries[selected.symbol] = PendingEntry(selected)
+                    self.risk_manager.reserve_pending(
+                        self.main.risk_state,
+                        selected.max_planned_loss,
+                        selected.position_size * selected.worst_allowed_entry,
+                    )
                     self._audit(
                         "MAIN_CANDIDATE_SELECTED",
                         selected,
@@ -148,41 +210,67 @@ class PaperPortfolioEngine:
                     )
                 else:
                     self._audit("MAIN_RISK_REJECTED", selected, reason_codes=list(rejections))
-        elif entries_paused and valid:
-            self._audit(
-                "MAIN_ENTRY_PAUSED",
-                sorted(valid, key=CandidatePlan.arbitration_key)[0],
-            )
 
-        by_strategy: dict[str, list[CandidatePlan]] = {}
+        by_strategy_symbol: dict[tuple[str, str], list[CandidatePlan]] = {}
         for plan in valid:
             if plan.shadow_eligible:
-                by_strategy.setdefault(plan.strategy_id, []).append(plan)
-        for strategy_id, strategy_plans in by_strategy.items():
-            selected = sorted(strategy_plans, key=CandidatePlan.arbitration_key)[0]
+                by_strategy_symbol.setdefault((plan.strategy_id, plan.symbol), []).append(plan)
+        selected_by_strategy: dict[str, list[CandidatePlan]] = {}
+        for (strategy_id, _), strategy_plans in by_strategy_symbol.items():
+            selected_by_strategy.setdefault(strategy_id, []).append(
+                sorted(strategy_plans, key=CandidatePlan.arbitration_key)[0]
+            )
+        for strategy_id, strategy_plans in selected_by_strategy.items():
             for profile in CostProfile:
                 account = self.shadows[self._shadow_account_id(strategy_id, profile)]
-                if not self._account_available(account):
-                    continue
-                rejections = self.risk_manager.entry_rejections(
-                    account.risk_state,
-                    f"{selected.symbol}:{selected.strategy_id}",
-                    selected.signal_time_ms,
-                )
-                if rejections:
+                for source in sorted(strategy_plans, key=CandidatePlan.arbitration_key):
+                    if not self._account_available(account, source.symbol):
+                        event = (
+                            "LEAGUE_DUPLICATE_SYMBOL_REJECTED"
+                            if source.symbol in account.pending_entries
+                            or source.symbol in account.positions
+                            else "LEAGUE_MAX_POSITIONS_REJECTED"
+                        )
+                        self._audit(event, source, account_id=account.account_id)
+                        continue
+                    selected = self._plan_for_account(source, account)
+                    if selected is None:
+                        self._audit(
+                            "LEAGUE_SIZING_REJECTED",
+                            source,
+                            account_id=account.account_id,
+                        )
+                        continue
+                    rejections = self.league_risk_manager.entry_rejections(
+                        account.risk_state,
+                        f"{selected.symbol}:{selected.strategy_id}",
+                        selected.signal_time_ms,
+                    )
+                    rejections += self.league_risk_manager.pending_rejections(
+                        account.risk_state,
+                        planned_risk=selected.max_planned_loss,
+                        planned_notional=selected.position_size
+                        * selected.worst_allowed_entry,
+                    )
+                    if rejections:
+                        self._audit(
+                            "LEAGUE_RISK_REJECTED",
+                            selected,
+                            account_id=account.account_id,
+                            reason_codes=list(rejections),
+                        )
+                        continue
+                    account.pending_entries[selected.symbol] = PendingEntry(selected)
+                    self.league_risk_manager.reserve_pending(
+                        account.risk_state,
+                        selected.max_planned_loss,
+                        selected.position_size * selected.worst_allowed_entry,
+                    )
                     self._audit(
-                        "SHADOW_RISK_REJECTED",
+                        "LEAGUE_CANDIDATE_ARMED",
                         selected,
                         account_id=account.account_id,
-                        reason_codes=list(rejections),
                     )
-                    continue
-                account.pending_entry = PendingEntry(selected)
-                self._audit(
-                    "SHADOW_CANDIDATE_ARMED",
-                    selected,
-                    account_id=account.account_id,
-                )
 
     def on_book(self, book: BookSnapshot) -> None:
         try:
@@ -198,13 +286,12 @@ class PaperPortfolioEngine:
             )
             return
         for account in self.accounts:
-            if account.position is not None and account.position.plan.symbol == book.symbol:
-                self._advance_position(account, book)
-            elif (
-                account.pending_entry is not None
-                and account.pending_entry.plan.symbol == book.symbol
-            ):
-                self._advance_entry(account, book)
+            managed = account.positions.get(book.symbol)
+            if managed is not None:
+                self._advance_position(account, managed, book)
+            pending = account.pending_entries.get(book.symbol)
+            if pending is not None:
+                self._advance_entry(account, pending, book)
 
     def request_main_exit(self, *, now_ms: int, reason: ExitReason) -> bool:
         managed = self.main.position
@@ -238,8 +325,8 @@ class PaperPortfolioEngine:
         """고정시간 대신 실제 근거·흐름·유동성 건강으로 종료를 결정한다."""
 
         for account in self.accounts:
-            managed = account.position
-            if managed is None or managed.plan.symbol != snapshot.symbol:
+            managed = account.positions.get(snapshot.symbol)
+            if managed is None:
                 continue
             plan = managed.plan
             direction = Decimal(1) if plan.direction is Side.LONG else Decimal(-1)
@@ -261,6 +348,32 @@ class PaperPortfolioEngine:
             flow_aligned = snapshot.ofi_3s * float(direction)
             trade_aligned = snapshot.trade_imbalance_3s * float(direction)
             micro_aligned = (Decimal(str(snapshot.microprice)) - mark) * direction
+            runner_active = managed.target_remaining.get("TP1", Decimal(0)) == 0
+            if plan.exit_style is ExitStyle.TREND_40_60 and runner_active:
+                trend_broken = (
+                    regime is not plan.regime
+                    and flow_aligned <= 0
+                    and micro_aligned < 0
+                )
+                managed.edge_decay_evaluations = (
+                    managed.edge_decay_evaluations + 1 if trend_broken else 0
+                )
+                if managed.edge_decay_evaluations >= 2 and managed.pending_exit is None:
+                    managed.forced_exit_reason = ExitReason.EDGE_DECAY
+                    managed.forced_exit_label = "EDGE_DECAY"
+                    managed.pending_exit = PendingExit(
+                        reason=ExitReason.EDGE_DECAY,
+                        label="EDGE_DECAY",
+                        requested_quantity=managed.remaining_quantity,
+                        trigger_reference_price=mark,
+                        trigger_ts_ms=now_ms,
+                    )
+                    self._audit(
+                        "TREND_EDGE_DECAY_EXIT_ARMED",
+                        plan,
+                        account_id=account.account_id,
+                    )
+                    continue
             regime_health = (
                 1.0
                 if regime is plan.regime
@@ -436,12 +549,20 @@ class PaperPortfolioEngine:
             return "ENTRY_PENDING"
         return "SCANNING"
 
-    def recovery_state(self) -> dict[str, object]:
+    def recovery_state(
+        self,
+        *,
+        registry_settings: Sequence[Mapping[str, object]] = (),
+        snapshot_ts_ms: int | None = None,
+    ) -> dict[str, object]:
         """main·shadow 실행계좌와 shadow 회계를 checksum 가능한 JSON 값으로 만든다."""
 
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "run_id": self.run_id,
+            "venue": self.venue.value if self.venue is not None else None,
+            "snapshot_ts_ms": snapshot_ts_ms,
+            "strategy_registry": [dict(row) for row in registry_settings],
             "accounts": [
                 _execution_account_payload(account)
                 for account in sorted(self.accounts, key=lambda item: item.account_id)
@@ -452,10 +573,18 @@ class PaperPortfolioEngine:
     def restore_state(self, payload: Mapping[str, object]) -> None:
         """현재 Run·Registry와 정확히 일치하는 검증 snapshot만 복구한다."""
 
-        if int(str(payload.get("schema_version", 0))) != 1:
+        schema_version = int(str(payload.get("schema_version", 0)))
+        if schema_version not in {1, 2}:
             raise ValueError("지원하지 않는 PAPER 복구 snapshot 버전입니다.")
         if str(payload.get("run_id")) != self.run_id:
             raise ValueError("다른 Run의 PAPER 상태를 복구할 수 없습니다.")
+        payload_venue = payload.get("venue")
+        if (
+            payload_venue is not None
+            and self.venue is not None
+            and Venue(str(payload_venue)) is not self.venue
+        ):
+            raise ValueError("다른 거래소의 PAPER 상태를 복구할 수 없습니다.")
         account_rows = payload.get("accounts")
         if not isinstance(account_rows, list):
             raise ValueError("PAPER 복구 snapshot에 accounts가 없습니다.")
@@ -464,17 +593,23 @@ class PaperPortfolioEngine:
         for value in account_rows:
             if not isinstance(value, Mapping):
                 raise ValueError("PAPER 복구 계좌 형식이 잘못됐습니다.")
-            account_id = str(value.get("account_id"))
+            raw_account_id = str(value.get("account_id"))
+            account_id = raw_account_id.removeprefix("SHADOW:")
             if account_id in seen or account_id not in expected:
                 raise ValueError(f"PAPER 복구 계좌가 중복되거나 미등록입니다: {account_id}")
             seen.add(account_id)
             _restore_execution_account(expected[account_id], value, run_id=self.run_id)
-        if seen != set(expected):
+        if schema_version == 2 and seen != set(expected):
             raise ValueError("PAPER 복구 snapshot 계좌 집합이 Strategy Registry와 다릅니다.")
+        if self.MAIN_ACCOUNT_ID not in seen:
+            raise ValueError("PAPER 복구 snapshot에 main 계좌가 없습니다.")
         shadow_payload = payload.get("shadow_ledger")
         if not isinstance(shadow_payload, Mapping):
             raise ValueError("PAPER 복구 snapshot에 shadow 원장이 없습니다.")
-        self.shadow_ledger.restore_state(shadow_payload)
+        self.shadow_ledger.restore_state(
+            shadow_payload,
+            allow_missing=schema_version == 1,
+        )
         self.audit_events = []
         self._new_main_trades = []
 
@@ -491,7 +626,7 @@ class PaperPortfolioEngine:
             self.main.position is not None
             and self.main.position.protected.trade_id in closed_ids
         ):
-            self.main.position = None
+            self.main.positions.clear()
         self.main.completed_trades = trades
         risk = self.main.risk_state
         realized = sum((trade.net_pnl_usdt for trade in trades), start=Decimal(0))
@@ -506,6 +641,35 @@ class PaperPortfolioEngine:
         risk.realized_week = realized
         risk.daily_trade_count = len(trades) + int(self.main.position is not None)
         risk.open_positions = int(self.main.position is not None)
+        risk.open_planned_risk = sum(
+            (
+                position.plan.max_planned_loss
+                * position.original_quantity
+                / position.plan.position_size
+                for position in self.main.positions.values()
+            ),
+            start=Decimal(0),
+        )
+        risk.pending_planned_risk = sum(
+            (pending.plan.max_planned_loss for pending in self.main.pending_entries.values()),
+            start=Decimal(0),
+        )
+        risk.gross_notional = sum(
+            (position.protected.entry_fill.notional for position in self.main.positions.values()),
+            start=Decimal(0),
+        )
+        risk.pending_notional = sum(
+            (
+                pending.plan.position_size * pending.plan.worst_allowed_entry
+                for pending in self.main.pending_entries.values()
+            ),
+            start=Decimal(0),
+        )
+        if risk.current_equity > 0:
+            risk.maximum_effective_leverage = max(
+                risk.maximum_effective_leverage,
+                risk.gross_notional / risk.current_equity,
+            )
         risk.global_consecutive_losses = _trailing_losses(trades)
 
     def shadow_rows(self) -> list[dict[str, object]]:
@@ -515,25 +679,162 @@ class PaperPortfolioEngine:
                 str(row["strategy_id"]), CostProfile(str(row["profile"]))
             )
             execution = self.shadows[account_id]
-            row["pending_candidate"] = (
-                execution.pending_entry.plan.candidate_id
-                if execution.pending_entry is not None
-                else None
+            row["pending_candidate"] = next(
+                (
+                    pending.plan.candidate_id
+                    for pending in execution.pending_entries.values()
+                ),
+                None,
             )
-            row["execution_open_position"] = (
-                execution.position.protected.trade_id
-                if execution.position is not None
-                else None
+            row["pending_entries"] = len(execution.pending_entries)
+            row["execution_open_position"] = next(
+                (
+                    position.protected.trade_id
+                    for position in execution.positions.values()
+                ),
+                None,
+            )
+            row["open_positions"] = len(execution.positions)
+        return rows
+
+    def league_account_rows(
+        self,
+        books: Mapping[str, BookSnapshot] | None = None,
+    ) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        for account in self.shadows.values():
+            strategy_id = account.account_id.rsplit(":", 1)[0]
+            shadow_account = self.shadow_ledger.account(strategy_id, account.profile)
+            trades = account.completed_trades
+            unrealized = Decimal(0)
+            fees = sum((trade.fees_usdt for trade in trades), start=Decimal(0))
+            slippage = sum((trade.slippage_usdt for trade in trades), start=Decimal(0))
+            for position in account.positions.values():
+                current = self._current_pnl(
+                    position,
+                    books.get(position.plan.symbol) if books is not None else None,
+                )
+                unrealized += current["net"]
+                fees += current["fees"]
+                slippage += current["slippage"]
+            realized = sum((trade.net_pnl_usdt for trade in trades), start=Decimal(0))
+            wins = sum(trade.net_pnl_usdt > 0 for trade in trades)
+            losses = sum(trade.net_pnl_usdt < 0 for trade in trades)
+            rows.append(
+                {
+                    "account_id": account.account_id,
+                    "strategy_id": strategy_id,
+                    "profile": account.profile.value,
+                    "starting_equity_usdt": str(account.risk_state.starting_equity),
+                    "current_equity_usdt": str(account.risk_state.current_equity + unrealized),
+                    "realized_pnl_usdt": str(realized),
+                    "unrealized_pnl_usdt": str(unrealized),
+                    "fees_usdt": str(fees),
+                    "slippage_usdt": str(slippage),
+                    "trade_count": len(trades),
+                    "wins": wins,
+                    "losses": losses,
+                    "win_rate": str(Decimal(wins) / len(trades)) if trades else None,
+                    "open_positions": len(account.positions),
+                    "pending_entries": len(account.pending_entries),
+                    "gross_notional_usdt": str(account.risk_state.gross_notional),
+                    "effective_leverage": str(
+                        account.risk_state.gross_notional
+                        / account.risk_state.current_equity
+                    )
+                    if account.risk_state.current_equity > 0
+                    else "0",
+                    "maximum_effective_leverage": str(
+                        account.risk_state.maximum_effective_leverage
+                    ),
+                    "maximum_drawdown_usdt": str(
+                        shadow_account.maximum_drawdown_usdt
+                    ),
+                    "paused": account.risk_state.paused,
+                    "faulted": account.risk_state.faulted,
+                }
             )
         return rows
 
-    def _advance_entry(self, account: ExecutionAccount, book: BookSnapshot) -> None:
-        pending = account.pending_entry
-        if pending is None:
-            return
+    def league_position_rows(
+        self,
+        books: Mapping[str, BookSnapshot] | None = None,
+    ) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        for account in self.shadows.values():
+            for managed in account.positions.values():
+                plan = managed.plan
+                current = self._current_pnl(
+                    managed,
+                    books.get(plan.symbol) if books is not None else None,
+                )
+                entry = managed.protected.entry_fill.average_price
+                notional = entry * managed.remaining_quantity
+                current_book = books.get(plan.symbol) if books is not None else None
+                mark = entry
+                if current_book is not None:
+                    try:
+                        current_book.validate()
+                    except ValueError:
+                        current_book = None
+                if current_book is not None:
+                    mark = (
+                        current_book.bids[0][0]
+                        if plan.direction is Side.LONG
+                        else current_book.asks[0][0]
+                    )
+                rows.append(
+                    {
+                        "account_id": account.account_id,
+                        "strategy_id": plan.strategy_id,
+                        "profile": account.profile.value,
+                        "symbol": plan.symbol,
+                        "side": plan.direction.value,
+                        "actual_entry": str(entry),
+                        "current_mark": str(mark),
+                        "current_stop": str(managed.protected.current_stop),
+                        "TP1": str(plan.take_profit_targets[0].price),
+                        "TP2": str(plan.take_profit_targets[1].price),
+                        "original_quantity": str(managed.original_quantity),
+                        "remaining_quantity": str(managed.remaining_quantity),
+                        "notional": str(notional),
+                        "effective_leverage": str(
+                            notional / account.risk_state.current_equity
+                        )
+                        if account.risk_state.current_equity > 0
+                        else "0",
+                        "gross_pnl": str(current["gross"]),
+                        "fees": str(current["fees"] + current["estimated_exit_fee"]),
+                        "slippage": str(current["slippage"]),
+                        "net_pnl": str(current["net"]),
+                        "elapsed_seconds": max(
+                            0,
+                            (
+                                books[plan.symbol].ts_ms
+                                if books is not None and plan.symbol in books
+                                else plan.signal_time_ms
+                            )
+                            - managed.protected.opened_ts_ms,
+                        )
+                        // 1_000,
+                    }
+                )
+        return rows
+
+    def _advance_entry(
+        self,
+        account: ExecutionAccount,
+        pending: PendingEntry,
+        book: BookSnapshot,
+    ) -> None:
         plan = pending.plan
         if book.ts_ms > plan.expires_at_ms:
-            account.pending_entry = None
+            account.pending_entries.pop(plan.symbol, None)
+            self._risk_manager_for(account).release_pending(
+                account.risk_state,
+                plan.max_planned_loss,
+                plan.position_size * plan.worst_allowed_entry,
+            )
             self._audit("ENTRY_EXPIRED", plan, account_id=account.account_id)
             return
         arrival_ts = plan.signal_time_ms + self.cost_model.arrival_latency_ms(account.profile)
@@ -541,7 +842,10 @@ class PaperPortfolioEngine:
             return
         try:
             result = self.execution_engine.open_position(
-                trade_id=f"paper-{plan.candidate_id}-{account.profile.value.lower()}",
+                trade_id=(
+                    f"paper-{plan.candidate_id}-"
+                    f"{account.account_id.lower().replace(':', '-')}"
+                ),
                 run_id=plan.run_id,
                 venue=plan.venue,
                 symbol=plan.symbol,
@@ -557,7 +861,12 @@ class PaperPortfolioEngine:
                 profile=account.profile,
             )
         except (PaperExecutionError, ValueError) as error:
-            account.pending_entry = None
+            account.pending_entries.pop(plan.symbol, None)
+            self._risk_manager_for(account).release_pending(
+                account.risk_state,
+                plan.max_planned_loss,
+                plan.position_size * plan.worst_allowed_entry,
+            )
             self._audit(
                 "ENTRY_REJECTED",
                 plan,
@@ -566,7 +875,12 @@ class PaperPortfolioEngine:
             )
             return
         account.entry_orders.append(result.entry_order)
-        account.pending_entry = None
+        account.pending_entries.pop(plan.symbol, None)
+        self._risk_manager_for(account).release_pending(
+            account.risk_state,
+            plan.max_planned_loss,
+            plan.position_size * plan.worst_allowed_entry,
+        )
         if result.position is None:
             self._audit(
                 "ENTRY_UNFILLED",
@@ -580,14 +894,25 @@ class PaperPortfolioEngine:
             result.position.quantity,
             plan.minimum_quantity,
         )
-        account.position = ManagedPaperPosition(
+        managed = ManagedPaperPosition(
             plan=plan,
             protected=result.position,
             original_quantity=result.position.quantity,
             remaining_quantity=result.position.quantity,
             target_remaining=target_remaining,
         )
-        self.risk_manager.record_open(account.risk_state)
+        account.positions[plan.symbol] = managed
+        actual_planned_risk = (
+            plan.max_planned_loss * result.position.quantity / plan.position_size
+        )
+        actual_notional = result.position.entry_fill.notional
+        effective_leverage = actual_notional / account.risk_state.current_equity
+        self._risk_manager_for(account).record_open(
+            account.risk_state,
+            planned_risk=actual_planned_risk,
+            notional=actual_notional,
+            effective_leverage=effective_leverage,
+        )
         if account is not self.main:
             strategy_id = plan.strategy_id
             self.shadow_ledger.open(
@@ -613,10 +938,12 @@ class PaperPortfolioEngine:
             partial=result.position.quantity != plan.position_size,
         )
 
-    def _advance_position(self, account: ExecutionAccount, book: BookSnapshot) -> None:
-        managed = account.position
-        if managed is None:
-            return
+    def _advance_position(
+        self,
+        account: ExecutionAccount,
+        managed: ManagedPaperPosition,
+        book: BookSnapshot,
+    ) -> None:
         if managed.pending_exit is not None:
             latency = self._exit_latency_ms(managed.pending_exit.reason, account.profile)
             if book.ts_ms >= managed.pending_exit.trigger_ts_ms + latency:
@@ -747,6 +1074,32 @@ class PaperPortfolioEngine:
             managed.target_remaining[pending.label] = max(
                 Decimal(0), managed.target_remaining[pending.label] - fill.quantity
             )
+        if (
+            pending.label == "TP1"
+            and managed.plan.exit_style is ExitStyle.TREND_40_60
+            and managed.remaining_quantity > 0
+        ):
+            fee_bps = self.cost_model.fee_bps(
+                entry=True,
+                profile=account.profile,
+            ) + self.cost_model.fee_bps(entry=False, profile=account.profile)
+            adjustment = (
+                managed.protected.entry_fill.average_price * fee_bps / Decimal(10_000)
+            )
+            proposed_stop = (
+                managed.protected.entry_fill.average_price + adjustment
+                if managed.plan.direction is Side.LONG
+                else managed.protected.entry_fill.average_price - adjustment
+            )
+            proposed_stop = (
+                max(managed.protected.current_stop, proposed_stop)
+                if managed.plan.direction is Side.LONG
+                else min(managed.protected.current_stop, proposed_stop)
+            )
+            managed.protected = self.position_manager.tighten_stop(
+                managed.protected,
+                proposed_stop,
+            )
         self._audit(
             "EXIT_FILL",
             managed.plan,
@@ -760,11 +1113,17 @@ class PaperPortfolioEngine:
             return
         trade = self._finalize_trade(managed, pending.reason, book.ts_ms)
         account.completed_trades.append(trade)
-        self.risk_manager.record_close(
+        self._risk_manager_for(account).record_close(
             account.risk_state,
             trade.net_pnl_usdt,
             key=f"{managed.plan.symbol}:{managed.plan.strategy_id}",
             now_ms=book.ts_ms,
+            planned_risk=(
+                managed.plan.max_planned_loss
+                * managed.original_quantity
+                / managed.plan.position_size
+            ),
+            notional=managed.protected.entry_fill.notional,
         )
         if account is self.main:
             self._new_main_trades.append(trade)
@@ -778,6 +1137,7 @@ class PaperPortfolioEngine:
             self.shadow_ledger.close(
                 managed.plan.strategy_id,
                 account.profile,
+                shadow_trade_id=managed.protected.trade_id,
                 exit_price=exit_notional / exit_quantity,
                 exit_fee_usdt=sum(
                     (leg.fill.fee_usdt for leg in managed.exit_legs), start=Decimal(0)
@@ -788,7 +1148,7 @@ class PaperPortfolioEngine:
                 closed_ts_ms=book.ts_ms,
                 exit_reason=pending.label,
             )
-        account.position = None
+        account.positions.pop(managed.plan.symbol, None)
 
     def _finalize_trade(
         self,
@@ -914,12 +1274,101 @@ class PaperPortfolioEngine:
         }
 
     @staticmethod
-    def _account_available(account: ExecutionAccount) -> bool:
-        return account.pending_entry is None and account.position is None
+    def _account_available(
+        account: ExecutionAccount,
+        symbol: str | None = None,
+    ) -> bool:
+        if symbol is not None and (
+            symbol in account.pending_entries or symbol in account.positions
+        ):
+            return False
+        return len(account.pending_entries) + len(account.positions) < account.max_positions
 
     @staticmethod
     def _shadow_account_id(strategy_id: str, profile: CostProfile) -> str:
-        return f"SHADOW:{strategy_id}:{profile.value}"
+        return f"{strategy_id}:{profile.value}"
+
+    def _risk_manager_for(self, account: ExecutionAccount) -> RiskManager:
+        return self.risk_manager if account is self.main else self.league_risk_manager
+
+    def _plan_for_account(
+        self,
+        plan: CandidatePlan,
+        account: ExecutionAccount,
+    ) -> CandidatePlan | None:
+        manager = self._risk_manager_for(account)
+        slippage_multiplier = Decimal(2) if account.profile is CostProfile.STRESS else Decimal(1)
+        entry_fee_per_unit = (
+            plan.worst_allowed_entry
+            * self.cost_model.fee_bps(entry=True, profile=account.profile)
+            / Decimal(10_000)
+        )
+        stop_fee_per_unit = (
+            plan.initial_stop
+            * self.cost_model.fee_bps(entry=False, profile=account.profile)
+            / Decimal(10_000)
+        )
+        sizing = manager.size(
+            RiskSizingInput(
+                equity=account.risk_state.current_equity,
+                entry_price=plan.worst_allowed_entry,
+                stop_price=plan.initial_stop,
+                entry_fee_per_unit=entry_fee_per_unit,
+                stop_fee_per_unit=stop_fee_per_unit,
+                p95_exit_slippage_per_unit=plan.noise_buffer * slippage_multiplier,
+                quantity_step=plan.quantity_step,
+                minimum_quantity=plan.minimum_quantity,
+                executable_depth_quantity=plan.executable_depth_quantity,
+            )
+        )
+        if sizing.quantity is None or sizing.planned_loss is None:
+            return None
+        quantity = sizing.quantity
+        weighted_reward_per_unit = sum(
+            (
+                abs(target.price - plan.planned_entry) * target.quantity_fraction
+                for target in plan.take_profit_targets
+            ),
+            start=Decimal(0),
+        )
+        gross_reward = weighted_reward_per_unit * quantity
+        weighted_exit = sum(
+            (target.price * target.quantity_fraction for target in plan.take_profit_targets),
+            start=Decimal(0),
+        )
+        expected_fees = quantity * (
+            entry_fee_per_unit
+            + weighted_exit
+            * self.cost_model.fee_bps(entry=False, profile=account.profile)
+            / Decimal(10_000)
+        )
+        expected_slippage = (
+            quantity * plan.noise_buffer * Decimal("1.5") * slippage_multiplier
+        )
+        net_reward = gross_reward - expected_fees - expected_slippage
+        if net_reward <= 0 or sizing.planned_loss <= 0:
+            return None
+        net_rr = (net_reward / sizing.planned_loss).quantize(Decimal("0.0001"))
+        effective_leverage = (
+            quantity * plan.worst_allowed_entry / account.risk_state.current_equity
+        )
+        if effective_leverage > manager.limits.maximum_gross_notional_fraction:
+            return None
+        return replace(
+            plan,
+            position_size=quantity,
+            risk_budget=sizing.risk_budget,
+            max_planned_loss=sizing.planned_loss,
+            gross_reward_usdt=gross_reward,
+            expected_fees_usdt=expected_fees,
+            expected_slippage_usdt=expected_slippage,
+            net_reward_usdt=net_reward,
+            net_risk_usdt=sizing.planned_loss,
+            net_reward_risk=net_rr,
+            cost_burden=((expected_fees + expected_slippage) / gross_reward).quantize(
+                Decimal("0.0001")
+            ),
+        )
 
     def _audit(self, event: str, plan: CandidatePlan, **payload: object) -> None:
         self.audit_events.append(
@@ -940,13 +1389,16 @@ def _execution_account_payload(account: ExecutionAccount) -> dict[str, object]:
     return {
         "account_id": account.account_id,
         "profile": account.profile.value,
+        "max_positions": account.max_positions,
         "risk_state": _risk_state_payload(account.risk_state),
-        "pending_entry": _candidate_plan_payload(account.pending_entry.plan)
-        if account.pending_entry is not None
-        else None,
-        "position": _managed_position_payload(account.position)
-        if account.position is not None
-        else None,
+        "pending_entries": {
+            symbol: _candidate_plan_payload(pending.plan)
+            for symbol, pending in account.pending_entries.items()
+        },
+        "positions": {
+            symbol: _managed_position_payload(position)
+            for symbol, position in account.positions.items()
+        },
         "completed_trades": [
             _paper_trade_payload(trade) for trade in account.completed_trades
         ],
@@ -967,18 +1419,51 @@ def _restore_execution_account(
     if not isinstance(risk_payload, Mapping):
         raise ValueError("복구 계좌에 위험 상태가 없습니다.")
     account.risk_state = _risk_state_from_payload(risk_payload)
-    pending = payload.get("pending_entry")
-    account.pending_entry = (
-        PendingEntry(_candidate_plan_from_payload(pending))
-        if isinstance(pending, Mapping)
-        else None
-    )
-    position = payload.get("position")
-    account.position = (
-        _managed_position_from_payload(position)
-        if isinstance(position, Mapping)
-        else None
-    )
+    max_positions = int(str(payload.get("max_positions", account.max_positions)))
+    if max_positions != account.max_positions:
+        raise ValueError("복구 계좌의 최대 포지션 계약이 다릅니다.")
+    pending_rows = payload.get("pending_entries")
+    if isinstance(pending_rows, Mapping):
+        account.pending_entries = {
+            str(symbol): PendingEntry(_candidate_plan_from_payload(value))
+            for symbol, value in pending_rows.items()
+            if isinstance(value, Mapping)
+        }
+        if len(account.pending_entries) != len(pending_rows):
+            raise ValueError("복구 대기 진입 map 형식이 잘못됐습니다.")
+    else:
+        pending = payload.get("pending_entry")
+        restored_pending = (
+            PendingEntry(_candidate_plan_from_payload(pending))
+            if isinstance(pending, Mapping)
+            else None
+        )
+        account.pending_entries = (
+            {restored_pending.plan.symbol: restored_pending}
+            if restored_pending is not None
+            else {}
+        )
+    position_rows = payload.get("positions")
+    if isinstance(position_rows, Mapping):
+        account.positions = {
+            str(symbol): _managed_position_from_payload(value)
+            for symbol, value in position_rows.items()
+            if isinstance(value, Mapping)
+        }
+        if len(account.positions) != len(position_rows):
+            raise ValueError("복구 포지션 map 형식이 잘못됐습니다.")
+    else:
+        position = payload.get("position")
+        restored_position = (
+            _managed_position_from_payload(position)
+            if isinstance(position, Mapping)
+            else None
+        )
+        account.positions = (
+            {restored_position.plan.symbol: restored_position}
+            if restored_position is not None
+            else {}
+        )
     completed = payload.get("completed_trades")
     entries = payload.get("entry_orders")
     exits = payload.get("exit_orders")
@@ -1006,18 +1491,59 @@ def _restore_execution_account(
     ):
         raise ValueError("복구 계좌의 거래·주문 행 형식이 잘못됐습니다.")
     plans = [
-        account.pending_entry.plan if account.pending_entry is not None else None,
-        account.position.plan if account.position is not None else None,
+        *(pending.plan for pending in account.pending_entries.values()),
+        *(position.plan for position in account.positions.values()),
     ]
-    if any(plan is not None and plan.run_id != run_id for plan in plans):
+    if any(plan.run_id != run_id for plan in plans):
         raise ValueError("복구 계좌에 다른 Run의 계획이 포함됐습니다.")
     if any(trade.run_id != run_id for trade in account.completed_trades):
         raise ValueError("복구 계좌에 다른 Run의 거래가 포함됐습니다.")
-    expected_open = int(account.position is not None)
+    if "open_planned_risk" not in risk_payload:
+        account.risk_state.open_planned_risk = sum(
+            (
+                position.plan.max_planned_loss
+                * position.original_quantity
+                / position.plan.position_size
+                for position in account.positions.values()
+            ),
+            start=Decimal(0),
+        )
+    if "pending_planned_risk" not in risk_payload:
+        account.risk_state.pending_planned_risk = sum(
+            (pending.plan.max_planned_loss for pending in account.pending_entries.values()),
+            start=Decimal(0),
+        )
+    if "gross_notional" not in risk_payload:
+        account.risk_state.gross_notional = sum(
+            (
+                position.protected.entry_fill.notional
+                for position in account.positions.values()
+            ),
+            start=Decimal(0),
+        )
+    if "pending_notional" not in risk_payload:
+        account.risk_state.pending_notional = sum(
+            (
+                pending.plan.position_size * pending.plan.worst_allowed_entry
+                for pending in account.pending_entries.values()
+            ),
+            start=Decimal(0),
+        )
+    if "maximum_effective_leverage" not in risk_payload:
+        account.risk_state.maximum_effective_leverage = (
+            account.risk_state.gross_notional / account.risk_state.current_equity
+            if account.risk_state.current_equity > 0
+            else Decimal(0)
+        )
+    expected_open = len(account.positions)
     if account.risk_state.open_positions != expected_open:
         raise ValueError("복구 계좌의 포지션 수와 위험 상태가 일치하지 않습니다.")
-    if account.pending_entry is not None and account.position is not None:
-        raise ValueError("복구 계좌가 진입 대기와 열린 포지션을 동시에 가질 수 없습니다.")
+    if len(account.positions) > account.max_positions:
+        raise ValueError("복구 계좌의 포지션 수가 상한을 넘습니다.")
+    if len(account.positions) + len(account.pending_entries) > account.max_positions:
+        raise ValueError("복구 계좌의 포지션·대기 진입 합이 상한을 넘습니다.")
+    if set(account.pending_entries) & set(account.positions):
+        raise ValueError("동일 종목에 대기 진입과 열린 포지션을 함께 복구할 수 없습니다.")
 
 
 def _risk_state_payload(state: RiskState) -> dict[str, object]:
@@ -1029,6 +1555,11 @@ def _risk_state_payload(state: RiskState) -> dict[str, object]:
         "realized_week": str(state.realized_week),
         "daily_trade_count": state.daily_trade_count,
         "open_positions": state.open_positions,
+        "open_planned_risk": str(state.open_planned_risk),
+        "pending_planned_risk": str(state.pending_planned_risk),
+        "gross_notional": str(state.gross_notional),
+        "pending_notional": str(state.pending_notional),
+        "maximum_effective_leverage": str(state.maximum_effective_leverage),
         "global_consecutive_losses": state.global_consecutive_losses,
         "paused": state.paused,
         "faulted": state.faulted,
@@ -1048,6 +1579,13 @@ def _risk_state_from_payload(payload: Mapping[str, object]) -> RiskState:
         realized_week=Decimal(str(payload["realized_week"])),
         daily_trade_count=int(str(payload["daily_trade_count"])),
         open_positions=int(str(payload["open_positions"])),
+        open_planned_risk=Decimal(str(payload.get("open_planned_risk", "0"))),
+        pending_planned_risk=Decimal(str(payload.get("pending_planned_risk", "0"))),
+        gross_notional=Decimal(str(payload.get("gross_notional", "0"))),
+        pending_notional=Decimal(str(payload.get("pending_notional", "0"))),
+        maximum_effective_leverage=Decimal(
+            str(payload.get("maximum_effective_leverage", "0"))
+        ),
         global_consecutive_losses=int(str(payload["global_consecutive_losses"])),
         paused=bool(payload["paused"]),
         faulted=bool(payload["faulted"]),
@@ -1077,6 +1615,7 @@ def _managed_position_payload(position: ManagedPaperPosition) -> dict[str, objec
         if position.forced_exit_reason is not None
         else None,
         "forced_exit_label": position.forced_exit_label,
+        "edge_decay_evaluations": position.edge_decay_evaluations,
     }
 
 
@@ -1123,6 +1662,7 @@ def _managed_position_from_payload(payload: Mapping[str, object]) -> ManagedPape
         forced_exit_label=str(payload["forced_exit_label"])
         if payload.get("forced_exit_label") is not None
         else None,
+        edge_decay_evaluations=int(str(payload.get("edge_decay_evaluations", 0))),
     )
     if len(position.exit_legs) != len(leg_rows):
         raise ValueError("복구 포지션의 exit leg 형식이 잘못됐습니다.")
@@ -1143,6 +1683,7 @@ def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
         "symbol": plan.symbol,
         "strategy_id": plan.strategy_id,
         "strategy_version": plan.strategy_version,
+        "exit_style": plan.exit_style.value,
         "direction": plan.direction.value,
         "signal_time_ms": plan.signal_time_ms,
         "expires_at_ms": plan.expires_at_ms,
@@ -1160,7 +1701,9 @@ def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
             for target in plan.take_profit_targets
         ],
         "position_size": str(plan.position_size),
+        "quantity_step": str(plan.quantity_step),
         "minimum_quantity": str(plan.minimum_quantity),
+        "executable_depth_quantity": str(plan.executable_depth_quantity),
         "risk_budget": str(plan.risk_budget),
         "max_planned_loss": str(plan.max_planned_loss),
         "gross_reward_usdt": str(plan.gross_reward_usdt),
@@ -1204,6 +1747,17 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         symbol=str(payload["symbol"]),
         strategy_id=str(payload["strategy_id"]),
         strategy_version=str(payload["strategy_version"]),
+        exit_style=ExitStyle(
+            str(
+                payload.get(
+                    "exit_style",
+                    ExitStyle.REVERSION_70_30.value
+                    if str(payload["strategy_id"])
+                    in {"LSA_REVERSAL_V1", "VWAP_EXHAUSTION_REVERSION_V1"}
+                    else ExitStyle.TREND_40_60.value,
+                )
+            )
+        ),
         direction=Side(str(payload["direction"])),
         signal_time_ms=int(str(payload["signal_time_ms"])),
         expires_at_ms=int(str(payload["expires_at_ms"])),
@@ -1214,7 +1768,11 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         noise_buffer=Decimal(str(payload["noise_buffer"])),
         take_profit_targets=targets,
         position_size=Decimal(str(payload["position_size"])),
+        quantity_step=Decimal(str(payload.get("quantity_step", payload["minimum_quantity"]))),
         minimum_quantity=Decimal(str(payload["minimum_quantity"])),
+        executable_depth_quantity=Decimal(
+            str(payload.get("executable_depth_quantity", payload["position_size"]))
+        ),
         risk_budget=Decimal(str(payload["risk_budget"])),
         max_planned_loss=Decimal(str(payload["max_planned_loss"])),
         gross_reward_usdt=Decimal(str(payload["gross_reward_usdt"])),

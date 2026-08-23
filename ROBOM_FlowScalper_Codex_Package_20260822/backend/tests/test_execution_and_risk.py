@@ -196,6 +196,15 @@ def test_base_and_stress_portfolios_are_separate() -> None:
     model = CostModel()
     assert model.fee_bps(entry=True, profile=CostProfile.STRESS) == Decimal("12")
     assert model.arrival_latency_ms(CostProfile.STRESS) == 500
+    base = PaperExecutionEngine().open_position(**open_arguments(Side.LONG, "2"))
+    stress_arguments = open_arguments(Side.LONG, "2")
+    stress_arguments["profile"] = CostProfile.STRESS
+    stress_arguments["book_at_arrival"] = book(ts_ms=1_500)
+    stress = PaperExecutionEngine().open_position(**stress_arguments)
+    assert base.entry_order.fill is not None
+    assert stress.entry_order.fill is not None
+    assert stress.entry_order.fill.fee_usdt == base.entry_order.fill.fee_usdt * 2
+    assert stress.entry_order.fill.slippage_usdt == base.entry_order.fill.slippage_usdt * 2
 
 
 def test_stale_exit_faults_closed_without_losing_protection_state() -> None:

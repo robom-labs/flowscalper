@@ -6,7 +6,12 @@
 
 ## 아직 배포하지 않음
 
-- 아직 기록된 변경이 없다.
+- Strategy Registry를 A-F 6개로 확장하고 A/B는 ACTIVE, C/D/E/F는 SHADOW로 시작한다.
+- 전략별 BASE/STRESS 12개 1,000 USDT PAPER 계좌가 서로 다른 종목을 3개까지 독립 체결한다.
+- 위험기반 최대 5배 상한, 1.5% 총 계획위험, 계좌별 손실, drawdown, cooldown 잠금을 추가했다.
+- 호가 쏠림 E와 강한 체결 흐름 F는 실제 event timestamp 500ms 지속성을 확인한다.
+- REVERSION 70/30, TREND 40/60 청산과 schema v2 다중 포지션 복구, v1 읽기 호환을 추가했다.
+- 실제 주문, private API, 인증 경로는 계속 0이다.
 
 ## 0.2.0-paper — 2026-08-23
 

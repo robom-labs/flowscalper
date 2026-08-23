@@ -26,6 +26,8 @@ def build_dashboard_snapshot(
     scanner_rows: tuple[Mapping[str, object], ...] | None = None,
     strategies: tuple[Mapping[str, object], ...] = (),
     shadow_accounts: tuple[Mapping[str, object], ...] = (),
+    league_accounts: tuple[Mapping[str, object], ...] = (),
+    league_positions: tuple[Mapping[str, object], ...] = (),
     current_position: Mapping[str, object] | None = None,
     execution_audit: tuple[Mapping[str, object], ...] = (),
     storage_label: str = "fixture memory",
@@ -184,6 +186,8 @@ def build_dashboard_snapshot(
         "performance": _performance_rows(persisted_trades, fixture_mode=fixture_mode),
         "strategies": [dict(row) for row in strategies],
         "shadow_accounts": [dict(row) for row in shadow_accounts],
+        "league_accounts": [dict(row) for row in league_accounts],
+        "league_positions": [dict(row) for row in league_positions],
         "execution_audit": [dict(row) for row in execution_audit],
         "risk": {
             "risk_per_trade": "0.10%",

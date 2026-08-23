@@ -57,8 +57,16 @@ class ShadowAccount:
     fees_usdt: Decimal = Decimal(0)
     slippage_usdt: Decimal = Decimal(0)
     maximum_drawdown_usdt: Decimal = Decimal(0)
-    open_position: ShadowPosition | None = None
+    open_positions: dict[str, ShadowPosition] = field(default_factory=dict)
     trades: list[ShadowTrade] = field(default_factory=list)
+
+    @property
+    def open_position(self) -> ShadowPosition | None:
+        """기존 단일 포지션 테스트를 위한 읽기 전용 호환 속성이다."""
+
+        if len(self.open_positions) > 1:
+            raise AttributeError("Strategy League 계좌는 open_positions를 사용해야 합니다.")
+        return next(iter(self.open_positions.values()), None)
 
     def snapshot(self) -> dict[str, object]:
         return {
@@ -71,8 +79,10 @@ class ShadowAccount:
             "slippage_usdt": str(self.slippage_usdt),
             "maximum_drawdown_usdt": str(self.maximum_drawdown_usdt),
             "closed_trades": len(self.trades),
+            "account_id": f"{self.key.strategy_id}:{self.key.profile.value}",
+            "open_positions": len(self.open_positions),
             "open_position": self.open_position.shadow_trade_id
-            if self.open_position is not None
+            if len(self.open_positions) == 1 and self.open_position is not None
             else None,
         }
 
@@ -102,15 +112,18 @@ class ShadowLedger:
         position: ShadowPosition,
     ) -> None:
         account = self.account(strategy_id, profile)
-        if account.open_position is not None:
-            raise RuntimeError("전략 shadow 계좌는 동시에 한 포지션만 허용합니다.")
-        account.open_position = position
+        if position.symbol in account.open_positions:
+            raise RuntimeError("동일 전략 계좌·종목의 중복 포지션은 허용하지 않습니다.")
+        if len(account.open_positions) >= 3:
+            raise RuntimeError("전략 리그 계좌는 최대 3개 종목만 보유합니다.")
+        account.open_positions[position.symbol] = position
 
     def close(
         self,
         strategy_id: str,
         profile: CostProfile,
         *,
+        shadow_trade_id: str | None = None,
         exit_price: Decimal,
         exit_fee_usdt: Decimal,
         exit_slippage_usdt: Decimal,
@@ -118,9 +131,16 @@ class ShadowLedger:
         exit_reason: str,
     ) -> ShadowTrade:
         account = self.account(strategy_id, profile)
-        position = account.open_position
-        if position is None:
+        matches = [
+            position
+            for position in account.open_positions.values()
+            if shadow_trade_id is None or position.shadow_trade_id == shadow_trade_id
+        ]
+        if not matches:
             raise RuntimeError("열린 shadow 포지션 없이 종료할 수 없습니다.")
+        if len(matches) > 1:
+            raise RuntimeError("다중 shadow 포지션 종료에는 trade ID가 필요합니다.")
+        position = matches[0]
         direction = Decimal(1) if position.side is Side.LONG else Decimal(-1)
         gross = (exit_price - position.entry_price) * position.quantity * direction
         fees = position.entry_fee_usdt + exit_fee_usdt
@@ -144,7 +164,7 @@ class ShadowLedger:
             exit_reason=exit_reason,
         )
         account.trades.append(trade)
-        account.open_position = None
+        account.open_positions.pop(position.symbol, None)
         account.realized_pnl_usdt += net
         account.fees_usdt += fees
         account.slippage_usdt += slippage
@@ -174,7 +194,10 @@ class ShadowLedger:
                     "fees_usdt": str(account.fees_usdt),
                     "slippage_usdt": str(account.slippage_usdt),
                     "maximum_drawdown_usdt": str(account.maximum_drawdown_usdt),
-                    "open_position": _shadow_position_payload(account.open_position),
+                    "open_positions": {
+                        symbol: _shadow_position_payload(position)
+                        for symbol, position in account.open_positions.items()
+                    },
                     "trades": [_shadow_trade_payload(trade) for trade in account.trades],
                 }
                 for _, account in sorted(
@@ -184,7 +207,12 @@ class ShadowLedger:
             ]
         }
 
-    def restore_state(self, payload: Mapping[str, object]) -> None:
+    def restore_state(
+        self,
+        payload: Mapping[str, object],
+        *,
+        allow_missing: bool = False,
+    ) -> None:
         """checksum 검증을 마친 snapshot만 현재 Registry 계좌에 복원한다."""
 
         rows = payload.get("accounts")
@@ -210,12 +238,24 @@ class ShadowLedger:
             account.maximum_drawdown_usdt = Decimal(
                 str(value["maximum_drawdown_usdt"])
             )
-            position = value.get("open_position")
-            account.open_position = (
-                _shadow_position_from_payload(position)
-                if isinstance(position, Mapping)
-                else None
-            )
+            positions = value.get("open_positions")
+            if isinstance(positions, Mapping):
+                account.open_positions = {
+                    str(symbol): _shadow_position_from_payload(position)
+                    for symbol, position in positions.items()
+                    if isinstance(position, Mapping)
+                }
+                if len(account.open_positions) != len(positions):
+                    raise ValueError("shadow 복구 포지션 형식이 잘못됐습니다.")
+            else:
+                position = value.get("open_position")
+                account.open_positions = (
+                    {str(position["symbol"]): _shadow_position_from_payload(position)}
+                    if isinstance(position, Mapping)
+                    else {}
+                )
+            if len(account.open_positions) > 3:
+                raise ValueError("shadow 복구 포지션 상한을 초과했습니다.")
             trade_rows = value.get("trades")
             if not isinstance(trade_rows, list):
                 raise ValueError("shadow 복구 거래 목록 형식이 잘못됐습니다.")
@@ -230,7 +270,7 @@ class ShadowLedger:
                 account.starting_equity_usdt + account.realized_pnl_usdt
             ):
                 raise ValueError("shadow 복구 계좌 손익이 자산과 일치하지 않습니다.")
-        if seen != set(self._accounts):
+        if not allow_missing and seen != set(self._accounts):
             raise ValueError("shadow 복구 snapshot의 전략 계좌 집합이 Registry와 다릅니다.")
 
 

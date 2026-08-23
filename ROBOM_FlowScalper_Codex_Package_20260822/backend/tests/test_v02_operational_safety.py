@@ -199,5 +199,5 @@ def test_live_dashboard_never_waits_for_sqlite_writer_lock(
 
     assert dashboard["status"]["mode"] == "LIVE_SHADOW_PAPER"
     assert dashboard["history"] == []
-    assert len(dashboard["strategies"]) == 4
+    assert len(dashboard["strategies"]) == 6
     ledger.close()

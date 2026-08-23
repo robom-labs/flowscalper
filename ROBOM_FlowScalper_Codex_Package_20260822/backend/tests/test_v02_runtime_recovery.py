@@ -7,12 +7,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from backend.app.clocks import TestClock as DeterministicClock
-from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
+from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side, Venue
 from backend.app.main import _runtime_from_environment
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import SQLiteLedger
 from backend.app.strategies.registry import StrategyMode
 from backend.tests.test_candidate_paper_portfolio import book, candidate_plan
+from backend.tests.test_strategy_league_portfolio import league_plan
 
 
 def _live_book(ts_ms: int, *, bid: str = "99.9", ask: str = "100.1"):
@@ -37,12 +38,16 @@ def _reopen_runtime(database: Path, run_id: str) -> tuple[PaperRuntime, SQLiteLe
     return runtime, ledger
 
 
-def _live_depth_event(runtime: PaperRuntime, ts_ms: int) -> MarketEvent:
+def _live_depth_event(
+    runtime: PaperRuntime,
+    ts_ms: int,
+    symbol: str = "BTCUSDT",
+) -> MarketEvent:
     return MarketEvent(
-        event_id=f"recovery-depth-{ts_ms}",
+        event_id=f"recovery-depth-{symbol}-{ts_ms}",
         run_id=runtime.run_id,
         venue=runtime.venue,
-        symbol="BTCUSDT",
+        symbol=symbol,
         event_type="DEPTH_UPDATE",
         venue_ts_ms=ts_ms,
         receive_monotonic_ns=runtime.clock.monotonic_ns(),
@@ -61,6 +66,48 @@ def _live_depth_event(runtime: PaperRuntime, ts_ms: int) -> MarketEvent:
             "asks": [["100.1", "100"]],
         },
     )
+
+
+def test_runtime_revalidates_every_recovered_league_symbol_before_unlock(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "runtime-multi-symbol-recovery.sqlite3"
+    run_id = "run-recovery-multi"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    symbols = {"ADAUSDT", "BTCUSDT", "ETHUSDT"}
+    plans = tuple(
+        replace(
+            league_plan("LSA_REVERSAL_V1", symbol, Side.LONG),
+            run_id=run_id,
+            venue=Venue.BINANCE_USDM,
+        )
+        for symbol in symbols
+    )
+    runtime.paper_portfolio.offer(plans, entries_paused=False)
+    for symbol in symbols:
+        runtime.paper_portfolio.on_book(
+            replace(_live_book(1_250), symbol=symbol)
+        )
+    runtime._persist_execution_state(1_250)
+    ledger.close()
+
+    recovered_runtime, reopened = _reopen_runtime(database, run_id)
+    assert recovered_runtime._recovery_revalidation_symbols == symbols
+    for index, symbol in enumerate(sorted(symbols), start=1):
+        recovered_runtime.ingest_live_event(
+            _live_depth_event(recovered_runtime, 1_500 + index, symbol)
+        )
+        assert (symbol not in recovered_runtime._recovery_revalidation_symbols)
+        assert recovered_runtime.paused is (index < len(symbols))
+    assert "ENTRY_LOCK_RECOVERY_REVALIDATION" not in recovered_runtime.runtime_health_flags
+    reopened.close()
 
 
 def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(

@@ -76,6 +76,7 @@ class PaperExecutionEngine:
             buy=side is Side.LONG,
             book_ts_ms=book_at_arrival.ts_ms,
             fee_bps=self.cost_model.fee_bps(entry=True, profile=profile),
+            slippage_multiplier=self.cost_model.slippage_multiplier(profile),
         )
         status = OrderStatus.REJECTED
         reasons: tuple[str, ...] = ("NO_EXECUTABLE_DEPTH",)
@@ -164,6 +165,7 @@ class PaperExecutionEngine:
             buy=buy,
             book_ts_ms=book_at_arrival.ts_ms,
             fee_bps=self.cost_model.fee_bps(entry=False, profile=position.profile),
+            slippage_multiplier=self.cost_model.slippage_multiplier(position.profile),
         )
         filled = fill.quantity if fill else Decimal(0)
         remaining = position.quantity - filled
@@ -231,6 +233,7 @@ class PaperExecutionEngine:
         buy: bool,
         book_ts_ms: int,
         fee_bps: Decimal,
+        slippage_multiplier: Decimal = Decimal(1),
     ) -> Fill | None:
         remaining = requested_quantity
         total_quantity = Decimal(0)
@@ -256,7 +259,7 @@ class PaperExecutionEngine:
         average = notional / total_quantity
         reference_notional = reference_price * total_quantity
         adverse_notional = notional - reference_notional if buy else reference_notional - notional
-        slippage = max(Decimal(0), adverse_notional)
+        slippage = max(Decimal(0), adverse_notional) * slippage_multiplier
         fee = notional * fee_bps / Decimal(10_000)
         return Fill(
             quantity=total_quantity,

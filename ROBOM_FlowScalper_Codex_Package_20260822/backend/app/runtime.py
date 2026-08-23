@@ -115,7 +115,7 @@ class PaperRuntime:
     _last_storage_check_ns: int | None = None
     _storage_entry_allowed: bool = True
     _storage_health_snapshot: dict[str, object] = field(default_factory=dict)
-    _recovery_revalidation_symbol: str | None = None
+    _recovery_revalidation_symbols: set[str] = field(default_factory=set)
     _manual_pause_requested: bool = False
     resource_sampler: ProcessResourceSampler = field(init=False, repr=False)
     _persistence_lock: RLock = field(default_factory=RLock, repr=False)
@@ -156,6 +156,7 @@ class PaperRuntime:
             self.paused = True
             self.position_visible = False
             self.runtime_health_flags = ["REPLAY_READ_ONLY"]
+        self.paper_portfolio.venue = self.venue
         if (
             self.mode is not RuntimeMode.READY
             and self.ledger is not None
@@ -180,6 +181,12 @@ class PaperRuntime:
     @property
     def events(self) -> tuple[MarketEvent, ...]:
         return tuple(self._events)
+
+    @property
+    def _recovery_revalidation_symbol(self) -> str | None:
+        """기존 단일 포지션 검증 계약에 대한 읽기 호환 속성이다."""
+
+        return next(iter(sorted(self._recovery_revalidation_symbols)), None)
 
     def status(self) -> SystemStatus:
         symbols = {event.symbol for event in self._events}
@@ -272,12 +279,34 @@ class PaperRuntime:
             if self.paper_portfolio.main.pending_entry is not None
             else None
         )
+        recovery_symbols = {
+            *(
+                pending.plan.symbol
+                for account in self.paper_portfolio.accounts
+                for pending in account.pending_entries.values()
+            ),
+            *(
+                position.plan.symbol
+                for account in self.paper_portfolio.accounts
+                for position in account.positions.values()
+            ),
+        }
         if recovery_plan is not None:
             plan = recovery_plan
             self.selected_symbol = plan.symbol
-            snapshot_ts = int(str(recovered.payload.get("snapshot_ts_ms", plan.signal_time_ms)))
-            self.data_gap_since_ms[plan.symbol] = snapshot_ts
-            self._recovery_revalidation_symbol = plan.symbol
+        elif recovery_symbols:
+            self.selected_symbol = sorted(recovery_symbols)[0]
+        snapshot_ts = int(
+            str(
+                recovered.payload.get(
+                    "snapshot_ts_ms",
+                    recovery_plan.signal_time_ms if recovery_plan is not None else 0,
+                )
+            )
+        )
+        self._recovery_revalidation_symbols = recovery_symbols
+        for symbol in recovery_symbols:
+            self.data_gap_since_ms[symbol] = snapshot_ts
         self.paused = True
         self.runtime_health_flags = [
             "PAPER_STATE_RECOVERED",
@@ -290,7 +319,7 @@ class PaperRuntime:
         return True
 
     def _lock_recovery(self, reason: str) -> None:
-        self._recovery_revalidation_symbol = None
+        self._recovery_revalidation_symbols.clear()
         self.paused = True
         self.position_visible = False
         self.paper_portfolio.main.risk_state.faulted = True
@@ -420,11 +449,7 @@ class PaperRuntime:
         if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
             raise ValueError("지속 LIVE supervisor는 LIVE_SHADOW_PAPER에서만 시작합니다.")
         await self.shutdown_supervisor()
-        pinned_symbols = (
-            (self._recovery_revalidation_symbol,)
-            if self._recovery_revalidation_symbol is not None
-            else ()
-        )
+        pinned_symbols = tuple(sorted(self._recovery_revalidation_symbols))
         providers: dict[Venue, PublicStreamProvider] = {
             Venue.BINANCE_USDM: BinancePersistentProvider(pinned_symbols=pinned_symbols),
             Venue.BYBIT_LINEAR: BybitPersistentProvider(pinned_symbols=pinned_symbols),
@@ -432,7 +457,7 @@ class PaperRuntime:
         primary_venue = self.venue if self.venue in providers else Venue.BINANCE_USDM
         candidate_venues = (
             (primary_venue,)
-            if self._recovery_revalidation_symbol is not None
+            if self._recovery_revalidation_symbols
             else (
                 primary_venue,
                 Venue.BYBIT_LINEAR if primary_venue is Venue.BINANCE_USDM else Venue.BINANCE_USDM,
@@ -470,13 +495,13 @@ class PaperRuntime:
             self.paused = (
                 supervisor.telemetry.entry_locked
                 or self.paper_portfolio.main.risk_state.faulted
-                or self._recovery_revalidation_symbol is not None
+                or bool(self._recovery_revalidation_symbols)
             )
             self.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
             self._refresh_supervisor_entry_safety()
             if self.paper_portfolio.main.risk_state.faulted:
                 self.runtime_health_flags.append("RECOVERY_FAIL_CLOSED")
-            if self._recovery_revalidation_symbol is not None:
+            if self._recovery_revalidation_symbols:
                 self.runtime_health_flags.append("ENTRY_LOCK_RECOVERY_REVALIDATION")
             if not self._refresh_storage_safety(force=True):
                 self.paused = True
@@ -487,7 +512,7 @@ class PaperRuntime:
             )
             return True
         self.market_data_state = MarketDataState.DISCONNECTED
-        if self._recovery_revalidation_symbol is not None:
+        if self._recovery_revalidation_symbols:
             self.runtime_health_flags.append("RECOVERED_POSITION_PUBLIC_DATA_UNAVAILABLE")
         self.runtime_health_flags.append("PUBLIC_DATA_UNAVAILABLE")
         return False
@@ -619,21 +644,22 @@ class PaperRuntime:
         self.paper_portfolio.on_book(book)
         self._persist_execution_state_safely(event.venue_ts_ms)
         if (
-            self._recovery_revalidation_symbol == event.symbol
+            event.symbol in self._recovery_revalidation_symbols
             and event.quality.sequence_valid
             and not event.quality.is_stale
         ):
-            self._recovery_revalidation_symbol = None
-            self.runtime_health_flags = [
-                flag
-                for flag in self.runtime_health_flags
-                if flag != "ENTRY_LOCK_RECOVERY_REVALIDATION"
-            ]
-            self.paused = (
-                self.paper_portfolio.main.risk_state.faulted
-                or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
-                or not self._refresh_storage_safety(force=True)
-            )
+            self._recovery_revalidation_symbols.discard(event.symbol)
+            if not self._recovery_revalidation_symbols:
+                self.runtime_health_flags = [
+                    flag
+                    for flag in self.runtime_health_flags
+                    if flag != "ENTRY_LOCK_RECOVERY_REVALIDATION"
+                ]
+                self.paused = (
+                    self.paper_portfolio.main.risk_state.faulted
+                    or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
+                    or not self._refresh_storage_safety(force=True)
+                )
             self._log(
                 "RECOVERY",
                 f"{event.symbol} fresh sequence-valid 호가 재검증 완료",
@@ -752,6 +778,9 @@ class PaperRuntime:
                 risk_state=self.paper_portfolio.main.risk_state,
                 main_eligible=signal.main_eligible,
                 shadow_eligible=signal.shadow_eligible,
+                exit_style=self.strategy_registry.descriptor(
+                    signal.decision.strategy_id
+                ).exit_style,
                 strategy_version=STRATEGY_VERSION,
             )
             if result.plan is not None:
@@ -1180,6 +1209,12 @@ class PaperRuntime:
             else None,
             strategies=tuple(strategy_rows),
             shadow_accounts=tuple(self.paper_portfolio.shadow_rows()),
+            league_accounts=tuple(
+                self.paper_portfolio.league_account_rows(self.latest_books)
+            ),
+            league_positions=tuple(
+                self.paper_portfolio.league_position_rows(self.latest_books)
+            ),
             current_position=current_position,
             execution_audit=tuple(self.paper_portfolio.audit_events[-100:]),
             storage_label="SQLite transactional ledger"
@@ -1327,12 +1362,13 @@ class PaperRuntime:
             run_id=self.run_id,
             strategy_ids=self.strategy_registry.strategy_ids,
             shadow_ledger=self.shadow_ledger,
+            venue=self.venue,
         )
         self.latest_books.clear()
         self.plan_rejections.clear()
         self.data_gap_since_ms.clear()
         self._last_strategy_evaluation_ms.clear()
-        self._recovery_revalidation_symbol = None
+        self._recovery_revalidation_symbols.clear()
         with self._persistence_lock:
             self._market_event_buffer.clear()
             self._candle_buffer.clear()
@@ -1389,6 +1425,7 @@ class PaperRuntime:
             "symbol": plan.symbol,
             "strategy_id": plan.strategy_id,
             "strategy_version": plan.strategy_version,
+            "exit_style": plan.exit_style.value,
             "direction": plan.direction.value,
             "signal_time_ms": plan.signal_time_ms,
             "expires_at_ms": plan.expires_at_ms,
@@ -1406,7 +1443,9 @@ class PaperRuntime:
                 for target in plan.take_profit_targets
             ],
             "position_size": str(plan.position_size),
+            "quantity_step": str(plan.quantity_step),
             "minimum_quantity": str(plan.minimum_quantity),
+            "executable_depth_quantity": str(plan.executable_depth_quantity),
             "risk_budget": str(plan.risk_budget),
             "max_planned_loss": str(plan.max_planned_loss),
             "gross_reward_usdt": str(plan.gross_reward_usdt),
@@ -1527,7 +1566,10 @@ class PaperRuntime:
                 payload={
                     "snapshot_ts_ms": ts_ms,
                     "open_position": position,
-                    "portfolio": self.paper_portfolio.recovery_state(),
+                    "portfolio": self.paper_portfolio.recovery_state(
+                        registry_settings=self.strategy_registry.rows(),
+                        snapshot_ts_ms=ts_ms,
+                    ),
                 },
             )
 
@@ -1662,7 +1704,10 @@ class PaperRuntime:
             payload={
                 "snapshot_ts_ms": timestamp,
                 "open_position": None,
-                "portfolio": self.paper_portfolio.recovery_state(),
+                "portfolio": self.paper_portfolio.recovery_state(
+                    registry_settings=self.strategy_registry.rows(),
+                    snapshot_ts_ms=timestamp,
+                ),
             },
         )
         self._refresh_dashboard_trade_cache()
@@ -1739,7 +1784,10 @@ class PaperRuntime:
                 "snapshot_ts_ms": timestamp,
                 "open_position": None,
                 "last_exit_reason": "TAKE_PROFIT",
-                "portfolio": self.paper_portfolio.recovery_state(),
+                "portfolio": self.paper_portfolio.recovery_state(
+                    registry_settings=self.strategy_registry.rows(),
+                    snapshot_ts_ms=timestamp,
+                ),
             },
         )
         self.ledger.record_order(

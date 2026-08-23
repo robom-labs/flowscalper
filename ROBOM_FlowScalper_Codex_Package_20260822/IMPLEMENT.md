@@ -70,3 +70,18 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 - proof that real orders are impossible;
 - known limitations;
 - Git commit and clean-tree status.
+
+## Strategy League backend Wave
+
+1. Keep the existing `PaperExecutionEngine`, `CandidatePlanner`, `RiskManager`,
+   persistence and replay path. Do not create a second execution engine or database.
+2. Evaluate Registry A-F from the same symbol snapshot and history prefix. E/F
+   confirmation must use evaluator state and real event timestamps.
+3. Offer ACTIVE candidates to the one-position main benchmark. Offer ACTIVE and
+   SHADOW candidates independently to each strategy's BASE/STRESS three-symbol account.
+4. Apply account-local sizing, cost profile, pending/open risk, notional, cooldown and
+   loss locks. Apply system market-data, storage and recovery locks to every account.
+5. Persist recovery schema v2 and keep a tested v1 single-position migration reader.
+6. Expose `league_accounts` and `league_positions` through the existing dashboard output.
+7. Validate with the four commands in `docs/19_STRATEGY_LEAGUE_SPEC_KO.md`. This Wave
+   does not run or claim frontend, browser, network, soak or release validation.

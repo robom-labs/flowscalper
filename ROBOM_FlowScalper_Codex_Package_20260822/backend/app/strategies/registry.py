@@ -1,4 +1,4 @@
-"""A/B/C/D 전략 메타데이터와 ACTIVE·SHADOW·OFF·방향 설정을 중앙 관리한다."""
+"""A/B/C/D/E/F 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
 
 from __future__ import annotations
 
@@ -7,9 +7,11 @@ from enum import StrEnum
 
 from backend.app.domain.models import Side
 from backend.app.regime import Regime
+from backend.app.strategies.aggressor_flow import AggressorFlowStrategy
 from backend.app.strategies.compression_breakout import CompressionBreakoutStrategy
 from backend.app.strategies.liquidity_sweep import LiquiditySweepStrategy
 from backend.app.strategies.ofi_pullback import OfiPullbackStrategy
+from backend.app.strategies.queue_microprice import QueueMicropriceStrategy
 from backend.app.strategies.vwap_exhaustion import VwapExhaustionStrategy
 
 
@@ -24,11 +26,18 @@ class StrategyStability(StrEnum):
     EXPERIMENTAL = "EXPERIMENTAL"
 
 
+class ExitStyle(StrEnum):
+    REVERSION_70_30 = "REVERSION_70_30"
+    TREND_40_60 = "TREND_40_60"
+
+
 StrategyEvaluator = (
     LiquiditySweepStrategy
     | CompressionBreakoutStrategy
     | VwapExhaustionStrategy
     | OfiPullbackStrategy
+    | QueueMicropriceStrategy
+    | AggressorFlowStrategy
 )
 
 
@@ -41,6 +50,7 @@ class StrategyDescriptor:
     stability: StrategyStability
     supported_regimes: tuple[Regime, ...]
     evaluator: StrategyEvaluator
+    exit_style: ExitStyle
     paper_only: bool = True
 
 
@@ -61,12 +71,13 @@ class StrategyRegistry:
         descriptors = (
             StrategyDescriptor(
                 strategy_id="LSA_REVERSAL_V1",
-                display_name_ko="유동성 쓸기 반전",
+                display_name_ko="급락·급등 쓸기 반전",
                 short_name="LSA 반전",
                 summary_ko="쓸기·흡수·호가 재충전·범위 복귀를 확인합니다.",
                 stability=StrategyStability.STABLE,
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=LiquiditySweepStrategy(),
+                exit_style=ExitStyle.REVERSION_70_30,
             ),
             StrategyDescriptor(
                 strategy_id="CBR_CONTINUATION_V1",
@@ -76,6 +87,7 @@ class StrategyRegistry:
                 stability=StrategyStability.STABLE,
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=CompressionBreakoutStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
             ),
             StrategyDescriptor(
                 strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
@@ -85,6 +97,7 @@ class StrategyRegistry:
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.RANGE,),
                 evaluator=VwapExhaustionStrategy(),
+                exit_style=ExitStyle.REVERSION_70_30,
             ),
             StrategyDescriptor(
                 strategy_id="OFI_CONTINUATION_PULLBACK_V1",
@@ -94,10 +107,41 @@ class StrategyRegistry:
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=OfiPullbackStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
+            ),
+            StrategyDescriptor(
+                strategy_id="QUEUE_MICROPRICE_MOMENTUM_V1",
+                display_name_ko="호가 쏠림 순간추세",
+                short_name="호가 쏠림",
+                summary_ko="호가 불균형·OFI·체결 흐름과 microprice 정렬을 확인합니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=QueueMicropriceStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
+            ),
+            StrategyDescriptor(
+                strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
+                display_name_ko="강한 체결 흐름 지속",
+                short_name="체결흐름",
+                summary_ko="강한 공격 체결이 실제 가격 반응과 함께 지속되는지 확인합니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=AggressorFlowStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
             ),
         )
         self._descriptors = {item.strategy_id: item for item in descriptors}
-        self._settings = {item.strategy_id: StrategySetting() for item in descriptors}
+        active_ids = {"LSA_REVERSAL_V1", "CBR_CONTINUATION_V1"}
+        self._settings = {
+            item.strategy_id: StrategySetting(
+                mode=(
+                    StrategyMode.ACTIVE
+                    if item.strategy_id in active_ids
+                    else StrategyMode.SHADOW
+                )
+            )
+            for item in descriptors
+        }
 
     @property
     def strategy_ids(self) -> tuple[str, ...]:
@@ -151,6 +195,7 @@ class StrategyRegistry:
                 "summary_ko": descriptor.summary_ko,
                 "stability": descriptor.stability.value,
                 "supported_regimes": [regime.value for regime in descriptor.supported_regimes],
+                "exit_style": descriptor.exit_style.value,
                 "paper_only": descriptor.paper_only,
                 "mode": self.setting(descriptor.strategy_id).mode.value,
                 "long_enabled": self.setting(descriptor.strategy_id).long_enabled,

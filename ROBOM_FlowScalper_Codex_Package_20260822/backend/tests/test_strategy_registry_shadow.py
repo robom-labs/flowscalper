@@ -16,15 +16,24 @@ from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 from backend.tests.test_strategies import features
 
 
-def test_registry_exposes_four_strategies_and_honors_mode_and_direction() -> None:
+def test_registry_exposes_six_strategies_and_honors_mode_and_direction() -> None:
     registry = StrategyRegistry()
     assert registry.strategy_ids == (
         "LSA_REVERSAL_V1",
         "CBR_CONTINUATION_V1",
         "VWAP_EXHAUSTION_REVERSION_V1",
         "OFI_CONTINUATION_PULLBACK_V1",
+        "QUEUE_MICROPRICE_MOMENTUM_V1",
+        "AGGRESSOR_FLOW_CONTINUATION_V1",
     )
-    assert all(row["mode"] == "ACTIVE" for row in registry.rows())
+    assert [row["mode"] for row in registry.rows()] == [
+        "ACTIVE",
+        "ACTIVE",
+        "SHADOW",
+        "SHADOW",
+        "SHADOW",
+        "SHADOW",
+    ]
     registry.configure(
         "VWAP_EXHAUSTION_REVERSION_V1",
         mode=StrategyMode.OFF,
@@ -41,7 +50,7 @@ def test_registry_exposes_four_strategies_and_honors_mode_and_direction() -> Non
     evaluator = StrategySignalEvaluator()
     decisions = evaluator.evaluate(registry, features(), Regime.WARMUP)
 
-    assert len(decisions) == 5
+    assert len(decisions) == 9
     assert all(item.decision.status is CandidateStatus.REJECTED for item in decisions)
     lsa = next(item for item in decisions if item.decision.strategy_id == "LSA_REVERSAL_V1")
     assert lsa.decision.side is Side.LONG
@@ -89,7 +98,7 @@ def test_shadow_accounts_are_independent_by_strategy_and_cost_profile() -> None:
     ).current_equity_usdt == Decimal("1000")
 
 
-def test_live_depth_runs_all_four_strategies_without_fake_probability() -> None:
+def test_live_depth_runs_all_six_strategies_without_fake_probability() -> None:
     clock = DeterministicClock()
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
@@ -125,9 +134,10 @@ def test_live_depth_runs_all_four_strategies_without_fake_probability() -> None:
     )
 
     decisions = runtime.strategy_decisions()
-    assert runtime.strategy_evaluation_count == 8
+    assert runtime.strategy_evaluation_count == 12
     assert {decision.strategy_id for decision in decisions} == set(
         runtime.strategy_registry.strategy_ids
     )
     assert all(decision.tp_probability is None for decision in decisions)
-    assert len(runtime.dashboard()["shadow_accounts"]) == 8
+    assert len(runtime.dashboard()["shadow_accounts"]) == 12
+    assert len(runtime.dashboard()["league_accounts"]) == 12

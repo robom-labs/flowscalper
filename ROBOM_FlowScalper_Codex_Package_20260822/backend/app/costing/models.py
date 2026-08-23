@@ -36,3 +36,6 @@ class CostModel:
     def arrival_latency_ms(self, profile: CostProfile) -> int:
         multiplier = self.stress_latency_multiplier if profile is CostProfile.STRESS else Decimal(1)
         return int(Decimal(self.decision_to_arrival_latency_ms) * multiplier)
+
+    def slippage_multiplier(self, profile: CostProfile) -> Decimal:
+        return Decimal(2) if profile is CostProfile.STRESS else Decimal(1)
