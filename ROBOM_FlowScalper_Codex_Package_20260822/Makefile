@@ -3,7 +3,7 @@ PYTHON := .venv/bin/python
 UV := uv
 PNPM := pnpm
 
-.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke security-scan soak-30m soak-6h soak-24h package-release clean-data-safe
+.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke security-scan repo-hygiene soak-30m soak-6h soak-24h package-release clean-data-safe
 
 setup:
 	$(UV) sync --all-groups
@@ -44,6 +44,9 @@ network-smoke:
 security-scan:
 	$(UV) run python scripts/security_scan.py
 
+repo-hygiene:
+	$(UV) run python scripts/check_repository_hygiene.py
+
 soak-30m:
 	$(UV) run python scripts/soak_live.py --duration-seconds 1800 --sample-seconds 10 --output evidence/WAVE07_SOAK_30M.json
 
@@ -53,7 +56,7 @@ soak-6h:
 soak-24h:
 	./scripts/soak_24h.command
 
-package-release: build security-scan
+package-release: build security-scan repo-hygiene
 	$(UV) run python scripts/package_release.py
 
 clean-data-safe:

@@ -74,6 +74,7 @@ make build
 make e2e
 make fixture-demo
 make network-smoke
+make repo-hygiene
 make clean-data-safe
 ```
 
@@ -97,7 +98,9 @@ README must cover:
 
 ## 14.6 Versioning
 
-Version:
+`VERSION` is the single product-version source. `CHANGELOG.md` keeps only notable user-visible changes, Git tags preserve exact source history, and GitHub Releases preserve ZIP/checksum/evidence assets. Do not keep copied old source directories in `main`. The complete policy is `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`.
+
+Current version:
 
 ```text
 0.2.0-paper

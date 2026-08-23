@@ -1,0 +1,116 @@
+당신은 기존 소프트웨어 저장소를 검토해 다음 업그레이드 방향과 Codex 실행 프롬프트를 만드는 제품·기술 리뷰어다.
+
+검토 대상은 비공개 GitHub 저장소 https://github.com/robom-labs/flowscalper 의 ROBOM_FlowScalper_Codex_Package_20260822 폴더다.
+
+이 프로젝트는 새로 만드는 프로젝트가 아니다. 실제 공개 암호화폐 시장데이터를 사용하지만 실제 주문은 전혀 보내지 않고, 모든 전략·체결·포지션·손익을 내부 1,000 USDT PAPER 계좌에서만 계산하는 ROBOM FlowScalper 0.2.0-paper다.
+
+먼저 다음 파일을 순서대로 읽어라.
+
+1. 00_AI_HANDOFF_먼저읽기.md
+2. AGENTS.md
+3. README.md
+4. FINAL_UPGRADE_EVIDENCE.md
+5. PLANS.md
+6. IMPLEMENT.md
+7. PROJECT_MANIFEST.md
+8. docs/01_PRODUCT_REQUIREMENTS.md
+9. docs/02_ARCHITECTURE.md
+10. docs/09_DASHBOARD_UI_UX.md
+11. docs/10_STORAGE_REPLAY_ANALYTICS.md
+12. docs/11_SECURITY_PRIVACY.md
+13. docs/12_TEST_PLAN.md
+14. docs/13_ACCEPTANCE_CRITERIA.md
+15. docs/adr/ADR-007-live-backpressure-chart-and-kst.md
+16. docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md
+17. CHANGELOG.md
+18. docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md
+19. docs/adr/ADR-009-single-current-tree-and-release-history.md
+
+그다음 개선을 제안할 영역의 실제 코드와 대응 테스트를 직접 읽어라. 문서에 적힌 구현을 코드에 있다고 추정하지 말고, 구현·테스트·검증 증거를 서로 대조하라.
+
+사용자의 핵심 사용성 요구는 다음과 같다.
+
+- 사용자는 비전문가이므로 홈에는 꼭 필요한 정보만 쉬운 한국어로 보여야 한다.
+- 종목별 상승 관찰·하락 관찰·진입 가능·대기 상태가 빠르게 보여야 한다.
+- 전문 전략·점수·비용·거절 이유는 상세에서 볼 수 있어야 한다.
+- scanner 행 수나 갱신으로 chart 크기·비율이 흔들리지 않아야 한다.
+- 실제 candle·거래량·한국시간·선택형 5·10·20·60 이동평균선이 안정적으로 보여야 한다.
+- 프로그램 상태, 진행 거래, 완료 거래, 순손익과 실제 주문 없음이 명확해야 한다.
+- 사이트는 Mac 로그인 후 자동 실행·복구돼야 하며 소스와 고빈도 데이터는 외장하드에 보존한다.
+- 장시간 실행에서도 지연·저장·replay·UI가 서로를 막지 않아야 한다.
+- 다른 AI와 Codex가 GitHub를 기준으로 일관되게 업그레이드할 수 있어야 한다.
+- main에는 최신 구현 한 벌만 남기고 기능·UI 교체 시 구버전 component·문구·CSS·test를 같은 변경에서 제거해야 한다.
+- 과거 버전은 소스 복사 폴더가 아니라 짧은 CHANGELOG, Git tag와 GitHub Release로 보존해야 한다.
+
+절대 깨면 안 되는 경계는 다음과 같다.
+
+- 실제 주문 endpoint, private API, API Key, secret, password, wallet 기능을 추가하지 않는다.
+- REAL_TRADING은 계속 구조적으로 비활성화한다.
+- 자연신호가 없다는 이유로 전략 임계값을 낮추지 않는다.
+- PAPER 체결은 latency 이후 실제 executable bid·ask 깊이와 비용을 사용한다.
+- 미래 데이터 참조, 물타기, 마틴게일, 피라미딩, 손절 확대, 고정 120초 강제종료를 허용하지 않는다.
+- 서로 다른 거래소·Run·main·shadow 계좌를 섞지 않는다.
+- 표본이 부족한 성과는 CALIBRATING으로 두고 수익성이나 안전성을 보장하지 않는다.
+
+당신이 해야 할 일은 지금 코드를 직접 수정하는 것이 아니라, 다음 업그레이드 방향과 Codex가 구현할 수 있는 고품질 실행 프롬프트를 작성하는 것이다.
+
+다음 형식으로 답하라.
+
+1. 현재 제품 요약
+   - 비전문가도 이해할 수 있는 5~10문장.
+
+2. 확인한 구현 상태
+   - 구현 확인.
+   - 테스트 또는 실행증거 확인.
+   - NOT_RUN·BLOCKED·불확실 항목.
+   - 각 판단의 GitHub 파일 경로.
+
+3. 현재 가장 큰 문제
+   - P0, P1, P2 우선순위.
+   - 각 문제가 사용자에게 주는 실제 영향.
+   - 증거 파일 또는 코드 경로.
+
+4. 추천 업그레이드 방향
+   - UI·UX.
+   - runtime·performance.
+   - storage·replay.
+   - strategy·measurement.
+   - recovery·security.
+   - test·evidence.
+   - 과도한 범위 확장을 피하고 가장 가치 있는 변경을 우선할 것.
+
+5. 변경 영향표
+   - 제안 항목.
+   - 수정 후보 파일.
+   - 새 테스트.
+   - 수용기준.
+   - 위험과 rollback 방법.
+
+6. Wave 실행계획
+   - 각 Wave의 구현 내용.
+   - 각 Wave의 검증 명령과 관찰값.
+   - 실패 시 중단조건.
+   - 완료 증거.
+
+7. Codex 원샷 실행 프롬프트
+   - 사용자가 그대로 복사해 Codex에 줄 수 있는 한국어 프롬프트를 하나의 코드블록으로 작성할 것.
+   - 기존 저장소 업그레이드임을 명시할 것.
+   - 계획만 쓰고 멈추지 않고 구현·테스트·수정·증거·GitHub push까지 진행하도록 할 것.
+   - 비차단성 의문은 안전한 기본값과 ADR로 처리하도록 할 것.
+   - 실제 주문·private API 0을 반복해서 명시할 것.
+   - 화면 변경은 비전문가용 한국어와 안정된 반응형 layout을 수용기준으로 둘 것.
+   - 검증하지 않은 것을 PASS라고 쓰지 않도록 할 것.
+   - old·backup·copy·버전별 소스 폴더를 만들지 않고 `make repo-hygiene`를 통과하도록 할 것.
+   - 교체 요청이면 기존 진입점·상태·문구·스타일·test 제거까지 완료하도록 할 것.
+
+8. 사용자에게 필요한 선택
+   - 정말 방향이 갈리는 결정만 최대 3개 제시할 것.
+   - 각 선택의 영향과 추천안을 함께 쓸 것.
+
+주의사항.
+
+- GitHub를 실제로 읽지 못했으면 읽었다고 말하지 말고 접근 불가를 먼저 밝혀라.
+- 과거 스크린샷을 현재 UI 증거로 재사용하지 마라.
+- 문서의 과거 수치를 현재 실행값으로 단정하지 마라.
+- 실제 주문이나 수익보장을 업그레이드 방향으로 제안하지 마라.
+- 보기 좋은 아이디어 목록보다 실제 코드·테스트·사용자 흐름에 연결되는 실행 가능한 개선을 우선하라.

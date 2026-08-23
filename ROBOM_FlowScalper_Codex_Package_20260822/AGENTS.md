@@ -19,6 +19,8 @@ Build a production-quality **real-market-data / paper-execution-only** crypto sc
 
 ## Source of truth
 
+- Current version: `VERSION`
+- User-visible version history: `CHANGELOG.md`
 - Product and technical contract: `docs/`
 - Execution roadmap: `PLANS.md`
 - Runbook: `IMPLEMENT.md`
@@ -34,6 +36,15 @@ When documents conflict, apply this priority:
 5. Example configuration
 
 Record necessary design changes in an ADR rather than silently changing the contract.
+
+## Upgrade and repository hygiene
+
+- Keep exactly one current implementation on `main`. Do not add `old`, `legacy`, `backup`, `copy`, version-suffixed source directories, or parallel old/new UI implementations.
+- When a feature or UI is replaced, find and remove its obsolete entry points, state, copy, styles and tests in the same change unless an explicit migration window is required.
+- Preserve past source with Git history and immutable version tags. Preserve distributable ZIPs, checksums and release evidence as GitHub Release assets.
+- Keep only a concise user-visible summary in `CHANGELOG.md`. Do not copy completed implementation plans or full old source trees into the current tree.
+- Keep runtime SQLite, Parquet, logs, caches and build outputs out of Git. Move inactive legacy runtime data to a verified migration archive instead of deleting or reading it as current state.
+- Follow `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md` and ADR-009. Run `make repo-hygiene` before every commit and release.
 
 ## Working discipline
 
@@ -60,6 +71,7 @@ make typecheck
 make build
 make e2e
 make network-smoke
+make repo-hygiene
 ```
 
 Windows and macOS helper scripts are also required.
@@ -85,4 +97,4 @@ Every strategy change must include:
 
 ## Completion rule
 
-Do not state DONE until `FINAL_EVIDENCE.md` exists and the acceptance matrix is populated with PASS, NOT_RUN, or BLOCKED plus evidence. Never convert NOT_RUN into PASS.
+Do not state DONE until `FINAL_UPGRADE_EVIDENCE.md` exists and the acceptance matrix is populated with PASS, NOT_RUN, or BLOCKED plus evidence. Never convert NOT_RUN into PASS.

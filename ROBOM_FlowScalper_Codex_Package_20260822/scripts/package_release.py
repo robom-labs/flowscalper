@@ -10,14 +10,16 @@ import zipfile
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.2.0-paper"
+VERSION = (PROJECT_ROOT / "VERSION").read_text(encoding="utf-8").strip()
 ARCHIVE_ROOT = f"ROBOM_FlowScalper_{VERSION}"
 ROOT_FILES = (
     ".gitignore",
+    "00_AI_HANDOFF_먼저읽기.md",
     "00_사용법_먼저읽기.md",
+    "01_GPT_업그레이드_방향_요청프롬프트_KO.txt",
     "AGENTS.md",
     "CHECKLIST_FOR_USER.md",
-    "FINAL_EVIDENCE.md",
+    "CHANGELOG.md",
     "FINAL_UPGRADE_EVIDENCE.md",
     "IMPLEMENT.md",
     "Makefile",
@@ -26,6 +28,7 @@ ROOT_FILES = (
     "PLANS.md",
     "PROJECT_MANIFEST.md",
     "README.md",
+    "RELEASE_NOTES_v0.2_WAVE10.md",
     "ROBOM_FlowScalper.command",
     "RUNBOOK_LIVE_SHADOW_PAPER.md",
     "SOAK_TEST_REPORT.md",
@@ -33,6 +36,7 @@ ROOT_FILES = (
     "THIRD_PARTY_NOTICES.md",
     "UI_USER_GUIDE_KO.md",
     "UPGRADE_EXEC_PLAN.md",
+    "VERSION",
     "frontend/eslint.config.js",
     "frontend/index.html",
     "frontend/package.json",

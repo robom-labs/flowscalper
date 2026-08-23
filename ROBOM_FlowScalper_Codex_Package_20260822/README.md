@@ -2,6 +2,10 @@
 
 ROBOM FlowScalper는 실제 공개 암호화폐 USDT 무기한선물 시장데이터를 연구하되, 모든 결정과 체결을 1,000 USDT 내부 가상계좌에서만 시뮬레이션하는 로컬 애플리케이션입니다.
 
+> 다른 GPT·Claude·Codex가 이 저장소를 검토한다면 먼저 [`00_AI_HANDOFF_먼저읽기.md`](00_AI_HANDOFF_먼저읽기.md)를 읽으세요. 사용자가 GPT에 그대로 전달할 업그레이드 방향 요청문은 [`01_GPT_업그레이드_방향_요청프롬프트_KO.txt`](01_GPT_업그레이드_방향_요청프롬프트_KO.txt), 짧은 버전 기록은 [`CHANGELOG.md`](CHANGELOG.md), 반복 업그레이드 정리 규칙은 [`docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`](docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md), Wave 10 배포 요약은 [`RELEASE_NOTES_v0.2_WAVE10.md`](RELEASE_NOTES_v0.2_WAVE10.md)에 있습니다.
+
+현재 `main`에는 최신 실행 소스 한 벌만 둡니다. 과거 버전은 복사 폴더로 쌓지 않고 `CHANGELOG.md`의 짧은 요약, Git tag·history와 GitHub Release의 ZIP·checksum으로 보존합니다.
+
 이 제품은 거래소 로그인, API 키, OpenAI 키, TradingView 계정, 지갑을 요구하지 않습니다. 실제 주문·인출·이체·사설 API 호출 경로는 소스와 UI에 없으며, `REAL_TRADING=true`는 부팅과 빌드에서 거부됩니다.
 
 ## 제품 경계
@@ -39,7 +43,7 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 ./scripts/install_macos_service.sh
 ```
 
-서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. canonical 소스·작업공간·릴리스와 고빈도 공개시장 기록은 외장에 보존합니다. macOS가 LaunchAgent의 One Touch 직접 쓰기를 차단하고 외장 디스크 이미지의 고빈도 SQLite 쓰기가 실시간 처리를 지연시킨 것이 실측되어, 자동 서비스의 소형 거래 상태·설정·archive manifest용 활성 SQLite, 약 283MB Python 실행환경 복사본, LaunchAgent plist와 운영 로그만 `~/Library/Application Support/ROBOM FlowScalper`에 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 외장 `data/market-parquet-v6`에 저장됩니다. 내장 또는 외장 여유공간이 5GiB 미만이거나 4% 미만이면 신규 진입을 fail-closed로 잠급니다. 이전 진단 원장 `data/active/run-ledger.sqlite3`·`data/active-v5/run-ledger.sqlite3`·`data/active-v6/run-ledger.sqlite3`와 기존 1.3GB `data/run-ledger.sqlite3`는 삭제하거나 덮어쓰지 않습니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
+서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. canonical 소스·작업공간·릴리스와 고빈도 공개시장 기록은 외장에 보존합니다. macOS가 LaunchAgent의 One Touch 직접 쓰기를 차단하고 외장 디스크 이미지의 고빈도 SQLite 쓰기가 실시간 처리를 지연시킨 것이 실측되어, 자동 서비스의 소형 거래 상태·설정·archive manifest용 활성 SQLite, 약 283MB Python 실행환경 복사본, LaunchAgent plist와 운영 로그만 `~/Library/Application Support/ROBOM FlowScalper`에 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 외장 `data/market-parquet-v6`에 저장됩니다. 내장 또는 외장 여유공간이 5GiB 미만이거나 4% 미만이면 신규 진입을 fail-closed로 잠급니다. 더는 현재 서비스가 읽지 않는 이전 진단 원장과 과거 build·test 산출물은 삭제하지 않고 `/Volumes/ROBOM_FLOWSCALPER/04_MIGRATION_ARCHIVE/legacy-project-state-20260823`으로 옮겼으며 `MANIFEST.md`에 원래 경로·크기·checksum을 기록했습니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
 
 자동 시작을 해제하되 거래 원장과 외장 파일을 보존하려면 다음 명령을 실행합니다.
 
@@ -107,6 +111,7 @@ make build
 make e2e
 make network-smoke
 make security-scan
+make repo-hygiene
 make package-release
 ```
 
@@ -130,4 +135,4 @@ make package-release
 - 표본 30건 미만은 `CALIBRATING`으로 표시하며 승률·확률로 성과를 과장하지 않습니다.
 - 자동 배포, 원격 접속, 클라우드 동기화, 실제 거래는 포함하지 않습니다.
 
-정확한 실행 증거, 실제 공개시장 기록·리플레이, 재시작 복구, 소크, 네트워크 스모크, 보안 검사, 릴리스 checksum은 `FINAL_UPGRADE_EVIDENCE.md`에 기록됩니다. 0.1 기준선 증거는 `FINAL_EVIDENCE.md`에 보존됩니다.
+정확한 실행 증거, 실제 공개시장 기록·리플레이, 재시작 복구, 소크, 네트워크 스모크, 보안 검사와 릴리스 checksum은 `FINAL_UPGRADE_EVIDENCE.md`에 기록됩니다. 0.1의 짧은 사용자용 기준선은 `CHANGELOG.md`, 전체 과거 파일은 Git history와 기존 릴리스 ZIP에 보존됩니다.

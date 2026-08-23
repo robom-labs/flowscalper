@@ -1,6 +1,6 @@
 # PLANS.md — Execution Plan and Progress Source of Truth
 
-> v0.2 업그레이드의 세부 실행계획과 현재 관찰 결과는 `UPGRADE_EXEC_PLAN.md`가 우선한다. 아래 0.1 Wave 기록은 완료된 기준선으로 보존한다.
+> 현재 제품 상태는 아래 Upgrade progress와 `FINAL_UPGRADE_EVIDENCE.md`를 우선한다. 완료된 초기 Wave는 현재 기능이 만들어진 순서와 수용 gate를 설명하는 구현 이력이며, 버전별 사용자 요약은 `CHANGELOG.md`를 사용한다.
 
 This file is the source of truth for long-horizon implementation. Codex must continuously update status, decisions, validation evidence, and remaining work.
 
@@ -165,7 +165,7 @@ Deliverables:
 - Network diagnostics.
 - Security scan and third-party notices.
 - Full documentation.
-- `FINAL_EVIDENCE.md`.
+- `FINAL_UPGRADE_EVIDENCE.md`.
 
 Exit gate:
 
@@ -197,6 +197,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-23: ADR-008에 따라 대용량 원장 replay 목록을 schema v4 O(1) 통계와 worker thread로 분리하고, 로그인 후 자동 복구 LaunchAgent와 비전문가용 고정 scanner·차트·이동평균선 홈을 채택했다.
 - 2026-08-23: ADR-008 보강에 따라 지연 분위수 재정렬을 256표본 주기로 제한하되 단일 임계 지연은 즉시 fail-closed로 잠그고, 120초 피처는 동일 결과의 단일 순회 계산과 종목별 500ms 재평가로 바꿨다. deep 250ms 수신과 모든 호가의 PAPER 포지션 관리는 유지한다. 자동 서비스는 내장 실행환경 복사본과 소형 거래 상태·manifest용 SQLite, 외장 `data/market-parquet-v6` 고빈도 archive를 결합해 시작 지연·내장 용량 압박·외장 SQLite checkpoint·과거 1.3GB 원장 재스캔을 함께 피한다.
 - 2026-08-23: schema v6 hybrid 저장은 공개시장 이벤트를 상위 10호가·1,000건 단위 ZSTD Parquet으로 외장에 기록하고 row·batch checksum과 root 경로를 검증한다. 5,000건 batch는 p95 5,978ms로 실패해 폐기했고, 1,000건 batch는 4분 이상 LIVE에서 pause·drop·gap·reconnect·fault 0으로 통과했다.
+- 2026-08-23: ADR-009에 따라 `main`은 현재 실행 소스 한 벌만 유지하고, 과거 source는 Git history·tag, 배포물은 Release, 사용자용 변화는 짧은 `CHANGELOG.md`로 보존한다. 운영 구형 데이터는 삭제하지 않고 프로젝트 밖 migration archive로 이동하며 repository hygiene 검사를 CI와 release gate에 추가한다.
 
 ## v0.2 upgrade progress
 

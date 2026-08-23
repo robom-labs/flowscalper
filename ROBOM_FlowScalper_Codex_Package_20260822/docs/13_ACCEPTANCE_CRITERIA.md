@@ -90,5 +90,5 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Unit/integration/e2e tests pass.
 - [ ] Lint, typecheck and production build pass.
 - [ ] Dependency/license notices exist.
-- [ ] `FINAL_EVIDENCE.md` exists with actual results.
+- [ ] `FINAL_UPGRADE_EVIDENCE.md` exists with actual results.
 - [ ] Git working tree is clean.

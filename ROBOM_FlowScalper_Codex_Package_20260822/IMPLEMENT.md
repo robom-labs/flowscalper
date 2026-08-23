@@ -57,7 +57,7 @@ If the frontend build tool is unavailable:
 
 ## Final evidence
 
-Create `FINAL_EVIDENCE.md` containing:
+Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 
 - system summary;
 - exact startup commands;

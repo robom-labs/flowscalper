@@ -22,5 +22,5 @@ jobs:
       - run: uv sync --all-groups --locked
       - run: pnpm install --frozen-lockfile
         working-directory: frontend
+      - run: make repo-hygiene
       - run: make lint typecheck test build
-
