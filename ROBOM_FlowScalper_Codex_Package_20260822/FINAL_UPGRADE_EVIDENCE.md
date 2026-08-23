@@ -549,4 +549,4 @@ GitHub 정리 뒤 실행 중인 `run-9b9d508c689d`를 다시 읽었을 때 mode�
 
 기계판독 증거는 `evidence/PHASE05_STRATEGY_ENTRY_EXIT_SIMULATION.json`이다. 최종 작동 화면은 `evidence/screenshots/phase05-final-live-running.png`이고 SHA-256은 `8784082d68bc49a8a1b43faa96d32106baaa21f98a8794d5bb5811564dae7646`다. `evidence/screenshots/phase05-prefinal-temporal-defect-trade-detail.png`는 고정 시간값을 제거하기 전에 관찰한 CBR 거짓 양성 가능성의 결함 증거일 뿐 최종 코드의 거래 성과 증거가 아니다.
 
-구현 commit과 GitHub Actions 결과는 push 후 이 섹션에 추가한다.
+구현 commit은 `8e24ffe1ea00b60d90297fdb5a85d209ea626bb5`다. GitHub Actions 결과는 최종 증거 정리 commit push 후 이 섹션에 추가한다.
