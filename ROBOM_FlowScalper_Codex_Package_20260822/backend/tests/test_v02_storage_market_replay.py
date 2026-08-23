@@ -17,7 +17,7 @@ from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
 from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
-from backend.app.replay.market import StoredMarketReplay
+from backend.app.replay.market import StoredMarketReplay, _candidate_plan_count
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
@@ -67,6 +67,17 @@ def market_event(
         ),
         data=data,
     )
+
+
+def test_replay_candidate_count_deduplicates_main_and_league_accounts() -> None:
+    audits = [
+        {"event": "MAIN_CANDIDATE_SELECTED", "candidate_id": "candidate-1"},
+        {"event": "LEAGUE_CANDIDATE_ARMED", "candidate_id": "candidate-1"},
+        {"event": "LEAGUE_CANDIDATE_ARMED", "candidate_id": "candidate-1"},
+        {"event": "LEAGUE_CANDIDATE_ARMED", "candidate_id": "candidate-2"},
+        {"event": "ENTRY_FILLED", "candidate_id": "candidate-2"},
+    ]
+    assert _candidate_plan_count(audits) == 2
 
 
 def test_schema_v6_market_events_are_ordered_checksummed_immutable_and_counted(

@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "generated_date_kst": "2026-08-24",
+  "scope": "Strategy A-F entry conditions, immutable plan, PAPER protection, TP/SL lifecycle, replay determinism, and actual browser start",
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_keys_required": 0
+  },
+  "baseline_defect": {
+    "status": "FAIL_FIXED",
+    "source_run_id": "run-f14214b3b1dd",
+    "event_count": 15045,
+    "strategy_evaluation_count": 41628,
+    "qualified_signal_count": 19,
+    "candidate_plan_count": 0,
+    "main_trade_count": 0,
+    "shadow_trade_count": 0,
+    "checksum": "e0bc27f43aef2b5e506df3b27f63c8090399d4d1c6df216c25e2a8e5020cb0cf",
+    "root_cause": "The first strategy cost gate and final executable-book cost gate used incompatible plan geometry, so every naturally qualified signal was rejected as LIVE_PLAN_INADEQUATE_NET_REWARD_RISK. A-D temporal fields also used fixed passing durations instead of measured event time."
+  },
+  "final_deterministic_public_market_replay": {
+    "status": "PASS",
+    "source_run_id": "run-f14214b3b1dd",
+    "replay_ids": [
+      "replay-f150c27d542340da",
+      "replay-68ddf5d6c3c84e94"
+    ],
+    "checksum": "f0c9ea71ef2952b35c0b86f68f284676bd6714f64376b0ffa1a00549dd8b2275",
+    "same_checksum": true,
+    "same_counts": true,
+    "event_count": 15045,
+    "strategy_evaluation_count": 41628,
+    "qualified_signal_count": 8,
+    "unique_candidate_plan_count": 5,
+    "main_trade_count": 0,
+    "shadow_trade_count": 7,
+    "qualified_execution_strategy": "QUEUE_MICROPRICE_MOMENTUM_V1",
+    "final_state": "OBSERVING_NO_MAIN_TRADE",
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "deterministic_strategy_lifecycle_matrix": {
+    "status": "PASS",
+    "strategy_count": 6,
+    "directions_per_strategy": 2,
+    "outcomes_per_direction": 2,
+    "scenario_count": 24,
+    "outcomes": [
+      "TP1_THEN_TP2",
+      "INITIAL_STOP"
+    ],
+    "assertions": [
+      "candidate passes final net reward-risk >= 1.20",
+      "entry uses executable opposite-side book after configured latency",
+      "initial stop and TP1/TP2 protection orders exist immediately after fill",
+      "TP1 and TP2 close exact planned fractions",
+      "stop closes remaining quantity without widening",
+      "fees and slippage reconcile to net PnL",
+      "BASE and STRESS accounts remain independent",
+      "real order and authentication flags remain false"
+    ]
+  },
+  "automated_validation": {
+    "status": "PASS",
+    "repository_hygiene": "PASS",
+    "ruff": "PASS",
+    "mypy_source_files": 75,
+    "backend_tests": 204,
+    "frontend_test_files": 11,
+    "frontend_tests": 32,
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_modules": 47,
+    "paper_build_safety": "PASS",
+    "security_source_files": 107,
+    "security_violations": 0,
+    "real_order_path": false,
+    "playwright_viewports": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "playwright_tests": 3
+  },
+  "actual_browser": {
+    "status": "PASS",
+    "transition": [
+      "READY",
+      "CONNECTING",
+      "RUNNING"
+    ],
+    "single_start_click": true,
+    "observed_lag_p95_ms_initial": 65,
+    "final_run_id": "run-2d24583436d9",
+    "final_lag_p95_ms": 144,
+    "final_paused": false,
+    "final_equity_usdt": 1000.0,
+    "final_main_trade_count": 0,
+    "final_real_orders_enabled": false,
+    "final_auth_required": false,
+    "screenshots": [
+      {
+        "path": "evidence/screenshots/phase05-final-live-running.png",
+        "sha256": "8784082d68bc49a8a1b43faa96d32106baaa21f98a8794d5bb5811564dae7646"
+      },
+      {
+        "path": "evidence/screenshots/phase05-prefinal-temporal-defect-trade-detail.png",
+        "sha256": "222a64ea274e21a835bbfccf641600fe277dbae556c5ddaa1189f097dc4c16e2",
+        "status": "PRE_FIX_DEFECT_EVIDENCE_ONLY"
+      }
+    ]
+  },
+  "strategy_defaults": {
+    "active": [
+      "LSA_REVERSAL_V1",
+      "CBR_CONTINUATION_V1"
+    ],
+    "shadow": [
+      "VWAP_EXHAUSTION_REVERSION_V1",
+      "OFI_CONTINUATION_PULLBACK_V1",
+      "QUEUE_MICROPRICE_MOMENTUM_V1",
+      "AGGRESSOR_FLOW_CONTINUATION_V1"
+    ],
+    "long_enabled_for_all": true,
+    "short_enabled_for_all": true,
+    "reversion_minimum_structural_risk_fraction": 0.008,
+    "trend_minimum_structural_risk_fraction": 0.003,
+    "minimum_final_net_reward_risk": 1.2
+  },
+  "limitations": {
+    "strategy_profitability": "NOT_PROVEN_SAMPLE_INSUFFICIENT",
+    "natural_final_main_entry": "NOT_OBSERVED",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  }
+}

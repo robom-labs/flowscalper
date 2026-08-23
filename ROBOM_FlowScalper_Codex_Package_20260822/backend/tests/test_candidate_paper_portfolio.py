@@ -16,7 +16,13 @@ from backend.app.execution import BookSnapshot
 from backend.app.execution.portfolio import PaperPortfolioEngine
 from backend.app.regime import Regime
 from backend.app.risk import RiskState
-from backend.app.strategies.base import CandidateDecision, CandidateStatus
+from backend.app.strategies.base import (
+    CandidateDecision,
+    CandidateStatus,
+    costed_plan,
+)
+from backend.app.strategies.registry import StrategyRegistry
+from backend.app.strategies.runtime_evaluator import _plan
 from backend.app.strategies.shadow import ShadowLedger
 from backend.tests.test_strategies import features
 
@@ -65,6 +71,28 @@ def instrument() -> Instrument:
     )
 
 
+def tight_spread_instrument() -> Instrument:
+    return Instrument(
+        venue=Venue.FIXTURE,
+        symbol="BTCUSDT",
+        base_asset="BTC",
+        quote_asset="USDT",
+        status="TEST",
+        contract_type="PAPER",
+        tick_size=Decimal("0.01"),
+        quantity_step=Decimal("0.001"),
+        minimum_quantity=Decimal("0.001"),
+    )
+
+
+def tight_spread_book(ts_ms: int) -> BookSnapshot:
+    return book(
+        ts_ms,
+        bids=(("99.99", "100"), ("99.98", "100")),
+        asks=(("100.01", "100"), ("100.02", "100")),
+    )
+
+
 def candidate_plan(*, strategy_id: str = "LSA_REVERSAL_V1") -> CandidatePlan:
     result = CandidatePlanner().build(
         signal_event_id="depth-signal-1",
@@ -83,6 +111,62 @@ def candidate_plan(*, strategy_id: str = "LSA_REVERSAL_V1") -> CandidatePlan:
     assert result.rejection_codes == ()
     assert result.plan is not None
     return result.plan
+
+
+@pytest.mark.parametrize("strategy_id", StrategyRegistry().strategy_ids)
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_runtime_plan_geometry_survives_final_live_cost_gate_for_every_strategy(
+    strategy_id: str,
+    side: Side,
+) -> None:
+    """전략 1차 게이트와 최종 호가·비용 게이트가 서로 모순되지 않아야 한다."""
+
+    registry = StrategyRegistry()
+    descriptor = registry.descriptor(strategy_id)
+    snapshot = features()
+    instrument_row = tight_spread_instrument()
+    inputs = _plan(
+        snapshot,
+        side,
+        instrument_row.tick_size,
+        exit_style=descriptor.exit_style,
+    )
+    costed, rejection_codes = costed_plan(side, inputs)
+    assert rejection_codes == ()
+    assert costed is not None
+    decision = CandidateDecision(
+        strategy_id=strategy_id,
+        side=side,
+        status=CandidateStatus.QUALIFIED,
+        reason_codes=("TEST_CONDITIONS_CONFIRMED",),
+        rejection_codes=(),
+        planned_entry=costed.entry,
+        initial_stop=costed.stop,
+        take_profit=costed.target,
+        expected_cost_bps=inputs.expected_total_cost_bps,
+        net_reward_risk=costed.net_reward_risk,
+    )
+
+    result = CandidatePlanner().build(
+        signal_event_id=f"depth-{strategy_id}-{side.value}",
+        run_id="run-plan-geometry",
+        venue=Venue.FIXTURE,
+        decision=decision,
+        snapshot=snapshot,
+        regime=descriptor.supported_regimes[0],
+        book=tight_spread_book(1_000),
+        instrument=instrument_row,
+        signal_time_ms=1_000,
+        risk_state=RiskState(),
+        main_eligible=True,
+        shadow_eligible=True,
+        exit_style=descriptor.exit_style,
+    )
+
+    assert result.rejection_codes == ()
+    assert result.plan is not None
+    assert result.plan.initial_stop == costed.stop
+    assert result.plan.net_reward_risk >= Decimal("1.20")
 
 
 def test_candidate_plan_is_complete_immutable_and_risk_bounded() -> None:

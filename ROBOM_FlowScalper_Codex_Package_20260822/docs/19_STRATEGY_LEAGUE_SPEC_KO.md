@@ -67,8 +67,17 @@
 - F는 방향보존 signed notional robust z, 3s·10s 체결, OFI, 가격반응, microprice를 본다.
 - E·F는 strategy·symbol·side별 정렬 시작 event timestamp를 저장한다.
 - 정렬이 500ms 이상 실제로 지속될 때만 통과하고, 조건이 깨지면 시각을 초기화한다.
-- E·F 구조계획은 0.20% stop 거리와 3.2R target을 사용해 공통 비용 gate를 낮추지 않는다.
+- TREND 전략 B/D/E/F 구조계획은 최소 0.30% stop 거리와 3.2R target을 사용해 공통 비용 gate를 낮추지 않는다.
 - robust statistic은 현재 시점 이전 prefix만 사용하며 Replay도 같은 timestamp 규칙을 쓴다.
+
+## 7.1 공통 비용후 계획과 A~D 시간 조건
+
+- REVERSION 전략 A/C는 최소 0.80%, TREND 전략 B/D/E/F는 최소 0.30%의 구조 stop 거리를 사용한다.
+- 이 거리는 손실예산을 늘리지 않는다. main은 현재자산의 0.1%, League는 0.5% 위험예산에 맞춰 수량을 줄인다.
+- 최종 CandidatePlanner는 실제 bid·ask, worst entry, 양방향 fee, 예상 exit slippage와 분할청산 비중을 다시 계산하고 순손익비 1.20 미만을 거부한다.
+- A의 refill·범위 재진입과 C의 구조 재진입은 실제 event timestamp로 지속시간을 계산한다.
+- B/D의 눌림 시간·최대 되돌림·현재 재가속은 현재 이전 가격 prefix만 사용하고, 재가속 정렬이 끊기면 확인시각을 초기화한다.
+- 자세한 근거와 한계는 `docs/adr/ADR-013-cost-viable-event-time-strategy-gates.md`를 따른다.
 
 ## 8. Recovery와 출력
 

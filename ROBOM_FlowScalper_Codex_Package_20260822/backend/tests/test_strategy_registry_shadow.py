@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
+import pytest
+
 import backend.app.strategies.runtime_evaluator as runtime_evaluator_module
+from backend.app.build_identity import STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.costing import CostProfile
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side
@@ -12,7 +16,10 @@ from backend.app.regime import Regime
 from backend.app.runtime import PaperRuntime
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
-from backend.app.strategies.runtime_evaluator import StrategySignalEvaluator
+from backend.app.strategies.runtime_evaluator import (
+    StrategySignalEvaluator,
+    _pullback_metrics,
+)
 from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 from backend.tests.test_strategies import features
 
@@ -27,6 +34,7 @@ def test_registry_exposes_six_strategies_and_honors_mode_and_direction() -> None
         "QUEUE_MICROPRICE_MOMENTUM_V1",
         "AGGRESSOR_FLOW_CONTINUATION_V1",
     )
+    assert tuple(STRATEGY_VERSION.split("+")) == registry.strategy_ids
     assert [row["mode"] for row in registry.rows()] == [
         "ACTIVE",
         "ACTIVE",
@@ -94,6 +102,58 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
     assert len(decisions) == 12
     assert robust_calls == 4
     assert percentile_calls == 3
+
+
+@pytest.mark.parametrize(
+    ("side", "prices"),
+    [
+        (Side.LONG, (100.0, 102.0, 101.0, 101.2)),
+        (Side.SHORT, (100.0, 98.0, 99.0, 98.8)),
+    ],
+)
+def test_pullback_metrics_use_prefix_event_time_and_require_price_reacceleration(
+    side: Side,
+    prices: tuple[float, ...],
+) -> None:
+    snapshots = [
+        replace(features(), ts_ms=timestamp, mid=price)
+        for timestamp, price in zip((0, 1_000, 2_000, 2_500), prices, strict=True)
+    ]
+    metrics = _pullback_metrics(
+        snapshots[:-1],
+        snapshots[-1],
+        side,
+        maximum_duration_seconds=10,
+    )
+    assert metrics.duration_seconds == 1.5
+    assert metrics.maximum_retrace_fraction == pytest.approx(0.5)
+    assert metrics.price_reaccelerated
+
+    no_reacceleration = _pullback_metrics(
+        snapshots[:-2],
+        snapshots[-2],
+        side,
+        maximum_duration_seconds=10,
+    )
+    assert not no_reacceleration.price_reaccelerated
+
+    future = replace(features(), ts_ms=9_000, mid=1_000 if side is Side.LONG else 1.0)
+    with_future_in_history = _pullback_metrics(
+        [*snapshots[:-1], future],
+        snapshots[-1],
+        side,
+        maximum_duration_seconds=10,
+    )
+    assert with_future_in_history == metrics
+
+
+def test_runtime_temporal_gate_uses_event_time_and_resets() -> None:
+    evaluator = StrategySignalEvaluator()
+    assert evaluator._confirmation_ms("A", "BTCUSDT", Side.LONG, 1_000, aligned=True) == 0
+    assert evaluator._confirmation_ms("A", "BTCUSDT", Side.LONG, 1_299, aligned=True) == 299
+    assert evaluator._confirmation_ms("A", "BTCUSDT", Side.LONG, 1_300, aligned=True) == 300
+    assert evaluator._confirmation_ms("A", "BTCUSDT", Side.LONG, 1_400, aligned=False) == 0
+    assert evaluator._confirmation_ms("A", "BTCUSDT", Side.LONG, 2_000, aligned=True) == 0
 
 
 def test_shadow_accounts_are_independent_by_strategy_and_cost_profile() -> None:

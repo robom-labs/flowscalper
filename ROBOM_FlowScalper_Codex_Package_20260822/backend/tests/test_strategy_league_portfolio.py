@@ -5,11 +5,14 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
+import pytest
+
 from backend.app.candidates import CandidatePlan, CandidatePlanner
 from backend.app.costing import CostModel, CostProfile
 from backend.app.domain.market import Instrument
 from backend.app.domain.models import Side, Venue
 from backend.app.execution import BookSnapshot
+from backend.app.execution.models import ExitReason, OrderIntent
 from backend.app.execution.portfolio import PaperPortfolioEngine
 from backend.app.regime import Regime
 from backend.app.risk import RiskManager, RiskSizingInput, RiskState
@@ -76,16 +79,19 @@ def league_plan(
             ts_ms=signal_time_ms,
             micro_vwap_10s=100.01 if side is Side.LONG else 99.99,
         ),
-        regime=Regime.RANGE if strategy_id == "LSA_REVERSAL_V1" else Regime.TREND_UP,
+        regime=(
+            Regime.RANGE
+            if StrategyRegistry().descriptor(strategy_id).exit_style
+            is ExitStyle.REVERSION_70_30
+            else Regime.TREND_UP if side is Side.LONG else Regime.TREND_DOWN
+        ),
         book=league_book(symbol, signal_time_ms),
         instrument=instrument,
         signal_time_ms=signal_time_ms,
         risk_state=RiskState(),
         main_eligible=True,
         shadow_eligible=True,
-        exit_style=(
-            ExitStyle.REVERSION_70_30 if strategy_id == "LSA_REVERSAL_V1" else ExitStyle.TREND_40_60
-        ),
+        exit_style=StrategyRegistry().descriptor(strategy_id).exit_style,
     )
     assert result.plan is not None, result.rejection_codes
     return result.plan
@@ -328,6 +334,102 @@ def test_exit_styles_have_exact_fractions_and_trend_tp1_never_widens_stop() -> N
     engine.evaluate_health(adverse, Regime.SHOCK, now_ms=3_500)
     assert managed.pending_exit is not None
     assert managed.pending_exit.label == "EDGE_DECAY"
+
+
+def _trigger_book(
+    plan: CandidatePlan,
+    ts_ms: int,
+    price: Decimal,
+) -> BookSnapshot:
+    if plan.direction is Side.LONG:
+        bids = ((str(price + Decimal("0.1")), "100"),)
+        asks = ((str(price + Decimal("0.2")), "100"),)
+    else:
+        bids = ((str(price - Decimal("0.2")), "100"),)
+        asks = ((str(price - Decimal("0.1")), "100"),)
+    return league_book(plan.symbol, ts_ms, bids=bids, asks=asks)
+
+
+def _stop_book(plan: CandidatePlan, ts_ms: int) -> BookSnapshot:
+    stop = plan.initial_stop
+    if plan.direction is Side.LONG:
+        bids = ((str(stop - Decimal("0.1")), "100"),)
+        asks = ((str(stop + Decimal("0.1")), "100"),)
+    else:
+        bids = ((str(stop - Decimal("0.1")), "100"),)
+        asks = ((str(stop + Decimal("0.1")), "100"),)
+    return league_book(plan.symbol, ts_ms, bids=bids, asks=asks)
+
+
+@pytest.mark.parametrize("strategy_id", StrategyRegistry().strategy_ids)
+@pytest.mark.parametrize("side", (Side.LONG, Side.SHORT))
+@pytest.mark.parametrize("outcome", ("TAKE_PROFIT", "STOP"))
+def test_every_strategy_runs_entry_protection_and_exit_end_to_end(
+    strategy_id: str,
+    side: Side,
+    outcome: str,
+) -> None:
+    """A-F의 양방향 진입과 자동 TP1·TP2·SL 보호를 같은 PAPER 엔진으로 검증한다."""
+
+    engine = league_engine()
+    plan = league_plan(strategy_id, "BTCUSDT", side)
+    expected_fractions = (
+        [Decimal("0.70"), Decimal("0.30")]
+        if plan.exit_style is ExitStyle.REVERSION_70_30
+        else [Decimal("0.40"), Decimal("0.60")]
+    )
+    assert [target.quantity_fraction for target in plan.take_profit_targets] == expected_fractions
+    assert plan.max_planned_loss <= plan.risk_budget
+    assert plan.net_reward_risk >= Decimal("1.20")
+
+    engine.offer((plan,), entries_paused=False)
+    engine.on_book(league_book(plan.symbol, 1_250))
+    engine.on_book(league_book(plan.symbol, 1_500))
+    accounts = (
+        engine.main,
+        engine.shadows[f"{strategy_id}:BASE"],
+        engine.shadows[f"{strategy_id}:STRESS"],
+    )
+    for account in accounts:
+        managed = account.positions[plan.symbol]
+        assert {order.intent for order in managed.protected.protection_orders} == {
+            OrderIntent.TAKE_PROFIT,
+            OrderIntent.STOP_EXIT,
+        }
+        assert managed.protected.current_stop == plan.initial_stop
+
+    if outcome == "TAKE_PROFIT":
+        tp1 = plan.take_profit_targets[0].price
+        for ts_ms in (2_000, 2_250, 2_500):
+            engine.on_book(_trigger_book(plan, ts_ms, tp1))
+        tp2 = plan.take_profit_targets[1].price
+        for ts_ms in (3_000, 3_250, 3_500):
+            engine.on_book(_trigger_book(plan, ts_ms, tp2))
+        expected_reason = ExitReason.TAKE_PROFIT
+        expected_flags = ("TP1", "TP2")
+    else:
+        for ts_ms in (2_000, 2_250, 2_500):
+            engine.on_book(_stop_book(plan, ts_ms))
+        expected_reason = ExitReason.STOP
+        expected_flags = ("STOP_LOSS",)
+
+    for account in accounts:
+        assert plan.symbol not in account.positions
+        assert len(account.completed_trades) == 1
+        trade = account.completed_trades[0]
+        assert trade.strategy_id == strategy_id
+        assert trade.side is side
+        assert trade.exit_reason is expected_reason
+        assert trade.flags == expected_flags
+        assert trade.net_pnl_usdt == (
+            trade.gross_pnl_usdt - trade.fees_usdt - trade.slippage_usdt
+        )
+        assert (trade.net_pnl_usdt > 0) is (outcome == "TAKE_PROFIT")
+
+    base_trade = engine.shadow_ledger.account(strategy_id, CostProfile.BASE).trades[0]
+    stress_trade = engine.shadow_ledger.account(strategy_id, CostProfile.STRESS).trades[0]
+    assert stress_trade.fees_usdt > base_trade.fees_usdt
+    assert stress_trade.slippage_usdt >= base_trade.slippage_usdt
 
 
 def test_multiple_pending_and_positions_recovery_roundtrip() -> None:

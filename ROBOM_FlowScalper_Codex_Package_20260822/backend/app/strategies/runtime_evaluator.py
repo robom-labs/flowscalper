@@ -29,7 +29,7 @@ from backend.app.strategies.queue_microprice import (
     QueueMicropriceStrategy,
     queue_alignment_ready,
 )
-from backend.app.strategies.registry import StrategyRegistry
+from backend.app.strategies.registry import ExitStyle, StrategyRegistry
 from backend.app.strategies.statistics import robust_z, rolling_percentile
 from backend.app.strategies.vwap_exhaustion import (
     VwapExhaustionContext,
@@ -57,6 +57,15 @@ class _HistoryStatistics:
     efficiency_percentile: float
     long_directional_flow_z: float
     short_directional_flow_z: float
+
+
+@dataclass(frozen=True, slots=True)
+class _PullbackMetrics:
+    """현재 시점 이전 가격 경로에서 계산한 실제 눌림과 재가속이다."""
+
+    duration_seconds: float
+    maximum_retrace_fraction: float
+    price_reaccelerated: bool
 
 
 class StrategySignalEvaluator:
@@ -89,6 +98,7 @@ class StrategySignalEvaluator:
                     side,
                     snapshot,
                     regime,
+                    history,
                     history_statistics,
                     tick_size=tick_size,
                 )
@@ -110,11 +120,17 @@ class StrategySignalEvaluator:
         side: Side,
         snapshot: FeatureSnapshot,
         regime: Regime,
+        history: list[FeatureSnapshot],
         history_statistics: _HistoryStatistics,
         *,
         tick_size: Decimal,
     ) -> CandidateDecision:
-        plan = _plan(snapshot, side, tick_size)
+        exit_style = (
+            ExitStyle.REVERSION_70_30
+            if isinstance(evaluator, LiquiditySweepStrategy | VwapExhaustionStrategy)
+            else ExitStyle.TREND_40_60
+        )
+        plan = _plan(snapshot, side, tick_size, exit_style=exit_style)
         deviation_bps = (snapshot.mid - snapshot.micro_vwap_10s) / snapshot.mid * 10_000
         direction = 1 if side is Side.LONG else -1
         ofi_short = snapshot.ofi_250ms * direction
@@ -122,6 +138,20 @@ class StrategySignalEvaluator:
         trade_flow = snapshot.trade_imbalance_3s * direction
         microprice_alignment = (snapshot.microprice - snapshot.mid) * direction > 0
         if isinstance(evaluator, LiquiditySweepStrategy):
+            supported_regime = regime not in {
+                Regime.SHOCK,
+                Regime.DEGRADED,
+                Regime.WARMUP,
+            }
+            refill_ready = (
+                snapshot.data_healthy
+                and supported_regime
+                and snapshot.refill_ratio >= 0.55
+            )
+            range_reentered = abs(deviation_bps) <= max(
+                2.0,
+                snapshot.spread_bps * 3,
+            )
             sweep_context = LiquiditySweepContext(
                 side=side,
                 features=snapshot,
@@ -133,16 +163,45 @@ class StrategySignalEvaluator:
                 price_response_efficiency_quantile=(
                     history_statistics.price_response_percentile
                 ),
-                refill_persistence_ms=1_000 if snapshot.refill_ratio >= 0.55 else 0,
-                reentry_confirmation_ms=500
-                if abs(deviation_bps) <= max(2.0, snapshot.spread_bps * 3)
-                else 0,
+                refill_persistence_ms=self._confirmation_ms(
+                    f"{evaluator.strategy_id}:REFILL",
+                    snapshot.symbol,
+                    side,
+                    snapshot.ts_ms,
+                    aligned=refill_ready,
+                ),
+                reentry_confirmation_ms=self._confirmation_ms(
+                    f"{evaluator.strategy_id}:REENTRY",
+                    snapshot.symbol,
+                    side,
+                    snapshot.ts_ms,
+                    aligned=snapshot.data_healthy
+                    and supported_regime
+                    and range_reentered,
+                ),
                 ofi_flip=ofi_short > 0 and ofi_medium < 0,
                 microprice_reclaimed=microprice_alignment,
-                range_reentered=abs(deviation_bps) <= max(2.0, snapshot.spread_bps * 3),
+                range_reentered=range_reentered,
             )
             return evaluator.evaluate(sweep_context)
         if isinstance(evaluator, CompressionBreakoutStrategy):
+            pullback = _pullback_metrics(
+                history,
+                snapshot,
+                side,
+                maximum_duration_seconds=10,
+            )
+            expected_regime = Regime.TREND_UP if side is Side.LONG else Regime.TREND_DOWN
+            reacceleration_ready = (
+                snapshot.data_healthy
+                and regime is expected_regime
+                and snapshot.spread_bps <= 12
+                and pullback.price_reaccelerated
+                and ofi_short > 0
+                and ofi_medium > 0
+                and trade_flow > 0.15
+                and microprice_alignment
+            )
             breakout_context = CompressionBreakoutContext(
                 side=side,
                 features=snapshot,
@@ -151,17 +210,27 @@ class StrategySignalEvaluator:
                 compression_quantile=history_statistics.compression_percentile,
                 breakout_confirmed=ofi_medium > 0 and trade_flow > 0.15,
                 initial_impulse_extended=snapshot.realized_volatility_30s >= 0.0015,
-                pullback_seconds=3.0,
-                pullback_retrace_fraction=0.40,
+                pullback_seconds=pullback.duration_seconds,
+                pullback_retrace_fraction=pullback.maximum_retrace_fraction,
                 counterflow_price_impact_weak=snapshot.price_response_efficiency <= 0.50,
                 refill_recovered=snapshot.refill_ratio >= 0.50,
                 ofi_reaccelerated=ofi_short > 0 and ofi_medium > 0,
                 microprice_aligned=microprice_alignment,
-                confirmation_ms=500 if ofi_short > 0 else 0,
+                confirmation_ms=self._confirmation_ms(
+                    f"{evaluator.strategy_id}:REACCELERATION",
+                    snapshot.symbol,
+                    side,
+                    snapshot.ts_ms,
+                    aligned=reacceleration_ready,
+                ),
             )
             return evaluator.evaluate(breakout_context)
         if isinstance(evaluator, VwapExhaustionStrategy):
             excursion_valid = deviation_bps < 0 if side is Side.LONG else deviation_bps > 0
+            structure_reentered = abs(deviation_bps) <= max(
+                8.0,
+                snapshot.spread_bps * 8,
+            )
             vwap_context = VwapExhaustionContext(
                 side=side,
                 features=snapshot,
@@ -176,11 +245,37 @@ class StrategySignalEvaluator:
                 opposite_depth_refilled=snapshot.refill_ratio >= 0.55,
                 ofi_reversed=ofi_short > 0 and ofi_medium < 0,
                 microprice_reversed=microprice_alignment,
-                structure_reentered=abs(deviation_bps) <= max(8.0, snapshot.spread_bps * 8),
-                confirmation_ms=500 if microprice_alignment else 0,
+                structure_reentered=structure_reentered,
+                confirmation_ms=self._confirmation_ms(
+                    f"{evaluator.strategy_id}:REENTRY",
+                    snapshot.symbol,
+                    side,
+                    snapshot.ts_ms,
+                    aligned=snapshot.data_healthy
+                    and regime is Regime.RANGE
+                    and structure_reentered
+                    and microprice_alignment,
+                ),
             )
             return evaluator.evaluate(vwap_context)
         if isinstance(evaluator, OfiPullbackStrategy):
+            pullback = _pullback_metrics(
+                history,
+                snapshot,
+                side,
+                maximum_duration_seconds=15,
+            )
+            expected_regime = Regime.TREND_UP if side is Side.LONG else Regime.TREND_DOWN
+            reacceleration_ready = (
+                snapshot.data_healthy
+                and regime is expected_regime
+                and snapshot.spread_bps <= 12
+                and pullback.price_reaccelerated
+                and ofi_short > 0
+                and ofi_medium > 0
+                and trade_flow > 0.15
+                and microprice_alignment
+            )
             ofi_context = OfiPullbackContext(
                 side=side,
                 features=snapshot,
@@ -190,11 +285,21 @@ class StrategySignalEvaluator:
                 aggressive_trade_aligned=trade_flow > 0.15,
                 microprice_aligned=microprice_alignment,
                 price_efficiency_percentile=history_statistics.efficiency_percentile,
-                pullback_seconds=5.0,
-                pullback_retrace_fraction=0.35,
+                pullback_seconds=pullback.duration_seconds,
+                pullback_retrace_fraction=pullback.maximum_retrace_fraction,
                 counterflow_price_impact_weak=snapshot.price_response_efficiency <= 0.50,
-                original_flow_reaccelerated=ofi_short > 0 and ofi_short >= ofi_medium * 0.1,
-                confirmation_ms=500 if ofi_short > 0 else 0,
+                original_flow_reaccelerated=(
+                    pullback.price_reaccelerated
+                    and ofi_short > 0
+                    and ofi_short >= ofi_medium * 0.1
+                ),
+                confirmation_ms=self._confirmation_ms(
+                    f"{evaluator.strategy_id}:REACCELERATION",
+                    snapshot.symbol,
+                    side,
+                    snapshot.ts_ms,
+                    aligned=reacceleration_ready,
+                ),
             )
             return evaluator.evaluate(ofi_context)
         if isinstance(evaluator, QueueMicropriceStrategy):
@@ -308,11 +413,70 @@ class StrategySignalEvaluator:
         return timestamp_ms - started
 
 
-def _plan(snapshot: FeatureSnapshot, side: Side, tick_size: Decimal) -> PlanInputs:
+def _pullback_metrics(
+    history: list[FeatureSnapshot],
+    snapshot: FeatureSnapshot,
+    side: Side,
+    *,
+    maximum_duration_seconds: int,
+) -> _PullbackMetrics:
+    """미래 표본 없이 impulse→눌림→현재 재가속 경로를 event time으로 계산한다."""
+
+    window_start_ms = snapshot.ts_ms - maximum_duration_seconds * 1_000
+    window = [
+        item
+        for item in history
+        if window_start_ms <= item.ts_ms < snapshot.ts_ms
+    ]
+    window.append(snapshot)
+    if len(window) < 4:
+        return _PullbackMetrics(0.0, 0.0, False)
+    direction = 1 if side is Side.LONG else -1
+    directional_prices = [item.mid * direction for item in window]
+    peak_index = max(range(len(window)), key=directional_prices.__getitem__)
+    if peak_index == 0 or peak_index >= len(window) - 2:
+        return _PullbackMetrics(0.0, 0.0, False)
+    impulse_origin = min(directional_prices[: peak_index + 1])
+    impulse_distance = directional_prices[peak_index] - impulse_origin
+    if impulse_distance <= 0:
+        return _PullbackMetrics(0.0, 0.0, False)
+    post_peak_prices = directional_prices[peak_index:]
+    pullback_low_offset = min(
+        range(len(post_peak_prices)),
+        key=post_peak_prices.__getitem__,
+    )
+    pullback_low_index = peak_index + pullback_low_offset
+    pullback_distance = directional_prices[peak_index] - directional_prices[pullback_low_index]
+    current_price = directional_prices[-1]
+    duration_seconds = (snapshot.ts_ms - window[peak_index].ts_ms) / 1_000
+    return _PullbackMetrics(
+        duration_seconds=max(0.0, duration_seconds),
+        maximum_retrace_fraction=max(0.0, pullback_distance / impulse_distance),
+        price_reaccelerated=(
+            pullback_low_index < len(window) - 1
+            and current_price > directional_prices[pullback_low_index]
+        ),
+    )
+
+
+def _plan(
+    snapshot: FeatureSnapshot,
+    side: Side,
+    tick_size: Decimal,
+    *,
+    exit_style: ExitStyle,
+) -> PlanInputs:
     entry = Decimal(str(snapshot.mid))
     spread = entry * Decimal(str(snapshot.spread_bps)) / Decimal(10_000)
     noise = max(tick_size * 2, spread * Decimal("1.5"), entry * Decimal("0.0002"))
-    risk_distance = max(noise * Decimal("1.2"), entry * Decimal("0.0015"))
+    # 13bp 이상의 왕복 비용을 손익 양쪽에 반영해도 최종 CandidatePlan의
+    # net R:R 1.20을 넘도록 exit 비중별 최소 구조 거리를 보수적으로 둔다.
+    minimum_risk_fraction = (
+        Decimal("0.0080")
+        if exit_style is ExitStyle.REVERSION_70_30
+        else Decimal("0.0030")
+    )
+    risk_distance = max(noise * Decimal("1.2"), entry * minimum_risk_fraction)
     target_distance = risk_distance * Decimal("3.2")
     if side is Side.LONG:
         stop = entry - risk_distance
@@ -336,25 +500,11 @@ def _momentum_plan(
     side: Side,
     tick_size: Decimal,
 ) -> PlanInputs:
-    """E/F의 3.2R 구조 target이 보수적 비용 gate를 통과하는 stop을 산정한다."""
+    """E/F도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
 
-    entry = Decimal(str(snapshot.mid))
-    spread = entry * Decimal(str(snapshot.spread_bps)) / Decimal(10_000)
-    noise = max(tick_size * 2, spread * Decimal("1.5"), entry * Decimal("0.0002"))
-    risk_distance = max(noise * Decimal("1.2"), entry * Decimal("0.0020"))
-    target_distance = risk_distance * Decimal("3.2")
-    if side is Side.LONG:
-        stop = entry - risk_distance
-        target = entry + target_distance
-    else:
-        stop = entry + risk_distance
-        target = entry - target_distance
-    return PlanInputs(
-        entry=entry,
-        structural_stop=stop,
-        target=target,
-        expected_total_cost_bps=max(
-            Decimal("13"),
-            Decimal(str(snapshot.spread_bps)) + Decimal("12"),
-        ),
+    return _plan(
+        snapshot,
+        side,
+        tick_size,
+        exit_style=ExitStyle.TREND_40_60,
     )

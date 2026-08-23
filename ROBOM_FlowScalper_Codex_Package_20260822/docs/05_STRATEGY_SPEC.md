@@ -157,3 +157,12 @@ Before sufficient data:
 ## 5.8 No forced trade count
 
 The research target may be several trades per day across the universe, but the engine must allow zero trades. Never lower thresholds to satisfy a count target.
+
+## 5.9 Executable cost geometry and temporal confirmation
+
+- REVERSION A/C use a minimum 0.80% structural stop distance. TREND B/D/E/F use a minimum 0.30% distance.
+- The distance is not added risk. Risk-based sizing reduces quantity so the account risk budget remains unchanged.
+- Final eligibility is recalculated from executable bid/ask, worst entry, both-side fees, expected exit slippage and the configured split exits. Net reward-risk below 1.20 remains rejected.
+- A-D confirmation durations use venue event timestamps and reset immediately when alignment breaks.
+- B/D pullback duration, maximum retrace and price reacceleration use only the same-symbol history prefix whose timestamp is earlier than the decision snapshot.
+- These are documented PAPER research defaults, not evidence of profitability. See ADR-013.

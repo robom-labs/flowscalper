@@ -135,10 +135,8 @@ class StoredMarketReplay:
             symbol_counts=digest.symbol_counts,
             strategy_evaluation_count=runtime.strategy_evaluation_count,
             qualified_signal_count=runtime.qualified_signal_count,
-            candidate_plan_count=sum(
-                audit.get("event")
-                in {"MAIN_CANDIDATE_SELECTED", "SHADOW_CANDIDATE_ARMED"}
-                for audit in runtime.paper_portfolio.audit_events
+            candidate_plan_count=_candidate_plan_count(
+                runtime.paper_portfolio.audit_events
             ),
             main_trade_count=len(runtime.paper_portfolio.main.completed_trades),
             shadow_trade_count=sum(
@@ -169,3 +167,20 @@ class StoredMarketReplay:
                 long_enabled=bool(setting["long_enabled"]),
                 short_enabled=bool(setting["short_enabled"]),
             )
+
+
+def _candidate_plan_count(audits: tuple[dict[str, object], ...] | list[dict[str, object]]) -> int:
+    """main과 League 계좌에 중복 배포된 같은 후보를 한 번만 센다."""
+
+    candidate_events = {
+        "MAIN_CANDIDATE_SELECTED",
+        "LEAGUE_CANDIDATE_ARMED",
+        "SHADOW_CANDIDATE_ARMED",
+    }
+    return len(
+        {
+            str(audit["candidate_id"])
+            for audit in audits
+            if audit.get("event") in candidate_events and audit.get("candidate_id")
+        }
+    )

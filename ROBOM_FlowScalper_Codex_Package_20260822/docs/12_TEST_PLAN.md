@@ -205,3 +205,14 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 - Verify a completed trade focus session contains PRE_ENTRY, OPEN and CLOSED, with no future marker and an exit ledger transition when no market event exists after exit.
 - In the actual in-app browser, click navigation, strategy modes/directions, record filters, replay controls, analytics filters, safety controls, market search/source/symbol, all intervals, all indicators, fullscreen, drawer, focus sheets and responsive states. Write PASS/FAIL per control to `evidence/PHASE03_ACTUAL_UI_SIMULATION.json`.
 - The integrated post-fix public run evidence is `evidence/PHASE03_INTEGRATED_LIVE_POSTFIX_180S.json`. Six-hour and 24-hour results remain `NOT_RUN` unless actually completed.
+
+## 12.17 Phase 05 strategy entry and protection regression
+
+- Parameterize all six Registry strategies and LONG/SHORT through the runtime plan geometry and final executable-book cost gate. Require net reward-risk at least 1.20 without lowering fee or slippage assumptions.
+- Parameterize all six strategies, both directions and both TP1→TP2 and initial-stop outcomes. Require protection orders immediately after fill, exact remaining quantity, stop non-widening and fee/slippage reconciliation.
+- Verify A/C REVERSION and B/D/E/F TREND exit styles use their documented minimum structural distances and split exits.
+- Verify B/D pullback metrics are symmetric, use event time, require price reacceleration and ignore future history. Verify every temporal confirmation resets when alignment breaks.
+- Replay the same stored public-market Run twice and require identical checksum, evaluated/qualified/candidate/trade counts and PAPER/auth invariants.
+- Count replay candidates by unique candidate ID across main and League BASE/STRESS audit duplication.
+- In the actual browser, require a single start click to show CONNECTING then RUNNING, a numeric lag P95 and permanent `PAPER · 실제 주문 0`.
+- A short replay or deterministic test proves code-path integrity, not profitability. Six-hour and 24-hour soaks remain `NOT_RUN` unless their full duration is observed.

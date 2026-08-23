@@ -7,11 +7,15 @@ type Filter = 'ALL' | 'LIVE_PUBLIC' | 'OFFLINE_FIXTURE'
 
 export function HistoryPage({ rows, onReplay }: Props) {
   const [filter, setFilter] = useState<Filter>('ALL')
-  const [selected, setSelected] = useState<HistoryRow | null>(null)
+  const [selectedTrade, setSelected] = useState<HistoryRow | null>(null)
   const filtered = useMemo(
     () => rows.filter((row) => filter === 'ALL' || row.sample_type === filter),
     [filter, rows],
   )
+  const selected = selectedTrade
+    && filtered.some((row) => row.trade_id === selectedTrade.trade_id)
+    ? selectedTrade
+    : null
   return (
     <section aria-labelledby="history-heading">
       <div className="page-heading">

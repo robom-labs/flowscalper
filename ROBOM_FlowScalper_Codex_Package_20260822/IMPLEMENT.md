@@ -119,3 +119,14 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 4. Cache the exact top 20 prices of each full local order book and fall back to a full recomputation whenever a cached price is removed.
 5. Validate exact order-book equivalence, pause-cause contracts, frontend one-click behavior, actual browser controls and a measured public-market observation window.
 6. Keep 6-hour and 24-hour claims as `NOT_RUN` unless their full wall-clock duration is actually completed.
+
+## Strategy entry integrity and protection simulation Wave
+
+1. Replay a stored public-market Run before changing thresholds and identify the exact gate that rejects every qualified signal.
+2. Keep minimum final net reward-risk, fees, slippage and strategy signal thresholds unchanged. Align strategy plan geometry with the final REVERSION/TREND split-exit cost calculation.
+3. Replace A-D fixed confirmation and pullback values with real event timestamp and same-symbol history-prefix calculations. Reject the first aligned update and reset immediately when alignment breaks.
+4. Run every Registry strategy through LONG/SHORT and both TP1→TP2 and initial-stop outcomes. Require protection creation immediately after PAPER fill and exact accounting.
+5. Replay the same stored public-market events twice after the fix and require identical checksum and counts. Count unique candidate IDs across main and League account audit duplication.
+6. Restart the actual localhost service, click start once in the browser, observe CONNECTING→RUNNING and record lag plus permanent PAPER safety state.
+7. Fix any adjacent user-visible state contradiction discovered during the browser pass, add a regression test and rebuild the served frontend.
+8. Record profitability as unproven until sufficient completed samples exist. Keep six-hour, 24-hour and Release status as `NOT_RUN` unless actually executed.
