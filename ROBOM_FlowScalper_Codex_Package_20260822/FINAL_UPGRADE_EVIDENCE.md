@@ -373,7 +373,7 @@ GitHub 정리 뒤 실행 중인 `run-9b9d508c689d`를 다시 읽었을 때 mode�
 | 식별·범위 | 상태 | 실제 결과 |
 |---|---|---|
 | 시작 HEAD / tree | PASS | `9b3a5236ecea0c8e03f28f236cb11e3a8f25d7c3` / `efcd7a665aa01ada16acd1b8733ff52598fdb98d` |
-| 최종 구현 commit | NOT_RUN | 로컬 필수 검증 후 커밋·GitHub push 단계에서 이 행을 확정한다. |
+| 최종 구현 commit / tree | PASS | `a3339a17fe6716560314ab0fa7c2c7e4875f82cb` / `0aa7033b0e34e319e74c9a97ee7424b84f76aa6d` |
 | 변경 / 삭제 파일 | PASS | 66개 변경·신규, 삭제 0개. 백엔드·프런트·테스트·CI·문서·신규 screenshot을 포함한다. |
 | Control API | PASS | start-live·start-demo·new-run `202`, 동일 action operation ID 재사용, 다른 action `409`, 순서형 stage·cancel·retry·blocked·20개 history 검증 |
 | cancellation 안전 | PASS | start 대기 취소 후 producer·consumer 유실 0, runtime paused, 거짓 LIVE 0 |
@@ -390,7 +390,7 @@ GitHub 정리 뒤 실행 중인 `run-9b9d508c689d`를 다시 읽었을 때 mode�
 | 실제 8870 browser | PASS | 홈·operation·6카드·BASE/STRESS drawer·진행 거래·10 scanner·지표·전체화면 조작, browser error log 0 |
 | 실제 반응형 실측 | PASS | desktop/tablet/mobile root overflow 0, 48px 미만 0, mobile chart 346px·scanner 374px |
 | PAPER 안전 | PASS | build safety·security scan·repository hygiene PASS, 실제 주문·private API·API Key·secret·wallet 0 |
-| GitHub main / Core / Browser Actions | NOT_RUN | 로컬 필수 검증·커밋 후 push하고 완료까지 확인한다. |
+| GitHub main / Core / Browser Actions | PASS | 구현 commit의 로컬·원격 SHA·tree 일치. [Actions 32632658958](https://github.com/robom-labs/flowscalper/actions/runs/32632658958) validate 47초·browser 1분21초 PASS, browser evidence artifact 업로드 PASS. |
 | public network smoke | NOT_RUN | 이번 2차는 결정적 fixture와 현재 로컬 UI 검증 범위다. |
 | 30분 / 6시간 / 24시간 soak | NOT_RUN | 이번 작업에서 실행하지 않았다. |
 | Release ZIP | NOT_RUN | 이번 2차 작업 범위에서 생성하지 않았다. |
