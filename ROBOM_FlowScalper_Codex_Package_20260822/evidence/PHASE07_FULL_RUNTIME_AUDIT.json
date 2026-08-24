@@ -1,0 +1,176 @@
+{
+  "schema_version": 1,
+  "product_version": "0.2.0-paper",
+  "observed_date_kst": "2026-08-25",
+  "implementation_commit": "41e9063",
+  "scope": "long-running processing latency, actual controls, PAPER entry protection, replay, responsive chart, regression and safety",
+  "paper_safety": {
+    "market_data": "BINANCE_USDM_PUBLIC",
+    "execution": "PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "api_keys_used": false,
+    "private_api_used": false
+  },
+  "baseline_defect": {
+    "run_id": "run-07ad829dbe61",
+    "runtime_seconds_approx": 36300,
+    "event_count_approx": 5550000,
+    "processing_lag_p50_ms_max_observed": 4085,
+    "processing_lag_p95_ms_range": [5318, 7875],
+    "process_cpu_percent_range": [80, 95],
+    "queue_remained_small": true,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "paper_entry_state": "SAFETY_WAITING",
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "profile": {
+    "method": "160 second cProfile service run with actual in-app browser connected",
+    "profile_path_not_committed": "/tmp/flowscalper-service.prof",
+    "dominant_cumulative_seconds": {
+      "runtime_ingest_live_event": 13.797,
+      "runtime_evaluate_book_event": 12.708,
+      "binance_orderbook_apply_delta": 6.852,
+      "local_orderbook_apply_levels": 6.785,
+      "strategy_signal_evaluator_evaluate": 5.42,
+      "feature_engine_snapshot": 4.243,
+      "dashboard_broadcast": 2.85,
+      "builtins_sorted": 2.39,
+      "history_statistics": 2.14,
+      "persistence_total_approx": 0.8
+    },
+    "diagnosis": [
+      "top-price deletion could sort all 1000 Decimal levels",
+      "full 1200-snapshot history rebuilt and resorted repeated strategy statistics"
+    ]
+  },
+  "implementation": {
+    "orderbook": "exact full bid/ask sorted indexes with bisect insertion and deletion",
+    "strategy_statistics": "exact bounded sorted metric windows with deterministic eviction",
+    "strategy_thresholds_lowered": false,
+    "history_limit_changed": false,
+    "decimal_ledger_precision_changed": false,
+    "chart_fullscreen": "immediate CSS fallback plus optional native Fullscreen API",
+    "mobile_pointer_overlap": "compact buttons fixed to one row and read-only stats ignore pointer input"
+  },
+  "microbenchmarks": {
+    "strategy_full_history": {
+      "input": "20 symbols, 1200 prior snapshots, 1000 evaluations",
+      "before_seconds": 0.877117625,
+      "after_seconds": 0.369194708,
+      "speedup": 2.38
+    },
+    "orderbook_top_deletion": {
+      "input": "1000 levels, 10000 top delete and reinsert updates",
+      "before_seconds": 0.111795292,
+      "after_seconds": 0.011025916,
+      "speedup": 10.14
+    }
+  },
+  "actual_control_and_ui_verification": {
+    "url": "http://127.0.0.1:8870/",
+    "start_transition": ["시작 전", "작동 중"],
+    "pause_resume_transition": ["작동 중", "사용자가 일시정지", "작동 중"],
+    "pages_opened": ["시장", "전략", "기록", "분석", "설정"],
+    "strategy_mode_changed_and_restored": true,
+    "strategy_direction_changed_and_restored": true,
+    "final_strategy_defaults": "A/B ACTIVE, C/D/E/F SHADOW, all LONG and SHORT enabled",
+    "chart_intervals_changed": ["3분", "15분"],
+    "indicators_toggled": ["MA5", "RSI"],
+    "symbol_search_and_selection": "SOLUSDT",
+    "fullscreen_open_close": "PASS",
+    "browser_console_errors": 0,
+    "actual_orders_visible": 0,
+    "screenshot": {
+      "path": "evidence/screenshots/phase07-live-runtime-audit-mobile.png",
+      "sha256": "ee7cdb1d019a7003ee0e2a5a1c5f72890faa77c78f55fe2b62986a04841456c8"
+    }
+  },
+  "actual_natural_paper_trade": {
+    "run_id": "run-b700234d1c03",
+    "trade_id": "paper-candidate-0457141ac6cb49d3-main-base",
+    "strategy_id": "LSA_REVERSAL_V1",
+    "symbol": "PENGUUSDT",
+    "side": "SHORT",
+    "entry_price": "0.0095510",
+    "tp1": "0.009456305600",
+    "tp2": "0.009306981600",
+    "initial_stop": "0.00962791200",
+    "quantity": "5031",
+    "maximum_planned_loss_usdt": "0.4649556985632",
+    "exit_reason": "EDGE_DECAY",
+    "holding_ms": 37070,
+    "net_pnl_usdt": "-0.0249386670",
+    "profitability": "NOT_PROVEN"
+  },
+  "post_change_holding_time_observation": {
+    "run_id": "run-b700234d1c03",
+    "main_live_trade_count": 1,
+    "minimum_main_holding_ms": 37070,
+    "minimum_live_shadow_holding_ms": 14060,
+    "one_to_two_second_exit_observed": false
+  },
+  "one_minute_live_window": {
+    "samples": 13,
+    "sample_interval_seconds": 5,
+    "operation_state_all_samples": "RUNNING",
+    "event_count_start": 125887,
+    "event_count_end": 136392,
+    "processing_lag_p50_ms_range": [29, 34],
+    "processing_lag_p95_ms_range": [141, 382],
+    "wide_scanner_lag_p95_ms_range": [1615, 1656],
+    "wide_scanner_note": "informational 1 second wide scan age, not executable depth/trade lag",
+    "queue_depth_max": 1,
+    "reconnects_total": 1,
+    "reconnect_increase_during_window": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "stored_public_market_replay": {
+    "status": "PASS",
+    "source_run_id": "run-f14214b3b1dd",
+    "executions": 2,
+    "checksum": "7a44e652f962f6fe46cdcc0c279fc34294fbbbee6845178912e4a2f409e239eb",
+    "event_count": 15045,
+    "strategy_evaluation_count": 41628,
+    "qualified_signal_count": 8,
+    "candidate_plan_count": 7,
+    "main_trade_count": 0,
+    "shadow_trade_count": 7,
+    "counts_and_checksum_equal": true,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "ledger": {
+    "sqlite_quick_check": "ok",
+    "immutable_existing_history_modified": false
+  },
+  "automated_validation": {
+    "backend_tests": {"status": "PASS", "passed": 213},
+    "frontend_tests": {"status": "PASS", "files": 12, "passed": 36},
+    "playwright": {"status": "PASS", "projects": ["desktop", "tablet", "mobile"], "passed": 3},
+    "ruff": "PASS",
+    "mypy": {"status": "PASS", "source_files": 75},
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {"status": "PASS", "modules": 48},
+    "paper_build_safety": "PASS",
+    "security_scan": {"status": "PASS", "checked_source_files": 108, "violations": 0, "real_order_path": false},
+    "repository_hygiene": "PASS"
+  },
+  "limitations": {
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN",
+    "post_change_multi_hour_runtime": "NOT_RUN"
+  }
+}
