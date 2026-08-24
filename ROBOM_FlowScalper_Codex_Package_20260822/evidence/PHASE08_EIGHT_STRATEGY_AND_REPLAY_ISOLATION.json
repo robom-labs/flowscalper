@@ -232,8 +232,13 @@
     "repository_hygiene": "PASS"
   },
   "github_actions": {
-    "status": "NOT_RUN",
-    "reason": "Evidence was written before pushing the evidence commit; this field must be updated after the final main workflow finishes."
+    "status": "PASS",
+    "run_id": 32749612580,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32749612580",
+    "head_sha": "e5cfcfedd4e8dc95995fb192a1c42ddc1d2cdd48",
+    "validate_duration_seconds": 53,
+    "browser_duration_seconds": 80,
+    "browser_evidence_uploaded": true
   },
   "limitations": {
     "strategy_profitability": "NOT_PROVEN",
