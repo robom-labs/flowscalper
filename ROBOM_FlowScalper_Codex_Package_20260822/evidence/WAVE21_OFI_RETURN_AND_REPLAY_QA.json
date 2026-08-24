@@ -2,6 +2,16 @@
   "schema_version": 1,
   "captured_date_kst": "2026-08-25",
   "scope": "Wave 21 OFI-return SHADOW strategy, LIVE/replay coexistence and full regression",
+  "implementation_commit": "24b8463891c3b8bc8199aac220f5624299b0537d",
+  "github_actions": {
+    "status": "PASS",
+    "run_id": 32785122708,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32785122708",
+    "head_sha": "24b8463891c3b8bc8199aac220f5624299b0537d",
+    "validate_seconds": 51,
+    "browser_seconds": 64,
+    "browser_evidence_uploaded": true
+  },
   "safety": {
     "paper_only": true,
     "real_orders_enabled": false,
@@ -302,7 +312,7 @@
     "six_hour_soak": "NOT_RUN",
     "twenty_four_hour_soak": "NOT_RUN",
     "release_zip": "NOT_RUN",
-    "github_main_and_actions": "PENDING_AT_FILE_CREATION",
+    "github_main_and_actions": "PASS_FOR_IMPLEMENTATION_COMMIT_24b8463",
     "blocked": []
   }
 }

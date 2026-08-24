@@ -214,7 +214,7 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 | 저장 공개시장 replay | 15,045 events, 전략평가 62,442, 적격 9, 후보 8, shadow 종료 9, 세 checksum 일치 |
 | SQLite | `PRAGMA quick_check=ok` |
 | 실제 주문·인증 | false·false |
-| GitHub Actions | Wave 21 로컬 검증 PASS, main 동기화 뒤 해당 SHA의 Actions 결과를 추가 기록 |
+| GitHub Actions | `32785122708`, 구현 commit `24b8463`의 validate·browser·evidence upload PASS |
 | 최종 ZIP SHA-256 | `1f433e47f4b3e405dcc483239206e13a3bbd9caa244a4b7b84a52ee70f7ccfe9` |
 
 Wave 21에서는 실제 앱 내 브라우저에서 시작·일시정지·재개와 시장·전략·전략상세를 직접 확인했고 console error·warning은 0이었다. 신규 I는 엄격한 SHADOW 연구 전략이며 저장 공개시장 replay와 현재 LIVE에서 자연 적격 표본이 0이어도 기준을 낮추지 않았다. 화면 증거는 `evidence/screenshots/wave21-*`, 기계판독 결과는 `evidence/WAVE21_OFI_RETURN_AND_REPLAY_QA.json`을 사용한다. GitHub 문서의 과거 수치가 현재 로컬 실행을 자동으로 증명하지는 않으므로 다음 변경 뒤에는 다시 검증한다.
