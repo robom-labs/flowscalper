@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import zipfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 class ReplayIntegrityError(RuntimeError):
@@ -90,43 +91,66 @@ class ReplayEngine:
         seed: int,
         decision_path: Sequence[str],
         final_state: str,
+        cooperative_yield: Callable[[], None] | None = None,
     ) -> MarketReplayDigest:
         """저장된 공개시장 이벤트와 재처리 결정 경로를 하나의 checksum으로 묶는다."""
 
-        ordered = sorted(
-            (_normalize_market_event(event) for event in events),
+        ordered_events = sorted(
+            events,
             key=lambda event: (
                 int(str(event["venue_ts_ms"])),
                 int(str(event["receive_monotonic_ns"])),
                 str(event["event_id"]),
             ),
         )
-        event_ids = [str(event["event_id"]) for event in ordered]
-        if len(event_ids) != len(set(event_ids)):
-            raise ReplayIntegrityError("시장 리플레이에 중복 event_id가 있습니다.")
+        if cooperative_yield is not None:
+            cooperative_yield()
+        event_ids: set[str] = set()
         event_type_counts: dict[str, int] = {}
         symbol_counts: dict[str, int] = {}
-        for event in ordered:
+        event_stream_digest = hashlib.sha256()
+        for index, source_event in enumerate(ordered_events, start=1):
+            event = _normalize_market_event(source_event)
+            event_id = str(event["event_id"])
+            if event_id in event_ids:
+                raise ReplayIntegrityError("시장 리플레이에 중복 event_id가 있습니다.")
+            event_ids.add(event_id)
             event_type = str(event["event_type"])
             symbol = str(event["symbol"])
             event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
             symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+            _length_prefixed_update(event_stream_digest, _canonical_json(event).encode())
+            if cooperative_yield is not None and index % 512 == 0:
+                cooperative_yield()
         normalized_path = tuple(str(item) for item in decision_path)
+        decision_path_digest = hashlib.sha256()
+        for item in normalized_path:
+            _length_prefixed_update(decision_path_digest, item.encode())
+        if cooperative_yield is not None:
+            cooperative_yield()
         material = {
-            "schema_version": 2,
+            "schema_version": 3,
             "strategy_version": strategy_version,
             "seed": seed,
             "config": dict(config),
-            "events": ordered,
-            "decision_path": normalized_path,
+            "event_count": len(ordered_events),
+            "event_stream_checksum": event_stream_digest.hexdigest(),
+            "event_type_counts": dict(sorted(event_type_counts.items())),
+            "symbol_counts": dict(sorted(symbol_counts.items())),
+            "decision_path_count": len(normalized_path),
+            "decision_path_checksum": decision_path_digest.hexdigest(),
             "final_state": final_state,
         }
         checksum = hashlib.sha256(_canonical_json(material).encode()).hexdigest()
         return MarketReplayDigest(
             checksum=checksum,
-            event_count=len(ordered),
-            first_ts_ms=int(str(ordered[0]["venue_ts_ms"])) if ordered else None,
-            last_ts_ms=int(str(ordered[-1]["venue_ts_ms"])) if ordered else None,
+            event_count=len(ordered_events),
+            first_ts_ms=(
+                int(str(ordered_events[0]["venue_ts_ms"])) if ordered_events else None
+            ),
+            last_ts_ms=(
+                int(str(ordered_events[-1]["venue_ts_ms"])) if ordered_events else None
+            ),
             event_type_counts=dict(sorted(event_type_counts.items())),
             symbol_counts=dict(sorted(symbol_counts.items())),
             decision_path=normalized_path,
@@ -221,6 +245,13 @@ def _normalize_market_event(event: Mapping[str, object]) -> dict[str, object]:
 
 def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _length_prefixed_update(digest: Any, value: bytes) -> None:
+    """가변 길이 필드를 모호성 없이 스트리밍 checksum에 추가한다."""
+
+    digest.update(len(value).to_bytes(8, byteorder="big", signed=False))
+    digest.update(value)
 
 
 def _write_deterministic(archive: zipfile.ZipFile, name: str, content: str) -> None:

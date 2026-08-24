@@ -68,6 +68,21 @@ async def test_binance_combines_statistics_with_public_book_ticker() -> None:
 
 
 @pytest.mark.asyncio
+async def test_binance_reads_public_server_time_without_authentication() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/fapi/v1/time"
+        assert "authorization" not in request.headers
+        return httpx.Response(200, json={"serverTime": 1_787_595_187_732})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://fapi.binance.test"
+    ) as client:
+        server_time_ms = await BinancePublicAdapter(client).fetch_server_time_ms()
+
+    assert server_time_ms == 1_787_595_187_732
+
+
+@pytest.mark.asyncio
 async def test_bybit_instrument_pagination_reaches_empty_cursor() -> None:
     requests: list[httpx.Request] = []
 
@@ -105,3 +120,24 @@ async def test_bybit_instrument_pagination_reaches_empty_cursor() -> None:
     assert [instrument.symbol for instrument in instruments] == ["BTCUSDT", "ETHUSDT"]
     assert len(requests) == 2
     assert requests[1].url.params["cursor"] == "page-2"
+
+
+@pytest.mark.asyncio
+async def test_bybit_reads_public_server_time_without_authentication() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v5/market/time"
+        assert "authorization" not in request.headers
+        return httpx.Response(
+            200,
+            json={
+                "retCode": 0,
+                "result": {"timeSecond": "1787595187", "timeNano": "1787595187732000000"},
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.bybit.test"
+    ) as client:
+        server_time_ms = await BybitPublicAdapter(client).fetch_server_time_ms()
+
+    assert server_time_ms == 1_787_595_187_732

@@ -3,11 +3,16 @@ import { useMemo, useState } from 'react'
 import { exitReasonLabel, formatDurationMs, formatPrice, formatQuantity, formatUsdt } from '../format'
 import type { HistoryRow } from '../types'
 
-type Props = { rows: HistoryRow[]; currentRunId: string; onReplay: (trade: HistoryRow) => void }
+type Props = {
+  rows: HistoryRow[]
+  currentRunId: string
+  historyScope?: { strategy_version: string; excluded_prior_version_samples: number }
+  onReplay: (trade: HistoryRow) => void
+}
 type Filter = 'ALL' | 'LIVE_PUBLIC' | 'OFFLINE_FIXTURE'
 type RunFilter = 'CURRENT' | 'ALL'
 
-export function HistoryPage({ rows, currentRunId, onReplay }: Props) {
+export function HistoryPage({ rows, currentRunId, historyScope, onReplay }: Props) {
   const [filter, setFilter] = useState<Filter>('ALL')
   const [runFilter, setRunFilter] = useState<RunFilter>('CURRENT')
   const [selectedTrade, setSelected] = useState<HistoryRow | null>(null)
@@ -25,7 +30,7 @@ export function HistoryPage({ rows, currentRunId, onReplay }: Props) {
   return (
     <section aria-labelledby="history-heading">
       <div className="page-heading">
-        <div><p className="section-kicker">TRADE HISTORY</p><h2 id="history-heading">거래 기록</h2><p className="heading-help">종료된 모의거래만 보관하고 표시합니다.</p></div>
+        <div><p className="section-kicker">TRADE HISTORY</p><h2 id="history-heading">거래 기록</h2><p className="heading-help">현재 전략 버전의 종료된 모의거래만 표시합니다.{historyScope?.excluded_prior_version_samples ? ` 과거 버전 ${historyScope.excluded_prior_version_samples}건은 원장에 보관되어 있습니다.` : ''}</p></div>
         <div className="history-heading-filters"><label className="inline-filter">Run 범위<select value={runFilter} onChange={(event) => setRunFilter(event.target.value as RunFilter)}><option value="CURRENT">이번 Run</option><option value="ALL">전체 Run</option></select></label><label className="inline-filter">기록 구분<select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}><option value="ALL">전체</option><option value="LIVE_PUBLIC">공개시장 모의거래</option><option value="OFFLINE_FIXTURE">샘플 거래</option></select></label></div>
       </div>
       <div className={selected ? 'history-layout drawer-open' : 'history-layout'}>

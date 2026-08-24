@@ -147,3 +147,40 @@ test('renders an explicit LIVE operating state', async () => {
   expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('시장 관찰계속 작동')
   expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('새 PAPER 진입작동')
 })
+
+test('shows the verified public venue clock correction in system diagnostics', async () => {
+  const serverNow = Date.now()
+  const clockDashboard = {
+    ...initialDashboard,
+    system: {
+      ...initialDashboard.system,
+      server_time_ms: serverNow,
+      venue_clock_offset_ms: 2011.5,
+      venue_clock_rtt_ms: 43,
+      clock_sync_status: 'SYNCED',
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => clockDashboard })),
+  )
+  class ClockWebSocket extends EventTarget {
+    close() {}
+    constructor() {
+      super()
+      queueMicrotask(() => {
+        this.dispatchEvent(new Event('open'))
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'dashboard', data: clockDashboard }) }))
+      })
+    }
+  }
+  vi.stubGlobal('WebSocket', ClockWebSocket)
+
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: '설정' }))
+
+  expect(await screen.findByText(/거래소 시각 \+2012ms 보정/)).toBeInTheDocument()
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+  expect(screen.getByText('거래소 시각 동기화')).toBeInTheDocument()
+  expect(screen.getByText('SYNCED')).toBeInTheDocument()
+})

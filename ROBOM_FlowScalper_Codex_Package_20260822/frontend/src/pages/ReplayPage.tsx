@@ -25,6 +25,20 @@ function numeric(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+async function replayErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = await response.json() as { detail?: { error_message_ko?: unknown } }
+    const message = payload.detail?.error_message_ko
+    return typeof message === 'string' && message ? message : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function errorMessage(reason: unknown, fallback: string) {
+  return reason instanceof Error && reason.message ? reason.message : fallback
+}
+
 function quote(event: ReplayMarketEvent | undefined) {
   if (!event) return null
   const directBid = numeric(event.data.bid)
@@ -53,13 +67,14 @@ export function ReplayPage({ trade }: Props) {
   const [cursor, setCursor] = useState(0)
   const [speed, setSpeed] = useState(5)
   const [focusSession, setFocusSession] = useState<ReplayFocusSession | null>(null)
+  const [focusLoading, setFocusLoading] = useState(Boolean(trade))
   const clockRef = useRef<ReplayClock<ReplayFocusFrame> | null>(null)
 
   const loadTimeline = useCallback(async (runId: string, symbol = '') => {
     if (!runId) return
     const query = symbol ? `?symbol=${encodeURIComponent(symbol)}&limit=2000` : '?limit=2000'
     const response = await fetch(`/api/replay/${encodeURIComponent(runId)}/timeline${query}`)
-    if (!response.ok) throw new Error(`timeline ${response.status}`)
+    if (!response.ok) throw new Error(await replayErrorMessage(response, '저장 이벤트 타임라인을 불러오지 못했습니다.'))
     const next = (await response.json()) as ReplayTimeline
     setTimeline(next)
     setSelectedSymbol(next.symbol ?? '')
@@ -84,16 +99,16 @@ export function ReplayPage({ trade }: Props) {
         setSelectedRun(runId)
         const latest = [...resultRows].reverse().find((item) => item.source_run_id === runId) ?? null
         setResult(latest)
-        if (runId) await loadTimeline(runId, trade?.symbol ?? '')
+        if (runId && !trade) await loadTimeline(runId)
       })
-      .catch(() => {
-        if (!cancelled) setError('저장 Run 목록을 불러오지 못했습니다. 연결을 확인하세요.')
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(errorMessage(reason, '저장 Run 목록을 불러오지 못했습니다. 연결을 확인하세요.'))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-  }, [loadTimeline, trade?.run_id, trade?.symbol])
+  }, [loadTimeline, trade])
 
   useEffect(() => {
     if (!trade) return
@@ -101,14 +116,17 @@ export function ReplayPage({ trade }: Props) {
     const query = new URLSearchParams({ trade_id: trade.trade_id, profile: trade.profile || 'BASE' })
     void fetch(`/api/replay/${encodeURIComponent(trade.run_id)}/focus?${query}`, { signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) throw new Error(`focus ${response.status}`)
+        if (!response.ok) throw new Error(await replayErrorMessage(response, '선택한 거래의 집중 리플레이를 만들지 못했습니다.'))
         const session = await response.json() as ReplayFocusSession
         setFocusSession(session)
         setCursor(0)
         setSpeed(session.default_speed)
       })
       .catch((reason: unknown) => {
-        if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError('선택한 거래의 집중 리플레이를 만들지 못했습니다.')
+        if (!(reason instanceof DOMException && reason.name === 'AbortError')) setError(errorMessage(reason, '선택한 거래의 집중 리플레이를 만들지 못했습니다.'))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFocusLoading(false)
       })
     return () => controller.abort()
   }, [trade])
@@ -150,8 +168,8 @@ export function ReplayPage({ trade }: Props) {
     setError('')
     try {
       await loadTimeline(runId)
-    } catch {
-      setError('저장 이벤트 타임라인을 불러오지 못했습니다.')
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, '저장 이벤트 타임라인을 불러오지 못했습니다.'))
     }
   }
 
@@ -159,8 +177,8 @@ export function ReplayPage({ trade }: Props) {
     setError('')
     try {
       await loadTimeline(selectedRun, symbol)
-    } catch {
-      setError('선택 종목의 저장 이벤트를 불러오지 못했습니다.')
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, '선택 종목의 저장 이벤트를 불러오지 못했습니다.'))
     }
   }
 
@@ -174,13 +192,13 @@ export function ReplayPage({ trade }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol: selectedSymbol || null }),
       })
-      if (!response.ok) throw new Error(`replay ${response.status}`)
+      if (!response.ok) throw new Error(await replayErrorMessage(response, '백엔드 리플레이가 실패했습니다. 원장 무결성과 저장 이벤트를 확인하세요.'))
       const completed = (await response.json()) as ReplayResult
       setResult(completed)
       setResults((items) => [...items, completed])
       await loadTimeline(selectedRun, selectedSymbol)
-    } catch {
-      setError('백엔드 리플레이가 실패했습니다. 원장 무결성과 저장 이벤트를 확인하세요.')
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, '백엔드 리플레이가 실패했습니다. 원장 무결성과 저장 이벤트를 확인하세요.'))
     } finally {
       setRunning(false)
     }
@@ -267,6 +285,10 @@ export function ReplayPage({ trade }: Props) {
       lines: focusFrame.phase === 'PRE_ENTRY' ? { entry: null, take_profit: null, take_profit_2: null, stop: null } : { entry: Number(trade?.entry), take_profit: Number(trade?.take_profit), take_profit_2: null, stop: Number(trade?.initial_stop) }, fixture: false,
     }
   }, [cursor, focusFrame, focusSession, trade])
+
+  if (trade && focusLoading && !focusSession) {
+    return <section aria-labelledby="replay-focus-loading"><div className="page-heading"><div><p className="section-kicker">TRADE REPLAY</p><h2 id="replay-focus-loading">{trade.symbol} 거래 재생 준비 중</h2><p className="heading-help">저장 이벤트를 확인하는 동안 공개시장 관찰과 PAPER 관리는 계속 작동합니다.</p></div><span className="page-note">실제 주문 없음</span></div><div className="panel empty-state" role="status"><b>처음 여는 거래는 검증 캐시를 만드는 중입니다</b><p>완료 뒤 같은 거래는 저장된 checksum 검증 결과로 빠르게 열립니다.</p></div></section>
+  }
 
   if (focusSession && focusPosition && focusChart) {
     const currentFocusFrame = focusFrame as ReplayFocusFrame

@@ -29,7 +29,11 @@ from backend.app.control import (
 from backend.app.control.operations import ControlRunner, ProgressCallback
 from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
 from backend.app.market_explorer import MarketExplorerService
-from backend.app.replay.process import replay_stored_run_from_paths
+from backend.app.replay.process import (
+    replay_focus_session_from_paths,
+    replay_stored_run_from_paths,
+    replay_timeline_from_paths,
+)
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
@@ -171,6 +175,21 @@ def create_app(
     active_market_explorer = market_explorer or MarketExplorerService()
     operation_manager = ControlOperationManager(active_runtime.clock.utc_ms)
     replay_process_lock = asyncio.Lock()
+
+    def ensure_replay_process_available() -> None:
+        """긴 replay 중 다른 화면 조회를 대기열에 묶지 않고 즉시 안내한다."""
+
+        if replay_process_lock.locked():
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "REPLAY_BUSY",
+                    "error_message_ko": (
+                        "다른 저장 기록을 검증하고 있습니다. 완료 뒤 다시 시도하세요."
+                    ),
+                    "retryable": True,
+                },
+            )
     websocket_clients: set[WebSocket] = set()
 
     def dashboard_snapshot() -> dict[str, object]:
@@ -527,6 +546,21 @@ def create_app(
         limit: int = Query(default=2_000, ge=1, le=2_000),
     ) -> dict[str, object]:
         try:
+            if (
+                active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                and active_runtime.ledger is not None
+            ):
+                ensure_replay_process_available()
+                archive = active_runtime.ledger.market_event_archive
+                async with replay_process_lock:
+                    return await to_process.run_sync(
+                        replay_timeline_from_paths,
+                        str(active_runtime.ledger.path),
+                        str(archive.root) if archive is not None else None,
+                        run_id,
+                        symbol,
+                        limit,
+                    )
             return await asyncio.to_thread(
                 active_runtime.replay_timeline,
                 run_id,
@@ -550,6 +584,23 @@ def create_app(
         profile: str = Query(default="BASE", pattern=r"^(BASE|STRESS)$"),
     ) -> dict[str, object]:
         try:
+            if (
+                active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                and active_runtime.ledger is not None
+            ):
+                ensure_replay_process_available()
+                await asyncio.to_thread(active_runtime.flush_storage)
+                archive = active_runtime.ledger.market_event_archive
+                async with replay_process_lock:
+                    return await to_process.run_sync(
+                        replay_focus_session_from_paths,
+                        str(active_runtime.ledger.path),
+                        str(archive.root) if archive is not None else None,
+                        run_id,
+                        trade_id,
+                        profile,
+                        active_runtime.clock.utc_ms(),
+                    )
             return await asyncio.to_thread(
                 active_runtime.replay_focus_session,
                 run_id,
@@ -573,6 +624,7 @@ def create_app(
                 active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
                 and active_runtime.ledger is not None
             ):
+                ensure_replay_process_available()
                 await asyncio.to_thread(active_runtime.flush_storage)
                 archive = active_runtime.ledger.market_event_archive
                 async with replay_process_lock:

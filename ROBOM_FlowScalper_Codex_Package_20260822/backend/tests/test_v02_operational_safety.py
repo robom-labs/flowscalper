@@ -204,6 +204,14 @@ def test_live_dashboard_never_waits_for_sqlite_writer_lock(
             "strategy_version": "prior-dashboard-version",
         }
     )
+    ledger.record_trade(
+        {
+            **_sample_trade("prior-dashboard-main-trade"),
+            "run_id": "run-prior-dashboard",
+            "sample_type": "LIVE_PUBLIC",
+            "strategy_version": "prior-dashboard-version",
+        }
+    )
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
         run_id="run-dashboard-cache",
@@ -222,6 +230,7 @@ def test_live_dashboard_never_waits_for_sqlite_writer_lock(
 
     assert dashboard["status"]["mode"] == "LIVE_SHADOW_PAPER"
     assert dashboard["history"] == []
+    assert dashboard["history_scope"]["excluded_prior_version_samples"] == 1
     assert len(dashboard["strategies"]) == 8
     lsa_base = dashboard["strategies"][0]["performance"]["BASE"]
     assert lsa_base["sample_size"] == 0

@@ -430,6 +430,11 @@ export type DashboardData = {
   position: CurrentPosition | null
   logs: LogItem[]
   history: HistoryRow[]
+  history_scope: {
+    analysis_scope: 'CURRENT_STRATEGY_VERSION'
+    strategy_version: string
+    excluded_prior_version_samples: number
+  }
   strategies: StrategyRow[]
   shadow_accounts: ShadowAccount[]
   league_accounts: LeagueAccount[]

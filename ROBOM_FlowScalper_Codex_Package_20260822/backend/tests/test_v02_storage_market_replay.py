@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import sqlite3
@@ -9,6 +10,7 @@ import threading
 from decimal import Decimal
 from pathlib import Path
 
+import pyarrow.parquet as pq
 import pytest
 from fastapi.testclient import TestClient
 
@@ -19,7 +21,9 @@ from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
 from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
+from backend.app.replay.engine import ReplayEngine
 from backend.app.replay.market import StoredMarketReplay, _candidate_plan_count
+from backend.app.replay.process import _ReplayCpuBudget
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
@@ -82,7 +86,63 @@ def test_replay_candidate_count_deduplicates_main_and_league_accounts() -> None:
     assert _candidate_plan_count(audits) == 2
 
 
-def test_schema_v6_market_events_are_ordered_checksummed_immutable_and_counted(
+def test_cooperative_market_replay_preserves_canonical_checksum() -> None:
+    events = [
+        market_event("run-streaming", event_id="event-2", ts_ms=2_000).model_dump(
+            mode="json"
+        ),
+        market_event("run-streaming", event_id="event-1", ts_ms=1_000).model_dump(
+            mode="json"
+        ),
+    ]
+    engine = ReplayEngine()
+    baseline = engine.replay_market_path(
+        events,
+        config={"seed": 20260822},
+        strategy_version="test-version",
+        seed=20260822,
+        decision_path=("SUMMARY:evaluated=0:qualified=0",),
+        final_state="OBSERVING_NO_MAIN_TRADE",
+    )
+    checkpoints = 0
+
+    def cooperate() -> None:
+        nonlocal checkpoints
+        checkpoints += 1
+
+    cooperative = engine.replay_market_path(
+        events,
+        config={"seed": 20260822},
+        strategy_version="test-version",
+        seed=20260822,
+        decision_path=("SUMMARY:evaluated=0:qualified=0",),
+        final_state="OBSERVING_NO_MAIN_TRADE",
+        cooperative_yield=cooperate,
+    )
+
+    assert cooperative == baseline
+    assert checkpoints >= 2
+
+
+def test_replay_cpu_budget_yields_without_carrying_unbounded_sleep_debt() -> None:
+    wall_values = iter((0.0, 1.0, 2.5))
+    cpu_values = iter((0.0, 1.0, 1.1))
+    sleeps: list[float] = []
+    budget = _ReplayCpuBudget(
+        target_cpu_ratio=0.25,
+        max_sleep_seconds=0.50,
+        monotonic=lambda: next(wall_values),
+        process_time=lambda: next(cpu_values),
+        sleeper=sleeps.append,
+    )
+
+    budget.checkpoint()
+    budget.checkpoint()
+
+    assert sleeps == [0.50]
+
+
+def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(
     tmp_path: Path,
 ) -> None:
     ledger = SQLiteLedger(tmp_path / "ledger.sqlite3")
@@ -98,7 +158,7 @@ def test_schema_v6_market_events_are_ordered_checksummed_immutable_and_counted(
     inserted = ledger.record_market_events(
         [later.model_dump(mode="json"), earlier.model_dump(mode="json")]
     )
-    assert ledger.schema_version == 6
+    assert ledger.schema_version == 7
     assert ledger._connection.execute("PRAGMA synchronous").fetchone()[0] == 2
     assert ledger._connection.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 1_000
     assert inserted == 2
@@ -269,7 +329,7 @@ def test_v2_global_event_identity_migrates_to_run_scoped_identity(tmp_path: Path
     connection.close()
 
     migrated = SQLiteLedger(database)
-    assert migrated.schema_version == 6
+    assert migrated.schema_version == 7
     assert migrated.list_market_events("legacy-run")[0]["event_id"] == "shared-event"
     migrated.start_run(
         "new-run",
@@ -390,12 +450,95 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
     assert ledger.record_market_event_archive(repeated, persisted_rows) == 0
     with pytest.raises(ValueError, match="배치 checksum"):
         archive.read_market_event_batch(files[0], expected_checksum="0" * 64)
+    with pytest.raises(ValueError, match="배치 checksum"):
+        archive.read_market_event_batch_filtered(
+            files[0],
+            expected_checksum="0" * 64,
+            symbol="BTCUSDT",
+        )
+    complete_table = pq.ParquetFile(files[0]).read()
+    truncated_file = files[0].with_name("tampered-truncated.parquet")
+    pq.write_table(complete_table.slice(0, complete_table.num_rows - 1), truncated_file)
+    with pytest.raises(ValueError, match="배치 checksum"):
+        archive.read_market_event_batch_filtered(
+            truncated_file,
+            expected_checksum=repeated.checksum,
+            symbol="BTCUSDT",
+        )
+    assert len(
+        archive.read_market_event_batch_filtered(
+            files[0],
+            expected_checksum=repeated.checksum,
+            symbol="BTCUSDT",
+            event_types=("TRADE",),
+            start_ts_ms=1_000,
+            end_ts_ms=2_000,
+        )
+    ) == 2
     replay = StoredMarketReplay().run(
         ledger,
         source_run_id=runtime.run_id,
         created_ts_ms=3_000,
     )
     assert replay.event_count == 4
+    ledger.close()
+
+
+def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet-limited",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "limited-ledger.sqlite3",
+        market_event_archive=archive,
+    )
+    ledger.start_run(
+        "run-limited",
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    for index in range(3):
+        event = market_event(
+            "run-limited",
+            event_id=f"limited-{index}",
+            ts_ms=1_000 + index,
+        ).model_dump(mode="json")
+        batch = archive.write_market_event_batch([event])
+        assert ledger.record_market_event_archive(batch, [event]) == 1
+    original_read = archive.read_market_event_batch_filtered
+    read_paths: list[Path] = []
+
+    def counted_read(
+        path: Path,
+        *,
+        expected_checksum: str,
+        symbol: str | None = None,
+        event_types: tuple[str, ...] = (),
+        start_ts_ms: int | None = None,
+        end_ts_ms: int | None = None,
+    ) -> list[dict[str, object]]:
+        read_paths.append(path)
+        return original_read(
+            path,
+            expected_checksum=expected_checksum,
+            symbol=symbol,
+            event_types=event_types,
+            start_ts_ms=start_ts_ms,
+            end_ts_ms=end_ts_ms,
+        )
+
+    monkeypatch.setattr(archive, "read_market_event_batch_filtered", counted_read)
+    events = ledger.list_market_events("run-limited", symbol="BTCUSDT", limit=1)
+
+    assert [event["event_id"] for event in events] == ["limited-0"]
+    assert len(read_paths) == 1
     ledger.close()
 
 
@@ -711,6 +854,114 @@ def test_live_http_replay_uses_isolated_process_path(
     assert response.json()["real_orders_enabled"] is False
     assert len(calls) == 1
     assert calls[0][0] == str(ledger.path)
+    ledger.close()
+
+
+def test_live_timeline_and_focus_use_same_isolated_process_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "live-ui-replay-ledger.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-ui-replay",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    calls: list[tuple[str, tuple[object, ...]]] = []
+
+    def timeline_stub(*arguments: object) -> dict[str, object]:
+        calls.append(("timeline", arguments))
+        return {
+            "run_id": "run-live-ui-replay",
+            "symbol": "BTCUSDT",
+            "total_events": 1,
+            "truncated": False,
+            "available_symbols": [{"symbol": "BTCUSDT", "event_count": 1}],
+            "events": [],
+            "candles": [],
+        }
+
+    def focus_stub(*arguments: object) -> dict[str, object]:
+        calls.append(("focus", arguments))
+        return {"run_id": "run-live-ui-replay", "trade_id": "trade-live-focus"}
+
+    async def run_sync(function, *arguments):
+        return function(*arguments)
+
+    monkeypatch.setattr(main_module, "replay_timeline_from_paths", timeline_stub)
+    monkeypatch.setattr(main_module, "replay_focus_session_from_paths", focus_stub)
+    monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
+    client = TestClient(create_app(runtime))
+
+    timeline = client.get("/api/replay/run-live-ui-replay/timeline?symbol=BTCUSDT")
+    focus = client.get(
+        "/api/replay/run-live-ui-replay/focus"
+        "?trade_id=trade-live-focus&profile=BASE"
+    )
+
+    assert timeline.status_code == 200
+    assert focus.status_code == 200
+    assert [name for name, _ in calls] == ["timeline", "focus"]
+    assert all(arguments[0] == str(ledger.path) for _, arguments in calls)
+    ledger.close()
+
+
+def test_live_replay_returns_busy_instead_of_hanging_other_ui_requests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "live-replay-busy.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-replay-busy",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    started = threading.Event()
+    release = threading.Event()
+
+    def timeline_stub(*_arguments: object) -> dict[str, object]:
+        return {
+            "run_id": runtime.run_id,
+            "symbol": "BTCUSDT",
+            "total_events": 0,
+            "truncated": False,
+            "available_symbols": [],
+            "events": [],
+            "candles": [],
+        }
+
+    async def blocking_run_sync(function, *arguments):
+        started.set()
+        await asyncio.to_thread(release.wait)
+        return function(*arguments)
+
+    monkeypatch.setattr(main_module, "replay_timeline_from_paths", timeline_stub)
+    monkeypatch.setattr(main_module.to_process, "run_sync", blocking_run_sync)
+    responses: list[object] = []
+
+    with TestClient(create_app(runtime)) as client:
+        worker = threading.Thread(
+            target=lambda: responses.append(
+                client.get(f"/api/replay/{runtime.run_id}/timeline")
+            )
+        )
+        worker.start()
+        assert started.wait(timeout=2)
+        try:
+            busy = client.post(f"/api/replay/{runtime.run_id}", json={})
+            assert busy.status_code == 409
+            assert busy.json()["detail"]["error_code"] == "REPLAY_BUSY"
+            assert busy.json()["detail"]["retryable"] is True
+        finally:
+            release.set()
+            worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert responses and responses[0].status_code == 200
     ledger.close()
 
 

@@ -20,6 +20,7 @@ from backend.app.clocks import Clock
 from backend.app.domain.market import Instrument, Ticker
 from backend.app.domain.models import DataQuality, MarketEvent, Venue
 from backend.app.orderbook import BinanceOrderBook, BybitOrderBook, SequenceGap
+from backend.app.time_sync import estimate_venue_clock_offset_ms, venue_lag_ms
 
 
 class PublicDataUnavailable(RuntimeError):
@@ -71,11 +72,21 @@ class LivePublicBootstrapper:
             instruments, tickers = await asyncio.gather(
                 adapter.fetch_instruments(), adapter.fetch_tickers()
             )
+            clock_offset_ms, _clock_rtt_ms = await estimate_venue_clock_offset_ms(
+                adapter.fetch_server_time_ms,
+                clock.utc_ms,
+            )
             eligible = _eligible_tickers(instruments, tickers)
             if not eligible:
                 raise PublicDataUnavailable("BINANCE_USDM 유효 종목이 없습니다.")
             selected = "BTCUSDT" if "BTCUSDT" in eligible else next(iter(eligible))
-            depth_event = await _binance_depth_event(adapter, selected, run_id, clock)
+            depth_event = await _binance_depth_event(
+                adapter,
+                selected,
+                run_id,
+                clock,
+                venue_clock_offset_ms=clock_offset_ms,
+            )
         ticker_events = _ticker_events(
             Venue.BINANCE_USDM, eligible, run_id=run_id, clock=clock, maximum=50
         )
@@ -97,11 +108,20 @@ class LivePublicBootstrapper:
             instruments, tickers = await asyncio.gather(
                 adapter.fetch_instruments(), adapter.fetch_tickers()
             )
+            clock_offset_ms, _clock_rtt_ms = await estimate_venue_clock_offset_ms(
+                adapter.fetch_server_time_ms,
+                clock.utc_ms,
+            )
         eligible = _eligible_tickers(instruments, tickers)
         if not eligible:
             raise PublicDataUnavailable("BYBIT_LINEAR 유효 종목이 없습니다.")
         selected = "BTCUSDT" if "BTCUSDT" in eligible else next(iter(eligible))
-        depth_event = await _bybit_depth_event(selected, run_id, clock)
+        depth_event = await _bybit_depth_event(
+            selected,
+            run_id,
+            clock,
+            venue_clock_offset_ms=clock_offset_ms,
+        )
         ticker_events = _ticker_events(
             Venue.BYBIT_LINEAR, eligible, run_id=run_id, clock=clock, maximum=50
         )
@@ -124,6 +144,8 @@ async def _binance_depth_event(
     symbol: str,
     run_id: str,
     clock: Clock,
+    *,
+    venue_clock_offset_ms: float = 0.0,
 ) -> MarketEvent:
     url = f"{PUBLIC_WS_BASE}/stream?streams={symbol.lower()}@depth@100ms"
     async with asyncio.timeout(20):
@@ -172,7 +194,11 @@ async def _binance_depth_event(
                         is_live=True,
                         is_stale=False,
                         sequence_valid=book.sequence_valid,
-                        lag_ms=max(0.0, float(clock.utc_ms() - venue_ts_ms)),
+                        lag_ms=venue_lag_ms(
+                            local_utc_ms=clock.utc_ms(),
+                            venue_ts_ms=venue_ts_ms,
+                            venue_clock_offset_ms=venue_clock_offset_ms,
+                        ),
                     ),
                     data={
                         "bid": str(bids[0][0]),
@@ -183,7 +209,13 @@ async def _binance_depth_event(
                 )
 
 
-async def _bybit_depth_event(symbol: str, run_id: str, clock: Clock) -> MarketEvent:
+async def _bybit_depth_event(
+    symbol: str,
+    run_id: str,
+    clock: Clock,
+    *,
+    venue_clock_offset_ms: float = 0.0,
+) -> MarketEvent:
     async with asyncio.timeout(20):
         async with websockets.connect(
             PUBLIC_LINEAR_WS, max_size=1_000_000, ping_interval=20, additional_headers=None
@@ -226,7 +258,11 @@ async def _bybit_depth_event(symbol: str, run_id: str, clock: Clock) -> MarketEv
                         is_live=True,
                         is_stale=False,
                         sequence_valid=True,
-                        lag_ms=max(0.0, float(clock.utc_ms() - venue_ts_ms)),
+                        lag_ms=venue_lag_ms(
+                            local_utc_ms=clock.utc_ms(),
+                            venue_ts_ms=venue_ts_ms,
+                            venue_clock_offset_ms=venue_clock_offset_ms,
+                        ),
                     ),
                     data={
                         "bid": str(bids[0][0]),

@@ -14,6 +14,7 @@ from backend.app.domain.models import RuntimeMode, Venue
 from backend.app.main import create_app
 from backend.app.market_data.supervisor import _safe_rotate_deep
 from backend.app.market_explorer import CatalogRow, MarketExplorerService
+from backend.app.replay.focus import ReplayFocusSessionBuilder
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import SQLiteLedger
 from backend.tests.test_candidate_paper_portfolio import book, candidate_plan
@@ -213,7 +214,8 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(tmp_path: 
 
     assert first.status_code == 200
     session = first.json()
-    assert session["checksum"] == second.json()["checksum"]
+    assert session == second.json()
+    assert ledger.count("replay_focus_cache") == 1
     assert session["default_speed"] == 5
     assert session["speeds"] == [0.5, 1, 2, 5, 10, 20, 40, 80]
     assert session["paper_only"] is True
@@ -236,6 +238,47 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(tmp_path: 
         "ENTRY",
         "EXIT",
     ]
+
+
+def test_trade_focus_reuses_verified_replay_covering_trade_window(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "covered-focus.sqlite3")
+    ledger.start_run(
+        "run-covered-focus",
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    replay = {
+        "replay_id": "replay-covered-focus",
+        "source_run_id": "run-covered-focus",
+        "created_ts_ms": 4_000,
+        "checksum": "a" * 64,
+        "first_ts_ms": 1_000,
+        "last_ts_ms": 3_000,
+        "main_trade_count": 1,
+        "shadow_trade_count": 2,
+        "final_state": "MAIN_TRADES_CLOSED",
+        "real_orders_enabled": False,
+        "auth_required": False,
+    }
+    ledger.record_replay_run(replay)
+
+    covered = ReplayFocusSessionBuilder._covering_replay_result(
+        ledger,
+        run_id="run-covered-focus",
+        entry_ts_ms=1_500,
+        exit_ts_ms=2_500,
+    )
+
+    assert covered == replay
+    assert ReplayFocusSessionBuilder._covering_replay_result(
+        ledger,
+        run_id="run-covered-focus",
+        entry_ts_ms=1_500,
+        exit_ts_ms=3_500,
+    ) is None
+    ledger.close()
 
 
 def test_universe_snapshots_are_append_only(tmp_path: Path) -> None:

@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from collections.abc import Mapping, Sequence
+import zlib
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -262,6 +263,16 @@ class SQLiteLedger:
                     checksum TEXT NOT NULL,
                     result_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS replay_focus_cache (
+                    source_run_id TEXT NOT NULL REFERENCES runs(run_id),
+                    trade_id TEXT NOT NULL,
+                    profile TEXT NOT NULL,
+                    session_version INTEGER NOT NULL,
+                    created_ts_ms INTEGER NOT NULL,
+                    checksum TEXT NOT NULL,
+                    payload_zlib BLOB NOT NULL,
+                    PRIMARY KEY (source_run_id, trade_id, profile, session_version)
+                );
 
                 CREATE TRIGGER IF NOT EXISTS finalized_run_is_immutable
                 BEFORE UPDATE ON runs
@@ -318,7 +329,7 @@ class SQLiteLedger:
             )
             self._migrate_market_event_identity()
             self._initialize_market_event_statistics()
-            self._connection.execute("PRAGMA user_version = 6")
+            self._connection.execute("PRAGMA user_version = 7")
 
     @property
     def schema_version(self) -> int:
@@ -742,6 +753,9 @@ class SQLiteLedger:
         symbol: str | None = None,
         event_types: tuple[str, ...] = (),
         limit: int | None = None,
+        start_ts_ms: int | None = None,
+        end_ts_ms: int | None = None,
+        cooperative_yield: Callable[[], None] | None = None,
     ) -> list[dict[str, Any]]:
         query = "SELECT payload_json, checksum FROM market_events WHERE run_id = ?"
         parameters: list[object] = [run_id]
@@ -752,14 +766,30 @@ class SQLiteLedger:
             placeholders = ",".join("?" for _ in event_types)
             query += f" AND event_type IN ({placeholders})"
             parameters.extend(event_types)
+        if start_ts_ms is not None:
+            query += " AND venue_ts_ms >= ?"
+            parameters.append(start_ts_ms)
+        if end_ts_ms is not None:
+            query += " AND venue_ts_ms <= ?"
+            parameters.append(end_ts_ms)
         query += " ORDER BY venue_ts_ms, receive_monotonic_ns, event_id"
+        archive_query = """
+            SELECT path, checksum, symbols_json, event_types_json,
+                   first_ts_ms, last_ts_ms
+            FROM market_event_archives WHERE run_id = ?
+        """
+        archive_parameters: list[object] = [run_id]
+        if start_ts_ms is not None:
+            archive_query += " AND last_ts_ms >= ?"
+            archive_parameters.append(start_ts_ms)
+        if end_ts_ms is not None:
+            archive_query += " AND first_ts_ms <= ?"
+            archive_parameters.append(end_ts_ms)
+        archive_query += " ORDER BY first_ts_ms, batch_id"
         with self._read_lock:
             archive_rows = self._read_connection.execute(
-                """
-                SELECT path, checksum FROM market_event_archives
-                WHERE run_id = ? ORDER BY first_ts_ms, batch_id
-                """,
-                (run_id,),
+                archive_query,
+                tuple(archive_parameters),
             ).fetchall()
         if limit is not None and not archive_rows:
             if limit <= 0:
@@ -769,7 +799,7 @@ class SQLiteLedger:
         with self._lock:
             rows = self._connection.execute(query, tuple(parameters)).fetchall()
         result: list[dict[str, Any]] = []
-        for row in rows:
+        for index, row in enumerate(rows, start=1):
             payload_json = str(row["payload_json"])
             if hashlib.sha256(payload_json.encode()).hexdigest() != row["checksum"]:
                 raise LedgerInvariantError("시장 이벤트 checksum 불일치로 리플레이를 차단했습니다.")
@@ -777,15 +807,39 @@ class SQLiteLedger:
             if not isinstance(decoded, dict):
                 raise LedgerInvariantError("시장 이벤트 payload는 객체여야 합니다.")
             result.append(decoded)
+            if cooperative_yield is not None and index % 512 == 0:
+                cooperative_yield()
         if archive_rows:
             if self.market_event_archive is None:
                 raise LedgerInvariantError("시장 이벤트 아카이브 저장소가 없습니다.")
             try:
                 for archive in archive_rows:
-                    for decoded in self.market_event_archive.read_market_event_batch(
-                        Path(str(archive["path"])),
-                        expected_checksum=str(archive["checksum"]),
-                    ):
+                    archived_symbols = json.loads(str(archive["symbols_json"]))
+                    archived_event_types = json.loads(str(archive["event_types_json"]))
+                    if symbol is not None and symbol not in archived_symbols:
+                        continue
+                    if event_types and not set(event_types).intersection(archived_event_types):
+                        continue
+                    filtered_archive_read = any(
+                        value is not None
+                        for value in (symbol, start_ts_ms, end_ts_ms)
+                    ) or bool(event_types)
+                    archive_events = (
+                        self.market_event_archive.read_market_event_batch_filtered(
+                            Path(str(archive["path"])),
+                            expected_checksum=str(archive["checksum"]),
+                            symbol=symbol,
+                            event_types=event_types,
+                            start_ts_ms=start_ts_ms,
+                            end_ts_ms=end_ts_ms,
+                        )
+                        if filtered_archive_read
+                        else self.market_event_archive.read_market_event_batch(
+                            Path(str(archive["path"])),
+                            expected_checksum=str(archive["checksum"]),
+                        )
+                    )
+                    for decoded in archive_events:
                         if str(decoded.get("run_id")) != run_id:
                             raise LedgerInvariantError(
                                 "시장 이벤트 아카이브에 다른 Run이 섞였습니다."
@@ -794,7 +848,16 @@ class SQLiteLedger:
                             continue
                         if event_types and str(decoded.get("event_type")) not in event_types:
                             continue
+                        venue_ts_ms = int(str(decoded["venue_ts_ms"]))
+                        if start_ts_ms is not None and venue_ts_ms < start_ts_ms:
+                            continue
+                        if end_ts_ms is not None and venue_ts_ms > end_ts_ms:
+                            continue
                         result.append(decoded)
+                    if cooperative_yield is not None:
+                        cooperative_yield()
+                    if limit is not None and not rows and len(result) >= limit:
+                        break
             except (OSError, ValueError) as error:
                 raise LedgerInvariantError(
                     f"시장 이벤트 아카이브 검증 실패: {error}"
@@ -806,6 +869,8 @@ class SQLiteLedger:
                 str(event["event_id"]),
             )
         )
+        if cooperative_yield is not None:
+            cooperative_yield()
         return result[:limit] if limit is not None else result
 
     def market_event_symbols(self, run_id: str) -> list[dict[str, object]]:
@@ -1117,6 +1182,86 @@ class SQLiteLedger:
             rows = self._connection.execute(query, parameters).fetchall()
         return [json.loads(str(row["result_json"])) for row in rows]
 
+    def get_replay_focus_session(
+        self,
+        source_run_id: str,
+        trade_id: str,
+        profile: str,
+        *,
+        session_version: int = 1,
+    ) -> dict[str, Any] | None:
+        """완성된 거래 집중 재생 캐시를 checksum 검증 후 반환한다."""
+
+        with self._read_lock:
+            row = self._read_connection.execute(
+                """
+                SELECT checksum, payload_zlib FROM replay_focus_cache
+                WHERE source_run_id = ? AND trade_id = ? AND profile = ?
+                  AND session_version = ?
+                """,
+                (source_run_id, trade_id, profile, session_version),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = zlib.decompress(bytes(row["payload_zlib"]))
+        except zlib.error as error:
+            raise LedgerInvariantError("거래 집중 재생 캐시 압축이 손상되었습니다.") from error
+        if hashlib.sha256(payload).hexdigest() != str(row["checksum"]):
+            raise LedgerInvariantError("거래 집중 재생 캐시 checksum이 일치하지 않습니다.")
+        decoded = json.loads(payload)
+        if not isinstance(decoded, dict):
+            raise LedgerInvariantError("거래 집중 재생 캐시는 객체여야 합니다.")
+        return decoded
+
+    def record_replay_focus_session(
+        self,
+        session: Mapping[str, object],
+        *,
+        created_ts_ms: int,
+    ) -> int:
+        """결정적 집중 재생 결과를 압축해 한 번만 보존한다."""
+
+        source_run_id = str(session["run_id"])
+        trade_id = str(session["trade_id"])
+        profile = str(session["profile"])
+        session_version = int(str(session["session_version"]))
+        payload = _canonical_json(session).encode()
+        checksum = hashlib.sha256(payload).hexdigest()
+        compressed = zlib.compress(payload, level=9)
+        with self._transaction() as connection:
+            before = connection.total_changes
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO replay_focus_cache (
+                    source_run_id, trade_id, profile, session_version,
+                    created_ts_ms, checksum, payload_zlib
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source_run_id,
+                    trade_id,
+                    profile,
+                    session_version,
+                    created_ts_ms,
+                    checksum,
+                    sqlite3.Binary(compressed),
+                ),
+            )
+            inserted = connection.total_changes - before
+            if inserted == 0:
+                existing = connection.execute(
+                    """
+                    SELECT checksum FROM replay_focus_cache
+                    WHERE source_run_id = ? AND trade_id = ? AND profile = ?
+                      AND session_version = ?
+                    """,
+                    (source_run_id, trade_id, profile, session_version),
+                ).fetchone()
+                if existing is None or str(existing["checksum"]) != checksum:
+                    raise LedgerInvariantError("거래 집중 재생 캐시가 기존 결과와 다릅니다.")
+            return inserted
+
     def list_runs(self) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._connection.execute(
@@ -1309,6 +1454,7 @@ class SQLiteLedger:
             "shadow_trades",
             "execution_audit",
             "replay_runs",
+            "replay_focus_cache",
         }
         if table not in allowed:
             raise ValueError(f"허용되지 않은 테이블: {table}")

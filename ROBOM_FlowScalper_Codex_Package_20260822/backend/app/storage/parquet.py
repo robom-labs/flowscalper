@@ -12,6 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 
@@ -138,10 +139,16 @@ class ParquetEventStore:
             archived_rows.append(
                 {
                     "ts_ms": int(str(row["venue_ts_ms"])),
+                    "venue_ts_ms": int(str(row["venue_ts_ms"])),
+                    "symbol": str(row["symbol"]),
+                    "event_type": str(row["event_type"]),
                     "payload_json": payload_json,
                     "checksum": checksum,
                 }
             )
+        batch_checksum = hashlib.sha256("\n".join(row_checksums).encode()).hexdigest()
+        for archived_row in archived_rows:
+            archived_row["batch_checksum"] = batch_checksum
         path = self.write_events(
             venue=str(rows[0]["venue"]),
             symbol="MULTI",
@@ -153,9 +160,101 @@ class ParquetEventStore:
             os.fsync(handle.fileno())
         return ArchivedEventBatch(
             path=path,
-            checksum=hashlib.sha256("\n".join(row_checksums).encode()).hexdigest(),
+            checksum=batch_checksum,
             event_count=len(archived_rows),
         )
+
+    def read_market_event_batch_filtered(
+        self,
+        path: Path,
+        *,
+        expected_checksum: str,
+        symbol: str | None = None,
+        event_types: tuple[str, ...] = (),
+        start_ts_ms: int | None = None,
+        end_ts_ms: int | None = None,
+    ) -> list[dict[str, object]]:
+        """신규 Parquet의 색인 열로 UI replay에 필요한 row만 검증해 읽는다."""
+
+        resolved_root = self.root.resolve()
+        resolved_path = path.resolve()
+        if not resolved_path.is_relative_to(resolved_root):
+            raise ValueError("시장 이벤트 배치가 허용된 저장소 밖을 참조합니다.")
+        parquet = pq.ParquetFile(resolved_path)
+        filter_columns = {"symbol", "event_type", "venue_ts_ms", "batch_checksum"}
+        if not filter_columns.issubset(parquet.schema_arrow.names):
+            legacy_events = self.read_market_event_batch(
+                path,
+                expected_checksum=expected_checksum,
+            )
+            return [
+                event
+                for event in legacy_events
+                if (symbol is None or str(event.get("symbol")) == symbol)
+                and (not event_types or str(event.get("event_type")) in event_types)
+                and (
+                    start_ts_ms is None
+                    or int(str(event["venue_ts_ms"])) >= start_ts_ms
+                )
+                and (
+                    end_ts_ms is None
+                    or int(str(event["venue_ts_ms"])) <= end_ts_ms
+                )
+            ]
+        table = parquet.read(
+            columns=[
+                "payload_json",
+                "checksum",
+                "batch_checksum",
+                "symbol",
+                "event_type",
+                "venue_ts_ms",
+            ]
+        )
+        row_checksums = [str(value) for value in table["checksum"].to_pylist()]
+        stored_batch_checksums = {
+            str(value) for value in table["batch_checksum"].to_pylist()
+        }
+        actual_batch_checksum = hashlib.sha256(
+            "\n".join(row_checksums).encode()
+        ).hexdigest()
+        if (
+            stored_batch_checksums != {expected_checksum}
+            or actual_batch_checksum != expected_checksum
+        ):
+            raise ValueError("시장 이벤트 Parquet 배치 checksum이 일치하지 않습니다.")
+        mask: pa.Array | pa.ChunkedArray | None = None
+
+        def include(condition: pa.Array | pa.ChunkedArray) -> None:
+            nonlocal mask
+            mask = condition if mask is None else pc.and_(mask, condition)
+
+        if symbol is not None:
+            include(pc.equal(table["symbol"], symbol))
+        if event_types:
+            include(
+                pc.is_in(
+                    table["event_type"],
+                    value_set=pa.array(event_types),
+                )
+            )
+        if start_ts_ms is not None:
+            include(pc.greater_equal(table["venue_ts_ms"], start_ts_ms))
+        if end_ts_ms is not None:
+            include(pc.less_equal(table["venue_ts_ms"], end_ts_ms))
+        if mask is not None:
+            table = table.filter(mask)
+        events: list[dict[str, object]] = []
+        for row in table.to_pylist():
+            payload_json = str(row["payload_json"])
+            checksum = str(row["checksum"])
+            if hashlib.sha256(payload_json.encode()).hexdigest() != checksum:
+                raise ValueError("시장 이벤트 Parquet row checksum이 일치하지 않습니다.")
+            decoded = json.loads(payload_json)
+            if not isinstance(decoded, dict):
+                raise ValueError("시장 이벤트 Parquet payload는 객체여야 합니다.")
+            events.append(decoded)
+        return events
 
     def read_market_event_batch(
         self,

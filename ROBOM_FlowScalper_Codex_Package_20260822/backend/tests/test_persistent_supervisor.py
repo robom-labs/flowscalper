@@ -27,11 +27,22 @@ from backend.app.runtime import PaperRuntime
 class RecordedProvider:
     venue = Venue.BINANCE_USDM
 
-    def __init__(self, *, fail_first: bool = False, burst: int = 2) -> None:
+    def __init__(
+        self,
+        *,
+        fail_first: bool = False,
+        burst: int = 2,
+        clock_offset_ms: float = 0.0,
+        clock_rtt_ms: float = 0.0,
+        clock_sync_status: str = "UNVERIFIED",
+    ) -> None:
         self.fail_first = fail_first
         self.burst = burst
         self.connection_count = 0
         self.release = asyncio.Event()
+        self.clock_offset_ms = clock_offset_ms
+        self.clock_rtt_ms = clock_rtt_ms
+        self.clock_sync_status = clock_sync_status
 
     async def prepare(self, *, run_id: str, clock: DeterministicClock) -> ProviderSelection:
         del run_id, clock
@@ -43,6 +54,9 @@ class RecordedProvider:
             wide_symbols=wide,
             deep_symbols=wide[:10],
             bootstrap_events=(),
+            venue_clock_offset_ms=self.clock_offset_ms,
+            venue_clock_rtt_ms=self.clock_rtt_ms,
+            clock_sync_status=self.clock_sync_status,
         )
 
     async def events(
@@ -115,14 +129,40 @@ async def test_supervisor_remains_running_after_first_verified_event() -> None:
     assert len(delivered) == 2
     assert supervisor._tasks is not None
     assert all(not task.done() for task in supervisor._tasks)
+    assert supervisor.telemetry.clock_sync_status == "UNVERIFIED"
 
     provider.release.set()
     await asyncio.sleep(0.01)
     assert supervisor.telemetry.planned_rotation_count == 1
     assert supervisor.telemetry.reconnect_count == 1
+    assert supervisor.telemetry.as_dict()["unplanned_reconnects"] == 0
 
     await supervisor.stop()
     assert supervisor.telemetry.state is ConnectionState.DISCONNECTED
+
+
+async def test_supervisor_exposes_verified_venue_clock_correction() -> None:
+    provider = RecordedProvider(
+        clock_offset_ms=1_802.5,
+        clock_rtt_ms=18,
+        clock_sync_status="SYNCED",
+    )
+    supervisor = PersistentPublicSupervisor(
+        provider,
+        run_id="run-clock-sync",
+        clock=DeterministicClock(),
+        sink=lambda _: None,
+        startup_timeout_seconds=1,
+    )
+
+    await supervisor.start()
+
+    diagnostics = supervisor.telemetry.as_dict()
+    assert diagnostics["venue_clock_offset_ms"] == 1_802.5
+    assert diagnostics["venue_clock_rtt_ms"] == 18
+    assert diagnostics["clock_sync_status"] == "SYNCED"
+
+    await supervisor.stop()
 
 
 async def test_supervisor_reconnects_and_bounds_overload_queue() -> None:
@@ -147,6 +187,10 @@ async def test_supervisor_reconnects_and_bounds_overload_queue() -> None:
 
     assert provider.connection_count >= 2
     assert supervisor.telemetry.reconnect_count >= 1
+    assert (
+        supervisor.telemetry.as_dict()["unplanned_reconnects"]
+        == supervisor.telemetry.reconnect_count
+    )
     assert supervisor.telemetry.dropped_event_count > 0
     assert supervisor.telemetry.queue_depth <= 4
     assert supervisor.telemetry.entry_locked

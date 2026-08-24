@@ -100,6 +100,16 @@ class BinancePublicAdapter:
             raise BinanceProtocolError("depth snapshot 계약이 잘못되었습니다.")
         return payload
 
+    async def fetch_server_time_ms(self) -> int:
+        """인증 없는 USDⓈ-M 공개 time endpoint의 밀리초 시각을 반환한다."""
+
+        response = await self._client.get("/fapi/v1/time")
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict) or "serverTime" not in payload:
+            raise BinanceProtocolError("serverTime 응답 계약이 잘못되었습니다.")
+        return int(payload["serverTime"])
+
     @classmethod
     def parse_instrument(cls, item: dict[str, Any]) -> Instrument:
         filters = item.get("filters")

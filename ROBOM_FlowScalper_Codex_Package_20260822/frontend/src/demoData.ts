@@ -45,6 +45,11 @@ export const initialDashboard: DashboardData = {
   position: null,
   logs: [],
   history: [],
+  history_scope: {
+    analysis_scope: 'CURRENT_STRATEGY_VERSION',
+    strategy_version: 'loading',
+    excluded_prior_version_samples: 0,
+  },
   strategies: [],
   shadow_accounts: [],
   league_accounts: [],

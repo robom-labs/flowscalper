@@ -54,3 +54,16 @@ test('shows only the current Run by default and can reveal immutable history', (
   fireEvent.change(screen.getByLabelText('Run 범위'), { target: { value: 'ALL' } })
   expect(screen.getByText('paper-history-past')).toBeInTheDocument()
 })
+
+test('explains that prior strategy-version trades stay archived outside the current list', () => {
+  render(
+    <HistoryPage
+      rows={[trade]}
+      currentRunId="run-history"
+      historyScope={{ strategy_version: 'current-v2', excluded_prior_version_samples: 4 }}
+      onReplay={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByText(/과거 버전 4건은 원장에 보관/)).toBeInTheDocument()
+})

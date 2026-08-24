@@ -116,6 +116,9 @@ class PaperRuntime:
     _historical_live_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
+    _historical_prior_version_live_trades: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
     _historical_shadow_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
@@ -1317,60 +1320,14 @@ class PaperRuntime:
 
         if self.ledger is None:
             raise ValueError("영속 원장이 없어 리플레이할 수 없습니다.")
-        if self.ledger.get_run(source_run_id) is None:
-            raise ValueError(f"저장 Run을 찾을 수 없습니다: {source_run_id}")
-        available_symbols = self.ledger.market_event_symbols(source_run_id)
-        selected_symbol = symbol.strip().upper() if symbol else None
-        if selected_symbol is None and available_symbols:
-            selected_symbol = str(available_symbols[0]["symbol"])
-        if selected_symbol is not None and selected_symbol not in {
-            str(row["symbol"]) for row in available_symbols
-        }:
-            raise ValueError(f"저장 Run에 없는 종목입니다: {selected_symbol}")
-        events = self.ledger.list_market_events(
+        from backend.app.replay.timeline import build_replay_timeline
+
+        return build_replay_timeline(
+            self.ledger,
             source_run_id,
-            symbol=selected_symbol,
+            symbol=symbol,
             limit=limit,
         )
-        stored_candles = (
-            self.ledger.list_candles(
-                source_run_id,
-                symbol=selected_symbol,
-                interval_seconds=1,
-            )
-            if selected_symbol is not None
-            else []
-        )
-        candles = [
-            {
-                "time": int(str(candle["open_ts_ms"])) // 1_000,
-                "open_ts_ms": int(str(candle["open_ts_ms"])),
-                "open": float(str(candle["open"])),
-                "high": float(str(candle["high"])),
-                "low": float(str(candle["low"])),
-                "close": float(str(candle["close"])),
-                "volume": float(str(candle["volume"])),
-                "trade_count": int(str(candle["trade_count"])),
-            }
-            for candle in stored_candles
-        ]
-        total_events = next(
-            (
-                int(str(row["event_count"])) if row["event_count"] is not None else None
-                for row in available_symbols
-                if row["symbol"] == selected_symbol
-            ),
-            0,
-        )
-        return {
-            "run_id": source_run_id,
-            "symbol": selected_symbol,
-            "total_events": total_events,
-            "truncated": total_events is None or total_events > len(events),
-            "available_symbols": available_symbols,
-            "events": events,
-            "candles": candles,
-        }
 
     def replay_focus_session(
         self,
@@ -1629,6 +1586,13 @@ class PaperRuntime:
             ),
         )
         snapshot["focus_positions"] = self.focus_positions()
+        snapshot["history_scope"] = {
+            "analysis_scope": "CURRENT_STRATEGY_VERSION",
+            "strategy_version": STRATEGY_VERSION,
+            "excluded_prior_version_samples": len(
+                self._historical_prior_version_live_trades
+            ),
+        }
         return snapshot
 
     def set_paused(self, paused: bool) -> None:
@@ -2239,14 +2203,15 @@ class PaperRuntime:
     def _refresh_dashboard_trade_cache(self) -> None:
         if self.ledger is None:
             self._historical_live_trades = ()
+            self._historical_prior_version_live_trades = ()
             self._historical_shadow_trades = ()
             self._historical_prior_version_shadow_trades = ()
             return
-        self._historical_live_trades = tuple(
-            trade
-            for trade in self.ledger.list_trades()
-            if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
+        current_live_trades, prior_version_live_trades = (
+            self._current_strategy_version_trades(self.ledger.list_trades())
         )
+        self._historical_live_trades = tuple(current_live_trades)
+        self._historical_prior_version_live_trades = tuple(prior_version_live_trades)
         current_shadow_trades, prior_version_shadow_trades = self._current_strategy_version_trades(
             self.ledger.list_shadow_trades()
         )

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from backend.app.replay.market import StoredMarketReplay
@@ -25,25 +25,41 @@ class ReplayFocusSessionBuilder:
         profile: str = "BASE",
         pre_roll_ms: int = 20 * 60 * 1_000,
         post_roll_ms: int = 5 * 60 * 1_000,
+        cooperative_yield: Callable[[], None] | None = None,
     ) -> dict[str, object]:
+        cached = ledger.get_replay_focus_session(
+            run_id,
+            trade_id,
+            profile,
+            session_version=1,
+        )
+        if cached is not None:
+            return cached
         trade = self._find_trade(ledger, run_id, trade_id, profile)
         symbol = str(trade["symbol"])
         entry_ts = int(str(trade["entry_ts_ms"]))
         exit_ts = int(str(trade["exit_ts_ms"]))
-        events = ledger.list_market_events(run_id, symbol=symbol)
-        window = [
-            event
-            for event in events
-            if entry_ts - pre_roll_ms
-            <= int(str(event["venue_ts_ms"]))
-            <= exit_ts + post_roll_ms
-        ]
-        replay = StoredMarketReplay().run(
-            ledger,
-            source_run_id=run_id,
-            created_ts_ms=created_ts_ms,
+        window = ledger.list_market_events(
+            run_id,
             symbol=symbol,
+            start_ts_ms=entry_ts - pre_roll_ms,
+            end_ts_ms=exit_ts + post_roll_ms,
+            cooperative_yield=cooperative_yield,
         )
+        replay = self._covering_replay_result(
+            ledger,
+            run_id=run_id,
+            entry_ts_ms=entry_ts,
+            exit_ts_ms=exit_ts,
+        )
+        if replay is None:
+            replay = StoredMarketReplay().run(
+                ledger,
+                source_run_id=run_id,
+                created_ts_ms=created_ts_ms,
+                symbol=symbol,
+                cooperative_yield=cooperative_yield,
+            ).as_dict()
         fills = ledger.list_fills(run_id)
         orders = ledger.list_orders(run_id)
         order_ids = {
@@ -62,7 +78,11 @@ class ReplayFocusSessionBuilder:
             <= int(str(candle["open_ts_ms"]))
             <= exit_ts + post_roll_ms
         ]
-        frames = [self._frame(event, trade, trade_fills) for event in window]
+        frames: list[dict[str, object]] = []
+        for index, event in enumerate(window, start=1):
+            frames.append(self._frame(event, trade, trade_fills))
+            if cooperative_yield is not None and index % 512 == 0:
+                cooperative_yield()
         if not frames:
             raise ValueError("거래 시간대의 저장 공개시장 이벤트가 없습니다.")
         frames.extend(
@@ -88,8 +108,12 @@ class ReplayFocusSessionBuilder:
             or self._state_changed(frames[index - 1], frame)
         ]
         comparisons = self._profile_comparison(ledger, run_id, trade)
-        replay_count = (
-            replay.main_trade_count if profile == "BASE" else replay.shadow_trade_count
+        replay_count = int(
+            str(
+                replay["main_trade_count"]
+                if profile == "BASE"
+                else replay["shadow_trade_count"]
+            )
         )
         sample_type = str(trade.get("sample_type", "LIVE_PUBLIC"))
         reconciliation_applicable = sample_type == "LIVE_PUBLIC"
@@ -101,8 +125,8 @@ class ReplayFocusSessionBuilder:
             "source_net_pnl": str(trade["net_pnl_usdt"]),
             "source_fees": str(trade["fees_usdt"]),
             "source_slippage": str(trade["slippage_usdt"]),
-            "replay_final_state": replay.final_state,
-            "replay_checksum": replay.checksum,
+            "replay_final_state": str(replay["final_state"]),
+            "replay_checksum": str(replay["checksum"]),
             "matched": replay_count > 0 if reconciliation_applicable else None,
             "reason": (
                 "PUBLIC_PAPER_REPLAY_COMPARISON"
@@ -137,7 +161,32 @@ class ReplayFocusSessionBuilder:
         }
         canonical = json.dumps(session, sort_keys=True, separators=(",", ":"), default=str)
         session["checksum"] = hashlib.sha256(canonical.encode()).hexdigest()
+        ledger.record_replay_focus_session(session, created_ts_ms=created_ts_ms)
         return session
+
+    @staticmethod
+    def _covering_replay_result(
+        ledger: SQLiteLedger,
+        *,
+        run_id: str,
+        entry_ts_ms: int,
+        exit_ts_ms: int,
+    ) -> dict[str, Any] | None:
+        """거래 시간대를 이미 검증한 replay가 있으면 화면 클릭에서 재계산하지 않는다."""
+
+        for replay in reversed(ledger.list_replay_runs(run_id)):
+            first_ts_ms = replay.get("first_ts_ms")
+            last_ts_ms = replay.get("last_ts_ms")
+            if first_ts_ms is None or last_ts_ms is None:
+                continue
+            if int(str(first_ts_ms)) <= entry_ts_ms and int(str(last_ts_ms)) >= exit_ts_ms:
+                safe_boundary = (
+                    replay.get("real_orders_enabled") is False
+                    and replay.get("auth_required") is False
+                )
+                if safe_boundary:
+                    return replay
+        return None
 
     @staticmethod
     def _chart_candle(candle: Mapping[str, object]) -> dict[str, object]:

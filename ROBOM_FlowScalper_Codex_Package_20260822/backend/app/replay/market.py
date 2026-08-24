@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -71,11 +72,18 @@ class StoredMarketReplay:
         source_run_id: str,
         created_ts_ms: int,
         symbol: str | None = None,
+        cooperative_yield: Callable[[], None] | None = None,
     ) -> StoredMarketReplayResult:
         run = ledger.get_run(source_run_id)
         if run is None:
             raise ValueError(f"알 수 없는 소스 Run: {source_run_id}")
-        events = ledger.list_market_events(source_run_id, symbol=symbol)
+        events = ledger.list_market_events(
+            source_run_id,
+            symbol=symbol,
+            cooperative_yield=cooperative_yield,
+        )
+        if cooperative_yield is not None:
+            cooperative_yield()
         venue = Venue(str(run["venue"]))
         runtime = PaperRuntime(
             mode=RuntimeMode.REPLAY,
@@ -86,9 +94,13 @@ class StoredMarketReplay:
         runtime.paused = False
         runtime.runtime_health_flags = ["STORED_PUBLIC_MARKET_REPLAY", "NO_AUTH_HEADERS"]
         self._restore_strategy_settings(runtime, ledger, source_run_id)
-        for payload in events:
+        for index, payload in enumerate(events, start=1):
             event = MarketEvent.model_validate(payload)
             runtime.ingest_live_event(event)
+            if cooperative_yield is not None and index % 64 == 0:
+                cooperative_yield()
+        if cooperative_yield is not None:
+            cooperative_yield()
         decisions = tuple(
             f"LATEST:{signal.symbol}:{signal.decision.strategy_id}:"
             f"{signal.decision.side.value}:{signal.decision.status.value}:"
@@ -122,6 +134,7 @@ class StoredMarketReplay:
             seed=int(str(config_value.get("seed", 20260822))),
             decision_path=decision_path,
             final_state=final_state,
+            cooperative_yield=cooperative_yield,
         )
         result = StoredMarketReplayResult(
             replay_id=f"replay-{uuid4().hex[:16]}",

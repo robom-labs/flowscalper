@@ -75,6 +75,16 @@ class BybitPublicAdapter:
             raise BybitProtocolError("ticker list 배열이 없습니다.")
         return [self.parse_ticker(item) for item in items]
 
+    async def fetch_server_time_ms(self) -> int:
+        """인증 없는 V5 market time endpoint의 나노초 시각을 ms로 반환한다."""
+
+        response = await self._client.get("/v5/market/time")
+        response.raise_for_status()
+        result = self._result(response.json())
+        if "timeNano" not in result:
+            raise BybitProtocolError("timeNano 응답 계약이 잘못되었습니다.")
+        return int(str(result["timeNano"])) // 1_000_000
+
     @staticmethod
     def _result(payload: object) -> dict[str, Any]:
         if not isinstance(payload, dict) or payload.get("retCode") != 0:
