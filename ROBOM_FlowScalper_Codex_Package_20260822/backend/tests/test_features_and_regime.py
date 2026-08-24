@@ -127,6 +127,25 @@ def test_single_pass_window_metrics_match_reference_calculations() -> None:
     assert snapshot.micro_vwap_10s == pytest.approx(
         engine._micro_vwap(latest.ts_ms, 10_000, snapshot.mid)
     )
+    bid_quantity = sum(quantity for _, quantity in latest.bids[:10])
+    ask_quantity = sum(quantity for _, quantity in latest.asks[:10])
+    bid_vwap = Decimal(str(snapshot.depth_bid_10)) / bid_quantity
+    ask_vwap = Decimal(str(snapshot.depth_ask_10)) / ask_quantity
+    multi_level_microprice = (
+        bid_vwap * ask_quantity + ask_vwap * bid_quantity
+    ) / (bid_quantity + ask_quantity)
+    assert snapshot.multi_level_microprice_10 == pytest.approx(
+        float(multi_level_microprice)
+    )
+    assert snapshot.multi_level_microprice_10_minus_mid_bps == pytest.approx(
+        (float(multi_level_microprice) - snapshot.mid) / snapshot.mid * 10_000
+    )
+    average_depth_notional = (
+        snapshot.depth_bid_10 + snapshot.depth_ask_10
+    ) / 2
+    assert snapshot.depth_adjusted_ofi_3s_bps == pytest.approx(
+        snapshot.ofi_3s * snapshot.mid / average_depth_notional * 10_000
+    )
 
 
 def test_feature_history_retains_only_each_metric_maximum_window() -> None:

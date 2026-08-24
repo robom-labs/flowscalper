@@ -1,4 +1,4 @@
-"""A/B/C/D/E/F 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
+"""A/B/C/D/E/F/G/H 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ from backend.app.domain.models import Side
 from backend.app.regime import Regime
 from backend.app.strategies.aggressor_flow import AggressorFlowStrategy
 from backend.app.strategies.compression_breakout import CompressionBreakoutStrategy
+from backend.app.strategies.depth_adjusted_ofi import DepthAdjustedOfiStrategy
 from backend.app.strategies.liquidity_sweep import LiquiditySweepStrategy
+from backend.app.strategies.multilevel_microprice import MultilevelMicropriceStrategy
 from backend.app.strategies.ofi_pullback import OfiPullbackStrategy
 from backend.app.strategies.queue_microprice import QueueMicropriceStrategy
 from backend.app.strategies.vwap_exhaustion import VwapExhaustionStrategy
@@ -38,6 +40,8 @@ StrategyEvaluator = (
     | OfiPullbackStrategy
     | QueueMicropriceStrategy
     | AggressorFlowStrategy
+    | MultilevelMicropriceStrategy
+    | DepthAdjustedOfiStrategy
 )
 
 
@@ -127,6 +131,26 @@ class StrategyRegistry:
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=AggressorFlowStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
+            ),
+            StrategyDescriptor(
+                strategy_id="MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+                display_name_ko="다중호가 공정가 추세",
+                short_name="다중호가",
+                summary_ko="10단계 호가 공정가·OFI·체결 흐름의 같은 방향 지속을 확인합니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=MultilevelMicropriceStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
+            ),
+            StrategyDescriptor(
+                strategy_id="DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+                display_name_ko="깊이보정 OFI 충격",
+                short_name="깊이 OFI",
+                summary_ko="호가 깊이에 비해 이례적으로 큰 OFI와 가격 반응의 지속을 확인합니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=DepthAdjustedOfiStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
             ),
         )

@@ -1,4 +1,4 @@
-"""LIVE 피처를 A/B/C/D/E/F 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
+"""LIVE 피처를 A/B/C/D/E/F/G/H 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
 
 from __future__ import annotations
 
@@ -20,9 +20,19 @@ from backend.app.strategies.compression_breakout import (
     CompressionBreakoutContext,
     CompressionBreakoutStrategy,
 )
+from backend.app.strategies.depth_adjusted_ofi import (
+    DepthAdjustedOfiContext,
+    DepthAdjustedOfiStrategy,
+    depth_adjusted_ofi_ready,
+)
 from backend.app.strategies.liquidity_sweep import (
     LiquiditySweepContext,
     LiquiditySweepStrategy,
+)
+from backend.app.strategies.multilevel_microprice import (
+    MultilevelMicropriceContext,
+    MultilevelMicropriceStrategy,
+    multilevel_alignment_ready,
 )
 from backend.app.strategies.ofi_pullback import OfiPullbackContext, OfiPullbackStrategy
 from backend.app.strategies.queue_microprice import (
@@ -61,6 +71,8 @@ class _HistoryStatistics:
     efficiency_percentile: float
     long_directional_flow_z: float
     short_directional_flow_z: float
+    long_depth_adjusted_ofi_z: float
+    short_depth_adjusted_ofi_z: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +100,7 @@ class _SortedFeatureHistory:
     compression: list[float] = field(default_factory=list)
     efficiency: list[float] = field(default_factory=list)
     signed_notional: list[float] = field(default_factory=list)
+    depth_adjusted_ofi: list[float] = field(default_factory=list)
 
     def add(self, snapshot: FeatureSnapshot) -> None:
         insort(self.flow, abs(snapshot.signed_notional_3s))
@@ -98,6 +111,7 @@ class _SortedFeatureHistory:
         insort(self.compression, snapshot.compression_ratio)
         insort(self.efficiency, snapshot.efficiency_ratio_30s)
         insort(self.signed_notional, snapshot.signed_notional_3s)
+        insort(self.depth_adjusted_ofi, snapshot.depth_adjusted_ofi_3s_bps)
 
     def remove(self, snapshot: FeatureSnapshot) -> None:
         self._remove(self.flow, abs(snapshot.signed_notional_3s))
@@ -108,6 +122,7 @@ class _SortedFeatureHistory:
         self._remove(self.compression, snapshot.compression_ratio)
         self._remove(self.efficiency, snapshot.efficiency_ratio_30s)
         self._remove(self.signed_notional, snapshot.signed_notional_3s)
+        self._remove(self.depth_adjusted_ofi, snapshot.depth_adjusted_ofi_3s_bps)
 
     @staticmethod
     def _remove(values: list[float], value: float) -> None:
@@ -411,6 +426,57 @@ class StrategySignalEvaluator:
                     confirmation_ms=confirmation_ms,
                 )
             )
+        if isinstance(evaluator, MultilevelMicropriceStrategy):
+            plan = _momentum_plan(snapshot, side, tick_size)
+            aligned = multilevel_alignment_ready(side, snapshot, regime)
+            confirmation_ms = self._confirmation_ms(
+                evaluator.strategy_id,
+                snapshot.symbol,
+                side,
+                snapshot.ts_ms,
+                aligned=aligned,
+            )
+            return evaluator.evaluate(
+                MultilevelMicropriceContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=plan,
+                    confirmation_ms=confirmation_ms,
+                )
+            )
+        if isinstance(evaluator, DepthAdjustedOfiStrategy):
+            plan = _momentum_plan(snapshot, side, tick_size)
+            directional_depth_adjusted_ofi_z = (
+                history_statistics.long_depth_adjusted_ofi_z
+                if side is Side.LONG
+                else history_statistics.short_depth_adjusted_ofi_z
+            )
+            aligned = depth_adjusted_ofi_ready(
+                side,
+                snapshot,
+                regime,
+                directional_depth_adjusted_ofi_z,
+            )
+            confirmation_ms = self._confirmation_ms(
+                evaluator.strategy_id,
+                snapshot.symbol,
+                side,
+                snapshot.ts_ms,
+                aligned=aligned,
+            )
+            return evaluator.evaluate(
+                DepthAdjustedOfiContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=plan,
+                    directional_depth_adjusted_ofi_robust_z=(
+                        directional_depth_adjusted_ofi_z
+                    ),
+                    confirmation_ms=confirmation_ms,
+                )
+            )
         raise TypeError(f"지원하지 않는 전략 evaluator: {type(evaluator).__name__}")
 
     @staticmethod
@@ -418,12 +484,16 @@ class StrategySignalEvaluator:
         history: _SortedFeatureHistory,
         snapshot: FeatureSnapshot,
     ) -> _HistoryStatistics:
-        """동일 snapshot의 12개 전략·방향이 같은 정렬 통계를 공유한다."""
+        """동일 snapshot의 16개 전략·방향이 같은 정렬 통계를 공유한다."""
 
         deviation_bps = _vwap_deviation_bps(snapshot) or 0.0
         directional_flow_z = robust_z_from_sorted(
             history.signed_notional,
             snapshot.signed_notional_3s,
+        )
+        directional_depth_adjusted_ofi_z = robust_z_from_sorted(
+            history.depth_adjusted_ofi,
+            snapshot.depth_adjusted_ofi_3s_bps,
         )
         return _HistoryStatistics(
             flow_z=abs(
@@ -447,6 +517,12 @@ class StrategySignalEvaluator:
             long_directional_flow_z=directional_flow_z,
             short_directional_flow_z=(
                 0.0 if directional_flow_z == 0 else -directional_flow_z
+            ),
+            long_depth_adjusted_ofi_z=directional_depth_adjusted_ofi_z,
+            short_depth_adjusted_ofi_z=(
+                0.0
+                if directional_depth_adjusted_ofi_z == 0
+                else -directional_depth_adjusted_ofi_z
             ),
         )
 
@@ -557,7 +633,7 @@ def _momentum_plan(
     side: Side,
     tick_size: Decimal,
 ) -> PlanInputs:
-    """E/F도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
+    """E/F/G/H도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
 
     return _plan(
         snapshot,

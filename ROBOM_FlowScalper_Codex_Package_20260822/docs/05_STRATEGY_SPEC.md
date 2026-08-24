@@ -14,7 +14,9 @@ Calculate at multiple windows where supported:
 - spread in ticks and bps;
 - top-1, top-5, top-10 weighted book imbalance;
 - microprice and microprice-minus-mid;
+- top-10 multi-level microprice/fair-price displacement;
 - OFI at 250 ms, 1 s, 3 s and 10 s;
+- 3 s OFI normalized by top-10 average depth notional;
 - aggressive trade imbalance;
 - signed traded notional;
 - price-response efficiency;
@@ -126,7 +128,15 @@ Apply symmetric logic below support.
 - target is blocked by nearby liquidity and net reward is inadequate;
 - data gap or processing lag occurs.
 
-## 5.6 Candidate scoring
+## 5.6 Strategies G and H — SHADOW-only research hypotheses
+
+`MULTILEVEL_MICROPRICE_MOMENTUM_V1` uses a top-10 cross-weighted bid/ask VWAP fair price. It requires the multi-level fair price, top microprice, 250 ms and 3 s OFI, one-second aggressor flow and price-response efficiency to align for at least 750 ms. It is rejected in WARMUP, DEGRADED or SHOCK and remains SHADOW by default.
+
+`DEPTH_ADJUSTED_OFI_IMPULSE_V1` converts three-second OFI to notional, divides it by average top-10 bid/ask depth notional and expresses the result in basis points. It requires a directional robust z-score of at least 2.0 from the prior same-symbol history, aligned OFI, aggressor flow, microprice and price response for at least 500 ms. It remains SHADOW by default.
+
+Both strategies are PAPER-only, evaluate LONG and SHORT symmetrically, use independent BASE/STRESS accounts and cannot enter shared capital unless a user explicitly changes the mode after adequate evidence. The starting thresholds are research controls, not profitability claims. See ADR-016.
+
+## 5.7 Candidate scoring
 
 A candidate score must be decomposable:
 
@@ -145,7 +155,7 @@ candidate_score =
 
 The UI must show component scores and rejection reasons. A high score alone cannot override a hard safety gate.
 
-## 5.7 Cold-start behavior
+## 5.8 Cold-start behavior
 
 Before sufficient data:
 
@@ -154,13 +164,13 @@ Before sufficient data:
 - store all qualified and near-miss candidates, not only executed trades;
 - collect enough outcome labels for later validation.
 
-## 5.8 No forced trade count
+## 5.9 No forced trade count
 
 The research target may be several trades per day across the universe, but the engine must allow zero trades. Never lower thresholds to satisfy a count target.
 
-## 5.9 Executable cost geometry and temporal confirmation
+## 5.10 Executable cost geometry and temporal confirmation
 
-- REVERSION A/C use a minimum 0.80% structural stop distance. TREND B/D/E/F use a minimum 0.30% distance.
+- REVERSION A/C use a minimum 0.80% structural stop distance. TREND B/D/E/F/G/H use a minimum 0.30% distance.
 - The distance is not added risk. Risk-based sizing reduces quantity so the account risk budget remains unchanged.
 - Final eligibility is recalculated from executable bid/ask, worst entry, both-side fees, expected exit slippage and the configured split exits. Net reward-risk below 1.20 remains rejected.
 - A-D confirmation durations use venue event timestamps and reset immediately when alignment breaks.

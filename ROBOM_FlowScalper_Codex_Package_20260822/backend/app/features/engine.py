@@ -99,6 +99,9 @@ class FeatureSnapshot:
     compression_ratio: float
     efficiency_ratio_30s: float
     micro_vwap_10s: float
+    multi_level_microprice_10: float = 0.0
+    multi_level_microprice_10_minus_mid_bps: float = 0.0
+    depth_adjusted_ofi_3s_bps: float = 0.0
 
     def assert_finite(self) -> None:
         for field in fields(self):
@@ -150,6 +153,24 @@ class FeatureEngine:
         depth_bid_10 = sum((price * quantity for price, quantity in latest.bids[:10]), Decimal(0))
         depth_ask_10 = sum((price * quantity for price, quantity in latest.asks[:10]), Decimal(0))
         microprice = (ask * bid_quantity + bid * ask_quantity) / (bid_quantity + ask_quantity)
+        multi_level_bid_quantity = sum(
+            (quantity for _, quantity in latest.bids[:10]),
+            Decimal(0),
+        )
+        multi_level_ask_quantity = sum(
+            (quantity for _, quantity in latest.asks[:10]),
+            Decimal(0),
+        )
+        multi_level_total_quantity = multi_level_bid_quantity + multi_level_ask_quantity
+        if multi_level_bid_quantity and multi_level_ask_quantity:
+            bid_vwap_10 = depth_bid_10 / multi_level_bid_quantity
+            ask_vwap_10 = depth_ask_10 / multi_level_ask_quantity
+            multi_level_microprice_10 = (
+                bid_vwap_10 * multi_level_ask_quantity
+                + ask_vwap_10 * multi_level_bid_quantity
+            ) / multi_level_total_quantity
+        else:
+            multi_level_microprice_10 = mid
         mids = [
             (book.ts_ms, float((book.bids[0][0] + book.asks[0][0]) / 2)) for book in self._books
         ]
@@ -214,6 +235,12 @@ class FeatureEngine:
             for previous, current in zip(values_30s, values_30s[1:], strict=False)
         )
         ofi_3s_absolute = abs(ofi_3s)
+        average_depth_notional_10 = (depth_bid_10 + depth_ask_10) / Decimal(2)
+        depth_adjusted_ofi_3s_bps = (
+            Decimal(str(ofi_3s)) * mid / average_depth_notional_10 * Decimal(10_000)
+            if average_depth_notional_10 > 0
+            else Decimal(0)
+        )
         first_ts = self._books[0].ts_ms
         snapshot = FeatureSnapshot(
             venue=latest.venue,
@@ -262,6 +289,11 @@ class FeatureEngine:
                 if trade_quantity_10s
                 else float(mid)
             ),
+            multi_level_microprice_10=float(multi_level_microprice_10),
+            multi_level_microprice_10_minus_mid_bps=float(
+                (multi_level_microprice_10 - mid) / mid * Decimal(10_000)
+            ),
+            depth_adjusted_ofi_3s_bps=float(depth_adjusted_ofi_3s_bps),
         )
         snapshot.assert_finite()
         return snapshot

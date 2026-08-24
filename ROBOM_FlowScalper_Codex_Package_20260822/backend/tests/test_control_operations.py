@@ -204,14 +204,14 @@ async def test_cancel_during_supervisor_start_leaves_no_tasks(monkeypatch) -> No
     assert runtime.market_data_state.value != "LIVE"
 
 
-def test_dashboard_has_twelve_accounts_and_split_risk_contract() -> None:
+def test_dashboard_has_sixteen_accounts_and_split_risk_contract() -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     dashboard = runtime.dashboard()
 
-    assert len(dashboard["league_accounts"]) == 12
+    assert len(dashboard["league_accounts"]) == 16
     assert dashboard["league_positions"] == []
     assert dashboard["risk"]["shared_capital"]["risk_per_position"] == "0.10%"
-    assert dashboard["risk"]["strategy_league"]["account_count"] == 12
+    assert dashboard["risk"]["strategy_league"]["account_count"] == 16
     assert dashboard["risk"]["strategy_league"]["maximum_effective_leverage"] == "5.00x"
     assert dashboard["status"]["real_orders_enabled"] is False
     assert dashboard["status"]["auth_required"] is False

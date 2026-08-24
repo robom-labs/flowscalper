@@ -98,6 +98,39 @@ strategy:
     confirmation_ms: 500
     minimum_structural_risk_fraction: 0.0030
 
+  multilevel_microprice_momentum:
+    enabled: true
+    strategy_id: MULTILEVEL_MICROPRICE_MOMENTUM_V1
+    stability: EXPERIMENTAL
+    default_mode: SHADOW
+    permitted_regimes: [RANGE, TREND_UP, TREND_DOWN]
+    order_book_levels: 10
+    spread_bps_max: 8.0
+    fair_price_displacement_bps_min: 0.40
+    fair_price_spread_multiplier: 0.15
+    require_top_microprice_alignment: true
+    require_250ms_and_3s_ofi_alignment: true
+    trade_imbalance_1s_min: 0.15
+    price_response_efficiency_min: 0.35
+    confirmation_ms: 750
+    minimum_structural_risk_fraction: 0.0030
+
+  depth_adjusted_ofi_impulse:
+    enabled: true
+    strategy_id: DEPTH_ADJUSTED_OFI_IMPULSE_V1
+    stability: EXPERIMENTAL
+    default_mode: SHADOW
+    permitted_regimes: [RANGE, TREND_UP, TREND_DOWN]
+    order_book_levels: 10
+    spread_bps_max: 10.0
+    depth_adjusted_ofi_robust_z_min: 2.0
+    require_250ms_and_3s_ofi_alignment: true
+    trade_imbalance_1s_min: 0.15
+    require_microprice_alignment: true
+    price_response_efficiency_min: 0.40
+    confirmation_ms: 500
+    minimum_structural_risk_fraction: 0.0030
+
   registry:
     modes: [ACTIVE, SHADOW, OFF]
     default_directions: [LONG, SHORT]

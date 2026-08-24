@@ -1,4 +1,4 @@
-"""여섯 결정적 PAPER 전략, 레지스트리와 공통 후보 계약을 공개한다."""
+"""여덟 결정적 PAPER 전략, 레지스트리와 공통 후보 계약을 공개한다."""
 
 from backend.app.strategies.aggressor_flow import (
     AggressorFlowContext,
@@ -9,9 +9,19 @@ from backend.app.strategies.compression_breakout import (
     CompressionBreakoutContext,
     CompressionBreakoutStrategy,
 )
+from backend.app.strategies.depth_adjusted_ofi import (
+    DepthAdjustedOfiContext,
+    DepthAdjustedOfiStrategy,
+    depth_adjusted_ofi_ready,
+)
 from backend.app.strategies.liquidity_sweep import (
     LiquiditySweepContext,
     LiquiditySweepStrategy,
+)
+from backend.app.strategies.multilevel_microprice import (
+    MultilevelMicropriceContext,
+    MultilevelMicropriceStrategy,
+    multilevel_alignment_ready,
 )
 from backend.app.strategies.ofi_pullback import OfiPullbackContext, OfiPullbackStrategy
 from backend.app.strategies.queue_microprice import (
@@ -30,8 +40,12 @@ __all__ = [
     "AggressorFlowStrategy",
     "CompressionBreakoutContext",
     "CompressionBreakoutStrategy",
+    "DepthAdjustedOfiContext",
+    "DepthAdjustedOfiStrategy",
     "LiquiditySweepContext",
     "LiquiditySweepStrategy",
+    "MultilevelMicropriceContext",
+    "MultilevelMicropriceStrategy",
     "PlanInputs",
     "OfiPullbackContext",
     "OfiPullbackStrategy",
@@ -42,4 +56,6 @@ __all__ = [
     "StrategyRegistry",
     "VwapExhaustionContext",
     "VwapExhaustionStrategy",
+    "depth_adjusted_ofi_ready",
+    "multilevel_alignment_ready",
 ]

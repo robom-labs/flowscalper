@@ -1,4 +1,4 @@
-"""12개 독립 계좌의 다중 포지션·위험·비용·복구 계약을 검증한다."""
+"""16개 독립 계좌의 다중 포지션·위험·비용·복구 계약을 검증한다."""
 
 from __future__ import annotations
 
@@ -107,9 +107,9 @@ def league_engine() -> PaperPortfolioEngine:
     )
 
 
-def test_registry_builds_twelve_independent_thousand_usdt_accounts() -> None:
+def test_registry_builds_sixteen_independent_thousand_usdt_accounts() -> None:
     engine = league_engine()
-    assert len(engine.shadows) == 12
+    assert len(engine.shadows) == 16
     assert {account.account_id for account in engine.shadows.values()} == {
         f"{strategy_id}:{profile.value}"
         for strategy_id in StrategyRegistry().strategy_ids
@@ -369,7 +369,7 @@ def test_every_strategy_runs_entry_protection_and_exit_end_to_end(
     side: Side,
     outcome: str,
 ) -> None:
-    """A-F의 양방향 진입과 자동 TP1·TP2·SL 보호를 같은 PAPER 엔진으로 검증한다."""
+    """A-H의 양방향 진입과 자동 TP1·TP2·SL 보호를 같은 PAPER 엔진으로 검증한다."""
 
     engine = league_engine()
     plan = league_plan(strategy_id, "BTCUSDT", side)

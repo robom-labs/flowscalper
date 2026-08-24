@@ -11,6 +11,10 @@ from backend.app.regime import Regime
 from backend.app.strategies import (
     AggressorFlowContext,
     AggressorFlowStrategy,
+    DepthAdjustedOfiContext,
+    DepthAdjustedOfiStrategy,
+    MultilevelMicropriceContext,
+    MultilevelMicropriceStrategy,
     QueueMicropriceContext,
     QueueMicropriceStrategy,
 )
@@ -37,6 +41,9 @@ def aligned_features(side: Side, *, ts_ms: int = 1_000, signed: float = 1_000.0)
         microprice=100.02 if side is Side.LONG else 99.98,
         microprice_minus_mid_bps=2.0 * direction,
         micro_vwap_10s=100.01 if side is Side.LONG else 99.99,
+        multi_level_microprice_10=100.03 if side is Side.LONG else 99.97,
+        multi_level_microprice_10_minus_mid_bps=3.0 * direction,
+        depth_adjusted_ofi_3s_bps=2.5 * direction,
     )
 
 
@@ -277,3 +284,189 @@ def test_aggressor_confirmation_uses_prefix_and_event_time(
         first, strategy_id, side
     ).rejection_codes
     assert decision_for(ready, strategy_id, side).status is CandidateStatus.QUALIFIED
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_multilevel_microprice_strategy_qualifies_both_directions(side: Side) -> None:
+    decision = MultilevelMicropriceStrategy().evaluate(
+        MultilevelMicropriceContext(
+            side=side,
+            features=aligned_features(side),
+            regime=Regime.RANGE,
+            plan=plan(side),
+            confirmation_ms=750,
+        )
+    )
+    assert decision.status is CandidateStatus.QUALIFIED
+    assert decision.initial_stop is not None
+    assert decision.take_profit is not None
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "reason"),
+    [
+        ("data_healthy", False, "STALE_OR_DEGRADED_DATA"),
+        ("spread_bps", 8.01, "WIDE_SPREAD"),
+        (
+            "multi_level_microprice_10_minus_mid_bps",
+            0.39,
+            "MULTILEVEL_FAIR_PRICE_NOT_DISPLACED",
+        ),
+        ("microprice_minus_mid_bps", 0.0, "TOP_MICROPRICE_NOT_ALIGNED"),
+        ("ofi_250ms", 0.0, "SHORT_OFI_NOT_ALIGNED"),
+        ("ofi_3s", 0.0, "MEDIUM_OFI_NOT_ALIGNED"),
+        ("trade_imbalance_1s", 0.14, "AGGRESSOR_FLOW_NOT_ALIGNED"),
+        ("price_response_efficiency", 0.34, "PRICE_RESPONSE_INEFFICIENT"),
+    ],
+)
+def test_multilevel_microprice_core_rejections(
+    field_name: str,
+    value: object,
+    reason: str,
+) -> None:
+    feature = replace(aligned_features(Side.LONG), **{field_name: value})
+    decision = MultilevelMicropriceStrategy().evaluate(
+        MultilevelMicropriceContext(
+            Side.LONG,
+            feature,
+            Regime.RANGE,
+            plan(Side.LONG),
+            750,
+        )
+    )
+    assert reason in decision.rejection_codes
+
+
+def test_multilevel_confirmation_uses_event_time_and_resets() -> None:
+    strategy_id = MultilevelMicropriceStrategy.strategy_id
+    evaluator = StrategySignalEvaluator()
+    registry = only_strategy(strategy_id)
+    first = evaluator.evaluate(
+        registry,
+        aligned_features(Side.LONG, ts_ms=1_000),
+        Regime.RANGE,
+    )
+    ready = evaluator.evaluate(
+        registry,
+        aligned_features(Side.LONG, ts_ms=1_750),
+        Regime.RANGE,
+    )
+    assert "MULTILEVEL_ALIGNMENT_NOT_PERSISTENT" in decision_for(
+        first,
+        strategy_id,
+        Side.LONG,
+    ).rejection_codes
+    assert decision_for(ready, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED
+
+    broken = replace(
+        aligned_features(Side.LONG, ts_ms=1_800),
+        multi_level_microprice_10_minus_mid_bps=0.0,
+    )
+    evaluator.evaluate(registry, broken, Regime.RANGE)
+    restarted = evaluator.evaluate(
+        registry,
+        aligned_features(Side.LONG, ts_ms=2_800),
+        Regime.RANGE,
+    )
+    assert "MULTILEVEL_ALIGNMENT_NOT_PERSISTENT" in decision_for(
+        restarted,
+        strategy_id,
+        Side.LONG,
+    ).rejection_codes
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_depth_adjusted_ofi_strategy_qualifies_both_directions(side: Side) -> None:
+    decision = DepthAdjustedOfiStrategy().evaluate(
+        DepthAdjustedOfiContext(
+            side=side,
+            features=aligned_features(side),
+            regime=Regime.RANGE,
+            plan=plan(side),
+            directional_depth_adjusted_ofi_robust_z=2.5,
+            confirmation_ms=500,
+        )
+    )
+    assert decision.status is CandidateStatus.QUALIFIED
+    assert decision.net_reward_risk is not None
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "reason"),
+    [
+        ("data_healthy", False, "STALE_OR_DEGRADED_DATA"),
+        ("spread_bps", 10.01, "WIDE_SPREAD"),
+        ("depth_adjusted_ofi_3s_bps", 0.0, "DEPTH_ADJUSTED_OFI_NOT_ALIGNED"),
+        ("ofi_250ms", 0.0, "SHORT_OFI_NOT_ALIGNED"),
+        ("ofi_3s", 0.0, "MEDIUM_OFI_NOT_ALIGNED"),
+        ("trade_imbalance_1s", 0.14, "AGGRESSOR_FLOW_NOT_ALIGNED"),
+        ("microprice_minus_mid_bps", 0.0, "MICROPRICE_NOT_ALIGNED"),
+        ("price_response_efficiency", 0.39, "PRICE_RESPONSE_INEFFICIENT"),
+    ],
+)
+def test_depth_adjusted_ofi_core_rejections(
+    field_name: str,
+    value: object,
+    reason: str,
+) -> None:
+    feature = replace(aligned_features(Side.LONG), **{field_name: value})
+    decision = DepthAdjustedOfiStrategy().evaluate(
+        DepthAdjustedOfiContext(
+            Side.LONG,
+            feature,
+            Regime.RANGE,
+            plan(Side.LONG),
+            2.5,
+            500,
+        )
+    )
+    assert reason in decision.rejection_codes
+
+
+def test_depth_adjusted_ofi_requires_robust_impulse_and_event_time() -> None:
+    strategy_id = DepthAdjustedOfiStrategy.strategy_id
+    direct = DepthAdjustedOfiStrategy().evaluate(
+        DepthAdjustedOfiContext(
+            Side.LONG,
+            aligned_features(Side.LONG),
+            Regime.RANGE,
+            plan(Side.LONG),
+            1.99,
+            500,
+        )
+    )
+    assert "DEPTH_ADJUSTED_OFI_IMPULSE_WEAK" in direct.rejection_codes
+
+    evaluator = StrategySignalEvaluator()
+    registry = only_strategy(strategy_id)
+    for index, value in enumerate((0.08, 0.10, 0.09, 0.11, 0.10)):
+        evaluator.evaluate(
+            registry,
+            replace(
+                aligned_features(Side.LONG, ts_ms=index * 100),
+                depth_adjusted_ofi_3s_bps=value,
+            ),
+            Regime.WARMUP,
+        )
+    first = evaluator.evaluate(
+        registry,
+        replace(
+            aligned_features(Side.LONG, ts_ms=1_000),
+            depth_adjusted_ofi_3s_bps=2.5,
+        ),
+        Regime.RANGE,
+    )
+    ready = evaluator.evaluate(
+        registry,
+        replace(
+            aligned_features(Side.LONG, ts_ms=1_500),
+            depth_adjusted_ofi_3s_bps=2.6,
+        ),
+        Regime.RANGE,
+    )
+    assert "DEPTH_ADJUSTED_OFI_NOT_PERSISTENT" in decision_for(
+        first,
+        strategy_id,
+        Side.LONG,
+    ).rejection_codes
+    assert decision_for(ready, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED

@@ -1,4 +1,4 @@
-// Strategy League 화면 단위검사에 쓰는 6전략·12계좌 결정적 fixture를 제공한다.
+// Strategy League 화면 단위검사에 쓰는 8전략·16계좌 결정적 fixture를 제공한다.
 import { initialDashboard } from '../src/demoData'
 import { strategyOrder } from '../src/strategyPresentation'
 import type { DashboardData, LeagueAccount, StrategyPerformance, StrategyRow } from '../src/types'
@@ -10,6 +10,8 @@ const names = [
   ['OFI 눌림', 'OFI 추세 눌림 지속'],
   ['호가 쏠림', '호가 쏠림 순간추세'],
   ['체결흐름', '강한 체결 흐름 지속'],
+  ['다중호가', '다중호가 공정가 추세'],
+  ['깊이 OFI', '깊이보정 OFI 충격'],
 ] as const
 
 function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPerformance {

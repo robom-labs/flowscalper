@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import backend.app.main as main_module
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
@@ -323,7 +324,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.checksum == second.checksum
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 24
+    assert first.strategy_evaluation_count == 32
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False
@@ -633,7 +634,42 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     assert results.json()[0]["checksum"] == replay.json()["checksum"]
     analytics = client.get("/api/analytics/strategies")
     assert analytics.status_code == 200
-    assert len(analytics.json()) == 12
+    assert len(analytics.json()) == 16
+    ledger.close()
+
+
+def test_live_http_replay_uses_isolated_process_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "live-api-ledger.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-isolated-replay",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="isolated-depth", ts_ms=1_000)
+    )
+    calls: list[tuple[object, ...]] = []
+
+    async def run_sync(function, *arguments):
+        calls.append(arguments)
+        return function(*arguments)
+
+    monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
+    response = TestClient(create_app(runtime)).post(
+        f"/api/replay/{runtime.run_id}",
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["event_count"] == 1
+    assert response.json()["real_orders_enabled"] is False
+    assert len(calls) == 1
+    assert calls[0][0] == str(ledger.path)
     ledger.close()
 
 
