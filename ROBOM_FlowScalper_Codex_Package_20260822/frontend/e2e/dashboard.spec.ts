@@ -102,6 +102,11 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await page.getByRole('button', { name: 'RSI', exact: true }).click()
   expect(await page.locator('.chart-panel').boundingBox()).toEqual(chartBefore)
   await page.locator('.indicator-popover summary').click()
+  await page.getByRole('button', { name: '전체화면', exact: true }).click()
+  await expect(page.locator('.chart-panel')).toHaveClass(/chart-full-window/)
+  await expect(page.getByRole('button', { name: '전체화면 닫기', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '전체화면 닫기', exact: true }).click()
+  await expect(page.locator('.chart-panel')).not.toHaveClass(/chart-full-window/)
 
   if (testInfo.project.name === 'desktop') {
     const header = await page.locator('.topbar').boundingBox()

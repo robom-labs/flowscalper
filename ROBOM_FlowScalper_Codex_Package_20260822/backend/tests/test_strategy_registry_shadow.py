@@ -75,23 +75,23 @@ def test_registry_exposes_six_strategies_and_honors_mode_and_direction() -> None
 def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch) -> None:
     robust_calls = 0
     percentile_calls = 0
-    original_robust_z = runtime_evaluator_module.robust_z
-    original_percentile = runtime_evaluator_module.rolling_percentile
+    original_robust_z = runtime_evaluator_module.robust_z_from_sorted
+    original_percentile = runtime_evaluator_module.rolling_percentile_from_sorted
 
-    def counted_robust_z(history: list[float], current: float) -> float:
+    def counted_robust_z(history, current: float) -> float:
         nonlocal robust_calls
         robust_calls += 1
         return original_robust_z(history, current)
 
-    def counted_percentile(history: list[float], current: float) -> float:
+    def counted_percentile(history, current: float) -> float:
         nonlocal percentile_calls
         percentile_calls += 1
         return original_percentile(history, current)
 
-    monkeypatch.setattr(runtime_evaluator_module, "robust_z", counted_robust_z)
+    monkeypatch.setattr(runtime_evaluator_module, "robust_z_from_sorted", counted_robust_z)
     monkeypatch.setattr(
         runtime_evaluator_module,
-        "rolling_percentile",
+        "rolling_percentile_from_sorted",
         counted_percentile,
     )
 
@@ -102,8 +102,37 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
     )
 
     assert len(decisions) == 12
-    assert robust_calls == 4
+    assert robust_calls == 3
     assert percentile_calls == 3
+
+
+def test_strategy_sorted_history_evicts_with_same_exact_window() -> None:
+    evaluator = StrategySignalEvaluator(history_limit=3)
+    registry = StrategyRegistry()
+    snapshots = [
+        replace(
+            features(),
+            ts_ms=index * 500,
+            signed_notional_3s=float(index - 2),
+            price_response_efficiency=index / 10,
+            compression_ratio=index / 20,
+            efficiency_ratio_30s=index / 30,
+            micro_vwap_10s=99.0 + index / 10,
+        )
+        for index in range(5)
+    ]
+
+    for snapshot in snapshots:
+        evaluator.evaluate(registry, snapshot, Regime.RANGE)
+
+    window = list(evaluator._history[snapshots[-1].symbol])
+    ordered = evaluator._sorted_history[snapshots[-1].symbol]
+    assert window == snapshots[-3:]
+    assert ordered.flow == sorted(abs(item.signed_notional_3s) for item in window)
+    assert ordered.price_response == sorted(item.price_response_efficiency for item in window)
+    assert ordered.compression == sorted(item.compression_ratio for item in window)
+    assert ordered.efficiency == sorted(item.efficiency_ratio_30s for item in window)
+    assert ordered.signed_notional == sorted(item.signed_notional_3s for item in window)
 
 
 @pytest.mark.parametrize(

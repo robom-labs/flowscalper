@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left, insort
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
@@ -39,6 +40,8 @@ class LocalOrderBook:
     asks: dict[Decimal, Decimal] = field(default_factory=dict)
     sequence_valid: bool = False
     stale: bool = True
+    _bid_prices: list[Decimal] = field(default_factory=list, init=False, repr=False)
+    _ask_prices: list[Decimal] = field(default_factory=list, init=False, repr=False)
     _top_bid_prices: list[Decimal] = field(default_factory=list, init=False, repr=False)
     _top_ask_prices: list[Decimal] = field(default_factory=list, init=False, repr=False)
     _cached_depth: int = field(default=20, init=False, repr=False)
@@ -48,9 +51,14 @@ class LocalOrderBook:
         bid_updates: Iterable[Iterable[object]],
         ask_updates: Iterable[Iterable[object]],
     ) -> None:
-        changed: list[set[Decimal]] = [set(), set()]
-        for index, (side, updates) in enumerate(
-            ((self.bids, bid_updates), (self.asks, ask_updates))
+        if (
+            len(self._bid_prices) != len(self.bids)
+            or len(self._ask_prices) != len(self.asks)
+        ):
+            self._reset_top_cache()
+        for side, prices, updates in (
+            (self.bids, self._bid_prices, bid_updates),
+            (self.asks, self._ask_prices, ask_updates),
         ):
             for row in updates:
                 pair = tuple(row)
@@ -60,49 +68,29 @@ class LocalOrderBook:
                 quantity = Decimal(str(pair[1]))
                 if not price.is_finite() or not quantity.is_finite() or price <= 0 or quantity < 0:
                     raise InvalidBook("호가 업데이트 값이 유효하지 않습니다.")
+                existing = price in side
                 if quantity == 0:
-                    side.pop(price, None)
+                    if existing:
+                        side.pop(price)
+                        index = bisect_left(prices, price)
+                        if index >= len(prices) or prices[index] != price:
+                            raise InvalidBook("호가 가격 인덱스가 원장과 일치하지 않습니다.")
+                        prices.pop(index)
                 else:
                     side[price] = quantity
-                changed[index].add(price)
-        self._refresh_top_cache(changed[0], changed[1])
+                    if not existing:
+                        insort(prices, price)
+        self._sync_top_cache()
         self._validate_uncrossed()
 
     def _reset_top_cache(self) -> None:
-        self._top_bid_prices = sorted(self.bids, reverse=True)[: self._cached_depth]
-        self._top_ask_prices = sorted(self.asks)[: self._cached_depth]
+        self._bid_prices = sorted(self.bids)
+        self._ask_prices = sorted(self.asks)
+        self._sync_top_cache()
 
-    def _refresh_top_cache(
-        self,
-        changed_bids: set[Decimal],
-        changed_asks: set[Decimal],
-    ) -> None:
-        self._top_bid_prices = self._refresh_side_cache(
-            self.bids,
-            self._top_bid_prices,
-            changed_bids,
-            reverse=True,
-        )
-        self._top_ask_prices = self._refresh_side_cache(
-            self.asks,
-            self._top_ask_prices,
-            changed_asks,
-            reverse=False,
-        )
-
-    def _refresh_side_cache(
-        self,
-        side: dict[Decimal, Decimal],
-        cached: list[Decimal],
-        changed: set[Decimal],
-        *,
-        reverse: bool,
-    ) -> list[Decimal]:
-        if not cached or any(price in cached and price not in side for price in changed):
-            return sorted(side, reverse=reverse)[: self._cached_depth]
-        candidates = set(cached)
-        candidates.update(price for price in changed if price in side)
-        return sorted(candidates, reverse=reverse)[: self._cached_depth]
+    def _sync_top_cache(self) -> None:
+        self._top_bid_prices = list(reversed(self._bid_prices[-self._cached_depth :]))
+        self._top_ask_prices = self._ask_prices[: self._cached_depth]
 
     def _validate_uncrossed(self) -> None:
         if not self.bids or not self.asks:
@@ -125,8 +113,8 @@ class LocalOrderBook:
             bid_prices = self._top_bid_prices[:depth]
             ask_prices = self._top_ask_prices[:depth]
         else:
-            bid_prices = sorted(self.bids, reverse=True)[:depth]
-            ask_prices = sorted(self.asks)[:depth]
+            bid_prices = list(reversed(self._bid_prices[-depth:]))
+            ask_prices = self._ask_prices[:depth]
         bids = [(price, self.bids[price]) for price in bid_prices]
         asks = [(price, self.asks[price]) for price in ask_prices]
         return bids, asks

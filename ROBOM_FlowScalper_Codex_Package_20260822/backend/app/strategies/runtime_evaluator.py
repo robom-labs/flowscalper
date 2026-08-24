@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left, insort
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from backend.app.domain.models import Side
@@ -30,7 +31,10 @@ from backend.app.strategies.queue_microprice import (
     queue_alignment_ready,
 )
 from backend.app.strategies.registry import ExitStyle, StrategyRegistry
-from backend.app.strategies.statistics import robust_z, rolling_percentile
+from backend.app.strategies.statistics import (
+    robust_z_from_sorted,
+    rolling_percentile_from_sorted,
+)
 from backend.app.strategies.vwap_exhaustion import (
     VwapExhaustionContext,
     VwapExhaustionStrategy,
@@ -68,12 +72,63 @@ class _PullbackMetrics:
     price_reaccelerated: bool
 
 
+def _vwap_deviation_bps(snapshot: FeatureSnapshot) -> float | None:
+    if snapshot.mid <= 0:
+        return None
+    return (snapshot.mid - snapshot.micro_vwap_10s) / snapshot.mid * 10_000
+
+
+@dataclass(slots=True)
+class _SortedFeatureHistory:
+    """동일 10분 과거창의 통계 입력을 결정적으로 정렬 보존한다."""
+
+    flow: list[float] = field(default_factory=list)
+    deviation: list[float] = field(default_factory=list)
+    price_response: list[float] = field(default_factory=list)
+    compression: list[float] = field(default_factory=list)
+    efficiency: list[float] = field(default_factory=list)
+    signed_notional: list[float] = field(default_factory=list)
+
+    def add(self, snapshot: FeatureSnapshot) -> None:
+        insort(self.flow, abs(snapshot.signed_notional_3s))
+        deviation = _vwap_deviation_bps(snapshot)
+        if deviation is not None:
+            insort(self.deviation, abs(deviation))
+        insort(self.price_response, snapshot.price_response_efficiency)
+        insort(self.compression, snapshot.compression_ratio)
+        insort(self.efficiency, snapshot.efficiency_ratio_30s)
+        insort(self.signed_notional, snapshot.signed_notional_3s)
+
+    def remove(self, snapshot: FeatureSnapshot) -> None:
+        self._remove(self.flow, abs(snapshot.signed_notional_3s))
+        deviation = _vwap_deviation_bps(snapshot)
+        if deviation is not None:
+            self._remove(self.deviation, abs(deviation))
+        self._remove(self.price_response, snapshot.price_response_efficiency)
+        self._remove(self.compression, snapshot.compression_ratio)
+        self._remove(self.efficiency, snapshot.efficiency_ratio_30s)
+        self._remove(self.signed_notional, snapshot.signed_notional_3s)
+
+    @staticmethod
+    def _remove(values: list[float], value: float) -> None:
+        index = bisect_left(values, value)
+        if index >= len(values) or values[index] != value:
+            raise RuntimeError("정렬 전략 통계창이 원본 과거창과 일치하지 않습니다.")
+        values.pop(index)
+
+
 class StrategySignalEvaluator:
     """전략별 평가를 동일 snapshot과 동일 비용 가정에서 결정적으로 실행한다."""
 
     def __init__(self, history_limit: int = 1_200) -> None:
+        if history_limit <= 0:
+            raise ValueError("전략 과거창 크기는 양수여야 합니다.")
+        self._history_limit = history_limit
         self._history: dict[str, deque[FeatureSnapshot]] = defaultdict(
             lambda: deque(maxlen=history_limit)
+        )
+        self._sorted_history: dict[str, _SortedFeatureHistory] = defaultdict(
+            _SortedFeatureHistory
         )
         self._confirmation_started_ms: dict[tuple[str, str, Side], int] = {}
 
@@ -85,8 +140,10 @@ class StrategySignalEvaluator:
         *,
         tick_size: Decimal = Decimal("0.00000001"),
     ) -> tuple[EvaluatedSignal, ...]:
-        history = list(self._history[snapshot.symbol])
-        history_statistics = self._history_statistics(history, snapshot)
+        history_window = self._history[snapshot.symbol]
+        history = list(history_window)
+        sorted_history = self._sorted_history[snapshot.symbol]
+        history_statistics = self._history_statistics(sorted_history, snapshot)
         results: list[EvaluatedSignal] = []
         for strategy_id in registry.strategy_ids:
             descriptor = registry.descriptor(strategy_id)
@@ -111,7 +168,10 @@ class StrategySignalEvaluator:
                         shadow_eligible=registry.shadow_enabled(strategy_id, side),
                     )
                 )
-        self._history[snapshot.symbol].append(snapshot)
+        if len(history_window) == self._history_limit:
+            sorted_history.remove(history_window[0])
+        history_window.append(snapshot)
+        sorted_history.add(snapshot)
         return tuple(results)
 
     def _evaluate_one(
@@ -355,41 +415,38 @@ class StrategySignalEvaluator:
 
     @staticmethod
     def _history_statistics(
-        history: list[FeatureSnapshot],
+        history: _SortedFeatureHistory,
         snapshot: FeatureSnapshot,
     ) -> _HistoryStatistics:
-        """동일 snapshot의 12개 전략·방향 평가에서 같은 정렬을 반복하지 않는다."""
+        """동일 snapshot의 12개 전략·방향이 같은 정렬 통계를 공유한다."""
 
-        flow_history = [abs(item.signed_notional_3s) for item in history]
-        deviation_history = [
-            abs((item.mid - item.micro_vwap_10s) / item.mid * 10_000)
-            for item in history
-            if item.mid > 0
-        ]
-        deviation_bps = (snapshot.mid - snapshot.micro_vwap_10s) / snapshot.mid * 10_000
-        signed_history = [item.signed_notional_3s for item in history]
+        deviation_bps = _vwap_deviation_bps(snapshot) or 0.0
+        directional_flow_z = robust_z_from_sorted(
+            history.signed_notional,
+            snapshot.signed_notional_3s,
+        )
         return _HistoryStatistics(
-            flow_z=abs(robust_z(flow_history, abs(snapshot.signed_notional_3s))),
-            deviation_z=abs(robust_z(deviation_history, abs(deviation_bps))),
-            price_response_percentile=rolling_percentile(
-                [item.price_response_efficiency for item in history],
+            flow_z=abs(
+                robust_z_from_sorted(history.flow, abs(snapshot.signed_notional_3s))
+            ),
+            deviation_z=abs(
+                robust_z_from_sorted(history.deviation, abs(deviation_bps))
+            ),
+            price_response_percentile=rolling_percentile_from_sorted(
+                history.price_response,
                 snapshot.price_response_efficiency,
             ),
-            compression_percentile=rolling_percentile(
-                [item.compression_ratio for item in history],
+            compression_percentile=rolling_percentile_from_sorted(
+                history.compression,
                 snapshot.compression_ratio,
             ),
-            efficiency_percentile=rolling_percentile(
-                [item.efficiency_ratio_30s for item in history],
+            efficiency_percentile=rolling_percentile_from_sorted(
+                history.efficiency,
                 snapshot.efficiency_ratio_30s,
             ),
-            long_directional_flow_z=robust_z(
-                signed_history,
-                snapshot.signed_notional_3s,
-            ),
-            short_directional_flow_z=robust_z(
-                [-value for value in signed_history],
-                -snapshot.signed_notional_3s,
+            long_directional_flow_z=directional_flow_z,
+            short_directional_flow_z=(
+                0.0 if directional_flow_z == 0 else -directional_flow_z
             ),
         )
 

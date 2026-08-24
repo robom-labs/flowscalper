@@ -374,7 +374,8 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
   const toggleFullscreen = useCallback(async () => {
     if (document.fullscreenElement) { await document.exitFullscreen(); return }
     if (fullWindow) { setFullWindow(false); return }
-    try { await panelRef.current?.requestFullscreen(); setFullWindow(true) } catch { setFullWindow(true) }
+    setFullWindow(true)
+    try { await panelRef.current?.requestFullscreen() } catch { /* CSS 전체화면을 유지한다. */ }
   }, [fullWindow])
   const latestCandle = candles.at(-1)
   const groups: { label: string; items: [IndicatorKey, string, string][] }[] = [

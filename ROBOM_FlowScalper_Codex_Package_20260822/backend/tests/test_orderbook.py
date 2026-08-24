@@ -60,6 +60,13 @@ def test_top_depth_keeps_exact_price_order_without_full_book_sort_contract() -> 
 
     assert [price for price, _ in bids] == [Decimal(str(price)) for price in range(1_000, 980, -1)]
     assert [price for price, _ in asks] == [Decimal(str(price)) for price in range(1_001, 1_021)]
+    bids_50, asks_50 = book.top(50)
+    assert [price for price, _ in bids_50] == [
+        Decimal(str(price)) for price in range(1_000, 950, -1)
+    ]
+    assert [price for price, _ in asks_50] == [
+        Decimal(str(price)) for price in range(1_001, 1_051)
+    ]
     assert book.top(0) == ([], [])
 
 

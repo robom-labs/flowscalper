@@ -20,7 +20,12 @@ from backend.app.strategies import (
     VwapExhaustionStrategy,
 )
 from backend.app.strategies.base import CandidateStatus
-from backend.app.strategies.statistics import robust_z, rolling_percentile
+from backend.app.strategies.statistics import (
+    robust_z,
+    robust_z_from_sorted,
+    rolling_percentile,
+    rolling_percentile_from_sorted,
+)
 
 
 def features(*, healthy: bool = True, spread_bps: float = 2.0) -> FeatureSnapshot:
@@ -185,6 +190,25 @@ def test_robust_thresholds_only_use_supplied_history_prefix() -> None:
     assert robust_z(prefix, 2.0) == z_before_future
     assert rolling_percentile(prefix, 2.0) == percentile_before_future
     assert robust_z(prefix + future, 2.0) != z_before_future
+
+
+@pytest.mark.parametrize(
+    ("history", "current"),
+    [
+        ([], 1.0),
+        ([1.0], 1.0),
+        ([1.0, 1.0, 1.0], 2.0),
+        ([-4.0, -1.0, 0.0, 2.0, 9.0], 3.5),
+        ([0.1, 0.1, 0.2, 0.4, 0.4, 1.2], 0.4),
+    ],
+)
+def test_sorted_strategy_statistics_match_reference(history: list[float], current: float) -> None:
+    ordered = sorted(history)
+    assert robust_z_from_sorted(ordered, current) == robust_z(history, current)
+    assert rolling_percentile_from_sorted(ordered, current) == rolling_percentile(
+        history,
+        current,
+    )
 
 
 @pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
