@@ -958,21 +958,18 @@ class PaperRuntime:
         )
 
     def strategy_performance(self, *, include_persisted: bool = True) -> list[dict[str, object]]:
+        """전략별 독립 League 계좌 거래만 집계해 공동계좌 중복을 막는다."""
+
         trades: list[dict[str, object]] = []
         if self.ledger is not None and include_persisted:
             trades.extend(
                 trade
-                for trade in self.ledger.list_trades()
+                for trade in self.ledger.list_shadow_trades()
                 if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
             )
-            trades.extend(self.ledger.list_shadow_trades())
         elif self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
-            trades.extend(self._dashboard_live_main_trades())
             trades.extend(self._dashboard_live_shadow_trades())
         else:
-            trades.extend(
-                self._paper_trade_row(trade) for trade in self.paper_portfolio.main.completed_trades
-            )
             for account in self.paper_portfolio.shadows.values():
                 trades.extend(self._paper_trade_row(trade) for trade in account.completed_trades)
         return TradeAnalytics().strategy_reports(
@@ -984,19 +981,15 @@ class PaperRuntime:
         """실제 원장 거래만 전략·프로필·종목별로 분리해 보여준다."""
 
         if self.ledger is None:
-            trades = [
-                self._paper_trade_row(trade)
-                for trade in self.paper_portfolio.main.completed_trades
-            ]
+            trades: list[dict[str, object]] = []
             for account in self.paper_portfolio.shadows.values():
                 trades.extend(self._paper_trade_row(trade) for trade in account.completed_trades)
         else:
             trades = [
                 trade
-                for trade in self.ledger.list_trades()
+                for trade in self.ledger.list_shadow_trades()
                 if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
             ]
-            trades.extend(self.ledger.list_shadow_trades())
         return TradeAnalytics().strategy_symbol_reports(trades)
 
     def focus_positions(self) -> list[dict[str, object]]:

@@ -73,15 +73,65 @@ def test_healthy_thesis_holds_beyond_120_seconds() -> None:
     assert decision.reason_codes == ("ENTRY_THESIS_HEALTHY",)
 
 
-def test_edge_decay_exits_early_only_after_persistence() -> None:
+def test_edge_decay_cannot_exit_during_ten_second_grace() -> None:
     position = opened_position()
     manager = PositionManager()
     adverse = health(flow_health=0.1, remaining_edge=Decimal("-0.1"))
-    first = manager.evaluate(position, adverse, now_ms=2_000)
-    second = manager.evaluate(position, adverse, now_ms=2_800)
+    first = manager.evaluate(position, adverse, now_ms=position.opened_ts_ms + 1_000)
+    second = manager.evaluate(position, adverse, now_ms=position.opened_ts_ms + 2_000)
     assert first.action is ManagementAction.HOLD
-    assert second.action is ManagementAction.EXIT_EDGE_DECAY
-    assert second.reason_codes == ("FLOW_DECAY", "REMAINING_EDGE_NON_POSITIVE")
+    assert second.action is ManagementAction.HOLD
+    assert first.reason_codes == ("EDGE_DECAY_GRACE_ACTIVE",)
+    assert second.reason_codes == ("EDGE_DECAY_GRACE_ACTIVE",)
+
+
+def test_edge_decay_exits_only_after_grace_and_multi_signal_persistence() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    adverse = health(flow_health=0.1, remaining_edge=Decimal("-0.1"))
+    grace_end = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 10_000,
+    )
+    confirming = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 12_999,
+    )
+    exit_decision = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 13_000,
+    )
+    assert grace_end.action is ManagementAction.HOLD
+    assert grace_end.reason_codes == ("EDGE_DECAY_CONFIRMING",)
+    assert confirming.action is ManagementAction.HOLD
+    assert exit_decision.action is ManagementAction.EXIT_EDGE_DECAY
+    assert exit_decision.holding_ms == 13_000
+    assert exit_decision.reason_codes == ("FLOW_DECAY", "REMAINING_EDGE_NON_POSITIVE")
+
+
+def test_single_adverse_signal_does_not_force_soft_exit() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    adverse = health(flow_health=0.1)
+    first = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 10_000,
+    )
+    much_later = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 120_000,
+    )
+    assert first.action is ManagementAction.HOLD
+    assert much_later.action is ManagementAction.HOLD
+    assert much_later.reason_codes == (
+        "EDGE_DECAY_INSUFFICIENT_CONFIRMATION",
+        "FLOW_DECAY",
+    )
 
 
 def test_profit_protection_tightens_and_uses_early_exit() -> None:
@@ -92,8 +142,8 @@ def test_profit_protection_tightens_and_uses_early_exit() -> None:
         remaining_edge=Decimal("-0.1"),
         mfe_r=Decimal("1.1"),
     )
-    first = manager.evaluate(position, protected, now_ms=2_000)
-    second = manager.evaluate(position, protected, now_ms=2_800)
+    first = manager.evaluate(position, protected, now_ms=position.opened_ts_ms + 1_000)
+    second = manager.evaluate(position, protected, now_ms=position.opened_ts_ms + 4_000)
     assert first.proposed_stop is not None and first.proposed_stop > position.current_stop
     assert second.action is ManagementAction.EXIT_PROFIT_PROTECTION
     tightened = manager.tighten_stop(position, first.proposed_stop)

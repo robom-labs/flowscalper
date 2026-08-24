@@ -56,7 +56,9 @@ class PositionHealth:
 
 @dataclass(frozen=True, slots=True)
 class PositionManagerConfig:
-    edge_decay_persistence_ms: int = 800
+    edge_decay_grace_ms: int = 10_000
+    edge_decay_persistence_ms: int = 3_000
+    edge_decay_minimum_adverse_signals: int = 2
     emergency_stale_absolute_ms: int = 15 * 60 * 1000
     profit_protection_monitor_r: Decimal = Decimal("0.8")
     breakeven_tighten_r: Decimal = Decimal("1.0")
@@ -106,7 +108,19 @@ class PositionManager:
                 holding_ms,
             )
         adverse_reasons = self._adverse_reasons(health)
-        if adverse_reasons:
+        if (
+            adverse_reasons
+            and holding_ms < self.config.edge_decay_grace_ms
+            and health.mfe_r < self.config.profit_protection_monitor_r
+        ):
+            self._edge_adverse_since_ms.pop(position.trade_id, None)
+            return ManagementDecision(
+                ManagementAction.HOLD,
+                ("EDGE_DECAY_GRACE_ACTIVE",),
+                proposed_stop,
+                holding_ms,
+            )
+        if len(adverse_reasons) >= self.config.edge_decay_minimum_adverse_signals:
             adverse_since = self._edge_adverse_since_ms.setdefault(position.trade_id, now_ms)
             if now_ms - adverse_since >= self.config.edge_decay_persistence_ms:
                 action = (
@@ -122,6 +136,13 @@ class PositionManager:
                 holding_ms,
             )
         self._edge_adverse_since_ms.pop(position.trade_id, None)
+        if adverse_reasons:
+            return ManagementDecision(
+                ManagementAction.HOLD,
+                ("EDGE_DECAY_INSUFFICIENT_CONFIRMATION", *adverse_reasons),
+                proposed_stop,
+                holding_ms,
+            )
         return ManagementDecision(
             ManagementAction.HOLD,
             ("ENTRY_THESIS_HEALTHY",),

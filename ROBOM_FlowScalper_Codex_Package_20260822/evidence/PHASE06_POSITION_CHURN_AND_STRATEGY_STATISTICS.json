@@ -1,0 +1,325 @@
+{
+  "schema_version": 1,
+  "product_version": "0.2.0-paper",
+  "observed_date_kst": "2026-08-24",
+  "scope": "position churn, display precision, independent strategy statistics, strategy defaults",
+  "paper_safety": {
+    "market_data": "BINANCE_USDM_PUBLIC",
+    "execution": "PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "api_keys_used": false,
+    "private_api_used": false
+  },
+  "baseline_defect": {
+    "run_id": "run-2d24583436d9",
+    "exit_reason": "EDGE_DECAY",
+    "old_policy": {
+      "post_fill_grace_ms": 0,
+      "persistence_ms": 800,
+      "minimum_adverse_signals": 1
+    },
+    "representative_trades": [
+      {
+        "symbol": "1000PEPEUSDT",
+        "holding_ms": 1696
+      },
+      {
+        "symbol": "TUTUSDT",
+        "holding_ms": 1518
+      },
+      {
+        "symbol": "LINKUSDT",
+        "holding_ms": 1872
+      },
+      {
+        "symbol": "UNIUSDT",
+        "holding_ms": 5396
+      }
+    ],
+    "four_trade_net_pnl_usdt": "-0.43407286392",
+    "four_trade_fees_usdt": "0.32237266392",
+    "four_trade_slippage_usdt": "0.051771"
+  },
+  "new_exit_policy": {
+    "ordinary_edge_decay_grace_ms": 10000,
+    "ordinary_edge_decay_persistence_ms": 3000,
+    "minimum_simultaneous_adverse_signals": 2,
+    "earliest_ordinary_edge_decay_ms": 13000,
+    "profit_protection_mfe_r": "0.8",
+    "immediate_paths_unchanged": [
+      "INITIAL_STOP",
+      "TAKE_PROFIT",
+      "MARKET_DATA_SAFETY",
+      "EMERGENCY_STALE_EXIT"
+    ],
+    "fixed_normal_holding_deadline_added": false,
+    "strategy_signal_thresholds_lowered": false
+  },
+  "post_change_public_market_observations": {
+    "main_trade": {
+      "run_id": "run-c3f9aff1acb6",
+      "trade_id": "paper-candidate-d804488428b94ed7-main-base",
+      "strategy_id": "LSA_REVERSAL_V1",
+      "profile": "BASE",
+      "symbol": "PENGUUSDT",
+      "side": "LONG",
+      "holding_ms": 18354,
+      "exit_reason": "EDGE_DECAY",
+      "gross_pnl_usdt": "-0.0860400",
+      "fees_usdt": "0.082133784",
+      "slippage_usdt": "0.0394350",
+      "net_pnl_usdt": "-0.207608784"
+    },
+    "league_run_id": "run-2bcc02ff9d86",
+    "league_trades": [
+      {
+        "profile": "BASE",
+        "symbol": "SUIUSDT",
+        "holding_ms": 15664,
+        "net_pnl_usdt": "-0.15231312"
+      },
+      {
+        "profile": "STRESS",
+        "symbol": "SUIUSDT",
+        "holding_ms": 15704,
+        "net_pnl_usdt": "-0.34072624"
+      },
+      {
+        "profile": "BASE",
+        "symbol": "SOLUSDT",
+        "holding_ms": 18448,
+        "net_pnl_usdt": "-1.45351200"
+      },
+      {
+        "profile": "STRESS",
+        "symbol": "SOLUSDT",
+        "holding_ms": 18448,
+        "net_pnl_usdt": "-2.31864800"
+      },
+      {
+        "profile": "BASE",
+        "symbol": "PENGUUSDT",
+        "holding_ms": 38382,
+        "net_pnl_usdt": "-0.0191607744"
+      },
+      {
+        "profile": "STRESS",
+        "symbol": "PENGUUSDT",
+        "holding_ms": 38354,
+        "net_pnl_usdt": "-0.0415217040"
+      }
+    ],
+    "league_strategy_id": "QUEUE_MICROPRICE_MOMENTUM_V1",
+    "league_exit_reason": "EDGE_DECAY",
+    "league_adverse_reason_codes": [
+      "FLOW_DECAY",
+      "MICROPRICE_ADVERSE",
+      "OPPOSITE_AGGRESSION_EFFICIENT"
+    ],
+    "one_to_two_second_post_change_exit_observed": false,
+    "profitability": "NOT_PROVEN"
+  },
+  "strategy_defaults": [
+    {
+      "strategy_id": "LSA_REVERSAL_V1",
+      "mode": "ACTIVE",
+      "long_enabled": true,
+      "short_enabled": true
+    },
+    {
+      "strategy_id": "CBR_CONTINUATION_V1",
+      "mode": "ACTIVE",
+      "long_enabled": true,
+      "short_enabled": true
+    },
+    {
+      "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+      "mode": "SHADOW",
+      "long_enabled": true,
+      "short_enabled": true
+    },
+    {
+      "strategy_id": "OFI_CONTINUATION_PULLBACK_V1",
+      "mode": "SHADOW",
+      "long_enabled": true,
+      "short_enabled": true
+    },
+    {
+      "strategy_id": "QUEUE_MICROPRICE_MOMENTUM_V1",
+      "mode": "SHADOW",
+      "long_enabled": true,
+      "short_enabled": true
+    },
+    {
+      "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+      "mode": "SHADOW",
+      "long_enabled": true,
+      "short_enabled": true
+    }
+  ],
+  "statistics_contract": {
+    "shared_main_trades_in_strategy_sample": false,
+    "offline_fixture_trades_in_live_strategy_sample": false,
+    "independent_league_trades_only": true,
+    "fields": [
+      "wins",
+      "losses",
+      "breakevens",
+      "win_rate",
+      "win_rate_ci95",
+      "expectancy",
+      "profit_factor",
+      "fees",
+      "slippage",
+      "maximum_drawdown",
+      "mae_r",
+      "mfe_r",
+      "holding_time"
+    ],
+    "minimum_research_sample": 30,
+    "current_profitability_conclusion": "INSUFFICIENT_SAMPLE"
+  },
+  "display_contract": {
+    "ledger_decimal_precision_changed": false,
+    "frontend_adaptive_precision_only": true,
+    "current_equity_decimals": 2,
+    "prices_quantities_costs": "adaptive meaningful digits",
+    "volume": "compact Korean units",
+    "holding_time": "milliseconds converted to readable seconds/minutes",
+    "default_history_run_filter": "CURRENT_RUN"
+  },
+  "deterministic_validation": {
+    "backend_tests": {
+      "status": "PASS",
+      "passed": 207
+    },
+    "frontend_tests": {
+      "status": "PASS",
+      "files": 12,
+      "passed": 36
+    },
+    "strategy_direction_exit_scenarios": {
+      "status": "PASS",
+      "count": 24,
+      "matrix": "6 strategies x 2 directions x TP-or-initial-stop"
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "passed": 3
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 75
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS",
+      "modules": 48
+    },
+    "repository_hygiene": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 108,
+      "violations": 0,
+      "real_order_path": false
+    },
+    "paper_build_safety": "PASS"
+  },
+  "stored_public_market_replay": {
+    "status": "PASS",
+    "source_run_id": "run-f14214b3b1dd",
+    "executions": 2,
+    "checksum": "7a44e652f962f6fe46cdcc0c279fc34294fbbbee6845178912e4a2f409e239eb",
+    "event_count": 15045,
+    "strategy_evaluation_count": 41628,
+    "qualified_signal_count": 8,
+    "candidate_plan_count": 7,
+    "main_trade_count": 0,
+    "shadow_trade_count": 7,
+    "counts_and_checksum_equal": true,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "actual_runtime_snapshot": {
+    "run_id": "run-2bcc02ff9d86",
+    "mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "operation_state": "RUNNING",
+    "paper_entry_active": true,
+    "starting_equity_usdt": 1000.0,
+    "main_trade_count": 0,
+    "event_count": 62888,
+    "wide_symbols": 50,
+    "deep_symbols": 20,
+    "lag_p50_ms": 0.0,
+    "lag_p95_ms": 82.0,
+    "wide_lag_p95_ms": 1670.0,
+    "queue_depth": 0,
+    "queue_capacity": 4096,
+    "dropped_events": 0,
+    "reconnects": 0,
+    "sequence_gaps": 0,
+    "persistence_fault_count": 0,
+    "critical_lag_active": false,
+    "entry_locked": false,
+    "process_uptime_seconds": 443.355,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "final_deployed_runtime_snapshot": {
+    "run_id": "run-07ad829dbe61",
+    "mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "operation_state": "RUNNING",
+    "paper_entry_active": true,
+    "starting_equity_usdt": 1000.0,
+    "current_equity_usdt": 1000.0,
+    "main_trade_count": 0,
+    "event_count": 3434,
+    "wide_symbols": 50,
+    "deep_symbols": 20,
+    "lag_p95_ms": 18.0,
+    "queue_depth": 0,
+    "queue_capacity": 4096,
+    "dropped_events": 0,
+    "reconnects": 0,
+    "sequence_gaps": 0,
+    "persistence_fault_count": 0,
+    "critical_lag_active": false,
+    "entry_locked": false,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "browser_transition": "READY -> CONNECTING -> RUNNING"
+  },
+  "actual_browser_validation": {
+    "status": "PASS",
+    "url": "http://127.0.0.1:8870/",
+    "observed": [
+      "RUNNING and PAPER real orders 0",
+      "current Run history is the default",
+      "all Run history remains selectable",
+      "adaptive prices, PnL, costs and holding time",
+      "6 of 6 strategies enabled",
+      "12 of 12 direction buttons enabled",
+      "strategy statistics drawer and scope labels"
+    ],
+    "screenshot": "evidence/screenshots/phase06-position-churn-strategy-statistics.jpg",
+    "screenshot_sha256": "59472a982ed1ee46287a39684228f0665de087cc8f3bdd11c73b45ae7d877d46",
+    "screenshot_dimensions": "1440x699"
+  },
+  "limitations": {
+    "strategy_profitability": "NOT_PROVEN",
+    "minimum_30_trades_per_strategy_profile": "NOT_REACHED_FOR_MOST_STRATEGIES",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  }
+}

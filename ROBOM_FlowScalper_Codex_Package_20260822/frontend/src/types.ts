@@ -163,6 +163,7 @@ export type HistoryRow = {
   fees: string
   slippage: string
   net_pnl: string
+  holding_ms: number
   holding_seconds: number
   profile: string
   sample_type: string
@@ -192,8 +193,9 @@ export type StrategyPerformance = {
   sample_size: number
   wins: number
   losses: number
-  win_rate: number | null
-  win_rate_ci95: [number, number] | null
+  breakevens: number
+  win_rate: string | null
+  win_rate_ci95: { lower: string; upper: string } | null
   average_win_usdt: string | null
   average_loss_usdt: string | null
   payoff_ratio: string | null

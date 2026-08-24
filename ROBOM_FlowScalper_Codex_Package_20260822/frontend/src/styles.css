@@ -67,6 +67,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .chart-toolbar { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #09151c; }
 .chart-toolbar label, .inline-filter, .replay-runbar label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
 .chart-toolbar select, .inline-filter select, .replay-runbar select { min-width: 150px; min-height: 48px; border: 1px solid #31505f; border-radius: 8px; padding: 0 34px 0 11px; color: #d9e5eb; background: #0e2029; }
+.history-heading-filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .chart-toolbar > span { margin-left: auto; padding-bottom: 14px; color: #829aa7; font-size: 10px; }
 .terminal-grid { display: grid; grid-template-columns: 326px minmax(0, 1fr); grid-template-areas: "scanner chart" "scanner position" "log log"; gap: 8px; align-items: start; }
 .scanner-panel { grid-area: scanner; width: 100%; align-self: start; contain: layout paint; }
@@ -183,6 +184,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .drawer-content { height: calc(100% - 72px); overflow-y: auto; padding: 16px; }
 .drawer-subtitle { color: #8aa1ad; font-size: 10px; }
 .profile-detail-block { margin-top: 18px; padding-top: 12px; border-top: 1px solid #19303b; }
+.profile-scope-note { margin: 6px 0 10px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .drawer-detail-list { margin: 0; }
 .drawer-detail-list > div { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #142934; }
 .drawer-detail-list dt { color: var(--muted); font-size: 9px; }

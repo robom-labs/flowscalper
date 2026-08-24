@@ -227,10 +227,17 @@ The current beginner navigation is `홈`, `전략 리그`, `진행 거래`, `거
 account total from the 1,000 USDT Shared Capital Benchmark and always explains that
 6,000 USDT is the sum of six independent accounts.
 
-The Strategy League shows six Registry cards. `ACTIVE` is `리그 + 공동계좌`,
-`SHADOW` is `리그에서만 테스트`, and `OFF` is `사용 안 함`. BASE/STRESS analytics
+The Strategy League shows six Registry rows. `ACTIVE` is `공동·독립 모의 중`,
+`SHADOW` is `독립 모의 중`, and `OFF` is `꺼짐`. The default is A/B ACTIVE,
+C/D/E/F SHADOW and LONG/SHORT enabled for all six, so every strategy is on without
+promoting experimental strategies into the shared benchmark. BASE/STRESS analytics
 open in an accessible fixed drawer. League positions default to BASE and contain no manual
 real buy or sell action.
+
+Strategy performance uses only each independent League account. Shared benchmark trades
+are not added to the same strategy sample. The drawer shows wins, losses, breakevens,
+Wilson 95% win-rate range, expectancy, Profit Factor, costs, drawdown and holding-time
+distribution. Ledger precision is preserved while the UI uses magnitude-aware decimals.
 
 The advanced terminal owns scanner, chart, current PAPER position and recent events. The
 scanner uses stable venue/symbol row keys, fixed 64px rows, fixed columns, rate-limited rank

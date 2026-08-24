@@ -1,5 +1,6 @@
 // 전략별 진행 중 PAPER 거래를 BASE 기본 필터로 비교한다.
 import { memo, useMemo, useState } from 'react'
+import { formatPrice, formatQuantity, formatRatio, formatUsdt } from '../format'
 import { strategyLabel } from '../strategyPresentation'
 import type { LeaguePosition, StrategyRow } from '../types'
 
@@ -12,13 +13,13 @@ const PositionRow = memo(function PositionRow({ position, strategy }: { position
       <td><strong>{strategyLabel(strategy, position.strategy_id)}</strong><small>{position.profile}</small></td>
       <td>{position.symbol}</td>
       <td>{position.side === 'LONG' ? '상승 방향' : '하락 방향'}</td>
-      <td>{position.actual_entry}<small>현재 {position.current_mark}</small></td>
-      <td>{position.current_stop}<small>최초 {position.initial_stop}</small></td>
-      <td>{position.TP1}<small>{position.TP2}</small></td>
-      <td>{position.original_quantity}<small>남음 {position.remaining_quantity}</small></td>
-      <td>{position.notional}<small>{Number(position.effective_leverage).toFixed(2)}x</small></td>
-      <td>{position.gross_pnl}<small>수수료 {position.fees} · 슬리피지 {position.slippage}</small></td>
-      <td className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{position.net_pnl}</td>
+      <td>{formatPrice(position.actual_entry)}<small>현재 {formatPrice(position.current_mark)}</small></td>
+      <td>{formatPrice(position.current_stop)}<small>최초 {formatPrice(position.initial_stop)}</small></td>
+      <td>{formatPrice(position.TP1)}<small>{formatPrice(position.TP2)}</small></td>
+      <td>{formatQuantity(position.original_quantity)}<small>남음 {formatQuantity(position.remaining_quantity)}</small></td>
+      <td>{formatUsdt(position.notional)}<small>{formatRatio(position.effective_leverage, 'x')}</small></td>
+      <td>{formatUsdt(position.gross_pnl)}<small>수수료 {formatUsdt(position.fees)} · 슬리피지 {formatUsdt(position.slippage)}</small></td>
+      <td className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(position.net_pnl, { signed: true })}</td>
       <td>{position.elapsed_seconds}초<small>{position.management_reason}</small></td>
     </tr>
   )

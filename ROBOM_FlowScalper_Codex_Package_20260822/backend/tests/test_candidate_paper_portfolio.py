@@ -311,7 +311,9 @@ def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exi
     )
     engine.evaluate_health(adverse, Regime.SHOCK, now_ms=123_000)
     assert engine.main.position.pending_exit is None
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=124_000)
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=125_999)
+    assert engine.main.position.pending_exit is None
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=126_000)
     assert engine.main.position.pending_exit is not None
     assert engine.main.position.pending_exit.label == "EXIT_EDGE_DECAY"
 

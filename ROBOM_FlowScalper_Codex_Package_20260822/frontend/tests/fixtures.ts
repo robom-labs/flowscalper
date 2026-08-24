@@ -19,6 +19,7 @@ function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPe
     sample_size: 0,
     wins: 0,
     losses: 0,
+    breakevens: 0,
     win_rate: null,
     win_rate_ci95: null,
     average_win_usdt: null,

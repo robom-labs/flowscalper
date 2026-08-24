@@ -20,6 +20,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import { bollinger, ema, macd, rsi, sma, vwap, type IndicatorCandle, type IndicatorPoint } from '../chart/indicators'
 import { seriesUpdateMode } from '../chart/seriesUpdate'
 import { formatChartKstTime, formatKstDateTime } from '../time'
+import { formatCompactNumber, formatPrice } from '../format'
 import type { ChartData, HistoryRow } from '../types'
 
 export type ChartOverlay = {
@@ -170,7 +171,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
           const value = param.seriesData.get(series) as { value?: number } | undefined
           return value?.value === undefined ? [] : [`${name} ${value.value.toFixed(4)}`]
         })
-        tooltip.textContent = [formatKstDateTime(Number(param.time) * 1000), candleValue ? `시 ${candleValue.open} · 고 ${candleValue.high} · 저 ${candleValue.low} · 종 ${candleValue.close}` : '', volumeValue?.value !== undefined ? `거래량 ${volumeValue.value}` : '', ...indicatorValues].filter(Boolean).join('\n')
+        tooltip.textContent = [formatKstDateTime(Number(param.time) * 1000), candleValue ? `시 ${formatPrice(candleValue.open)} · 고 ${formatPrice(candleValue.high)} · 저 ${formatPrice(candleValue.low)} · 종 ${formatPrice(candleValue.close)}` : '', volumeValue?.value !== undefined ? `거래량 ${formatCompactNumber(volumeValue.value)}` : '', ...indicatorValues].filter(Boolean).join('\n')
         tooltip.hidden = false
         const width = tooltip.offsetWidth
         const left = Math.min(Math.max(8, param.point.x + 14), Math.max(8, container.clientWidth - width - 8))
@@ -384,7 +385,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
   return (
     <section ref={panelRef} className={`panel chart-panel${compact ? ' compact-chart' : ''}${fullWindow ? ' chart-full-window' : ''}`} aria-labelledby={replay ? 'replay-chart-title' : 'chart-title'}>
       <div className="panel-title chart-title-row"><div>{!compact ? <p className="section-kicker">{replay ? 'PAST PLAYBACK' : '시장 차트'}</p> : null}<h2 id={replay ? 'replay-chart-title' : 'chart-title'}>{chart.symbol} · {chart.interval}</h2></div><div className="chart-title-actions"><span className="fixture-note">{chart.fixture ? '샘플 · LIVE 아님' : '공개시장'} · 한국시간</span><details className="indicator-popover"><summary>지표</summary><div className="indicator-controls" aria-label="차트 보조지표 선택">{groups.map((group) => <div className="indicator-group" key={group.label}><span>{group.label}</span>{group.items.map(([key, label, help]) => <button type="button" key={key} className={visible[key] ? 'selected' : ''} aria-pressed={visible[key]} title={help} style={{ '--line-color': colors[key] } as CSSProperties} onClick={() => toggle(key)}>{label}</button>)}</div>)}</div><p className="indicator-notice">화면 표시만 바뀌며 전략 기준은 바뀌지 않습니다.</p></details><button type="button" className="secondary-button" onClick={() => void toggleFullscreen()}>{fullWindow ? '전체화면 닫기' : '전체화면'}</button></div></div>
-      {latestCandle ? <dl className="chart-stats"><div><dt>현재</dt><dd>{latestCandle.close.toLocaleString()}</dd></div><div><dt>시가</dt><dd>{latestCandle.open.toLocaleString()}</dd></div><div><dt>고가</dt><dd>{latestCandle.high.toLocaleString()}</dd></div><div><dt>저가</dt><dd>{latestCandle.low.toLocaleString()}</dd></div><div><dt>거래량</dt><dd>{latestCandle.volume.toLocaleString()}</dd></div></dl> : null}
+      {latestCandle ? <dl className="chart-stats"><div><dt>현재</dt><dd>{formatPrice(latestCandle.close)}</dd></div><div><dt>시가</dt><dd>{formatPrice(latestCandle.open)}</dd></div><div><dt>고가</dt><dd>{formatPrice(latestCandle.high)}</dd></div><div><dt>저가</dt><dd>{formatPrice(latestCandle.low)}</dd></div><div><dt>거래량</dt><dd>{formatCompactNumber(latestCandle.volume)}</dd></div></dl> : null}
       <div ref={containerRef} className="chart-wrap" role="img" aria-label={`${chart.symbol} 실제 캔들·거래량·전문 보조지표 PAPER 차트`}>
         {!hasData ? <div className="chart-empty"><b>시장 캔들을 기다리고 있습니다.</b><span>실제 공개시장 데이터가 도착하면 자동으로 표시됩니다.</span></div> : null}
         <div ref={tooltipRef} className="chart-tooltip" hidden />

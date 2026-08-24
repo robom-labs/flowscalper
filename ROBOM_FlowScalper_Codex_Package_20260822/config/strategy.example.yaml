@@ -8,7 +8,9 @@ strategy:
       spread_multiplier: 1.5
       micro_noise_quantile: 0.80
       include_exit_slippage_buffer: true
-    edge_decay_persistence_ms: 800
+    edge_decay_grace_ms: 10000
+    edge_decay_persistence_ms: 3000
+    edge_decay_minimum_adverse_signals: 2
     emergency_stale_absolute_seconds: 900
     no_fixed_120_second_exit: true
 

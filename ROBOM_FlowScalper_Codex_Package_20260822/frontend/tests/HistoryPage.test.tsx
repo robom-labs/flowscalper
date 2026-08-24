@@ -25,19 +25,32 @@ const trade: HistoryRow = {
   fees: '0.1',
   slippage: '0.05',
   net_pnl: '0.85',
+  holding_ms: 1_696,
   holding_seconds: 1,
   profile: 'BASE',
   sample_type: 'LIVE_PUBLIC',
 }
 
 test('clears stale trade detail when the current history no longer contains it', async () => {
-  const view = render(<HistoryPage rows={[trade]} onReplay={vi.fn()} />)
+  const view = render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
+  expect(screen.getByText('1.7초')).toBeInTheDocument()
+  expect(screen.getByText('2차 익절')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '상세' }))
   expect(screen.getByRole('complementary', { name: '거래 상세' })).toBeInTheDocument()
 
-  view.rerender(<HistoryPage rows={[]} onReplay={vi.fn()} />)
+  view.rerender(<HistoryPage rows={[]} currentRunId="run-history" onReplay={vi.fn()} />)
 
   await waitFor(() => {
     expect(screen.queryByRole('complementary', { name: '거래 상세' })).not.toBeInTheDocument()
   })
+})
+
+test('shows only the current Run by default and can reveal immutable history', () => {
+  const past = { ...trade, run_id: 'run-past', trade_id: 'paper-history-past' }
+  render(<HistoryPage rows={[trade, past]} currentRunId="run-history" onReplay={vi.fn()} />)
+
+  expect(screen.getByText('paper-history-1')).toBeInTheDocument()
+  expect(screen.queryByText('paper-history-past')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Run 범위'), { target: { value: 'ALL' } })
+  expect(screen.getByText('paper-history-past')).toBeInTheDocument()
 })

@@ -378,6 +378,7 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
             "sample_size": 0,
             "wins": 0,
             "losses": 0,
+            "breakevens": 0,
             "win_rate": None,
             "win_rate_ci95": None,
             "average_win_usdt": None,
@@ -407,6 +408,7 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
     net = sum(pnl, Decimal(0))
     wins = [value for value in pnl if value > 0]
     losses = [value for value in pnl if value < 0]
+    breakevens = [value for value in pnl if value == 0]
     win_rate = Decimal(len(wins)) / Decimal(len(pnl))
     average_win = sum(wins, Decimal(0)) / len(wins) if wins else None
     average_loss = sum(losses, Decimal(0)) / len(losses) if losses else None
@@ -452,6 +454,7 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         "sample_size": len(pnl),
         "wins": len(wins),
         "losses": len(losses),
+        "breakevens": len(breakevens),
         "win_rate": str(win_rate),
         "win_rate_ci95": _wilson_interval(len(wins), len(pnl)),
         "average_win_usdt": str(average_win) if average_win is not None else None,

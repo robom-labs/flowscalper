@@ -43,6 +43,8 @@ def test_registry_exposes_six_strategies_and_honors_mode_and_direction() -> None
         "SHADOW",
         "SHADOW",
     ]
+    assert all(row["mode"] != "OFF" for row in registry.rows())
+    assert all(row["long_enabled"] and row["short_enabled"] for row in registry.rows())
     registry.configure(
         "VWAP_EXHAUSTION_REVERSION_V1",
         mode=StrategyMode.OFF,

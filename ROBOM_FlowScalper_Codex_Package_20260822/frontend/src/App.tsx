@@ -93,7 +93,7 @@ export default function App() {
       {page === 'summary' ? <LivePage data={data} onNavigate={changePage} /> : null}
       {page === 'strategies' ? <StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} onConfigure={changeStrategy} /> : null}
       {page === 'positions' ? <LeaguePositionsPage positions={data.league_positions} strategies={data.strategies} /> : null}
-      {page === 'history' ? <HistoryPage rows={data.history} onReplay={openReplay} /> : null}
+      {page === 'history' ? <HistoryPage rows={data.history} currentRunId={data.status.run_id} onReplay={openReplay} /> : null}
       {page === 'replay' ? <ReplayPage trade={replayTrade} /> : null}
       {page === 'performance' ? <PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={data.history} /> : null}
       {page === 'strategy-symbol' ? <StrategySymbolPage strategies={data.strategies} /> : null}

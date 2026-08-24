@@ -19,6 +19,7 @@
 
 - 모든 전략은 LONG·SHORT를 독립적으로 허용하거나 끌 수 있다.
 - OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다.
+- 기본값은 6개 전략 모두 OFF가 아니고 LONG·SHORT가 켜진 상태다. A/B는 ACTIVE, C~F는 SHADOW를 유지한다.
 
 ## 3. 독립 계좌
 
@@ -113,4 +114,6 @@ uv run pytest backend/tests -q
 - 사용자 메뉴와 화면에서는 `전략`으로 줄여 표시하고, 내부 Registry·DB·개발문서의 Strategy League 식별자는 호환을 위해 유지한다.
 - 전략 설정은 6개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. A-F threshold와 위험값은 바꾸지 않는다.
 - `전략별 종목 성과`는 BASE/STRESS를 분리하고 실제 완료 PAPER 거래만 집계한다. 30건 미만 조합은 관찰 표본이며 순위에서 제외한다.
+- 전략 통계는 독립 Strategy League 거래만 집계하고 공동계좌 거래를 같은 전략 표본에 중복 합산하지 않는다.
+- 상세 화면은 승·패·보합, 승률 95% 범위, 기대값, Profit Factor, 비용, 낙폭과 보유시간을 표시한다.
 - 포지션 집중 selector는 BASE를 먼저 정렬하지만 모든 계좌는 독립 회계와 최대 5배 위험 상한을 그대로 유지한다.

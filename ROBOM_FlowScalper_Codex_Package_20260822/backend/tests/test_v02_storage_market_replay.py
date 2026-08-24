@@ -541,6 +541,7 @@ def test_strategy_reports_include_empty_profiles_costs_pf_expectancy_and_confide
         if report["strategy_id"] == "LSA_REVERSAL_V1" and report["profile"] == "BASE"
     )
     assert base["sample_size"] == 2
+    assert base["breakevens"] == 0
     assert base["win_rate"] == "0.5"
     assert base["profit_factor"] is not None
     assert base["expectancy_usdt"] == "0.4894"
@@ -556,6 +557,45 @@ def test_strategy_reports_include_empty_profiles_costs_pf_expectancy_and_confide
     )
     assert empty["sample_size"] == 0
     assert empty["profit_factor"] is None
+
+
+def test_runtime_strategy_analytics_do_not_double_count_shared_main_trade(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "strategy-analytics-ledger.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-001",
+        venue=Venue.FIXTURE,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    main_trade = _sample_trade()
+    shadow_trade = {
+        **_sample_trade("shadow-trade-001"),
+        "shadow_trade_id": "shadow-trade-001",
+        "closed_ts_ms": 2_100,
+    }
+    fixture_shadow_trade = {
+        **_sample_trade("shadow-trade-fixture"),
+        "shadow_trade_id": "shadow-trade-fixture",
+        "closed_ts_ms": 2_200,
+        "sample_type": "OFFLINE_FIXTURE",
+    }
+    ledger.record_trade(main_trade)
+    ledger.record_shadow_trade(shadow_trade)
+    ledger.record_shadow_trade(fixture_shadow_trade)
+
+    base = next(
+        report
+        for report in runtime.strategy_performance()
+        if report["strategy_id"] == "LSA_REVERSAL_V1" and report["profile"] == "BASE"
+    )
+    symbol = runtime.strategy_symbol_performance()[0]
+
+    assert base["sample_size"] == 1
+    assert symbol["sample_size"] == 1
+    ledger.close()
 
 
 def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path) -> None:

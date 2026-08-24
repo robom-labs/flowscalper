@@ -11,9 +11,9 @@ export const strategyOrder = [
 ] as const
 
 export const modeLabels: Record<StrategyRow['mode'], string> = {
-  ACTIVE: '사용 중',
-  SHADOW: '관찰만',
-  OFF: '사용 안 함',
+  ACTIVE: '공동·독립 모의 중',
+  SHADOW: '독립 모의 중',
+  OFF: '꺼짐',
 }
 
 const fallbackLabels: Record<string, string> = {

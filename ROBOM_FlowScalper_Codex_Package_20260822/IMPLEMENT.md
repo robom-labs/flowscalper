@@ -130,3 +130,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 6. Restart the actual localhost service, click start once in the browser, observe CONNECTING→RUNNING and record lag plus permanent PAPER safety state.
 7. Fix any adjacent user-visible state contradiction discovered during the browser pass, add a regression test and rebuild the served frontend.
 8. Record profitability as unproven until sufficient completed samples exist. Keep six-hour, 24-hour and Release status as `NOT_RUN` unless actually executed.
+
+## Position churn and independent statistics Wave
+
+1. Inspect actual immutable main trades and management audits before changing any exit rule. Do not impose a fixed normal holding deadline.
+2. Keep initial SL/TP and data/system safety exits active immediately. Apply the 10-second grace only to ordinary edge-decay exits.
+3. Require at least two simultaneous adverse health reasons and 3,000ms event-time persistence for ordinary edge-decay and profit-protection exits.
+4. Keep A/B ACTIVE, C/D/E/F SHADOW and LONG/SHORT enabled for all six by default. Do not promote experimental strategies to the shared benchmark merely to call them on.
+5. Calculate strategy/profile and strategy/symbol statistics only from independent League trades. Keep shared benchmark trades in their separate history and equity curve.
+6. Preserve exact Decimal and ledger payload values. Apply adaptive precision only to frontend rendering, including millisecond-based holding-time display.
+7. Re-run all A-F LONG/SHORT TP/SL simulations, full backend/frontend/static/build/E2E safety checks and actual browser controls.
+8. Start a new immutable PAPER Run after deploying the policy so later samples do not mix old and new exit policy within one Run. Do not delete old trades.
+9. Record natural post-change fills and profitability as `NOT_OBSERVED` or `NOT_PROVEN` until actual evidence exists.
