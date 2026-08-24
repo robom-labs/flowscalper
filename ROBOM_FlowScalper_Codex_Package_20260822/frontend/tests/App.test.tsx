@@ -1,9 +1,11 @@
 // 대시보드가 PAPER 안전 문구를 영구 표시하는지 검증한다.
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from '../src/App'
 import { initialDashboard } from '../src/demoData'
+import { MarketPage } from '../src/pages/MarketPage'
+import type { FocusPosition } from '../src/types'
 
 class FakeWebSocket extends EventTarget {
   close() {}
@@ -146,6 +148,39 @@ test('renders an explicit LIVE operating state', async () => {
   expect(await screen.findByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중')
   expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('시장 관찰계속 작동')
   expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('새 PAPER 진입작동')
+})
+
+test('clears a previous run PAPER entry notice when the run changes', async () => {
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
+  vi.stubGlobal('localStorage', {
+    getItem: vi.fn((key: string) => key === 'robom.position.focus.v1'
+      ? JSON.stringify({ autoFocusOnFill: false, focusLocked: false, defaultProfile: 'BASE' })
+      : null),
+    setItem: vi.fn(),
+  })
+  const position = {
+    focus_key: 'run-live:trade-new', trade_id: 'trade-new', candidate_id: 'candidate-new',
+    account_id: 'LSA_REVERSAL_V1:BASE', profile: 'BASE', venue: 'BINANCE_USDM',
+    symbol: 'BTCUSDT', side: 'LONG', strategy: 'LSA_REVERSAL_V1', strategy_id: 'LSA_REVERSAL_V1',
+    strategy_display_name_ko: '급락·급등 쓸기 반전', opened_ts_ms: 2, signal_ts_ms: 1,
+    auto_focus_eligible: true,
+  } as unknown as FocusPosition
+  const handlers = {
+    onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
+    onPauseToggle: vi.fn(), busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+  }
+  const { rerender } = render(<MarketPage data={initialDashboard} {...handlers} />)
+  const liveDashboard = {
+    ...initialDashboard,
+    status: { ...initialDashboard.status, mode: 'LIVE_SHADOW_PAPER' as const, run_id: 'run-live' },
+    focus_positions: [position],
+  }
+
+  rerender(<MarketPage data={liveDashboard} {...handlers} />)
+  expect(await screen.findByText(/새 PAPER 진입 · BTCUSDT/)).toBeInTheDocument()
+
+  rerender(<MarketPage data={initialDashboard} {...handlers} />)
+  await waitFor(() => expect(screen.queryByText(/새 PAPER 진입 · BTCUSDT/)).not.toBeInTheDocument())
 })
 
 test('shows the verified public venue clock correction in system diagnostics', async () => {

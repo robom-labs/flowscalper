@@ -22,6 +22,8 @@ LIVE 서비스에서 수십만 건 이상의 저장 Run을 replay하거나 거�
 8. Binance USD-M `/fapi/v1/time`과 Bybit V5 `/v5/market/time`의 인증 없는 공개 시각을 세 번 측정하고, RTT가 가장 작은 표본의 로컬 중간시각으로 거래소 오프셋을 계산한다. 지연은 `local + venue offset - event timestamp`로 계산하고 0 미만만 0으로 제한한다.
 9. 시각 보정값, RTT와 `SYNCED` 여부를 supervisor telemetry와 시스템 고급진단에 표시한다. 공개 시각 확인 실패는 검증된 LIVE 연결로 가장하지 않고 기존 fail-closed 공급자 전환 규칙을 따른다.
 
+2026-08-25 장시간 실행 중 host wall clock 보정 뒤 고정 오프셋이 오래 남는 결함이 확인돼, 8~9의 지속 지연 계산은 ADR-020의 monotonic 거래소 시각 기준점과 동적 표시 오프셋으로 보강했다. 최초 공개 time 표본 선택과 인증 없는 endpoint 경계는 그대로 유지한다.
+
 ## 검증
 
 - cooperative callback 유무가 replay checksum과 집계를 바꾸지 않는지 검사한다.

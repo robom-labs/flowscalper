@@ -106,6 +106,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
   const [marketDrawer, setMarketDrawer] = useState(false)
   const knownTrades = useRef(new Set(data.focus_positions.map((position) => position.trade_id)))
   const lastFocus = useRef<FocusPosition | null>(initialFocused)
+  const lastRunId = useRef(data.status.run_id)
   const interval = selectedInterval
   const explorerEnabled = data.status.mode !== 'DEMO_FIXTURE' || data.status.health_flags.includes('E2E_MARKET_EXPLORER')
   const fixture = data.status.mode === 'DEMO_FIXTURE'
@@ -138,6 +139,15 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
       .catch(() => setHistorical([]))
     return () => controller.abort()
   }, [explorerEnabled, interval, selectedMarket])
+
+  useEffect(() => {
+    if (lastRunId.current === data.status.run_id) return
+    lastRunId.current = data.status.run_id
+    setFocusNotice('')
+    setFocusKey(null)
+    setClosedReview(null)
+    lastFocus.current = null
+  }, [data.status.run_id])
 
   useEffect(() => {
     const arrivals = data.focus_positions.filter((position) => !knownTrades.current.has(position.trade_id) && position.auto_focus_eligible)

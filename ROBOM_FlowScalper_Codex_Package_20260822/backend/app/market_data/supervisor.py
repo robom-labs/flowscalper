@@ -27,7 +27,11 @@ from backend.app.domain.market import Instrument, Ticker
 from backend.app.domain.models import DataQuality, MarketEvent, Venue
 from backend.app.live_public import PublicDataUnavailable, _eligible_tickers, _ticker_events
 from backend.app.orderbook import BinanceOrderBook, BybitOrderBook, SequenceGap
-from backend.app.time_sync import estimate_venue_clock_offset_ms, venue_lag_ms
+from backend.app.time_sync import (
+    VenueClockCalibration,
+    estimate_venue_clock_calibration,
+    venue_lag_ms,
+)
 
 EventSink = Callable[[MarketEvent], Awaitable[None] | None]
 ProtectedSymbolSource = Callable[[], Sequence[str]]
@@ -51,6 +55,27 @@ class ProviderSelection:
     venue_clock_offset_ms: float = 0.0
     venue_clock_rtt_ms: float = 0.0
     clock_sync_status: str = "UNVERIFIED"
+    venue_clock_calibration: VenueClockCalibration | None = None
+
+    def current_venue_clock_offset_ms(self, clock: Clock) -> float:
+        if self.venue_clock_calibration is None:
+            return self.venue_clock_offset_ms
+        return self.venue_clock_calibration.current_offset_ms(
+            local_utc_ms=clock.utc_ms(),
+            monotonic_ns=clock.monotonic_ns(),
+        )
+
+    def venue_lag_ms(self, *, clock: Clock, venue_ts_ms: int) -> float:
+        if self.venue_clock_calibration is not None:
+            return self.venue_clock_calibration.lag_ms(
+                venue_ts_ms=venue_ts_ms,
+                monotonic_ns=clock.monotonic_ns(),
+            )
+        return venue_lag_ms(
+            local_utc_ms=clock.utc_ms(),
+            venue_ts_ms=venue_ts_ms,
+            venue_clock_offset_ms=self.venue_clock_offset_ms,
+        )
 
 
 class PublicStreamProvider(Protocol):
@@ -258,6 +283,13 @@ class PersistentPublicSupervisor:
             if self.selection is None:
                 return
             try:
+                if attempt > 0:
+                    self._update_provider_protection()
+                    self.selection = await self.provider.prepare(
+                        run_id=self.run_id,
+                        clock=self.clock,
+                    )
+                    self._apply_clock_sync(self.selection)
                 self.telemetry.state = (
                     ConnectionState.CONNECTING if attempt == 0 else ConnectionState.RECONNECTING
                 )
@@ -269,10 +301,13 @@ class PersistentPublicSupervisor:
                     if self._stopping.is_set():
                         return
                     attempt = 0
+                    self._apply_clock_sync(self.selection)
                     self._observe(event)
                     self._enqueue(event)
                 if not self._stopping.is_set():
                     self.telemetry.planned_rotation_count += 1
+                    self.telemetry.state = ConnectionState.RECONNECTING
+                    self.telemetry.entry_locked = True
                     self._update_provider_protection()
                     self.selection = await self.provider.prepare(
                         run_id=self.run_id,
@@ -280,7 +315,6 @@ class PersistentPublicSupervisor:
                     )
                     self._apply_clock_sync(self.selection)
                     self.telemetry.reconnect_count += 1
-                    self.telemetry.entry_locked = True
                     # 즉시 정상 종료하는 공급자가 event loop를 독점하지 않게 한다.
                     await asyncio.sleep(0.05)
             except asyncio.CancelledError:
@@ -291,6 +325,7 @@ class PersistentPublicSupervisor:
                 ValueError,
                 KeyError,
                 SequenceGap,
+                PublicDataUnavailable,
                 httpx.HTTPError,
                 WebSocketException,
             ) as error:
@@ -303,7 +338,7 @@ class PersistentPublicSupervisor:
                 await asyncio.sleep(delay)
 
     def _apply_clock_sync(self, selection: ProviderSelection) -> None:
-        self.telemetry.venue_clock_offset_ms = selection.venue_clock_offset_ms
+        self.telemetry.venue_clock_offset_ms = selection.current_venue_clock_offset_ms(self.clock)
         self.telemetry.venue_clock_rtt_ms = selection.venue_clock_rtt_ms
         self.telemetry.clock_sync_status = selection.clock_sync_status
 
@@ -344,6 +379,7 @@ class PersistentPublicSupervisor:
             and event.quality.sequence_valid
             and not event.quality.is_stale
         ):
+            self.telemetry.last_error = None
             self.telemetry.state = ConnectionState.LIVE
             self.telemetry.entry_locked = bool(
                 current_critical_lag
@@ -418,9 +454,10 @@ class BinancePersistentProvider:
                 instruments, tickers = await asyncio.gather(
                     adapter.fetch_instruments(), adapter.fetch_tickers()
                 )
-                clock_offset_ms, clock_rtt_ms = await estimate_venue_clock_offset_ms(
+                clock_calibration = await estimate_venue_clock_calibration(
                     adapter.fetch_server_time_ms,
                     clock.utc_ms,
+                    clock.monotonic_ns,
                 )
         except (OSError, httpx.HTTPError, ValueError) as error:
             raise PublicDataUnavailable(f"BINANCE_USDM prepare 실패: {error}") from error
@@ -456,9 +493,10 @@ class BinancePersistentProvider:
                 clock=clock,
                 maximum=self.wide_max,
             ),
-            venue_clock_offset_ms=clock_offset_ms,
-            venue_clock_rtt_ms=clock_rtt_ms,
+            venue_clock_offset_ms=clock_calibration.measured_offset_ms,
+            venue_clock_rtt_ms=clock_calibration.round_trip_ms,
             clock_sync_status="SYNCED",
+            venue_clock_calibration=clock_calibration,
         )
 
     async def events(
@@ -480,6 +518,7 @@ class BinancePersistentProvider:
                 max_size=2_000_000,
                 max_queue=512,
                 ping_interval=20,
+                close_timeout=1,
                 additional_headers=None,
             ) as wide_socket,
             websockets.connect(
@@ -487,6 +526,7 @@ class BinancePersistentProvider:
                 max_size=2_000_000,
                 max_queue=512,
                 ping_interval=20,
+                close_timeout=1,
                 additional_headers=None,
             ) as depth_socket,
             websockets.connect(
@@ -494,6 +534,7 @@ class BinancePersistentProvider:
                 max_size=2_000_000,
                 max_queue=512,
                 ping_interval=20,
+                close_timeout=1,
                 additional_headers=None,
             ) as trade_socket,
             BinancePublicAdapter() as adapter,
@@ -565,11 +606,7 @@ class BinancePersistentProvider:
             is_live=True,
             is_stale=False,
             sequence_valid=True,
-            lag_ms=venue_lag_ms(
-                local_utc_ms=clock.utc_ms(),
-                venue_ts_ms=venue_ts_ms,
-                venue_clock_offset_ms=selection.venue_clock_offset_ms,
-            ),
+            lag_ms=selection.venue_lag_ms(clock=clock, venue_ts_ms=venue_ts_ms),
         )
         if event_name == "24hrTicker":
             receive_monotonic_ns = clock.monotonic_ns()
@@ -818,9 +855,10 @@ class BybitPersistentProvider:
                 instruments, tickers = await asyncio.gather(
                     adapter.fetch_instruments(), adapter.fetch_tickers()
                 )
-                clock_offset_ms, clock_rtt_ms = await estimate_venue_clock_offset_ms(
+                clock_calibration = await estimate_venue_clock_calibration(
                     adapter.fetch_server_time_ms,
                     clock.utc_ms,
+                    clock.monotonic_ns,
                 )
         except (OSError, httpx.HTTPError, ValueError) as error:
             raise PublicDataUnavailable(f"BYBIT_LINEAR prepare 실패: {error}") from error
@@ -855,9 +893,10 @@ class BybitPersistentProvider:
                 clock=clock,
                 maximum=self.wide_max,
             ),
-            venue_clock_offset_ms=clock_offset_ms,
-            venue_clock_rtt_ms=clock_rtt_ms,
+            venue_clock_offset_ms=clock_calibration.measured_offset_ms,
+            venue_clock_rtt_ms=clock_calibration.round_trip_ms,
             clock_sync_status="SYNCED",
+            venue_clock_calibration=clock_calibration,
         )
 
     async def events(
@@ -877,6 +916,7 @@ class BybitPersistentProvider:
             max_size=2_000_000,
             max_queue=2_048,
             ping_interval=None,
+            close_timeout=1,
             additional_headers=None,
         ) as socket:
             await socket.send(json.dumps({"op": "subscribe", "args": topics}))
@@ -896,10 +936,9 @@ class BybitPersistentProvider:
                     is_live=True,
                     is_stale=False,
                     sequence_valid=True,
-                    lag_ms=venue_lag_ms(
-                        local_utc_ms=clock.utc_ms(),
+                    lag_ms=selection.venue_lag_ms(
+                        clock=clock,
                         venue_ts_ms=venue_ts_ms,
-                        venue_clock_offset_ms=selection.venue_clock_offset_ms,
                     ),
                 )
                 data = payload.get("data")

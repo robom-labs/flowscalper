@@ -12,6 +12,7 @@ Fail closed: uncertainty blocks new entries. Do not continue trading from an inv
 - lock new entries for affected venue/symbols;
 - keep last state for display as stale;
 - reconnect with backoff/jitter;
+- refresh public metadata and monotonic venue-time calibration before reopening an unplanned connection;
 - resubscribe and rebuild books;
 - do not mark healthy until fresh sequence-valid data arrives.
 
@@ -83,6 +84,8 @@ Because there are no real orders, recovery concerns the internal paper state onl
 - detect UTC wall-clock jumps;
 - record venue/local timestamp skew;
 - critical skew locks entries.
+- anchor public venue time to the lowest-monotonic-RTT response so later host wall-clock corrections do not create false lag;
+- refresh the displayed venue/local offset without modifying the operating-system clock.
 
 ## 15.6 Circuit breaker
 
@@ -109,4 +112,5 @@ Recovery requires satisfying a deterministic health check, not merely a UI toggl
 - The storage guard checks the ledger volume at most once per second. Below 2GiB or 5% free by default, LIVE entries remain locked while existing PAPER position management stays independent of the browser.
 - A persistence write error faults the main risk state, keeps retry buffers bounded and cannot be cleared with the UI resume control.
 - CPU, process memory, thread count, uptime and disk figures on the System diagnostics screen come from the local process and filesystem rather than fixture constants.
-- Rolling public-event lag p95 above 1,500ms sets `CRITICAL_MARKET_LAG_ENTRY_LOCK` in both supervisor telemetry and the PAPER runtime. A fresh sequence-valid depth can clear the health flag after p95 recovery, but an automatically paused runtime still requires an explicit safe resume.
+- Rolling public-event lag p95 above 1,500ms sets `CRITICAL_MARKET_LAG_ENTRY_LOCK` in both supervisor telemetry and the PAPER runtime. A fresh sequence-valid depth clears an automatically recoverable safety wait after p95 recovery; only a user-requested pause requires an explicit resume.
+- A planned WebSocket rotation enters `RECONNECTING` and locks new PAPER entries before metadata and snapshots are prepared. Public socket close waits are bounded, and the lock clears only after a new sequence-valid depth event.

@@ -55,6 +55,7 @@ Detailed specifications:
 - `docs/adr/ADR-017-current-strategy-version-performance-scope.md`
 - `docs/adr/ADR-018-replay-cpu-budget-focus-cache-and-venue-clock.md`
 - `docs/adr/ADR-019-ofi-return-confluence-shadow-strategy.md`
+- `docs/adr/ADR-020-monotonic-venue-clock-and-rotation-recovery.md`
 
 ## Supporting contracts
 
@@ -95,6 +96,7 @@ Detailed specifications:
 - `evidence/PHASE09_CURRENT_STRATEGY_VERSION_SCOPE.json`
 - `evidence/PHASE10_REPLAY_LIVE_ISOLATION.json`
 - `evidence/WAVE21_OFI_RETURN_AND_REPLAY_QA.json`
+- `evidence/WAVE22_CLOCK_ROTATION_QA.json`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-full.png`

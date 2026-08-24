@@ -14,6 +14,7 @@ from backend.app.domain.models import (
     RuntimeMode,
     Venue,
 )
+from backend.app.live_public import PublicDataUnavailable
 from backend.app.market_data.supervisor import (
     BinanceTradeCoalescer,
     PersistentPublicSupervisor,
@@ -22,6 +23,7 @@ from backend.app.market_data.supervisor import (
     _wide_and_deep,
 )
 from backend.app.runtime import PaperRuntime
+from backend.app.time_sync import VenueClockCalibration
 
 
 class RecordedProvider:
@@ -31,13 +33,16 @@ class RecordedProvider:
         self,
         *,
         fail_first: bool = False,
+        fail_reconnect_prepare_once: bool = False,
         burst: int = 2,
         clock_offset_ms: float = 0.0,
         clock_rtt_ms: float = 0.0,
         clock_sync_status: str = "UNVERIFIED",
     ) -> None:
         self.fail_first = fail_first
+        self.fail_reconnect_prepare_once = fail_reconnect_prepare_once
         self.burst = burst
+        self.prepare_count = 0
         self.connection_count = 0
         self.release = asyncio.Event()
         self.clock_offset_ms = clock_offset_ms
@@ -46,6 +51,9 @@ class RecordedProvider:
 
     async def prepare(self, *, run_id: str, clock: DeterministicClock) -> ProviderSelection:
         del run_id, clock
+        self.prepare_count += 1
+        if self.fail_reconnect_prepare_once and self.prepare_count == 2:
+            raise PublicDataUnavailable("recorded prepare failure")
         wide = tuple(f"S{index:02d}USDT" for index in range(50))
         return ProviderSelection(
             venue=self.venue,
@@ -165,8 +173,133 @@ async def test_supervisor_exposes_verified_venue_clock_correction() -> None:
     await supervisor.stop()
 
 
+async def test_planned_rotation_locks_before_provider_prepare() -> None:
+    class BlockingPrepareProvider(RecordedProvider):
+        def __init__(self) -> None:
+            super().__init__(burst=1)
+            self.blocking_prepare_count = 0
+            self.rotation_prepare_started = asyncio.Event()
+            self.allow_rotation_prepare = asyncio.Event()
+
+        async def prepare(
+            self,
+            *,
+            run_id: str,
+            clock: DeterministicClock,
+        ) -> ProviderSelection:
+            self.blocking_prepare_count += 1
+            if self.blocking_prepare_count > 1:
+                self.rotation_prepare_started.set()
+                await self.allow_rotation_prepare.wait()
+            return await super().prepare(run_id=run_id, clock=clock)
+
+    provider = BlockingPrepareProvider()
+    supervisor = PersistentPublicSupervisor(
+        provider,
+        run_id="run-rotation-lock",
+        clock=DeterministicClock(),
+        sink=lambda _: None,
+        startup_timeout_seconds=1,
+    )
+
+    await supervisor.start()
+    provider.release.set()
+    await asyncio.wait_for(provider.rotation_prepare_started.wait(), timeout=1)
+
+    assert supervisor.telemetry.planned_rotation_count == 1
+    assert supervisor.telemetry.state is ConnectionState.RECONNECTING
+    assert supervisor.telemetry.entry_locked is True
+
+    provider.allow_rotation_prepare.set()
+    await supervisor.stop()
+
+
+async def test_supervisor_clock_calibration_survives_host_wall_clock_step() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000, current_monotonic_ns=1_000_000_000)
+    calibration = VenueClockCalibration(
+        venue_anchor_ms=3_000,
+        monotonic_anchor_ns=clock.monotonic_ns(),
+        measured_offset_ms=2_000,
+        round_trip_ms=10,
+    )
+
+    class ClockStepProvider(RecordedProvider):
+        async def prepare(
+            self,
+            *,
+            run_id: str,
+            clock: DeterministicClock,
+        ) -> ProviderSelection:
+            selection = await super().prepare(run_id=run_id, clock=clock)
+            return ProviderSelection(
+                venue=selection.venue,
+                instruments=selection.instruments,
+                tickers=selection.tickers,
+                wide_symbols=selection.wide_symbols,
+                deep_symbols=selection.deep_symbols,
+                bootstrap_events=(),
+                venue_clock_offset_ms=calibration.measured_offset_ms,
+                venue_clock_rtt_ms=calibration.round_trip_ms,
+                clock_sync_status="SYNCED",
+                venue_clock_calibration=calibration,
+            )
+
+        async def events(
+            self,
+            selection: ProviderSelection,
+            *,
+            run_id: str,
+            clock: DeterministicClock,
+        ) -> AsyncIterator[MarketEvent]:
+            for sequence, venue_ts_ms in enumerate((3_000, 3_010)):
+                if sequence == 1:
+                    clock.current_utc_ms += 2_000
+                    clock.current_monotonic_ns += 10_000_000
+                yield _event(run_id, "BTCUSDT", clock, sequence).model_copy(
+                    update={
+                        "event_id": f"clock-step-{sequence}",
+                        "event_type": "DEPTH_UPDATE",
+                        "venue_ts_ms": venue_ts_ms,
+                        "quality": DataQuality(
+                            is_live=True,
+                            is_stale=False,
+                            sequence_valid=True,
+                            lag_ms=selection.venue_lag_ms(
+                                clock=clock,
+                                venue_ts_ms=venue_ts_ms,
+                            ),
+                        ),
+                    }
+                )
+            await self.release.wait()
+
+    provider = ClockStepProvider()
+    supervisor = PersistentPublicSupervisor(
+        provider,
+        run_id="run-clock-step",
+        clock=clock,
+        sink=lambda _: None,
+        startup_timeout_seconds=1,
+    )
+
+    await supervisor.start()
+    await asyncio.sleep(0)
+
+    diagnostics = supervisor.telemetry.as_dict()
+    assert diagnostics["venue_clock_offset_ms"] == 10
+    assert diagnostics["lag_p95_ms"] == 0
+    assert diagnostics["critical_lag_active"] is False
+    assert diagnostics["entry_locked"] is False
+
+    await supervisor.stop()
+
+
 async def test_supervisor_reconnects_and_bounds_overload_queue() -> None:
-    provider = RecordedProvider(fail_first=True, burst=100)
+    provider = RecordedProvider(
+        fail_first=True,
+        fail_reconnect_prepare_once=True,
+        burst=100,
+    )
     sink_gate = asyncio.Event()
 
     async def slow_sink(_: MarketEvent) -> None:
@@ -186,6 +319,7 @@ async def test_supervisor_reconnects_and_bounds_overload_queue() -> None:
     await asyncio.sleep(0.01)
 
     assert provider.connection_count >= 2
+    assert provider.prepare_count >= 3
     assert supervisor.telemetry.reconnect_count >= 1
     assert (
         supervisor.telemetry.as_dict()["unplanned_reconnects"]
@@ -194,6 +328,7 @@ async def test_supervisor_reconnects_and_bounds_overload_queue() -> None:
     assert supervisor.telemetry.dropped_event_count > 0
     assert supervisor.telemetry.queue_depth <= 4
     assert supervisor.telemetry.entry_locked
+    assert supervisor.telemetry.last_error is None
 
     sink_gate.set()
     await supervisor.stop()

@@ -202,22 +202,22 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 
 | 검증 | 최종 기록 |
 |---|---|
-| backend pytest | 현재 source 279 PASS |
-| frontend Vitest | 12 files, 40 PASS |
+| backend pytest | 현재 source 283 PASS |
+| frontend Vitest | 12 files, 41 PASS |
 | Playwright | 실제 Chromium desktop·tablet·mobile 3 PASS |
 | Ruff·mypy·ESLint·TypeScript | PASS |
 | Vite build | 48 modules, JS 485.73kB, gzip 150.64kB |
 | security scan | 114 source, violation·secret-like·real-order path 0 |
 | schema | SQLite v6 |
-| Wave 21 실제 LIVE snapshot | RUNNING, 실제 주문·인증 false, post-replay 45표본에서 P95 최대 369.5ms·critical/lock/reconnect/gap/drop 0 |
+| Wave 22 실제 LIVE snapshot | READY 1,000 USDT·성과 0에서 시작, 생산 기본 15분 교체 1회가 1.749초에 자동복구, 후속 event 187,574·active critical/lock/reconnect/gap/drop 0 |
 | 현재버전 전략 표본 | 전략별 0~7건으로 모두 `표본 부족`, 신규 I 자연 표본 0, 수익성 NOT_PROVEN |
 | 저장 공개시장 replay | 15,045 events, 전략평가 62,442, 적격 9, 후보 8, shadow 종료 9, 세 checksum 일치 |
 | SQLite | `PRAGMA quick_check=ok` |
 | 실제 주문·인증 | false·false |
-| GitHub Actions | `32785122708`, 구현 commit `24b8463`의 validate·browser·evidence upload PASS |
+| GitHub Actions | Wave 21 `32785122708` PASS, Wave 22 최종 commit은 이 문서와 함께 갱신 |
 | 최종 ZIP SHA-256 | `1f433e47f4b3e405dcc483239206e13a3bbd9caa244a4b7b84a52ee70f7ccfe9` |
 
-Wave 21에서는 실제 앱 내 브라우저에서 시작·일시정지·재개와 시장·전략·전략상세를 직접 확인했고 console error·warning은 0이었다. 신규 I는 엄격한 SHADOW 연구 전략이며 저장 공개시장 replay와 현재 LIVE에서 자연 적격 표본이 0이어도 기준을 낮추지 않았다. 화면 증거는 `evidence/screenshots/wave21-*`, 기계판독 결과는 `evidence/WAVE21_OFI_RETURN_AND_REPLAY_QA.json`을 사용한다. GitHub 문서의 과거 수치가 현재 로컬 실행을 자동으로 증명하지는 않으므로 다음 변경 뒤에는 다시 검증한다.
+Wave 22에서는 고정 wall-clock 오프셋 때문에 정상 이벤트가 약 2초 지연으로 오인되던 문제를 monotonic 거래소 시각으로 수정했다. 실제 Binance 공개 스트림 단축 교체 3회가 최대 0.919초에 자동 복구됐고, 생산 기본 15분 교체도 1.749초에 복구됐다. 실제 앱 내 브라우저에서는 시작 한 번으로 `시작 전 → 연결 중 → 작동 중`, P95 94ms와 console error·warning 0을 확인했다. 서비스 재시작 뒤 남던 이전 Run의 `새 PAPER 진입 2건` 알림도 제거했고, 최종 새 빌드에서 알림 없음·2.5초 내 작동 중·P95 38.330ms·console error 0을 다시 확인했다. 기본 교체 전에 실제 임계지연 406건이 별도 검증 구간에 있었으나 fail-closed 뒤 자동회복됐고 교체 뒤 후속 59,962 event와 최종 backend 회귀검사 동안 추가 증가가 없었다. 기계판독 결과는 `evidence/WAVE22_CLOCK_ROTATION_QA.json`을 사용한다. GitHub 문서의 과거 수치가 현재 로컬 실행을 자동으로 증명하지는 않으므로 다음 변경 뒤에는 다시 검증한다.
 
 ## 11. 현재 알려진 한계
 
@@ -239,7 +239,7 @@ Wave 21에서는 실제 앱 내 브라우저에서 시작·일시정지·재개�
 4. `FINAL_UPGRADE_EVIDENCE.md`.
 5. `PLANS.md`와 `IMPLEMENT.md`.
 6. 검토 대상에 해당하는 `docs/01`~`docs/18`.
-7. `docs/adr/ADR-013`~`ADR-019`와 검토 기능에 가까운 이전 ADR.
+7. `docs/adr/ADR-013`~`ADR-020`과 검토 기능에 가까운 이전 ADR.
 8. 기능별 코드와 대응 테스트.
 9. `01_GPT_업그레이드_방향_요청프롬프트_KO.txt`.
 
@@ -312,5 +312,6 @@ Wave 21에서는 실제 앱 내 브라우저에서 시작·일시정지·재개�
 - 초보자 운영 상태 패널은 `frontend/src/components/OperationStatusPanel.tsx`, 화면 조합은 `frontend/src/pages/MarketPage.tsx`다.
 - READY·RUNNING·사용자 일시정지·자동 안전 대기 계약은 `backend/app/api/dashboard.py`의 `operation_status`가 원본이다.
 - 지연 안전잠금과 자동 복귀는 `backend/app/runtime.py`의 `_refresh_supervisor_entry_safety()`가 담당하며, 저장 실패·복구 불일치는 자동 해제하지 않는다.
+- 거래소 시각 calibration과 wall-clock 독립 지연 계산은 `backend/app/time_sync.py`, 계획 교체의 선제 잠금·bounded close는 `backend/app/market_data/supervisor.py`가 담당하며 결정은 ADR-020에 있다.
 - 1,000단계 호가장 상위 20단계 캐시는 `backend/app/orderbook/books.py`에 있고, 추가·수정·삭제 뒤 전체 정렬과 정확히 같은지 `backend/tests/test_orderbook.py`에서 검증한다.
 - 결정은 ADR-012, 실제 시작 클릭과 연속 관찰 결과는 `FINAL_UPGRADE_EVIDENCE.md`의 4차 보강과 `evidence/PHASE04_START_STATUS_AND_SOAK.json`을 본다.

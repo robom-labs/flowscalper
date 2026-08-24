@@ -24,6 +24,10 @@ Required cases:
 - snapshot reset;
 - stale ticker/book/trade;
 - ping/pong and planned reconnect;
+- host wall-clock step after venue calibration;
+- planned rotation entry lock before provider prepare and automatic unlock after fresh depth;
+- unplanned reconnect metadata/time recalibration, failed-prepare backoff and recovered error clearing;
+- bounded multi-socket close and repeated actual public rotation;
 - rate-limit/backoff behavior;
 - venue endpoint migration/configuration;
 - provider failover only through a new Run.
@@ -154,6 +158,7 @@ Initial targets on a reasonable desktop:
 
 - 50 wide symbols and 10 deep symbols with no critical-lag interval left entry-enabled;
 - UI update throttled independently from strategy event rate;
+- changing from an old Run to READY or a fresh Run clears the old PAPER-entry toast and focused-position review;
 - bounded queue memory;
 - feature processing p95 within configured budget;
 - automatic capacity reduction when overloaded.

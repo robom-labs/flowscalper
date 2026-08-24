@@ -42,6 +42,7 @@ Connection requirements:
 - support combined and live subscribe/unsubscribe methods;
 - shard streams conservatively even when the official maximum is higher;
 - rotate before the documented connection lifetime;
+- bound close waits and lock new PAPER entries from the start of a planned rotation until a fresh sequence-valid depth event;
 - implement ping/pong and exponential backoff with jitter;
 - avoid reconnect storms;
 - resubscribe idempotently;
@@ -124,6 +125,8 @@ Suggested initial safety thresholds, configurable and adaptive:
 - entry lock: > 500 ms critical lag or venue-specific threshold.
 
 Low-activity symbols should be excluded instead of treating infrequent trades as a technical failure.
+
+Public venue time is calibrated from the lowest-monotonic-RTT unauthenticated time response. Ongoing event lag uses that monotonic venue clock rather than a fixed wall-clock offset, so an operating-system clock correction cannot turn fresh data into false critical lag.
 
 ## 3.8 Venue failover
 
