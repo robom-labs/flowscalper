@@ -139,3 +139,15 @@ No personal credentials exist in exports.
 - New completed shadow trades persist both the Run `config_hash` and full `strategy_version`.
 - `DEMO_FIXTURE` and `REPLAY` samples never enter current LIVE_PUBLIC win rate, expectancy, Profit Factor, cost, drawdown or holding-time statistics.
 - See `docs/adr/ADR-017-current-strategy-version-performance-scope.md` for the decision and regression boundaries.
+
+## 10.11 Large replay isolation and focus cache
+
+- While LIVE public observation is active, full Run replay, timeline reads and trade-focus replay share one process lock and execute in a low-priority child process with independent SQLite and Parquet readers.
+- A `nice(19)` child process applies a one-core 10% cooperative CPU budget to each checkpoint interval across archive decoding, strategy ingestion, event sorting, duplicate checks and streaming SHA-256. The interval calculation prevents old high-load work from creating unbounded later sleep debt. Replay completion time is secondary to uninterrupted LIVE ingestion.
+- Replay checksum schema 3 length-prefixes each normalized event and decision-path item into separate streaming SHA-256 digests. The final canonical material contains only those digests, counts, config, version and final state, so it does not duplicate the full event list in memory.
+- New archive batches expose `venue_ts_ms`, `symbol`, `event_type` and `batch_checksum` columns. Time-bounded UI reads select relevant manifests, verify the complete selected batch checksum before filtering and decode only matching rows; truncated batches fail even when the remaining filtered rows look valid. Legacy batches keep the full checksum-compatible fallback.
+- Trade-focus reads are bounded to the configured pre/post trade window. Completed sessions are zlib-compressed in schema v7 `replay_focus_cache` and verified by SHA-256 before reuse.
+- Full Run replay, timeline and trade-focus requests share one lock. A concurrent request receives HTTP 409 `REPLAY_BUSY` instead of waiting behind a long replay and appearing frozen.
+- The default LIVE history view includes only main PAPER trades whose `sample_type` is `LIVE_PUBLIC` and whose strategy implementation version equals the current build. Older immutable trades remain stored and are reported as excluded.
+- LIVE event lag uses a public venue-time offset estimated from the minimum-RTT sample. The process never changes the operating-system clock and never adds credentials to the public time request.
+- See `docs/adr/ADR-018-replay-cpu-budget-focus-cache-and-venue-clock.md` for the decision and failure boundaries.

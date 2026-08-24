@@ -21,6 +21,9 @@ Codex must verify current behavior again during implementation because exchange 
 - USDⓈ-M REST market data catalog  
   https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data
 
+- USDⓈ-M public server time (`GET /fapi/v1/time`, verified 2026-08-25)
+  https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data#check-server-time
+
 - Public endpoints terminology/common definitions  
   https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/common-definition
 
@@ -54,6 +57,9 @@ Important current facts to re-check in code:
 
 - Public ticker snapshot/24-hour turnover  
   https://bybit-exchange.github.io/docs/v5/market/tickers
+
+- V5 public server time (`GET /v5/market/time`, verified 2026-08-25)
+  https://bybit-exchange.github.io/docs/v5/market/time
 
 ## Codex official guidance
 

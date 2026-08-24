@@ -6,6 +6,13 @@
 
 ## 아직 배포하지 않음
 
+- 수십만 건 저장 Run replay와 거래 재생 화면이 LIVE 수신을 밀던 문제를 모든 읽기·재처리·checksum 단계의 별도 `nice(19)` process와 구간별 10% CPU 예산으로 수정했다.
+- replay checksum을 이벤트·결정경로 length-prefix streaming digest로 바꿔 전체 canonical JSON 복제와 누적 CPU sleep 빚을 제거했다. 중간 규모 85,714건 두 실행은 checksum과 집계가 일치했고 LIVE critical lag·비정상 재연결·gap·drop·진입잠금은 0이었다.
+- 긴 replay 중 다른 timeline·거래 재생 요청은 대기열에 매달리지 않고 `REPLAY_BUSY` 재시도 안내를 즉시 표시한다.
+- 필터형 Parquet 조회도 배치 전체 checksum을 먼저 검증해 일부 row가 잘린 저장 배치가 정상처럼 통과하지 못하게 했다.
+- 거래 집중 replay를 실제 거래 시간창으로 제한하고 checksum 검증 압축 캐시를 추가해, 첫 검증 뒤 동일 거래를 빠르게 다시 열 수 있게 했다.
+- 로컬 시각이 거래소보다 느릴 때 데이터 지연이 0ms로 숨던 문제를 인증 없는 Binance·Bybit 공개 시각의 최소 RTT 오프셋으로 보정하고 시스템 화면에 보정값과 상태를 표시한다.
+- 현재 거래기록은 현재 전략 구현 버전의 공개시장 PAPER 거래만 표시하고, 교체 전 거래는 불변 원장에 보관한 채 제외 건수를 알린다.
 - 전략 로직 교체 전·후의 독립 PAPER 거래를 한 승률·기대값에 섞던 문제를 수정하고, 현재 전략 구현 버전의 `LIVE_PUBLIC` 표본만 기본 성과로 집계한다. 과거 불변 원장은 삭제하지 않고 전략·계좌·종목별 제외 건수를 화면에 표시한다.
 - DEMO와 REPLAY shadow 거래를 각 `DEMO_FIXTURE`·`REPLAY`로 분리하고, 성과표의 비용·낙폭이 현재 Run 계좌값과 저장된 현재버전 통계값을 혼합하지 않게 했다.
 - Strategy Registry를 A~H 8개와 BASE·STRESS 16계좌로 확장하고, 신규 다중호가 공정가 G와 깊이보정 OFI H를 엄격한 SHADOW 전용으로 추가했다.

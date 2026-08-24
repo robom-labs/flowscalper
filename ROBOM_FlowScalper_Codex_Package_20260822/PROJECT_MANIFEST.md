@@ -53,6 +53,7 @@ Detailed specifications:
 - `docs/adr/ADR-015-duration-stable-runtime-and-chart-fullscreen.md`
 - `docs/adr/ADR-016-depth-normalized-flow-and-multilevel-fair-price-shadow-strategies.md`
 - `docs/adr/ADR-017-current-strategy-version-performance-scope.md`
+- `docs/adr/ADR-018-replay-cpu-budget-focus-cache-and-venue-clock.md`
 
 ## Supporting contracts
 
@@ -91,6 +92,7 @@ Detailed specifications:
 - `evidence/PHASE08_EIGHT_STRATEGY_AND_REPLAY_ISOLATION.json`
 - `evidence/PHASE09_PUBLIC_MARKET_SMOKE.json`
 - `evidence/PHASE09_CURRENT_STRATEGY_VERSION_SCOPE.json`
+- `evidence/PHASE10_REPLAY_LIVE_ISOLATION.json`
 - `evidence/screenshots/phase09-current-version-strategy-detail-actual-chrome.jpg`
 - `evidence/screenshots/phase09-current-version-performance-actual-chrome.jpg`
 - `evidence/screenshots/phase09-current-version-strategy-symbol-actual-chrome.jpg`

@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "phase": "PHASE10_REPLAY_LIVE_ISOLATION",
+  "observed_at_kst": "2026-08-25T06:31:00+09:00",
+  "implementation_commit": "924e8b39e421bd4a1b50c5f868b8f7747e87fc35",
+  "scope": "actual local public-market PAPER runtime, stored-market replay, ledger, automated regression and actual in-app browser",
+  "safety_boundary": {
+    "execution_mode": "PAPER_ONLY",
+    "public_market_data_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_keys_required": false,
+    "wallet_paths": 0
+  },
+  "implemented_fixes": [
+    {
+      "id": "REPLAY_INTERVAL_CPU_BUDGET",
+      "result": "PASS",
+      "detail": "Replay workers use nice(19) and a one-core 10 percent budget calculated per adjacent checkpoint interval with a 0.5 second maximum sleep."
+    },
+    {
+      "id": "STREAMING_REPLAY_CHECKSUM_SCHEMA_3",
+      "result": "PASS",
+      "detail": "Normalized events and decision-path items are length-prefixed into streaming SHA-256 digests instead of duplicating the complete canonical event material."
+    },
+    {
+      "id": "PARQUET_FILTERED_BATCH_INTEGRITY",
+      "result": "PASS",
+      "detail": "Filtered reads verify every row checksum and the complete stored batch checksum before row filtering; a truncated batch is rejected."
+    },
+    {
+      "id": "REPLAY_UI_BUSY_RESPONSE",
+      "result": "PASS",
+      "detail": "Full replay, timeline and focus share one process lock and a concurrent request receives HTTP 409 REPLAY_BUSY instead of hanging."
+    },
+    {
+      "id": "TRADE_FOCUS_WINDOW_AND_CACHE",
+      "result": "PASS",
+      "detail": "Trade focus reads its entry/exit window, reuses a covering safe replay result and persists a zlib and SHA-256 verified schema-v7 cache."
+    },
+    {
+      "id": "VENUE_CLOCK_OFFSET",
+      "result": "PASS",
+      "detail": "Binance and Bybit public time endpoints use the minimum-RTT midpoint offset and the UI reports the venue offset and sync state without changing the operating-system clock."
+    },
+    {
+      "id": "CURRENT_STRATEGY_VERSION_HISTORY",
+      "result": "PASS",
+      "detail": "The default main-trade history includes current-version LIVE_PUBLIC samples while immutable prior-version records remain stored and are disclosed as excluded."
+    },
+    {
+      "id": "PLANNED_RECONNECT_LABEL",
+      "result": "PASS",
+      "detail": "Planned connection rotations are separated from unplanned reconnects in telemetry and the beginner UI."
+    }
+  ],
+  "legacy_large_replay_before_streaming_fix": {
+    "source_run_id": "run-7525441a7665",
+    "replay_id": "replay-ba679f210c2444f2",
+    "event_count": 332553,
+    "elapsed_seconds": 7055,
+    "event_type_counts": {
+      "DEPTH_UPDATE": 169911,
+      "REST_BOOK_TICKER_BOOTSTRAP": 50,
+      "TRADE": 111455,
+      "WIDE_TICKER": 51137
+    },
+    "strategy_evaluation_count": 1360224,
+    "qualified_signal_count": 342,
+    "candidate_plan_count": 21,
+    "main_trade_count": 5,
+    "shadow_trade_count": 22,
+    "decision_path_count": 1377,
+    "final_state": "MAIN_TRADES_CLOSED",
+    "checksum": "ca9ecea905d56df61ab33986d2b97e32d377cb0fbfc956af710a843d050f9398",
+    "result_integrity": "PASS",
+    "live_performance": "FAIL",
+    "monitor_samples": 234,
+    "max_processing_p50_ms": 386.5,
+    "max_processing_p95_ms": 3352.0,
+    "max_processing_p95_after_parallel_test_load_ms": 1804.5,
+    "max_queue": 22,
+    "max_critical_lag_events": 2163,
+    "entry_locked_samples": 5,
+    "planned_rotations": 7,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_faults": 0,
+    "observed_peak_rss_approx_mb": 2100,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "streaming_schema_3_medium_replays": [
+    {
+      "source_run_id": "run-d2d9e34a0242",
+      "replay_id": "replay-491a32eed13d4ba6",
+      "event_count": 85714,
+      "elapsed_seconds": 472,
+      "strategy_evaluation_count": 154208,
+      "qualified_signal_count": 24,
+      "candidate_plan_count": 6,
+      "main_trade_count": 0,
+      "shadow_trade_count": 9,
+      "decision_path_count": 396,
+      "final_state": "OBSERVING_NO_MAIN_TRADE",
+      "checksum": "e88e18b62d3c0b40efcfb6529aae3e7eea118dfacf40c49758452a86ebcd1fc7",
+      "monitor_samples": 30,
+      "max_processing_p50_ms": 20.5,
+      "max_processing_p95_ms": 171.5,
+      "max_queue": 2,
+      "max_replay_rss_kb": 542112,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "dropped_events": 0,
+      "critical_lag_events": 0,
+      "entry_locked_samples": 0,
+      "persistence_faults": 0,
+      "real_orders_enabled": false,
+      "auth_required": false
+    },
+    {
+      "source_run_id": "run-d2d9e34a0242",
+      "replay_id": "replay-fdf8b4796d194092",
+      "event_count": 85714,
+      "elapsed_seconds": 473,
+      "strategy_evaluation_count": 154208,
+      "qualified_signal_count": 24,
+      "candidate_plan_count": 6,
+      "main_trade_count": 0,
+      "shadow_trade_count": 9,
+      "decision_path_count": 396,
+      "final_state": "OBSERVING_NO_MAIN_TRADE",
+      "checksum": "e88e18b62d3c0b40efcfb6529aae3e7eea118dfacf40c49758452a86ebcd1fc7",
+      "monitor_samples": 31,
+      "max_processing_p50_ms": 25.0,
+      "max_processing_p95_ms": 659.5,
+      "max_queue": 17,
+      "max_replay_rss_kb": 549072,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "dropped_events": 0,
+      "critical_lag_events": 0,
+      "entry_locked_samples": 0,
+      "persistence_faults": 0,
+      "real_orders_enabled": false,
+      "auth_required": false
+    }
+  ],
+  "determinism_comparison": {
+    "status": "PASS",
+    "same_checksum": true,
+    "same_event_count": true,
+    "same_strategy_evaluation_count": true,
+    "same_qualified_signal_count": true,
+    "same_candidate_plan_count": true,
+    "same_main_trade_count": true,
+    "same_shadow_trade_count": true,
+    "same_decision_path_count": true
+  },
+  "natural_live_public_trades_observed_during_diagnostics": {
+    "run_id": "run-e301d70b9ba8",
+    "main_trade_count": 4,
+    "holding_ms": [
+      13940,
+      60216,
+      22876,
+      14598
+    ],
+    "minimum_holding_ms": 13940,
+    "one_or_two_second_exits": 0,
+    "all_entry_plans_have_take_profit_and_initial_stop": true,
+    "net_pnl_usdt": [
+      "-0.17244576",
+      "-0.053797448",
+      "-0.29081460282",
+      "-0.1669052060000000000000000"
+    ],
+    "profitability": "NOT_PROVEN"
+  },
+  "fresh_live_paper_snapshot": {
+    "run_id": "run-b987d1d386c6",
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "starting_equity_usdt": 1000.0,
+    "current_equity_usdt": 1000.0,
+    "realized_pnl_usdt": 0.0,
+    "unrealized_pnl_usdt": 0.0,
+    "cumulative_fees_usdt": 0.0,
+    "cumulative_slippage_usdt": 0.0,
+    "trade_count": 0,
+    "wide_symbols": 50,
+    "deep_symbols": 20,
+    "processing_lag_p50_ms": 21.0,
+    "processing_lag_p95_ms": 131.0,
+    "wide_scan_age_p95_ms": 1934.0,
+    "queue_depth": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "critical_lag_events": 0,
+    "entry_locked": false,
+    "venue_clock_offset_ms": 2034.0,
+    "venue_clock_rtt_ms": 46.0,
+    "clock_sync_status": "SYNCED",
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "actual_browser_verification": {
+    "status": "PASS",
+    "url": "http://127.0.0.1:8870/",
+    "app_title": "ROBOM FlowScalper",
+    "start_pause_resume": "PASS",
+    "final_operation_state": "작동 중",
+    "manual_pause_final": false,
+    "paper_entry_final": "작동",
+    "automatic_recovery_final": "켜짐",
+    "chart_interval_selected": "1분",
+    "ma5_toggle_sequence": [
+      true,
+      false,
+      true
+    ],
+    "strategy_count_enabled": "8/8",
+    "pages_opened": [
+      "시장",
+      "전략",
+      "기록",
+      "분석",
+      "설정"
+    ],
+    "system_display_unplanned_reconnects": 0,
+    "system_display_sequence_gaps": 0,
+    "system_display_real_order_paths": 0,
+    "browser_console_errors": 0
+  },
+  "ledger_integrity": {
+    "status": "PASS",
+    "sqlite_user_version": 7,
+    "pragma_quick_check": "ok",
+    "database_size_approx_gb": 1.7,
+    "run_count": 49,
+    "main_trade_count": 37,
+    "shadow_trade_count": 288,
+    "existing_immutable_records_deleted": 0
+  },
+  "automated_validation": {
+    "backend_pytest": {
+      "status": "PASS",
+      "passed": 260,
+      "elapsed_seconds": 35.21
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "passed": 40
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 80
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "PASS",
+    "paper_build_safety": "PASS",
+    "fixture_backend": {
+      "status": "PASS",
+      "passed": 11
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "passed": 3
+    },
+    "security_scan": {
+      "status": "PASS",
+      "source_files": 113,
+      "real_order_path_detected": false,
+      "violations": [],
+      "secret_like_files": []
+    },
+    "repository_hygiene": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "acceptance": {
+    "public_market_paper_runtime": "PASS",
+    "medium_replay_determinism": "PASS",
+    "medium_replay_live_isolation": "PASS",
+    "legacy_large_replay_result_integrity": "PASS",
+    "legacy_large_replay_live_performance": "FAIL",
+    "new_schema_3_full_332553_event_replay": "NOT_RUN",
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  },
+  "github_actions": {
+    "status": "PENDING",
+    "run_id": null,
+    "url": null
+  }
+}
