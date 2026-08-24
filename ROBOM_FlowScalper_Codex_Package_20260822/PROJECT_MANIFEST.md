@@ -48,6 +48,11 @@ Detailed specifications:
 - `docs/adr/ADR-010-compact-market-workspace-full-catalog-strategy-symbol-analytics.md`
 - `docs/adr/ADR-011-runtime-latency-partitioning-and-ledger-replay-transitions.md`
 - `docs/adr/ADR-012-explicit-operation-state-and-orderbook-top-cache.md`
+- `docs/adr/ADR-013-cost-viable-event-time-strategy-gates.md`
+- `docs/adr/ADR-014-position-churn-and-independent-strategy-statistics.md`
+- `docs/adr/ADR-015-duration-stable-runtime-and-chart-fullscreen.md`
+- `docs/adr/ADR-016-depth-normalized-flow-and-multilevel-fair-price-shadow-strategies.md`
+- `docs/adr/ADR-017-current-strategy-version-performance-scope.md`
 
 ## Supporting contracts
 
@@ -81,6 +86,16 @@ Detailed specifications:
 - `evidence/PHASE04_START_STATUS_AND_SOAK.json`
 - `evidence/screenshots/phase04-start-ready-mobile.png`
 - `evidence/screenshots/phase04-start-running-mobile.png`
+- `evidence/PHASE06_POSITION_CHURN_AND_STRATEGY_STATISTICS.json`
+- `evidence/PHASE07_FULL_RUNTIME_AUDIT.json`
+- `evidence/PHASE08_EIGHT_STRATEGY_AND_REPLAY_ISOLATION.json`
+- `evidence/PHASE09_PUBLIC_MARKET_SMOKE.json`
+- `evidence/PHASE09_CURRENT_STRATEGY_VERSION_SCOPE.json`
+- `evidence/screenshots/phase09-current-version-strategy-detail-actual-chrome.jpg`
+- `evidence/screenshots/phase09-current-version-performance-actual-chrome.jpg`
+- `evidence/screenshots/phase09-current-version-strategy-symbol-actual-chrome.jpg`
+- `evidence/screenshots/phase09-current-version-performance-{desktop,tablet,mobile}.png`
+- `evidence/screenshots/phase09-current-version-strategy-symbol-{desktop,tablet,mobile}.png`
 
 ## Visual references
 

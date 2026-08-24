@@ -17,10 +17,10 @@
 | 기본 사이트 | `http://127.0.0.1:8870/` |
 | 기본 거래소 | Binance USDⓈ-M 공개시장 |
 | 대체 공개시장 | Bybit Linear, 별도 Run 경계 |
-| wide / deep 관찰 | 최대 50종목 / 기본 10종목 |
-| 전략 | A/B 안정 전략, C/D 실험 PAPER 전략 |
+| wide / deep 관찰 | 최대 50종목 / 기본 20종목 |
+| 전략 | A/B ACTIVE, C~H SHADOW PAPER 연구 전략, 각 BASE·STRESS 16계좌 |
 | 저장 | PAPER 상태 SQLite + 외장 공개시장 ZSTD Parquet |
-| GitHub | `robom-labs/flowscalper`, 비공개 |
+| GitHub | 공개 저장소 `robom-labs/flowscalper`, 기본 브랜치 `main` |
 | GitHub 폴더 | `ROBOM_FlowScalper_Codex_Package_20260822/` |
 | GitHub 자동화 | 저장소 최상위 `.github/`, CI·PR checklist만 보존 |
 | 최종 실행 ZIP | GitHub Release `v0.2.0-paper-wave10` |
@@ -85,7 +85,7 @@ flowchart LR
     A["Binance/Bybit 공개 REST·WebSocket"] --> B["PersistentPublicSupervisor"]
     B --> C["정규화 MarketEvent·호가·캔들"]
     C --> D["FeatureEngine·RegimeClassifier"]
-    D --> E["Strategy Registry A/B/C/D"]
+    D --> E["Strategy Registry A~H"]
     E --> F["Candidate Planner·비용·위험 Gate"]
     F --> G["보수적 PAPER 체결·포지션 관리"]
     G --> H["SQLite PAPER 원장·성과"]
@@ -106,7 +106,7 @@ flowchart LR
 | 장시간 supervisor | `backend/app/market_data/supervisor.py` | `docs/15_FAILURE_RECOVERY.md` | `backend/tests/test_persistent_supervisor.py` |
 | 호가·캔들 | `backend/app/orderbook/`, `backend/app/market_data/candles.py` | `docs/03_MARKET_DATA_AND_VENUES.md` | `backend/tests/test_orderbook.py` |
 | 피처·레짐 | `backend/app/features/engine.py`, `backend/app/regime/` | `docs/05_STRATEGY_SPEC.md` | `backend/tests/test_features_and_regime.py` |
-| A/B/C/D 전략 | `backend/app/strategies/` | `STRATEGY_CATALOG_KO.md` | `backend/tests/test_strategies.py` |
+| A~H 전략·Strategy League | `backend/app/strategies/`, `backend/app/paper/league.py` | `STRATEGY_CATALOG_KO.md`, `docs/19_STRATEGY_LEAGUE_SPEC_KO.md` | `backend/tests/test_strategy_registry_shadow.py`, `backend/tests/test_strategy_league_signals.py` |
 | 후보·불변 계획 | `backend/app/candidates/` | `docs/05_STRATEGY_SPEC.md` | `backend/tests/test_candidate_paper_portfolio.py` |
 | 비용·PAPER 체결 | `backend/app/costing/`, `backend/app/execution/` | `docs/06_PAPER_EXECUTION_ENGINE.md` | `backend/tests/test_execution_and_risk.py` |
 | 포지션·청산 | `backend/app/positions/` | `docs/07_POSITION_AND_EXIT_MANAGEMENT.md` | `backend/tests/test_position_management.py` |
@@ -202,25 +202,27 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 
 | 검증 | 최종 기록 |
 |---|---|
-| backend pytest | 현재 source 107 PASS, Wave 10 제품 build 기준선 105 PASS |
-| frontend Vitest | 3 files, 5 PASS |
+| backend pytest | 현재 source 248 PASS |
+| frontend Vitest | 12 files, 38 PASS |
+| Playwright | 실제 Chromium desktop·tablet·mobile 3 PASS |
 | Ruff·mypy·ESLint·TypeScript | PASS |
-| Vite build | 39 modules, JS 431.18kB, gzip 135.95kB |
-| security scan | 88 source, violation·secret-like·real-order path 0 |
+| Vite build | 48 modules, JS 483.43kB, gzip 150.04kB |
+| security scan | 111 source, violation·secret-like·real-order path 0 |
 | schema | SQLite v6 |
-| 최종 집중 LIVE 측정 | 4분 이상, 37,984 events, 종료 p95 140ms |
-| 집중 측정 오류 | pause·drop·gap·reconnect·persistence fault 0 |
-| 측정 후 지속 저장 | 77,274 events, 147 Parquet, 7,987,803 bytes |
-| 최신 Run SQLite raw event | 0 |
+| Wave 19 실제 LIVE snapshot | RUNNING, 224,477 events, 실행경로 P50 26ms·P95 188ms |
+| 현재버전 전략 표본 | LIVE_PUBLIC 15건, 과거버전 154건 제외, 최단 13.416초 |
+| 저장 공개시장 replay | 85,838 events, 전략평가 304,496, 후보 8, shadow 종료 10 |
 | SQLite | `PRAGMA quick_check=ok` |
 | 실제 주문·인증 | false·false |
+| GitHub Actions | `32754123908` validate·browser PASS |
 | 최종 ZIP SHA-256 | `1f433e47f4b3e405dcc483239206e13a3bbd9caa244a4b7b84a52ee70f7ccfe9` |
 
-최신 UI 코드의 in-app browser DOM·screenshot 재캡처는 admin-enforced policy 확인 실패로 `BLOCKED`였다. 기존 screenshot을 최신 화면 증거로 오인하지 않는다. HTTP·API·컴포넌트·빌드·LIVE·원장·replay 검증은 별도로 통과했다.
+Wave 19에서는 실제 앱 내 Chrome에서 시작·시장·전략·전략상세·분석·전략별 종목을 직접 확인했고 console error·warning은 0이었다. desktop·tablet·mobile 화면 증거는 `evidence/screenshots/phase09-*`, 기계판독 결과는 `evidence/PHASE09_CURRENT_STRATEGY_VERSION_SCOPE.json`을 사용한다. GitHub 문서의 과거 수치가 현재 로컬 실행을 자동으로 증명하지는 않으므로 다음 변경 뒤에는 다시 검증한다.
 
 ## 11. 현재 알려진 한계
 
-- 2026-08-23 장시간 유지 중인 `run-9b9d508c689d`의 별도 현재 snapshot에서 처리 지연 p95가 54,760ms로 다시 상승했다. 공개시장 상태는 LIVE였지만 `CRITICAL_MARKET_LAG_ENTRY_LOCK`·`PAPER_ENTRIES_PAUSED`가 정상적으로 적용됐고 실제 주문·인증은 false였다. Wave 10의 4분 측정 p95 140ms는 당시 검증 구간의 PASS이고, 이 장시간 재발을 해결했다는 증거가 아니다. 다음 runtime upgrade의 P0 조사 대상이다.
+- Wave 17에서 과거창·호가 반복 정렬 병목을 수정했지만, Wave 19의 85,838건 replay와 전체 회귀를 같은 컴퓨터에서 병행할 때 임계지연 누계와 reconnect 1회가 증가했다. 최종 부하 해제 뒤 P95 188ms·active lock false로 회복했으나 대형 replay 무지연과 6시간·24시간 안정성은 아직 `NOT_PROVEN`·`NOT_RUN`이다.
+- 현재 구현버전 전략 표본은 15건뿐이고 대부분 계좌는 0~6건이다. 표시되는 승률·기대값은 `표본 부족`이며 수익성은 `NOT_PROVEN`이다.
 - Mac 전원이 꺼져 있으면 이 Mac의 localhost 사이트는 제공되지 않는다.
 - 로그인했고 외장 APFS 소스가 마운트되어야 LaunchAgent가 프로그램을 실행할 수 있다.
 - 6시간·24시간 실제 벽시계 soak는 제공된 스크립트가 있어도 수행 전까지 `NOT_RUN`이다.
@@ -237,7 +239,7 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 4. `FINAL_UPGRADE_EVIDENCE.md`.
 5. `PLANS.md`와 `IMPLEMENT.md`.
 6. 검토 대상에 해당하는 `docs/01`~`docs/18`.
-7. `docs/adr/ADR-007-live-backpressure-chart-and-kst.md`와 `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md`.
+7. `docs/adr/ADR-013`~`ADR-017`과 검토 기능에 가까운 이전 ADR.
 8. 기능별 코드와 대응 테스트.
 9. `01_GPT_업그레이드_방향_요청프롬프트_KO.txt`.
 
