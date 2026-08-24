@@ -315,6 +315,17 @@
     "screenshot_sha256": "59472a982ed1ee46287a39684228f0665de087cc8f3bdd11c73b45ae7d877d46",
     "screenshot_dimensions": "1440x699"
   },
+  "github_verification": {
+    "implementation_commit": "0c7203e3bd123a415825b841cfccf0c8710839a8",
+    "main_push": "PASS",
+    "actions_run_id": 32690932657,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/32690932657",
+    "validate_job": "PASS",
+    "validate_duration_seconds": 53,
+    "browser_job": "PASS",
+    "browser_duration_seconds": 68,
+    "browser_evidence_upload": "PASS"
+  },
   "limitations": {
     "strategy_profitability": "NOT_PROVEN",
     "minimum_30_trades_per_strategy_profile": "NOT_REACHED_FOR_MOST_STRATEGIES",
