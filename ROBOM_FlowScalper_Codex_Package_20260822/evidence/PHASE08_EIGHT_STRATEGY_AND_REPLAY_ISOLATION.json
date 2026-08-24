@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "product_version": "0.2.0-paper",
+  "observed_date_kst": "2026-08-25",
+  "implementation_commit": "80fe973089aacdf72ae3182792b178d000566220",
+  "scope": "two new research-backed SHADOW strategies, 8-strategy league, deterministic replay, LIVE replay isolation, actual UI, current PAPER trades, regression and safety",
+  "paper_safety": {
+    "market_data": "BINANCE_USDM_PUBLIC",
+    "execution": "PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "api_keys_used": false,
+    "private_api_used": false,
+    "wallet_path_present": false
+  },
+  "official_research_basis": [
+    {
+      "title": "The Price Impact of Order Book Events",
+      "url": "https://arxiv.org/abs/1011.6402",
+      "use": "depth-normalized OFI hypothesis"
+    },
+    {
+      "title": "The Micro-Price",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2970694",
+      "use": "order-book-conditioned fair-price hypothesis"
+    },
+    {
+      "title": "Price Jump Prediction in Limit Order Book",
+      "url": "https://arxiv.org/abs/1204.1381",
+      "use": "multi-level gaps and liquidity-balance hypothesis"
+    },
+    {
+      "title": "Mind the Gaps: Short-Term Crypto Price Prediction",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4351947",
+      "use": "crypto multi-level fair-price hypothesis"
+    },
+    {
+      "title": "Binance USD-M Futures WebSocket Market Streams",
+      "url": "https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams",
+      "use": "public depth and trade input contract"
+    }
+  ],
+  "implementation": {
+    "registry_strategy_count": 8,
+    "league_account_count": 16,
+    "active_strategies": [
+      "LSA_REVERSAL_V1",
+      "CBR_CONTINUATION_V1"
+    ],
+    "shadow_strategies": [
+      "VWAP_EXHAUSTION_REVERSION_V1",
+      "OFI_CONTINUATION_PULLBACK_V1",
+      "QUEUE_MICROPRICE_MOMENTUM_V1",
+      "AGGRESSOR_FLOW_CONTINUATION_V1",
+      "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+      "DEPTH_ADJUSTED_OFI_IMPULSE_V1"
+    ],
+    "all_long_enabled": true,
+    "all_short_enabled": true,
+    "new_strategy_g": {
+      "strategy_id": "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+      "default_mode": "SHADOW",
+      "feature": "top-10 cross-weighted bid/ask VWAP fair price",
+      "confirmation_ms": 750
+    },
+    "new_strategy_h": {
+      "strategy_id": "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+      "default_mode": "SHADOW",
+      "feature": "3-second OFI normalized by average top-10 depth notional",
+      "minimum_robust_z": 2.0,
+      "confirmation_ms": 500
+    },
+    "thresholds_lowered_to_force_signals": false,
+    "shared_cost_and_protection_path": "TREND 40/60, minimum structure distance 0.30%, post-cost R:R 1.20, bid/ask depth, fees and slippage",
+    "replay_live_isolation": "stored replay runs in a lower-priority child process with a per-app process lock while LIVE reception continues"
+  },
+  "deterministic_stored_public_replay": {
+    "status": "PASS",
+    "source_run_id": "run-f14214b3b1dd",
+    "executions_with_equal_result": 3,
+    "checksum": "34e157e3b62ba19895f10bc8deac24be57021376150bc01d4bc7ffaf25a2b233",
+    "event_count": 15045,
+    "strategy_evaluation_count": 55504,
+    "qualified_signal_count": 9,
+    "candidate_plan_count": 8,
+    "main_trade_count": 0,
+    "shadow_trade_count": 9,
+    "final_state": "OBSERVING_NO_MAIN_TRADE",
+    "strategy_h_path": [
+      "SHORT BASE/STRESS candidate armed",
+      "SHORT BASE/STRESS entry filled",
+      "management exit armed",
+      "BASE/STRESS exit filled"
+    ],
+    "strategy_g_qualification": "NOT_OBSERVED",
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "live_replay_isolation_verification": {
+    "status": "PASS",
+    "method": "one actual 15045-event HTTP replay while polling the active LIVE dashboard every 0.5 seconds",
+    "replay_duration_seconds": 14.058,
+    "live_samples": 24,
+    "live_event_delta": 2597,
+    "processing_lag_p95_ms_max": 0.0,
+    "wide_lag_p95_ms_max": 0.0,
+    "queue_depth_max": 2,
+    "critical_lag_event_delta": 0,
+    "reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "dropped_event_delta": 0,
+    "entry_locked_samples": 0,
+    "final_operation_state": "RUNNING",
+    "note": "This is a 14-second concurrency check, not a multi-hour soak."
+  },
+  "current_live_public_run": {
+    "status": "PASS",
+    "run_id": "run-f79a63312b92",
+    "operation_state": "RUNNING",
+    "wide_symbols": 50,
+    "deep_symbols": 20,
+    "event_count_at_final_snapshot": 102832,
+    "processing_lag_p50_ms": 0.0,
+    "processing_lag_p95_ms": 0.0,
+    "wide_lag_p95_ms": 0.0,
+    "queue_depth": 0,
+    "reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "main_trade_count": 2,
+    "current_equity_usdt": 999.77881176,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "three_minute_live_window": {
+    "status": "PASS",
+    "duration_seconds": 183.2,
+    "samples": 36,
+    "event_count_delta": 32974,
+    "operation_states": ["RUNNING"],
+    "processing_lag_p95_ms_max": 0.0,
+    "wide_lag_p95_ms_max": 0.0,
+    "queue_depth_max": 2,
+    "reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "dropped_event_delta": 0,
+    "persistence_fault_delta": 0,
+    "persistence_buffer_drop_delta": 0,
+    "process_memory_mb_range": [356.484, 377.719],
+    "strategy_counts": [8],
+    "account_counts": [16],
+    "real_orders_observed": false,
+    "auth_observed": false,
+    "note": "The short window verifies forward progress and bounded queues; it does not prove multi-hour memory stability."
+  },
+  "natural_live_public_paper_observations": {
+    "main_trades": [
+      {
+        "strategy_id": "LSA_REVERSAL_V1",
+        "symbol": "DOGEUSDT",
+        "side": "LONG",
+        "holding_ms": 68484,
+        "exit_reason": "EDGE_DECAY",
+        "net_pnl_usdt": "-0.039447"
+      },
+      {
+        "strategy_id": "LSA_REVERSAL_V1",
+        "symbol": "SOLUSDT",
+        "side": "LONG",
+        "holding_ms": 20898,
+        "exit_reason": "EDGE_DECAY",
+        "net_pnl_usdt": "-0.18174124"
+      }
+    ],
+    "new_strategy_h": {
+      "status": "PASS",
+      "sample_type": "LIVE_PUBLIC",
+      "base_trades": 2,
+      "base_wins": 1,
+      "base_net_pnl_usdt": "-0.37396632",
+      "stress_trades": 1,
+      "stress_wins": 0,
+      "stress_net_pnl_usdt": "-0.68828496",
+      "minimum_holding_ms": 19664,
+      "maximum_holding_ms": 230384,
+      "profitability": "NOT_PROVEN"
+    },
+    "new_strategy_g": {
+      "natural_qualification": "NOT_OBSERVED",
+      "profitability": "NOT_PROVEN"
+    },
+    "one_to_two_second_exit_observed": false,
+    "strategy_profitability": "NOT_PROVEN"
+  },
+  "actual_ui_verification": {
+    "status": "PASS",
+    "url": "http://127.0.0.1:8870/",
+    "observed_operation_state": "작동 중",
+    "market_observation": "계속 작동",
+    "paper_entry": "작동",
+    "automatic_recovery": "켜짐",
+    "displayed_lag_p95": "0 ms",
+    "strategy_rows": 8,
+    "enabled_strategy_modes": 8,
+    "enabled_direction_controls": 16,
+    "strategy_h_long_toggle_changed_and_restored": true,
+    "pages_opened": ["시장", "전략", "기록", "분석", "설정"],
+    "chart_fullscreen_open_close": "PASS",
+    "playwright_console_or_page_errors": 0,
+    "screenshot": {
+      "path": "evidence/screenshots/phase08-eight-strategy-live-performance.jpg",
+      "sha256": "ec76d288d49519eae997c1b869ed3446ea36cc1bafb6c915e1f3796b26ad8887"
+    }
+  },
+  "ledger": {
+    "sqlite_quick_check": "ok",
+    "immutable_existing_history_modified": false
+  },
+  "automated_validation": {
+    "backend_tests": {"status": "PASS", "passed": 248},
+    "frontend_tests": {"status": "PASS", "files": 12, "passed": 36},
+    "playwright": {"status": "PASS", "projects": ["desktop", "tablet", "mobile"], "passed": 3},
+    "ruff": "PASS",
+    "mypy": {"status": "PASS", "source_files": 78},
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {"status": "PASS", "modules": 48},
+    "paper_build_safety": "PASS",
+    "security_scan": {"status": "PASS", "checked_source_files": 111, "violations": 0, "real_order_path": false},
+    "repository_hygiene": "PASS"
+  },
+  "github_actions": {
+    "status": "NOT_RUN",
+    "reason": "Evidence was written before pushing the evidence commit; this field must be updated after the final main workflow finishes."
+  },
+  "limitations": {
+    "strategy_profitability": "NOT_PROVEN",
+    "strategy_g_natural_signal": "NOT_OBSERVED",
+    "strategy_h_sample_state": "INSUFFICIENT_SAMPLE",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  }
+}

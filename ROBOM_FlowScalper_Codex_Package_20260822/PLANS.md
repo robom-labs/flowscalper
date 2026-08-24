@@ -205,6 +205,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 - 2026-08-24: ADR-013에 따라 전략 신호와 최종 실행가능 비용 게이트의 가격구조를 일치시키고, A~D의 고정 통과 시간을 실제 event-time·history-prefix 확인으로 교체한다. 수익성 기준이나 신호 임계값은 낮추지 않으며 표본 부족을 그대로 표시한다.
 - 2026-08-24: ADR-014에 따라 일반 근거약화 종료에 체결 뒤 10초 유예·복수 불리 신호·3초 지속 확인을 적용하고, 전략 성과는 독립 League 거래만 집계한다. 초기 SL/TP와 안전 종료는 즉시 유지하며 원장 정밀도는 바꾸지 않는다.
 - 2026-08-25: ADR-015에 따라 전체 호가 가격과 1,200개 전략 통계 과거창을 정확한 증분 정렬 인덱스로 유지한다. 전략 임계값·Decimal 원장·PAPER 안전경계는 바꾸지 않고, native Fullscreen API가 없는 브라우저에는 앱 CSS 전체화면을 제공한다.
+- 2026-08-25: ADR-016에 따라 다중호가 공정가 G와 깊이보정 OFI H를 EXPERIMENTAL·SHADOW 전용으로 추가해 A~H 8개 전략·16계좌를 비교한다. 기존 비용·보호·위험 기준은 낮추지 않으며 LIVE 중 저장 replay는 별도 저우선순위 프로세스로 격리한다.
 
 ## v0.2 upgrade progress
 
@@ -228,6 +229,7 @@ Codex must append concise dated entries here or link ADRs when a material choice
 | Upgrade 15 | COMPLETE | 비용후 실행가능 계획, A~D event-time 지속성, A~F 양방향 TP/SL 24시나리오, 고유 replay 후보 집계와 거래상세 상태 정리를 구현했다. backend 204·frontend 32·E2E 3과 전체 정적·보안검사를 통과했고, 공개시장 15,045 events replay 2회의 checksum·평가 41,628·적격 8·고유후보 5·shadow 종료 7이 일치했다. 실제 8870은 시작 한 번으로 RUNNING·p95 65ms를 표시했다. | 전략 수익성 표본 부족, 6시간·24시간·Release ZIP NOT_RUN | 완료 |
 | Upgrade 16 | COMPLETE | 1~2초 EDGE_DECAY churn을 10초 유예·복수 신호·3초 지속 확인으로 수정하고 독립 전략 통계·적응형 UI 자릿수·현재 Run 기록 기본필터를 구현했다. backend 207·frontend 36·E2E 3·정적·보안·build PASS. 새 정책 실제 공개시장 main 18.354초, League 15.664~38.382초 보유와 실제 browser 6/6 전략·12/12 방향·PAPER 주문 0을 확인했다. | 전략 수익성 표본 부족, 6시간·24시간·Release ZIP NOT_RUN | 완료 |
 | Upgrade 17 | COMPLETE | 장시간 호가·전략통계 반복 정렬과 앱 내 브라우저 전체화면·모바일 클릭 겹침을 수정했다. backend 213·frontend 36·E2E 3·정적·보안·build PASS. 실제 8870 시작·정지·재개·자연 진입·TP/SL·기록·분석·replay·전체화면을 직접 확인했고, 1분 표본 실행경로 p95 141~382ms·gap/drop/fault 0, main 37.070초·shadow 최소 14.060초였다. | 변경 후 6시간·24시간 soak, 전략 수익성, Release ZIP NOT_RUN | 완료 |
+| Upgrade 18 | COMPLETE | 공식 연구를 근거로 G/H를 SHADOW 전용으로 추가하고 8전략·16계좌로 확장했으며 LIVE 중 replay를 별도 프로세스로 격리했다. backend 248·frontend 36·E2E 3·정적·보안·build PASS. 15,045 events replay 3회의 checksum·55,504 평가·9 적격·8 후보·9 shadow가 일치했고, 실제 replay 병행 중 LIVE event 2,597건 진행·reconnect/lag/drop 0, 183초 RUNNING 32,974 events·queue 최대 2를 확인했다. 실제 H LIVE_PUBLIC 3건은 19.664~230.384초 보유했고 수익성은 미입증이다. | 수익성 표본 부족, G 자연신호 NOT_OBSERVED, 6시간·24시간·Release ZIP NOT_RUN | 완료 |
 
 ## Progress log
 
@@ -250,3 +252,4 @@ Codex must maintain a table with Wave, status, last commit, validation result, b
 | 15 | COMPLETE | 2a40186 | Backend 204·frontend 32·Playwright 3, lint·typecheck·build·security 107 source PASS. A~F × LONG/SHORT × TP/STOP 24시나리오와 실제 공개시장 replay 2회 checksum·집계 일치, 실제 browser READY→CONNECTING→RUNNING·p95 65ms, GitHub Actions 32674493842 PASS. | 수익성 표본 부족, 6h·24h·Release ZIP NOT_RUN | 완료 |
 | 16 | COMPLETE | 0c7203e | Backend 207·frontend 36·Playwright 3, lint·typecheck·build·security 108 source PASS. 실제 public-market main 18.354초와 League 15.664~38.382초, browser `이번 Run` 기본 기록·6/6 전략·12/12 방향·RUNNING·실제주문 0, replay 2회 checksum과 집계 일치, GitHub Actions 32690932657 PASS. | 수익성 표본 부족, 6h·24h·Release ZIP NOT_RUN | 완료 |
 | 17 | COMPLETE | 41e9063 | Backend 213·frontend 36·Playwright desktop/tablet/mobile 3, lint·typecheck·build·security 108 source PASS. 실제 8870 브라우저 전 기능, 자연 main 37.070초·shadow 최소 14.060초, replay 2회 checksum 일치와 1분 LIVE p95 141~382ms·queue 최대 1·gap/drop/fault 0, GitHub Actions 32744518964 PASS를 확인했다. | 수익성 표본 부족, 변경 후 6h·24h·Release ZIP NOT_RUN | 완료 |
+| 18 | COMPLETE | 80fe973 | Backend 248·frontend 36·Playwright desktop/tablet/mobile 3, lint·typecheck·build·security 111 source PASS. A~H 8전략·16계좌, G/H 양방향·TP/SL, replay 3회 checksum 일치, 실제 LIVE 중 process replay 격리와 H 자연 LIVE_PUBLIC 3건, 183초 RUNNING을 확인했다. GitHub Actions는 최종 증거 commit에서 확인한다. | 수익성 표본 부족, G 자연신호·6h·24h·Release ZIP NOT_RUN | GitHub main·Actions 확인 |
