@@ -213,6 +213,15 @@
     "repository_hygiene": "PASS",
     "sqlite_quick_check": "ok"
   },
+  "github_main_implementation": {
+    "commit": "42536795aa718edb2922fde9478a50a08a1da3d0",
+    "actions_run_id": 32789067527,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/32789067527",
+    "validate_job": "PASS in 51s",
+    "browser_job": "PASS in 1m26s",
+    "browser_evidence_upload": "PASS",
+    "status": "PASS"
+  },
   "not_proven_or_not_run": {
     "six_hour_soak": "NOT_RUN",
     "twenty_four_hour_soak": "NOT_RUN",

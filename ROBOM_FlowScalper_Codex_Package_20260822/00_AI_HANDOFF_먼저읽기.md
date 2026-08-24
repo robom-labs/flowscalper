@@ -214,7 +214,7 @@ ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정�
 | 저장 공개시장 replay | 15,045 events, 전략평가 62,442, 적격 9, 후보 8, shadow 종료 9, 세 checksum 일치 |
 | SQLite | `PRAGMA quick_check=ok` |
 | 실제 주문·인증 | false·false |
-| GitHub Actions | Wave 21 `32785122708` PASS, Wave 22 최종 commit은 이 문서와 함께 갱신 |
+| GitHub Actions | Wave 22 구현 `42536795aa718edb2922fde9478a50a08a1da3d0`, Actions `32789067527` validate·browser·evidence upload PASS |
 | 최종 ZIP SHA-256 | `1f433e47f4b3e405dcc483239206e13a3bbd9caa244a4b7b84a52ee70f7ccfe9` |
 
 Wave 22에서는 고정 wall-clock 오프셋 때문에 정상 이벤트가 약 2초 지연으로 오인되던 문제를 monotonic 거래소 시각으로 수정했다. 실제 Binance 공개 스트림 단축 교체 3회가 최대 0.919초에 자동 복구됐고, 생산 기본 15분 교체도 1.749초에 복구됐다. 실제 앱 내 브라우저에서는 시작 한 번으로 `시작 전 → 연결 중 → 작동 중`, P95 94ms와 console error·warning 0을 확인했다. 서비스 재시작 뒤 남던 이전 Run의 `새 PAPER 진입 2건` 알림도 제거했고, 최종 새 빌드에서 알림 없음·2.5초 내 작동 중·P95 38.330ms·console error 0을 다시 확인했다. 기본 교체 전에 실제 임계지연 406건이 별도 검증 구간에 있었으나 fail-closed 뒤 자동회복됐고 교체 뒤 후속 59,962 event와 최종 backend 회귀검사 동안 추가 증가가 없었다. 기계판독 결과는 `evidence/WAVE22_CLOCK_ROTATION_QA.json`을 사용한다. GitHub 문서의 과거 수치가 현재 로컬 실행을 자동으로 증명하지는 않으므로 다음 변경 뒤에는 다시 검증한다.
