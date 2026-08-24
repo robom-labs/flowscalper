@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "captured_date_kst": "2026-08-25",
+  "scope": "Wave 21 OFI-return SHADOW strategy, LIVE/replay coexistence and full regression",
+  "safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_keys_or_secrets": 0,
+    "wallet_paths": 0
+  },
+  "implementation": {
+    "strategy_id": "OFI_RETURN_CONFLUENCE_V1",
+    "registry_strategy_count": 9,
+    "league_account_count": 18,
+    "default_mode": "SHADOW",
+    "directions": [
+      "LONG",
+      "SHORT"
+    ],
+    "profiles": [
+      "BASE",
+      "STRESS"
+    ],
+    "strategy_version_revision": "2026-08-25-wave21",
+    "replay_target_cpu_ratio": 0.05,
+    "market_replay_yield_every_events": 16,
+    "checksum_yield_every_events": 128
+  },
+  "research_sources": [
+    "https://arxiv.org/abs/1011.6402",
+    "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7227998",
+    "https://arxiv.org/abs/2506.05764"
+  ],
+  "automated_validation": {
+    "backend_pytest": {
+      "status": "PASS",
+      "passed": 279,
+      "duration_seconds": 38.81
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "test_files": 12,
+      "passed": 40
+    },
+    "playwright": {
+      "status": "PASS",
+      "passed": 3,
+      "viewports": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "capture_disabled_for_final_regression": true,
+      "reason": "과거 Wave 증거 파일 덮어쓰기를 방지하고 Wave 21 실제 화면은 별도 파일로 보존"
+    },
+    "ruff": "PASS",
+    "mypy_source_files": 81,
+    "mypy": "PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": {
+      "status": "PASS",
+      "modules": 48,
+      "javascript_kb": 485.73,
+      "javascript_gzip_kb": 150.64
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "source_files": 114,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "sqlite_quick_check": "ok"
+  },
+  "stored_public_market_replay": {
+    "source_run_id": "run-f14214b3b1dd",
+    "replay_ids": [
+      "replay-077ee42417924c1b",
+      "replay-67f6e51924c64a13",
+      "replay-bc66d3a1a2ca4d8e"
+    ],
+    "checksum_each": "f7b59481f5c79184697fc92d59696171d9f61f2efc62259c12c7263a3d437cee",
+    "checksums_match": true,
+    "event_count_each": 15045,
+    "strategy_evaluation_count_each": 62442,
+    "qualified_signal_count_each": 9,
+    "candidate_plan_count_each": 8,
+    "main_trade_count_each": 0,
+    "shadow_trade_count_each": 9,
+    "final_state_each": "OBSERVING_NO_MAIN_TRADE",
+    "new_strategy_qualified_paths": 0,
+    "thresholds_lowered_for_replay": false,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "live_parallel_replay_postfix": {
+    "live_run_id": "run-94899287d623",
+    "replay_id": "replay-bc66d3a1a2ca4d8e",
+    "sample_count": 45,
+    "sample_interval_seconds": 5,
+    "observed_seconds": 225,
+    "event_count_start": 8057,
+    "event_count_finish": 39596,
+    "event_count_delta": 31539,
+    "lag_p50_max_ms": 22.5,
+    "lag_p95_max_ms": 369.5,
+    "wide_lag_p95_max_ms": 1944.5,
+    "queue_depth_max": 2,
+    "critical_lag_event_count_delta": 0,
+    "critical_lag_active_any": false,
+    "entry_locked_any": false,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_faults": 0,
+    "persistence_buffer_drops": 0,
+    "process_cpu_percent_max": 95.253,
+    "process_memory_mb_max": 366.094,
+    "result": "PASS",
+    "limitation": "단일 225초 동시 실행이며 6시간 또는 24시간 soak를 대신하지 않음"
+  },
+  "live_post_full_test_recovery": {
+    "sample_count": 24,
+    "sample_interval_seconds": 5,
+    "observed_seconds": 117.737,
+    "event_count_start": 88530,
+    "event_count_finish": 103550,
+    "event_count_delta": 15020,
+    "lag_p50_max_ms": 17.5,
+    "lag_p95_min_ms": 152.5,
+    "lag_p95_max_ms": 536.5,
+    "wide_lag_p95_max_ms": 1931.5,
+    "queue_depth_max": 2,
+    "critical_lag_event_count_at_start": 26,
+    "critical_lag_event_count_at_finish": 26,
+    "critical_lag_event_count_delta": 0,
+    "critical_lag_active_any": false,
+    "entry_locked_any": false,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_faults": 0,
+    "persistence_buffer_drops": 0,
+    "last_errors": [],
+    "result": "PASS_WITH_OBSERVED_TEST_LOAD",
+    "note": "전체 회귀와 빌드 중 누적 critical count가 0에서 26으로 증가했으나 부하 종료 후 표본에서는 추가 증가, active critical 상태와 진입잠금이 없었음"
+  },
+  "actual_live_snapshot": {
+    "captured_ts_ms": 1787610440076,
+    "run_id": "run-94899287d623",
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "starting_equity_usdt": 1000.0,
+    "current_equity_usdt": 999.83887639,
+    "realized_pnl_usdt": -0.16112361,
+    "fees_usdt": 0.12293361,
+    "trade_count": 1,
+    "wide_symbols": 50,
+    "deep_symbols": 20,
+    "event_count": 108554,
+    "lag_p50_ms": 9.0,
+    "lag_p95_ms": 152.5,
+    "wide_lag_p95_ms": 1733.5,
+    "queue_depth": 0,
+    "critical_lag_active": false,
+    "entry_locked": false,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_faults": 0,
+    "last_error": null,
+    "clock_sync_status": "SYNCED",
+    "venue_clock_offset_ms": 2136.5,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "actual_main_paper_trade": {
+    "trade_id": "paper-candidate-45104b2dc2a74524-main-base",
+    "symbol": "SUIUSDT",
+    "strategy_id": "LSA_REVERSAL_V1",
+    "side": "LONG",
+    "sample_type": "LIVE_PUBLIC",
+    "entry": "0.804900",
+    "exit": "0.804600",
+    "initial_stop": "0.798411200",
+    "take_profit": "0.8254541600",
+    "quantity": "127.3",
+    "exit_reason": "EDGE_DECAY",
+    "holding_ms": 23524,
+    "gross_pnl_usdt": "-0.0381900",
+    "fees_usdt": "0.122933610",
+    "slippage_usdt": "0",
+    "net_pnl_usdt": "-0.161123610",
+    "one_or_two_second_exit": false
+  },
+  "current_strategy_profile_summary": [
+    {
+      "strategy_id": "LSA_REVERSAL_V1",
+      "base": {"samples": 3, "wins": 0, "losses": 3, "win_rate": "0", "net_pnl_usdt": "-1.499127908", "median_hold_ms": 18586},
+      "stress": {"samples": 3, "wins": 0, "losses": 3, "win_rate": "0", "net_pnl_usdt": "-2.499690636", "median_hold_ms": 18598}
+    },
+    {
+      "strategy_id": "CBR_CONTINUATION_V1",
+      "base": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null},
+      "stress": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null}
+    },
+    {
+      "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+      "base": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null},
+      "stress": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null}
+    },
+    {
+      "strategy_id": "OFI_CONTINUATION_PULLBACK_V1",
+      "base": {"samples": 1, "wins": 0, "losses": 1, "win_rate": "0", "net_pnl_usdt": "-2.65789936", "median_hold_ms": 16906},
+      "stress": {"samples": 1, "wins": 0, "losses": 1, "win_rate": "0", "net_pnl_usdt": "-3.32617452", "median_hold_ms": 16902}
+    },
+    {
+      "strategy_id": "QUEUE_MICROPRICE_MOMENTUM_V1",
+      "base": {"samples": 7, "wins": 0, "losses": 7, "win_rate": "0", "net_pnl_usdt": "-5.2925665634", "median_hold_ms": 22674},
+      "stress": {"samples": 7, "wins": 0, "losses": 7, "win_rate": "0", "net_pnl_usdt": "-7.4803384816", "median_hold_ms": 22664}
+    },
+    {
+      "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+      "base": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null},
+      "stress": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null}
+    },
+    {
+      "strategy_id": "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+      "base": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null},
+      "stress": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null}
+    },
+    {
+      "strategy_id": "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+      "base": {"samples": 2, "wins": 0, "losses": 2, "win_rate": "0", "net_pnl_usdt": "-2.69804374", "median_hold_ms": 14376},
+      "stress": {"samples": 2, "wins": 0, "losses": 2, "win_rate": "0", "net_pnl_usdt": "-4.40357940", "median_hold_ms": 14376}
+    },
+    {
+      "strategy_id": "OFI_RETURN_CONFLUENCE_V1",
+      "base": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null},
+      "stress": {"samples": 0, "wins": 0, "losses": 0, "win_rate": null, "net_pnl_usdt": "0", "median_hold_ms": null}
+    }
+  ],
+  "strategy_statistics_conclusion": {
+    "sample_status_all": "표본 부족",
+    "profitability": "NOT_PROVEN",
+    "thresholds_lowered": false,
+    "promotion_decision": "NONE"
+  },
+  "actual_browser": {
+    "status": "PASS",
+    "one_start_click": [
+      "시작 전",
+      "연결 중",
+      "작동 중"
+    ],
+    "manual_pause": "사용자가 일시정지",
+    "resume": "작동 중",
+    "strategy_rows": 9,
+    "selected_mode_buttons": 9,
+    "selected_direction_buttons": 18,
+    "status_copy": "9/9 전략 켜짐 · 실제 주문 0",
+    "viewport": "1280x720",
+    "root_scroll_width": 1280,
+    "root_scroll_height": 720,
+    "chart_width": 880,
+    "chart_height": 542,
+    "console_errors": [],
+    "console_warnings": [],
+    "screenshots": [
+      {
+        "path": "evidence/screenshots/wave21-live-market-1280x720.png",
+        "pixels": "1280x720",
+        "sha256": "222d510f29b35a8f41afc4bea88fca1a5dd7e4959064bae5e716b453488618e3"
+      },
+      {
+        "path": "evidence/screenshots/wave21-live-strategies-1280x720.png",
+        "pixels": "1265x712",
+        "sha256": "1bdb7fc54be66c4ccc97b0d7c49c76d1234ae999e8829b9087fd2d2fc03e73cd"
+      },
+      {
+        "path": "evidence/screenshots/wave21-live-strategies-full.png",
+        "pixels": "1265x793",
+        "sha256": "4f23f1dfaac03faa61fd8300b5ff087971024b9b6b7b30adc58d42e929a14a69"
+      }
+    ]
+  },
+  "acceptance": {
+    "new_strategy_code_and_tests": "PASS",
+    "full_regression": "PASS",
+    "actual_browser_interaction": "PASS",
+    "deterministic_stored_public_replay": "PASS",
+    "live_replay_isolation_225_seconds": "PASS",
+    "paper_safety": "PASS",
+    "strategy_profitability": "NOT_PROVEN",
+    "new_strategy_natural_live_sample": "NOT_OBSERVED",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "PENDING_AT_FILE_CREATION",
+    "blocked": []
+  }
+}

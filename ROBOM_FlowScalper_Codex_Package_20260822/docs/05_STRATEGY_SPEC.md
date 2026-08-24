@@ -136,7 +136,13 @@ Apply symmetric logic below support.
 
 Both strategies are PAPER-only, evaluate LONG and SHORT symmetrically, use independent BASE/STRESS accounts and cannot enter shared capital unless a user explicitly changes the mode after adequate evidence. The starting thresholds are research controls, not profitability claims. See ADR-016.
 
-## 5.7 Candidate scoring
+## 5.7 Strategy I — OFI and trailing-return confluence
+
+`OFI_RETURN_CONFLUENCE_V1` tests a distinct SHADOW-only hypothesis. It requires depth-adjusted three-second OFI robust z of at least 1.5, aligned 250ms and three-second OFI, a same-direction three-second trailing return of at least 2bp, microprice displacement of at least 0.20bp and price-response efficiency of at least 0.30 for 1,000ms. The return anchor is the nearest same-symbol prefix snapshot at or before the three-second horizon and may be at most 1.5 seconds older; future timestamps are ignored.
+
+The strategy does not require trade imbalance as an additional gate because it isolates OFI plus recent price-path confluence rather than duplicating E/F/H. It remains EXPERIMENTAL, PAPER-only and SHADOW by default. Thresholds are starting research controls, not evidence of profitability. See ADR-019.
+
+## 5.8 Candidate scoring
 
 A candidate score must be decomposable:
 
@@ -155,7 +161,7 @@ candidate_score =
 
 The UI must show component scores and rejection reasons. A high score alone cannot override a hard safety gate.
 
-## 5.8 Cold-start behavior
+## 5.9 Cold-start behavior
 
 Before sufficient data:
 
@@ -164,13 +170,13 @@ Before sufficient data:
 - store all qualified and near-miss candidates, not only executed trades;
 - collect enough outcome labels for later validation.
 
-## 5.9 No forced trade count
+## 5.10 No forced trade count
 
 The research target may be several trades per day across the universe, but the engine must allow zero trades. Never lower thresholds to satisfy a count target.
 
-## 5.10 Executable cost geometry and temporal confirmation
+## 5.11 Executable cost geometry and temporal confirmation
 
-- REVERSION A/C use a minimum 0.80% structural stop distance. TREND B/D/E/F/G/H use a minimum 0.30% distance.
+- REVERSION A/C use a minimum 0.80% structural stop distance. TREND B/D/E/F/G/H/I use a minimum 0.30% distance.
 - The distance is not added risk. Risk-based sizing reduces quantity so the account risk budget remains unchanged.
 - Final eligibility is recalculated from executable bid/ask, worst entry, both-side fees, expected exit slippage and the configured split exits. Net reward-risk below 1.20 remains rejected.
 - A-D confirmation durations use venue event timestamps and reset immediately when alignment breaks.

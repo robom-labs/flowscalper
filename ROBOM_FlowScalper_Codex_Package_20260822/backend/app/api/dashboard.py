@@ -350,7 +350,7 @@ def _default_risk_contract() -> dict[str, object]:
             "drawdown_lock": "3.00%",
         },
         "strategy_league": {
-            "account_count": 16,
+            "account_count": 18,
             "starting_equity_per_account_usdt": "1000",
             "risk_per_position": "0.50%",
             "max_positions_per_account": 3,

@@ -1,4 +1,4 @@
-"""LIVE 피처를 A/B/C/D/E/F/G/H 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
+"""LIVE 피처를 A/B/C/D/E/F/G/H/I 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
 
 from __future__ import annotations
 
@@ -35,6 +35,11 @@ from backend.app.strategies.multilevel_microprice import (
     multilevel_alignment_ready,
 )
 from backend.app.strategies.ofi_pullback import OfiPullbackContext, OfiPullbackStrategy
+from backend.app.strategies.ofi_return_confluence import (
+    OfiReturnConfluenceContext,
+    OfiReturnConfluenceStrategy,
+    ofi_return_confluence_ready,
+)
 from backend.app.strategies.queue_microprice import (
     QueueMicropriceContext,
     QueueMicropriceStrategy,
@@ -159,6 +164,7 @@ class StrategySignalEvaluator:
         history = list(history_window)
         sorted_history = self._sorted_history[snapshot.symbol]
         history_statistics = self._history_statistics(sorted_history, snapshot)
+        trailing_return_3s_bps = _trailing_return_bps(history, snapshot)
         results: list[EvaluatedSignal] = []
         for strategy_id in registry.strategy_ids:
             descriptor = registry.descriptor(strategy_id)
@@ -172,6 +178,7 @@ class StrategySignalEvaluator:
                     regime,
                     history,
                     history_statistics,
+                    trailing_return_3s_bps,
                     tick_size=tick_size,
                 )
                 results.append(
@@ -197,6 +204,7 @@ class StrategySignalEvaluator:
         regime: Regime,
         history: list[FeatureSnapshot],
         history_statistics: _HistoryStatistics,
+        trailing_return_3s_bps: float | None,
         *,
         tick_size: Decimal,
     ) -> CandidateDecision:
@@ -477,6 +485,40 @@ class StrategySignalEvaluator:
                     confirmation_ms=confirmation_ms,
                 )
             )
+        if isinstance(evaluator, OfiReturnConfluenceStrategy):
+            plan = _momentum_plan(snapshot, side, tick_size)
+            directional_depth_adjusted_ofi_z = (
+                history_statistics.long_depth_adjusted_ofi_z
+                if side is Side.LONG
+                else history_statistics.short_depth_adjusted_ofi_z
+            )
+            aligned = ofi_return_confluence_ready(
+                side,
+                snapshot,
+                regime,
+                directional_depth_adjusted_ofi_z,
+                trailing_return_3s_bps,
+            )
+            confirmation_ms = self._confirmation_ms(
+                evaluator.strategy_id,
+                snapshot.symbol,
+                side,
+                snapshot.ts_ms,
+                aligned=aligned,
+            )
+            return evaluator.evaluate(
+                OfiReturnConfluenceContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=plan,
+                    directional_depth_adjusted_ofi_robust_z=(
+                        directional_depth_adjusted_ofi_z
+                    ),
+                    trailing_return_3s_bps=trailing_return_3s_bps,
+                    confirmation_ms=confirmation_ms,
+                )
+            )
         raise TypeError(f"지원하지 않는 전략 evaluator: {type(evaluator).__name__}")
 
     @staticmethod
@@ -484,7 +526,7 @@ class StrategySignalEvaluator:
         history: _SortedFeatureHistory,
         snapshot: FeatureSnapshot,
     ) -> _HistoryStatistics:
-        """동일 snapshot의 16개 전략·방향이 같은 정렬 통계를 공유한다."""
+        """동일 snapshot의 18개 전략·방향이 같은 정렬 통계를 공유한다."""
 
         deviation_bps = _vwap_deviation_bps(snapshot) or 0.0
         directional_flow_z = robust_z_from_sorted(
@@ -592,6 +634,28 @@ def _pullback_metrics(
     )
 
 
+def _trailing_return_bps(
+    history: list[FeatureSnapshot],
+    snapshot: FeatureSnapshot,
+    *,
+    horizon_ms: int = 3_000,
+    maximum_anchor_age_ms: int = 1_500,
+) -> float | None:
+    """현재보다 3초 이전의 가장 가까운 prefix 가격만 사용해 수익률을 계산한다."""
+
+    target_ts_ms = snapshot.ts_ms - horizon_ms
+    earliest_ts_ms = target_ts_ms - maximum_anchor_age_ms
+    eligible = (
+        item
+        for item in history
+        if earliest_ts_ms <= item.ts_ms <= target_ts_ms and item.mid > 0
+    )
+    anchor = max(eligible, key=lambda item: item.ts_ms, default=None)
+    if anchor is None or snapshot.mid <= 0:
+        return None
+    return (snapshot.mid - anchor.mid) / anchor.mid * 10_000
+
+
 def _plan(
     snapshot: FeatureSnapshot,
     side: Side,
@@ -633,7 +697,7 @@ def _momentum_plan(
     side: Side,
     tick_size: Decimal,
 ) -> PlanInputs:
-    """E/F/G/H도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
+    """E/F/G/H/I도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
 
     return _plan(
         snapshot,

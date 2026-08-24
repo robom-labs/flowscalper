@@ -231,7 +231,7 @@ def test_live_dashboard_never_waits_for_sqlite_writer_lock(
     assert dashboard["status"]["mode"] == "LIVE_SHADOW_PAPER"
     assert dashboard["history"] == []
     assert dashboard["history_scope"]["excluded_prior_version_samples"] == 1
-    assert len(dashboard["strategies"]) == 8
+    assert len(dashboard["strategies"]) == 9
     lsa_base = dashboard["strategies"][0]["performance"]["BASE"]
     assert lsa_base["sample_size"] == 0
     assert lsa_base["excluded_prior_version_samples"] == 1

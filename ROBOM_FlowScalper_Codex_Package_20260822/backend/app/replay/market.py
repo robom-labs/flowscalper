@@ -97,7 +97,7 @@ class StoredMarketReplay:
         for index, payload in enumerate(events, start=1):
             event = MarketEvent.model_validate(payload)
             runtime.ingest_live_event(event)
-            if cooperative_yield is not None and index % 64 == 0:
+            if cooperative_yield is not None and index % 16 == 0:
                 cooperative_yield()
         if cooperative_yield is not None:
             cooperative_yield()

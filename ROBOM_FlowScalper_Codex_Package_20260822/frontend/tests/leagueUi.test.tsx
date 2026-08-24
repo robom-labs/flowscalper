@@ -1,4 +1,4 @@
-// 8전략·16독립계좌가 쉬운 전략 설정과 진행 거래에서 분리 표시되는지 검증한다.
+// 9전략·18독립계좌가 쉬운 전략 설정과 진행 거래에서 분리 표시되는지 검증한다.
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -14,12 +14,12 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test('shows eight compact strategy rows, easy modes and BASE/STRESS account detail', () => {
+test('shows nine compact strategy rows, easy modes and BASE/STRESS account detail', () => {
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
-  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(8)
-  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(8)
+  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(9)
+  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(9)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('8/8 전략 켜짐 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('9/9 전략 켜짐 · 실제 주문 0')).toBeInTheDocument()
   expect([...document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')].every((button) => button.textContent?.includes('모의 중'))).toBe(true)
 
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[0])

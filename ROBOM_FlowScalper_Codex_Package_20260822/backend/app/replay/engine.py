@@ -120,7 +120,7 @@ class ReplayEngine:
             event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
             symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
             _length_prefixed_update(event_stream_digest, _canonical_json(event).encode())
-            if cooperative_yield is not None and index % 512 == 0:
+            if cooperative_yield is not None and index % 128 == 0:
                 cooperative_yield()
         normalized_path = tuple(str(item) for item in decision_path)
         decision_path_digest = hashlib.sha256()

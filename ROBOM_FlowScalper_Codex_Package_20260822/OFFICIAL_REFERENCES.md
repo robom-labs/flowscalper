@@ -93,6 +93,9 @@ The v0.1 dashboard uses a local SVG chart component and does not depend on Tradi
 - Exploring Microstructural Dynamics in Cryptocurrency Limit Order Books (100 ms crypto LOB study)  
   https://arxiv.org/html/2506.05764v2
 
+- Schmalz — Order Flow Imbalance and Short-Horizon BTC/USDT Returns: A Signal That Kept Needing More Scrutiny
+  https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7227998
+
 - Explainable Patterns in Cryptocurrency Microstructure  
   https://arxiv.org/html/2602.00776
 

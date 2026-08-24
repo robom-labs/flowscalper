@@ -143,7 +143,7 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     client = TestClient(create_app(runtime))
     dashboard = client.get("/api/dashboard").json()
-    assert len(dashboard["strategies"]) == 8
+    assert len(dashboard["strategies"]) == 9
     assert dashboard["operation_status"]["state"] == "READY"
     assert dashboard["operation_status"]["recommended_action"] == "START"
 

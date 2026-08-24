@@ -2,7 +2,7 @@
 
 ## 공통 원칙
 
-네 전략은 모두 공개시장 데이터와 내부 PAPER 체결에만 사용된다. 전략은 주문 권한이 없고 거래소 계정이나 private API를 호출하지 않는다. 같은 symbol snapshot과 과거 이력만 사용하며 현재값 이후 정보를 참조하지 않는다.
+아홉 전략은 모두 공개시장 데이터와 내부 PAPER 체결에만 사용된다. 전략은 주문 권한이 없고 거래소 계정이나 private API를 호출하지 않는다. 같은 symbol snapshot과 과거 이력만 사용하며 현재값 이후 정보를 참조하지 않는다.
 
 | 구분 | Strategy ID | 화면 이름 | 안정성 | 주 레짐 | 핵심 확인 |
 |---|---|---|---|---|---|
@@ -10,6 +10,11 @@
 | B | `CBR_CONTINUATION_V1` | 압축 돌파 재가속 | STABLE | TREND_UP, TREND_DOWN | 압축, 돌파, 눌림, 재가속 |
 | C | `VWAP_EXHAUSTION_REVERSION_V1` | VWAP 과도이탈 평균복귀 | EXPERIMENTAL | RANGE | micro-VWAP 이탈, 공격 흐름 소진, 구조 복귀 |
 | D | `OFI_CONTINUATION_PULLBACK_V1` | OFI 추세 눌림 지속 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 다중 OFI 정렬, 약한 역방향 눌림, 원 흐름 재가속 |
+| E | `QUEUE_MICROPRICE_MOMENTUM_V1` | 호가 쏠림 순간추세 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | top5·top10 호가, OFI, microprice 정렬 |
+| F | `AGGRESSOR_FLOW_CONTINUATION_V1` | 강한 체결 흐름 지속 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 방향성 체결금액, OFI, 가격반응 지속 |
+| G | `MULTILEVEL_MICROPRICE_MOMENTUM_V1` | 다중호가 공정가 추세 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | top10 공정가, OFI, 체결, 가격반응 |
+| H | `DEPTH_ADJUSTED_OFI_IMPULSE_V1` | 깊이보정 OFI 충격 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | 깊이보정 OFI robust z, 가격반응 |
+| I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | 깊이보정 OFI와 prefix 3초 수익률 동행 |
 
 ## 전략 A. 유동성 쓸기 반전
 
@@ -26,6 +31,26 @@
 ## 전략 D. OFI 추세 눌림 지속
 
 추세 레짐에서 250ms와 3초 OFI, 공격 체결, microprice가 같은 방향인지 확인한다. 짧은 역방향 눌림의 가격 충격이 약하고 원래 흐름이 재가속할 때만 후보가 된다. C와 마찬가지로 EXPERIMENTAL PAPER 전략이다.
+
+## 전략 E. 호가 쏠림 순간추세
+
+top5·top10 호가 불균형, 250ms·3초 OFI, 1초 체결과 microprice 변위가 500ms 이상 같은 방향일 때만 후보가 된다. 순간 호가 하나만으로 진입하지 않는다.
+
+## 전략 F. 강한 체결 흐름 지속
+
+방향성 체결금액의 robust z와 3초·10초 체결 흐름이 추세 레짐에서 OFI·microprice·실제 가격반응과 함께 500ms 이어지는지 확인한다.
+
+## 전략 G. 다중호가 공정가 추세
+
+최우선 호가만 보지 않고 top10 가격과 수량을 반영한 공정가를 계산한다. 이 공정가, 최우선 microprice, OFI, 체결과 가격반응이 750ms 정렬돼야 한다.
+
+## 전략 H. 깊이보정 OFI 충격
+
+3초 OFI를 top10 양방향 평균 깊이로 보정하고 이전 동일 종목 표본의 robust z와 비교한다. OFI·체결·microprice·가격반응이 함께 500ms 유지돼야 한다.
+
+## 전략 I. OFI·단기수익률 동행
+
+깊이보정 OFI와 직전 3초 가격수익률이 같은 방향으로 이어지는지를 별도로 검증한다. 기준가격은 현재보다 3초 이전의 가장 가까운 과거 표본만 사용하고 미래값을 보지 않는다. 1,000ms 지속과 공통 비용 gate를 통과해야 하며 기본값은 독립 SHADOW PAPER다.
 
 ## 모드와 방향 제어
 

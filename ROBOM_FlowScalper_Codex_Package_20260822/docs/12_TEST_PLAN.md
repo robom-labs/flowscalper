@@ -172,10 +172,10 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 
 - Backend tests cover immediate `202`, same-action deduplication, different-action conflict,
   bounded history, ordered stages, retryable/blocked failures, cancellation cleanup, current
-  and missing operations, dashboard/WebSocket output, the 16 League accounts, extended
+  and missing operations, dashboard/WebSocket output, the 18 League accounts, extended
   positions, split risk contracts and PAPER/auth invariants.
 - Frontend tests cover bootstrap failure, HTTP timeout and typed error bodies, duplicate
-  protection, cancel/retry, malformed WebSocket recovery, eight strategies and 16 account
+  protection, cancel/retry, malformed WebSocket recovery, nine strategies and 18 account
   pairing, beginner copy, scanner stability, indicators without input mutation and chart
   instance/series update behavior.
 - Deterministic Playwright covers the 45 accepted interactions across desktop, tablet and
@@ -208,10 +208,10 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 
 ## 12.17 Phase 05 strategy entry and protection regression
 
-- Parameterize all eight Registry strategies and LONG/SHORT through the runtime plan geometry and final executable-book cost gate. Require net reward-risk at least 1.20 without lowering fee or slippage assumptions.
-- Parameterize all eight strategies, both directions and both TP1→TP2 and initial-stop outcomes. Require protection orders immediately after fill, exact remaining quantity, stop non-widening and fee/slippage reconciliation.
-- Verify A/C REVERSION and B/D/E/F/G/H TREND exit styles use their documented minimum structural distances and split exits.
-- Verify G/H symmetric signal gates, actual event-time persistence, reset, history-prefix robust z and top10 fair-price/depth-normalized OFI reference calculations.
+- Parameterize all nine Registry strategies and LONG/SHORT through the runtime plan geometry and final executable-book cost gate. Require net reward-risk at least 1.20 without lowering fee or slippage assumptions.
+- Parameterize all nine strategies, both directions and both TP1→TP2 and initial-stop outcomes. Require protection orders immediately after fill, exact remaining quantity, stop non-widening and fee/slippage reconciliation.
+- Verify A/C REVERSION and B/D/E/F/G/H/I TREND exit styles use their documented minimum structural distances and split exits.
+- Verify G/H/I symmetric signal gates, actual event-time persistence, reset, history-prefix robust z, top10 fair-price/depth-normalized OFI and three-second trailing-return calculations.
 - Verify B/D pullback metrics are symmetric, use event time, require price reacceleration and ignore future history. Verify every temporal confirmation resets when alignment breaks.
 - Replay the same stored public-market Run twice and require identical checksum, evaluated/qualified/candidate/trade counts and PAPER/auth invariants.
 - Count replay candidates by unique candidate ID across main and League BASE/STRESS audit duplication.

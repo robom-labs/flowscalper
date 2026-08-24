@@ -1,4 +1,4 @@
-"""여덟 결정적 PAPER 전략, 레지스트리와 공통 후보 계약을 공개한다."""
+"""아홉 결정적 PAPER 전략, 레지스트리와 공통 후보 계약을 공개한다."""
 
 from backend.app.strategies.aggressor_flow import (
     AggressorFlowContext,
@@ -24,6 +24,11 @@ from backend.app.strategies.multilevel_microprice import (
     multilevel_alignment_ready,
 )
 from backend.app.strategies.ofi_pullback import OfiPullbackContext, OfiPullbackStrategy
+from backend.app.strategies.ofi_return_confluence import (
+    OfiReturnConfluenceContext,
+    OfiReturnConfluenceStrategy,
+    ofi_return_confluence_ready,
+)
 from backend.app.strategies.queue_microprice import (
     QueueMicropriceContext,
     QueueMicropriceStrategy,
@@ -49,6 +54,8 @@ __all__ = [
     "PlanInputs",
     "OfiPullbackContext",
     "OfiPullbackStrategy",
+    "OfiReturnConfluenceContext",
+    "OfiReturnConfluenceStrategy",
     "QueueMicropriceContext",
     "QueueMicropriceStrategy",
     "ExitStyle",
@@ -58,4 +65,5 @@ __all__ = [
     "VwapExhaustionStrategy",
     "depth_adjusted_ofi_ready",
     "multilevel_alignment_ready",
+    "ofi_return_confluence_ready",
 ]

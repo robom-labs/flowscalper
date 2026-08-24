@@ -1,4 +1,4 @@
-"""A/B/C/D/E/F/G/H 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
+"""A/B/C/D/E/F/G/H/I 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from backend.app.strategies.depth_adjusted_ofi import DepthAdjustedOfiStrategy
 from backend.app.strategies.liquidity_sweep import LiquiditySweepStrategy
 from backend.app.strategies.multilevel_microprice import MultilevelMicropriceStrategy
 from backend.app.strategies.ofi_pullback import OfiPullbackStrategy
+from backend.app.strategies.ofi_return_confluence import OfiReturnConfluenceStrategy
 from backend.app.strategies.queue_microprice import QueueMicropriceStrategy
 from backend.app.strategies.vwap_exhaustion import VwapExhaustionStrategy
 
@@ -42,6 +43,7 @@ StrategyEvaluator = (
     | AggressorFlowStrategy
     | MultilevelMicropriceStrategy
     | DepthAdjustedOfiStrategy
+    | OfiReturnConfluenceStrategy
 )
 
 
@@ -151,6 +153,16 @@ class StrategyRegistry:
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=DepthAdjustedOfiStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
+            ),
+            StrategyDescriptor(
+                strategy_id="OFI_RETURN_CONFLUENCE_V1",
+                display_name_ko="OFI·단기수익률 동행",
+                short_name="OFI·가격동행",
+                summary_ko="깊이보정 주문흐름과 최근 가격 방향이 함께 이어지는지 확인합니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=OfiReturnConfluenceStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
             ),
         )

@@ -6,7 +6,10 @@
 
 ## 아직 배포하지 않음
 
-- 수십만 건 저장 Run replay와 거래 재생 화면이 LIVE 수신을 밀던 문제를 모든 읽기·재처리·checksum 단계의 별도 `nice(19)` process와 구간별 10% CPU 예산으로 수정했다.
+- 깊이보정 OFI와 실제 prefix 3초 수익률이 같은 방향으로 1초 이상 이어질 때만 평가하는 I 전략을 SHADOW 전용으로 추가해 9전략·18개 BASE/STRESS PAPER 계좌로 확장했다.
+- I 전략은 spread·robust z·다중 OFI·microprice·가격반응·비용후 순손익비를 모두 통과해야 하며, 자연신호를 만들기 위해 임계값을 낮추지 않는다.
+- 수십만 건 저장 Run replay와 거래 재생 화면이 LIVE 수신을 밀던 문제를 모든 읽기·재처리·checksum 단계의 별도 `nice(19)` process와 구간별 5% CPU 예산으로 수정했다.
+- replay 협력 양보 지점을 시장 입력 16건·checksum 128건마다 적용했다. 15,045건 replay와 LIVE를 병행한 225초 표본에서 critical lag·진입잠금·비정상 재연결·gap·drop은 0이었다.
 - replay checksum을 이벤트·결정경로 length-prefix streaming digest로 바꿔 전체 canonical JSON 복제와 누적 CPU sleep 빚을 제거했다. 중간 규모 85,714건 두 실행은 checksum과 집계가 일치했고 LIVE critical lag·비정상 재연결·gap·drop·진입잠금은 0이었다.
 - 긴 replay 중 다른 timeline·거래 재생 요청은 대기열에 매달리지 않고 `REPLAY_BUSY` 재시도 안내를 즉시 표시한다.
 - 필터형 Parquet 조회도 배치 전체 checksum을 먼저 검증해 일부 row가 잘린 저장 배치가 정상처럼 통과하지 못하게 했다.

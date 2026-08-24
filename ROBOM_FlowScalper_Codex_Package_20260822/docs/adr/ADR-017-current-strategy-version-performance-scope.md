@@ -12,7 +12,7 @@ Accepted, 2026-08-25.
 
 ## 결정
 
-1. 전략 식별자 목록과 구현 revision을 분리하고 `STRATEGY_VERSION=<A~H ID>@<implementation revision>` 형식으로 Run과 거래에 기록한다.
+1. 전략 식별자 목록과 구현 revision을 분리하고 `STRATEGY_VERSION=<현재 Registry ID 목록>@<implementation revision>` 형식으로 Run과 거래에 기록한다.
 2. 기본 전략 성과는 `sample_type=LIVE_PUBLIC` 이면서 `strategy_version` 전체가 현재 빌드와 같은 독립 shadow 거래만 집계한다.
 3. 이전 버전 거래는 삭제·수정하지 않고 불변 원장에 남긴다. 현재 집계에서 제외한 건수를 전략·프로필 및 API 전체 범위에 표시한다.
 4. 예전 shadow payload에 `strategy_version`과 `config_hash`가 없으면 checksum을 먼저 검증한 뒤 연결된 불변 Run `config_json`과 `config_hash`로 조회 결과만 보강한다. 저장 payload나 checksum은 다시 쓰지 않는다.

@@ -1,8 +1,9 @@
-"""전략 리그 E/F의 대칭 조건과 실제 500ms 지속성을 검증한다."""
+"""전략 리그 E~I의 대칭 조건과 실제 event-time 지속성을 검증한다."""
 
 from __future__ import annotations
 
 from dataclasses import replace
+from decimal import Decimal
 
 import pytest
 
@@ -15,12 +16,17 @@ from backend.app.strategies import (
     DepthAdjustedOfiStrategy,
     MultilevelMicropriceContext,
     MultilevelMicropriceStrategy,
+    OfiReturnConfluenceContext,
+    OfiReturnConfluenceStrategy,
     QueueMicropriceContext,
     QueueMicropriceStrategy,
 )
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
-from backend.app.strategies.runtime_evaluator import StrategySignalEvaluator
+from backend.app.strategies.runtime_evaluator import (
+    StrategySignalEvaluator,
+    _trailing_return_bps,
+)
 from backend.tests.test_strategies import features, plan
 
 
@@ -470,3 +476,148 @@ def test_depth_adjusted_ofi_requires_robust_impulse_and_event_time() -> None:
         Side.LONG,
     ).rejection_codes
     assert decision_for(ready, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_ofi_return_confluence_qualifies_both_directions(side: Side) -> None:
+    direction = 1 if side is Side.LONG else -1
+    decision = OfiReturnConfluenceStrategy().evaluate(
+        OfiReturnConfluenceContext(
+            side=side,
+            features=aligned_features(side),
+            regime=Regime.RANGE,
+            plan=plan(side),
+            directional_depth_adjusted_ofi_robust_z=2.0,
+            trailing_return_3s_bps=3.0 * direction,
+            confirmation_ms=1_000,
+        )
+    )
+    assert decision.status is CandidateStatus.QUALIFIED
+    assert decision.net_reward_risk is not None
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "reason"),
+    [
+        ("data_healthy", False, "STALE_OR_DEGRADED_DATA"),
+        ("spread_bps", 8.01, "WIDE_SPREAD"),
+        ("depth_adjusted_ofi_3s_bps", 0.0, "DEPTH_ADJUSTED_OFI_NOT_ALIGNED"),
+        ("ofi_250ms", 0.0, "SHORT_OFI_NOT_ALIGNED"),
+        ("ofi_3s", 0.0, "MEDIUM_OFI_NOT_ALIGNED"),
+        ("microprice_minus_mid_bps", 0.19, "MICROPRICE_NOT_ALIGNED"),
+        ("price_response_efficiency", 0.29, "PRICE_RESPONSE_INEFFICIENT"),
+    ],
+)
+def test_ofi_return_confluence_core_rejections(
+    field_name: str,
+    value: object,
+    reason: str,
+) -> None:
+    feature = replace(aligned_features(Side.LONG), **{field_name: value})
+    decision = OfiReturnConfluenceStrategy().evaluate(
+        OfiReturnConfluenceContext(
+            Side.LONG,
+            feature,
+            Regime.RANGE,
+            plan(Side.LONG),
+            2.0,
+            3.0,
+            1_000,
+        )
+    )
+    assert reason in decision.rejection_codes
+
+
+def test_ofi_return_confluence_requires_history_z_return_persistence_and_cost() -> None:
+    strategy = OfiReturnConfluenceStrategy()
+    base = OfiReturnConfluenceContext(
+        Side.LONG,
+        aligned_features(Side.LONG),
+        Regime.RANGE,
+        plan(Side.LONG),
+        2.0,
+        3.0,
+        1_000,
+    )
+    assert "RETURN_HISTORY_MISSING" in strategy.evaluate(
+        replace(base, trailing_return_3s_bps=None)
+    ).rejection_codes
+    assert "TRAILING_RETURN_NOT_ALIGNED" in strategy.evaluate(
+        replace(base, trailing_return_3s_bps=1.99)
+    ).rejection_codes
+    assert "DEPTH_ADJUSTED_OFI_IMPULSE_WEAK" in strategy.evaluate(
+        replace(base, directional_depth_adjusted_ofi_robust_z=1.49)
+    ).rejection_codes
+    assert "OFI_RETURN_CONFLUENCE_NOT_PERSISTENT" in strategy.evaluate(
+        replace(base, confirmation_ms=999)
+    ).rejection_codes
+    for regime, reason in (
+        (Regime.WARMUP, "REGIME_WARMUP"),
+        (Regime.DEGRADED, "REGIME_DEGRADED"),
+        (Regime.SHOCK, "REGIME_SHOCK"),
+    ):
+        assert reason in strategy.evaluate(replace(base, regime=regime)).rejection_codes
+    expensive_plan = replace(
+        plan(Side.LONG),
+        target=plan(Side.LONG).entry + Decimal("0.40"),
+    )
+    assert "COST_FRACTION_TOO_HIGH" in strategy.evaluate(
+        replace(base, plan=expensive_plan)
+    ).rejection_codes
+
+
+def test_trailing_return_uses_nearest_prefix_anchor_and_ignores_future() -> None:
+    history = [
+        replace(features(), ts_ms=500, mid=99.0),
+        replace(features(), ts_ms=1_000, mid=100.0),
+        replace(features(), ts_ms=1_100, mid=101.0),
+        replace(features(), ts_ms=9_000, mid=1_000.0),
+    ]
+    current = replace(features(), ts_ms=4_000, mid=100.05)
+    assert _trailing_return_bps(history, current) == pytest.approx(5.0)
+    stale_anchor = replace(features(), ts_ms=-501, mid=99.0)
+    assert _trailing_return_bps([stale_anchor], current) is None
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_ofi_return_confluence_runtime_uses_prefix_and_event_time(side: Side) -> None:
+    strategy_id = OfiReturnConfluenceStrategy.strategy_id
+    evaluator = StrategySignalEvaluator()
+    registry = only_strategy(strategy_id)
+    direction = 1 if side is Side.LONG else -1
+    for index, value in enumerate((0.08, 0.10, 0.09, 0.11, 0.10, 0.12)):
+        evaluator.evaluate(
+            registry,
+            replace(
+                aligned_features(side, ts_ms=index * 500),
+                mid=100.0,
+                depth_adjusted_ofi_3s_bps=value * direction,
+            ),
+            Regime.WARMUP,
+        )
+
+    def current(ts_ms: int, mid: float):
+        return replace(
+            aligned_features(side, ts_ms=ts_ms),
+            mid=mid,
+            microprice=mid + 0.01 * direction,
+            microprice_minus_mid_bps=1.0 * direction,
+            depth_adjusted_ofi_3s_bps=2.5 * direction,
+        )
+
+    first = evaluator.evaluate(
+        registry,
+        current(4_000, 100.05 if side is Side.LONG else 99.95),
+        Regime.RANGE,
+    )
+    ready = evaluator.evaluate(
+        registry,
+        current(5_000, 100.06 if side is Side.LONG else 99.94),
+        Regime.RANGE,
+    )
+    assert "OFI_RETURN_CONFLUENCE_NOT_PERSISTENT" in decision_for(
+        first,
+        strategy_id,
+        side,
+    ).rejection_codes
+    assert decision_for(ready, strategy_id, side).status is CandidateStatus.QUALIFIED

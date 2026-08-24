@@ -23,7 +23,7 @@ from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
 from backend.app.replay.engine import ReplayEngine
 from backend.app.replay.market import StoredMarketReplay, _candidate_plan_count
-from backend.app.replay.process import _ReplayCpuBudget
+from backend.app.replay.process import _REPLAY_TARGET_CPU_RATIO, _ReplayCpuBudget
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
@@ -125,6 +125,7 @@ def test_cooperative_market_replay_preserves_canonical_checksum() -> None:
 
 
 def test_replay_cpu_budget_yields_without_carrying_unbounded_sleep_debt() -> None:
+    assert _REPLAY_TARGET_CPU_RATIO == 0.05
     wall_values = iter((0.0, 1.0, 2.5))
     cpu_values = iter((0.0, 1.0, 1.1))
     sleeps: list[float] = []
@@ -385,7 +386,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.checksum == second.checksum
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 32
+    assert first.strategy_evaluation_count == 36
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False
@@ -810,7 +811,7 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     assert results.json()[0]["checksum"] == replay.json()["checksum"]
     analytics = client.get("/api/analytics/strategies")
     assert analytics.status_code == 200
-    assert len(analytics.json()) == 16
+    assert len(analytics.json()) == 18
     assert all(
         report["analysis_scope"] == "CURRENT_STRATEGY_VERSION" for report in analytics.json()
     )

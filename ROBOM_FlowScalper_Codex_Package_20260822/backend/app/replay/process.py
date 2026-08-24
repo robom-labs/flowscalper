@@ -14,6 +14,7 @@ from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import SQLiteLedger
 
 _LOW_PRIORITY_APPLIED = False
+_REPLAY_TARGET_CPU_RATIO = 0.05
 
 
 class _ReplayCpuBudget:
@@ -22,7 +23,7 @@ class _ReplayCpuBudget:
     def __init__(
         self,
         *,
-        target_cpu_ratio: float = 0.10,
+        target_cpu_ratio: float = _REPLAY_TARGET_CPU_RATIO,
         max_sleep_seconds: float = 0.50,
         monotonic: Callable[[], float] = time.monotonic,
         process_time: Callable[[], float] = time.process_time,

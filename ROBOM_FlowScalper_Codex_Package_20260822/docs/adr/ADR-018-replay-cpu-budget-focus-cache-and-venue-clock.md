@@ -13,7 +13,7 @@ LIVE 서비스에서 수십만 건 이상의 저장 Run을 replay하거나 거�
 ## 결정
 
 1. LIVE 중 전체 replay, 일반 timeline과 거래 집중 replay는 하나의 process lock을 공유하고 독립 SQLite·Parquet 연결을 가진 `anyio.to_process` worker에서만 실행한다.
-2. worker에는 OS `nice(19)`와 한 코어 기준 10% CPU 예산을 적용한다. 예산은 replay 시작 이후 누적 평균이 아니라 인접 checkpoint 구간별 wall time과 process CPU time으로 계산하며, 한 번의 sleep은 최대 0.5초다. 이벤트 읽기, 전략 재처리, 정렬, 중복검사와 streaming SHA-256 전 단계가 협력 checkpoint를 호출한다.
+2. worker에는 OS `nice(19)`와 한 코어 기준 5% CPU 예산을 적용한다. 예산은 replay 시작 이후 누적 평균이 아니라 인접 checkpoint 구간별 wall time과 process CPU time으로 계산하며, 한 번의 sleep은 최대 0.5초다. 전략 재처리는 16 events, streaming checksum은 128 events마다 양보하고 이벤트 읽기·정렬·중복검사도 협력 checkpoint를 호출한다. 초기 10%·64/512-event 설정에서 LIVE 동시 replay 중 임계지연 표본이 늘어난 실측 때문에 완료시간보다 공개시장 수신 여유를 우선해 보수적으로 낮췄다.
 3. replay checksum 계약을 schema 3으로 올린다. 정렬된 이벤트는 하나씩 정규화해 길이 prefix와 canonical JSON bytes를 SHA-256에 넣고, 결정경로도 같은 방식의 별도 digest로 만든다. 최종 checksum material에는 전체 이벤트·결정 문자열 대신 두 digest와 count·config·version·최종상태만 넣는다. 이전 replay 결과와 checksum은 불변 원장에 그대로 보존하지만 schema 2 checksum과 schema 3 checksum을 같다고 가정하지 않는다.
 4. 신규 Parquet batch에는 `venue_ts_ms`, `symbol`, `event_type`, `batch_checksum` 색인 열을 추가한다. 조회는 관련 manifest만 선택하고 배치의 모든 row checksum과 저장된 `batch_checksum`을 먼저 대조한 뒤 필요한 row만 decode한다. 일부 row가 잘린 배치는 필터 결과가 정상이어도 실패한다. 구형 batch는 기존 전체 검증 경로로 호환한다.
 5. 거래 집중 replay는 거래 전 20분과 종료 후 5분 범위만 읽고, 해당 구간을 이미 포함하는 안전한 replay 결과가 있으면 전략 전체 재처리를 반복하지 않는다.

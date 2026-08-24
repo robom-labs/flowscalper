@@ -81,7 +81,7 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure }: Prop
   const enabledCount = ordered.filter((strategy) => strategy.mode !== 'OFF' && (strategy.long_enabled || strategy.short_enabled)).length
   return (
     <section aria-labelledby="strategies-heading">
-      <div className="page-heading"><div><p className="section-kicker">PAPER 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">기본값은 8개 전략 모두 켜짐입니다. 안정 전략 2개는 공동·독립 모의, 시험 전략 6개는 독립 모의만 합니다.</p></div><span className="page-note">{enabledCount}/{ordered.length || 8} 전략 켜짐 · 실제 주문 0</span></div>
+      <div className="page-heading"><div><p className="section-kicker">PAPER 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">기본값은 9개 전략 모두 켜짐입니다. 안정 전략 2개는 공동·독립 모의, 시험 전략 7개는 독립 모의만 합니다.</p></div><span className="page-note">{enabledCount}/{ordered.length || 9} 전략 켜짐 · 실제 주문 0</span></div>
       {ordered.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
       <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>사용 상태</th><th>방향</th><th>현재 PAPER</th><th>완료</th><th>승률</th><th>표본</th><th>상세</th></tr></thead><tbody>{ordered.map((strategy) => {
         const account = leagueAccounts.find((item) => item.strategy_id === strategy.strategy_id && item.profile === 'BASE')
