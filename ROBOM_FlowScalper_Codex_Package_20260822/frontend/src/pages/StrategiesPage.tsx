@@ -26,7 +26,7 @@ function ProfileDetails({ report, account }: { report: StrategyPerformance; acco
   return (
     <section className="profile-detail-block">
       <h3>{report.profile} 가상계좌</h3>
-      <p className="profile-scope-note">자산·순손익은 이번 Run, 아래 통계는 저장된 전체 독립 PAPER 거래 기준입니다.</p>
+      <p className="profile-scope-note">자산·순손익은 이번 Run, 아래 통계는 현재 전략 버전의 공개시장 PAPER 기준입니다.</p>
       <dl className="drawer-detail-list">
         <div><dt>이번 Run 현재자산</dt><dd>{formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })}</dd></div>
         <div><dt>이번 Run 순손익</dt><dd>{formatUsdt(account ? number(account.current_equity_usdt) - number(account.starting_equity_usdt) : 0, { signed: true })}</dd></div>
@@ -47,6 +47,7 @@ function ProfileDetails({ report, account }: { report: StrategyPerformance; acco
         <div><dt>LONG · SHORT</dt><dd>{report.sides.LONG} · {report.sides.SHORT}</dd></div>
         <div><dt>종목 · 시장상태</dt><dd>{report.symbols.length}개 · {report.regime_count}개</dd></div>
         <div><dt>표본상태</dt><dd>{report.sample_status}</dd></div>
+        <div><dt>과거 버전 제외</dt><dd>{report.excluded_prior_version_samples}건</dd></div>
         <div><dt>판단</dt><dd>{report.recommendation} · 참고용</dd></div>
       </dl>
       <div className="window-summary">{windows.map((key) => {

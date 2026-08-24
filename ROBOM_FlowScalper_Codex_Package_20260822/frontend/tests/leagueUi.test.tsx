@@ -1,13 +1,18 @@
 // 8전략·16독립계좌가 쉬운 전략 설정과 진행 거래에서 분리 표시되는지 검증한다.
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { LeaguePositionsPage } from '../src/pages/LeaguePositionsPage'
+import { PerformancePage } from '../src/pages/PerformancePage'
 import { StrategiesPage } from '../src/pages/StrategiesPage'
+import { StrategySymbolPage } from '../src/pages/StrategySymbolPage'
 import type { LeaguePosition } from '../src/types'
-import { leagueAccounts, strategies } from './fixtures'
+import { dashboardFixture, leagueAccounts, strategies } from './fixtures'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 test('shows eight compact strategy rows, easy modes and BASE/STRESS account detail', () => {
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
@@ -22,7 +27,8 @@ test('shows eight compact strategy rows, easy modes and BASE/STRESS account deta
   expect(screen.getByRole('heading', { name: 'BASE 가상계좌' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'STRESS 가상계좌' })).toBeInTheDocument()
   expect(screen.getAllByText(/이번 Run 현재자산/).length).toBeGreaterThanOrEqual(2)
-  expect(screen.getAllByText(/저장된 전체 독립 PAPER 거래 기준/).length).toBeGreaterThanOrEqual(2)
+  expect(screen.getAllByText(/현재 전략 버전의 공개시장 PAPER 기준/).length).toBeGreaterThanOrEqual(2)
+  expect(screen.getAllByText('과거 버전 제외')).toHaveLength(2)
 })
 
 const basePosition: LeaguePosition = {
@@ -63,4 +69,50 @@ test('uses BASE as the default open-trade filter and can reveal STRESS', () => {
   fireEvent.click(screen.getByRole('button', { name: 'STRESS' }))
   expect(document.querySelector('tbody')?.textContent).toContain('ETHUSDT')
   expect(document.querySelector('tbody')?.textContent).not.toContain('BTCUSDT')
+})
+
+test('uses current-version report costs and drawdown in stored performance statistics', () => {
+  const data = dashboardFixture()
+  const first = data.strategies[0]
+  first.performance.BASE = {
+    ...first.performance.BASE,
+    fees: '12.34',
+    slippage: '23.45',
+    maximum_drawdown: '34.56',
+    excluded_prior_version_samples: 7,
+  }
+  const firstAccount = data.league_accounts.find((account) => account.strategy_id === first.strategy_id && account.profile === 'BASE')
+  if (!firstAccount) throw new Error('BASE fixture account missing')
+  firstAccount.fees_usdt = '91.11'
+  firstAccount.slippage_usdt = '92.22'
+  firstAccount.maximum_drawdown_usdt = '93.33'
+
+  render(<PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
+
+  const storedStatistics = document.querySelector('.strategy-performance-panel')?.textContent ?? ''
+  expect(storedStatistics).toContain('12.34 USDT')
+  expect(storedStatistics).toContain('23.45 USDT')
+  expect(storedStatistics).toContain('34.56 USDT')
+  expect(storedStatistics).toContain('과거 버전 7건 제외')
+  expect(storedStatistics).not.toContain('91.11 USDT')
+  expect(storedStatistics).not.toContain('92.22 USDT')
+  expect(storedStatistics).not.toContain('93.33 USDT')
+})
+
+test('shows current strategy version scope and excluded prior samples for symbol analytics', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+    generated_ts_ms: 1,
+    rows: [],
+    ranking_rule: '표본 30건',
+    analysis_scope: 'CURRENT_STRATEGY_VERSION',
+    strategy_version: 'fixture-current',
+    excluded_prior_version_samples: 19,
+    real_orders_enabled: false,
+    auth_required: false,
+  }), { status: 200, headers: { 'content-type': 'application/json' } })))
+
+  render(<StrategySymbolPage strategies={strategies} />)
+
+  await waitFor(() => expect(screen.getByText(/\uACFC\uAC70 \uBC84\uC804 19\uAC74 \uC81C\uC678/)).toBeInTheDocument())
+  expect(screen.getByText(/현재 전략 버전의 독립 공개시장 PAPER만 집계/)).toBeInTheDocument()
 })

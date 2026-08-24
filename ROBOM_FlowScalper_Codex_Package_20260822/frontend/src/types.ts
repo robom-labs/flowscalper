@@ -222,6 +222,9 @@ export type StrategyPerformance = {
   stress_verified: boolean
   recommendation: string
   recommendation_is_advisory: true
+  analysis_scope: 'CURRENT_STRATEGY_VERSION'
+  strategy_version: string
+  excluded_prior_version_samples: number
   windows: Record<string, Record<string, unknown>>
 }
 
@@ -390,6 +393,9 @@ export type StrategySymbolResponse = {
   generated_ts_ms: number
   rows: StrategySymbolPerformance[]
   ranking_rule: string
+  analysis_scope: 'CURRENT_STRATEGY_VERSION'
+  strategy_version: string
+  excluded_prior_version_samples: number
   real_orders_enabled: false
   auth_required: false
 }
@@ -410,6 +416,9 @@ export type StrategySymbolPerformance = {
   slippage: string
   net_pnl: string
   maximum_drawdown: string
+  analysis_scope: 'CURRENT_STRATEGY_VERSION'
+  strategy_version: string
+  excluded_prior_version_samples: number
 }
 
 export type DashboardData = {

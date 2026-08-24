@@ -13,6 +13,7 @@ from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import DiskUsage, ParquetEventStore
 from backend.app.storage.sqlite import SQLiteLedger
 from backend.tests.test_candidate_paper_portfolio import candidate_plan
+from backend.tests.test_storage_replay_analytics import _sample_trade
 
 
 def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: Path) -> None:
@@ -186,6 +187,23 @@ def test_live_dashboard_never_waits_for_sqlite_writer_lock(
     monkeypatch,
 ) -> None:
     ledger = SQLiteLedger(tmp_path / "dashboard-cache.sqlite3")
+    ledger.start_run(
+        "run-prior-dashboard",
+        mode="LIVE_SHADOW_PAPER",
+        venue="BINANCE_USDM",
+        config={"strategy_version": "prior-dashboard-version"},
+        started_ts_ms=500,
+    )
+    ledger.record_shadow_trade(
+        {
+            **_sample_trade("prior-dashboard-trade"),
+            "run_id": "run-prior-dashboard",
+            "shadow_trade_id": "prior-dashboard-trade",
+            "closed_ts_ms": 2_000,
+            "sample_type": "LIVE_PUBLIC",
+            "strategy_version": "prior-dashboard-version",
+        }
+    )
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
         run_id="run-dashboard-cache",
@@ -205,4 +223,7 @@ def test_live_dashboard_never_waits_for_sqlite_writer_lock(
     assert dashboard["status"]["mode"] == "LIVE_SHADOW_PAPER"
     assert dashboard["history"] == []
     assert len(dashboard["strategies"]) == 8
+    lsa_base = dashboard["strategies"][0]["performance"]["BASE"]
+    assert lsa_base["sample_size"] == 0
+    assert lsa_base["excluded_prior_version_samples"] == 1
     ledger.close()

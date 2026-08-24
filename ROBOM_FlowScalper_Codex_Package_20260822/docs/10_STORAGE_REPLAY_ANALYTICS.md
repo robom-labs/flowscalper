@@ -130,3 +130,12 @@ No personal credentials exist in exports.
 - The live persistence worker writes at 2,000-event thresholds, records flush count/last/max milliseconds and flushes a final sub-threshold batch on shutdown.
 - Binance trade coalescing is exact within symbol, aggressor side and 250ms bucket. Quantity and notional are summed, price is VWAP and source/output counts remain observable.
 - Focus replay inserts deterministic `PAPER_LEDGER_TRANSITION` frames at the stored entry and exit timestamps. These frames originate from the immutable PAPER trade/fill ledger, never from invented market prices, and guarantee an honest CLOSED review even when post-roll market events are absent.
+
+## 10.10 Current strategy-version performance scope
+
+- The default strategy, profile and strategy×symbol reports include only independent `LIVE_PUBLIC` shadow trades whose full `strategy_version` equals the current implementation revision.
+- Prior-version trades remain immutable and queryable. The current UI and API disclose how many prior-version samples were excluded instead of deleting or silently mixing them.
+- Legacy shadow payloads are checksum-verified first and may be enriched in memory from their immutable Run `config_json` and `config_hash`; the stored payload and checksum are never rewritten.
+- New completed shadow trades persist both the Run `config_hash` and full `strategy_version`.
+- `DEMO_FIXTURE` and `REPLAY` samples never enter current LIVE_PUBLIC win rate, expectancy, Profit Factor, cost, drawdown or holding-time statistics.
+- See `docs/adr/ADR-017-current-strategy-version-performance-scope.md` for the decision and regression boundaries.

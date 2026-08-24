@@ -495,12 +495,14 @@ def create_app(
     @app.get("/api/analytics/strategy-symbols")
     async def strategy_symbol_analytics() -> dict[str, object]:
         rows = await asyncio.to_thread(active_runtime.strategy_symbol_performance)
+        scope = await asyncio.to_thread(active_runtime.strategy_analytics_scope)
         return {
             "generated_ts_ms": active_runtime.clock.utc_ms(),
             "rows": rows,
             "ranking_rule": "표본 30건 이상에서 기대값·Profit Factor·표본을 함께 비교",
             "real_orders_enabled": False,
             "auth_required": False,
+            **scope,
         }
 
     @app.get("/api/replay/runs")

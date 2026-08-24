@@ -24,7 +24,7 @@ async function installMarketFixtures(page: Page) {
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ source, symbol, interval_seconds: 180, candles: candles(symbol), ticker: {}, observation_only: source === 'UPBIT_KRW', auth_required: false, real_orders_enabled: false }) })
   })
   await page.route('**/api/markets/select', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ auth_required: false, real_orders_enabled: false }) }))
-  await page.route('**/api/analytics/strategy-symbols', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ generated_ts_ms: 1_721_000_000_000, rows: [{ strategy_id: 'LSA_REVERSAL_V1', profile: 'BASE', symbol: 'BTCUSDT', sample_size: 30, sample_status: 'RESEARCH_SAMPLE', ranking_eligible: true, rank_score: 1, rank: 1, win_rate: '0.6', expectancy_usdt: '0.2', profit_factor: '1.4', fees: '1', slippage: '1', net_pnl: '6', maximum_drawdown: '2' }], ranking_rule: '표본 30건 이상', auth_required: false, real_orders_enabled: false }) }))
+  await page.route('**/api/analytics/strategy-symbols', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ generated_ts_ms: 1_721_000_000_000, rows: [{ strategy_id: 'LSA_REVERSAL_V1', profile: 'BASE', symbol: 'BTCUSDT', sample_size: 30, sample_status: 'RESEARCH_SAMPLE', ranking_eligible: true, rank_score: 1, rank: 1, win_rate: '0.6', expectancy_usdt: '0.2', profit_factor: '1.4', fees: '1', slippage: '1', net_pnl: '6', maximum_drawdown: '2', analysis_scope: 'CURRENT_STRATEGY_VERSION', strategy_version: 'e2e-current', excluded_prior_version_samples: 21 }], ranking_rule: '표본 30건 이상', analysis_scope: 'CURRENT_STRATEGY_VERSION', strategy_version: 'e2e-current', excluded_prior_version_samples: 154, auth_required: false, real_orders_enabled: false }) }))
   await page.route('**/api/replay/*/focus**', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
@@ -66,6 +66,12 @@ async function capture(page: Page, project: string, name: string) {
   if (process.env.ROBOM_E2E_CAPTURE === '0') return
   mkdirSync(screenshots, { recursive: true })
   await page.screenshot({ path: path.join(screenshots, `phase03-${name}-${project}.png`), fullPage: false })
+}
+
+async function capturePhase09(page: Page, project: string, name: string) {
+  if (process.env.ROBOM_E2E_CAPTURE === '0') return
+  mkdirSync(screenshots, { recursive: true })
+  await page.screenshot({ path: path.join(screenshots, `phase09-${name}-${project}.png`), fullPage: false })
 }
 
 test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안정적이다', async ({ page }, testInfo) => {
@@ -137,13 +143,18 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(page.locator('.strategy-inline-modes button[aria-pressed="true"]')).toHaveCount(8)
   await expect(page.locator('.strategy-inline-directions button[aria-pressed="true"]')).toHaveCount(16)
   await page.getByRole('button', { name: '자세히', exact: true }).first().click()
-  await expect(page.getByText(/저장된 전체 독립 PAPER 거래 기준/).first()).toBeVisible()
+  await expect(page.getByText(/현재 전략 버전의 공개시장 PAPER 기준/).first()).toBeVisible()
+  await expect(page.getByText('과거 버전 제외', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('승 · 패 · 보합', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: '전략 상세 정보 닫기' }).click()
   await page.getByRole('button', { name: '분석', exact: true }).click()
+  await expect(page.getByText(/현재 전략 버전의 공개시장 PAPER만 집계/)).toBeVisible()
+  await capturePhase09(page, testInfo.project.name, 'current-version-performance')
   await page.getByRole('button', { name: '전략별 종목' }).click()
   await expect(page.getByRole('heading', { name: '전략별 종목 성과' })).toBeVisible()
+  await expect(page.getByText(/과거 버전 154건 제외/)).toBeVisible()
   await expect(page.getByText('연구 순위 포함')).toBeVisible()
+  await capturePhase09(page, testInfo.project.name, 'current-version-strategy-symbol')
   await page.getByRole('button', { name: '요약' }).click()
   await expect(page.getByRole('heading', { name: '프로그램 요약' })).toBeVisible()
 

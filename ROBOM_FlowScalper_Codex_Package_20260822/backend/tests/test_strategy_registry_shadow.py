@@ -8,7 +8,7 @@ from decimal import Decimal
 import pytest
 
 import backend.app.strategies.runtime_evaluator as runtime_evaluator_module
-from backend.app.build_identity import STRATEGY_VERSION
+from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.costing import CostProfile
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side
@@ -36,7 +36,8 @@ def test_registry_exposes_eight_strategies_and_honors_mode_and_direction() -> No
         "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
         "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
     )
-    assert tuple(STRATEGY_VERSION.split("+")) == registry.strategy_ids
+    assert STRATEGY_IDS == registry.strategy_ids
+    assert STRATEGY_VERSION.startswith("+".join(registry.strategy_ids) + "@")
     assert [row["mode"] for row in registry.rows()] == [
         "ACTIVE",
         "ACTIVE",

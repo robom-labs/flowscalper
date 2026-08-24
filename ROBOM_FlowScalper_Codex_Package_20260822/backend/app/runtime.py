@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -117,6 +117,9 @@ class PaperRuntime:
         default_factory=tuple, repr=False
     )
     _historical_shadow_trades: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
+    _historical_prior_version_shadow_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
     _last_storage_check_ns: int | None = None
@@ -958,39 +961,90 @@ class PaperRuntime:
         )
 
     def strategy_performance(self, *, include_persisted: bool = True) -> list[dict[str, object]]:
-        """전략별 독립 League 계좌 거래만 집계해 공동계좌 중복을 막는다."""
+        """현재 전략 버전의 독립 League LIVE_PUBLIC 거래만 집계한다."""
 
         trades: list[dict[str, object]] = []
+        prior_version_trades: list[dict[str, object]] = []
         if self.ledger is not None and include_persisted:
-            trades.extend(
-                trade
-                for trade in self.ledger.list_shadow_trades()
-                if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
+            trades, prior_version_trades = self._current_strategy_version_trades(
+                self.ledger.list_shadow_trades()
             )
         elif self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
             trades.extend(self._dashboard_live_shadow_trades())
+            prior_version_trades.extend(self._historical_prior_version_shadow_trades)
         else:
             for account in self.paper_portfolio.shadows.values():
                 trades.extend(self._paper_trade_row(trade) for trade in account.completed_trades)
-        return TradeAnalytics().strategy_reports(
+        reports = TradeAnalytics().strategy_reports(
             trades,
             strategy_ids=self.strategy_registry.strategy_ids,
         )
+        excluded_counts: dict[tuple[str, str], int] = {}
+        for trade in prior_version_trades:
+            key = (str(trade.get("strategy_id", "")), str(trade.get("profile", "BASE")))
+            excluded_counts[key] = excluded_counts.get(key, 0) + 1
+        for report in reports:
+            report["analysis_scope"] = "CURRENT_STRATEGY_VERSION"
+            report["strategy_version"] = STRATEGY_VERSION
+            report["excluded_prior_version_samples"] = excluded_counts.get(
+                (str(report["strategy_id"]), str(report["profile"])),
+                0,
+            )
+        return reports
 
     def strategy_symbol_performance(self) -> list[dict[str, object]]:
-        """실제 원장 거래만 전략·프로필·종목별로 분리해 보여준다."""
+        """현재 전략 버전의 원장 거래만 전략·프로필·종목별로 분리한다."""
 
         if self.ledger is None:
             trades: list[dict[str, object]] = []
             for account in self.paper_portfolio.shadows.values():
                 trades.extend(self._paper_trade_row(trade) for trade in account.completed_trades)
+            prior_version_trades: list[dict[str, object]] = []
         else:
-            trades = [
-                trade
-                for trade in self.ledger.list_shadow_trades()
-                if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
-            ]
-        return TradeAnalytics().strategy_symbol_reports(trades)
+            trades, prior_version_trades = self._current_strategy_version_trades(
+                self.ledger.list_shadow_trades()
+            )
+        rows = TradeAnalytics().strategy_symbol_reports(trades)
+        excluded_counts: dict[tuple[str, str, str], int] = {}
+        for trade in prior_version_trades:
+            key = (
+                str(trade.get("strategy_id", "")),
+                str(trade.get("profile", "BASE")),
+                str(trade.get("symbol", "UNKNOWN")),
+            )
+            excluded_counts[key] = excluded_counts.get(key, 0) + 1
+        for row in rows:
+            row["analysis_scope"] = "CURRENT_STRATEGY_VERSION"
+            row["strategy_version"] = STRATEGY_VERSION
+            row["excluded_prior_version_samples"] = excluded_counts.get(
+                (str(row["strategy_id"]), str(row["profile"]), str(row["symbol"])),
+                0,
+            )
+        return rows
+
+    def strategy_analytics_scope(self) -> dict[str, object]:
+        """성과 API가 제외한 과거 버전 표본 수를 투명하게 공개한다."""
+
+        source = self.ledger.list_shadow_trades() if self.ledger is not None else ()
+        _, excluded = self._current_strategy_version_trades(source)
+        return {
+            "analysis_scope": "CURRENT_STRATEGY_VERSION",
+            "strategy_version": STRATEGY_VERSION,
+            "excluded_prior_version_samples": len(excluded),
+        }
+
+    @staticmethod
+    def _current_strategy_version_trades(
+        trades: Sequence[Mapping[str, object]],
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        live_public = [dict(trade) for trade in trades if trade.get("sample_type") == "LIVE_PUBLIC"]
+        current = [
+            trade for trade in live_public if trade.get("strategy_version") == STRATEGY_VERSION
+        ]
+        prior = [
+            trade for trade in live_public if trade.get("strategy_version") != STRATEGY_VERSION
+        ]
+        return current, prior
 
     def focus_positions(self) -> list[dict[str, object]]:
         """체결이 확인된 공동계좌와 전략계좌 포지션을 한 계약으로 정규화한다."""
@@ -1831,8 +1885,14 @@ class PaperRuntime:
             return self.latest_books.get(self.selected_symbol)
         return self.latest_books.get(position.plan.symbol)
 
-    @staticmethod
-    def _paper_trade_row(trade: PaperTrade) -> dict[str, object]:
+    def _paper_trade_row(self, trade: PaperTrade) -> dict[str, object]:
+        sample_type = (
+            "LIVE_PUBLIC"
+            if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            else "DEMO_FIXTURE"
+            if self.mode is RuntimeMode.DEMO_FIXTURE
+            else "REPLAY"
+        )
         return {
             "trade_id": trade.trade_id,
             "run_id": trade.run_id,
@@ -1858,7 +1918,8 @@ class PaperRuntime:
             "mfe_r": str(trade.mfe_r),
             "flags": list(trade.flags),
             "profile": trade.profile.value,
-            "sample_type": "LIVE_PUBLIC",
+            "sample_type": sample_type,
+            "strategy_version": STRATEGY_VERSION,
         }
 
     @staticmethod
@@ -1988,6 +2049,10 @@ class PaperRuntime:
                 row = self._paper_trade_row(trade)
                 row["shadow_trade_id"] = trade.trade_id
                 row["closed_ts_ms"] = trade.closed_ts_ms
+                run = self.ledger.get_run(self.run_id)
+                if run is None:
+                    raise RuntimeError("shadow PAPER 거래가 참조할 Run이 없습니다.")
+                row["config_hash"] = str(run["config_hash"])
                 self.ledger.record_shadow_trade(row)
                 self._persisted_shadow_trade_ids.add(trade.trade_id)
         new_audits = self.paper_portfolio.audit_events[self._persisted_audit_count :]
@@ -2175,13 +2240,18 @@ class PaperRuntime:
         if self.ledger is None:
             self._historical_live_trades = ()
             self._historical_shadow_trades = ()
+            self._historical_prior_version_shadow_trades = ()
             return
         self._historical_live_trades = tuple(
             trade
             for trade in self.ledger.list_trades()
             if trade.get("sample_type", "LIVE_PUBLIC") == "LIVE_PUBLIC"
         )
-        self._historical_shadow_trades = tuple(self.ledger.list_shadow_trades())
+        current_shadow_trades, prior_version_shadow_trades = self._current_strategy_version_trades(
+            self.ledger.list_shadow_trades()
+        )
+        self._historical_shadow_trades = tuple(current_shadow_trades)
+        self._historical_prior_version_shadow_trades = tuple(prior_version_shadow_trades)
 
     def _dashboard_live_main_trades(self) -> tuple[dict[str, object], ...]:
         rows = {str(trade["trade_id"]): trade for trade in self._historical_live_trades}

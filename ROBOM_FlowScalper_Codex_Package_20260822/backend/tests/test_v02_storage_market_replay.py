@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 
 import backend.app.main as main_module
 from backend.app.analytics.reports import TradeAnalytics
+from backend.app.build_identity import STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
 from backend.app.main import create_app
@@ -513,6 +514,10 @@ def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(
     run = ledger.get_run(runtime.run_id)
     assert run is not None
     assert trade["config_hash"] == run["config_hash"]
+    shadow_trades = ledger.list_shadow_trades(runtime.run_id)
+    assert all(row["config_hash"] == run["config_hash"] for row in shadow_trades)
+    assert all(row["strategy_version"] == STRATEGY_VERSION for row in shadow_trades)
+    assert all(row["sample_type"] == "REPLAY" for row in shadow_trades)
     assert Decimal(str(trade["net_pnl_usdt"])) == (
         Decimal(str(trade["gross_pnl_usdt"]))
         - Decimal(str(trade["fees_usdt"]))
@@ -576,16 +581,35 @@ def test_runtime_strategy_analytics_do_not_double_count_shared_main_trade(
         **_sample_trade("shadow-trade-001"),
         "shadow_trade_id": "shadow-trade-001",
         "closed_ts_ms": 2_100,
+        "sample_type": "LIVE_PUBLIC",
+        "strategy_version": STRATEGY_VERSION,
     }
     fixture_shadow_trade = {
         **_sample_trade("shadow-trade-fixture"),
         "shadow_trade_id": "shadow-trade-fixture",
         "closed_ts_ms": 2_200,
         "sample_type": "OFFLINE_FIXTURE",
+        "strategy_version": STRATEGY_VERSION,
     }
+    ledger.start_run(
+        "run-prior-strategy",
+        mode="LIVE_SHADOW_PAPER",
+        venue="BINANCE_USDM",
+        config={"strategy_version": "prior-version"},
+        started_ts_ms=500,
+    )
+    prior_shadow_trade = {
+        **_sample_trade("shadow-trade-prior"),
+        "run_id": "run-prior-strategy",
+        "shadow_trade_id": "shadow-trade-prior",
+        "closed_ts_ms": 2_050,
+        "sample_type": "LIVE_PUBLIC",
+    }
+    prior_shadow_trade.pop("strategy_version")
     ledger.record_trade(main_trade)
     ledger.record_shadow_trade(shadow_trade)
     ledger.record_shadow_trade(fixture_shadow_trade)
+    ledger.record_shadow_trade(prior_shadow_trade)
 
     base = next(
         report
@@ -595,7 +619,16 @@ def test_runtime_strategy_analytics_do_not_double_count_shared_main_trade(
     symbol = runtime.strategy_symbol_performance()[0]
 
     assert base["sample_size"] == 1
+    assert base["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
+    assert base["strategy_version"] == STRATEGY_VERSION
+    assert base["excluded_prior_version_samples"] == 1
     assert symbol["sample_size"] == 1
+    assert symbol["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
+    assert symbol["strategy_version"] == STRATEGY_VERSION
+    assert symbol["excluded_prior_version_samples"] == 1
+    enriched = ledger.list_shadow_trades("run-prior-strategy")[0]
+    assert enriched["strategy_version"] == "prior-version"
+    assert enriched["config_hash"]
     ledger.close()
 
 
@@ -635,6 +668,14 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     analytics = client.get("/api/analytics/strategies")
     assert analytics.status_code == 200
     assert len(analytics.json()) == 16
+    assert all(
+        report["analysis_scope"] == "CURRENT_STRATEGY_VERSION" for report in analytics.json()
+    )
+    symbols = client.get("/api/analytics/strategy-symbols")
+    assert symbols.status_code == 200
+    assert symbols.json()["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
+    assert symbols.json()["strategy_version"] == STRATEGY_VERSION
+    assert symbols.json()["excluded_prior_version_samples"] == 0
     ledger.close()
 
 

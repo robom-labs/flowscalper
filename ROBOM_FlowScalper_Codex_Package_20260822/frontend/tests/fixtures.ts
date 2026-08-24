@@ -50,6 +50,9 @@ function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPe
     stress_verified: profile === 'STRESS',
     recommendation: '표본 수집',
     recommendation_is_advisory: true,
+    analysis_scope: 'CURRENT_STRATEGY_VERSION',
+    strategy_version: 'fixture-current',
+    excluded_prior_version_samples: 0,
     windows: { recent_50: { sample_size: 0 }, recent_100: { sample_size: 0 }, recent_300: { sample_size: 0 } },
   }
 }

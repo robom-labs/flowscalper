@@ -1033,15 +1033,26 @@ class SQLiteLedger:
             )
 
     def list_shadow_trades(self, run_id: str | None = None) -> list[dict[str, Any]]:
-        query = "SELECT payload_json, checksum FROM shadow_trades"
+        query = """
+            SELECT s.payload_json, s.checksum, r.config_hash, r.config_json
+            FROM shadow_trades s
+            JOIN runs r ON r.run_id = s.run_id
+        """
         parameters: tuple[str, ...] = ()
         if run_id is not None:
-            query += " WHERE run_id = ?"
+            query += " WHERE s.run_id = ?"
             parameters = (run_id,)
-        query += " ORDER BY closed_ts_ms, shadow_trade_id"
+        query += " ORDER BY s.closed_ts_ms, s.shadow_trade_id"
         with self._lock:
             rows = self._connection.execute(query, parameters).fetchall()
-        return self._verified_payload_rows(rows, "shadow 거래")
+        payloads = self._verified_payload_rows(rows, "shadow 거래")
+        for row, payload in zip(rows, payloads, strict=True):
+            payload.setdefault("config_hash", str(row["config_hash"]))
+            if not payload.get("strategy_version"):
+                config = json.loads(str(row["config_json"]))
+                if isinstance(config, dict) and config.get("strategy_version"):
+                    payload["strategy_version"] = str(config["strategy_version"])
+        return payloads
 
     def record_execution_audits(self, audits: Sequence[Mapping[str, object]]) -> None:
         if not audits:
