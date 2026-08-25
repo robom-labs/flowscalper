@@ -46,6 +46,10 @@ const operation = (state: ControlOperation['state'], id = 'control-test'): Contr
   retryable: state === 'FAILED_RETRYABLE',
   error_code: state === 'FAILED_RETRYABLE' ? 'PUBLIC_DATA_UNAVAILABLE' : null,
   error_message_ko: state === 'FAILED_RETRYABLE' ? '공개시장에 연결하지 못했습니다.' : null,
+  idempotency_key: 'ui-test-key',
+  revision: 1,
+  actor: 'USER_UI',
+  reason: 'USER_START_LIVE',
   history: [],
 })
 
@@ -70,10 +74,13 @@ test('posts start-live once, renders 202 operation updates and cancels it', asyn
   const data = dashboardFixture()
   const requested = operation('REQUESTED')
   const cancelled = { ...requested, state: 'CANCELLED' as const, stage_ko: '연결 작업을 취소했습니다', finished_ts_ms: 3 }
-  const fetchMock = vi.fn(async (path: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
     const url = String(path)
     if (url === '/api/dashboard') return response(data)
-    if (url === '/api/control/start-live') return response(requested, 202)
+    if (url === '/api/control/start-live') {
+      if (!init) throw new Error('start-live request options are required')
+      return response(requested, 202)
+    }
     if (url.endsWith('/cancel')) return response(cancelled, 202)
     throw new Error(`unexpected ${url}`)
   })
@@ -83,6 +90,12 @@ test('posts start-live once, renders 202 operation updates and cancels it', asyn
   fireEvent.click(start)
   fireEvent.click(start)
   await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/control/start-live')).toHaveLength(1))
+  const startRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/control/start-live')
+  expect(startRequest?.[1]?.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) })
+  expect(JSON.parse(String(startRequest?.[1]?.body))).toMatchObject({
+    expected_revision: 0,
+    reason: 'USER_START_LIVE',
+  })
   await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('요청을 받았습니다'))
 
   FakeWebSocket.instances[0].dashboard({ ...data, control_operation: operation('PREPARING') })

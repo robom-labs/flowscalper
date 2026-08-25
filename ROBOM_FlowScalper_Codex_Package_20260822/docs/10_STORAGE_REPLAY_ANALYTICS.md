@@ -168,3 +168,12 @@ No personal credentials exist in exports.
 - 같은 이벤트를 현재 candle·체결흐름·전략 피처에 뒤늦게 적용하지 않는다. 해당 종목은 신선한 trade가 도착할 때까지 전략입력 `data_healthy=false`를 유지한다.
 - replay는 저장 당시의 stale 표식과 reason flag를 보존해 LIVE와 동일한 유효성 경계를 재현한다.
 - See `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md`.
+
+## 10.14 Research manifest and chronological intraday reports
+
+- Every research output binds the exact code commit, configuration hash, fixed seed, dataset Run IDs, event counts, time ranges and per-Run SHA-256 checksums before recording the final result checksum.
+- Train, Validation and OOS Run IDs are fixed before execution. Horizon-specific maximum holding time is used as purge and embargo around chronological boundaries.
+- Partial Run or maximum-event diagnostics are labeled `PARTIAL_DIAGNOSTIC_NOT_EVIDENCE`; only the complete preregistered archive may be considered for OOS assessment.
+- The intraday report retains all 180 preregistered hypotheses, including no-signal rows. The 60 mechanical mirrors are baselines, while 120 ORIGINAL and separate reverse hypotheses count toward multiple-testing correction.
+- JSON is the machine-readable source. HTML is a human-readable projection of the same result. A hash or deterministic replay PASS proves reproducibility, not profitability.
+- Research outputs never modify current Registry settings, PAPER accounts or immutable execution ledgers.

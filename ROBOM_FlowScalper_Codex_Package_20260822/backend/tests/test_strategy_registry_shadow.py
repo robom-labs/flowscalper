@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -11,11 +12,20 @@ import backend.app.strategies.runtime_evaluator as runtime_evaluator_module
 from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.costing import CostProfile
-from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side
+from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side, Venue
 from backend.app.regime import Regime
 from backend.app.runtime import PaperRuntime
+from backend.app.storage.sqlite import SQLiteLedger
 from backend.app.strategies.base import CandidateStatus
-from backend.app.strategies.registry import StrategyMode, StrategyRegistry
+from backend.app.strategies.governor import GovernanceEvidence, StrategyGovernor
+from backend.app.strategies.registry import (
+    StrategyChangeSource,
+    StrategyLifecycle,
+    StrategyManualLockConflict,
+    StrategyMode,
+    StrategyRegistry,
+    StrategyRevisionConflict,
+)
 from backend.app.strategies.runtime_evaluator import (
     StrategySignalEvaluator,
     _pullback_metrics,
@@ -49,6 +59,18 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         "SHADOW",
         "SHADOW",
         "OFF",
+        "SHADOW",
+        "SHADOW",
+    ]
+    assert [row["lifecycle"] for row in registry.rows()] == [
+        "RETIRED",
+        "ACTIVE",
+        "SHADOW",
+        "RETIRED",
+        "RETIRED",
+        "SHADOW",
+        "SHADOW",
+        "RETIRED",
         "SHADOW",
         "SHADOW",
     ]
@@ -87,6 +109,270 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         }
         for item in decisions
     )
+
+
+def test_strategy_settings_cas_and_manual_lock_block_automatic_override() -> None:
+    registry = StrategyRegistry()
+    strategy_id = "CBR_CONTINUATION_V1"
+    changed = registry.configure(
+        strategy_id,
+        mode=StrategyMode.SHADOW,
+        long_enabled=True,
+        short_enabled=False,
+        expected_revision=0,
+        source=StrategyChangeSource.USER_UI,
+        reason="USER_RESEARCH_ONLY",
+        updated_ts_ms=1_000,
+    )
+
+    assert changed.revision == 1
+    assert changed.manual_lock is True
+    with pytest.raises(StrategyRevisionConflict):
+        registry.configure(
+            strategy_id,
+            mode=StrategyMode.OFF,
+            long_enabled=False,
+            short_enabled=False,
+            expected_revision=0,
+        )
+    with pytest.raises(StrategyManualLockConflict):
+        registry.configure(
+            strategy_id,
+            mode=StrategyMode.ACTIVE,
+            long_enabled=True,
+            short_enabled=True,
+            expected_revision=1,
+            source=StrategyChangeSource.AUTO_GOVERNOR,
+            reason="AUTO_PROMOTION",
+        )
+    assert registry.rows()[1]["mode"] == "SHADOW"
+
+
+def test_strategy_rollback_creates_new_revision_without_deleting_audit_history() -> None:
+    registry = StrategyRegistry()
+    strategy_id = "CBR_CONTINUATION_V1"
+    registry.configure(
+        strategy_id,
+        mode=StrategyMode.SHADOW,
+        lifecycle=StrategyLifecycle.SHADOW,
+        long_enabled=True,
+        short_enabled=False,
+        expected_revision=0,
+        source=StrategyChangeSource.USER_UI,
+        reason="USER_TEST_CHANGE",
+        updated_ts_ms=1_000,
+    )
+
+    restored = registry.rollback(
+        strategy_id,
+        target_revision=0,
+        expected_revision=1,
+        source=StrategyChangeSource.USER_UI,
+        reason="USER_ROLLBACK_TO_REV_0",
+        updated_ts_ms=2_000,
+    )
+
+    assert restored.revision == 2
+    assert restored.mode is StrategyMode.ACTIVE
+    assert restored.lifecycle is StrategyLifecycle.ACTIVE
+    assert restored.short_enabled is True
+    assert restored.manual_lock is True
+    assert restored.change_reason == "USER_ROLLBACK_TO_REV_0"
+
+
+def test_governor_requires_multiple_testing_then_swaps_champion_atomically() -> None:
+    registry = StrategyRegistry()
+    governor = StrategyGovernor()
+    strategy_id = "VWAP_EXHAUSTION_REVERSION_V1"
+    insufficient = GovernanceEvidence(
+        base_sample_size=35,
+        stress_sample_size=35,
+        base_expectancy_usdt=Decimal("0.10"),
+        stress_expectancy_usdt=Decimal("0.03"),
+        base_profit_factor=Decimal("1.20"),
+        stress_profit_factor=Decimal("1.05"),
+        sample_span_days=3,
+        regime_count=1,
+        dsr_probability=None,
+        pbo=None,
+    )
+    waiting = governor.assess(registry, strategy_id, insufficient)
+    assert waiting.recommended_lifecycle is StrategyLifecycle.SHADOW
+    assert "DSR_LT_0_80_OR_MISSING" in waiting.reason_codes
+    assert waiting.automatic_action_allowed is False
+
+    shadow_pass = replace(
+        insufficient,
+        sample_span_days=8,
+        regime_count=2,
+        dsr_probability=0.90,
+        pbo=0.30,
+        oos_expectancy_lower_bound_usdt=Decimal("0.01"),
+        parameter_robustness_passed=True,
+        risk_contract_passed=True,
+        independent_period_count=2,
+        live_public_sample_size=35,
+        cooldown_elapsed=True,
+    )
+    challenger = governor.assess(registry, strategy_id, shadow_pass)
+    assert challenger.recommended_lifecycle is StrategyLifecycle.CHALLENGER
+    governor.apply(registry, challenger, expected_revision=0, updated_ts_ms=2_000)
+    assert registry.setting(strategy_id).lifecycle is StrategyLifecycle.CHALLENGER
+
+    active_pass = GovernanceEvidence(
+        base_sample_size=120,
+        stress_sample_size=120,
+        base_expectancy_usdt=Decimal("0.20"),
+        stress_expectancy_usdt=Decimal("0.05"),
+        base_profit_factor=Decimal("1.30"),
+        stress_profit_factor=Decimal("1.10"),
+        sample_span_days=30,
+        regime_count=3,
+        dsr_probability=0.98,
+        pbo=0.20,
+        champion_expectancy_usdt=Decimal("0.10"),
+        oos_expectancy_lower_bound_usdt=Decimal("0.01"),
+        parameter_robustness_passed=True,
+        risk_contract_passed=True,
+        independent_period_count=3,
+        live_public_sample_size=120,
+        cooldown_elapsed=True,
+        strategy_correlation_abs=0.40,
+    )
+    promotion = governor.assess(registry, strategy_id, active_pass)
+    assert promotion.champion_id == "CBR_CONTINUATION_V1"
+    changed = governor.apply(registry, promotion, expected_revision=1, updated_ts_ms=3_000)
+
+    assert len(changed) == 2
+    assert registry.setting(strategy_id).lifecycle is StrategyLifecycle.ACTIVE
+    assert registry.setting("CBR_CONTINUATION_V1").lifecycle is StrategyLifecycle.CHALLENGER
+    assert registry.setting("CBR_CONTINUATION_V1").mode is StrategyMode.SHADOW
+
+
+def test_governor_quarantines_fault_but_never_overrides_user_lock() -> None:
+    governor = StrategyGovernor()
+    registry = StrategyRegistry()
+    evidence = GovernanceEvidence(
+        base_sample_size=0,
+        stress_sample_size=0,
+        base_expectancy_usdt=None,
+        stress_expectancy_usdt=None,
+        base_profit_factor=None,
+        stress_profit_factor=None,
+        sample_span_days=0,
+        regime_count=0,
+        dsr_probability=None,
+        pbo=None,
+        operational_fault=True,
+    )
+    assessment = governor.assess(registry, "CBR_CONTINUATION_V1", evidence)
+    assert assessment.recommended_lifecycle is StrategyLifecycle.QUARANTINED
+    governor.apply(registry, assessment, expected_revision=0, updated_ts_ms=1_000)
+    assert registry.setting("CBR_CONTINUATION_V1").mode is StrategyMode.OFF
+
+    locked = StrategyRegistry()
+    locked.configure(
+        "CBR_CONTINUATION_V1",
+        mode=StrategyMode.ACTIVE,
+        lifecycle=StrategyLifecycle.ACTIVE,
+        long_enabled=True,
+        short_enabled=True,
+        expected_revision=0,
+        manual_lock=True,
+        source=StrategyChangeSource.USER_UI,
+    )
+    blocked = governor.assess(locked, "CBR_CONTINUATION_V1", evidence)
+    assert blocked.reason_codes == ("USER_MANUAL_LOCK",)
+    assert blocked.automatic_action_allowed is False
+
+
+def test_governor_never_quarantines_active_strategy_from_one_bad_evaluation() -> None:
+    registry = StrategyRegistry()
+    governor = StrategyGovernor()
+    one_bad_cycle = GovernanceEvidence(
+        base_sample_size=120,
+        stress_sample_size=120,
+        base_expectancy_usdt=Decimal("-0.10"),
+        stress_expectancy_usdt=Decimal("-0.20"),
+        base_profit_factor=Decimal("0.80"),
+        stress_profit_factor=Decimal("0.70"),
+        sample_span_days=30,
+        regime_count=3,
+        dsr_probability=0.10,
+        pbo=0.90,
+        recent_expectancy_usdt=Decimal("-0.20"),
+        recent_profit_factor=Decimal("0.70"),
+        full_oos_degraded_evaluations=1,
+        recent_oos_degraded_evaluations=1,
+    )
+
+    assessment = governor.assess(registry, "CBR_CONTINUATION_V1", one_bad_cycle)
+
+    assert assessment.recommended_lifecycle is StrategyLifecycle.ACTIVE
+    assert assessment.reason_codes == ("ACTIVE_GATES_HEALTHY",)
+    assert assessment.automatic_action_allowed is False
+
+    second_bad_cycle = replace(
+        one_bad_cycle,
+        full_oos_degraded_evaluations=2,
+        recent_oos_degraded_evaluations=2,
+    )
+    assessment = governor.assess(registry, "CBR_CONTINUATION_V1", second_bad_cycle)
+    assert assessment.recommended_lifecycle is StrategyLifecycle.QUARANTINED
+    assert assessment.reason_codes == ("COST_AFTER_DEGRADATION",)
+
+
+def test_runtime_persists_auto_governor_evidence_and_audit(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "governor.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-governor-audit",
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    evidence = GovernanceEvidence(
+        base_sample_size=35,
+        stress_sample_size=35,
+        base_expectancy_usdt=Decimal("0.10"),
+        stress_expectancy_usdt=Decimal("0.03"),
+        base_profit_factor=Decimal("1.20"),
+        stress_profit_factor=Decimal("1.05"),
+        sample_span_days=8,
+        regime_count=2,
+        dsr_probability=0.90,
+        pbo=0.30,
+        oos_expectancy_lower_bound_usdt=Decimal("0.01"),
+        parameter_robustness_passed=True,
+        risk_contract_passed=True,
+        independent_period_count=2,
+        live_public_sample_size=35,
+        cooldown_elapsed=True,
+        evaluation_period="WALK_FORWARD_OOS_2026Q3",
+        evaluated_ts_ms=1_000,
+    )
+
+    changed = runtime.apply_strategy_governance(
+        "VWAP_EXHAUSTION_REVERSION_V1",
+        evidence,
+        expected_revision=0,
+    )
+
+    assert changed[0]["lifecycle"] == "CHALLENGER"
+    settings = ledger.list_strategy_settings(runtime.run_id)
+    latest = [
+        row
+        for row in settings
+        if row["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
+    ][-1]
+    assert latest["changed_by"] == "AUTO_GOVERNOR"
+    assert latest["change_evidence"]["evidence"]["evaluation_period"] == (
+        "WALK_FORWARD_OOS_2026Q3"
+    )
+    incidents = ledger.list_incidents(category="AUTO_GOVERNOR_TRANSITION")
+    assert len(incidents) == 1
+    assert incidents[0]["payload"]["assessment"]["automatic_action_allowed"] is True
+    ledger.close()
 
 
 def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch) -> None:

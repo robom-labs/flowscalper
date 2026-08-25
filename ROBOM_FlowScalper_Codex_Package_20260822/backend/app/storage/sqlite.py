@@ -438,6 +438,39 @@ class SQLiteLedger:
             except sqlite3.IntegrityError as error:
                 raise LedgerInvariantError(f"Run 생성 실패: {run_id}") from error
 
+    def set_app_setting(
+        self,
+        setting_key: str,
+        value: Mapping[str, object],
+        *,
+        updated_ts_ms: int,
+    ) -> None:
+        with self._transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO app_settings (setting_key, value_json, updated_ts_ms)
+                VALUES (?, ?, ?)
+                ON CONFLICT(setting_key) DO UPDATE SET
+                    value_json = excluded.value_json,
+                    updated_ts_ms = excluded.updated_ts_ms
+                """,
+                (setting_key, _canonical_json(value), updated_ts_ms),
+            )
+
+    def get_app_setting(self, setting_key: str) -> dict[str, Any] | None:
+        with self._read_lock:
+            row = self._read_connection.execute(
+                "SELECT value_json, updated_ts_ms FROM app_settings WHERE setting_key = ?",
+                (setting_key,),
+            ).fetchone()
+        if row is None:
+            return None
+        value = json.loads(str(row["value_json"]))
+        if not isinstance(value, dict):
+            raise LedgerInvariantError(f"앱 설정 payload가 객체가 아닙니다: {setting_key}")
+        value["updated_ts_ms"] = int(row["updated_ts_ms"])
+        return value
+
     def finalize_run(
         self,
         run_id: str,
@@ -1447,6 +1480,23 @@ class SQLiteLedger:
                 """,
                 (incident_id, run_id, severity, category, ts_ms, _canonical_json(payload)),
             )
+
+    def list_incidents(self, *, category: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM incidents"
+        parameters: tuple[str, ...] = ()
+        if category is not None:
+            query += " WHERE category = ?"
+            parameters = (category,)
+        query += " ORDER BY ts_ms, incident_id"
+        with self._read_lock:
+            rows = self._read_connection.execute(query, parameters).fetchall()
+        return [
+            {
+                **dict(row),
+                "payload": json.loads(str(row["payload_json"])),
+            }
+            for row in rows
+        ]
 
     def recover_latest(self, *, recovered_ts_ms: int) -> RecoveryState | None:
         with self._lock:

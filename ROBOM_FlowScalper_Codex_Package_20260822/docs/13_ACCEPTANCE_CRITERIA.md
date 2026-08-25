@@ -138,3 +138,32 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Actual browser control evidence distinguishes deterministic DEMO replay from a naturally observed LIVE PAPER fill.
 - [ ] 실행호가 p95, 체결 p95와 wide scanner p95를 분리하고 wide scanner를 진입판정 지연으로 표시하지 않는다.
 - [ ] 500ms보다 늦은 aggregate trade는 archive에는 보존하되 candle·feature·전략입력에는 사용하지 않으며 신선한 체결 뒤에만 해당 종목이 회복된다.
+
+## N. Strategy Governor and lifecycle
+
+- [ ] RESEARCH, SHADOW, CHALLENGER, ACTIVE, QUARANTINED and RETIRED are distinct from the three execution modes.
+- [ ] Missing OOS lower bound, robustness, DSR/PBO or natural LIVE_PUBLIC samples blocks automatic promotion.
+- [ ] Minimum-sample strategies cannot be performance-quarantined, and performance quarantine requires two degraded full/recent OOS evaluations.
+- [ ] Technical corruption can quarantine immediately without closing or abandoning an existing PAPER position.
+- [ ] Champion replacement is atomic and limited; manual lock wins every conflict.
+- [ ] Actor, reason, evidence period, revision and rollback target survive restart in checksum-verified storage.
+- [ ] Strategy UI exposes lifecycle, exact reason, remaining evidence, current champion, history and confirmed rollback.
+
+## O. Canonical multi-timeframe research
+
+- [ ] The one timeframe registry covers 1m, 3m, 5m, 15m, 30m, 1h and 4h through API, UI, history and tests.
+- [ ] Canonical candles contain OHLCV, quote volume, trade count and taker flow; duplicates, late events and incomplete candles cannot change completed features.
+- [ ] MICRO_SCALP, FAST_INTRADAY and INTRADAY_SWING use separate maximum holds and horizon-specific purge·embargo.
+- [ ] ORIGINAL and MECHANICAL_MIRROR share timestamps/information sets and enter as a pair; HYPOTHESIS_REVERSE has independent conditions.
+- [ ] Actual opposite-side bid/ask and unchanged BASE/STRESS costs are applied before expectancy and Profit Factor.
+- [ ] All 180 preregistered keys remain in the result and all 120 promotable hypotheses count toward PBO/DSR even with zero trades.
+- [ ] Dataset, code, config and final result hashes are stored in JSON; HTML derives from the same result.
+- [ ] Research output cannot change Registry, mode, lifecycle, account, position, threshold or actual-order safety state.
+- [ ] A candidate remains `NOT_PROVEN` unless OOS sample, BASE/STRESS, bootstrap, DSR, PBO and robustness gates all pass.
+
+## P. Dynamic registry and evidence truth
+
+- [ ] Production strategy/account totals are derived from the Registry payload and a synthetic added strategy passes UI and backend tests.
+- [ ] Retired or removed strategy ledgers are preserved and never hidden by a count migration.
+- [ ] Browser, network, 30m, 6h and 24h evidence are independently marked PASS, FAIL, NOT_RUN or BLOCKED.
+- [ ] Profitability remains `NOT_PROVEN` unless current-version natural LIVE_PUBLIC evidence meets its preregistered gate.

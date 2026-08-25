@@ -5,7 +5,10 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { HistoryPage } from '../src/pages/HistoryPage'
 import type { HistoryRow } from '../src/types'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 const trade: HistoryRow = {
   run_id: 'run-history',
@@ -66,4 +69,36 @@ test('explains that prior strategy-version trades stay archived outside the curr
   )
 
   expect(screen.getByText(/과거 버전 4건은 원장에 보관/)).toBeInTheDocument()
+})
+
+test('loads independent strategy accounts and marks rows without replay events', async () => {
+  const leagueTrade: HistoryRow = {
+    ...trade,
+    trade_id: 'shadow-history-1',
+    account_scope: 'LEAGUE',
+    account_id: 'CBR_CONTINUATION_V1:STRESS',
+    profile: 'STRESS',
+    strategy_version: 'current-v2',
+    replay_available: false,
+  }
+  const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+    rows: [leagueTrade],
+    scope: {
+      run_scope: 'CURRENT', account_scope: 'LEAGUE', profile: 'ALL',
+      version_scope: 'CURRENT', sample_type: 'ALL', strategy_version: 'current-v2',
+      returned_count: 1, limit: 1000,
+    },
+    paper_only: true, real_orders_enabled: false, auth_required: false,
+  }), { status: 200, headers: { 'content-type': 'application/json' } }))
+  vi.stubGlobal('fetch', fetchMock)
+  render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
+
+  fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'LEAGUE' } })
+
+  expect(await screen.findByText('shadow-history-1')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '재생 자료 없음' })).toBeDisabled()
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining('account_scope=LEAGUE'),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 })

@@ -11,6 +11,7 @@ from uuid import uuid4
 ClockMs = Callable[[], int]
 ProgressCallback = Callable[[str, str], Awaitable[None]]
 ControlRunner = Callable[[ProgressCallback], Awaitable[None]]
+AuditCallback = Callable[[dict[str, object]], None]
 
 
 class ControlAction(StrEnum):
@@ -45,6 +46,13 @@ class ControlOperationConflict(RuntimeError):
         self.current_operation = current_operation
 
 
+class ControlRevisionConflict(RuntimeError):
+    def __init__(self, *, expected_revision: int, current_revision: int) -> None:
+        super().__init__("화면 상태가 바뀌었습니다. 최신 상태를 다시 확인하세요.")
+        self.expected_revision = expected_revision
+        self.current_revision = current_revision
+
+
 class ControlOperationFailure(RuntimeError):
     def __init__(
         self,
@@ -71,6 +79,10 @@ class ControlOperation:
     retryable: bool = False
     error_code: str | None = None
     error_message_ko: str | None = None
+    idempotency_key: str | None = None
+    revision: int = 0
+    actor: str = "USER_UI"
+    reason: str = "USER_REQUEST"
     history: list[dict[str, object]] = field(default_factory=list)
 
     def public(self) -> dict[str, object]:
@@ -85,6 +97,10 @@ class ControlOperation:
             "retryable": self.retryable,
             "error_code": self.error_code,
             "error_message_ko": self.error_message_ko,
+            "idempotency_key": self.idempotency_key,
+            "revision": self.revision,
+            "actor": self.actor,
+            "reason": self.reason,
             "history": [dict(item) for item in self.history],
         }
 
@@ -92,12 +108,19 @@ class ControlOperation:
 class ControlOperationManager:
     """동시에 하나의 장시간 Run 변경만 허용하고 상태 이력을 보존한다."""
 
-    def __init__(self, clock_ms: ClockMs) -> None:
+    def __init__(self, clock_ms: ClockMs, audit: AuditCallback | None = None) -> None:
         self._clock_ms = clock_ms
+        self._audit = audit
         self._lock = asyncio.Lock()
         self._current: ControlOperation | None = None
         self._operations: dict[str, ControlOperation] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._idempotency_operations: dict[tuple[ControlAction, str], str] = {}
+        self._revision = 0
+
+    @property
+    def revision(self) -> int:
+        return self._revision
 
     def current_public(self) -> dict[str, object] | None:
         return self._current.public() if self._current is not None else None
@@ -110,14 +133,29 @@ class ControlOperationManager:
         self,
         action: ControlAction,
         runner: ControlRunner,
+        *,
+        idempotency_key: str | None = None,
+        expected_revision: int | None = None,
+        actor: str = "USER_UI",
+        reason: str = "USER_REQUEST",
     ) -> dict[str, object]:
         async with self._lock:
+            if idempotency_key is not None:
+                existing_id = self._idempotency_operations.get((action, idempotency_key))
+                if existing_id is not None:
+                    return self._operations[existing_id].public()
+            if expected_revision is not None and expected_revision != self._revision:
+                raise ControlRevisionConflict(
+                    expected_revision=expected_revision,
+                    current_revision=self._revision,
+                )
             current = self._current
             if current is not None and current.state not in TERMINAL_STATES:
                 if current.action is action:
                     return current.public()
                 raise ControlOperationConflict(current.public())
             now = self._clock_ms()
+            self._revision += 1
             operation = ControlOperation(
                 operation_id=f"control-{uuid4().hex}",
                 action=action,
@@ -125,16 +163,26 @@ class ControlOperationManager:
                 stage_ko="요청을 받았습니다",
                 started_ts_ms=now,
                 updated_ts_ms=now,
+                idempotency_key=idempotency_key,
+                revision=self._revision,
+                actor=actor,
+                reason=reason,
                 history=[
                     {
                         "state": ControlState.REQUESTED.value,
                         "stage_ko": "요청을 받았습니다",
                         "ts_ms": now,
+                        "actor": actor,
+                        "reason": reason,
+                        "revision": self._revision,
                     }
                 ],
             )
             self._current = operation
             self._operations[operation.operation_id] = operation
+            if idempotency_key is not None:
+                self._idempotency_operations[(action, idempotency_key)] = operation.operation_id
+            self._record_audit(operation)
             task = asyncio.create_task(
                 self._run(operation, runner),
                 name=f"{operation.action.value.lower()}-{operation.operation_id}",
@@ -205,15 +253,29 @@ class ControlOperationManager:
         if operation.state in TERMINAL_STATES:
             return
         now = self._clock_ms()
+        self._revision += 1
         operation.state = state
         operation.stage_ko = stage_ko
         operation.updated_ts_ms = now
+        operation.revision = self._revision
         if state in TERMINAL_STATES:
             operation.finished_ts_ms = now
         operation.history.append(
-            {"state": state.value, "stage_ko": stage_ko, "ts_ms": now}
+            {
+                "state": state.value,
+                "stage_ko": stage_ko,
+                "ts_ms": now,
+                "actor": operation.actor,
+                "reason": operation.reason,
+                "revision": self._revision,
+            }
         )
         operation.history[:] = operation.history[-20:]
+        self._record_audit(operation)
+
+    def _record_audit(self, operation: ControlOperation) -> None:
+        if self._audit is not None:
+            self._audit(operation.public())
 
     @staticmethod
     def _completed_stage(operation: ControlOperation) -> str:

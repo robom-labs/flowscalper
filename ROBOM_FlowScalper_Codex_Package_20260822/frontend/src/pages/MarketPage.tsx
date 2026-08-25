@@ -20,8 +20,7 @@ type Props = {
   onRetry: () => void
 }
 
-const intervals = [[60, '1분'], [180, '3분'], [300, '5분'], [900, '15분'], [1800, '30분'], [3600, '1시간'], [14400, '4시간']] as const
-const intervalFromLabel = (label: string) => intervals.find(([, name]) => name.replace('분', 'm').replace('시간', 'h') === label)?.[0] ?? 180
+const intervalFromLabel = (data: DashboardData) => data.timeframes.find((row) => row.label === data.chart.interval)?.interval_seconds ?? 180
 const marketPreferenceKey = 'robom.market.workspace.v1'
 const focusPreferenceKey = 'robom.position.focus.v1'
 
@@ -60,10 +59,10 @@ function positionOverlay(position: FocusPosition, strategies: DashboardData['str
 }
 
 function loadMarketPreference(data: DashboardData): { source: 'BINANCE_USDM' | 'UPBIT_KRW'; symbol: string; interval: number } {
-  const fallback = { source: 'BINANCE_USDM' as const, symbol: data.chart.symbol, interval: intervalFromLabel(data.chart.interval) }
+  const fallback = { source: 'BINANCE_USDM' as const, symbol: data.chart.symbol, interval: intervalFromLabel(data) }
   try {
     const parsed = JSON.parse(globalThis.localStorage?.getItem(marketPreferenceKey) ?? '') as { source?: string; symbol?: string; interval?: number }
-    if ((parsed.source === 'BINANCE_USDM' || parsed.source === 'UPBIT_KRW') && parsed.symbol && intervals.some(([seconds]) => seconds === parsed.interval)) {
+    if ((parsed.source === 'BINANCE_USDM' || parsed.source === 'UPBIT_KRW') && parsed.symbol && data.timeframes.some((row) => row.interval_seconds === parsed.interval)) {
       return { source: parsed.source, symbol: parsed.symbol, interval: parsed.interval as number }
     }
   } catch { /* 저장 환경이 없거나 값이 손상되면 현재 서버 선택으로 시작한다. */ }
@@ -224,8 +223,8 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
     const runtimeCandles = canMergeRuntime ? data.chart.candles : []
     const merged = new Map<number, ChartData['candles'][number]>()
     for (const candle of [...(explorerEnabled ? historical : []), ...runtimeCandles]) merged.set(candle.open_ts_ms, candle)
-    return { ...data.chart, symbol: selectedMarket.symbol, interval: intervals.find(([seconds]) => seconds === interval)?.[1] ?? '3분', points: canMergeRuntime ? data.chart.points : [], candles: [...merged.values()].sort((left, right) => left.open_ts_ms - right.open_ts_ms).slice(-500), lines: canMergeRuntime ? data.chart.lines : { entry: null, take_profit: null, take_profit_2: null, stop: null } }
-  }, [data.chart, data.status.market_data_state, explorerEnabled, historical, interval, selectedMarket])
+    return { ...data.chart, symbol: selectedMarket.symbol, interval: data.timeframes.find((row) => row.interval_seconds === interval)?.label ?? '3m', points: canMergeRuntime ? data.chart.points : [], candles: [...merged.values()].sort((left, right) => left.open_ts_ms - right.open_ts_ms).slice(-500), lines: canMergeRuntime ? data.chart.lines : { entry: null, take_profit: null, take_profit_2: null, stop: null } }
+  }, [data.chart, data.status.market_data_state, data.timeframes, explorerEnabled, historical, interval, selectedMarket])
   const overlay = displayedFocus ? positionOverlay(displayedFocus, data.strategies) : null
   const selectedSymbolPositions = data.focus_positions.filter((position) => position.symbol === selectedMarket.symbol)
   const marketPosition = preferredFocus(selectedSymbolPositions, initialFocusPreference.defaultProfile)
@@ -248,7 +247,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
     {fixture ? <p className="mode-truth-banner" role="status">샘플 PAPER 데이터 · LIVE 아님 · 실제 주문 0</p> : null}
     <header className={data.status.mode === 'READY' ? 'market-toolbar ready-mode' : 'market-toolbar'}>
       <div><h2 id="market-heading">{displayedFocus ? `${displayedFocus.symbol} 포지션 집중` : `${selectedMarket.symbol} 시장`}</h2><span>{displayedFocus ? `${displayedFocus.side} · ${displayedFocus.strategy_display_name_ko} · ${displayedFocus.profile} · ${paperAccountLabel(displayedFocus.account_id)} · PAPER` : selectedMarket.source === 'UPBIT_KRW' ? '관찰 전용 · KRW 현물' : data.status.market_data_state === 'LIVE' ? '실제 공개시장 · PAPER만' : data.status.mode === 'DEMO_FIXTURE' ? '샘플 · LIVE 아님' : '공개시장 연결 대기'}</span></div>
-      <label>시간<select aria-label="차트 시간" value={interval} onChange={(event) => { const next = Number(event.target.value); setSelectedInterval(next); if (selectedMarket.source === 'BINANCE_USDM') onChartChange(selectedMarket.symbol, next) }}>{intervals.map(([seconds, label]) => <option key={seconds} value={seconds}>{label}</option>)}</select></label>
+      <label>시간<select aria-label="차트 시간" value={interval} onChange={(event) => { const next = Number(event.target.value); setSelectedInterval(next); if (selectedMarket.source === 'BINANCE_USDM') onChartChange(selectedMarket.symbol, next) }}>{data.timeframes.map((row) => <option key={row.interval_seconds} value={row.interval_seconds}>{row.label_ko}</option>)}</select></label>
       {data.focus_positions.length ? <label>포지션<select aria-label="집중 포지션" value={focusKey ?? ''} onChange={(event) => { const position = data.focus_positions.find((row) => row.focus_key === event.target.value); if (position) openPosition(position); else setFocusKey(null) }}><option value="">시장 보기</option>{data.focus_positions.map((position) => <option value={position.focus_key} key={position.focus_key}>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'} · {position.strategy_display_name_ko} · {position.profile} · {paperAccountLabel(position.account_id)}</option>)}</select></label> : null}
       {displayedFocus ? <><button type="button" className={focusLocked ? 'workspace-button selected' : 'workspace-button'} aria-pressed={focusLocked} onClick={() => setFocusLocked((value) => !value)}>{focusLocked ? '현재 거래 고정됨' : '현재 거래 고정'}</button><button type="button" className="workspace-button" onClick={() => { setFocusKey(null); setClosedReview(null); setFocusNotice('') }}>시장으로</button></> : null}
       <button type="button" className="workspace-button market-drawer-button" onClick={() => setMarketDrawer(true)}>종목</button>

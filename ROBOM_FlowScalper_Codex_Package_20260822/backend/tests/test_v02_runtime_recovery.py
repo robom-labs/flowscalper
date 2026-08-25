@@ -149,6 +149,7 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
         long_enabled=False,
         short_enabled=True,
     )
+    runtime.set_paused(True)
     plan = replace(
         candidate_plan(),
         run_id=run_id,
@@ -167,12 +168,16 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     assert recovered_runtime.paper_portfolio.main.position.protected.trade_id == trade_id
     assert recovered_runtime.position_visible is True
     assert recovered_runtime.paused is True
+    assert recovered_runtime._manual_pause_requested is True
     assert "ENTRY_LOCK_RECOVERY_REVALIDATION" in recovered_runtime.runtime_health_flags
     assert recovered_runtime._recovery_revalidation_symbol == "BTCUSDT"
     registry = {
         row["strategy_id"]: row for row in recovered_runtime.strategy_registry.rows()
     }
     assert registry["CBR_CONTINUATION_V1"]["mode"] == "SHADOW"
+    assert registry["CBR_CONTINUATION_V1"]["settings_revision"] == 1
+    assert registry["CBR_CONTINUATION_V1"]["manual_lock"] is True
+    assert registry["CBR_CONTINUATION_V1"]["changed_by"] == "USER_UI"
     assert registry["CBR_CONTINUATION_V1"]["long_enabled"] is False
 
     recovered_runtime.ingest_live_event(_live_depth_event(recovered_runtime, 1_500))
@@ -214,6 +219,45 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
         {row["order_id"] for row in final_ledger.list_orders(run_id)}
     )
     final_ledger.close()
+
+
+def test_strategy_rollback_history_survives_process_restart(tmp_path: Path) -> None:
+    database = tmp_path / "strategy-rollback-recovery.sqlite3"
+    run_id = "run-strategy-rollback"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime.configure_strategy(
+        "CBR_CONTINUATION_V1",
+        mode=StrategyMode.SHADOW,
+        long_enabled=True,
+        short_enabled=False,
+        expected_revision=0,
+    )
+    runtime.rollback_strategy(
+        "CBR_CONTINUATION_V1",
+        target_revision=0,
+        expected_revision=1,
+        reason="USER_ROLLBACK_RECOVERY_TEST",
+    )
+    ledger.close()
+
+    recovered_runtime, reopened = _reopen_runtime(database, run_id)
+    setting = recovered_runtime.strategy_registry.setting("CBR_CONTINUATION_V1")
+    history = recovered_runtime.strategy_registry.revision_history(
+        "CBR_CONTINUATION_V1"
+    )
+
+    assert setting.mode is StrategyMode.ACTIVE
+    assert setting.revision == 2
+    assert setting.short_enabled is True
+    assert [row["settings_revision"] for row in history] == [0, 1, 2]
+    reopened.close()
 
 
 def test_corrupt_latest_snapshot_boots_ready_and_never_creates_a_new_trade(

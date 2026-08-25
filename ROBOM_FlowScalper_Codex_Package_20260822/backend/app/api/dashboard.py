@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from backend.app.domain.models import MarketEvent, SystemStatus
+from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
 
 
 def build_dashboard_snapshot(
@@ -179,6 +180,7 @@ def build_dashboard_snapshot(
         "operation_status": _operation_status(status, paused, diagnostics),
         "scanner": scanner,
         "chart": chart,
+        "timeframes": TIMEFRAME_REGISTRY.public_rows(),
         "position": position,
         "logs": [*control_logs[-10:], *fixture_logs],
         "history": _history_rows(
@@ -192,7 +194,12 @@ def build_dashboard_snapshot(
         "league_accounts": [dict(row) for row in league_accounts],
         "league_positions": [dict(row) for row in league_positions],
         "execution_audit": [dict(row) for row in execution_audit],
-        "risk": dict(risk_contract or _default_risk_contract()),
+        "risk": dict(
+            risk_contract
+            or _default_risk_contract(
+                account_count=len(league_accounts) or len(shadow_accounts),
+            )
+        ),
         "system": {
             "api_host": api_host,
             "public_endpoint_family": (
@@ -334,7 +341,7 @@ def _operation_status(
     }
 
 
-def _default_risk_contract() -> dict[str, object]:
+def _default_risk_contract(*, account_count: int = 0) -> dict[str, object]:
     """직접 serializer를 호출하는 격리 fixture에도 PAPER 기본계약을 제공한다."""
 
     return {
@@ -350,7 +357,7 @@ def _default_risk_contract() -> dict[str, object]:
             "drawdown_lock": "3.00%",
         },
         "strategy_league": {
-            "account_count": 18,
+            "account_count": account_count,
             "starting_equity_per_account_usdt": "1000",
             "risk_per_position": "0.50%",
             "max_positions_per_account": 3,
@@ -539,15 +546,4 @@ def _chart_points(
 
 
 def _interval_label(seconds: int) -> str:
-    labels = {
-        1: "1s",
-        5: "5s",
-        15: "15s",
-        30: "30s",
-        60: "1m",
-        180: "3m",
-        300: "5m",
-        600: "10m",
-        900: "15m",
-    }
-    return labels.get(seconds, f"{seconds}s")
+    return TIMEFRAME_REGISTRY.label(seconds)

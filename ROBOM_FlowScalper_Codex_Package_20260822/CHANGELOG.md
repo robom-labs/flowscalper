@@ -6,6 +6,15 @@
 
 ## 아직 배포하지 않음
 
+- 반복 시작·명시적 새 Run·사용자 pause·자동 안전잠금·전략 설정을 idempotency key, CAS revision, actor, reason과 재시작 가능한 감사 이력으로 분리했다.
+- 기록·분석 화면에 main/전략리그, Run, BASE/STRESS, 전략 버전과 sample type 범위를 추가하고 1m·3m·5m·15m·30m·1h·4h를 단일 timeframe registry로 연결했다.
+- 연구 manifest, 시간순 Train·Validation·OOS, horizon별 purge·embargo, walk-forward, PBO, DSR와 deterministic bootstrap을 추가했다.
+- Strategy Governor가 RESEARCH·SHADOW·CHALLENGER·ACTIVE·QUARANTINED·RETIRED, manual lock, 원자 champion 교체, rollback과 감사 근거를 관리하되 source·임계값은 변경하지 않게 했다.
+- canonical completed candle과 연구 전용 multi-timeframe 엔진을 추가하고 180개 사전등록 ORIGINAL·기계적 미러·별도 역가설 후보를 실제 bid·ask와 BASE/STRESS 비용으로 비교한다. 연구 결과는 Registry를 자동 변경하지 않는다.
+- 전략 수와 BASE/STRESS 독립계좌 수를 Registry에서 동적으로 계산하고 10·20 표시 하드코딩을 제거했다.
+- 전략 상태를 RESEARCH·SHADOW·CHALLENGER·ACTIVE·QUARANTINED·RETIRED로 분리하고, 작은 승률 표본이 아니라 비용후 OOS·강건성·다중검정·자연표본·cooldown을 요구하는 보수적 Governor를 추가했다.
+- 자동 격리는 기술 결함 또는 전체·최근 OOS의 두 평가 주기 연속 악화에만 허용하고, champion 교체를 원자적으로 적용하며 사용자 manual lock을 우선한다.
+- 전략 설정 CAS, 주체·이유·근거 audit, 재시작 이력 복구와 새 revision rollback을 API·SQLite·한국어 UI에 연결했다.
 - D OFI 눌림은 시간순 저장 train 4건에 이어 더 늦은 자연 LIVE_PUBLIC BASE 2건도 모두 비용후 손실이어서 기본 OFF로 내렸다. B만 ACTIVE, C/F/G/I/J는 SHADOW, A/D/E/H는 OFF이며 전략 코드·과거 거래·20개 독립계좌·LONG/SHORT·수동 재활성화는 보존한다.
 - LIVE 전략 성과와 전략·종목 분석 API가 활성 SQLite를 매 요청마다 다시 읽어 13.7~16.0초 대기하던 경로를 시작 시 검증한 현재-version 거래 cache와 현재 Run 메모리 거래의 고유 ID 병합으로 바꿨다. Replay·비LIVE 분석은 기존 불변 원장 읽기를 유지한다.
 - macOS 서비스의 READY 부팅 뒤 새 LIVE 시작이 이전 Run 종료를 건너뛰어 열린 Run 행이 누적되던 문제를 수정했다. 새 Run 직전에 평평한 과거 행을 삭제 없이 `preserved` 종료하고, 최근 복구 snapshot에 PAPER pending·position이 있으면 새 Run을 차단한다.

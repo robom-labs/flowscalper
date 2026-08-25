@@ -14,6 +14,7 @@ import httpx
 
 from backend.app.adapters.binance_usdm import BinancePublicAdapter
 from backend.app.domain.market import Instrument, Ticker
+from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
 
 BINANCE_REST = "https://fapi.binance.com"
 UPBIT_REST = "https://api.upbit.com"
@@ -121,14 +122,9 @@ class MarketExplorerService:
         limit: int = 200,
     ) -> dict[str, object]:
         source = source.upper()
-        allowed = {
-            "BINANCE_USDM": {60, 180, 300, 900, 1_800, 3_600, 14_400},
-            "UPBIT_KRW": {60, 180, 300, 600, 900, 1_800, 3_600, 14_400},
-        }
-        if source not in allowed:
+        if source not in {"BINANCE_USDM", "UPBIT_KRW"}:
             raise ValueError("지원하지 않는 공개시장입니다.")
-        if interval_seconds not in allowed[source]:
-            raise ValueError("지원하지 않는 차트 시간구간입니다.")
+        TIMEFRAME_REGISTRY.exchange_interval(source, interval_seconds)
         if not 20 <= limit <= 500:
             raise ValueError("캔들 개수는 20..500 범위여야 합니다.")
         loader = (
@@ -241,15 +237,7 @@ class MarketExplorerService:
         interval_seconds: int,
         limit: int,
     ) -> Sequence[Mapping[str, object]]:
-        interval = {
-            60: "1m",
-            180: "3m",
-            300: "5m",
-            900: "15m",
-            1_800: "30m",
-            3_600: "1h",
-            14_400: "4h",
-        }[interval_seconds]
+        interval = TIMEFRAME_REGISTRY.exchange_interval("BINANCE_USDM", interval_seconds)
         async with httpx.AsyncClient(base_url=BINANCE_REST, timeout=10.0) as client:
             response = await client.get(
                 "/fapi/v1/klines",
@@ -280,7 +268,7 @@ class MarketExplorerService:
         interval_seconds: int,
         limit: int,
     ) -> Sequence[Mapping[str, object]]:
-        unit = interval_seconds // 60
+        unit = TIMEFRAME_REGISTRY.exchange_interval("UPBIT_KRW", interval_seconds)
         async with httpx.AsyncClient(base_url=UPBIT_REST, timeout=10.0) as client:
             response = await client.get(
                 f"/v1/candles/minutes/{unit}",

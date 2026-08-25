@@ -94,6 +94,44 @@ def test_completed_trade_accounting_and_finalized_run_are_immutable(tmp_path: Pa
     ledger.close()
 
 
+def test_strategy_metrics_include_nonannualized_risk_turnover_and_regime_attribution() -> None:
+    win = {
+        **_sample_trade("metric-win"),
+        "sample_type": "LIVE_PUBLIC",
+        "regime": "RANGE",
+    }
+    loss = {
+        **_sample_trade(
+            "metric-loss",
+            net="-0.5",
+            gross="-0.2",
+            fees="0.1",
+            slippage="0.2",
+        ),
+        "sample_type": "LIVE_PUBLIC",
+        "regime": "TREND_DOWN",
+    }
+
+    report = TradeAnalytics().strategy_reports([win, loss])[0]
+
+    assert Decimal(str(report["omega_ratio"])) > 0
+    assert Decimal(str(report["downside_deviation_usdt"])) > 0
+    assert report["sortino_ratio_per_trade"] is not None
+    assert report["calmar_ratio_nonannualized"] is not None
+    assert Decimal(str(report["turnover_usdt"])) > 0
+    assert Decimal(str(report["turnover_ratio"])) > 0
+    assert {row["regime"] for row in report["regime_contributions"]} == {
+        "RANGE",
+        "TREND_DOWN",
+    }
+    assert report["metric_status"] == {
+        "omega_ratio": "CALCULATED",
+        "sortino_ratio_per_trade": "CALCULATED",
+        "calmar_ratio_nonannualized": "CALCULATED",
+        "turnover": "CALCULATED",
+    }
+
+
 def test_corrupt_snapshot_fails_closed(tmp_path: Path) -> None:
     database = tmp_path / "ledger.sqlite3"
     ledger = _open_run(tmp_path)

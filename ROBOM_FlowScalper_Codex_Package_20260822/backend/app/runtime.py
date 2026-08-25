@@ -50,6 +50,7 @@ from backend.app.market_data.supervisor import (
     ProviderSelection,
     PublicStreamProvider,
 )
+from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
 from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
 from backend.app.storage.parquet import (
@@ -64,7 +65,13 @@ from backend.app.storage.sqlite import (
     run_passive_wal_checkpoint_in_process,
 )
 from backend.app.strategies.base import CandidateDecision
-from backend.app.strategies.registry import StrategyMode, StrategyRegistry
+from backend.app.strategies.governor import GovernanceEvidence, StrategyGovernor
+from backend.app.strategies.registry import (
+    StrategyChangeSource,
+    StrategyLifecycle,
+    StrategyMode,
+    StrategyRegistry,
+)
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal, StrategySignalEvaluator
 from backend.app.strategies.shadow import ShadowLedger
 
@@ -127,6 +134,7 @@ class PaperRuntime:
     live_selection: ProviderSelection | None = None
     _supervisor: PersistentPublicSupervisor | None = field(default=None, init=False, repr=False)
     strategy_registry: StrategyRegistry = field(default_factory=StrategyRegistry)
+    strategy_governor: StrategyGovernor = field(default_factory=StrategyGovernor)
     strategy_evaluator: StrategySignalEvaluator = field(default_factory=StrategySignalEvaluator)
     regime_classifier: RegimeClassifier = field(default_factory=RegimeClassifier)
     feature_engines: dict[str, FeatureEngine] = field(default_factory=dict)
@@ -289,6 +297,7 @@ class PaperRuntime:
                     quantity=Decimal("0.1") + Decimal(index % 5) / Decimal(100),
                     trade_ts_ms=event.venue_ts_ms,
                     buyer_is_aggressor=index % 2 == 0,
+                    event_id=event.event_id,
                 )
             )
         if self.ledger is not None:
@@ -379,15 +388,24 @@ class PaperRuntime:
             self._lock_recovery("RECOVERY_LEDGER_MISSING")
             return False
         try:
-            latest_settings: dict[str, Mapping[str, object]] = {}
             for setting_row in self.ledger.list_strategy_settings(self.run_id):
-                latest_settings[str(setting_row["strategy_id"])] = setting_row
-            for strategy_id, latest_setting in latest_settings.items():
-                self.strategy_registry.configure(
-                    strategy_id,
-                    mode=StrategyMode(str(latest_setting["mode"])),
-                    long_enabled=bool(latest_setting["long_enabled"]),
-                    short_enabled=bool(latest_setting["short_enabled"]),
+                self.strategy_registry.restore_setting(
+                    str(setting_row["strategy_id"]),
+                    mode=StrategyMode(str(setting_row["mode"])),
+                    long_enabled=bool(setting_row["long_enabled"]),
+                    short_enabled=bool(setting_row["short_enabled"]),
+                    revision=int(str(setting_row.get("settings_revision", 0))),
+                    manual_lock=bool(setting_row.get("manual_lock", False)),
+                    changed_by=StrategyChangeSource(
+                        str(setting_row.get("changed_by", "MIGRATION"))
+                    ),
+                    change_reason=str(setting_row.get("change_reason", "RECOVERY")),
+                    updated_ts_ms=int(str(setting_row.get("settings_updated_ts_ms", 0))),
+                    lifecycle=(
+                        StrategyLifecycle(str(setting_row["lifecycle"]))
+                        if setting_row.get("lifecycle") is not None
+                        else None
+                    ),
                 )
             portfolio_payload = recovered.payload.get("portfolio")
             if isinstance(portfolio_payload, Mapping):
@@ -407,6 +425,11 @@ class PaperRuntime:
                 str(trade["shadow_trade_id"])
                 for trade in self.ledger.list_shadow_trades(self.run_id)
             }
+            user_intent = self.ledger.get_app_setting("paper_entry_user_intent")
+            if user_intent is not None and user_intent.get("run_id") == self.run_id:
+                self._manual_pause_requested = bool(
+                    user_intent.get("manual_pause_requested", False)
+                )
         except (KeyError, TypeError, ValueError) as error:
             self._lock_recovery(f"RECOVERY_STATE_REJECTED:{type(error).__name__}")
             return False
@@ -822,6 +845,7 @@ class PaperRuntime:
                     quantity=Decimal(str(event.data["quantity"])),
                     trade_ts_ms=int(event.transaction_ts_ms or event.venue_ts_ms),
                     buyer_is_aggressor=bool(event.data["buyer_is_aggressor"]),
+                    event_id=event.event_id,
                 )
                 completed_candles = self.candle_builder.add(trade)
                 self._buffer_completed_candles(completed_candles)
@@ -1164,28 +1188,268 @@ class PaperRuntime:
         mode: StrategyMode,
         long_enabled: bool,
         short_enabled: bool,
+        expected_revision: int | None = None,
+        manual_lock: bool | None = None,
+        lifecycle: StrategyLifecycle | None = None,
+        source: str = "USER_UI",
+        reason: str = "USER_CONFIGURATION",
     ) -> None:
-        self.strategy_registry.configure(
+        timestamp = self.clock.utc_ms()
+        current_setting = self.strategy_registry.setting(strategy_id)
+        resolved_lifecycle = lifecycle
+        if resolved_lifecycle is None and mode is not current_setting.mode:
+            resolved_lifecycle = self.strategy_registry.lifecycle_for_mode(mode)
+        setting = self.strategy_registry.configure(
             strategy_id,
             mode=mode,
             long_enabled=long_enabled,
             short_enabled=short_enabled,
+            expected_revision=expected_revision,
+            manual_lock=manual_lock,
+            lifecycle=resolved_lifecycle,
+            source=StrategyChangeSource(source),
+            reason=reason,
+            updated_ts_ms=timestamp,
         )
         self._log(
             "STRATEGY",
-            f"{strategy_id} {mode.value} · LONG {long_enabled} · SHORT {short_enabled}",
+            f"{strategy_id} {mode.value} · LONG {long_enabled} · SHORT {short_enabled}"
+            f" · rev {setting.revision} · {source}",
         )
-        if self.ledger is not None and self.mode is not RuntimeMode.READY:
-            self.ledger.record_strategy_setting(
+        self._persist_strategy_setting(
+            self.strategy_registry.setting_row(strategy_id),
+            timestamp=timestamp,
+        )
+
+    def rollback_strategy(
+        self,
+        strategy_id: str,
+        *,
+        target_revision: int,
+        expected_revision: int,
+        reason: str,
+    ) -> dict[str, object]:
+        """과거 전략 설정을 새 revision으로 복원하고 불변 이력을 남긴다."""
+
+        timestamp = self.clock.utc_ms()
+        self.strategy_registry.rollback(
+            strategy_id,
+            target_revision=target_revision,
+            expected_revision=expected_revision,
+            source=StrategyChangeSource.USER_UI,
+            reason=reason,
+            updated_ts_ms=timestamp,
+        )
+        row = self.strategy_registry.setting_row(strategy_id)
+        self._persist_strategy_setting(
+            row,
+            timestamp=timestamp,
+            evidence={"rollback_target_revision": target_revision},
+        )
+        self._record_strategy_incident(
+            category="STRATEGY_SETTINGS_ROLLBACK",
+            timestamp=timestamp,
+            payload=row | {"rollback_target_revision": target_revision},
+        )
+        return row
+
+    def apply_strategy_governance(
+        self,
+        strategy_id: str,
+        evidence: GovernanceEvidence,
+        *,
+        expected_revision: int,
+    ) -> tuple[dict[str, object], ...]:
+        """검증된 증거로만 governor 전환을 적용하고 이유와 기간을 저장한다."""
+
+        assessment = self.strategy_governor.assess(
+            self.strategy_registry,
+            strategy_id,
+            evidence,
+        )
+        timestamp = self.clock.utc_ms()
+        changed = self.strategy_governor.apply(
+            self.strategy_registry,
+            assessment,
+            expected_revision=expected_revision,
+            updated_ts_ms=timestamp,
+        )
+        metadata = {
+            "assessment": assessment.as_dict(),
+            "evidence": evidence.as_dict(),
+        }
+        for row in changed:
+            self._persist_strategy_setting(row, timestamp=timestamp, evidence=metadata)
+        self._record_strategy_incident(
+            category="AUTO_GOVERNOR_TRANSITION",
+            timestamp=timestamp,
+            payload={"changed": list(changed), **metadata},
+        )
+        return changed
+
+    def strategy_governance(
+        self,
+        *,
+        include_persisted: bool = True,
+        include_history: bool = True,
+    ) -> dict[str, object]:
+        """현재 버전 LIVE_PUBLIC 자연표본으로 governor 대기 이유를 계산한다."""
+
+        reports = self.strategy_performance(include_persisted=include_persisted)
+        reports_by_key = {
+            (str(report["strategy_id"]), str(report["profile"])): report
+            for report in reports
+        }
+        champion_id = next(
+            (
+                strategy_id
+                for strategy_id in self.strategy_registry.strategy_ids
+                if self.strategy_registry.setting(strategy_id).lifecycle
+                is StrategyLifecycle.ACTIVE
+            ),
+            None,
+        )
+        champion_base = (
+            reports_by_key.get((champion_id, "BASE")) if champion_id is not None else None
+        )
+        champion_expectancy = (
+            champion_base.get("expectancy_usdt") if champion_base is not None else None
+        )
+        accounts = self.paper_portfolio.league_account_rows(self.latest_books)
+        rows: list[dict[str, object]] = []
+        evaluated_ts_ms = self.clock.utc_ms()
+        for strategy_id in self.strategy_registry.strategy_ids:
+            base = reports_by_key[(strategy_id, "BASE")]
+            stress = reports_by_key[(strategy_id, "STRESS")]
+            windows = base.get("windows")
+            recent = (
+                windows.get("recent_50", {})
+                if isinstance(windows, Mapping)
+                else {}
+            )
+            faulted = any(
+                bool(account["faulted"])
+                for account in accounts
+                if account["strategy_id"] == strategy_id
+            )
+            evidence = GovernanceEvidence.from_reports(
+                base,
+                stress,
+                multiple_testing={
+                    "recent_expectancy_usdt": recent.get("expectancy_usdt"),
+                    "recent_profit_factor": recent.get("profit_factor"),
+                    "live_public_sample_size": min(
+                        int(str(base["sample_size"])),
+                        int(str(stress["sample_size"])),
+                    ),
+                    "evaluation_period": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
+                    "evaluated_ts_ms": evaluated_ts_ms,
+                },
+                champion_expectancy_usdt=champion_expectancy,
+                operational={"operational_fault": faulted},
+            )
+            assessment = self.strategy_governor.assess(
+                self.strategy_registry,
+                strategy_id,
+                evidence,
+            )
+            setting = self.strategy_registry.setting(strategy_id)
+            required_samples = (
+                100
+                if setting.lifecycle is StrategyLifecycle.CHALLENGER
+                else 30
+                if setting.lifecycle in {StrategyLifecycle.RESEARCH, StrategyLifecycle.SHADOW}
+                else 0
+            )
+            required_days = (
+                21
+                if setting.lifecycle is StrategyLifecycle.CHALLENGER
+                else 7
+                if setting.lifecycle is StrategyLifecycle.SHADOW
+                else 0
+            )
+            rows.append(
                 {
-                    "run_id": self.run_id,
-                    "strategy_id": strategy_id,
-                    "ts_ms": self.clock.utc_ms(),
-                    "mode": mode.value,
-                    "long_enabled": long_enabled,
-                    "short_enabled": short_enabled,
+                    **assessment.as_dict(),
+                    "last_evaluated_ts_ms": evaluated_ts_ms,
+                    "evaluation_period": evidence.evaluation_period,
+                    "evidence_status": "NOT_PROVEN",
+                    "remaining_live_samples": max(
+                        0,
+                        required_samples - evidence.live_public_sample_size,
+                    ),
+                    "remaining_days": max(0.0, required_days - evidence.sample_span_days),
+                    "manual_lock": setting.manual_lock,
+                    "settings_revision": setting.revision,
                 }
             )
+        history = (
+            {
+                strategy_id: list(
+                    self.strategy_registry.revision_history(strategy_id)[-20:]
+                )
+                for strategy_id in self.strategy_registry.strategy_ids
+            }
+            if include_history
+            else {}
+        )
+        return {
+            "rows": rows,
+            "history": history,
+            "champion_id": champion_id,
+            "strategy_version": STRATEGY_VERSION,
+            "analysis_scope": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
+            "profitability_status": "NOT_PROVEN",
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+
+    def _persist_strategy_setting(
+        self,
+        row: Mapping[str, object],
+        *,
+        timestamp: int,
+        evidence: Mapping[str, object] | None = None,
+    ) -> None:
+        if self.ledger is None or self.mode is RuntimeMode.READY:
+            return
+        payload = {
+            "run_id": self.run_id,
+            "ts_ms": timestamp,
+            **dict(row),
+        }
+        if evidence is not None:
+            payload["change_evidence"] = dict(evidence)
+        self.ledger.record_strategy_setting(payload)
+
+    def _record_strategy_incident(
+        self,
+        *,
+        category: str,
+        timestamp: int,
+        payload: Mapping[str, object],
+    ) -> None:
+        if self.ledger is None or self.mode is RuntimeMode.READY:
+            return
+        self.ledger.record_incident(
+            f"{category.lower()}-{self.run_id}-{timestamp}",
+            run_id=self.run_id,
+            severity="INFO",
+            category=category,
+            ts_ms=timestamp,
+            payload=payload,
+        )
+
+    def live_observation_running(self) -> bool:
+        """같은 Run의 검증된 공개시장 supervisor가 이미 진행 중인지 반환한다."""
+
+        return (
+            self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            and self.market_data_state is MarketDataState.LIVE
+            and self._supervisor is not None
+            and "PUBLIC_SUPERVISOR_RUNNING" in self.runtime_health_flags
+        )
 
     def strategy_decisions(self) -> tuple[CandidateDecision, ...]:
         return tuple(
@@ -1551,6 +1815,151 @@ class PaperRuntime:
             )
         return rows
 
+    def history_records(
+        self,
+        *,
+        run_scope: str = "CURRENT",
+        account_scope: str = "MAIN",
+        profile: str = "ALL",
+        version_scope: str = "CURRENT",
+        sample_type: str = "ALL",
+        limit: int = 500,
+    ) -> dict[str, object]:
+        """main·League 불변 원장을 명시한 범위로 조회해 화면 계약으로 변환한다."""
+
+        valid_values = {
+            "run_scope": ({"CURRENT", "ALL"}, run_scope),
+            "account_scope": ({"MAIN", "LEAGUE", "ALL"}, account_scope),
+            "profile": ({"BASE", "STRESS", "ALL"}, profile),
+            "version_scope": ({"CURRENT", "ALL"}, version_scope),
+            "sample_type": ({"LIVE_PUBLIC", "OFFLINE_FIXTURE", "ALL"}, sample_type),
+        }
+        for name, (allowed, value) in valid_values.items():
+            if value not in allowed:
+                raise ValueError(f"지원하지 않는 거래내역 {name} 값입니다: {value}")
+        if not 1 <= limit <= 2_000:
+            raise ValueError("거래내역 개수는 1..2000 범위여야 합니다.")
+
+        main_trades: list[dict[str, object]] = []
+        league_trades: list[dict[str, object]] = []
+        if self.ledger is not None:
+            main_trades.extend(self.ledger.list_trades())
+            league_trades.extend(self.ledger.list_shadow_trades())
+        main_trades.extend(
+            self._paper_trade_row(trade)
+            for trade in self.paper_portfolio.main.completed_trades
+        )
+        for account in self.paper_portfolio.shadows.values():
+            league_trades.extend(
+                self._paper_trade_row(trade) for trade in account.completed_trades
+            )
+
+        replayable_run_ids = {str(row["run_id"]) for row in self.replayable_runs()}
+        selected: dict[tuple[str, str, str], dict[str, object]] = {}
+        sources: tuple[tuple[str, list[dict[str, object]]], ...] = (
+            (("MAIN", main_trades),)
+            if account_scope == "MAIN"
+            else (("LEAGUE", league_trades),)
+            if account_scope == "LEAGUE"
+            else (("MAIN", main_trades), ("LEAGUE", league_trades))
+        )
+        for account_kind, trades in sources:
+            for trade in trades:
+                normalized = self._history_record_row(
+                    trade,
+                    account_scope=account_kind,
+                    replayable_run_ids=replayable_run_ids,
+                )
+                if run_scope == "CURRENT" and normalized["run_id"] != self.run_id:
+                    continue
+                if profile != "ALL" and normalized["profile"] != profile:
+                    continue
+                if (
+                    version_scope == "CURRENT"
+                    and normalized["strategy_version"] != STRATEGY_VERSION
+                ):
+                    continue
+                if sample_type != "ALL" and normalized["sample_type"] != sample_type:
+                    continue
+                key = (
+                    account_kind,
+                    str(normalized["run_id"]),
+                    str(normalized["trade_id"]),
+                )
+                selected[key] = normalized
+        ordered = sorted(
+            selected.values(),
+            key=lambda row: (
+                int(str(row["exit_ts_ms"])),
+                str(row["trade_id"]),
+            ),
+            reverse=True,
+        )[:limit]
+        return {
+            "rows": ordered,
+            "scope": {
+                "run_scope": run_scope,
+                "account_scope": account_scope,
+                "profile": profile,
+                "version_scope": version_scope,
+                "sample_type": sample_type,
+                "strategy_version": STRATEGY_VERSION,
+                "returned_count": len(ordered),
+                "limit": limit,
+            },
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+
+    @staticmethod
+    def _history_record_row(
+        trade: Mapping[str, object],
+        *,
+        account_scope: str,
+        replayable_run_ids: set[str],
+    ) -> dict[str, object]:
+        raw_sample = str(trade.get("sample_type", "LIVE_PUBLIC"))
+        normalized_sample = (
+            "OFFLINE_FIXTURE"
+            if raw_sample in {"DEMO_FIXTURE", "OFFLINE_FIXTURE"}
+            else raw_sample
+        )
+        strategy_id = str(trade.get("strategy_id", "UNKNOWN"))
+        profile = str(trade.get("profile", "BASE"))
+        run_id = str(trade["run_id"])
+        trade_id = str(trade.get("trade_id", trade.get("shadow_trade_id", "UNKNOWN")))
+        return {
+            "run_id": run_id,
+            "trade_id": trade_id,
+            "account_scope": account_scope,
+            "account_id": (
+                "SHARED_PAPER" if account_scope == "MAIN" else f"{strategy_id}:{profile}"
+            ),
+            "symbol": str(trade["symbol"]),
+            "strategy": strategy_id,
+            "side": str(trade["side"]),
+            "entry": str(trade["entry_price"]),
+            "exit": str(trade["exit_price"]),
+            "entry_ts_ms": int(str(trade["entry_ts_ms"])),
+            "exit_ts_ms": int(str(trade["exit_ts_ms"])),
+            "initial_stop": str(trade.get("initial_stop", "—")),
+            "take_profit": str(trade.get("take_profit", "—")),
+            "quantity": str(trade.get("quantity", "—")),
+            "exit_reason": str(trade["exit_reason"]),
+            "gross_pnl": str(trade["gross_pnl_usdt"]),
+            "fees": str(trade["fees_usdt"]),
+            "slippage": str(trade["slippage_usdt"]),
+            "net_pnl": str(trade["net_pnl_usdt"]),
+            "holding_ms": int(str(trade["holding_ms"])),
+            "holding_seconds": int(str(trade["holding_ms"])) // 1_000,
+            "profile": profile,
+            "sample_type": normalized_sample,
+            "strategy_version": str(trade.get("strategy_version", "UNKNOWN")),
+            "config_hash": str(trade.get("config_hash", "UNKNOWN")),
+            "replay_available": run_id in replayable_run_ids,
+        }
+
     def flush_storage(self) -> None:
         """현재 메모리 배치와 PAPER 실행 결과를 불변 원장에 반영한다."""
 
@@ -1630,8 +2039,7 @@ class PaperRuntime:
 
     def set_chart_selection(self, symbol: str, interval_seconds: int) -> None:
         normalized = symbol.strip().upper()
-        if interval_seconds not in CandleBuilder.ALLOWED_INTERVALS:
-            raise ValueError("지원하지 않는 캔들 시간구간입니다.")
+        TIMEFRAME_REGISTRY.validate_builder(interval_seconds)
         self.selected_symbol = normalized
         self.selected_interval_seconds = interval_seconds
 
@@ -1765,6 +2173,11 @@ class PaperRuntime:
                 "close": float(candle.close),
                 "volume": float(candle.volume),
                 "trade_count": candle.trade_count,
+                "quote_volume": str(candle.quote_volume),
+                "taker_buy_volume": str(candle.taker_buy_volume),
+                "taker_sell_volume": str(candle.taker_sell_volume),
+                "taker_buy_quote_volume": str(candle.taker_buy_quote_volume),
+                "taker_sell_quote_volume": str(candle.taker_sell_quote_volume),
             }
             for candle in self.candles()
         )
@@ -1790,6 +2203,18 @@ class PaperRuntime:
             (str(report["strategy_id"]), str(report["profile"])): report
             for report in self.strategy_performance(include_persisted=False)
         }
+        governance_payload = self.strategy_governance(
+            include_persisted=False,
+            include_history=False,
+        )
+        governance_rows = governance_payload["rows"]
+        if not isinstance(governance_rows, list):
+            raise RuntimeError("governor 화면 계약이 list가 아닙니다.")
+        governance_by_id = {
+            str(row["strategy_id"]): row
+            for row in governance_rows
+            if isinstance(row, Mapping)
+        }
         for row in self.strategy_registry.rows():
             strategy_id = str(row["strategy_id"])
             signals = [
@@ -1814,6 +2239,12 @@ class PaperRuntime:
                     "performance": {
                         profile: performance_by_key[(strategy_id, profile)]
                         for profile in ("BASE", "STRESS")
+                    },
+                    "governance": dict(governance_by_id[strategy_id])
+                    | {
+                        "change_history": list(
+                            self.strategy_registry.revision_history(strategy_id)[-20:]
+                        )
                     },
                 }
             )
@@ -1873,6 +2304,17 @@ class PaperRuntime:
             self._log("RISK", "실시간 PAPER 시작 전에는 진입할 수 없음")
             return
         self._manual_pause_requested = paused
+        if self.ledger is not None:
+            self.ledger.set_app_setting(
+                "paper_entry_user_intent",
+                {
+                    "run_id": self.run_id,
+                    "manual_pause_requested": paused,
+                    "actor": "USER_UI",
+                    "reason": "USER_PAUSE" if paused else "USER_RESUME",
+                },
+                updated_ts_ms=self.clock.utc_ms(),
+            )
         if (
             not paused
             and self.mode is RuntimeMode.LIVE_SHADOW_PAPER
@@ -2283,6 +2725,11 @@ class PaperRuntime:
                     "close": str(candle.close),
                     "volume": str(candle.volume),
                     "trade_count": candle.trade_count,
+                    "quote_volume": str(candle.quote_volume),
+                    "taker_buy_volume": str(candle.taker_buy_volume),
+                    "taker_sell_volume": str(candle.taker_sell_volume),
+                    "taker_buy_quote_volume": str(candle.taker_buy_quote_volume),
+                    "taker_sell_quote_volume": str(candle.taker_sell_quote_volume),
                 }
                 for candle in candles
                 if candle.interval_seconds in _PERSISTED_CANDLE_INTERVALS
@@ -2705,8 +3152,14 @@ class PaperRuntime:
                     "strategy_id": row["strategy_id"],
                     "ts_ms": self.clock.utc_ms(),
                     "mode": row["mode"],
+                    "lifecycle": row["lifecycle"],
                     "long_enabled": row["long_enabled"],
                     "short_enabled": row["short_enabled"],
+                    "settings_revision": row["settings_revision"],
+                    "manual_lock": row["manual_lock"],
+                    "changed_by": row["changed_by"],
+                    "change_reason": row["change_reason"],
+                    "settings_updated_ts_ms": row["settings_updated_ts_ms"],
                 }
             )
         timestamp = self.clock.utc_ms()

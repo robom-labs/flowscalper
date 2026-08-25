@@ -225,3 +225,33 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 - Count replay candidates by unique candidate ID across main and League BASE/STRESS audit duplication.
 - In the actual browser, require a single start click to show CONNECTING then RUNNING, a numeric lag P95 and permanent `PAPER · 실제 주문 0`.
 - A short replay or deterministic test proves code-path integrity, not profitability. Six-hour and 24-hour soaks remain `NOT_RUN` unless their full duration is observed.
+
+## 12.18 Strategy Governor regression
+
+- Verify lifecycle-mode consistency, CAS conflicts, user manual lock and recovery of every saved revision.
+- Verify rollback creates a new revision and remains available after process restart.
+- Verify one poor evaluation and fewer than 30 samples cannot performance-quarantine a strategy.
+- Verify full and recent OOS degradation require two consecutive evaluations, while data leakage, ledger contamination and abnormal PAPER loops quarantine immediately.
+- Verify missing DSR/PBO/OOS lower bound/robustness blocks promotion.
+- Verify champion demotion and challenger promotion are prevalidated and applied atomically, with at most one champion replacement per evaluation.
+- Verify `AUTO_GOVERNOR` setting evidence and incident audit are checksum-protected in SQLite.
+- Verify the browser shows lifecycle, last evaluation, exact reason, remaining sample/time, manual lock, change history and rollback confirmation.
+
+## 12.19 Canonical candle and multi-timeframe research regression
+
+- Parameterize every canonical aggregation boundary used by 1m, 3m, 5m, 15m, 30m, 1h and 4h. Verify OHLCV, quote volume, trade count and taker buy/sell fields.
+- Feed duplicate event IDs and out-of-order symbol events. Require deterministic ignore counters and unchanged completed candles.
+- Verify feature snapshots use completed candles at or before `as_of_ts_ms` only. Reject a future higher-timeframe candle and preserve exact session VWAP ordering.
+- Verify ORIGINAL and MECHANICAL_MIRROR have identical signal timestamps and information-set IDs, opposite sides, symmetric stop/TP geometry and paired admission.
+- Verify HYPOTHESIS_REVERSE uses separately coded conditions rather than an unconditional side flip.
+- Verify LONG uses ask entry and bid exit, SHORT uses bid entry and ask exit, stop is conservative under same-event ambiguity, and TP1/TP2 remain one completed outcome.
+- Require the preregistered grid to contain 180 keys and the selection correction to count 120 promotable hypotheses even if some have zero signals.
+- Run Train·Validation·OOS on the complete preregistered archive. Verify dataset, config, code and result hashes, horizon-specific purge·embargo, PBO, DSR, bootstrap and no-trade baseline.
+- Re-run the same full research command and require identical deterministic content except generation/completion timestamps. If not run twice, report determinism as `NOT_RUN` rather than PASS.
+
+## 12.20 Dynamic registry and history scope regression
+
+- Add a synthetic strategy to the API fixture and require strategy/account totals and row order to follow the payload without changing production constants.
+- Verify main, Strategy League and combined history across current/all Run, current/all strategy version, BASE/STRESS and LIVE_PUBLIC/OFFLINE sample type.
+- Verify every public timeframe is accepted end-to-end and unsupported values fail explicitly.
+- Verify replay discovery keeps an event-only Run with no completed trade.

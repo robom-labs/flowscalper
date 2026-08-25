@@ -80,7 +80,20 @@ def test_universe_filters_and_ranks_without_venue_mix() -> None:
 
 def test_candles_use_only_observed_trades() -> None:
     builder = CandleBuilder()
-    assert builder.ALLOWED_INTERVALS == (1, 5, 15, 30, 60, 180, 300, 600, 900, 3600)
+    assert builder.ALLOWED_INTERVALS == (
+        1,
+        5,
+        15,
+        30,
+        60,
+        180,
+        300,
+        600,
+        900,
+        1_800,
+        3_600,
+        14_400,
+    )
     builder.add(TradeTick(Venue.FIXTURE, "BTCUSDT", Decimal("100"), Decimal("2"), 1_000, True))
     builder.add(TradeTick(Venue.FIXTURE, "BTCUSDT", Decimal("101"), Decimal("3"), 1_500, True))
     completed = builder.add(
@@ -94,7 +107,58 @@ def test_candles_use_only_observed_trades() -> None:
         Decimal("101"),
     )
     assert one_second.volume == Decimal("5")
+    assert one_second.quote_volume == Decimal("503")
+    assert one_second.taker_buy_volume == Decimal("5")
+    assert one_second.taker_sell_volume == 0
     assert builder.series("BTCUSDT", 1) == (one_second, builder.snapshot("BTCUSDT")[0])
+
+
+def test_candle_builder_ignores_identified_duplicates_and_late_trades() -> None:
+    builder = CandleBuilder(intervals=(60,))
+    original = TradeTick(
+        Venue.FIXTURE,
+        "BTCUSDT",
+        Decimal("100"),
+        Decimal("2"),
+        61_000,
+        True,
+        "trade-1",
+    )
+    assert builder.add(original) == []
+    assert builder.add(original) == []
+    assert builder.add(
+        TradeTick(
+            Venue.FIXTURE,
+            "BTCUSDT",
+            Decimal("999"),
+            Decimal("9"),
+            60_999,
+            False,
+            "trade-late",
+        )
+    ) == []
+    current = builder.series("BTCUSDT", 60)[0]
+    assert current.close == Decimal("100")
+    assert current.volume == Decimal("2")
+    assert builder.diagnostics.accepted_trades == 1
+    assert builder.diagnostics.duplicate_events == 1
+    assert builder.diagnostics.out_of_order_trades == 1
+
+
+def test_candle_builder_aggregates_taker_flow_and_completed_only_series() -> None:
+    builder = CandleBuilder(intervals=(60,))
+    builder.add(TradeTick(Venue.FIXTURE, "ETHUSDT", Decimal("10"), Decimal("2"), 1_000, True))
+    builder.add(TradeTick(Venue.FIXTURE, "ETHUSDT", Decimal("11"), Decimal("3"), 2_000, False))
+    assert builder.completed_series("ETHUSDT", 60) == ()
+    completed = builder.add(
+        TradeTick(Venue.FIXTURE, "ETHUSDT", Decimal("12"), Decimal("1"), 60_000, True)
+    )[0]
+    assert completed.quote_volume == Decimal("53")
+    assert completed.taker_buy_volume == Decimal("2")
+    assert completed.taker_sell_volume == Decimal("3")
+    assert completed.taker_buy_quote_volume == Decimal("20")
+    assert completed.taker_sell_quote_volume == Decimal("33")
+    assert builder.completed_series("ETHUSDT", 60) == (completed,)
 
 
 def test_connection_rotation_staleness_and_venue_guard() -> None:

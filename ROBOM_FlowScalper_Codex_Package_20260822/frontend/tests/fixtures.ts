@@ -1,19 +1,18 @@
-// Strategy League 화면 단위검사에 쓰는 10전략·20계좌 결정적 fixture를 제공한다.
+// Strategy League 화면 단위검사에 쓰는 결정적 Registry fixture를 제공한다.
 import { initialDashboard } from '../src/demoData'
-import { strategyOrder } from '../src/strategyPresentation'
 import type { DashboardData, LeagueAccount, StrategyPerformance, StrategyRow } from '../src/types'
 
-const names = [
-  ['LSA 반전', '급락·급등 쓸기 반전'],
-  ['CBR 돌파', '압축 돌파 재가속'],
-  ['VWAP 소진', 'VWAP 과도이탈 평균복귀'],
-  ['OFI 눌림', 'OFI 추세 눌림 지속'],
-  ['호가 쏠림', '호가 쏠림 순간추세'],
-  ['체결흐름', '강한 체결 흐름 지속'],
-  ['다중호가', '다중호가 공정가 추세'],
-  ['깊이 OFI', '깊이보정 OFI 충격'],
-  ['OFI·가격동행', 'OFI·단기수익률 동행'],
-  ['호가 기울기', '호가 기울기 비대칭'],
+const catalog = [
+  ['LSA_REVERSAL_V1', 'LSA 반전', '급락·급등 쓸기 반전'],
+  ['CBR_CONTINUATION_V1', 'CBR 돌파', '압축 돌파 재가속'],
+  ['VWAP_EXHAUSTION_REVERSION_V1', 'VWAP 소진', 'VWAP 과도이탈 평균복귀'],
+  ['OFI_CONTINUATION_PULLBACK_V1', 'OFI 눌림', 'OFI 추세 눌림 지속'],
+  ['QUEUE_MICROPRICE_MOMENTUM_V1', '호가 쏠림', '호가 쏠림 순간추세'],
+  ['AGGRESSOR_FLOW_CONTINUATION_V1', '체결흐름', '강한 체결 흐름 지속'],
+  ['MULTILEVEL_MICROPRICE_MOMENTUM_V1', '다중호가', '다중호가 공정가 추세'],
+  ['DEPTH_ADJUSTED_OFI_IMPULSE_V1', '깊이 OFI', '깊이보정 OFI 충격'],
+  ['OFI_RETURN_CONFLUENCE_V1', 'OFI·가격동행', 'OFI·단기수익률 동행'],
+  ['BOOK_SLOPE_ASYMMETRY_V1', '호가 기울기', '호가 기울기 비대칭'],
 ] as const
 
 function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPerformance {
@@ -33,16 +32,24 @@ function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPe
     expectancy_r: null,
     expectancy_bps: null,
     profit_factor: null,
+    omega_ratio: null,
+    sortino_ratio_per_trade: null,
+    calmar_ratio_nonannualized: null,
+    downside_deviation_usdt: null,
     gross_pnl: '0',
     fees: '0',
     slippage: '0',
     net_pnl: '0',
     cost_burden: null,
     maximum_drawdown: '0',
+    turnover_usdt: '0',
+    turnover_ratio: '0',
     mae_r_mean: null,
     mfe_r_mean: null,
     median_hold_ms: null,
     p90_hold_ms: null,
+    regime_contributions: [],
+    metric_status: {},
     sample_status: '표본 부족',
     sample_span_days: 0,
     regime_count: 0,
@@ -59,21 +66,44 @@ function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPe
   }
 }
 
-export const strategies: StrategyRow[] = strategyOrder.map((strategyId, index) => ({
+export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, displayName], index) => ({
   strategy_id: strategyId,
-  short_name: names[index][0],
-  display_name_ko: names[index][1],
+  short_name: shortName,
+  display_name_ko: displayName,
   summary_ko: '공개시장 구조와 체결 흐름을 PAPER로만 평가합니다.',
   stability: index === 1 ? 'STABLE' : 'EXPERIMENTAL',
   supported_regimes: ['RANGE'],
   paper_only: true,
   mode: index === 1 ? 'ACTIVE' : [0, 3, 4, 7].includes(index) ? 'OFF' : 'SHADOW',
+  lifecycle: index === 1 ? 'ACTIVE' : [0, 3, 4, 7].includes(index) ? 'RETIRED' : 'SHADOW',
   long_enabled: true,
   short_enabled: true,
+  settings_revision: 0,
+  manual_lock: false,
+  changed_by: 'MIGRATION',
+  change_reason: 'SAFE_DEFAULT',
+  settings_updated_ts_ms: 0,
   evaluated_paths: 0,
   qualified_paths: 0,
   latest_status: 'WAITING_DATA',
   latest_reasons: [],
+  governance: {
+    strategy_id: strategyId,
+    current_lifecycle: index === 1 ? 'ACTIVE' : [0, 3, 4, 7].includes(index) ? 'RETIRED' : 'SHADOW',
+    recommended_lifecycle: index === 1 ? 'ACTIVE' : [0, 3, 4, 7].includes(index) ? 'RETIRED' : 'SHADOW',
+    reason_codes: index === 1 ? ['ACTIVE_GATES_HEALTHY'] : ['LIVE_PUBLIC_SAMPLE_LT_30'],
+    automatic_action_allowed: false,
+    transition_required: false,
+    champion_id: index === 1 ? null : 'CBR_CONTINUATION_V1',
+    last_evaluated_ts_ms: 1_759_888_000_000,
+    evaluation_period: 'CURRENT_STRATEGY_VERSION_LIVE_PUBLIC',
+    evidence_status: 'NOT_PROVEN',
+    remaining_live_samples: index === 1 ? 0 : 30,
+    remaining_days: index === 1 ? 0 : 7,
+    manual_lock: false,
+    settings_revision: 0,
+    change_history: [],
+  },
   performance: {
     BASE: performance(strategyId, 'BASE'),
     STRESS: performance(strategyId, 'STRESS'),

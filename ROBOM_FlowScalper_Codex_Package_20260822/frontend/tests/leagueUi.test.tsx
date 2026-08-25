@@ -1,6 +1,6 @@
-// 10전략·20독립계좌가 쉬운 전략 설정과 진행 거래에서 분리 표시되는지 검증한다.
+// Registry가 늘어나도 독립계좌와 쉬운 전략 설정이 동적으로 표시되는지 검증한다.
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { LeaguePositionsPage } from '../src/pages/LeaguePositionsPage'
 import { PerformancePage } from '../src/pages/PerformancePage'
@@ -11,6 +11,7 @@ import { dashboardFixture, leagueAccounts, strategies } from './fixtures'
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 
@@ -30,6 +31,74 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
   expect(screen.getAllByText(/이번 Run 현재자산/).length).toBeGreaterThanOrEqual(2)
   expect(screen.getAllByText(/현재 전략 버전의 공개시장 PAPER 기준/).length).toBeGreaterThanOrEqual(2)
   expect(screen.getAllByText('과거 버전 제외')).toHaveLength(2)
+  expect(screen.getByRole('heading', { name: '자동 평가 상태' })).toBeInTheDocument()
+  expect(screen.getByText('아직 검증 불충분')).toBeInTheDocument()
+})
+
+test('shows lifecycle evidence and restores the prior revision without deleting history', async () => {
+  const current = strategies[2]
+  const revisionZero = {
+    strategy_id: current.strategy_id,
+    mode: 'SHADOW' as const,
+    lifecycle: 'SHADOW' as const,
+    long_enabled: true,
+    short_enabled: true,
+    settings_revision: 0,
+    manual_lock: false,
+    changed_by: 'MIGRATION' as const,
+    change_reason: 'SAFE_DEFAULT',
+    settings_updated_ts_ms: 0,
+  }
+  const revisionOne = {
+    ...revisionZero,
+    short_enabled: false,
+    settings_revision: 1,
+    manual_lock: true,
+    changed_by: 'USER_UI' as const,
+    change_reason: 'USER_CONFIGURATION',
+    settings_updated_ts_ms: 1_759_888_000_000,
+  }
+  const rows = strategies.map((strategy) => strategy.strategy_id === current.strategy_id ? {
+    ...strategy,
+    short_enabled: false,
+    settings_revision: 1,
+    manual_lock: true,
+    governance: {
+      ...strategy.governance,
+      settings_revision: 1,
+      manual_lock: true,
+      change_history: [revisionZero, revisionOne],
+    },
+  } : strategy)
+  const onRollback = vi.fn(async () => undefined)
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} onRollback={onRollback} />)
+
+  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[2])
+  const dialog = screen.getByRole('dialog', { name: '전략 상세 정보' })
+  expect(within(dialog).getByText(/rev 0/)).toBeInTheDocument()
+  expect(within(dialog).getByText(/rev 1/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '직전 설정으로 복원' }))
+
+  await waitFor(() => expect(onRollback).toHaveBeenCalledWith(
+    current.strategy_id,
+    0,
+    1,
+  ))
+})
+
+test('confirms mode changes and sends the visible settings revision', async () => {
+  const onConfigure = vi.fn(async () => undefined)
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'CBR 돌파 독립 모의 중' }))
+
+  await waitFor(() => expect(onConfigure).toHaveBeenCalledWith(
+    'CBR_CONTINUATION_V1',
+    expect.objectContaining({ mode: 'SHADOW', expected_revision: 0 }),
+  ))
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('진행 중 PAPER는 기존 계획대로 관리'))
 })
 
 test('distinguishes healthy condition waiting, open PAPER management and faults', () => {
@@ -124,6 +193,37 @@ test('uses current-version report costs and drawdown in stored performance stati
   expect(storedStatistics).not.toContain('91.11 USDT')
   expect(storedStatistics).not.toContain('92.22 USDT')
   expect(storedStatistics).not.toContain('93.33 USDT')
+})
+
+test('derives strategy and account totals from the backend registry payload', () => {
+  const data = dashboardFixture()
+  const template = data.strategies[0]
+  const extraId = 'SYNTHETIC_REGISTRY_EXTENSION_V1'
+  const extraStrategy = {
+    ...template,
+    strategy_id: extraId,
+    short_name: '확장 확인',
+    display_name_ko: '동적 Registry 확장 확인',
+    governance: { ...template.governance, strategy_id: extraId },
+    performance: {
+      BASE: { ...template.performance.BASE, strategy_id: extraId },
+      STRESS: { ...template.performance.STRESS, strategy_id: extraId },
+    },
+  }
+  const extraAccounts = (['BASE', 'STRESS'] as const).map((profile) => ({
+    ...data.league_accounts.find((account) => account.profile === profile)!,
+    account_id: `${extraId}:${profile}`,
+    strategy_id: extraId,
+    profile,
+  }))
+  data.strategies = [...data.strategies, extraStrategy]
+  data.league_accounts = [...data.league_accounts, ...extraAccounts]
+
+  render(<PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
+
+  expect(screen.getByText(`${data.strategies.length}개 전략의 독립 가상계좌를 같은 기준으로 비교합니다.`)).toBeInTheDocument()
+  expect(screen.getByText(`총 ${data.league_accounts.length}계좌`)).toBeInTheDocument()
+  expect(screen.getAllByText('확장 확인')).toHaveLength(2)
 })
 
 test('shows current strategy version scope and excluded prior samples for symbol analytics', async () => {

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robom.local/schemas/research_manifest.schema.json",
+  "title": "PaperResearchManifest",
+  "type": "object",
+  "required": ["schema_version", "status", "generated_ts_ms", "hypothesis", "versions", "protocol", "dataset", "dataset_hash", "parameter_hash", "run_ids", "time_range", "operational_metrics_required", "paper_only", "real_orders_enabled", "auth_required", "manifest_checksum"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "status": {"enum": ["PREREGISTERED", "EXECUTED", "INVALIDATED"]},
+    "generated_ts_ms": {"type": "integer", "minimum": 0},
+    "hypothesis": {"type": "object"},
+    "versions": {"type": "object"},
+    "protocol": {"type": "object"},
+    "dataset": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "dataset_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "parameter_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "run_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "time_range": {"type": "object"},
+    "operational_metrics_required": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "paper_only": {"const": true},
+    "real_orders_enabled": {"const": false},
+    "auth_required": {"const": false},
+    "manifest_checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "completed_ts_ms": {"type": "integer", "minimum": 0},
+    "result_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "additionalProperties": false
+}

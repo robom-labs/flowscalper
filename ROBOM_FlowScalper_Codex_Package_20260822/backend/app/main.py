@@ -14,7 +14,7 @@ from uuid import uuid4
 
 import httpx
 from anyio import to_process
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,6 +26,7 @@ from backend.app.control import (
     ControlOperationConflict,
     ControlOperationFailure,
     ControlOperationManager,
+    ControlRevisionConflict,
 )
 from backend.app.control.operations import ControlRunner, ProgressCallback
 from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
@@ -38,7 +39,11 @@ from backend.app.replay.process import (
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
-from backend.app.strategies.registry import StrategyMode
+from backend.app.strategies.registry import (
+    StrategyLifecycle,
+    StrategyMode,
+    StrategyRevisionConflict,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -66,6 +71,25 @@ class StrategyConfigurationRequest(BaseModel):
     mode: StrategyMode
     long_enabled: bool
     short_enabled: bool
+    expected_revision: int = Field(ge=0)
+    manual_lock: bool = True
+    reason: str = Field(default="USER_CONFIGURATION", min_length=3, max_length=120)
+    lifecycle: StrategyLifecycle | None = None
+
+
+class StrategyRollbackRequest(BaseModel):
+    """과거 전략 설정을 기록을 지우지 않고 새 revision으로 복원한다."""
+
+    target_revision: int = Field(ge=0)
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(default="USER_ROLLBACK", min_length=3, max_length=120)
+
+
+class ControlMutationRequest(BaseModel):
+    """두 탭과 재전송이 같은 PAPER 제어 의도를 중복 실행하지 않게 한다."""
+
+    expected_revision: int | None = Field(default=None, ge=0)
+    reason: str = Field(default="USER_REQUEST", min_length=3, max_length=120)
 
 
 class ReplayRequest(BaseModel):
@@ -192,7 +216,29 @@ def create_app(
 ) -> FastAPI:
     active_runtime = runtime or _runtime_from_environment()
     active_market_explorer = market_explorer or MarketExplorerService()
-    operation_manager = ControlOperationManager(active_runtime.clock.utc_ms)
+
+    def audit_control_transition(operation: dict[str, object]) -> None:
+        ledger = active_runtime.ledger
+        if ledger is None:
+            return
+        run_id = (
+            active_runtime.run_id
+            if ledger.get_run(active_runtime.run_id) is not None
+            else None
+        )
+        ledger.record_incident(
+            f"{operation['operation_id']}-rev-{operation['revision']}",
+            run_id=run_id,
+            severity="INFO",
+            category="CONTROL_STATE_TRANSITION",
+            ts_ms=int(str(operation["updated_ts_ms"])),
+            payload=operation,
+        )
+
+    operation_manager = ControlOperationManager(
+        active_runtime.clock.utc_ms,
+        audit=audit_control_transition,
+    )
     replay_process_lock = asyncio.Lock()
 
     def ensure_replay_process_available() -> None:
@@ -215,6 +261,7 @@ def create_app(
         return {
             **active_runtime.dashboard(),
             "control_operation": operation_manager.current_public(),
+            "control_revision": operation_manager.revision,
         }
 
     def dashboard_message() -> str:
@@ -288,7 +335,7 @@ def create_app(
         allow_origin_regex=r"https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?",
         allow_credentials=False,
         allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Idempotency-Key"],
     )
 
     @app.get("/api/status")
@@ -394,6 +441,9 @@ def create_app(
         return dashboard_snapshot()
 
     async def start_live_runner(progress: ProgressCallback) -> None:
+        if active_runtime.live_observation_running():
+            await progress("PREPARING", "이미 같은 PAPER Run에서 자동 관찰이 작동 중입니다")
+            return
         blocked = active_runtime.live_start_block()
         if blocked is not None:
             raise ControlOperationFailure(
@@ -441,9 +491,33 @@ def create_app(
     async def submit_operation(
         action: ControlAction,
         runner: ControlRunner,
+        *,
+        request: ControlMutationRequest | None,
+        idempotency_key: str | None,
     ) -> dict[str, object]:
         try:
-            return await operation_manager.submit(action, runner)
+            return await operation_manager.submit(
+                action,
+                runner,
+                idempotency_key=idempotency_key,
+                expected_revision=request.expected_revision if request is not None else None,
+                actor="USER_UI",
+                reason=request.reason if request is not None else "USER_REQUEST",
+            )
+        except ControlRevisionConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "CONTROL_REVISION_CONFLICT",
+                    "error_message_ko": (
+                        "다른 화면에서 상태가 바뀌었습니다. 최신 상태를 다시 확인하세요."
+                    ),
+                    "retryable": True,
+                    "expected_revision": error.expected_revision,
+                    "current_revision": error.current_revision,
+                    "current_operation": operation_manager.current_public(),
+                },
+            ) from error
         except ControlOperationConflict as error:
             raise HTTPException(
                 status_code=409,
@@ -456,14 +530,30 @@ def create_app(
             ) from error
 
     @app.post("/api/control/start-live", status_code=202)
-    async def start_live() -> dict[str, object]:
+    async def start_live(
+        request: ControlMutationRequest | None = None,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, object]:
         runner = (control_runners or {}).get(ControlAction.START_LIVE, start_live_runner)
-        return await submit_operation(ControlAction.START_LIVE, runner)
+        return await submit_operation(
+            ControlAction.START_LIVE,
+            runner,
+            request=request,
+            idempotency_key=idempotency_key,
+        )
 
     @app.post("/api/control/start-demo", status_code=202)
-    async def start_demo() -> dict[str, object]:
+    async def start_demo(
+        request: ControlMutationRequest | None = None,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, object]:
         runner = (control_runners or {}).get(ControlAction.START_DEMO, start_demo_runner)
-        return await submit_operation(ControlAction.START_DEMO, runner)
+        return await submit_operation(
+            ControlAction.START_DEMO,
+            runner,
+            request=request,
+            idempotency_key=idempotency_key,
+        )
 
     @app.get("/api/control/operations/current")
     async def current_operation() -> dict[str, object] | None:
@@ -518,12 +608,30 @@ def create_app(
         request: StrategyConfigurationRequest,
     ) -> dict[str, object]:
         try:
-            active_runtime.configure_strategy(
+            await asyncio.to_thread(
+                active_runtime.configure_strategy,
                 strategy_id,
                 mode=request.mode,
                 long_enabled=request.long_enabled,
                 short_enabled=request.short_enabled,
+                expected_revision=request.expected_revision,
+                manual_lock=request.manual_lock,
+                lifecycle=request.lifecycle,
+                source="USER_UI",
+                reason=request.reason,
             )
+        except StrategyRevisionConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "STRATEGY_SETTINGS_REVISION_CONFLICT",
+                    "error_message_ko": (
+                        "다른 화면에서 전략 설정이 바뀌었습니다. 최신 설정을 확인하세요."
+                    ),
+                    "retryable": True,
+                    "current_strategy": error.current_setting,
+                },
+            ) from error
         except ValueError as error:
             raise HTTPException(
                 status_code=404,
@@ -534,6 +642,50 @@ def create_app(
                 },
             ) from error
         return dashboard_snapshot()
+
+    @app.post("/api/strategies/{strategy_id}/rollback")
+    async def rollback_strategy(
+        strategy_id: str,
+        request: StrategyRollbackRequest,
+    ) -> dict[str, object]:
+        try:
+            await asyncio.to_thread(
+                active_runtime.rollback_strategy,
+                strategy_id,
+                target_revision=request.target_revision,
+                expected_revision=request.expected_revision,
+                reason=request.reason,
+            )
+        except StrategyRevisionConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "STRATEGY_SETTINGS_REVISION_CONFLICT",
+                    "error_message_ko": (
+                        "다른 화면에서 전략 설정이 바뀌었습니다. 최신 설정을 확인하세요."
+                    ),
+                    "retryable": True,
+                    "current_strategy": error.current_setting,
+                },
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "STRATEGY_ROLLBACK_INVALID",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        return dashboard_snapshot()
+
+    @app.get("/api/governance")
+    async def strategy_governance() -> dict[str, object]:
+        include_persisted = active_runtime.mode is not RuntimeMode.LIVE_SHADOW_PAPER
+        return await asyncio.to_thread(
+            active_runtime.strategy_governance,
+            include_persisted=include_persisted,
+        )
 
     @app.get("/api/analytics/strategies")
     async def strategy_analytics() -> list[dict[str, object]]:
@@ -562,6 +714,28 @@ def create_app(
             "auth_required": False,
             **scope,
         }
+
+    @app.get("/api/history")
+    async def history_records(
+        run_scope: str = Query(default="CURRENT", pattern=r"^(CURRENT|ALL)$"),
+        account_scope: str = Query(default="MAIN", pattern=r"^(MAIN|LEAGUE|ALL)$"),
+        profile: str = Query(default="ALL", pattern=r"^(BASE|STRESS|ALL)$"),
+        version_scope: str = Query(default="CURRENT", pattern=r"^(CURRENT|ALL)$"),
+        sample_type: str = Query(
+            default="ALL",
+            pattern=r"^(LIVE_PUBLIC|OFFLINE_FIXTURE|ALL)$",
+        ),
+        limit: int = Query(default=500, ge=1, le=2_000),
+    ) -> dict[str, object]:
+        return await asyncio.to_thread(
+            active_runtime.history_records,
+            run_scope=run_scope,
+            account_scope=account_scope,
+            profile=profile,
+            version_scope=version_scope,
+            sample_type=sample_type,
+            limit=limit,
+        )
 
     @app.get("/api/replay/runs")
     async def replay_runs() -> list[dict[str, object]]:
@@ -691,9 +865,17 @@ def create_app(
             ) from error
 
     @app.post("/api/control/new-run", status_code=202)
-    async def new_run() -> dict[str, object]:
+    async def new_run(
+        request: ControlMutationRequest | None = None,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, object]:
         runner = (control_runners or {}).get(ControlAction.NEW_RUN, new_run_runner)
-        return await submit_operation(ControlAction.NEW_RUN, runner)
+        return await submit_operation(
+            ControlAction.NEW_RUN,
+            runner,
+            request=request,
+            idempotency_key=idempotency_key,
+        )
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:

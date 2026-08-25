@@ -42,6 +42,15 @@ export const initialDashboard: DashboardData = {
     lines: { entry: null, take_profit: null, stop: null },
     fixture: false,
   },
+  timeframes: [
+    { interval_seconds: 60, label: '1m', label_ko: '1분' },
+    { interval_seconds: 180, label: '3m', label_ko: '3분' },
+    { interval_seconds: 300, label: '5m', label_ko: '5분' },
+    { interval_seconds: 900, label: '15m', label_ko: '15분' },
+    { interval_seconds: 1800, label: '30m', label_ko: '30분' },
+    { interval_seconds: 3600, label: '1h', label_ko: '1시간' },
+    { interval_seconds: 14400, label: '4h', label_ko: '4시간' },
+  ],
   position: null,
   logs: [],
   history: [],
@@ -56,6 +65,7 @@ export const initialDashboard: DashboardData = {
   league_positions: [],
   focus_positions: [],
   control_operation: null,
+  control_revision: 0,
   performance: {
     sample_size: 0,
     gross_pnl: '0',
@@ -81,7 +91,7 @@ export const initialDashboard: DashboardData = {
       drawdown_lock: '3.00%',
     },
     strategy_league: {
-      account_count: 18,
+      account_count: 0,
       starting_equity_per_account_usdt: '1000',
       risk_per_position: '0.50%',
       max_positions_per_account: 3,

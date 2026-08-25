@@ -35,6 +35,10 @@ export type ControlOperation = {
   retryable: boolean
   error_code: string | null
   error_message_ko: string | null
+  idempotency_key: string | null
+  revision: number
+  actor: string
+  reason: string
   history: { state: ControlState; stage_ko: string; ts_ms: number }[]
 }
 
@@ -109,6 +113,12 @@ export type ChartData = {
   fixture: boolean
 }
 
+export type TimeframeOption = {
+  interval_seconds: number
+  label: string
+  label_ko: string
+}
+
 export type CurrentPosition = {
   symbol: string
   venue: string
@@ -167,6 +177,28 @@ export type HistoryRow = {
   holding_seconds: number
   profile: string
   sample_type: string
+  account_scope?: 'MAIN' | 'LEAGUE'
+  account_id?: string
+  strategy_version?: string
+  config_hash?: string
+  replay_available?: boolean
+}
+
+export type HistoryResponse = {
+  rows: HistoryRow[]
+  scope: {
+    run_scope: 'CURRENT' | 'ALL'
+    account_scope: 'MAIN' | 'LEAGUE' | 'ALL'
+    profile: 'BASE' | 'STRESS' | 'ALL'
+    version_scope: 'CURRENT' | 'ALL'
+    sample_type: 'LIVE_PUBLIC' | 'OFFLINE_FIXTURE' | 'ALL'
+    strategy_version: string
+    returned_count: number
+    limit: number
+  }
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
 }
 
 export type StrategyRow = {
@@ -178,13 +210,49 @@ export type StrategyRow = {
   supported_regimes: string[]
   paper_only: true
   mode: 'ACTIVE' | 'SHADOW' | 'OFF'
+  lifecycle: 'RESEARCH' | 'SHADOW' | 'CHALLENGER' | 'ACTIVE' | 'QUARANTINED' | 'RETIRED'
   long_enabled: boolean
   short_enabled: boolean
+  settings_revision: number
+  manual_lock: boolean
+  changed_by: 'USER_UI' | 'AUTO_GOVERNOR' | 'RECOVERY' | 'MIGRATION'
+  change_reason: string
+  settings_updated_ts_ms: number
   evaluated_paths: number
   qualified_paths: number
   latest_status: string
   latest_reasons: string[]
   performance: Record<'BASE' | 'STRESS', StrategyPerformance>
+  governance: StrategyGovernance
+}
+
+export type StrategyGovernance = {
+  strategy_id: string
+  current_lifecycle: StrategyRow['lifecycle']
+  recommended_lifecycle: StrategyRow['lifecycle']
+  reason_codes: string[]
+  automatic_action_allowed: boolean
+  transition_required: boolean
+  champion_id: string | null
+  last_evaluated_ts_ms: number
+  evaluation_period: string
+  evidence_status: 'NOT_PROVEN' | 'PROVEN'
+  remaining_live_samples: number
+  remaining_days: number
+  manual_lock: boolean
+  settings_revision: number
+  change_history: Array<{
+    strategy_id: string
+    mode: StrategyRow['mode']
+    lifecycle: StrategyRow['lifecycle']
+    long_enabled: boolean
+    short_enabled: boolean
+    settings_revision: number
+    manual_lock: boolean
+    changed_by: StrategyRow['changed_by']
+    change_reason: string
+    settings_updated_ts_ms: number
+  }>
 }
 
 export type StrategyPerformance = {
@@ -203,16 +271,24 @@ export type StrategyPerformance = {
   expectancy_r: string | null
   expectancy_bps: string | null
   profit_factor: string | null
+  omega_ratio: string | null
+  sortino_ratio_per_trade: string | null
+  calmar_ratio_nonannualized: string | null
+  downside_deviation_usdt: string | null
   gross_pnl: string
   fees: string
   slippage: string
   net_pnl: string
   cost_burden: string | null
   maximum_drawdown: string
+  turnover_usdt: string
+  turnover_ratio: string
   mae_r_mean: string | null
   mfe_r_mean: string | null
   median_hold_ms: number | null
   p90_hold_ms: number | null
+  regime_contributions: { regime: string; sample_size: number; net_pnl: string; expectancy_usdt: string }[]
+  metric_status: Record<string, string>
   sample_status: string
   sample_span_days: number
   regime_count: number
@@ -427,6 +503,7 @@ export type DashboardData = {
   operation_status: OperationStatus
   scanner: ScannerRow[]
   chart: ChartData
+  timeframes: TimeframeOption[]
   position: CurrentPosition | null
   logs: LogItem[]
   history: HistoryRow[]
@@ -441,6 +518,7 @@ export type DashboardData = {
   league_positions: LeaguePosition[]
   focus_positions: FocusPosition[]
   control_operation: ControlOperation | null
+  control_revision: number
   performance: Record<string, string | number>
   risk: {
     paper_only: true

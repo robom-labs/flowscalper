@@ -19,6 +19,11 @@ from backend.app.strategies.depth_adjusted_ofi import (
     DepthAdjustedOfiStrategy,
     depth_adjusted_ofi_ready,
 )
+from backend.app.strategies.governor import (
+    GovernanceAssessment,
+    GovernanceEvidence,
+    StrategyGovernor,
+)
 from backend.app.strategies.liquidity_sweep import (
     LiquiditySweepContext,
     LiquiditySweepStrategy,
@@ -38,7 +43,16 @@ from backend.app.strategies.queue_microprice import (
     QueueMicropriceContext,
     QueueMicropriceStrategy,
 )
-from backend.app.strategies.registry import ExitStyle, StrategyMode, StrategyRegistry
+from backend.app.strategies.registry import (
+    ExitStyle,
+    LifecycleTransition,
+    StrategyChangeSource,
+    StrategyLifecycle,
+    StrategyManualLockConflict,
+    StrategyMode,
+    StrategyRegistry,
+    StrategyRevisionConflict,
+)
 from backend.app.strategies.vwap_exhaustion import (
     VwapExhaustionContext,
     VwapExhaustionStrategy,
@@ -54,6 +68,8 @@ __all__ = [
     "CompressionBreakoutStrategy",
     "DepthAdjustedOfiContext",
     "DepthAdjustedOfiStrategy",
+    "GovernanceAssessment",
+    "GovernanceEvidence",
     "LiquiditySweepContext",
     "LiquiditySweepStrategy",
     "MultilevelMicropriceContext",
@@ -66,8 +82,14 @@ __all__ = [
     "QueueMicropriceContext",
     "QueueMicropriceStrategy",
     "ExitStyle",
+    "LifecycleTransition",
     "StrategyMode",
     "StrategyRegistry",
+    "StrategyChangeSource",
+    "StrategyLifecycle",
+    "StrategyManualLockConflict",
+    "StrategyRevisionConflict",
+    "StrategyGovernor",
     "VwapExhaustionContext",
     "VwapExhaustionStrategy",
     "book_slope_asymmetry_ready",

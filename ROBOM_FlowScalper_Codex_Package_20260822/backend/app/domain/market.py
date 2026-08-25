@@ -50,3 +50,4 @@ class TradeTick:
     quantity: Decimal
     trade_ts_ms: int
     buyer_is_aggressor: bool
+    event_id: str | None = None

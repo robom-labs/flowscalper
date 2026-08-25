@@ -264,3 +264,19 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Measure repeated strategy and strategy-symbol API latency during active persistence, inspect browser console and run desktop, tablet and mobile Playwright.
 9. Record any resource-contention critical incident with exact duration. A recovered incident is not a zero-incident result.
 10. Before a READY service creates a new Run, preserve-finalize superseded flat Run rows. If the latest checksum-verified recovery snapshot contains any PAPER pending entry or position, block the new Run rather than orphaning exposure.
+
+## Full audit, control truth and preregistered intraday research Wave
+
+1. Treat repeated start as an idempotent request and reserve explicit new-Run creation for a separate confirmed operation. Persist idempotency key, expected revision, actor, reason and audit result.
+2. Preserve user pause intent independently from automatic data or storage locks. Recovery may clear an automatic lock only after fresh valid input; it must not override a manual pause.
+3. Use a single timeframe registry through backend history, dashboard and React controls. Implement every public interval from 1m through 4h or expose none of it.
+4. Make history and analytics scope explicit for main/League, Run, BASE/STRESS, strategy version and sample type. Do not mix current Run equity with all-Run research metrics.
+5. Add reproducible research manifests, chronological splits, walk-forward evidence, purge·embargo, multi-horizon outcomes, PBO, DSR and deterministic bootstrap. A partial result is diagnostic only.
+6. Keep Strategy Governor lifecycle, champion/challenger, technical/performance quarantine, manual lock, CAS, rollback and audit separate from execution mode. Never mutate strategy source or thresholds at runtime.
+7. Build canonical completed candles and a research-only multi-timeframe engine. Compare ORIGINAL, paired MECHANICAL_MIRROR and separately conditioned HYPOTHESIS_REVERSE using actual bid/ask and unchanged BASE/STRESS costs.
+8. Count no-signal preregistered hypotheses in multiple-testing correction. Do not select or report only rows that traded.
+9. Derive strategy and independent BASE/STRESS account totals from Registry data. Preserve historical accounts and trades when a strategy retires.
+10. Run the existing A~J screening and the new full archive intraday study from the implementation commit. A research candidate cannot enter Registry without a new strategy ID and later SHADOW approval.
+11. Re-run backend, frontend, lint, typecheck, build, E2E, public network, security and repository hygiene. Verify the actual browser at desktop, tablet and phone sizes.
+12. Deploy only after every main and League PAPER position is flat. Verify the active service after atomic replacement and preserve actual orders, auth, private API, API keys, secrets, wallets and runtime AI at zero.
+13. Complete a fresh 30-minute observation after deployment. Mark 6-hour and 24-hour checks `NOT_RUN` unless their full wall-clock duration is actually observed.

@@ -55,6 +55,7 @@ export function useDashboard() {
   const [requestError, setRequestError] = useState('')
   const [busyAction, setBusyAction] = useState<LongAction | null>(null)
   const [submittedOperation, setSubmittedOperation] = useState<ControlOperation | null>(null)
+  const idempotencyKeys = useRef(new Map<LongAction, string>())
   const hasConnected = useRef(false)
   const mounted = useRef(true)
 
@@ -66,7 +67,10 @@ export function useDashboard() {
     setConnectionError('')
     if (snapshot.control_operation) {
       setSubmittedOperation(snapshot.control_operation)
-      if (terminalStates.has(snapshot.control_operation.state)) setBusyAction(null)
+      if (terminalStates.has(snapshot.control_operation.state)) {
+        setBusyAction(null)
+        idempotencyKeys.current.delete(endpointByAction[snapshot.control_operation.action])
+      }
     }
   }, [])
 
@@ -159,9 +163,18 @@ export function useDashboard() {
     setBusyAction(action)
     setRequestError('')
     try {
+      const idempotencyKey = idempotencyKeys.current.get(action) ?? crypto.randomUUID()
+      idempotencyKeys.current.set(action, idempotencyKey)
       const operation = await fetchJson<ControlOperation>(
         `/api/control/${action}`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify({
+            expected_revision: data.control_revision,
+            reason: `USER_${action.toUpperCase().replaceAll('-', '_')}`,
+          }),
+        },
       )
       if (!mounted.current) return operation
       setSubmittedOperation(operation)
@@ -174,7 +187,7 @@ export function useDashboard() {
       }
       throw error
     }
-  }, [busyAction, submittedOperation])
+  }, [busyAction, data.control_revision, submittedOperation])
 
   const control = useCallback(async (action: DashboardControlAction) => {
     if (action in actionNames) return submitLongControl(action as LongAction)
@@ -222,11 +235,28 @@ export function useDashboard() {
   const configureStrategy = useCallback(
     (
       strategyId: string,
-      configuration: { mode: 'ACTIVE' | 'SHADOW' | 'OFF'; long_enabled: boolean; short_enabled: boolean },
+      configuration: { mode: 'ACTIVE' | 'SHADOW' | 'OFF'; long_enabled: boolean; short_enabled: boolean; expected_revision: number },
     ) =>
       updateDashboard(`/api/strategies/${encodeURIComponent(strategyId)}`, {
         method: 'POST',
-        body: JSON.stringify(configuration),
+        body: JSON.stringify({
+          ...configuration,
+          manual_lock: true,
+          reason: 'USER_CONFIGURATION',
+        }),
+      }),
+    [updateDashboard],
+  )
+
+  const rollbackStrategy = useCallback(
+    (strategyId: string, targetRevision: number, expectedRevision: number) =>
+      updateDashboard(`/api/strategies/${encodeURIComponent(strategyId)}/rollback`, {
+        method: 'POST',
+        body: JSON.stringify({
+          target_revision: targetRevision,
+          expected_revision: expectedRevision,
+          reason: `USER_ROLLBACK_TO_REV_${targetRevision}`,
+        }),
       }),
     [updateDashboard],
   )
@@ -251,6 +281,7 @@ export function useDashboard() {
     retryControl,
     selectChart,
     configureStrategy,
+    rollbackStrategy,
     clearError,
   }
 }

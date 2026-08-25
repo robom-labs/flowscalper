@@ -6,6 +6,7 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.analytics.reports import TradeAnalytics
@@ -131,6 +132,7 @@ async def test_market_catalog_and_candles_remain_public_and_role_separated() -> 
     client = TestClient(create_app(PaperRuntime(mode=RuntimeMode.READY), market_explorer=service))
 
     catalog = client.get("/api/markets/catalog").json()
+    dashboard = client.get("/api/dashboard").json()
     history = client.get(
         "/api/markets/candles?symbol=btcusdt&interval_seconds=180&limit=200"
     ).json()
@@ -144,11 +146,42 @@ async def test_market_catalog_and_candles_remain_public_and_role_separated() -> 
         "OBSERVATION_ONLY",
     ]
     assert catalog["auth_required"] is False and catalog["real_orders_enabled"] is False
+    assert [row["interval_seconds"] for row in dashboard["timeframes"]] == [
+        60,
+        180,
+        300,
+        900,
+        1_800,
+        3_600,
+        14_400,
+    ]
     assert [row["open_ts_ms"] for row in history["candles"]] == [1_000, 2_000]
     assert history["candles"][-1]["close"] == 102
     assert [row["open_ts_ms"] for row in upbit_history["candles"]] == [1_000, 2_000]
     assert upbit_history["observation_only"] is True
     assert upbit_history["real_orders_enabled"] is False
+
+
+async def test_every_ui_timeframe_is_supported_by_both_public_chart_sources() -> None:
+    calls: list[tuple[str, int, int]] = []
+
+    async def loader(symbol: str, interval: int, limit: int) -> list[dict[str, object]]:
+        calls.append((symbol, interval, limit))
+        return []
+
+    service = MarketExplorerService(
+        binance_candle_loader=loader,
+        upbit_candle_loader=loader,
+    )
+    intervals = (60, 180, 300, 900, 1_800, 3_600, 14_400)
+    for source, symbol in (("BINANCE_USDM", "BTCUSDT"), ("UPBIT_KRW", "KRW-BTC")):
+        for interval in intervals:
+            response = await service.candles(source, symbol, interval)
+            assert response["interval_seconds"] == interval
+
+    assert len(calls) == len(intervals) * 2
+    with pytest.raises(ValueError, match="지원하지 않는 차트 시간구간"):
+        await service.candles("BINANCE_USDM", "BTCUSDT", 600)
 
 
 def test_safe_rotation_caps_changes_and_protects_positions() -> None:

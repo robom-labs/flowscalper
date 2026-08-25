@@ -5,6 +5,7 @@ from backend.app.control.operations import (
     ControlOperationConflict,
     ControlOperationFailure,
     ControlOperationManager,
+    ControlRevisionConflict,
     ControlState,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "ControlOperationConflict",
     "ControlOperationFailure",
     "ControlOperationManager",
+    "ControlRevisionConflict",
     "ControlState",
 ]

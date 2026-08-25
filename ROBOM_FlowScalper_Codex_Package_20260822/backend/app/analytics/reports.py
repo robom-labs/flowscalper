@@ -291,6 +291,7 @@ def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
             )
         ),
         "entry_price": str(trade.get("entry_price", "0")),
+        "exit_price": str(trade.get("exit_price", "0")),
         "initial_stop": str(trade.get("initial_stop", "0")),
         "quantity": str(trade.get("quantity", "0")),
         "holding_ms": int(str(trade.get("holding_ms", 0))),
@@ -388,16 +389,29 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
             "expectancy_r": None,
             "expectancy_bps": None,
             "profit_factor": None,
+            "omega_ratio": None,
+            "sortino_ratio_per_trade": None,
+            "calmar_ratio_nonannualized": None,
+            "downside_deviation_usdt": None,
             "gross_pnl": "0",
             "fees": "0",
             "slippage": "0",
             "net_pnl": "0",
             "cost_burden": None,
             "maximum_drawdown": "0",
+            "turnover_usdt": "0",
+            "turnover_ratio": "0",
             "mae_r_mean": None,
             "mfe_r_mean": None,
             "median_hold_ms": None,
             "p90_hold_ms": None,
+            "regime_contributions": [],
+            "metric_status": {
+                "omega_ratio": "NOT_AVAILABLE_NO_LOSSES",
+                "sortino_ratio_per_trade": "NOT_AVAILABLE_NO_DOWNSIDE",
+                "calmar_ratio_nonannualized": "NOT_AVAILABLE_NO_DRAWDOWN",
+                "turnover": "NOT_AVAILABLE_NO_TRADES",
+            },
         }
     pnl = [Decimal(str(trade["net_pnl_usdt"])) for trade in trades]
     gross = sum((Decimal(str(trade["gross_pnl_usdt"])) for trade in trades), Decimal(0))
@@ -438,6 +452,26 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         equity += value
         peak = max(peak, equity)
         maximum_drawdown = max(maximum_drawdown, peak - equity)
+    downside_deviation = (
+        sum((min(value, Decimal(0)) ** 2 for value in pnl), Decimal(0))
+        / Decimal(len(pnl))
+    ).sqrt()
+    expectancy = net / len(pnl)
+    sortino_ratio = (
+        expectancy / downside_deviation if downside_deviation > 0 else None
+    )
+    calmar_ratio = net / maximum_drawdown if maximum_drawdown > 0 else None
+    turnover = sum(
+        (
+            (
+                Decimal(str(trade["entry_price"]))
+                + Decimal(str(trade["exit_price"]))
+            )
+            * Decimal(str(trade["quantity"]))
+            for trade in trades
+        ),
+        Decimal(0),
+    )
     holds = sorted(int(str(trade["holding_ms"])) for trade in trades)
     mae_values = [
         Decimal(str(trade["mae_r"]))
@@ -450,6 +484,23 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         if trade.get("mfe_r") is not None
     ]
     cost_denominator = sum((abs(value) for value in pnl), Decimal(0)) + fees + slippage
+    regime_contributions = []
+    for regime in sorted({str(trade["regime"]) for trade in trades}):
+        regime_pnl = [
+            Decimal(str(trade["net_pnl_usdt"]))
+            for trade in trades
+            if str(trade["regime"]) == regime
+        ]
+        regime_contributions.append(
+            {
+                "regime": regime,
+                "sample_size": len(regime_pnl),
+                "net_pnl": str(sum(regime_pnl, Decimal(0))),
+                "expectancy_usdt": str(
+                    sum(regime_pnl, Decimal(0)) / len(regime_pnl)
+                ),
+            }
+        )
     return {
         "sample_size": len(pnl),
         "wins": len(wins),
@@ -460,7 +511,7 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         "average_win_usdt": str(average_win) if average_win is not None else None,
         "average_loss_usdt": str(average_loss) if average_loss is not None else None,
         "payoff_ratio": str(payoff) if payoff is not None else None,
-        "expectancy_usdt": str(net / len(pnl)),
+        "expectancy_usdt": str(expectancy),
         "expectancy_r": str(sum(risk_values, Decimal(0)) / len(risk_values))
         if risk_values
         else None,
@@ -468,6 +519,14 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         if bps_values
         else None,
         "profit_factor": str(profit_factor) if profit_factor is not None else None,
+        "omega_ratio": str(profit_factor) if profit_factor is not None else None,
+        "sortino_ratio_per_trade": (
+            str(sortino_ratio) if sortino_ratio is not None else None
+        ),
+        "calmar_ratio_nonannualized": (
+            str(calmar_ratio) if calmar_ratio is not None else None
+        ),
+        "downside_deviation_usdt": str(downside_deviation),
         "gross_pnl": str(gross),
         "fees": str(fees),
         "slippage": str(slippage),
@@ -476,6 +535,8 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         if cost_denominator > 0
         else None,
         "maximum_drawdown": str(maximum_drawdown),
+        "turnover_usdt": str(turnover),
+        "turnover_ratio": str(turnover / Decimal("1000")),
         "mae_r_mean": str(sum(mae_values, Decimal(0)) / len(mae_values))
         if mae_values
         else None,
@@ -484,6 +545,19 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         else None,
         "median_hold_ms": int(median(holds)),
         "p90_hold_ms": _percentile(holds, 0.90),
+        "regime_contributions": regime_contributions,
+        "metric_status": {
+            "omega_ratio": (
+                "CALCULATED" if profit_factor is not None else "NOT_AVAILABLE_NO_LOSSES"
+            ),
+            "sortino_ratio_per_trade": (
+                "CALCULATED" if sortino_ratio is not None else "NOT_AVAILABLE_NO_DOWNSIDE"
+            ),
+            "calmar_ratio_nonannualized": (
+                "CALCULATED" if calmar_ratio is not None else "NOT_AVAILABLE_NO_DRAWDOWN"
+            ),
+            "turnover": "CALCULATED",
+        },
     }
 
 

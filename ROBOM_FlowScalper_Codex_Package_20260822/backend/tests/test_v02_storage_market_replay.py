@@ -243,7 +243,89 @@ def test_replayable_run_listing_does_not_force_live_buffer_flush(
         clock=DeterministicClock(),
     )
 
-    assert runtime.replayable_runs()[0]["run_id"] == "run-listed"
+    listed = runtime.replayable_runs()[0]
+    assert listed["run_id"] == "run-listed"
+    assert listed["trade_count"] == 0
+    assert listed["shadow_trade_count"] == 0
+    ledger.close()
+
+
+def test_history_api_separates_main_league_profile_and_version_scope(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "history-scope.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-001",
+        venue=Venue.FIXTURE,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    main_trade = {
+        **_sample_trade("main-current"),
+        "sample_type": "LIVE_PUBLIC",
+        "strategy_version": STRATEGY_VERSION,
+    }
+    shadow_trade = {
+        **_sample_trade("shadow-current"),
+        "shadow_trade_id": "shadow-current",
+        "closed_ts_ms": 2_100,
+        "profile": "STRESS",
+        "sample_type": "LIVE_PUBLIC",
+        "strategy_version": STRATEGY_VERSION,
+    }
+    ledger.record_trade(main_trade)
+    ledger.record_shadow_trade(shadow_trade)
+    ledger.start_run(
+        "run-history-prior",
+        mode="LIVE_SHADOW_PAPER",
+        venue="BINANCE_USDM",
+        config={"strategy_version": "prior-version"},
+        started_ts_ms=500,
+    )
+    prior_shadow = {
+        **shadow_trade,
+        "trade_id": "shadow-prior",
+        "shadow_trade_id": "shadow-prior",
+        "run_id": "run-history-prior",
+        "strategy_version": "prior-version",
+    }
+    ledger.record_shadow_trade(prior_shadow)
+
+    with TestClient(create_app(runtime)) as client:
+        response = client.get(
+            "/api/history",
+            params={
+                "run_scope": "CURRENT",
+                "account_scope": "ALL",
+                "profile": "ALL",
+                "version_scope": "CURRENT",
+                "sample_type": "LIVE_PUBLIC",
+            },
+        )
+        all_versions = runtime.history_records(
+            run_scope="ALL",
+            account_scope="LEAGUE",
+            profile="STRESS",
+            version_scope="ALL",
+            sample_type="LIVE_PUBLIC",
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert {row["account_scope"] for row in payload["rows"]} == {"MAIN", "LEAGUE"}
+    league = next(row for row in payload["rows"] if row["account_scope"] == "LEAGUE")
+    assert league["profile"] == "STRESS"
+    assert league["account_id"].endswith(":STRESS")
+    assert league["replay_available"] is False
+    assert payload["scope"]["strategy_version"] == STRATEGY_VERSION
+    assert payload["paper_only"] is True
+    assert payload["real_orders_enabled"] is False
+    assert payload["auth_required"] is False
+    assert {row["strategy_version"] for row in all_versions["rows"]} == {
+        STRATEGY_VERSION,
+        "prior-version",
+    }
     ledger.close()
 
 

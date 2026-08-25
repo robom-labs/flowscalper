@@ -144,13 +144,18 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     client = TestClient(create_app(runtime))
     dashboard = client.get("/api/dashboard").json()
-    assert len(dashboard["strategies"]) == 10
+    assert len(dashboard["strategies"]) == len(runtime.strategy_registry.strategy_ids)
     assert dashboard["operation_status"]["state"] == "READY"
     assert dashboard["operation_status"]["recommended_action"] == "START"
 
     changed = client.post(
         "/api/strategies/VWAP_EXHAUSTION_REVERSION_V1",
-        json={"mode": "SHADOW", "long_enabled": True, "short_enabled": False},
+        json={
+            "mode": "SHADOW",
+            "long_enabled": True,
+            "short_enabled": False,
+            "expected_revision": 0,
+        },
     )
     assert changed.status_code == 200
     row = next(
@@ -163,9 +168,53 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
         True,
         False,
     )
+    assert row["settings_revision"] == 1
+    assert row["manual_lock"] is True
+    assert row["changed_by"] == "USER_UI"
+    assert row["lifecycle"] == "SHADOW"
+    assert row["governance"]["evidence_status"] == "NOT_PROVEN"
+    governance = client.get("/api/governance")
+    assert governance.status_code == 200
+    assert governance.json()["champion_id"] == "CBR_CONTINUATION_V1"
+    assert len(governance.json()["rows"]) == len(runtime.strategy_registry.strategy_ids)
+    stale = client.post(
+        "/api/strategies/VWAP_EXHAUSTION_REVERSION_V1",
+        json={
+            "mode": "OFF",
+            "long_enabled": True,
+            "short_enabled": False,
+            "expected_revision": 0,
+        },
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["current_strategy"]["settings_revision"] == 1
+    rollback = client.post(
+        "/api/strategies/VWAP_EXHAUSTION_REVERSION_V1/rollback",
+        json={
+            "target_revision": 0,
+            "expected_revision": 1,
+            "reason": "USER_UNDO_TEST",
+        },
+    )
+    assert rollback.status_code == 200
+    restored = next(
+        item
+        for item in rollback.json()["strategies"]
+        if item["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert restored["settings_revision"] == 2
+    assert restored["short_enabled"] is True
+    assert [
+        item["settings_revision"] for item in restored["governance"]["change_history"]
+    ] == [0, 1, 2]
     assert client.post(
         "/api/strategies/UNKNOWN",
-        json={"mode": "OFF", "long_enabled": False, "short_enabled": False},
+        json={
+            "mode": "OFF",
+            "long_enabled": False,
+            "short_enabled": False,
+            "expected_revision": 0,
+        },
     ).status_code == 404
 
 

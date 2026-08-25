@@ -567,7 +567,7 @@ class StrategySignalEvaluator:
         history: _SortedFeatureHistory,
         snapshot: FeatureSnapshot,
     ) -> _HistoryStatistics:
-        """동일 snapshot의 20개 전략·방향이 같은 정렬 통계를 공유한다."""
+        """동일 snapshot의 등록된 전략·방향이 같은 정렬 통계를 공유한다."""
 
         deviation_bps = _vwap_deviation_bps(snapshot) or 0.0
         directional_flow_z = robust_z_from_sorted(

@@ -107,9 +107,9 @@ def league_engine() -> PaperPortfolioEngine:
     )
 
 
-def test_registry_builds_eighteen_independent_thousand_usdt_accounts() -> None:
+def test_registry_builds_dynamic_independent_thousand_usdt_accounts() -> None:
     engine = league_engine()
-    assert len(engine.shadows) == 20
+    assert len(engine.shadows) == len(StrategyRegistry().strategy_ids) * len(CostProfile)
     assert {account.account_id for account in engine.shadows.values()} == {
         f"{strategy_id}:{profile.value}"
         for strategy_id in StrategyRegistry().strategy_ids

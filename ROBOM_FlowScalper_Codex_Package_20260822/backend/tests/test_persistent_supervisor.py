@@ -377,7 +377,7 @@ def test_runtime_builds_every_chart_interval_from_public_trades() -> None:
     assert len(dashboard["chart"]["candles"]) == 2
     assert dashboard["chart"]["candles"][0]["open"] == 100.0
     assert dashboard["chart"]["candles"][0]["close"] == 101.0
-    for interval in (5, 15, 30, 60, 180, 300, 600, 900):
+    for interval in (5, 15, 30, 60, 180, 300, 600, 900, 1_800, 3_600, 14_400):
         runtime.set_chart_selection("BTCUSDT", interval)
         assert runtime.dashboard()["chart"]["interval"]
 

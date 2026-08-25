@@ -6,17 +6,20 @@ import asyncio
 from collections.abc import AsyncIterator
 
 import httpx
+import pytest
 
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.control import (
     ControlAction,
     ControlOperationFailure,
     ControlOperationManager,
+    ControlRevisionConflict,
 )
 from backend.app.domain.models import RuntimeMode, Venue
 from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
 from backend.app.runtime import PaperRuntime
+from backend.app.storage.sqlite import SQLiteLedger
 
 
 async def _wait_for_terminal(manager: ControlOperationManager) -> dict[str, object]:
@@ -66,6 +69,123 @@ async def test_slow_start_live_returns_202_and_deduplicates(monkeypatch) -> None
     assert first.json()["operation_id"] == second.json()["operation_id"]
     assert conflict.status_code == 409
     assert conflict.json()["detail"]["error_code"] == "CONTROL_OPERATION_CONFLICT"
+
+
+async def test_completed_idempotency_key_reuses_operation_and_stale_revision_fails() -> None:
+    manager = ControlOperationManager(DeterministicClock().utc_ms)
+    calls = 0
+
+    async def runner(_progress: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    first = await manager.submit(
+        ControlAction.START_LIVE,
+        runner,
+        idempotency_key="same-user-intent",
+        expected_revision=0,
+    )
+    completed = await _wait_for_terminal(manager)
+    repeated = await manager.submit(
+        ControlAction.START_LIVE,
+        runner,
+        idempotency_key="same-user-intent",
+        expected_revision=0,
+    )
+
+    assert repeated["operation_id"] == first["operation_id"] == completed["operation_id"]
+    assert calls == 1
+    with pytest.raises(ControlRevisionConflict):
+        await manager.submit(
+            ControlAction.NEW_RUN,
+            runner,
+            idempotency_key="different-intent",
+            expected_revision=0,
+        )
+
+
+async def test_dev_origin_preflight_allows_idempotency_header() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    transport = httpx.ASGITransport(app=create_app(runtime))
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.options(
+            "/api/control/start-live",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,idempotency-key",
+            },
+        )
+
+    assert response.status_code == 200
+    allowed = response.headers["access-control-allow-headers"].lower()
+    assert "idempotency-key" in allowed
+
+
+async def test_start_live_while_same_run_is_observed_is_noop(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-already-live",
+        venue=Venue.BINANCE_USDM,
+    )
+    monkeypatch.setattr(PaperRuntime, "live_observation_running", lambda _self: True)
+
+    async def fail_if_restarted(*_args, **_kwargs):
+        raise AssertionError("이미 작동 중인 Run을 다시 만들면 안 됩니다.")
+
+    monkeypatch.setattr(PaperRuntime, "start_live_run", fail_if_restarted)
+    transport = httpx.ASGITransport(app=create_app(runtime))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/control/start-live",
+            headers={"Idempotency-Key": "already-live"},
+            json={"expected_revision": 0, "reason": "USER_START_LIVE"},
+        )
+        assert response.status_code == 202
+        for _ in range(20):
+            current = (await client.get("/api/control/operations/current")).json()
+            if current["state"] == "COMPLETED":
+                break
+            await asyncio.sleep(0)
+
+    assert runtime.run_id == "run-already-live"
+    assert current["state"] == "COMPLETED"
+    assert "이미 같은 PAPER Run" in current["history"][-2]["stage_ko"]
+
+
+async def test_control_transition_actor_and_reason_are_written_to_ledger(tmp_path) -> None:
+    ledger = SQLiteLedger(tmp_path / "control-audit.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.READY,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+
+    async def runner(_progress: object) -> None:
+        return None
+
+    app = create_app(runtime, control_runners={ControlAction.START_LIVE: runner})
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/control/start-live",
+            headers={"Idempotency-Key": "audited-intent"},
+            json={"expected_revision": 0, "reason": "USER_START_LIVE"},
+        )
+        assert response.status_code == 202
+        for _ in range(20):
+            operation = (await client.get("/api/control/operations/current")).json()
+            if operation["state"] == "COMPLETED":
+                break
+            await asyncio.sleep(0)
+
+    rows = ledger.list_incidents(category="CONTROL_STATE_TRANSITION")
+    assert [row["payload"]["state"] for row in rows] == ["REQUESTED", "COMPLETED"]
+    assert all(row["payload"]["actor"] == "USER_UI" for row in rows)
+    assert all(row["payload"]["reason"] == "USER_START_LIVE" for row in rows)
+    ledger.close()
 
 
 async def test_manager_records_stages_retryable_failure_and_bounded_history() -> None:

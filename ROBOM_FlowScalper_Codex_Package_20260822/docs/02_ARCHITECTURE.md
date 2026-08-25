@@ -192,3 +192,20 @@ No real order, credential, transfer or withdrawal endpoint may exist.
 - `PaperRuntime.focus_positions()` is the typed dashboard source for main and BASE/STRESS positions after actual fills.
 - `ReplayFocusSessionBuilder` reads stored public events and bounded candles, then exposes timestamp-ordered frames. It does not create a second execution database.
 - The React shell has five navigation groups. `MarketPage`, `PositionFocusWorkspace` and `ReplayPage` share `PriceChart` and indicator functions.
+
+## 2.12 Strategy Governor boundary
+
+- `StrategyRegistry` is the single in-memory owner of lifecycle, mode, directions, CAS revision and manual lock.
+- `StrategyGovernor` only evaluates supplied immutable research and operational evidence. It never rewrites strategy source or lowers signal thresholds.
+- Multi-strategy champion replacement validates every target before mutation. `ACTIVE` is unique in the normal default, while `SHADOW` and `CHALLENGER` keep their independent BASE/STRESS PAPER accounts.
+- SQLite `strategy_settings` rows and `AUTO_GOVERNOR_TRANSITION` incidents retain actor, reason, evidence period and metrics. Rollback creates a new revision.
+- Missing OOS, robustness, multiple-testing or natural-sample evidence is fail-closed as `NOT_PROVEN`; a successful unit test is not substituted for that evidence.
+
+## 2.13 Canonical candle and intraday research boundary
+
+- `backend/app/market_data/timeframes.py` is the single timeframe registry for API, dashboard labels, market history and research. Public chart intervals are 1m, 3m, 5m, 15m, 30m, 1h and 4h; internal research may additionally aggregate 1s, 5s, 15s and 30s.
+- `CandleBuilder` owns event-ID deduplication, symbol-local ordering and complete-boundary emission. The in-progress candle is never exposed as a completed research observation.
+- `backend/app/intraday/` consumes completed candles and provides research-only multi-timeframe features, horizon-specific immutable plans and ORIGINAL/MIRROR/REVERSE candidate variants.
+- The production `StrategyRegistry` remains the sole runtime strategy source. An intraday research result cannot register, promote or alter a runtime strategy.
+- Registry strategy count and BASE/STRESS account count are derived from the backend registry payload. Removed strategies retain immutable accounts and trades; newly approved IDs require an explicit migration.
+- See ADR-039 and `docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md`.

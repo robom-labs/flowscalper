@@ -45,6 +45,7 @@ Detailed specifications:
 - `docs/17_GLOSSARY.md`
 - `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`
 - `docs/19_STRATEGY_LEAGUE_SPEC_KO.md`
+- `docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md`
 - `docs/adr/ADR-010-compact-market-workspace-full-catalog-strategy-symbol-analytics.md`
 - `docs/adr/ADR-011-runtime-latency-partitioning-and-ledger-replay-transitions.md`
 - `docs/adr/ADR-012-explicit-operation-state-and-orderbook-top-cache.md`
@@ -62,6 +63,8 @@ Detailed specifications:
 - `docs/adr/ADR-024-bounded-active-ledger-and-volume-safety.md`
 - `docs/adr/ADR-025-bounded-live-dashboard-and-deep-capacity.md`
 - `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md`
+- `docs/adr/ADR-038-strategy-governor-lifecycle-and-audit.md`
+- `docs/adr/ADR-039-preregistered-intraday-research-and-runtime-separation.md`
 
 ## Supporting contracts
 
