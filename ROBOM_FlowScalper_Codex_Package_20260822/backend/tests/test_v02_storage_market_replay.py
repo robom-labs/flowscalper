@@ -29,6 +29,7 @@ from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import (
     LedgerInvariantError,
     SQLiteLedger,
+    persist_archives_and_candles_in_process,
     run_passive_wal_checkpoint_in_process,
 )
 from backend.tests.test_candidate_paper_portfolio import book, candidate_plan
@@ -568,6 +569,48 @@ def test_passive_checkpoint_runs_outside_commit_connection(tmp_path: Path) -> No
         symbol="BTCUSDT",
         interval_seconds=1,
     ) == [candle_row(run_id)]
+    ledger.close()
+
+
+def test_archive_and_full_commit_use_independent_connection(tmp_path: Path) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet-process",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "process-ledger.sqlite3",
+        market_event_archive=archive,
+    )
+    run_id = "run-process-persistence"
+    ledger.start_run(
+        run_id,
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    event = market_event(run_id, event_id="process-event", ts_ms=1_000).model_dump(
+        mode="json"
+    )
+
+    timings = persist_archives_and_candles_in_process(
+        str(archive.root),
+        archive.minimum_free_bytes,
+        archive.minimum_free_ratio,
+        str(ledger.path),
+        [[event]],
+        [candle_row(run_id)],
+    )
+
+    assert timings["archive_batches"] == 1
+    assert float(timings["archive_ms"]) >= 0
+    assert float(timings["ledger_ms"]) >= 0
+    assert ledger.count("market_event_archives") == 1
+    assert ledger.count("candles") == 1
+    assert ledger.market_event_symbols(run_id) == [
+        {"symbol": "BTCUSDT", "event_count": 1}
+    ]
     ledger.close()
 
 

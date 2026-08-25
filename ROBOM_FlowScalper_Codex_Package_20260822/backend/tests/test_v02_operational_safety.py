@@ -756,10 +756,11 @@ async def test_atomic_ledger_fault_restores_market_and_candle_batches(
         }
     ]
 
-    def fail_ledger_commit(*_args: object) -> tuple[int, int]:
+    async def fail_ledger_commit(function, *_args: object) -> object:
+        assert function is runtime_module.persist_archives_and_candles_in_process
         raise OSError("simulated atomic ledger fault")
 
-    monkeypatch.setattr(ledger, "record_archives_and_candles", fail_ledger_commit)
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", fail_ledger_commit)
     await runtime._flush_persistence_isolated(None)
 
     assert [row["event_id"] for row in runtime._market_event_buffer] == [

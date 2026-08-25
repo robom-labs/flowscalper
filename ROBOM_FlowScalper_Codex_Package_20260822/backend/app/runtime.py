@@ -56,11 +56,11 @@ from backend.app.storage.parquet import (
     ArchivedEventBatch,
     ParquetEventStore,
     warm_market_event_worker_process,
-    write_market_event_batch_in_process,
 )
 from backend.app.storage.sqlite import (
     RecoveryState,
     SQLiteLedger,
+    persist_archives_and_candles_in_process,
     run_passive_wal_checkpoint_in_process,
 )
 from backend.app.strategies.base import CandidateDecision
@@ -2459,7 +2459,7 @@ class PaperRuntime:
         self,
         market_limit: int | None,
     ) -> dict[str, float | int]:
-        """Parquet은 별도 프로세스에서 쓰고 SQLite 배치는 한 번에 확정한다."""
+        """Parquet과 SQLite FULL 커밋을 시장 처리 프로세스 밖에서 확정한다."""
 
         market_batch, candle_batch = self._take_persistence_batch(market_limit)
         timings: dict[str, float | int] = {
@@ -2473,9 +2473,6 @@ class PaperRuntime:
             return timings
         loop = asyncio.get_running_loop()
         try:
-            archive_records: list[
-                tuple[ArchivedEventBatch, list[dict[str, object]]]
-            ] = []
             if market_batch:
                 if self.market_event_archive is None:
                     started = loop.time()
@@ -2484,27 +2481,18 @@ class PaperRuntime:
                 else:
                     store = self.market_event_archive
                     groups = self._group_market_archive_rows(market_batch)
-                    timings["archive_batches"] = len(groups)
-                    for rows in groups:
-                        started = loop.time()
-                        archive = await to_process.run_sync(
-                            write_market_event_batch_in_process,
-                            str(store.root),
-                            store.minimum_free_bytes,
-                            store.minimum_free_ratio,
-                            rows,
-                        )
-                        timings["archive_ms"] += (loop.time() - started) * 1_000
-                        archive_records.append((archive, rows))
-            if archive_records:
-                started = loop.time()
-                await asyncio.to_thread(
-                    self.ledger.record_archives_and_candles,
-                    archive_records,
-                    candle_batch,
-                )
-                timings["ledger_ms"] += (loop.time() - started) * 1_000
-            elif candle_batch:
+                    process_timings = await to_process.run_sync(
+                        persist_archives_and_candles_in_process,
+                        str(store.root),
+                        store.minimum_free_bytes,
+                        store.minimum_free_ratio,
+                        str(self.ledger.path),
+                        groups,
+                        candle_batch,
+                    )
+                    timings.update(process_timings)
+                    candle_batch = []
+            if candle_batch:
                 started = loop.time()
                 await asyncio.to_thread(self.ledger.record_candles, candle_batch)
                 timings["ledger_ms"] += (loop.time() - started) * 1_000

@@ -14,6 +14,9 @@ from threading import RLock
 from typing import Any
 
 from backend.app.storage.parquet import ArchivedEventBatch, ParquetEventStore
+from backend.app.storage.parquet import (
+    _apply_background_io_policy as _apply_persistence_background_io_policy,
+)
 
 
 class LedgerInvariantError(RuntimeError):
@@ -1656,6 +1659,94 @@ def run_passive_wal_checkpoint_in_process(path: str) -> tuple[int, int, int]:
         return (int(row[0]), int(row[1]), int(row[2]))
     finally:
         connection.close()
+
+
+def persist_archives_and_candles_in_process(
+    archive_root: str,
+    minimum_free_bytes: int,
+    minimum_free_ratio: float,
+    ledger_path: str,
+    market_groups: list[list[dict[str, object]]],
+    candles: list[dict[str, object]],
+) -> dict[str, float | int]:
+    """Parquet 작성과 FULL SQLite 커밋을 시장 처리 프로세스 밖에서 끝낸다."""
+
+    import time
+
+    _apply_persistence_background_io_policy()
+    archive_started = time.perf_counter()
+    store = ParquetEventStore(
+        Path(archive_root),
+        minimum_free_bytes=minimum_free_bytes,
+        minimum_free_ratio=minimum_free_ratio,
+    )
+    archive_records: list[
+        tuple[ArchivedEventBatch, list[dict[str, object]]]
+    ] = []
+    for rows in market_groups:
+        archive_records.append((store.write_market_event_batch(rows), rows))
+    archive_ms = (time.perf_counter() - archive_started) * 1_000
+
+    prepared_archives = [
+        SQLiteLedger._prepare_market_event_archive(batch, events)
+        for batch, events in archive_records
+    ]
+    prepared_candles = SQLiteLedger._prepare_candles(candles) if candles else None
+    run_ids = {run_id for run_id, _, _ in prepared_archives}
+    if prepared_candles is not None:
+        run_ids.add(prepared_candles[0])
+    if not run_ids:
+        return {
+            "archive_ms": archive_ms,
+            "ledger_ms": 0.0,
+            "archive_batches": len(archive_records),
+        }
+    if len(run_ids) != 1:
+        raise LedgerInvariantError("한 영속화 커밋에 여러 Run의 데이터가 섞였습니다.")
+    run_id = next(iter(run_ids))
+
+    ledger_started = time.perf_counter()
+    connection = sqlite3.connect(ledger_path, timeout=60.0, isolation_level=None)
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.executescript(
+            """
+            PRAGMA foreign_keys = ON;
+            PRAGMA synchronous = FULL;
+            PRAGMA wal_autocheckpoint = 0;
+            PRAGMA busy_timeout = 60000;
+            """
+        )
+        mode = connection.execute("PRAGMA journal_mode").fetchone()
+        if mode is None or str(mode[0]).lower() != "wal":
+            raise LedgerInvariantError("분리 영속화 연결의 journal_mode가 WAL이 아닙니다.")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            run = connection.execute(
+                "SELECT finalized_ts_ms FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None or run["finalized_ts_ms"] is not None:
+                raise LedgerInvariantError(f"열린 Run이 아닙니다: {run_id}")
+            for _, manifest, stat_rows in prepared_archives:
+                SQLiteLedger._insert_market_event_archive(
+                    connection,
+                    manifest=manifest,
+                    stat_rows=stat_rows,
+                )
+            if prepared_candles is not None:
+                SQLiteLedger._insert_candles(connection, prepared_candles[1])
+            connection.execute("COMMIT")
+        except BaseException:
+            connection.execute("ROLLBACK")
+            raise
+    finally:
+        connection.close()
+    return {
+        "archive_ms": archive_ms,
+        "ledger_ms": (time.perf_counter() - ledger_started) * 1_000,
+        "archive_batches": len(archive_records),
+    }
 
 
 def _canonical_json(value: object) -> str:
