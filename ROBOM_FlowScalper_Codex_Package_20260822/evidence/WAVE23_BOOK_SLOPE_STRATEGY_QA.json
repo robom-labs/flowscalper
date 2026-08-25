@@ -215,9 +215,12 @@
     "release_zip": "NOT_RUN"
   },
   "github_main_implementation": {
-    "commit": "PENDING",
-    "actions_run_id": "PENDING",
-    "actions_url": "PENDING",
-    "status": "PENDING"
+    "commit": "a8a04b8c4aedfd092a13ce199d9925f2cce5505a",
+    "actions_run_id": 32791918431,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/32791918431",
+    "validate_job": "PASS in 48s",
+    "browser_job": "PASS in 1m4s",
+    "browser_evidence_upload": "PASS",
+    "status": "PASS"
   }
 }
