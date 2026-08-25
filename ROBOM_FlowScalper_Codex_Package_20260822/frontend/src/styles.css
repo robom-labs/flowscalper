@@ -224,8 +224,11 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .table-actions .table-button { min-width: 56px; padding-inline: 9px; }
 .full-width { width: 100%; }
 
-.replay-runbar { display: grid; grid-template-columns: minmax(240px, 1.3fr) minmax(170px, .7fr) auto; gap: 8px; align-items: end; margin-bottom: 8px; }
+.replay-runbar { display: grid; grid-template-columns: minmax(240px, 1.3fr) minmax(170px, .7fr) auto auto; gap: 8px; align-items: end; margin-bottom: 8px; }
 .replay-runbar select { width: 100%; }
+.history-result-summary, .replay-preview-note, .replay-load-status { margin: 0 0 8px; color: #9bb1bd; font-size: 11px; }
+.history-result-summary, .replay-preview-note { padding: 9px 12px; border: 1px solid #1e3b49; border-radius: 8px; background: #0b1b23; }
+.replay-load-status { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; }
 .replay-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, .7fr); gap: 8px; }
 .replay-controls label { display: grid; gap: 6px; margin: 16px 0; color: var(--muted); font-size: 10px; }
 .replay-controls select { min-height: 48px; border: 1px solid #31505f; border-radius: 8px; color: #d9e5eb; background: #0e2029; padding: 0 10px; }

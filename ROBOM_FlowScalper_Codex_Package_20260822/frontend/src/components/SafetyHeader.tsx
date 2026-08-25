@@ -42,8 +42,8 @@ export function SafetyHeader({ data, connected, connectionState, lastUpdateMs, o
       <div className="brand-lockup"><h1>FlowScalper</h1><button type="button" className="summary-link" onClick={onSummary}>요약</button></div>
       <div className="header-status" aria-label="운영 상태">
         <span className={live ? 'status-dot live' : fixture ? 'status-dot fixture' : 'status-dot'}>{sourceLabel}</span>
-        <span>진행 {openPositions}건</span>
-        <span>정밀 {status.deep_symbols || data.scanner.length}개</span>
+        <span>보유 중 {openPositions}건</span>
+        <span>정밀 감시 {status.deep_symbols || data.scanner.length}개</span>
         <span>{lastUpdateMs ? formatKstTime(lastUpdateMs) : '시간 연결 대기'}</span>
         <span className={fixture ? 'paper-lock fixture-truth' : 'paper-lock'}>{fixture ? '샘플 PAPER · LIVE 아님 · 실제 주문 0' : 'PAPER · 실제 주문 0'}</span>
         <span className={connected ? 'connection-on' : 'connection-off'}>{connectionLabel}</span>

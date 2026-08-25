@@ -329,6 +329,49 @@ def test_history_api_separates_main_league_profile_and_version_scope(
     ledger.close()
 
 
+def test_live_history_uses_warmed_trade_cache_without_rescanning_active_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "live-history-cache.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-001",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    main_trade = {
+        **_sample_trade("main-cache"),
+        "sample_type": "LIVE_PUBLIC",
+        "strategy_version": STRATEGY_VERSION,
+    }
+    shadow_trade = {
+        **_sample_trade("shadow-cache"),
+        "shadow_trade_id": "shadow-cache",
+        "closed_ts_ms": 2_000,
+        "sample_type": "LIVE_PUBLIC",
+        "strategy_version": STRATEGY_VERSION,
+    }
+    ledger.record_trade(main_trade)
+    ledger.record_shadow_trade(shadow_trade)
+    runtime._refresh_dashboard_trade_cache()
+
+    def unexpected_scan(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        raise AssertionError("활성 원장 전체 거래를 다시 스캔하면 안 됩니다.")
+
+    monkeypatch.setattr(ledger, "list_trades", unexpected_scan)
+    monkeypatch.setattr(ledger, "list_shadow_trades", unexpected_scan)
+    response = runtime.history_records(account_scope="ALL", sample_type="LIVE_PUBLIC")
+
+    assert {row["trade_id"] for row in response["rows"]} == {
+        "main-cache",
+        "shadow-cache",
+    }
+    assert response["scope"]["returned_count"] == 2
+    ledger.close()
+
+
 def test_replayable_run_listing_does_not_wait_for_live_writer_lock(
     tmp_path: Path,
 ) -> None:
@@ -1063,8 +1106,15 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     assert timeline.json()["available_symbols"] == [
         {"symbol": "BTCUSDT", "event_count": 1}
     ]
+    preview = client.get(f"/api/replay/{runtime.run_id}/preview")
+    assert preview.status_code == 200
+    assert preview.json()["symbol"] == "BTCUSDT"
+    assert preview.json()["events"] == []
+    assert preview.json()["preview_only"] is True
     missing_timeline = client.get("/api/replay/unknown/timeline")
     assert missing_timeline.status_code == 404
+    missing_preview = client.get("/api/replay/unknown/preview")
+    assert missing_preview.status_code == 404
     results = client.get("/api/replay/results")
     assert results.status_code == 200
     assert results.json()[0]["checksum"] == replay.json()["checksum"]

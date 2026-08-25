@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-25T23:08:43Z",
+  "wave": 36,
+  "status": "COMPLETE_WITH_LIMITS",
+  "baseline_git_sha": "f6e428cf33d93c9859198366edf223a094c88b31",
+  "implementation_git_sha": "PENDING",
+  "github_main": "NOT_RUN",
+  "github_actions": "NOT_RUN",
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_keys_required": false
+  },
+  "root_causes": [
+    "The history page defaulted to the shared main PAPER account while all 22 current-run rows belonged to independent Strategy League accounts.",
+    "The history API rescanned the active 2.3GB ledger for main and league trades on each expanded query.",
+    "The replay page automatically loaded and checksum-verified 2000 archived events before it enabled the selectors or chart.",
+    "The UI did not distinguish loading from a genuine zero-row result.",
+    "The header labels for open positions and deep-analysis symbols looked like completed-trade counts."
+  ],
+  "before": {
+    "history_all_seconds": 6.24,
+    "current_run_timeline_seconds": 37.52,
+    "history_default_account_scope": "MAIN",
+    "replay_timeline_auto_loaded": true
+  },
+  "after": {
+    "history_default_account_scope": "ALL",
+    "history_current_rows": 22,
+    "history_main_rows": 0,
+    "history_league_rows": 22,
+    "history_repeat_seconds_min": 0.02278,
+    "history_repeat_seconds_max": 0.03434,
+    "history_all_versions_seconds": 0.065769,
+    "replay_run_count": 79,
+    "replay_current_run_symbol_count": 53,
+    "replay_preview_candles": 500,
+    "replay_preview_events_read": 0,
+    "replay_preview_seconds": 0.1993,
+    "browser_precise_demo_events": 24,
+    "browser_precise_load_ms": 631,
+    "browser_strategy_replay_ms": 1947,
+    "browser_replay_id": "replay-f8a8036c38ef4fcc",
+    "browser_replay_checksum": "66e3adca53e2013226f0408d16f4662346f0f1fe65b540e207e98d2a573eed97"
+  },
+  "current_run": {
+    "run_id": "run-2b7135a972dd",
+    "started_kst": "2026-08-26 02:30:06 KST",
+    "market_event_count_at_audit": 1419273,
+    "main_trade_count": 0,
+    "league_trade_rows": 22,
+    "unique_natural_candidates": 11,
+    "minimum_holding_ms": 16992,
+    "maximum_holding_ms": 85622,
+    "under_three_seconds": 0,
+    "profitability": "NOT_PROVEN",
+    "thresholds_lowered": false
+  },
+  "current_run_trade_rows_by_strategy": {
+    "AGGRESSOR_FLOW_CONTINUATION_V1": 4,
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1": 2,
+    "LSA_REVERSAL_V1": 2,
+    "QUEUE_MICROPRICE_MOMENTUM_V1": 6,
+    "VWAP_EXHAUSTION_REVERSION_V1": 8
+  },
+  "validation": {
+    "backend_pytest": "361 passed",
+    "frontend_vitest": "13 files, 53 tests passed",
+    "fixture_pytest": "15 passed",
+    "playwright": "desktop, tablet, mobile 3 passed",
+    "ruff": "PASS",
+    "mypy": "91 source files, PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": "PASS_WITH_WARNING_505.00_KB_CHUNK",
+    "paper_build_safety": "PASS",
+    "security_scan": "124 source files, PASS",
+    "repository_hygiene": "PASS"
+  },
+  "live_runtime": {
+    "verification_load_incident": "PASS_WITH_LIMIT",
+    "persistence_flush_max_ms": 14261.0,
+    "critical_lag_duration_ms": 86300.765,
+    "automatic_recovery": true,
+    "post_recovery_samples": 7,
+    "post_recovery_seconds": 30,
+    "post_recovery_event_delta": 2063,
+    "post_recovery_p95_min_ms": 46.24462890625,
+    "post_recovery_p95_max_ms": 162.4580078125,
+    "post_recovery_critical_growth": 0,
+    "post_recovery_queue_max": 12,
+    "post_recovery_gap_max": 0,
+    "post_recovery_drop_max": 0,
+    "post_recovery_fault_max": 0,
+    "post_recovery_buffer_drop_max": 0,
+    "post_recovery_entry_lock": false
+  },
+  "not_run": [
+    "6-hour post-change soak",
+    "24-hour post-change soak",
+    "active 2.3GB ledger full quick_check rerun",
+    "release ZIP"
+  ]
+}

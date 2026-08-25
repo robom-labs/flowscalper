@@ -1522,3 +1522,58 @@ wide scanner p95 1,860.858ms는 실행용 정밀호가 p95 39.409ms와 분리된
 | GitHub main / Actions | PASS | 구현 commit `8bcfde29da42e4f066a225f64ff6c98f85d4c009`과 실행증거 commit `e8bbc22c4b0dfaa8051efdd448a6861c32687354`을 main에 push했다. [Actions 32906261858](https://github.com/robom-labs/flowscalper/actions/runs/32906261858)의 validate 1분7초, browser 1분20초와 실제 Chromium desktop·tablet·mobile E2E·증거업로드가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/WAVE35_ROTATION_WARMUP_QA.json`, 결정 근거는 ADR-041이다. 구현 기준 commit은 `8bcfde29da42e4f066a225f64ff6c98f85d4c009`, 실행증거 기준 commit은 `e8bbc22c4b0dfaa8051efdd448a6861c32687354`이다. 이 Wave는 재현한 정상 계획교체의 stale backlog 결함을 해결한 것이며, 모든 미래 네트워크 상태·6시간·24시간 안정성이나 전략 수익성을 입증한 것은 아니다.
+
+## 41. 거래기록 가시성·replay 비차단 미리보기
+
+### 재현과 원인
+
+실제 `http://127.0.0.1:8870/`의 거래기록 기본 화면은 `이번 Run·공동 PAPER·현재 버전`을 선택해 빈 표를 표시했다. 현재 Run의 공동계좌 완료 거래는 실제로 0건이지만 독립 전략계좌에는 22건이 있었다. 화면은 확장 범위를 읽는 동안에도 빈 배열을 표시하고 로딩 문구가 없어 데이터가 없는 것처럼 보였다.
+
+확장 거래기록 API는 활성 2.3GB 원장의 main·전략리그 거래를 매번 다시 검증해 전체 범위에 6.24초가 걸렸다. 과거 재생 화면은 Run 목록을 연 직후 선택 종목의 checksum 검증 이벤트 2,000개를 자동으로 읽어 현재 대형 Run에서 37.52초가 걸렸고, 그동안 선택기와 차트가 잠겼다.
+
+LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cache와 현재 메모리 완료거래의 고유 ID 병합으로 바꿨다. 기본 계좌 범위는 전체로 바꾸고 로딩·실패·진짜 0건, 전체·공동·전략별 건수를 분리했다. replay는 종목통계와 최근 1초 candle 500개만 읽는 빠른 미리보기, checksum 검증 정밀 이벤트, 동일 조건 전략 재검증의 세 단계로 나눴다. Run 변경 순간 이전 종목과 timeline을 지워 교차 Run 경합도 차단했다. 결정 근거는 ADR-042다.
+
+### 실제 거래와 전략 상태
+
+현재 `run-2b7135a972dd`는 2026-08-26 02:30:06 KST에 시작했으므로 전날 밤 전체를 실행한 Run이 아니다. 감사 시점 저장 이벤트는 1,419,273건, main 거래 0건, 전략계좌 거래 22건이다. 22행은 자연 후보 11개를 BASE와 STRESS가 독립 체결한 결과다.
+
+전략계좌 행은 LSA 2, VWAP 8, Queue 6, Aggressor 4, Depth-adjusted OFI 2건이다. 보유시간은 16.992~85.622초이고 3초 미만 종료는 0건이다. 종료는 EDGE_DECAY 20, PROFIT_PROTECTION 1, STOP 1건이다. 현재 22행의 비용후 합계는 모든 관측 전략에서 음수다. 따라서 수익성은 `NOT_PROVEN`이며 거래를 늘리려고 전략 임계값·비용·손익비를 낮추거나 ACTIVE를 바꾸지 않았다.
+
+공동계좌 0건은 현재 유일한 ACTIVE인 CBR이 최근 24개 경로에서 압축·돌파·눌림·유동성 회복·OFI 재가속 조건을 동시에 충족하지 못했기 때문이다. 나머지 전략도 각 24개 경로를 평가하고 명시적 구조·flow·지속성 이유로 대기했다. 공개시장 event, 50 wide·12 deep, 전략평가와 저장이 멈춘 상태는 아니었다.
+
+### 성능과 실제 브라우저 버튼
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 거래기록 API | PASS | 최초 준비 뒤 현재 Run 전체계좌 5회가 22.8~34.3ms, 전체 Run·전체 버전 65.8ms였다. 현재 Run은 공동 0·전략별 22건을 반환했다. |
+| replay 목록·미리보기 | PASS | 저장 Run 79개 목록 16ms, 현재 Run 53개 종목과 최근 candle 500개 미리보기 199ms였다. 미리보기는 archive event 본문 0개를 읽었다. |
+| 실제 거래기록 화면 | PASS | `기록`을 직접 눌러 기본 `모든 PAPER 계좌`, `표시 22건 · 공동계좌 0건 · 전략별 계좌 22건`, 거래별 수수료·슬리피지·순손익·16초 이상 보유시간을 확인했다. |
+| 실제 replay 화면 | PASS | `과거 재생`을 직접 눌러 현재 대형 Run의 최근 candle 500개가 먼저 표시되고 정밀 이벤트와 전략 검증 버튼이 분리된 것을 확인했다. |
+| Run 변경 경합 | PASS | 소형 `demo-7f9159e59d01`로 변경한 직후 이전 ZECUSDT가 남지 않고 ADAUSDT preview가 준비된 뒤 버튼이 열렸다. alert는 0이었다. |
+| 정밀 이벤트 | PASS | 버튼을 눌러 ADAUSDT 저장 이벤트 24개를 631ms에 checksum 검증해 열었고 `전략 평가 실행 전` 문구를 확인했다. |
+| 동일 조건 전략 검증 | PASS | 버튼을 눌러 1.947초에 `replay-f8a8036c38ef4fcc`, checksum `66e3adca53e2013226f0408d16f4662346f0f1fe65b540e207e98d2a573eed97`을 만들었다. 후보·main·전략별 거래 0, 실제 주문·인증 경로 0이다. |
+
+### 공개시장 후속 관찰과 제한
+
+전체 테스트·build 부하와 겹친 실제 저장에서 원장 커밋 최대 14.261초, checkpoint 6.604초와 임계지연 1건이 발생해 시스템이 fail-closed `SAFETY_WAITING`으로 들어갔다. 데이터 관찰은 계속됐고 queue·gap·drop·저장 fault는 0이었다. 수동 해제 없이 86.301초 뒤 `RUNNING`으로 자동 복구됐다. 이를 오류 0으로 숨기지 않고 `PASS_WITH_LIMIT`로 기록한다.
+
+복구 뒤 30초·7표본에서 event 37,086→39,149로 2,063건 전진, p95 46.245~162.458ms, 임계지연 추가 0, queue 최대 12 뒤 0, gap·drop·fault·buffer drop·진입잠금 0, 실제 주문·인증 false였다. 짧은 표본이므로 6시간·24시간 안정성을 뜻하지 않는다.
+
+### 전체 회귀와 남은 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 361 passed, 21.21초 |
+| frontend Vitest | PASS | 13 files·53 tests |
+| Ruff / mypy | PASS | 오류 0 / 91 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | Vite 48 modules와 PAPER 불변조건 PASS. 단일 JS chunk 505.00kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 15 passed, 실제 Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 124 source·violation/secret-like/실제 주문 path 0 / 위반 0 |
+| 활성 원장 full quick_check | NOT_RERUN | Wave34의 같은 활성 원장 full quick_check `ok`·FK 0 뒤 이번 표시·조회 수정에서는 작동 중 writer를 멈추는 전수검사를 반복하지 않았다. 현재 persistence fault·buffer drop은 0이다. |
+| 전략 수익성 | NOT_PROVEN | 현재 Run 11개 자연후보·22개 BASE/STRESS 행은 모두 합산 비용후 음수이며 30건 미만이다. 기준과 Registry를 변경하지 않았다. |
+| 6시간 / 24시간 soak | NOT_RUN | 수정 뒤 실제 시간을 채우지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | NOT_RUN | 문서 작성 시점에는 아직 push하지 않았다. 로컬 검증을 원격 PASS로 쓰지 않는다. |
+
+기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. 구현·GitHub SHA와 Actions 결과는 push와 원격 검증 뒤 갱신한다.

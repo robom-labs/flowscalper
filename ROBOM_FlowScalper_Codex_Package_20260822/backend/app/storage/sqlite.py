@@ -1139,6 +1139,31 @@ class SQLiteLedger:
             ).fetchall()
         return self._verified_payload_rows(rows, "캔들")
 
+    def list_recent_candles(
+        self,
+        run_id: str,
+        *,
+        symbol: str,
+        interval_seconds: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """미리보기용 최근 캔들만 읽고 시간순으로 반환한다."""
+
+        if not 1 <= limit <= 2_000:
+            raise ValueError("최근 캔들 개수는 1..2000 범위여야 합니다.")
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT payload_json, checksum FROM candles
+                WHERE run_id = ? AND symbol = ? AND interval_seconds = ?
+                ORDER BY open_ts_ms DESC LIMIT ?
+                """,
+                (run_id, symbol, interval_seconds, limit),
+            ).fetchall()
+        verified = self._verified_payload_rows(rows, "캔들")
+        verified.reverse()
+        return verified
+
     def record_candidate(self, candidate: Mapping[str, object]) -> None:
         run_id = str(candidate["run_id"])
         with self._transaction() as connection:

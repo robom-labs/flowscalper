@@ -200,6 +200,12 @@ class PaperRuntime:
     _historical_prior_version_shadow_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
+    _historical_all_main_trades: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
+    _historical_all_shadow_trades: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
     _dashboard_strategy_performance_cache_key: tuple[object, ...] | None = field(
         default=None, repr=False
     )
@@ -1844,19 +1850,23 @@ class PaperRuntime:
         if not 1 <= limit <= 2_000:
             raise ValueError("거래내역 개수는 1..2000 범위여야 합니다.")
 
-        main_trades: list[dict[str, object]] = []
-        league_trades: list[dict[str, object]] = []
-        if self.ledger is not None:
-            main_trades.extend(self.ledger.list_trades())
-            league_trades.extend(self.ledger.list_shadow_trades())
-        main_trades.extend(
-            self._paper_trade_row(trade)
-            for trade in self.paper_portfolio.main.completed_trades
-        )
-        for account in self.paper_portfolio.shadows.values():
-            league_trades.extend(
-                self._paper_trade_row(trade) for trade in account.completed_trades
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and self.dashboard_trade_cache_ready:
+            main_trades = list(self._history_main_trades())
+            league_trades = list(self._history_shadow_trades())
+        else:
+            main_trades = []
+            league_trades = []
+            if self.ledger is not None:
+                main_trades.extend(self.ledger.list_trades())
+                league_trades.extend(self.ledger.list_shadow_trades())
+            main_trades.extend(
+                self._paper_trade_row(trade)
+                for trade in self.paper_portfolio.main.completed_trades
             )
+            for account in self.paper_portfolio.shadows.values():
+                league_trades.extend(
+                    self._paper_trade_row(trade) for trade in account.completed_trades
+                )
 
         replayable_run_ids = {str(row["run_id"]) for row in self.replayable_runs()}
         selected: dict[tuple[str, str, str], dict[str, object]] = {}
@@ -2007,6 +2017,26 @@ class PaperRuntime:
             source_run_id,
             symbol=symbol,
             limit=limit,
+        )
+
+    def replay_preview(
+        self,
+        source_run_id: str,
+        *,
+        symbol: str | None = None,
+        candle_limit: int = 500,
+    ) -> dict[str, object]:
+        """대용량 이벤트 본문을 읽지 않고 저장 종목과 최근 캔들을 미리 보여 준다."""
+
+        if self.ledger is None:
+            raise ValueError("영속 원장이 없어 리플레이할 수 없습니다.")
+        from backend.app.replay.timeline import build_replay_preview
+
+        return build_replay_preview(
+            self.ledger,
+            source_run_id,
+            symbol=symbol,
+            candle_limit=candle_limit,
         )
 
     def replay_focus_session(
@@ -3194,15 +3224,21 @@ class PaperRuntime:
                     self._historical_prior_version_live_trades = ()
                     self._historical_shadow_trades = ()
                     self._historical_prior_version_shadow_trades = ()
+                    self._historical_all_main_trades = ()
+                    self._historical_all_shadow_trades = ()
                     succeeded = True
                     return
+                all_main_trades = self.ledger.list_trades()
+                all_shadow_trades = self.ledger.list_shadow_trades()
+                self._historical_all_main_trades = tuple(all_main_trades)
+                self._historical_all_shadow_trades = tuple(all_shadow_trades)
                 current_live_trades, prior_version_live_trades = (
-                    self._current_strategy_version_trades(self.ledger.list_trades())
+                    self._current_strategy_version_trades(all_main_trades)
                 )
                 self._historical_live_trades = tuple(current_live_trades)
                 self._historical_prior_version_live_trades = tuple(prior_version_live_trades)
                 current_shadow_trades, prior_version_shadow_trades = (
-                    self._current_strategy_version_trades(self.ledger.list_shadow_trades())
+                    self._current_strategy_version_trades(all_shadow_trades)
                 )
                 self._historical_shadow_trades = tuple(current_shadow_trades)
                 self._historical_prior_version_shadow_trades = tuple(
@@ -3234,6 +3270,27 @@ class PaperRuntime:
 
     def _dashboard_live_shadow_trades(self) -> tuple[dict[str, object], ...]:
         rows = {str(trade["trade_id"]): trade for trade in self._historical_shadow_trades}
+        for account in self.paper_portfolio.shadows.values():
+            rows.update(
+                {trade.trade_id: self._paper_trade_row(trade) for trade in account.completed_trades}
+            )
+        return tuple(rows.values())
+
+    def _history_main_trades(self) -> tuple[dict[str, object], ...]:
+        rows = {str(trade["trade_id"]): trade for trade in self._historical_all_main_trades}
+        rows.update(
+            {
+                trade.trade_id: self._paper_trade_row(trade)
+                for trade in self.paper_portfolio.main.completed_trades
+            }
+        )
+        return tuple(rows.values())
+
+    def _history_shadow_trades(self) -> tuple[dict[str, object], ...]:
+        rows = {
+            str(trade.get("trade_id", trade.get("shadow_trade_id"))): trade
+            for trade in self._historical_all_shadow_trades
+        }
         for account in self.paper_portfolio.shadows.values():
             rows.update(
                 {trade.trade_id: self._paper_trade_row(trade) for trade in account.completed_trades}

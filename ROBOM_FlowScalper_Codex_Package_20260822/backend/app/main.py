@@ -756,6 +756,34 @@ def create_app(
             return []
         return await asyncio.to_thread(active_runtime.ledger.list_replay_runs)
 
+    @app.get("/api/replay/{run_id}/preview")
+    async def replay_preview(
+        run_id: str,
+        symbol: str | None = Query(
+            default=None,
+            min_length=3,
+            max_length=30,
+            pattern=r"^[A-Za-z0-9]+$",
+        ),
+        candle_limit: int = Query(default=500, ge=1, le=2_000),
+    ) -> dict[str, object]:
+        try:
+            return await asyncio.to_thread(
+                active_runtime.replay_preview,
+                run_id,
+                symbol=symbol,
+                candle_limit=candle_limit,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "REPLAY_PREVIEW_NOT_FOUND",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+
     @app.get("/api/replay/{run_id}/timeline")
     async def replay_timeline(
         run_id: str,

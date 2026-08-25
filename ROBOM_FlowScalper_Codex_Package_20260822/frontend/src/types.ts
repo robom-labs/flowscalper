@@ -620,6 +620,7 @@ export type ReplayTimeline = {
   available_symbols: { symbol: string; event_count: number | null; new_event_count?: number }[]
   events: ReplayMarketEvent[]
   candles: ChartData['candles']
+  preview_only?: boolean
 }
 
 export type ReplayFocusFrame = {

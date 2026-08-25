@@ -1,7 +1,7 @@
 // 현재 Run에서 사라진 거래의 상세 패널이 화면에 남지 않는지 검증한다.
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { HistoryPage } from '../src/pages/HistoryPage'
 import type { HistoryRow } from '../src/types'
 
@@ -34,8 +34,25 @@ const trade: HistoryRow = {
   sample_type: 'LIVE_PUBLIC',
 }
 
+function historyResponse(rows: HistoryRow[]) {
+  return new Response(JSON.stringify({
+    rows,
+    scope: {
+      run_scope: 'CURRENT', account_scope: 'ALL', profile: 'ALL',
+      version_scope: 'CURRENT', sample_type: 'ALL', strategy_version: 'current-v2',
+      returned_count: rows.length, limit: 1000,
+    },
+    paper_only: true, real_orders_enabled: false, auth_required: false,
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+}
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(async () => historyResponse([trade])))
+})
+
 test('clears stale trade detail when the current history no longer contains it', async () => {
   const view = render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
+  fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
   expect(screen.getByText('1.7초')).toBeInTheDocument()
   expect(screen.getByText('2차 익절')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '상세' }))
@@ -51,6 +68,7 @@ test('clears stale trade detail when the current history no longer contains it',
 test('shows only the current Run by default and can reveal immutable history', () => {
   const past = { ...trade, run_id: 'run-past', trade_id: 'paper-history-past' }
   render(<HistoryPage rows={[trade, past]} currentRunId="run-history" onReplay={vi.fn()} />)
+  fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
 
   expect(screen.getByText('paper-history-1')).toBeInTheDocument()
   expect(screen.queryByText('paper-history-past')).not.toBeInTheDocument()
@@ -101,4 +119,20 @@ test('loads independent strategy accounts and marks rows without replay events',
     expect.stringContaining('account_scope=LEAGUE'),
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
+})
+
+test('shows all PAPER accounts by default with a visible loading and count summary', async () => {
+  const leagueTrade: HistoryRow = {
+    ...trade,
+    trade_id: 'shadow-history-default',
+    account_scope: 'LEAGUE',
+    account_id: 'QUEUE_REACTIVE_V1:BASE',
+  }
+  vi.stubGlobal('fetch', vi.fn(async () => historyResponse([trade, leagueTrade])))
+
+  render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
+
+  expect(screen.getByLabelText('계좌 범위')).toHaveValue('ALL')
+  expect(await screen.findByText('shadow-history-default')).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('표시 2건 · 공동계좌 1건 · 전략별 계좌 1건')
 })
