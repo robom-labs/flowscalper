@@ -161,7 +161,23 @@
     "six_hour_soak": "NOT_RUN",
     "twenty_four_hour_soak": "NOT_RUN",
     "release_zip": "NOT_RUN",
-    "github_main_and_actions": "NOT_RUN",
+    "github_main_and_actions": "PASS",
     "blocked": []
+  },
+  "github": {
+    "implementation_commit": "354053df30128f2a7ae7bfbc7200e538a516b82e",
+    "main_synced": true,
+    "actions_run_id": 32814598091,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/32814598091",
+    "validate": {
+      "status": "PASS",
+      "duration_seconds": 73
+    },
+    "browser": {
+      "status": "PASS",
+      "duration_seconds": 73,
+      "desktop_tablet_mobile": true,
+      "evidence_uploaded": true
+    }
   }
 }

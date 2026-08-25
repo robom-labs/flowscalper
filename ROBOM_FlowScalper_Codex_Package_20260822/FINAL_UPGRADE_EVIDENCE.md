@@ -1082,6 +1082,8 @@ Wave 26 구현 commit은 `9842c330d54e0b545735776e332e413c26a0e192`이다. 같�
 | 전략 수익성 | NOT_PROVEN | LSA 현재버전 BASE는 11건, STRESS 10건이며 CBR과 일부 신규 전략은 0건이다. 30건 미만은 순위를 매기지 않고, Queue처럼 더 큰 표본도 전체 비용후 검증 없이는 수익성이 입증됐다고 표현하지 않는다. |
 | 6시간 / 24시간 soak | NOT_RUN | 이번 분 단위 실제 서비스 표본을 멀티시간 수용결과로 표현하지 않는다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
-| GitHub main / Actions | NOT_RUN | 로컬 구현·검증 뒤 push 전 상태다. 구현 commit과 Actions가 확인된 뒤 PASS 또는 FAIL로 갱신한다. |
+| GitHub main / Actions | PASS | 구현 commit `354053df30128f2a7ae7bfbc7200e538a516b82e`을 main에 push했다. [Actions 32814598091](https://github.com/robom-labs/flowscalper/actions/runs/32814598091)의 validate 1분13초, browser 1분13초, 실제 Chromium desktop·tablet·mobile E2E와 browser evidence upload가 모두 PASS했다. |
 
-기계판독 증거는 `evidence/WAVE27_STARTUP_STORAGE_ACCOUNT_QA.json`, 상세 결정은 ADR-028이다. 로컬 필수 회귀·실제 화면·짧은 실제 서비스 검증의 미해결 FAIL과 BLOCKED는 현재 0이다. 추가 비게이트 타입검사 실패, 전략 수익성, 6시간·24시간, Release ZIP과 GitHub 상태는 각각 별도 상태로 유지했다.
+기계판독 증거는 `evidence/WAVE27_STARTUP_STORAGE_ACCOUNT_QA.json`, 상세 결정은 ADR-028이다. 로컬 필수 회귀·실제 화면·짧은 실제 서비스와 구현 commit의 GitHub Actions 검증에서 미해결 FAIL과 BLOCKED는 현재 0이다. 추가 비게이트 타입검사 실패, 전략 수익성, 6시간·24시간과 Release ZIP은 각각 별도 상태로 유지했다.
+
+Wave 27 구현 commit은 `354053df30128f2a7ae7bfbc7200e538a516b82e`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E·증거 업로드가 모두 통과했다.
