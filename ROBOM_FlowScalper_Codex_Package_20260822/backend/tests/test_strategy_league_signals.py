@@ -1,4 +1,4 @@
-"""전략 리그 E~I의 대칭 조건과 실제 event-time 지속성을 검증한다."""
+"""전략 리그 E~J의 대칭 조건과 실제 event-time 지속성을 검증한다."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from decimal import Decimal
 
 import pytest
 
+import backend.app.strategies.runtime_evaluator as runtime_evaluator
 from backend.app.domain.models import Side
 from backend.app.regime import Regime
 from backend.app.strategies import (
@@ -75,6 +76,26 @@ def decision_for(rows, strategy_id: str, side: Side):
         for row in rows
         if row.decision.strategy_id == strategy_id and row.decision.side is side
     )
+
+
+def test_runtime_reuses_four_side_and_exit_style_plans(monkeypatch) -> None:
+    calls: list[tuple[Side, object]] = []
+    original = runtime_evaluator._plan
+
+    def counted_plan(snapshot, side, tick_size, *, exit_style):
+        calls.append((side, exit_style))
+        return original(snapshot, side, tick_size, exit_style=exit_style)
+
+    monkeypatch.setattr(runtime_evaluator, "_plan", counted_plan)
+    rows = StrategySignalEvaluator().evaluate(
+        StrategyRegistry(),
+        aligned_features(Side.LONG),
+        Regime.RANGE,
+    )
+
+    assert len(rows) == 20
+    assert len(calls) == 4
+    assert len(set(calls)) == 4
 
 
 @pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])

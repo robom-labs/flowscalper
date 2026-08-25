@@ -180,11 +180,22 @@ class StrategySignalEvaluator:
         history_statistics = self._history_statistics(sorted_history, snapshot)
         trailing_return_3s_bps = _trailing_return_bps(history, snapshot)
         results: list[EvaluatedSignal] = []
+        plans: dict[tuple[Side, ExitStyle], PlanInputs] = {}
         for strategy_id in registry.strategy_ids:
             descriptor = registry.descriptor(strategy_id)
             for side in Side:
                 if not registry.evaluation_enabled(strategy_id, side):
                     continue
+                plan_key = (side, descriptor.exit_style)
+                plan = plans.get(plan_key)
+                if plan is None:
+                    plan = _plan(
+                        snapshot,
+                        side,
+                        tick_size,
+                        exit_style=descriptor.exit_style,
+                    )
+                    plans[plan_key] = plan
                 decision = self._evaluate_one(
                     descriptor.evaluator,
                     side,
@@ -193,7 +204,7 @@ class StrategySignalEvaluator:
                     history,
                     history_statistics,
                     trailing_return_3s_bps,
-                    tick_size=tick_size,
+                    plan,
                 )
                 results.append(
                     EvaluatedSignal(
@@ -219,15 +230,8 @@ class StrategySignalEvaluator:
         history: list[FeatureSnapshot],
         history_statistics: _HistoryStatistics,
         trailing_return_3s_bps: float | None,
-        *,
-        tick_size: Decimal,
+        plan: PlanInputs,
     ) -> CandidateDecision:
-        exit_style = (
-            ExitStyle.REVERSION_70_30
-            if isinstance(evaluator, LiquiditySweepStrategy | VwapExhaustionStrategy)
-            else ExitStyle.TREND_40_60
-        )
-        plan = _plan(snapshot, side, tick_size, exit_style=exit_style)
         deviation_bps = (snapshot.mid - snapshot.micro_vwap_10s) / snapshot.mid * 10_000
         direction = 1 if side is Side.LONG else -1
         ofi_short = snapshot.ofi_250ms * direction
@@ -400,7 +404,6 @@ class StrategySignalEvaluator:
             )
             return evaluator.evaluate(ofi_context)
         if isinstance(evaluator, QueueMicropriceStrategy):
-            plan = _momentum_plan(snapshot, side, tick_size)
             aligned = queue_alignment_ready(side, snapshot, regime)
             confirmation_ms = self._confirmation_ms(
                 evaluator.strategy_id,
@@ -419,7 +422,6 @@ class StrategySignalEvaluator:
                 )
             )
         if isinstance(evaluator, AggressorFlowStrategy):
-            plan = _momentum_plan(snapshot, side, tick_size)
             directional_flow_z = (
                 history_statistics.long_directional_flow_z
                 if side is Side.LONG
@@ -449,7 +451,6 @@ class StrategySignalEvaluator:
                 )
             )
         if isinstance(evaluator, MultilevelMicropriceStrategy):
-            plan = _momentum_plan(snapshot, side, tick_size)
             aligned = multilevel_alignment_ready(side, snapshot, regime)
             confirmation_ms = self._confirmation_ms(
                 evaluator.strategy_id,
@@ -468,7 +469,6 @@ class StrategySignalEvaluator:
                 )
             )
         if isinstance(evaluator, DepthAdjustedOfiStrategy):
-            plan = _momentum_plan(snapshot, side, tick_size)
             directional_depth_adjusted_ofi_z = (
                 history_statistics.long_depth_adjusted_ofi_z
                 if side is Side.LONG
@@ -500,7 +500,6 @@ class StrategySignalEvaluator:
                 )
             )
         if isinstance(evaluator, OfiReturnConfluenceStrategy):
-            plan = _momentum_plan(snapshot, side, tick_size)
             directional_depth_adjusted_ofi_z = (
                 history_statistics.long_depth_adjusted_ofi_z
                 if side is Side.LONG
@@ -534,7 +533,6 @@ class StrategySignalEvaluator:
                 )
             )
         if isinstance(evaluator, BookSlopeAsymmetryStrategy):
-            plan = _momentum_plan(snapshot, side, tick_size)
             aligned = book_slope_asymmetry_ready(
                 side,
                 snapshot,
@@ -741,19 +739,4 @@ def _plan(
             Decimal("13"),
             Decimal(str(snapshot.spread_bps)) + Decimal("12"),
         ),
-    )
-
-
-def _momentum_plan(
-    snapshot: FeatureSnapshot,
-    side: Side,
-    tick_size: Decimal,
-) -> PlanInputs:
-    """E/F/G/H/I/J도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
-
-    return _plan(
-        snapshot,
-        side,
-        tick_size,
-        exit_style=ExitStyle.TREND_40_60,
     )
