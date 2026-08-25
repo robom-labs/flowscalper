@@ -1041,3 +1041,47 @@ Wave 25 구현 commit은 `7d4175d53256bbc9735b2e0bc875ef2d7b5ee87e`이다. 같�
 기계판독 증거는 `evidence/WAVE26_INCIDENT_STRATEGY_UI_QA.json`, 상세 결정은 ADR-027이다. 필수 로컬 회귀·실제 화면·짧은 실제 서비스·저장 replay 검증의 미해결 FAIL과 BLOCKED는 현재 0이다. 전략 수익성, 6시간·24시간과 Release ZIP은 `NOT_PROVEN` 또는 `NOT_RUN`으로 분리했다.
 
 Wave 26 구현 commit은 `9842c330d54e0b545735776e332e413c26a0e192`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E·증거 업로드가 모두 통과했다.
+
+## 32. READY 즉시 응답·저장 단계 진단·공동/독립 PAPER 구분
+
+2026-08-25 약 2GiB 활성 SQLite를 사용하는 실제 macOS 서비스의 시작 지연을 단계별로 측정했다. 안전 복구가 아니라 READY 생성 중 동기 실행하던 과거 main·shadow 거래통계 조회가 차가운 파일 캐시에서 약 9.4~14.6초를 차지했다. PAPER 복구 checksum 검증은 그대로 두고 화면용 과거 통계만 백그라운드 query-only 연결로 분리했다.
+
+### 구현과 안전경계
+
+- 저장소 준비, SQLite open, 복구조회, 런타임·PAPER 계좌, 과거 거래통계와 전체 부팅시간을 각각 진단한다.
+- READY의 과거 거래통계는 lifespan background thread에서 준비하고 준비완료·로딩·최근 소요·완료시각을 표시한다.
+- main·shadow 과거 조회는 SQLite WAL의 query-only 연결을 사용해 새 Run과 PAPER 저장의 writer lock을 막지 않는다.
+- 최장 저장 flush의 Parquet·manifest·candle 소요와 이벤트·candle·batch 수, 최대 이벤트 수신 공백의 발생시각을 기록한다.
+- 같은 종목·전략·BASE에 공동 PAPER와 전략 독립 PAPER가 동시에 있으면 목록·선택기·제목·차트 banner·계획 rail에 `공동계좌` 또는 `전략 독립계좌`를 표시한다.
+- 전략 임계값·비용·TP·SL·위험예산은 바꾸지 않았다. 실제 주문, private API, 인증, API Key, secret과 wallet 경로는 계속 0 또는 false다.
+
+### 실제 재시작·브라우저·LIVE 검증
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 변경 전 병목 분해 | PASS_DIAGNOSTIC | 첫 차가운 표본은 외부 응답 23.159초, 내부 ledger 533ms·복구조회 2,427ms·런타임 14,630ms·전체 17,590ms였다. 더 깊은 표본은 외부 12.506초, 런타임 9,382ms 중 과거 거래통계가 9,381ms였다. 즉시 warm 재시작은 외부 1.905초·내부 43.9ms였다. |
+| 변경 후 READY | PASS | 첫 배포 재시작은 내부 전체 0.212초, 런타임 0.648ms, 동기 통계 0ms였고 첫 HTTP 응답까지 3.86초였다. 화면을 막지 않은 과거 통계는 1.624초에 완료됐다. 다른 저장상태의 재시작은 내부 안전복구 포함 1.909초, 외부 첫 응답 9.21초였으며 통계는 계속 background였다. LaunchAgent 자체 기동시간과 저장장치 변동을 내부 런타임 수치로 오해하지 않는다. |
+| 재시작 직후 실제 시작 | PASS | 앱 내 브라우저를 새로 열고 150ms 뒤 `자동 관찰 시작`을 한 번 눌렀다. 250ms 뒤 `연결 중·요청을 받았습니다`, 8초 뒤 `작동 중·계속 작동`, 지연 22ms를 확인했다. 최신 `run-d1cbbe3d2458`은 이후에도 LIVE로 유지됐다. |
+| 현재 PAPER 차트 | PASS | 자연 XRPUSDT LSA LONG의 공동 BASE와 독립 BASE/STRESS, BTCUSDT Depth-adjusted OFI STRESS, DOGEUSDT Queue STRESS가 동시에 표시됐다. 선택된 공동 BASE 차트는 `PAPER 진입 중·상승`, entry 1.5207, TP1 1.5356, SL 1.5085를 보였다. 공동 BASE와 독립 BASE의 기존 동일 문구를 발견해 `공동계좌`·`전략 독립계좌`로 수정하고 단위·브라우저 회귀로 고정했다. |
+| 전략 A~J 정상대기 | PASS | A/B ACTIVE, C~J SHADOW, 10개 모두 LONG·SHORT 켜짐, 각각 12종목×양방향 24경로를 평가했다. 화면은 10개 정상 감시·문제 0·실제 주문 0과 시장방향·체결흐름·호가·가격구조·지속성 대기 이유를 표시했다. 진입하지 않은 전략의 조건을 낮추지 않았다. |
+| 첫 실제 LIVE 저장 표본 | PASS_WITH_SLOW_IO | `run-8805db58dce8`의 50초 연속 표본에서 event 5,136→10,000, 지연 P95 약 30~38ms, 비계획 reconnect·sequence gap·critical active·persistence fault 0이었다. 후속 최장 flush 6,682ms는 Parquet 1,665ms·manifest 1,642ms·candle 3,365ms였고 최대 수신 공백 1,046.676ms는 다른 시각에 발생했다. 저장 I/O는 느렸지만 실행 이벤트 루프가 6.7초 정지했다는 증거는 아니다. |
+| 최종 LIVE 상태 | PASS | 최종 빌드의 `run-d1cbbe3d2458`은 event 10,000 메모리 상한을 유지하고 지연 P95 약 35~43ms, 최대 수신 공백 586.764ms, 비계획 reconnect·sequence gap·drop·persistence fault 0이었다. 최신 Run main XRPUSDT 거래 1건은 38.846초 EDGE_DECAY, 순손익 -0.157406472 USDT였다. shadow 10건은 13.554~95.308초이고 1~2초 종료는 0이었다. 손실·짧은 표본은 작동 증거이지 수익성 증거가 아니다. |
+
+### 자동검증과 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 315 passed, 13.43초 |
+| frontend Vitest | PASS | 12 files, 47 passed |
+| Playwright | PASS | 실제 Chromium desktop·tablet·mobile 3 passed, 17.2초. 재생 계좌범위, 차트·전략·기록·분석·반응형과 console/page error 0을 검사했다. |
+| Ruff / mypy | PASS | 오류 0 / backend/app 82 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build | PASS | Vite 48 modules, PAPER build safety PASS |
+| security / repository hygiene | PASS | 115 source, violation·secret-like·real-order path 0 / 위반 0 |
+| 추가 광범위 mypy backend/tests | FAIL_NON_GATE | 프로젝트 mypy 계약 밖의 테스트 보조코드까지 임의로 확대한 검사에서 기존 타입주석·Protocol 문제 184개를 확인했다. backend/app 정식 mypy는 PASS이고 pytest 315개도 PASS다. 이 추가 실패를 통과한 것으로 쓰지 않는다. |
+| 전략 수익성 | NOT_PROVEN | LSA 현재버전 BASE는 11건, STRESS 10건이며 CBR과 일부 신규 전략은 0건이다. 30건 미만은 순위를 매기지 않고, Queue처럼 더 큰 표본도 전체 비용후 검증 없이는 수익성이 입증됐다고 표현하지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 이번 분 단위 실제 서비스 표본을 멀티시간 수용결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | NOT_RUN | 로컬 구현·검증 뒤 push 전 상태다. 구현 commit과 Actions가 확인된 뒤 PASS 또는 FAIL로 갱신한다. |
+
+기계판독 증거는 `evidence/WAVE27_STARTUP_STORAGE_ACCOUNT_QA.json`, 상세 결정은 ADR-028이다. 로컬 필수 회귀·실제 화면·짧은 실제 서비스 검증의 미해결 FAIL과 BLOCKED는 현재 0이다. 추가 비게이트 타입검사 실패, 전략 수익성, 6시간·24시간, Release ZIP과 GitHub 상태는 각각 별도 상태로 유지했다.

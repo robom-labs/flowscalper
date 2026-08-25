@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "wave": 27,
+  "observed_at": "2026-08-25T14:50:00+09:00",
+  "scope": "READY startup responsiveness, SQLite read/write isolation, persistence phase telemetry, actual-browser immediate start and PAPER account clarity",
+  "safety": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_key_inputs": 0,
+    "wallet_paths": 0,
+    "strategy_threshold_changes": 0,
+    "status": "PASS"
+  },
+  "implementation": {
+    "startup_phase_telemetry": "PASS",
+    "ready_history_cache_background_loading": "PASS",
+    "history_cache_read_only_sqlite_connection": "PASS",
+    "history_cache_readiness_diagnostics": "PASS",
+    "persistence_parquet_manifest_candle_breakdown": "PASS",
+    "event_gap_max_timestamp": "PASS",
+    "shared_vs_independent_paper_account_labels": "PASS"
+  },
+  "startup_measurements": {
+    "before": [
+      {
+        "external_first_response_ms": 23159,
+        "ledger_open_ms": 533.258,
+        "recovery_lookup_ms": 2426.778,
+        "runtime_init_ms": 14630.013,
+        "startup_total_ms": 17590.260
+      },
+      {
+        "external_first_response_ms": 12506,
+        "runtime_init_ms": 9382.108,
+        "portfolio_init_ms": 0.323,
+        "historical_trade_cache_ms": 9381.431,
+        "startup_total_ms": 10563.171
+      }
+    ],
+    "after": [
+      {
+        "external_first_response_ms": 3860,
+        "runtime_init_ms": 0.648,
+        "synchronous_trade_cache_ms": 0.0,
+        "startup_total_ms": 212.118,
+        "background_trade_cache_ms": 1623.893
+      },
+      {
+        "external_first_response_ms": 9210,
+        "runtime_init_ms": 0.598,
+        "startup_total_ms": 1908.893,
+        "history_cache_loading_at_first_response": true
+      }
+    ],
+    "launch_agent_external_time_is_not_runtime_internal_time": true
+  },
+  "actual_browser": {
+    "url": "http://127.0.0.1:8870/",
+    "clicked_start_once": true,
+    "click_after_page_open_ms": 150,
+    "connecting_observed_after_ms": 250,
+    "running_observed_after_ms": 8000,
+    "running_lag_display_ms": 22,
+    "final_run_id": "run-d1cbbe3d2458",
+    "final_state": "LIVE",
+    "position_chart_observation": {
+      "symbol": "XRPUSDT",
+      "side": "LONG",
+      "strategy_id": "LSA_REVERSAL_V1",
+      "profile": "BASE",
+      "account_id": "SHARED_PAPER",
+      "entry": "1.5207",
+      "tp1": "1.5355982400",
+      "sl": "1.508484800",
+      "same_symbol_simultaneous_account_scopes": [
+        "SHARED_PAPER",
+        "LSA_REVERSAL_V1:BASE",
+        "LSA_REVERSAL_V1:STRESS"
+      ],
+      "duplicate_beginner_label_found_and_fixed": true
+    },
+    "strategy_rows": 10,
+    "strategy_problem_rows": 0,
+    "directions_enabled": 20,
+    "evaluated_paths_per_strategy": 24,
+    "console_or_page_errors": 0,
+    "status": "PASS"
+  },
+  "live_runtime": {
+    "diagnostic_run_id": "run-8805db58dce8",
+    "event_samples": [5136, 6205, 7246, 8322, 9500, 10000],
+    "book_lag_p95_range_ms": [29.708984375, 38.46337890625],
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "critical_active": false,
+    "persistence_faults": 0,
+    "slowest_flush": {
+      "total_ms": 6682.0,
+      "parquet_ms": 1665.0,
+      "manifest_ms": 1642.0,
+      "candle_ms": 3365.0,
+      "market_events": 2000,
+      "candles": 197,
+      "archive_batches": 1
+    },
+    "maximum_event_receive_gap_ms": 1046.676,
+    "flush_and_gap_maxima_occurred_at_different_times": true,
+    "final_run": {
+      "run_id": "run-d1cbbe3d2458",
+      "event_memory_count": 10000,
+      "book_lag_p95_observed_range_ms": [35.07373046875, 42.7119140625],
+      "maximum_event_receive_gap_ms": 586.764,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "dropped_events": 0,
+      "persistence_faults": 0,
+      "main_trade_count": 1,
+      "main_trade_holding_ms": 38846,
+      "main_trade_net_pnl_usdt": "-0.157406472",
+      "shadow_trade_count": 10,
+      "shadow_holding_ms_range": [13554, 95308],
+      "sub_3_second_trades": 0
+    },
+    "status": "PASS_WITH_SLOW_IO"
+  },
+  "validation": {
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 315,
+      "seconds": 13.43
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 12,
+      "tests": 47
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": ["desktop", "tablet", "mobile"],
+      "tests": 3,
+      "seconds": 17.2
+    },
+    "ruff": "PASS",
+    "mypy_backend_app_82_files": "PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": "PASS",
+    "paper_build_safety": "PASS",
+    "security_scan_115_source_files": "PASS",
+    "repository_hygiene": "PASS",
+    "extra_non_gate_mypy_backend_tests": {
+      "status": "FAIL_NON_GATE",
+      "existing_test_helper_typing_errors": 184,
+      "not_reported_as_pass": true
+    }
+  },
+  "acceptance_limits": {
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN",
+    "blocked": []
+  }
+}

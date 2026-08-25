@@ -183,6 +183,40 @@ test('clears a previous run PAPER entry notice when the run changes', async () =
   await waitFor(() => expect(screen.queryByText(/새 PAPER 진입 · BTCUSDT/)).not.toBeInTheDocument())
 })
 
+test('distinguishes shared and independent BASE positions in the live list', () => {
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
+  vi.stubGlobal('localStorage', {
+    getItem: vi.fn((key: string) => key === 'robom.position.focus.v1'
+      ? JSON.stringify({ autoFocusOnFill: false, focusLocked: false, defaultProfile: 'BASE' })
+      : null),
+    setItem: vi.fn(),
+  })
+  const common = {
+    candidate_id: 'candidate-same', profile: 'BASE', venue: 'BINANCE_USDM',
+    symbol: 'XRPUSDT', side: 'LONG', strategy: 'LSA_REVERSAL_V1', strategy_id: 'LSA_REVERSAL_V1',
+    strategy_display_name_ko: '급락·급등 쓸기 반전', opened_ts_ms: 2, signal_ts_ms: 1,
+    auto_focus_eligible: true, stage_ko: '익절·손절 보호 중', net_pnl_usdt: '-0.1',
+  }
+  const shared = {
+    ...common, focus_key: 'MAIN:trade-shared', trade_id: 'trade-shared', account_id: 'SHARED_PAPER',
+  } as unknown as FocusPosition
+  const independent = {
+    ...common, focus_key: 'LSA:trade-independent', trade_id: 'trade-independent', account_id: 'LSA_REVERSAL_V1:BASE',
+  } as unknown as FocusPosition
+  const handlers = {
+    onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
+    onPauseToggle: vi.fn(), busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+  }
+  render(<MarketPage data={{
+    ...initialDashboard,
+    status: { ...initialDashboard.status, mode: 'LIVE_SHADOW_PAPER' as const, run_id: 'run-live' },
+    focus_positions: [shared, independent],
+  }} {...handlers} />)
+
+  expect(screen.getByRole('button', { name: /XRPUSDT.*BASE.*공동계좌/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /XRPUSDT.*BASE.*전략 독립계좌/ })).toBeInTheDocument()
+})
+
 test('clears a PAPER entry notice when READY reuses the same run id', async () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
   vi.stubGlobal('localStorage', {

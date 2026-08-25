@@ -1,7 +1,7 @@
 // LIVE·REPLAY·종료검토에서 같은 PAPER 포지션 집중 3열 구조를 제공한다.
 import { PriceChart, type ChartOverlay } from './PriceChart'
 import { useState, type ReactNode } from 'react'
-import { formatPrice, formatQuantity, formatRatio, formatUsdt } from '../format'
+import { formatPrice, formatQuantity, formatRatio, formatUsdt, paperAccountLabel } from '../format'
 import type { ChartData, FocusPosition, HistoryRow } from '../types'
 
 type Props = {
@@ -15,7 +15,7 @@ type Props = {
 
 function PlanRail({ position }: { position: FocusPosition }) {
   return <aside className="focus-plan" aria-label="진입 계획">
-    <div className="focus-rail-title"><span>{position.side === 'LONG' ? '상승 방향' : '하락 방향'} · {formatRatio(position.effective_leverage, '배')}</span><b>{position.symbol}</b><small>{position.strategy_display_name_ko} · {position.profile}</small></div>
+    <div className="focus-rail-title"><span>{position.side === 'LONG' ? '상승 방향' : '하락 방향'} · {formatRatio(position.effective_leverage, '배')}</span><b>{position.symbol}</b><small>{position.strategy_display_name_ko} · {position.profile} · {paperAccountLabel(position.account_id)}</small></div>
     <dl>
       <div><dt>실제 진입</dt><dd>{formatPrice(position.actual_entry)}</dd></div><div><dt>초기 손절</dt><dd>{formatPrice(position.initial_stop)}</dd></div><div><dt>현재 손절</dt><dd>{formatPrice(position.current_stop)}<small>{position.current_stop === position.initial_stop ? '변경 없음' : '진입 뒤 조정'}</small></dd></div><div><dt>TP1</dt><dd>{formatPrice(position.take_profit_1)}</dd></div><div><dt>TP2</dt><dd>{position.take_profit_2 ? formatPrice(position.take_profit_2) : '—'}</dd></div><div><dt>계획 손실</dt><dd>{formatUsdt(position.maximum_planned_loss_usdt)}</dd></div><div><dt>보유 / 남은</dt><dd>{formatQuantity(position.original_quantity)} / {formatQuantity(position.remaining_quantity)}</dd></div><div><dt>명목금액</dt><dd>{formatUsdt(position.notional_usdt)}</dd></div><div><dt>PAPER 증거금</dt><dd>{formatUsdt(position.margin_used_usdt)}</dd></div>
     </dl>

@@ -77,6 +77,12 @@ export function formatDurationMs(value: Numeric) {
   return remaining ? `${minutes}분 ${remaining}초` : `${minutes}분`
 }
 
+export function paperAccountLabel(accountId: string) {
+  if (accountId === 'SHARED_PAPER') return '공동계좌'
+  if (accountId === 'REPLAY') return '저장 재생'
+  return '전략 독립계좌'
+}
+
 export function formatCompactNumber(value: Numeric) {
   const number = parsed(value)
   if (number === null) return '—'

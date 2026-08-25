@@ -182,3 +182,14 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 6. Research each new microstructure hypothesis with stored `LIVE_PUBLIC` data, an earlier train group and later holdout group, conservative bid·ask and BASE/STRESS costs. Reject a candidate whose net result does not survive costs.
 7. Replay a stored public-market Run through the same Registry, candidate, execution and accounting path. Compare checksum and counts only against results produced by the same strategy implementation revision.
 8. Record short-run performance as an observation only. Keep strategy profitability, six-hour, 24-hour and Release ZIP as `NOT_PROVEN` or `NOT_RUN` unless the exact gate was completed.
+
+## Nonblocking READY startup and PAPER account clarity Wave
+
+1. Measure storage initialization, SQLite open, recovery lookup, runtime construction, portfolio construction and historical trade statistics separately before changing startup order.
+2. Keep recovery lookup and checksum validation synchronous. Move only READY dashboard history statistics to a background worker and expose loading, ready, duration and completion time.
+3. Read historical main and shadow trades through the existing query-only SQLite WAL connection so the background cache cannot hold the writer lock needed by a new Run or PAPER persistence.
+4. Record Parquet, manifest and candle timing for the slowest persistence flush together with batch sizes. Timestamp the largest event receive gap and compare time, not just magnitude, before claiming causality.
+5. Exercise a real service restart and click start immediately in the actual browser. Verify READY response, CONNECTING feedback, RUNNING persistence, cache completion and zero unplanned reconnect, sequence gap and persistence fault.
+6. When shared main PAPER and independent strategy PAPER use the same symbol, strategy and BASE profile, label the account scope in the position list, selector, chart banner and plan rail.
+7. Re-run backend, frontend, static, build, safety, security, repository hygiene and desktop, tablet and mobile browser checks. Record the broader non-gate test typing audit separately if it is not part of the repository mypy contract.
+8. Keep strategy thresholds, costs, TP, SL, risk and the real-order/private-API/credential boundary unchanged. Do not treat a short runtime sample as a six-hour or 24-hour soak.

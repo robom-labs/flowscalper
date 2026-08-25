@@ -121,6 +121,7 @@ class SupervisorTelemetry:
     _critical_lag_started_monotonic_ns: int | None = None
     event_gap_last_ms: float = 0.0
     event_gap_max_ms: float = 0.0
+    event_gap_max_ts_ms: int | None = None
     event_gap_over_500ms_count: int = 0
     event_gap_last_over_500ms_ts_ms: int | None = None
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
@@ -148,7 +149,9 @@ class SupervisorTelemetry:
             return
         gap_ms = (receive_monotonic_ns - previous) / 1_000_000
         self.event_gap_last_ms = gap_ms
-        self.event_gap_max_ms = max(self.event_gap_max_ms, gap_ms)
+        if gap_ms > self.event_gap_max_ms:
+            self.event_gap_max_ms = gap_ms
+            self.event_gap_max_ts_ms = observed_ts_ms
         if gap_ms > 500:
             self.event_gap_over_500ms_count += 1
             self.event_gap_last_over_500ms_ts_ms = observed_ts_ms
@@ -277,6 +280,7 @@ class SupervisorTelemetry:
             "critical_lag_max_duration_ms": round(self.critical_lag_max_duration_ms, 3),
             "event_gap_last_ms": round(self.event_gap_last_ms, 3),
             "event_gap_max_ms": round(self.event_gap_max_ms, 3),
+            "event_gap_max_ts_ms": self.event_gap_max_ts_ms,
             "event_gap_over_500ms_count": self.event_gap_over_500ms_count,
             "event_gap_last_over_500ms_ts_ms": self.event_gap_last_over_500ms_ts_ms,
             "lag_percentile_refresh_count": self.lag_percentile_refresh_count,

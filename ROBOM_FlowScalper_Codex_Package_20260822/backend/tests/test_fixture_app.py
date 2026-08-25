@@ -183,6 +183,31 @@ def test_dashboard_broadcaster_serves_multiple_local_clients() -> None:
     assert second_payload["data"]["system"]["auth_headers"] is False
 
 
+def test_ready_api_does_not_wait_for_historical_trade_cache(monkeypatch) -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    started = threading.Event()
+    release = threading.Event()
+
+    async def slow_warm(active_runtime: PaperRuntime) -> None:
+        started.set()
+        await asyncio.to_thread(release.wait, 2)
+        active_runtime.dashboard_trade_cache_loading = False
+        active_runtime.dashboard_trade_cache_ready = True
+
+    monkeypatch.setattr(PaperRuntime, "warm_dashboard_trade_cache", slow_warm)
+    with TestClient(create_app(runtime)) as client:
+        assert started.wait(timeout=1)
+        requested_at = time.monotonic()
+        status = client.get("/api/status")
+        elapsed = time.monotonic() - requested_at
+        dashboard = client.get("/api/dashboard").json()
+        assert status.status_code == 200
+        assert elapsed < 0.5
+        assert dashboard["system"]["dashboard_trade_cache_loading"] is True
+        assert dashboard["system"]["dashboard_trade_cache_ready"] is False
+        release.set()
+
+
 async def test_slow_replay_listing_never_blocks_live_status(monkeypatch) -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     started = threading.Event()

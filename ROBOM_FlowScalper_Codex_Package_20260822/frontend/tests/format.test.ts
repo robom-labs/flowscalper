@@ -8,6 +8,7 @@ import {
   formatPrice,
   formatQuantity,
   formatUsdt,
+  paperAccountLabel,
 } from '../src/format'
 
 describe('beginner-facing number formatting', () => {
@@ -28,5 +29,11 @@ describe('beginner-facing number formatting', () => {
   test('translates known exit reasons for non-experts', () => {
     expect(exitReasonLabel('EDGE_DECAY')).toBe('진입 근거 약화')
     expect(exitReasonLabel('TP2')).toBe('2차 익절')
+  })
+
+  test('distinguishes shared and independent PAPER accounts', () => {
+    expect(paperAccountLabel('SHARED_PAPER')).toBe('공동계좌')
+    expect(paperAccountLabel('LSA_REVERSAL_V1:BASE')).toBe('전략 독립계좌')
+    expect(paperAccountLabel('REPLAY')).toBe('저장 재생')
   })
 })

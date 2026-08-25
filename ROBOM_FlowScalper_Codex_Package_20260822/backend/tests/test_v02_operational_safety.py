@@ -592,6 +592,12 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     assert runtime._persistence_flush_count >= 1
     assert runtime._persistence_flush_last_completed_ts_ms == runtime.clock.utc_ms()
     assert runtime._persistence_flush_max_ts_ms == runtime.clock.utc_ms()
+    assert runtime._persistence_flush_slowest_market_events == 2_000
+    assert runtime._persistence_flush_slowest_candles >= 0
+    assert runtime._persistence_flush_slowest_archive_batches == 1
+    assert runtime._persistence_flush_slowest_archive_ms >= 0
+    assert runtime._persistence_flush_slowest_manifest_ms >= 0
+    assert runtime._persistence_flush_slowest_candle_ms >= 0
     assert runtime._persistence_fault_count == 0
     assert runtime._persistence_buffer_dropped == 0
     assert runtime._market_event_buffer == []

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
+import threading
 from dataclasses import replace
 from pathlib import Path
 
@@ -66,6 +68,24 @@ def _live_depth_event(
             "asks": [["100.1", "100"]],
         },
     )
+
+
+def test_dashboard_history_reads_do_not_wait_for_write_lock(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "history-read.sqlite3")
+    completed = threading.Event()
+    rows: list[tuple[int, int]] = []
+
+    def read_history() -> None:
+        rows.append((len(ledger.list_trades()), len(ledger.list_shadow_trades())))
+        completed.set()
+
+    with ledger._lock:
+        reader = threading.Thread(target=read_history)
+        reader.start()
+        assert completed.wait(timeout=1)
+    reader.join(timeout=1)
+    assert rows == [(0, 0)]
+    ledger.close()
 
 
 def test_runtime_revalidates_every_recovered_league_symbol_before_unlock(
@@ -231,4 +251,19 @@ def test_corrupt_latest_snapshot_boots_ready_and_never_creates_a_new_trade(
     assert runtime.ledger is not None
     assert runtime.ledger.list_trades() == []
     assert runtime.ledger.list_runs()[0]["run_id"] == "run-corrupt"
+    assert runtime.startup_storage_init_ms >= 0
+    assert runtime.startup_ledger_open_ms >= 0
+    assert runtime.startup_recovery_lookup_ms >= 0
+    assert runtime.startup_runtime_init_ms >= 0
+    assert runtime.startup_recovery_restore_ms >= 0
+    assert runtime.startup_total_ms >= runtime.startup_ledger_open_ms
+    assert runtime.startup_portfolio_init_ms >= 0
+    assert runtime.startup_trade_cache_ms >= 0
+    assert runtime.startup_post_init_total_ms >= runtime.startup_trade_cache_ms
+    assert runtime.dashboard_trade_cache_ready is False
+    asyncio.run(runtime.warm_dashboard_trade_cache())
+    assert runtime.dashboard_trade_cache_ready is True
+    assert runtime.dashboard_trade_cache_loading is False
+    assert runtime.dashboard_trade_cache_last_ms >= 0
+    assert runtime.dashboard_trade_cache_completed_ts_ms is not None
     runtime.ledger.close()

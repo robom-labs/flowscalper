@@ -618,6 +618,7 @@ def test_supervisor_records_receive_gap_without_changing_safety_thresholds() -> 
     diagnostics = supervisor.telemetry.as_dict()
     assert diagnostics["event_gap_last_ms"] == 750
     assert diagnostics["event_gap_max_ms"] == 750
+    assert diagnostics["event_gap_max_ts_ms"] == 10_750
     assert diagnostics["event_gap_over_500ms_count"] == 1
     assert diagnostics["event_gap_last_over_500ms_ts_ms"] == 10_750
     assert diagnostics["critical_lag_threshold_ms"] == 1_500

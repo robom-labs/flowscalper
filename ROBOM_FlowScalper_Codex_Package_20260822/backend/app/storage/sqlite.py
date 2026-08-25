@@ -1108,8 +1108,8 @@ class SQLiteLedger:
             query += " WHERE s.run_id = ?"
             parameters = (run_id,)
         query += " ORDER BY s.closed_ts_ms, s.shadow_trade_id"
-        with self._lock:
-            rows = self._connection.execute(query, parameters).fetchall()
+        with self._read_lock:
+            rows = self._read_connection.execute(query, parameters).fetchall()
         payloads = self._verified_payload_rows(rows, "shadow 거래")
         for row, payload in zip(rows, payloads, strict=True):
             payload.setdefault("config_hash", str(row["config_hash"]))
@@ -1381,8 +1381,8 @@ class SQLiteLedger:
             query += " WHERE run_id = ?"
             parameters = (run_id,)
         query += " ORDER BY exit_ts_ms, trade_id"
-        with self._lock:
-            rows = self._connection.execute(query, parameters).fetchall()
+        with self._read_lock:
+            rows = self._read_connection.execute(query, parameters).fetchall()
         return [json.loads(str(row["payload_json"])) for row in rows]
 
     def list_transitions(self, run_id: str) -> list[dict[str, Any]]:

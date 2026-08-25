@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import time
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -90,11 +91,13 @@ def _local_browser_origin(origin: str | None) -> bool:
 
 
 def _runtime_from_environment() -> PaperRuntime:
+    startup_started = time.monotonic()
     requested_mode = os.environ.get("ROBOM_MODE", RuntimeMode.READY.value)
     mode = RuntimeMode(requested_mode)
     default_database = PROJECT_ROOT / "data" / "run-ledger.sqlite3"
     database = Path(os.environ.get("ROBOM_DB_PATH", str(default_database)))
     archive_path = os.environ.get("ROBOM_MARKET_ARCHIVE_PATH")
+    storage_started = time.monotonic()
     market_event_archive = (
         ParquetEventStore(
             Path(archive_path),
@@ -104,15 +107,20 @@ def _runtime_from_environment() -> PaperRuntime:
         if archive_path
         else None
     )
+    storage_init_ms = (time.monotonic() - storage_started) * 1_000
+    ledger_started = time.monotonic()
     ledger = SQLiteLedger(database, market_event_archive=market_event_archive)
+    ledger_open_ms = (time.monotonic() - ledger_started) * 1_000
     clock = SystemClock()
     recovery_error: LedgerInvariantError | None = None
+    recovery_lookup_started = time.monotonic()
     try:
         recovered = ledger.recover_latest(recovered_ts_ms=clock.utc_ms())
     except LedgerInvariantError as error:
         recovered = None
         recovery_error = error
         mode = RuntimeMode.READY
+    recovery_lookup_ms = (time.monotonic() - recovery_lookup_started) * 1_000
     run_id = None
     run_venue = Venue.NONE if mode is RuntimeMode.READY else Venue.FIXTURE
     if recovered is not None and mode is not RuntimeMode.READY:
@@ -120,6 +128,7 @@ def _runtime_from_environment() -> PaperRuntime:
         if run is not None and run["mode"] == mode.value:
             run_id = recovered.run_id
             run_venue = Venue(str(run["venue"]))
+    runtime_init_started = time.monotonic()
     runtime = PaperRuntime(
         mode=mode,
         clock=clock,
@@ -134,7 +143,9 @@ def _runtime_from_environment() -> PaperRuntime:
         market_event_archive=market_event_archive,
         venue=run_venue,
     )
+    runtime_init_ms = (time.monotonic() - runtime_init_started) * 1_000
     recovery_ok = True
+    recovery_restore_started = time.monotonic()
     if recovery_error is not None:
         runtime._lock_recovery("RECOVERY_CHECKSUM_OR_SCHEMA_INVALID")
         recovery_ok = False
@@ -162,6 +173,14 @@ def _runtime_from_environment() -> PaperRuntime:
             "OFFLINE_DEMO_ISOLATED",
             "PAPER_STATE_RECOVERED",
         ]
+    runtime.startup_storage_init_ms = storage_init_ms
+    runtime.startup_ledger_open_ms = ledger_open_ms
+    runtime.startup_recovery_lookup_ms = recovery_lookup_ms
+    runtime.startup_runtime_init_ms = runtime_init_ms
+    runtime.startup_recovery_restore_ms = (
+        time.monotonic() - recovery_restore_started
+    ) * 1_000
+    runtime.startup_total_ms = (time.monotonic() - startup_started) * 1_000
     return runtime
 
 
@@ -226,9 +245,16 @@ def create_app(
         broadcaster: asyncio.Task[None] | None = None
         persistence_stop = asyncio.Event()
         persistence_worker: asyncio.Task[None] | None = None
+        trade_cache_task: asyncio.Task[None] | None = None
         try:
             if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
                 await active_runtime.start_persistent_live()
+            if not active_runtime.dashboard_trade_cache_ready:
+                active_runtime.dashboard_trade_cache_loading = True
+                trade_cache_task = asyncio.create_task(
+                    active_runtime.warm_dashboard_trade_cache(),
+                    name="dashboard-trade-cache",
+                )
             persistence_worker = asyncio.create_task(
                 active_runtime.run_persistence_worker(persistence_stop),
                 name="persistence-worker",
@@ -243,6 +269,8 @@ def create_app(
             persistence_stop.set()
             if persistence_worker is not None:
                 await asyncio.gather(persistence_worker, return_exceptions=True)
+            if trade_cache_task is not None:
+                await asyncio.gather(trade_cache_task, return_exceptions=True)
             await active_runtime.shutdown()
             if active_runtime.ledger is not None:
                 active_runtime.ledger.close()

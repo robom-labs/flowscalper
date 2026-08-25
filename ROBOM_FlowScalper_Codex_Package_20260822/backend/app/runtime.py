@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -152,6 +153,12 @@ class PaperRuntime:
     _persistence_flush_max_ts_ms: int | None = None
     _persistence_flush_slow_count: int = 0
     _persistence_flush_last_slow_ts_ms: int | None = None
+    _persistence_flush_slowest_archive_ms: float = 0.0
+    _persistence_flush_slowest_manifest_ms: float = 0.0
+    _persistence_flush_slowest_candle_ms: float = 0.0
+    _persistence_flush_slowest_market_events: int = 0
+    _persistence_flush_slowest_candles: int = 0
+    _persistence_flush_slowest_archive_batches: int = 0
     _persistence_worker_warmed: bool = False
     _persistence_worker_warm_ms: float = 0.0
     _historical_live_trades: tuple[dict[str, object], ...] = field(
@@ -172,24 +179,41 @@ class PaperRuntime:
     _dashboard_strategy_performance_cache: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
+    dashboard_trade_cache_ready: bool = False
+    dashboard_trade_cache_loading: bool = False
+    dashboard_trade_cache_last_ms: float = 0.0
+    dashboard_trade_cache_completed_ts_ms: int | None = None
     _last_storage_check_ns: int | None = None
     _storage_entry_allowed: bool = True
     _storage_health_snapshot: dict[str, object] = field(default_factory=dict)
     _recovery_revalidation_symbols: set[str] = field(default_factory=set)
     _manual_pause_requested: bool = False
+    startup_storage_init_ms: float = 0.0
+    startup_ledger_open_ms: float = 0.0
+    startup_recovery_lookup_ms: float = 0.0
+    startup_runtime_init_ms: float = 0.0
+    startup_recovery_restore_ms: float = 0.0
+    startup_total_ms: float = 0.0
+    startup_portfolio_init_ms: float = 0.0
+    startup_trade_cache_ms: float = 0.0
+    startup_post_init_total_ms: float = 0.0
     resource_sampler: ProcessResourceSampler = field(init=False, repr=False)
     _persistence_lock: RLock = field(default_factory=RLock, repr=False)
+    _dashboard_trade_cache_lock: RLock = field(default_factory=RLock, repr=False)
 
     def __post_init__(self) -> None:
+        post_init_started = time.monotonic()
         assert_paper_only(self.mode, os.environ)
         storage_path = self.ledger.path.parent if self.ledger is not None else Path.cwd()
         self.resource_sampler = ProcessResourceSampler(storage_path)
+        portfolio_started = time.monotonic()
         self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
         self.paper_portfolio = PaperPortfolioEngine(
             run_id=self.run_id,
             strategy_ids=self.strategy_registry.strategy_ids,
             shadow_ledger=self.shadow_ledger,
         )
+        self.startup_portfolio_init_ms = (time.monotonic() - portfolio_started) * 1_000
         if self.mode is RuntimeMode.READY:
             self.run_id = "ready"
             self.venue = Venue.NONE
@@ -223,8 +247,11 @@ class PaperRuntime:
             and self.ledger.get_run(self.run_id) is None
         ):
             self._start_ledger_run()
-        elif self.ledger is not None:
+        elif self.ledger is not None and self.mode is not RuntimeMode.READY:
+            trade_cache_started = time.monotonic()
             self._refresh_dashboard_trade_cache()
+            self.startup_trade_cache_ms = (time.monotonic() - trade_cache_started) * 1_000
+        self.startup_post_init_total_ms = (time.monotonic() - post_init_started) * 1_000
 
     def boot_demo(self, event_count: int = 240) -> None:
         if self.mode is not RuntimeMode.DEMO_FIXTURE:
@@ -512,6 +539,25 @@ class PaperRuntime:
             "persistence_flush_max_ts_ms": self._persistence_flush_max_ts_ms,
             "persistence_flush_slow_count": self._persistence_flush_slow_count,
             "persistence_flush_last_slow_ts_ms": self._persistence_flush_last_slow_ts_ms,
+            "persistence_flush_slowest_archive_ms": round(
+                self._persistence_flush_slowest_archive_ms,
+                3,
+            ),
+            "persistence_flush_slowest_manifest_ms": round(
+                self._persistence_flush_slowest_manifest_ms,
+                3,
+            ),
+            "persistence_flush_slowest_candle_ms": round(
+                self._persistence_flush_slowest_candle_ms,
+                3,
+            ),
+            "persistence_flush_slowest_market_events": (
+                self._persistence_flush_slowest_market_events
+            ),
+            "persistence_flush_slowest_candles": self._persistence_flush_slowest_candles,
+            "persistence_flush_slowest_archive_batches": (
+                self._persistence_flush_slowest_archive_batches
+            ),
             "persistence_worker_warmed": self._persistence_worker_warmed,
             "persistence_worker_warm_ms": round(self._persistence_worker_warm_ms, 3),
             "event_memory_count": len(self._events),
@@ -522,6 +568,21 @@ class PaperRuntime:
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
             "manual_pause_requested": self._manual_pause_requested,
             "automatic_recovery_enabled": True,
+            "startup_storage_init_ms": round(self.startup_storage_init_ms, 3),
+            "startup_ledger_open_ms": round(self.startup_ledger_open_ms, 3),
+            "startup_recovery_lookup_ms": round(self.startup_recovery_lookup_ms, 3),
+            "startup_runtime_init_ms": round(self.startup_runtime_init_ms, 3),
+            "startup_recovery_restore_ms": round(self.startup_recovery_restore_ms, 3),
+            "startup_total_ms": round(self.startup_total_ms, 3),
+            "startup_portfolio_init_ms": round(self.startup_portfolio_init_ms, 3),
+            "startup_trade_cache_ms": round(self.startup_trade_cache_ms, 3),
+            "startup_post_init_total_ms": round(self.startup_post_init_total_ms, 3),
+            "dashboard_trade_cache_ready": self.dashboard_trade_cache_ready,
+            "dashboard_trade_cache_loading": self.dashboard_trade_cache_loading,
+            "dashboard_trade_cache_last_ms": round(self.dashboard_trade_cache_last_ms, 3),
+            "dashboard_trade_cache_completed_ts_ms": (
+                self.dashboard_trade_cache_completed_ts_ms
+            ),
         }
 
     def _handle_persistence_fault(self, error: Exception) -> None:
@@ -2357,19 +2418,36 @@ class PaperRuntime:
             self._restore_persistence_batch(market_batch, candle_batch)
             self._handle_persistence_fault(error)
 
-    async def _flush_persistence_isolated(self, market_limit: int | None) -> None:
+    async def _flush_persistence_isolated(
+        self,
+        market_limit: int | None,
+    ) -> dict[str, float | int]:
         """Parquet CPU·GIL 작업을 별도 프로세스에 두고 manifest만 원장에 쓴다."""
 
         market_batch, candle_batch = self._take_persistence_batch(market_limit)
+        timings: dict[str, float | int] = {
+            "archive_ms": 0.0,
+            "manifest_ms": 0.0,
+            "candle_ms": 0.0,
+            "market_events": len(market_batch),
+            "candles": len(candle_batch),
+            "archive_batches": 0,
+        }
         if self.ledger is None:
-            return
+            return timings
+        loop = asyncio.get_running_loop()
         try:
             if market_batch:
                 if self.market_event_archive is None:
+                    started = loop.time()
                     await asyncio.to_thread(self.ledger.record_market_events, market_batch)
+                    timings["manifest_ms"] = (loop.time() - started) * 1_000
                 else:
                     store = self.market_event_archive
-                    for rows in self._group_market_archive_rows(market_batch):
+                    groups = self._group_market_archive_rows(market_batch)
+                    timings["archive_batches"] = len(groups)
+                    for rows in groups:
+                        started = loop.time()
                         archive = await to_process.run_sync(
                             write_market_event_batch_in_process,
                             str(store.root),
@@ -2377,23 +2455,29 @@ class PaperRuntime:
                             store.minimum_free_ratio,
                             rows,
                         )
+                        timings["archive_ms"] += (loop.time() - started) * 1_000
+                        started = loop.time()
                         await asyncio.to_thread(
                             self.ledger.record_market_event_archive,
                             archive,
                             rows,
                         )
+                        timings["manifest_ms"] += (loop.time() - started) * 1_000
             if candle_batch:
+                started = loop.time()
                 await asyncio.to_thread(self.ledger.record_candles, candle_batch)
+                timings["candle_ms"] = (loop.time() - started) * 1_000
         except Exception as error:
             self._restore_persistence_batch(market_batch, candle_batch)
             self._handle_persistence_fault(error)
+        return timings
 
     async def run_persistence_worker(self, stop: asyncio.Event) -> None:
         """시장 직렬화·fsync를 시장데이터 이벤트 루프 밖에서 실행한다."""
 
         async def flush(limit: int | None) -> None:
             started = asyncio.get_running_loop().time()
-            await self._flush_persistence_isolated(limit)
+            timings = await self._flush_persistence_isolated(limit)
             elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
             completed_ts_ms = self.clock.utc_ms()
             self._persistence_flush_count += 1
@@ -2402,6 +2486,20 @@ class PaperRuntime:
             if elapsed_ms > self._persistence_flush_max_ms:
                 self._persistence_flush_max_ms = elapsed_ms
                 self._persistence_flush_max_ts_ms = completed_ts_ms
+                self._persistence_flush_slowest_archive_ms = float(
+                    timings["archive_ms"]
+                )
+                self._persistence_flush_slowest_manifest_ms = float(
+                    timings["manifest_ms"]
+                )
+                self._persistence_flush_slowest_candle_ms = float(timings["candle_ms"])
+                self._persistence_flush_slowest_market_events = int(
+                    timings["market_events"]
+                )
+                self._persistence_flush_slowest_candles = int(timings["candles"])
+                self._persistence_flush_slowest_archive_batches = int(
+                    timings["archive_batches"]
+                )
             if elapsed_ms >= _SLOW_PERSISTENCE_FLUSH_MS:
                 self._persistence_flush_slow_count += 1
                 self._persistence_flush_last_slow_ts_ms = completed_ts_ms
@@ -2472,27 +2570,47 @@ class PaperRuntime:
                 ),
             },
         )
-        self._refresh_dashboard_trade_cache()
+        if not self.dashboard_trade_cache_loading:
+            self._refresh_dashboard_trade_cache()
 
     def _refresh_dashboard_trade_cache(self) -> None:
-        if self.ledger is None:
-            self._historical_live_trades = ()
-            self._historical_prior_version_live_trades = ()
-            self._historical_shadow_trades = ()
-            self._historical_prior_version_shadow_trades = ()
-            return
-        current_live_trades, prior_version_live_trades = (
-            self._current_strategy_version_trades(self.ledger.list_trades())
-        )
-        self._historical_live_trades = tuple(current_live_trades)
-        self._historical_prior_version_live_trades = tuple(prior_version_live_trades)
-        current_shadow_trades, prior_version_shadow_trades = self._current_strategy_version_trades(
-            self.ledger.list_shadow_trades()
-        )
-        self._historical_shadow_trades = tuple(current_shadow_trades)
-        self._historical_prior_version_shadow_trades = tuple(prior_version_shadow_trades)
-        self._dashboard_strategy_performance_cache_key = None
-        self._dashboard_strategy_performance_cache = ()
+        started = time.monotonic()
+        with self._dashboard_trade_cache_lock:
+            self.dashboard_trade_cache_loading = True
+            succeeded = False
+            try:
+                if self.ledger is None:
+                    self._historical_live_trades = ()
+                    self._historical_prior_version_live_trades = ()
+                    self._historical_shadow_trades = ()
+                    self._historical_prior_version_shadow_trades = ()
+                    succeeded = True
+                    return
+                current_live_trades, prior_version_live_trades = (
+                    self._current_strategy_version_trades(self.ledger.list_trades())
+                )
+                self._historical_live_trades = tuple(current_live_trades)
+                self._historical_prior_version_live_trades = tuple(prior_version_live_trades)
+                current_shadow_trades, prior_version_shadow_trades = (
+                    self._current_strategy_version_trades(self.ledger.list_shadow_trades())
+                )
+                self._historical_shadow_trades = tuple(current_shadow_trades)
+                self._historical_prior_version_shadow_trades = tuple(
+                    prior_version_shadow_trades
+                )
+                self._dashboard_strategy_performance_cache_key = None
+                self._dashboard_strategy_performance_cache = ()
+                succeeded = True
+            finally:
+                self.dashboard_trade_cache_last_ms = (
+                    time.monotonic() - started
+                ) * 1_000
+                self.dashboard_trade_cache_completed_ts_ms = self.clock.utc_ms()
+                self.dashboard_trade_cache_loading = False
+                self.dashboard_trade_cache_ready = succeeded
+
+    async def warm_dashboard_trade_cache(self) -> None:
+        await asyncio.to_thread(self._refresh_dashboard_trade_cache)
 
     def _dashboard_live_main_trades(self) -> tuple[dict[str, object], ...]:
         rows = {str(trade["trade_id"]): trade for trade in self._historical_live_trades}

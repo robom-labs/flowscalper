@@ -180,6 +180,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await page.getByLabel('Run 범위').selectOption('ALL')
   await page.locator('.history-table tbody tr').first().getByRole('button', { name: '재생' }).click()
   await expect(page.getByRole('heading', { name: /거래 집중 재생/ })).toBeVisible()
+  await expect(page.locator('.focus-plan')).toContainText('저장 재생')
   await page.locator('.focus-replay-range input').fill('2')
   await expect(page.locator('.focus-replay-controls')).toContainText('3 / 6')
   const focusChartBeforeSheet = await page.locator('.focus-grid .chart-panel').boundingBox()
