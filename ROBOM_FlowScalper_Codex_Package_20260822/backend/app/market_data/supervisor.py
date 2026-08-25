@@ -35,6 +35,7 @@ from backend.app.time_sync import (
 
 EventSink = Callable[[MarketEvent], Awaitable[None] | None]
 ProtectedSymbolSource = Callable[[], Sequence[str]]
+_STRATEGY_TRADE_LAG_MAX_MS = 500.0
 
 
 def _percentile_95(ordered: Sequence[float]) -> float | None:
@@ -113,14 +114,18 @@ class SupervisorTelemetry:
     critical_lag_event_count: int = 0
     critical_lag_active: bool = False
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
+    trade_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     wide_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     lag_percentile_refresh_samples: int = 256
     lag_percentile_refresh_count: int = 0
     _lag_p95_cache_ms: float | None = None
     _lag_p50_cache_ms: float | None = None
+    _trade_lag_p95_cache_ms: float | None = None
     _wide_lag_p95_cache_ms: float | None = None
     _deep_samples_since_refresh: int = 0
+    _trade_samples_since_refresh: int = 0
     _wide_samples_since_refresh: int = 0
+    stale_trade_event_count: int = 0
     venue_clock_offset_ms: float = 0.0
     venue_clock_rtt_ms: float = 0.0
     clock_sync_status: str = "UNVERIFIED"
@@ -159,6 +164,22 @@ class SupervisorTelemetry:
             self._wide_samples_since_refresh = 0
             self.lag_percentile_refresh_count += 1
 
+    def observe_trade_lag(self, lag_ms: float) -> None:
+        """전략 체결흐름 지연을 실제 체결 호가 지연과 분리해 집계한다."""
+
+        self.trade_lag_samples_ms.append(lag_ms)
+        self._trade_samples_since_refresh += 1
+        warmup_refresh = len(self.trade_lag_samples_ms) in {1, 4, 16}
+        if (
+            warmup_refresh
+            or self._trade_samples_since_refresh >= self.lag_percentile_refresh_samples
+        ):
+            self._trade_lag_p95_cache_ms = _percentile_95(
+                sorted(self.trade_lag_samples_ms)
+            )
+            self._trade_samples_since_refresh = 0
+            self.lag_percentile_refresh_count += 1
+
     @property
     def lag_p95_ms(self) -> float | None:
         return self._lag_p95_cache_ms
@@ -170,6 +191,10 @@ class SupervisorTelemetry:
     @property
     def wide_lag_p95_ms(self) -> float | None:
         return self._wide_lag_p95_cache_ms
+
+    @property
+    def trade_lag_p95_ms(self) -> float | None:
+        return self._trade_lag_p95_cache_ms
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -187,10 +212,12 @@ class SupervisorTelemetry:
             "queue_capacity": self.queue_capacity,
             "lag_p50_ms": self.lag_p50_ms,
             "lag_p95_ms": self.lag_p95_ms,
+            "trade_lag_p95_ms": self.trade_lag_p95_ms,
             "wide_lag_p95_ms": self.wide_lag_p95_ms,
             "planned_rotations": self.planned_rotation_count,
             "trade_source_events": self.trade_source_event_count,
             "trade_output_events": self.trade_output_event_count,
+            "stale_trade_events": self.stale_trade_event_count,
             "entry_locked": self.entry_locked,
             "critical_lag_threshold_ms": self.critical_lag_threshold_ms,
             "critical_lag_event_count": self.critical_lag_event_count,
@@ -358,11 +385,16 @@ class PersistentPublicSupervisor:
             self.telemetry.trade_output_event_count += 1
         self.telemetry.last_event_monotonic_ns = event.receive_monotonic_ns
         if event.quality.lag_ms is not None:
-            executable_path = event.event_type in {"DEPTH_UPDATE", "ORDERBOOK", "TRADE"}
-            self.telemetry.observe_lag(
-                event.quality.lag_ms,
-                executable_path=executable_path,
-            )
+            executable_path = event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}
+            if event.event_type == "TRADE":
+                self.telemetry.observe_trade_lag(event.quality.lag_ms)
+                if event.quality.is_stale:
+                    self.telemetry.stale_trade_event_count += 1
+            else:
+                self.telemetry.observe_lag(
+                    event.quality.lag_ms,
+                    executable_path=executable_path,
+                )
             if executable_path:
                 if event.quality.lag_ms > self.telemetry.critical_lag_threshold_ms:
                     self.telemetry.critical_lag_event_count += 1
@@ -647,6 +679,10 @@ class BinancePersistentProvider:
             )
             return
         if event_name == "aggTrade" and symbol in selection.deep_symbols:
+            trade_stale = bool(
+                quality.lag_ms is not None
+                and quality.lag_ms > _STRATEGY_TRADE_LAG_MAX_MS
+            )
             yield MarketEvent(
                 event_id=f"binance-trade-{symbol}-{data['a']}",
                 run_id=run_id,
@@ -657,7 +693,13 @@ class BinancePersistentProvider:
                 transaction_ts_ms=int(data["T"]),
                 receive_monotonic_ns=clock.monotonic_ns(),
                 sequence_end=int(data["a"]),
-                quality=quality,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=trade_stale,
+                    sequence_valid=True,
+                    lag_ms=quality.lag_ms,
+                    flags=("TRADE_LAG_STALE",) if trade_stale else (),
+                ),
                 data={
                     "price": str(data["p"]),
                     "quantity": str(data["q"]),

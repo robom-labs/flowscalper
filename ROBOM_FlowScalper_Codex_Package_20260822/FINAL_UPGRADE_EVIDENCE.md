@@ -943,3 +943,52 @@ Wave 23 구현 commit은 `a8a04b8c4aedfd092a13ce199d9925f2cce5505a`이다. 같�
 | GitHub main / Actions | PASS | 계산 재사용 commit `3284fc1`과 구현 commit `887b0ec1aed6a9930a5d1cf8bfa2562af22f6bee`를 main에 push했다. [Actions 32798366401](https://github.com/robom-labs/flowscalper/actions/runs/32798366401)의 validate 56초, browser 1분15초, 실제 Chromium E2E와 browser evidence upload가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/WAVE24_RUNTIME_STALL_QA.json`이다. 필수 로컬 회귀·화면·서비스 검증의 미해결 FAIL과 BLOCKED는 0이다. 외부 공개시장 지연은 관찰 사실로 남기고, 내부 정지 제거와 fail-closed 자동회복만 완료로 판정했다.
+
+## 30. 활성 원장 제한·실행지연 분리·현재 PAPER와 전략 감시 가시성
+
+2026-08-25 활성 SQLite가 약 2.0GiB까지 증가한 원인을 캔들 파생구간 중복, 상태 비변경 감사의 전체 복구 snapshot 복제와 모든 전략계정 이력 반복으로 분해했다. 동시에 10개 전략·20계좌 성과를 0.5초 화면 frame마다 재계산하고 deep 20개를 처리하던 부하와, 실행 bid·ask 주문장·공개 체결·50종목 wide scanner 지연을 한 숫자로 섞던 관측 문제를 수정했다.
+
+### 구현과 안전경계
+
+- 활성 SQLite와 공개시장 archive 볼륨을 독립 검사하고 어느 하나라도 임계 미달이면 새 PAPER 진입을 fail-closed한다.
+- 모든 실행 감사는 append-only로 유지하되 상태 비변경 거절은 전체 복구 snapshot을 다시 쓰지 않는다. 상태가 바뀔 때만 전체 checksum snapshot과 영향받은 전략계정 이력을 기록한다.
+- 모든 차트 시간구간은 메모리에서 유지하지만 SQLite에는 원본 1초봉과 거래 중심 replay의 180초봉만 저장한다.
+- wide 50종목을 유지하면서 deep 정밀분석은 12종목으로 제한하고, 대시보드는 최근 512건만 투영한다. 현재버전 성과는 완료 독립 PAPER 거래가 바뀔 때만 재계산한다.
+- Parquet worker process를 서비스 시작 때 미리 기동하고 SQLite 실행원장 반영은 event loop 밖 thread에서 수행한다.
+- 실제 bid·ask 실행호가 p95, 공개체결 p95와 wide scanner p95를 분리한다. 500ms보다 늦은 aggregate trade는 archive에 보존하되 candle·FeatureEngine·전략평가에 넣지 않고 신선한 체결까지 해당 종목을 `data_healthy=false`로 둔다.
+- 차트에는 열린 PAPER의 방향·전략·BASE/STRESS·entry·TP1·SL과 같은 종목의 추가 진행 건수를 표시한다. 시장 화면에는 전체 진행 목록을 제공한다.
+- 전략 화면은 A~J 각각의 정상 감시·준비·진입·안전대기·확인필요·꺼짐, 최근 대기 이유와 평가경로 수를 표시한다.
+- 전략 신호·비용·TP·SL·위험 임계값은 낮추지 않았다. 실제 주문, private API, 인증, API Key, secret과 wallet 경로는 계속 0 또는 false다.
+
+### 실제 공개시장·브라우저·원장 검증
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 독립 공개 depth 표본 | PASS | BTCUSDT·SOLUSDT·BNBUSDT의 8초 공개 WebSocket 표본에서 p50 20.3ms, p95 21.63ms, 최대 24.83ms, 1,500ms 초과 0건이었다. 짧은 네트워크 진단이며 soak가 아니다. |
+| 실제 시작 한 번 | PASS | 실제 앱 내 브라우저에서 `자동 관찰 시작`을 한 번 눌렀다. 약 250ms 뒤 `연결 중·요청받음`, 약 5.5초 뒤 `작동 중`을 확인했다. |
+| 실제 chart와 진행 목록 | PASS | `run-b39e9a83991b`에서 ENAUSDT·XRPUSDT·DOGEUSDT의 BASE·STRESS 6개 열린 PAPER가 목록에 표시됐고, 선택한 ENAUSDT 차트에서 하락·전략·BASE·entry·TP1·SL banner를 확인했다. 자연 종료 뒤 `진행 중 0건`과 오래된 banner 제거를 확인했다. |
+| 다른 전략 작동상태 | PASS | A~J 10개 모두 LONG·SHORT 켜짐, 각각 12종목×양방향 24개 경로를 평가했다. 계정 fault는 0이었다. 진입하지 않은 전략은 시장 방향·체결 흐름·호가·가격 구조 등 최근 엄격조건 대기 이유를 표시했다. Queue Microprice와 Depth-adjusted OFI가 관찰 구간에 자연 적격·PAPER 진입했다. |
+| 181초 실제 RUNNING | PASS | 동일 Run 13표본에서 event 44,383→63,439로 19,056건 증가했다. 실행호가 p95 32.924~278.431ms, 체결 p95 33.992~190.332ms, wide scanner p95 1,540.585~1,829.765ms, queue 최대 1이었다. critical active·entry lock·비계획 reconnect·gap·drop·persistence fault 표본은 모두 0이었다. stale trade 종목은 순간 최대 2였고 다음 신선한 체결 뒤 0으로 회복했다. |
+| 현재 Run 자연 shadow PAPER | PASS_WITH_LOSS | Queue Microprice BASE 9건·STRESS 5건과 Depth-adjusted OFI BASE 1건·STRESS 1건, 총 16건이 완료됐다. 보유 11.652~65.464초, 3초 미만 0건이었다. BASE 독립계좌별 합산 순손익 -2.978295·수수료 2.681336·슬리피지 0.281199 USDT, STRESS 독립계좌별 합산 순손익 -1.242385·수수료 2.071645·슬리피지 0.293730 USDT다. 서로 다른 독립계좌를 한 1,000 USDT 계좌로 해석하지 않으며 작동 증거이지 수익성 증거가 아니다. |
+| 실제 시스템 화면 | PASS | `50 / 12종목`, 실제 호가·체결 지연, KST·서버·거래소 보정, 비정상 재연결·누락 0, 저장소 정상, 실제 주문 경로 0을 확인했다. wide scanner는 고급진단에서 진입판정이 아님을 구분한다. |
+| 활성 원장과 보존 | PASS | 서비스는 `/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/active-ledger/run-ledger.sqlite3`를 사용한다. 이전 닫힌 원장은 `/Volumes/ROBOM_FLOWSCALPER/04_MIGRATION_ARCHIVE/internal-active-ledger-before-wave25-20260825T1110KST/`에 보존했다. SQLite `quick_check=ok`, 외래키 위반 0이며 archive·ledger 여유공간 약 22,150MB, storage entry allowed true였다. |
+| 최종 사이트 재시작 | PASS | 원장검사 뒤 LaunchAgent를 다시 올려 READY를 확인하고 실제 브라우저에서 시작을 한 번 눌렀다. 최종 `run-8cd493f93260`은 LIVE, event 5,556, 실행호가/체결 p95 28.882/31.560ms, queue·critical·lock·비계획 reconnect·gap·drop·fault 0이었다. 실제 화면과 API에서 Queue Microprice·Depth-adjusted OFI의 SOLUSDT·BTCUSDT BASE/STRESS 4개 열린 PAPER와 진입 즉시 TP1·TP2·SL 보호를 확인했고 browser console 항목은 0이었다. |
+
+### 자동검증과 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 312 passed, 20.86초 |
+| frontend Vitest | PASS | 12 files, 44 passed |
+| Playwright | PASS | 실제 Chromium desktop·tablet·mobile 3 passed, 20.4초. 차트 현재 PAPER, 전체 진행 목록, BASE·STRESS 계좌를 모두 반영한 전략 감시상태·평가경로와 반응형 overflow를 검사했다. |
+| Ruff / mypy | PASS | 오류 0 / 82 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build | PASS | Vite 48 modules, PAPER build safety PASS |
+| security / repository hygiene | PASS | 115 source, violation·secret-like·real-order path 0 / 위반 0 |
+| 실제 브라우저 console | PASS | 실제 화면 warning·error 0 |
+| 전략 수익성 | NOT_PROVEN | 현재 Run 자연 Queue 표본은 순손실이고 다른 전략도 현재버전 표본이 충분하지 않은 행이 있다. 조용한 정상 대기를 성과나 오류로 해석하지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 181초와 후속 실제 서비스 표본을 멀티시간 수용결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | NOT_RUN | 로컬 구현·검증 뒤 push와 독립 CI 확인을 진행 중이다. |
+
+기계판독 증거는 `evidence/WAVE25_STORAGE_RUNTIME_UI_QA.json`, 상세 결정은 ADR-024·ADR-025·ADR-026이다. 필수 로컬 회귀·실제 화면·짧은 실제 서비스 검증의 미해결 FAIL과 BLOCKED는 현재 0이다. 전략 수익성, 6시간·24시간과 Release ZIP은 `NOT_PROVEN` 또는 `NOT_RUN`으로 분리했다.

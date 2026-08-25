@@ -19,7 +19,8 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(10)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('10/10 전략 켜짐 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('10개 정상 감시 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getAllByText('준비 중')).toHaveLength(10)
   expect([...document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')].every((button) => button.textContent?.includes('모의 중'))).toBe(true)
 
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[0])
@@ -29,6 +30,28 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
   expect(screen.getAllByText(/이번 Run 현재자산/).length).toBeGreaterThanOrEqual(2)
   expect(screen.getAllByText(/현재 전략 버전의 공개시장 PAPER 기준/).length).toBeGreaterThanOrEqual(2)
   expect(screen.getAllByText('과거 버전 제외')).toHaveLength(2)
+})
+
+test('distinguishes healthy condition waiting, open PAPER management and faults', () => {
+  const rows = strategies.map((strategy, index) => ({
+    ...strategy,
+    evaluated_paths: index === 0 ? 24 : strategy.evaluated_paths,
+    latest_status: index === 0 ? 'REJECTED' : strategy.latest_status,
+    latest_reasons: index === 0 ? ['AGGRESSOR_FLOW_NOT_ALIGNED', 'QUEUE_ALIGNMENT_NOT_PERSISTENT'] : strategy.latest_reasons,
+  }))
+  const accounts = leagueAccounts.map((account) => ({ ...account }))
+  const firstBase = accounts.find((account) => account.strategy_id === rows[0].strategy_id && account.profile === 'BASE')
+  const secondStress = accounts.find((account) => account.strategy_id === rows[1].strategy_id && account.profile === 'STRESS')
+  if (!firstBase || !secondStress) throw new Error('strategy fixture account missing')
+  firstBase.open_positions = 1
+  secondStress.faulted = true
+
+  render(<StrategiesPage strategies={rows} leagueAccounts={accounts} onConfigure={vi.fn(async () => undefined)} />)
+
+  expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
+  expect(screen.getByText('확인 필요')).toBeInTheDocument()
+  expect(screen.getByText('9개 정상 감시 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 
 const basePosition: LeaguePosition = {

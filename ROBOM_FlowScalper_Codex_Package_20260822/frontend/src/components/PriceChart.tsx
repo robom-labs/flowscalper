@@ -37,7 +37,7 @@ export type ChartOverlay = {
   currentStop?: number
 }
 
-type Props = { chart: ChartData; overlay?: ChartOverlay | null; history?: HistoryRow[]; replay?: boolean; compact?: boolean }
+type Props = { chart: ChartData; overlay?: ChartOverlay | null; activePositionCount?: number; history?: HistoryRow[]; replay?: boolean; compact?: boolean }
 type QuotePoint = { time: UTCTimestamp; value: number }
 type LineApi = ISeriesApi<'Line', Time>
 type CandleApi = ISeriesApi<'Candlestick', Time>
@@ -83,7 +83,7 @@ function last<T>(values: T[]) {
   return values.at(-1)
 }
 
-export const PriceChart = memo(function PriceChart({ chart, overlay = null, history = [], replay = false, compact = false }: Props) {
+export const PriceChart = memo(function PriceChart({ chart, overlay = null, activePositionCount = overlay ? 1 : 0, history = [], replay = false, compact = false }: Props) {
   const [visible, setVisible] = useState(initialIndicators)
   const [showReturn, setShowReturn] = useState(false)
   const [fullWindow, setFullWindow] = useState(false)
@@ -389,6 +389,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, hist
       {latestCandle ? <dl className="chart-stats"><div><dt>현재</dt><dd>{formatPrice(latestCandle.close)}</dd></div><div><dt>시가</dt><dd>{formatPrice(latestCandle.open)}</dd></div><div><dt>고가</dt><dd>{formatPrice(latestCandle.high)}</dd></div><div><dt>저가</dt><dd>{formatPrice(latestCandle.low)}</dd></div><div><dt>거래량</dt><dd>{formatCompactNumber(latestCandle.volume)}</dd></div></dl> : null}
       <div ref={containerRef} className="chart-wrap" role="img" aria-label={`${chart.symbol} 실제 캔들·거래량·전문 보조지표 PAPER 차트`}>
         {!hasData ? <div className="chart-empty"><b>시장 캔들을 기다리고 있습니다.</b><span>실제 공개시장 데이터가 도착하면 자동으로 표시됩니다.</span></div> : null}
+        {overlay?.symbol === chart.symbol ? <div className={`chart-position-banner ${overlay.side.toLowerCase()}`} aria-label="현재 PAPER 진입"><b>PAPER 진입 중 · {overlay.side === 'LONG' ? '상승' : '하락'}</b><span>{overlay.label}{activePositionCount > 1 ? ` · 같은 종목 외 ${activePositionCount - 1}건` : ''}</span><small>진입 {formatPrice(overlay.entry)} · TP1 {formatPrice(overlay.tp1)} · SL {formatPrice(overlay.currentStop ?? overlay.stop)}</small></div> : null}
         <div ref={tooltipRef} className="chart-tooltip" hidden />
         {showReturn ? <button type="button" className="return-realtime" onClick={() => chartApiRef.current?.timeScale().scrollToRealTime()}>현재로 돌아가기</button> : null}
       </div>

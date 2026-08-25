@@ -16,6 +16,7 @@ from backend.app.domain.models import (
 )
 from backend.app.live_public import PublicDataUnavailable
 from backend.app.market_data.supervisor import (
+    BinancePersistentProvider,
     BinanceTradeCoalescer,
     PersistentPublicSupervisor,
     ProviderSelection,
@@ -613,6 +614,82 @@ def test_wide_scanner_lag_is_visible_but_does_not_lock_executable_path() -> None
     assert supervisor.telemetry.wide_lag_p95_ms == 9_000
     assert supervisor.telemetry.lag_p95_ms == 10
     assert supervisor.telemetry.entry_locked is False
+
+
+def test_stale_trade_lag_is_separate_and_does_not_masquerade_as_book_lag() -> None:
+    clock = DeterministicClock(current_utc_ms=2_000)
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id="run-trade-lag",
+        clock=clock,
+        sink=lambda _: None,
+    )
+    stale_quality = DataQuality(
+        is_live=True,
+        is_stale=True,
+        sequence_valid=True,
+        lag_ms=2_000,
+        flags=("TRADE_LAG_STALE",),
+    )
+    trade = _event("run-trade-lag", "BTCUSDT", clock, 1, lag_ms=2_000).model_copy(
+        update={
+            "event_type": "TRADE",
+            "quality": stale_quality,
+            "data": {
+                "price": "100",
+                "quantity": "1",
+                "buyer_is_aggressor": True,
+            },
+        }
+    )
+
+    supervisor._observe(trade)
+    supervisor._observe(_event("run-trade-lag", "BTCUSDT", clock, 0, lag_ms=10))
+
+    assert supervisor.telemetry.trade_lag_p95_ms == 2_000
+    assert supervisor.telemetry.stale_trade_event_count == 1
+    assert supervisor.telemetry.lag_p95_ms == 10
+    assert supervisor.telemetry.critical_lag_event_count == 0
+    assert supervisor.telemetry.entry_locked is False
+
+
+async def test_binance_marks_late_public_trade_stale_before_strategy_input() -> None:
+    clock = DeterministicClock(current_utc_ms=2_000)
+    selection = ProviderSelection(
+        venue=Venue.BINANCE_USDM,
+        instruments={},
+        tickers={},
+        wide_symbols=("BTCUSDT",),
+        deep_symbols=("BTCUSDT",),
+        bootstrap_events=(),
+    )
+    provider = BinancePersistentProvider()
+    payload = {
+        "e": "aggTrade",
+        "E": 1_000,
+        "T": 1_000,
+        "s": "BTCUSDT",
+        "a": 7,
+        "p": "100",
+        "q": "2",
+        "m": False,
+    }
+
+    events = [
+        event
+        async for event in provider._normalize(
+            payload,
+            selection,
+            {},
+            object(),  # aggTrade 경로에서는 REST 호가 adapter를 사용하지 않는다.
+            run_id="run-stale-trade",
+            clock=clock,
+        )
+    ]
+
+    assert len(events) == 1
+    assert events[0].quality.is_stale is True
+    assert events[0].quality.flags == ("TRADE_LAG_STALE",)
 
 
 def test_lag_percentile_work_is_bounded_during_high_frequency_events() -> None:

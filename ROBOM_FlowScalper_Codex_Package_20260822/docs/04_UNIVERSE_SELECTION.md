@@ -108,7 +108,7 @@ Do not assume a symbol's displayed name equals one base token. Contracts such as
 
 ## 4.10 Phase 03 deep rotation
 
-- Wide observation remains at least 50 symbols and deep analysis defaults to 20, bounded to 10..30.
+- Wide observation remains at least 50 symbols. Deep analysis defaults to 12, within the product requirement's 8–12 target and the provider's 10..30 safety bound.
 - Deep selection has a 15-minute minimum dwell. A rotation changes at most four symbols and at most 30 percent of the set.
 - User-pinned chart symbols plus open and pending PAPER symbols are protected from demotion.
 - Each selection is appended as an immutable universe snapshot for later audit and replay context.

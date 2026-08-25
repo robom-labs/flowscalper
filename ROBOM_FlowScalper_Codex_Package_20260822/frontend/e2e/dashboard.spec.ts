@@ -99,6 +99,21 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   if (testInfo.project.name !== 'desktop') await page.getByRole('dialog', { name: '종목 목록' }).getByRole('button', { name: '닫기', exact: true }).click()
   await expect(page.locator('.indicator-popover')).not.toHaveAttribute('open', '')
 
+  if (testInfo.project.name !== 'desktop') {
+    await page.locator('.market-toolbar').evaluate((toolbar) => {
+      const notice = document.createElement('p')
+      notice.className = 'market-notice focus-toast e2e-focus-notice'
+      notice.textContent = '새 PAPER 진입 · 화면 겹침 검증'
+      toolbar.after(notice)
+    })
+    const toolbar = await page.locator('.market-toolbar').boundingBox()
+    const notice = await page.locator('.e2e-focus-notice').boundingBox()
+    const operation = await page.locator('.operation-status-card').boundingBox()
+    expect(notice?.y).toBeGreaterThanOrEqual((toolbar?.y ?? 0) + (toolbar?.height ?? 0))
+    expect(operation?.y).toBeGreaterThanOrEqual((notice?.y ?? 0) + (notice?.height ?? 0))
+    await page.locator('.e2e-focus-notice').evaluate((element) => element.remove())
+  }
+
   const chartBefore = await page.locator('.chart-panel').boundingBox()
   await page.locator('.indicator-popover summary').click()
   await expect(page.getByRole('button', { name: 'MA5', exact: true })).toHaveAttribute('aria-pressed', 'false')
@@ -139,7 +154,8 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await page.getByRole('button', { name: '전략', exact: true }).click()
   await expect(page.getByRole('heading', { name: '전략 설정' })).toBeVisible()
   await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(10)
-  await expect(page.getByText('10/10 전략 켜짐 · 실제 주문 0')).toBeVisible()
+  await expect(page.getByText('10개 정상 감시 · 문제 0개 · 실제 주문 0')).toBeVisible()
+  await expect(page.getByText('준비 중')).toHaveCount(10)
   await expect(page.locator('.strategy-inline-modes button[aria-pressed="true"]')).toHaveCount(10)
   await expect(page.locator('.strategy-inline-directions button[aria-pressed="true"]')).toHaveCount(20)
   await page.getByRole('button', { name: '자세히', exact: true }).first().click()

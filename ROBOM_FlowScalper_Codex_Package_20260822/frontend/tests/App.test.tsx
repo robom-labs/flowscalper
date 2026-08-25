@@ -183,6 +183,40 @@ test('clears a previous run PAPER entry notice when the run changes', async () =
   await waitFor(() => expect(screen.queryByText(/새 PAPER 진입 · BTCUSDT/)).not.toBeInTheDocument())
 })
 
+test('clears a PAPER entry notice when READY reuses the same run id', async () => {
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
+  vi.stubGlobal('localStorage', {
+    getItem: vi.fn((key: string) => key === 'robom.position.focus.v1'
+      ? JSON.stringify({ autoFocusOnFill: false, focusLocked: false, defaultProfile: 'BASE' })
+      : null),
+    setItem: vi.fn(),
+  })
+  const position = {
+    focus_key: 'ready:trade-reused', trade_id: 'trade-reused', candidate_id: 'candidate-reused',
+    account_id: 'LSA_REVERSAL_V1:BASE', profile: 'BASE', venue: 'BINANCE_USDM',
+    symbol: 'BTCUSDT', side: 'LONG', strategy: 'LSA_REVERSAL_V1', strategy_id: 'LSA_REVERSAL_V1',
+    strategy_display_name_ko: '급락·급등 쓸기 반전', opened_ts_ms: 2, signal_ts_ms: 1,
+    auto_focus_eligible: true,
+  } as unknown as FocusPosition
+  const handlers = {
+    onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
+    onPauseToggle: vi.fn(), busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+  }
+  const liveSameRun = {
+    ...initialDashboard,
+    status: { ...initialDashboard.status, mode: 'LIVE_SHADOW_PAPER' as const },
+    focus_positions: [position],
+  }
+  const { rerender } = render(<MarketPage data={initialDashboard} {...handlers} />)
+
+  rerender(<MarketPage data={liveSameRun} {...handlers} />)
+
+  expect(await screen.findByText(/새 PAPER 진입 · BTCUSDT/)).toBeInTheDocument()
+
+  rerender(<MarketPage data={initialDashboard} {...handlers} />)
+  await waitFor(() => expect(screen.queryByText(/새 PAPER 진입 · BTCUSDT/)).not.toBeInTheDocument())
+})
+
 test('shows the verified public venue clock correction in system diagnostics', async () => {
   const serverNow = Date.now()
   const clockDashboard = {

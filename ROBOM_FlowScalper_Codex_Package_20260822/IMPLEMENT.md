@@ -105,7 +105,7 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 
 1. Keep the existing Registry, PAPER execution, risk, storage and replay engines. Add one read-only full-market explorer around public Binance and Upbit endpoints.
 2. Use the five-group compact shell and fixed market rail/chart workspace. Default to 3-minute candles, MA10/MA20 and volume overlay.
-3. Maintain deep 20 with dwell, protected symbols and bounded rotation; append every selected universe snapshot.
+3. Maintain wide 50 and deep 12 with dwell, protected symbols and bounded rotation; append every selected universe snapshot.
 4. Publish strategy×symbol analytics only from completed ledger trades and withhold ranking below 30 samples.
 5. Normalize main and BASE/STRESS positions into `focus_positions`. Auto focus only a newly observed actual `trade_id` fill and persist the user's focus lock.
 6. Build trade-centered replay from stored public events. Bound frames at 50,000, preserve state transitions, hide future markers and use timestamp-based 0.5x–80x playback.
@@ -142,3 +142,32 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 7. Re-run all A-F LONG/SHORT TP/SL simulations, full backend/frontend/static/build/E2E safety checks and actual browser controls.
 8. Start a new immutable PAPER Run after deploying the policy so later samples do not mix old and new exit policy within one Run. Do not delete old trades.
 9. Record natural post-change fills and profitability as `NOT_OBSERVED` or `NOT_PROVEN` until actual evidence exists.
+
+## Bounded active ledger and volume safety Wave
+
+1. Inspect the active SQLite file, WAL, filesystem free space, table row counts and `dbstat` sizes before changing persistence.
+2. Keep every execution audit, order, fill, trade, immutable plan and checksum. Do not treat rejection-only audits as portfolio mutations.
+3. Persist complete recovery state only after an audit that changes pending entry, position, protection, fill or risk state. Persist only affected shadow-account history rows.
+4. Keep all chart intervals in memory but persist only canonical 1-second and replay-focus 180-second candles in SQLite.
+5. Check archive and ledger filesystems independently with the same fail-closed storage thresholds and expose both capacities in diagnostics.
+6. Before moving a live ledger, stop the service and verify a closed copy with SHA-256, `PRAGMA quick_check`, foreign keys and invariant row counts. Keep the prior file recoverable.
+7. Restart the actual service, verify the recovered Run and open PAPER state, exercise the browser, and measure ledger growth and public-data lag after multiple flushes.
+8. Re-run static checks, backend/frontend tests, production build, browser E2E, security and repository hygiene. Keep 6-hour and 24-hour status `NOT_RUN` unless fully observed.
+
+## Bounded LIVE processing and dashboard statistics Wave
+
+1. Keep the 500ms per-symbol strategy contract and every strict signal, cost, TP, SL and risk gate unchanged.
+2. Use the product requirement's 8–12 machine-health range and subscribe to 12 deep symbols while preserving the 50-symbol wide scan, protected positions and bounded rotation.
+3. Recompute current-version strategy statistics only when a completed independent PAPER trade changes; reuse the immutable report between dashboard frames.
+4. Project only the most recent 512 in-memory events into the live dashboard while retaining the full bounded 10,000-event runtime window for execution and diagnostics.
+5. Measure actual dashboard response time, event lag, queue, reconnect, drop, gap, persistence fault and browser frame stability after restarting the served build.
+
+## Executable market lag and strategy visibility Wave
+
+1. Keep actual bid·ask order-book latency as the global PAPER entry-safety measurement and expose public trade and wide-scanner latency separately.
+2. Archive a late aggregate trade with its stale reason but do not let it rewrite the current candle or strategy feature. Keep that symbol unhealthy until a fresh trade arrives.
+3. Preserve every A~J signal, cost, risk, TP, SL and PAPER execution threshold. Do not manufacture a natural signal to prove the display.
+4. Show all open PAPER positions in the market workspace and overlay the selected symbol's direction, strategy, profile, entry, TP1 and SL on its chart.
+5. Show each strategy's current monitor state, last beginner-readable wait reasons and evaluated path count. Distinguish a normal strict-condition wait from safety wait, fault and OFF.
+6. Test the supervisor and runtime stale-trade boundary, frontend position and strategy states, production build and desktop·tablet·mobile Chromium flows.
+7. Restart the actual localhost service, click start once, inspect live positions and every strategy row, sample lag and health continuously, and record the exact evidence without claiming profitability or a 6-hour·24-hour soak.

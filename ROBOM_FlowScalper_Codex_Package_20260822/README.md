@@ -45,7 +45,7 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 ./scripts/install_macos_service.sh
 ```
 
-서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. 한 번 누르면 `연결 중`을 거쳐 `작동 중`이 표시되고, 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. canonical 소스·작업공간·릴리스와 고빈도 공개시장 기록은 외장에 보존합니다. macOS가 LaunchAgent의 One Touch 직접 쓰기를 차단하고 외장 디스크 이미지의 고빈도 SQLite 쓰기가 실시간 처리를 지연시킨 것이 실측되어, 자동 서비스의 소형 거래 상태·설정·archive manifest용 활성 SQLite, 약 283MB Python 실행환경 복사본, LaunchAgent plist와 운영 로그만 `~/Library/Application Support/ROBOM FlowScalper`에 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 외장 `data/market-parquet-v6`에 저장됩니다. 내장 또는 외장 여유공간이 5GiB 미만이거나 4% 미만이면 신규 진입을 fail-closed로 잠급니다. 더는 현재 서비스가 읽지 않는 이전 진단 원장과 과거 build·test 산출물은 삭제하지 않고 `/Volumes/ROBOM_FLOWSCALPER/04_MIGRATION_ARCHIVE/legacy-project-state-20260823`으로 옮겼으며 `MANIFEST.md`에 원래 경로·크기·checksum을 기록했습니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
+서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. 한 번 누르면 `연결 중`을 거쳐 `작동 중`이 표시되고, 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. 외장 APFS 작업공간에서 실행할 때는 canonical 소스·활성 SQLite 원장·공개시장 Parquet·릴리스를 같은 외장 볼륨에 보존하고, 내장에는 약 283MB Python 실행환경 복사본·LaunchAgent plist·운영 로그만 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 저장하고, archive와 활성 원장 파일시스템 중 하나라도 여유공간이 5GiB 미만이거나 4% 미만이면 신규 PAPER 진입을 fail-closed로 잠급니다. 더는 현재 서비스가 읽지 않는 이전 진단 원장과 과거 build·test 산출물은 삭제하지 않고 migration archive와 manifest에 보존합니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
 
 자동 시작을 해제하되 거래 원장과 외장 파일을 보존하려면 다음 명령을 실행합니다.
 
@@ -79,12 +79,13 @@ Windows Command Prompt에서는 `set ROBOM_MODE=LIVE_SHADOW_PAPER`를 실행한 
 - 홈에서 프로그램 상태, 진행·완료 거래, 현재 순손익, 정밀 관찰 종목을 먼저 확인합니다.
 - 관찰 종목은 상승·하락 방향과 진입 준비 상태만 먼저 보이며, 전략·비용·손익비·거절 이유는 `상세`에서 확인합니다.
 - 실제 캔들·거래량·5선·10선이 기본 표시되고 20선·60선·호가선은 버튼으로 선택합니다. 이동평균은 선택한 차트 시간구간의 캔들 수 기준입니다.
-- 매매 설정에서 A/B/C/D의 `자동 모의매매`·`기록만 하기`·`사용 안 함`과 상승·하락 방향을 독립 제어합니다.
+- 열린 PAPER 포지션이 있으면 차트 위에 방향·전략·BASE/STRESS·entry·TP1·SL을 표시하고, 시장 화면의 진행 목록에서 원하는 종목을 바로 선택합니다.
+- 전략 설정에서 A~J의 `공동·독립 모의 중`·`독립 모의 중`·`꺼짐`과 상승·하락 방향을 독립 제어합니다. 각 전략은 현재 감시상태, 최근 조건 대기 이유와 평가경로 수를 함께 표시합니다.
 - 거래내역은 총·순손익, 수수료, 슬리피지, 종료 사유를 구분합니다.
 - 리플레이는 저장 공개시장 이벤트를 같은 A/B/C/D·후보·PAPER 체결 파이프라인으로 다시 처리하고 입력 checksum과 결정 경로를 표시합니다.
 - 성과분석은 표본 수와 `CALIBRATING`, BASE/STRESS를 같이 표시합니다.
 - 위험관리는 일간·주간·drawdown·연속손실 잠금과 새 Run 생성을 표시합니다.
-- 시스템은 거래소, Run ID, 지연, gap/reconnect/resync, 저장소·보존정책, 자격 증명 사용 여부를 표시합니다.
+- 시스템은 거래소, Run ID, 실제 호가·체결·wide scanner의 분리된 지연, gap/reconnect/resync, 저장소·보존정책, 자격 증명 사용 여부를 표시합니다.
 
 데스크톱·태블릿·모바일은 동일한 사용자 흐름을 제공하며 핵심 조작부는 48px 이상입니다.
 

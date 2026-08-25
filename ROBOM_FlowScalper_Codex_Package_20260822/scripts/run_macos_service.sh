@@ -6,7 +6,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SUPPORT_DIR="$HOME/Library/Application Support/ROBOM FlowScalper"
 INTERNAL_PYTHON="$SUPPORT_DIR/runtime-venv/bin/python"
-ACTIVE_LEDGER_DIR="$SUPPORT_DIR/active-ledger"
+PROJECT_VOLUME_NAME="${PROJECT_DIR#/Volumes/}"
+PROJECT_VOLUME_NAME="${PROJECT_VOLUME_NAME%%/*}"
+PROJECT_MOUNT="/Volumes/$PROJECT_VOLUME_NAME"
+if [[ "$PROJECT_DIR" == /Volumes/*/* && -d "$PROJECT_MOUNT" ]]; then
+  DEFAULT_ACTIVE_LEDGER_DIR="$PROJECT_MOUNT/05_RUNTIME/ROBOM_FlowScalper/active-ledger"
+else
+  DEFAULT_ACTIVE_LEDGER_DIR="$SUPPORT_DIR/active-ledger"
+fi
+ACTIVE_LEDGER_DIR="${ROBOM_ACTIVE_LEDGER_DIR:-$DEFAULT_ACTIVE_LEDGER_DIR}"
 
 if [[ ! -f "$PROJECT_DIR/frontend/dist/index.html" ]]; then
   echo "외장 저장소의 실행환경 또는 프론트엔드 빌드가 준비되지 않았습니다: $PROJECT_DIR" >&2
@@ -32,7 +40,7 @@ export ROBOM_HOST="127.0.0.1"
 export ROBOM_PORT="8870"
 export ROBOM_OPEN_BROWSER="false"
 export ROBOM_RELOAD="false"
-export ROBOM_DB_PATH="$ACTIVE_LEDGER_DIR/run-ledger.sqlite3"
+export ROBOM_DB_PATH="${ROBOM_DB_PATH:-$ACTIVE_LEDGER_DIR/run-ledger.sqlite3}"
 export ROBOM_MARKET_ARCHIVE_PATH="$PROJECT_DIR/data/market-parquet-v6"
 export ROBOM_MIN_FREE_BYTES="5368709120"
 export ROBOM_MIN_FREE_RATIO="0.04"

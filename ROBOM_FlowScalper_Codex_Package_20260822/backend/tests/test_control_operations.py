@@ -169,8 +169,14 @@ class NeverReadyProvider:
 
 async def test_cancel_during_supervisor_start_leaves_no_tasks(monkeypatch) -> None:
     provider = NeverReadyProvider()
-    monkeypatch.setattr("backend.app.runtime.BinancePersistentProvider", lambda **_: provider)
-    monkeypatch.setattr("backend.app.runtime.BybitPersistentProvider", lambda **_: provider)
+    provider_options: list[dict[str, object]] = []
+
+    def provider_factory(**options: object) -> NeverReadyProvider:
+        provider_options.append(options)
+        return provider
+
+    monkeypatch.setattr("backend.app.runtime.BinancePersistentProvider", provider_factory)
+    monkeypatch.setattr("backend.app.runtime.BybitPersistentProvider", provider_factory)
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
         run_id="run-cancel-start",
@@ -200,6 +206,7 @@ async def test_cancel_during_supervisor_start_leaves_no_tasks(monkeypatch) -> No
         }
     ]
     assert leaked == []
+    assert [options["deep_max"] for options in provider_options] == [12, 12]
     assert runtime.paused is True
     assert runtime.market_data_state.value != "LIVE"
 

@@ -73,6 +73,9 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] History, replay, performance, risk and system pages exist.
 - [ ] Gross/net PnL, fees, slippage and drawdown are visible.
 - [ ] BASE and STRESS results are distinguishable.
+- [ ] 선택 종목의 열린 PAPER 포지션은 차트 위에 방향, 전략, 비용 프로필, entry, TP1과 SL을 표시한다.
+- [ ] 모든 열린 PAPER 포지션 목록에서 종목을 선택할 수 있고 자연 종료 뒤 목록과 차트 표시가 제거된다.
+- [ ] 전략 A~J는 현재 감시상태, 최근 조건 대기 이유와 평가경로 수를 표시해 정상 대기와 기술 오류를 구분한다.
 
 ## I. Persistence and recovery
 
@@ -115,7 +118,7 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Five compact navigation groups with market as default and no old user-facing League/advanced-terminal copy.
 - [ ] Binance active USDT perpetual full catalog and Upbit KRW observation-only full catalog work without authentication.
 - [ ] Default 3-minute candles count 200 with MA10, MA20 and volume; RSI/MACD add and remove real panes without resizing the chart.
-- [ ] Wide 50+ and deep 20 remain bounded; rotation protects pin/open/pending symbols and appends snapshots.
+- [ ] Wide 50+ and deep 12 remain bounded; rotation protects pin/open/pending symbols and appends snapshots.
 - [ ] Strategy×symbol report withholds rank below 30 samples and includes expectancy, PF, costs, drawdown and sample status.
 - [ ] Actual fills, not candidates or pending entries, trigger focus. BASE priority, focus lock, selector and 15-second closed review work.
 - [ ] Focus shows actual entry, initial/current stop, TP1/TP2, quantities, planned loss, fee/slippage, net PnL, equity, stage and data health.
@@ -133,3 +136,5 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] READY start controls and LIVE PAPER observation state remain visible at phone width.
 - [ ] Completed trade replay exposes entry and exit ledger transitions even when the market-event post-roll ends early.
 - [ ] Actual browser control evidence distinguishes deterministic DEMO replay from a naturally observed LIVE PAPER fill.
+- [ ] 실행호가 p95, 체결 p95와 wide scanner p95를 분리하고 wide scanner를 진입판정 지연으로 표시하지 않는다.
+- [ ] 500ms보다 늦은 aggregate trade는 archive에는 보존하되 candle·feature·전략입력에는 사용하지 않으며 신선한 체결 뒤에만 해당 종목이 회복된다.

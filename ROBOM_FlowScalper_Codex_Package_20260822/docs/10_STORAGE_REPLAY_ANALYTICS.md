@@ -151,3 +151,20 @@ No personal credentials exist in exports.
 - The default LIVE history view includes only main PAPER trades whose `sample_type` is `LIVE_PUBLIC` and whose strategy implementation version equals the current build. Older immutable trades remain stored and are reported as excluded.
 - LIVE event lag uses a public venue-time offset estimated from the minimum-RTT sample. The process never changes the operating-system clock and never adds credentials to the public time request.
 - See `docs/adr/ADR-018-replay-cpu-budget-focus-cache-and-venue-clock.md` for the decision and failure boundaries.
+
+## 10.12 Bounded active ledger persistence
+
+- The active SQLite ledger and the immutable public-market Parquet archive can live on different volumes. Entry safety checks both volumes and fails closed when either free-byte or free-ratio threshold is breached.
+- Every execution audit row remains append-only. Rejection-only audit batches do not duplicate the complete recovery payload because they do not mutate an order, pending entry, position, protection, fill or account risk state.
+- A recovery snapshot is written after a state-mutating audit. Strategy-account history writes only the shadow accounts named by those mutations instead of all strategy/profile accounts.
+- The in-memory `CandleBuilder` continues to provide every supported chart interval. SQLite persists canonical 1-second candles and the 180-second replay focus interval only; the other chart intervals are deterministic derivatives and are not duplicated permanently.
+- On macOS, an external APFS project defaults its active ledger to the same mounted APFS volume under `05_RUNTIME/ROBOM_FlowScalper/active-ledger`. The Python runtime, bytecode cache and service logs remain in Application Support. An explicit `ROBOM_ACTIVE_LEDGER_DIR` or `ROBOM_DB_PATH` still overrides the default.
+- Existing ledgers are never silently deleted or rewritten. A migration must stop the service, copy and checksum the closed SQLite files, run `PRAGMA quick_check` and foreign-key checks, retain a recoverable pre-migration copy, then restart and verify the recovered Run.
+- See `docs/adr/ADR-024-bounded-active-ledger-and-volume-safety.md`.
+
+## 10.13 늦은 공개 체결의 저장과 실행 분리
+
+- 500ms보다 늦게 도착한 공개 aggregate trade도 원본성 있는 시장 사건이므로 immutable archive에는 보존한다.
+- 같은 이벤트를 현재 candle·체결흐름·전략 피처에 뒤늦게 적용하지 않는다. 해당 종목은 신선한 trade가 도착할 때까지 전략입력 `data_healthy=false`를 유지한다.
+- replay는 저장 당시의 stale 표식과 reason flag를 보존해 LIVE와 동일한 유효성 경계를 재현한다.
+- See `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md`.

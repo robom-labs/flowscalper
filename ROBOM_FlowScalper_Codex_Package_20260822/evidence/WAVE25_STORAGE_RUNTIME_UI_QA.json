@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "wave": 25,
+  "observed_at": "2026-08-25T13:15:10+09:00",
+  "scope": "bounded active ledger, bounded LIVE processing, executable-book latency isolation, active PAPER chart overlay and per-strategy monitor visibility",
+  "safety": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_key_inputs": 0,
+    "wallet_paths": 0,
+    "status": "PASS"
+  },
+  "implementation": {
+    "active_ledger_volume_guard": "PASS",
+    "archive_volume_guard": "PASS",
+    "rejection_only_snapshot_suppression": "PASS",
+    "affected_strategy_account_snapshot_only": "PASS",
+    "sqlite_candle_intervals": [1, 180],
+    "deep_symbols": 12,
+    "wide_symbols": 50,
+    "dashboard_event_projection_limit": 512,
+    "runtime_event_memory_limit": 10000,
+    "strategy_performance_cache": "PASS",
+    "archive_worker_process_prewarm": "PASS",
+    "sqlite_execution_persistence_thread_isolation": "PASS",
+    "late_trade_strategy_gate_ms": 500,
+    "book_trade_scanner_latency_separated": "PASS",
+    "chart_active_position_overlay": "PASS",
+    "strategy_monitor_state_and_wait_reason": "PASS"
+  },
+  "independent_public_stream_sample": {
+    "duration_seconds": 8,
+    "symbols": ["BTCUSDT", "SOLUSDT", "BNBUSDT"],
+    "depth_p50_ms": 20.3,
+    "depth_p95_ms": 21.63,
+    "depth_max_ms": 24.83,
+    "depth_over_1500ms": 0,
+    "status": "PASS",
+    "note": "This sample is a public-stream latency diagnostic, not a soak or strategy-profitability result."
+  },
+  "actual_local_service": {
+    "run_id": "run-b39e9a83991b",
+    "start_control": {
+      "browser_clicked_once": true,
+      "connecting_observed_after_ms": 250,
+      "running_observed_after_ms": 5500,
+      "status": "PASS"
+    },
+    "continuous_sample": {
+      "duration_seconds": 181,
+      "sample_count": 13,
+      "event_count_start": 44383,
+      "event_count_end": 63439,
+      "event_count_delta": 19056,
+      "book_p95_ms_min": 32.924,
+      "book_p95_ms_max": 278.431,
+      "trade_p95_ms_min": 33.992,
+      "trade_p95_ms_max": 190.332,
+      "wide_scanner_p95_ms_min": 1540.585,
+      "wide_scanner_p95_ms_max": 1829.765,
+      "max_queue_depth": 1,
+      "critical_active_samples": 0,
+      "entry_locked_samples": 0,
+      "max_stale_trade_symbols": 2,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "dropped_events": 0,
+      "persistence_faults": 0,
+      "status": "PASS"
+    },
+    "strategy_monitor": {
+      "registry_count": 10,
+      "active_count": 2,
+      "shadow_count": 8,
+      "long_enabled_count": 10,
+      "short_enabled_count": 10,
+      "evaluated_paths_each": 24,
+      "account_fault_count": 0,
+      "observed_natural_entry_strategies": [
+        "QUEUE_MICROPRICE_MOMENTUM_V1",
+        "DEPTH_ADJUSTED_OFI_IMPULSE_V1"
+      ],
+      "other_strategies": "REJECTED_WITH_VISIBLE_WAIT_REASONS",
+      "status": "PASS"
+    },
+    "final_restarted_service": {
+      "run_id": "run-8cd493f93260",
+      "market_data_state": "LIVE",
+      "event_count": 5556,
+      "book_p95_ms": 28.882,
+      "trade_p95_ms": 31.56,
+      "wide_scanner_p95_ms": 1761.438,
+      "queue_depth": 0,
+      "critical_lag_active": false,
+      "entry_locked": false,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "dropped_events": 0,
+      "persistence_faults": 0,
+      "observed_open_positions": 4,
+      "observed_position_strategies": [
+        "QUEUE_MICROPRICE_MOMENTUM_V1",
+        "DEPTH_ADJUSTED_OFI_IMPULSE_V1"
+      ],
+      "browser_console_entries": 0,
+      "status": "PASS"
+    },
+    "natural_shadow_trades": {
+      "completed": 16,
+      "base_completed": 10,
+      "stress_completed": 6,
+      "minimum_holding_seconds": 11.652,
+      "maximum_holding_seconds": 65.464,
+      "under_3_seconds": 0,
+      "base_net_pnl_usdt": -2.978295,
+      "stress_net_pnl_usdt": -1.242385,
+      "base_fees_usdt": 2.681336,
+      "stress_fees_usdt": 2.071645,
+      "base_slippage_usdt": 0.281199,
+      "stress_slippage_usdt": 0.29373,
+      "by_strategy": {
+        "QUEUE_MICROPRICE_MOMENTUM_V1": {
+          "base_completed": 9,
+          "stress_completed": 5,
+          "base_net_pnl_usdt": -2.746431,
+          "stress_net_pnl_usdt": -0.804262
+        },
+        "DEPTH_ADJUSTED_OFI_IMPULSE_V1": {
+          "base_completed": 1,
+          "stress_completed": 1,
+          "base_net_pnl_usdt": -0.231864,
+          "stress_net_pnl_usdt": -0.438123
+        }
+      },
+      "profitability": "NOT_PROVEN",
+      "note": "Independent BASE and STRESS accounts must not be summed as one 1000 USDT account. Observed losses are retained and are not a profitability claim."
+    }
+  },
+  "actual_browser": {
+    "active_position_list": "PASS",
+    "chart_overlay": "PASS",
+    "observed_open_positions_before_natural_close": 6,
+    "observed_symbols": ["ENAUSDT", "XRPUSDT", "DOGEUSDT"],
+    "observed_profiles": ["BASE", "STRESS"],
+    "strategy_rows_with_24_paths": 10,
+    "strategy_account_faults": 0,
+    "system_book_trade_latency_card": "PASS",
+    "system_wide_scanner_not_entry_judgment_copy": "PASS",
+    "browser_console_warning_or_error_count": 0,
+    "responsive_playwright_viewports": ["desktop", "tablet", "mobile"],
+    "status": "PASS"
+  },
+  "storage": {
+    "active_ledger_path": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/active-ledger/run-ledger.sqlite3",
+    "active_ledger_size_approx_gib": 2.0,
+    "migration_archive_retained": "/Volumes/ROBOM_FLOWSCALPER/04_MIGRATION_ARCHIVE/internal-active-ledger-before-wave25-20260825T1110KST/run-ledger.sqlite3",
+    "sqlite_quick_check": "PASS",
+    "foreign_key_check": "PASS",
+    "storage_entry_allowed": true,
+    "archive_and_ledger_free_mb": 22150,
+    "status": "PASS"
+  },
+  "automated_validation": {
+    "backend_pytest": "312 passed",
+    "ruff": "PASS",
+    "mypy": "82 source files PASS",
+    "frontend_vitest": "12 files, 44 passed",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "48 modules, PASS",
+    "playwright": "desktop, tablet, mobile 3 passed in 20.4s",
+    "paper_build_safety": "PASS",
+    "security_scan": "115 source files, 0 violations, 0 secret-like files, real-order path false",
+    "repository_hygiene": "PASS"
+  },
+  "limitations": {
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  }
+}

@@ -6,14 +6,14 @@ import asyncio
 import os
 from collections import deque
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
 from threading import RLock
 from typing import Any
 from uuid import uuid4
 
-from anyio import to_process
+from anyio import to_process, to_thread
 
 from backend.app.adapters.fixture import FixtureMarketData
 from backend.app.analytics.reports import TradeAnalytics
@@ -53,6 +53,7 @@ from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
 from backend.app.storage.parquet import (
     ParquetEventStore,
+    warm_market_event_worker_process,
     write_market_event_batch_in_process,
 )
 from backend.app.storage.sqlite import RecoveryState, SQLiteLedger
@@ -63,6 +64,28 @@ from backend.app.strategies.shadow import ShadowLedger
 
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 2_000
 _MARKET_PERSISTENCE_BATCH_SIZE = 2_000
+_PERSISTED_CANDLE_INTERVALS = frozenset({1, 180})
+_LIVE_DEEP_SYMBOL_TARGET = 12
+_LIVE_DASHBOARD_EVENT_LIMIT = 512
+_RECOVERY_STATE_AUDIT_EVENTS = frozenset(
+    {
+        "MAIN_CANDIDATE_SELECTED",
+        "LEAGUE_CANDIDATE_ARMED",
+        "MAIN_MANUAL_EXIT_PENDING",
+        "TREND_EDGE_DECAY_EXIT_ARMED",
+        "MANAGEMENT_EXIT_ARMED",
+        "ENTRY_EXPIRED",
+        "ENTRY_REJECTED",
+        "ENTRY_UNFILLED",
+        "ENTRY_FILLED",
+        "FORCED_EXIT_PENDING",
+        "STOP_EXIT_PENDING",
+        "TAKE_PROFIT_EXIT_PENDING",
+        "EXIT_REJECTED",
+        "EXIT_UNFILLED",
+        "EXIT_FILL",
+    }
+)
 
 
 @dataclass(slots=True)
@@ -109,6 +132,7 @@ class PaperRuntime:
         default_factory=lambda: deque(maxlen=2_000),
     )
     data_gap_since_ms: dict[str, int] = field(default_factory=dict)
+    _stale_trade_symbols: set[str] = field(default_factory=set, repr=False)
     strategy_evaluation_interval_ms: int = 500
     _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
     _market_event_buffer: list[dict[str, object]] = field(default_factory=list)
@@ -123,6 +147,8 @@ class PaperRuntime:
     _persistence_flush_count: int = 0
     _persistence_flush_last_ms: float = 0.0
     _persistence_flush_max_ms: float = 0.0
+    _persistence_worker_warmed: bool = False
+    _persistence_worker_warm_ms: float = 0.0
     _historical_live_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
@@ -133,6 +159,12 @@ class PaperRuntime:
         default_factory=tuple, repr=False
     )
     _historical_prior_version_shadow_trades: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
+    _dashboard_strategy_performance_cache_key: tuple[object, ...] | None = field(
+        default=None, repr=False
+    )
+    _dashboard_strategy_performance_cache: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
     _last_storage_check_ns: int | None = None
@@ -241,7 +273,11 @@ class PaperRuntime:
         return next(iter(sorted(self._recovery_revalidation_symbols)), None)
 
     def status(self) -> SystemStatus:
-        symbols = {event.symbol for event in self._events}
+        symbols = (
+            set(self.live_selection.wide_symbols)
+            if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and self.live_selection is not None
+            else {event.symbol for event in self._events}
+        )
         realized = 0.0
         fees = 0.0
         slippage = 0.0
@@ -396,15 +432,43 @@ class PaperRuntime:
             return self._storage_entry_allowed
         self._last_storage_check_ns = now_ns
         try:
-            health = self.storage_guard.health()
-            self._storage_entry_allowed = health.entry_allowed
+            archive_health = self.storage_guard.health()
+            ledger_health = (
+                self.storage_guard.health(self.ledger.path.parent)
+                if self.ledger is not None
+                else None
+            )
+            health_rows = [archive_health]
+            if ledger_health is not None:
+                health_rows.append(ledger_health)
+            self._storage_entry_allowed = all(
+                health.entry_allowed for health in health_rows
+            )
+            lock_reasons: list[str] = []
+            if not archive_health.entry_allowed:
+                prefix = "ARCHIVE_" if ledger_health is not None else ""
+                lock_reasons.append(f"{prefix}{archive_health.reason}")
+            if ledger_health is not None and not ledger_health.entry_allowed:
+                lock_reasons.append(f"LEDGER_{ledger_health.reason}")
             self._storage_health_snapshot = {
-                "storage_entry_allowed": health.entry_allowed,
-                "disk_pressure_entry_lock": not health.entry_allowed,
+                "storage_entry_allowed": self._storage_entry_allowed,
+                "disk_pressure_entry_lock": not self._storage_entry_allowed,
                 "storage_guard_enabled": True,
-                "storage_free_bytes": health.free_bytes,
-                "storage_free_ratio": round(health.free_ratio, 6),
-                "storage_lock_reason": health.reason or "NONE",
+                "storage_free_bytes": min(health.free_bytes for health in health_rows),
+                "storage_free_ratio": round(
+                    min(health.free_ratio for health in health_rows), 6
+                ),
+                "archive_storage_free_bytes": archive_health.free_bytes,
+                "archive_storage_free_ratio": round(archive_health.free_ratio, 6),
+                "ledger_storage_free_bytes": (
+                    ledger_health.free_bytes if ledger_health is not None else None
+                ),
+                "ledger_storage_free_ratio": (
+                    round(ledger_health.free_ratio, 6)
+                    if ledger_health is not None
+                    else None
+                ),
+                "storage_lock_reason": "+".join(lock_reasons) or "NONE",
             }
         except OSError as error:
             self._storage_entry_allowed = False
@@ -437,10 +501,13 @@ class PaperRuntime:
             "persistence_flush_count": self._persistence_flush_count,
             "persistence_flush_last_ms": round(self._persistence_flush_last_ms, 3),
             "persistence_flush_max_ms": round(self._persistence_flush_max_ms, 3),
+            "persistence_worker_warmed": self._persistence_worker_warmed,
+            "persistence_worker_warm_ms": round(self._persistence_worker_warm_ms, 3),
             "event_memory_count": len(self._events),
             "event_memory_limit": 10_000,
             "market_persistence_buffer": len(self._market_event_buffer),
             "candle_persistence_buffer": len(self._candle_buffer),
+            "stale_trade_symbols": len(self._stale_trade_symbols),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
             "manual_pause_requested": self._manual_pause_requested,
             "automatic_recovery_enabled": True,
@@ -509,10 +576,18 @@ class PaperRuntime:
         if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
             raise ValueError("지속 LIVE supervisor는 LIVE_SHADOW_PAPER에서만 시작합니다.")
         await self.shutdown_supervisor()
+        if not await self._warm_market_archive_worker():
+            return False
         pinned_symbols = tuple(sorted(self._recovery_revalidation_symbols))
         providers: dict[Venue, PublicStreamProvider] = {
-            Venue.BINANCE_USDM: BinancePersistentProvider(pinned_symbols=pinned_symbols),
-            Venue.BYBIT_LINEAR: BybitPersistentProvider(pinned_symbols=pinned_symbols),
+            Venue.BINANCE_USDM: BinancePersistentProvider(
+                deep_max=_LIVE_DEEP_SYMBOL_TARGET,
+                pinned_symbols=pinned_symbols,
+            ),
+            Venue.BYBIT_LINEAR: BybitPersistentProvider(
+                deep_max=_LIVE_DEEP_SYMBOL_TARGET,
+                pinned_symbols=pinned_symbols,
+            ),
         }
         primary_venue = self.venue if self.venue in providers else Venue.BINANCE_USDM
         candidate_venues = (
@@ -541,7 +616,7 @@ class PaperRuntime:
                 provider,
                 run_id=self.run_id,
                 clock=self.clock,
-                sink=self.ingest_live_event,
+                sink=self.ingest_live_event_async,
                 protected_symbols=self._protected_deep_symbols,
             )
             try:
@@ -592,7 +667,39 @@ class PaperRuntime:
         self.runtime_health_flags.append("PUBLIC_DATA_UNAVAILABLE")
         return False
 
-    def ingest_live_event(self, event: MarketEvent) -> None:
+    async def _warm_market_archive_worker(self) -> bool:
+        """첫 공개 이벤트 전에 process·Arrow·zstd 초기화 정지를 흡수한다."""
+
+        if self.market_event_archive is None or self._persistence_worker_warmed:
+            return True
+        started = asyncio.get_running_loop().time()
+        try:
+            await to_process.run_sync(warm_market_event_worker_process)
+        except Exception as error:
+            self._handle_persistence_fault(error)
+            return False
+        self._persistence_worker_warm_ms = (
+            asyncio.get_running_loop().time() - started
+        ) * 1_000
+        self._persistence_worker_warmed = True
+        return True
+
+    async def ingest_live_event_async(self, event: MarketEvent) -> None:
+        """시장 판단은 순서대로 유지하고 SQLite 동기 I/O만 worker thread로 보낸다."""
+
+        self.ingest_live_event(event, defer_execution_persistence=True)
+        if self._has_unpersisted_execution_state():
+            await to_thread.run_sync(
+                self._persist_execution_state_safely,
+                event.venue_ts_ms,
+            )
+
+    def ingest_live_event(
+        self,
+        event: MarketEvent,
+        *,
+        defer_execution_persistence: bool = False,
+    ) -> None:
         if event.run_id != self.run_id or event.venue is not self.venue:
             raise ValueError("다른 Run 또는 거래소 이벤트를 LIVE 런타임에 섞을 수 없습니다.")
         self._refresh_supervisor_entry_safety()
@@ -603,21 +710,28 @@ class PaperRuntime:
         if event.quality.is_stale or not event.quality.sequence_valid:
             self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
         if event.event_type == "TRADE":
-            trade = TradeTick(
-                venue=event.venue,
-                symbol=event.symbol,
-                price=Decimal(str(event.data["price"])),
-                quantity=Decimal(str(event.data["quantity"])),
-                trade_ts_ms=int(event.transaction_ts_ms or event.venue_ts_ms),
-                buyer_is_aggressor=bool(event.data["buyer_is_aggressor"]),
-            )
-            completed_candles = self.candle_builder.add(trade)
-            self._buffer_completed_candles(completed_candles)
-            feature_engine = self.feature_engines.get(event.symbol)
-            if feature_engine is not None:
-                feature_engine.ingest_trade(trade)
+            if event.quality.is_stale or not event.quality.sequence_valid:
+                self._stale_trade_symbols.add(event.symbol)
+            else:
+                self._stale_trade_symbols.discard(event.symbol)
+                trade = TradeTick(
+                    venue=event.venue,
+                    symbol=event.symbol,
+                    price=Decimal(str(event.data["price"])),
+                    quantity=Decimal(str(event.data["quantity"])),
+                    trade_ts_ms=int(event.transaction_ts_ms or event.venue_ts_ms),
+                    buyer_is_aggressor=bool(event.data["buyer_is_aggressor"]),
+                )
+                completed_candles = self.candle_builder.add(trade)
+                self._buffer_completed_candles(completed_candles)
+                feature_engine = self.feature_engines.get(event.symbol)
+                if feature_engine is not None:
+                    feature_engine.ingest_trade(trade)
         elif event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}:
-            self._evaluate_book_event(event)
+            self._evaluate_book_event(
+                event,
+                persist_execution=not defer_execution_persistence,
+            )
         if event.event_type == "HEALTH" or not event.quality.sequence_valid:
             self.paused = True
             if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
@@ -752,7 +866,12 @@ class PaperRuntime:
             }
         )
 
-    def _evaluate_book_event(self, event: MarketEvent) -> None:
+    def _evaluate_book_event(
+        self,
+        event: MarketEvent,
+        *,
+        persist_execution: bool = True,
+    ) -> None:
         bids_value = event.data.get("bids")
         asks_value = event.data.get("asks")
         bids = (
@@ -776,7 +895,8 @@ class PaperRuntime:
         )
         self.latest_books[event.symbol] = book
         self.paper_portfolio.on_book(book)
-        self._persist_execution_state_safely(event.venue_ts_ms)
+        if persist_execution:
+            self._persist_execution_state_safely(event.venue_ts_ms)
         if (
             event.symbol in self._recovery_revalidation_symbols
             and event.quality.sequence_valid
@@ -823,6 +943,8 @@ class PaperRuntime:
                 return
             self._last_strategy_evaluation_ms[event.symbol] = event.venue_ts_ms
             snapshot = engine.snapshot()
+            if event.symbol in self._stale_trade_symbols:
+                snapshot = replace(snapshot, data_healthy=False)
         except (FeatureInputError, KeyError, IndexError, ValueError) as error:
             self.paused = True
             if "ENTRY_LOCK_FEATURE_INPUT" not in self.runtime_health_flags:
@@ -870,7 +992,8 @@ class PaperRuntime:
             plans,
             entries_paused=self.paused or not storage_ready,
         )
-        self._persist_execution_state_safely(event.venue_ts_ms)
+        if persist_execution:
+            self._persist_execution_state_safely(event.venue_ts_ms)
 
     def _build_candidate_plans(
         self,
@@ -979,6 +1102,9 @@ class PaperRuntime:
                 self.ledger.list_shadow_trades()
             )
         elif self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            cache_key = self._dashboard_strategy_cache_key()
+            if cache_key == self._dashboard_strategy_performance_cache_key:
+                return list(self._dashboard_strategy_performance_cache)
             trades.extend(self._dashboard_live_shadow_trades())
             prior_version_trades.extend(self._historical_prior_version_shadow_trades)
         else:
@@ -999,7 +1125,28 @@ class PaperRuntime:
                 (str(report["strategy_id"]), str(report["profile"])),
                 0,
             )
+        if not include_persisted and self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            self._dashboard_strategy_performance_cache_key = cache_key
+            self._dashboard_strategy_performance_cache = tuple(reports)
         return reports
+
+    def _dashboard_strategy_cache_key(self) -> tuple[object, ...]:
+        """저장 거래가 바뀐 때만 실시간 전략 통계를 다시 계산한다."""
+
+        account_versions = tuple(
+            (
+                account.account_id,
+                len(account.completed_trades),
+                account.completed_trades[-1].trade_id if account.completed_trades else None,
+            )
+            for account in self.paper_portfolio.shadows.values()
+        )
+        return (
+            self.run_id,
+            len(self._historical_shadow_trades),
+            len(self._historical_prior_version_shadow_trades),
+            account_versions,
+        )
 
     def strategy_symbol_performance(self) -> list[dict[str, object]]:
         """현재 전략 버전의 원장 거래만 전략·프로필·종목별로 분리한다."""
@@ -1556,9 +1703,14 @@ class PaperRuntime:
                     },
                 }
             )
+        dashboard_events = (
+            tuple(self._events)[-_LIVE_DASHBOARD_EVENT_LIMIT :]
+            if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            else self.events
+        )
         snapshot = build_dashboard_snapshot(
             self.status(),
-            self.events,
+            dashboard_events,
             paused=self.paused,
             position_visible=self.position_visible,
             control_logs=tuple(self.control_logs),
@@ -1837,6 +1989,7 @@ class PaperRuntime:
         self.latest_books.clear()
         self.plan_rejections.clear()
         self.data_gap_since_ms.clear()
+        self._stale_trade_symbols.clear()
         self._last_strategy_evaluation_ms.clear()
         self._recovery_revalidation_symbols.clear()
         with self._persistence_lock:
@@ -1846,6 +1999,8 @@ class PaperRuntime:
         self._persisted_main_trade_ids.clear()
         self._persisted_shadow_trade_ids.clear()
         self._persisted_audit_count = 0
+        self._dashboard_strategy_performance_cache_key = None
+        self._dashboard_strategy_performance_cache = ()
         self.strategy_evaluation_count = 0
         self.qualified_signal_count = 0
 
@@ -1961,15 +2116,40 @@ class PaperRuntime:
                     "trade_count": candle.trade_count,
                 }
                 for candle in candles
+                if candle.interval_seconds in _PERSISTED_CANDLE_INTERVALS
             )
 
     def _persist_execution_state_safely(self, ts_ms: int) -> bool:
+        if not self._has_unpersisted_execution_state():
+            return True
         try:
             self._persist_execution_state(ts_ms)
         except Exception as error:
             self._handle_persistence_fault(error)
             return False
         return True
+
+    def _has_unpersisted_execution_state(self) -> bool:
+        """감사·주문·거래가 실제로 바뀐 경우에만 외장 SQLite를 호출한다."""
+
+        if len(self.paper_portfolio.audit_events) > self._persisted_audit_count:
+            return True
+        main_orders = (
+            *self.paper_portfolio.main.entry_orders,
+            *self.paper_portfolio.main.exit_orders,
+        )
+        if any(order.order_id not in self._persisted_main_order_ids for order in main_orders):
+            return True
+        if any(
+            trade.trade_id not in self._persisted_main_trade_ids
+            for trade in self.paper_portfolio.main.completed_trades
+        ):
+            return True
+        return any(
+            trade.trade_id not in self._persisted_shadow_trade_ids
+            for account in self.paper_portfolio.shadows.values()
+            for trade in account.completed_trades
+        )
 
     def _persist_execution_state(self, ts_ms: int) -> None:
         if self.ledger is None or self.mode is RuntimeMode.READY:
@@ -2029,7 +2209,22 @@ class PaperRuntime:
         if new_audits:
             self.ledger.record_execution_audits(new_audits)
             self._persisted_audit_count = len(self.paper_portfolio.audit_events)
-            for account_row in self.paper_portfolio.shadow_rows():
+            state_audits = [
+                audit
+                for audit in new_audits
+                if str(audit.get("event", "")) in _RECOVERY_STATE_AUDIT_EVENTS
+            ]
+            if not state_audits:
+                return
+            changed_account_ids = {
+                str(audit["account_id"])
+                for audit in state_audits
+                if audit.get("account_id") is not None
+                and str(audit["account_id"]) != self.paper_portfolio.MAIN_ACCOUNT_ID
+            }
+            for account_row in self.paper_portfolio.league_account_rows():
+                if str(account_row["account_id"]) not in changed_account_ids:
+                    continue
                 self.ledger.record_strategy_account_snapshot(
                     {
                         "run_id": self.run_id,
@@ -2281,6 +2476,8 @@ class PaperRuntime:
         )
         self._historical_shadow_trades = tuple(current_shadow_trades)
         self._historical_prior_version_shadow_trades = tuple(prior_version_shadow_trades)
+        self._dashboard_strategy_performance_cache_key = None
+        self._dashboard_strategy_performance_cache = ()
 
     def _dashboard_live_main_trades(self) -> tuple[dict[str, object], ...]:
         rows = {str(trade["trade_id"]): trade for trade in self._historical_live_trades}

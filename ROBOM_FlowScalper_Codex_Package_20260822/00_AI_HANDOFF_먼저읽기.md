@@ -17,7 +17,7 @@
 | 기본 사이트 | `http://127.0.0.1:8870/` |
 | 기본 거래소 | Binance USDⓈ-M 공개시장 |
 | 대체 공개시장 | Bybit Linear, 별도 Run 경계 |
-| wide / deep 관찰 | 최대 50종목 / 기본 20종목 |
+| wide / deep 관찰 | 최대 50종목 / 기본 12종목 |
 | 전략 | A/B ACTIVE, C~J SHADOW PAPER 연구 전략, 각 BASE·STRESS 20계좌 |
 | 저장 | PAPER 상태 SQLite + 외장 공개시장 ZSTD Parquet |
 | GitHub | 공개 저장소 `robom-labs/flowscalper`, 기본 브랜치 `main` |
@@ -68,6 +68,8 @@
 8. 지연 P95, 시간 동기화, 차트 갱신과 장시간 화면 버벅임을 실제 실행으로 점검한다.
 9. 사이트는 Mac 로그인 후 자동 실행되고 비정상 종료 뒤 복구돼야 한다.
 10. canonical 소스·릴리스·고빈도 시장데이터는 One Touch 외장하드에 보존한다.
+11. 차트에는 선택 종목의 현재 PAPER 방향·전략·비용 프로필·entry·TP1·SL을 쉽게 표시하고, 전체 진행 포지션을 바로 선택할 수 있어야 한다.
+12. 전략 화면은 조용한 전략도 평가경로 수와 최근 조건 대기 이유를 보여줘 정상 감시와 오류를 구분해야 한다.
 
 ### GitHub·AI 협업 요구
 
@@ -117,13 +119,14 @@ flowchart LR
 | 전략 성과 | `backend/app/analytics/`, `backend/app/strategies/statistics.py` | `docs/16_MODEL_CALIBRATION.md` | `backend/tests/test_storage_replay_analytics.py`, `backend/tests/test_strategy_registry_shadow.py` |
 | React 앱·데이터 연결 | `frontend/src/App.tsx`, `frontend/src/hooks/` | `docs/09_DASHBOARD_UI_UX.md` | `frontend/tests/App.test.tsx` |
 | 초보자 홈·scanner | `frontend/src/pages/LivePage.tsx`, `frontend/src/components/ScannerTable.tsx` | `UI_USER_GUIDE_KO.md`, `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md` | `frontend/tests/ScannerTable.test.tsx` |
-| candle·MA chart | `frontend/src/components/PriceChart.tsx` | `docs/09_DASHBOARD_UI_UX.md`, `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md` | `frontend/tests/App.test.tsx`, 프런트 빌드 |
+| candle·MA chart·현재 PAPER 표시 | `frontend/src/components/PriceChart.tsx`, `frontend/src/pages/MarketPage.tsx` | `docs/09_DASHBOARD_UI_UX.md`, `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md` | `frontend/tests/PriceChart.test.tsx`, `frontend/e2e/dashboard.spec.ts` |
+| 전략 감시상태 | `frontend/src/pages/StrategiesPage.tsx`, `frontend/src/strategyPresentation.ts` | `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md` | `frontend/tests/leagueUi.test.tsx`, `frontend/e2e/dashboard.spec.ts` |
 | 스타일·반응형 | `frontend/src/styles.css` | `design-qa.md`, `docs/09_DASHBOARD_UI_UX.md` | Vitest·E2E |
 | macOS 자동실행 | `scripts/install_macos_service.sh`, `scripts/run_macos_service.sh`, `packaging/macos/` | `README.md`, `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md` | shell syntax·plist·실제 LaunchAgent |
 | 릴리스·보안 | `scripts/package_release.py`, `scripts/security_scan.py` | `docs/11_SECURITY_PRIVACY.md`, `docs/14_BUILD_AND_RELEASE.md` | security scan·ZIP checksum |
 | 버전·저장소 위생 | `VERSION`, `scripts/check_repository_hygiene.py` | `CHANGELOG.md`, `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`, ADR-009 | `backend/tests/test_repository_hygiene.py`, `make repo-hygiene` |
 
-ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정화는 `docs/adr/ADR-007-live-backpressure-chart-and-kst.md`, 자동실행·초보자 홈·schema v6 hybrid 저장은 `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md`를 먼저 읽는다.
+ADR 파일은 `docs/adr/`에 있다. 특히 장시간 지연·KST·chart 안정화는 `docs/adr/ADR-007-live-backpressure-chart-and-kst.md`, 자동실행·초보자 홈·schema v6 hybrid 저장은 `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md`, 실행호가·체결 지연 분리와 전략 감시 가시성은 `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md`를 먼저 읽는다.
 
 ## 6. 화면 구성
 

@@ -44,3 +44,14 @@ export function orderedStrategies(strategies: StrategyRow[]) {
     - (order.get(right.strategy_id) ?? Number.MAX_SAFE_INTEGER)
   ))
 }
+
+export function strategyWaitReasonLabel(code: string) {
+  if (code.includes('DATA') || code.includes('WARMUP')) return '데이터 준비 중'
+  if (code.includes('REGIME') || code.includes('DIRECTION')) return '시장 방향 대기'
+  if (code.includes('FLOW') || code.includes('AGGRESSOR')) return '체결 흐름 대기'
+  if (code.includes('OFI')) return '주문 흐름 대기'
+  if (code.includes('LIQUIDITY') || code.includes('DEPTH') || code.includes('BOOK') || code.includes('QUEUE') || code.includes('REFILL')) return '호가 조건 대기'
+  if (code.includes('PERSISTENT') || code.includes('DURATION')) return '조건 지속 확인 중'
+  if (code.includes('PRICE') || code.includes('VWAP') || code.includes('PULLBACK') || code.includes('SWEEP') || code.includes('STRUCTURE') || code.includes('RETRACE') || code.includes('COMPRESSED')) return '가격 구조 대기'
+  return '세부 조건 대기'
+}

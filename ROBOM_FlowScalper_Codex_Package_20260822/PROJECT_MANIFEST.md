@@ -59,6 +59,9 @@ Detailed specifications:
 - `docs/adr/ADR-021-book-slope-asymmetry-shadow-strategy.md`
 - `docs/adr/ADR-022-snapshot-plan-input-reuse.md`
 - `docs/adr/ADR-023-process-isolated-market-archive.md`
+- `docs/adr/ADR-024-bounded-active-ledger-and-volume-safety.md`
+- `docs/adr/ADR-025-bounded-live-dashboard-and-deep-capacity.md`
+- `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md`
 
 ## Supporting contracts
 
@@ -102,6 +105,7 @@ Detailed specifications:
 - `evidence/WAVE22_CLOCK_ROTATION_QA.json`
 - `evidence/WAVE23_BOOK_SLOPE_STRATEGY_QA.json`
 - `evidence/WAVE24_RUNTIME_STALL_QA.json`
+- `evidence/WAVE25_STORAGE_RUNTIME_UI_QA.json`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-full.png`

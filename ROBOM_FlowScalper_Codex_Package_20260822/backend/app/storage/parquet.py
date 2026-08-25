@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -14,6 +16,8 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
+
+_BACKGROUND_IO_POLICY_APPLIED = False
 
 
 class StoragePressureError(RuntimeError):
@@ -61,8 +65,10 @@ class ParquetEventStore:
         self._disk_usage = disk_usage or _default_disk_usage
         root.mkdir(parents=True, exist_ok=True)
 
-    def health(self) -> StorageHealth:
-        usage = self._disk_usage(self.root)
+    def health(self, path: Path | None = None) -> StorageHealth:
+        """아카이브 또는 같은 안전기준을 적용할 별도 원장 경로를 검사한다."""
+
+        usage = self._disk_usage(path or self.root)
         ratio = usage.free / usage.total if usage.total else 0.0
         if usage.free < self.minimum_free_bytes:
             return StorageHealth(False, usage.free, ratio, "FREE_BYTES_BELOW_LIMIT")
@@ -327,12 +333,47 @@ def write_market_event_batch_in_process(
 ) -> ArchivedEventBatch:
     """직렬화·압축·fsync를 호출 프로세스 밖에서 수행할 수 있게 한다."""
 
+    _apply_background_io_policy()
     store = ParquetEventStore(
         Path(root),
         minimum_free_bytes=minimum_free_bytes,
         minimum_free_ratio=minimum_free_ratio,
     )
     return store.write_market_event_batch(rows)
+
+
+def warm_market_event_worker_process() -> int:
+    """LIVE 연결 전에 archive worker와 Arrow·zstd 초기화를 끝낸다."""
+
+    _apply_background_io_policy()
+    table = pa.Table.from_pylist([{"worker_warmup": 1}])
+    sink = pa.BufferOutputStream()
+    pq.write_table(table, sink, compression="zstd")
+    sink.getvalue()
+    return os.getpid()
+
+
+def _apply_background_io_policy() -> None:
+    """macOS archive worker를 background I/O로 제한해 활성 원장을 우선한다."""
+
+    global _BACKGROUND_IO_POLICY_APPLIED
+    if _BACKGROUND_IO_POLICY_APPLIED:
+        return
+    if sys.platform != "darwin":
+        _BACKGROUND_IO_POLICY_APPLIED = True
+        return
+    taskpolicy = Path("/usr/sbin/taskpolicy")
+    if not taskpolicy.is_file():
+        return
+    result = subprocess.run(
+        [str(taskpolicy), "-b", "-p", str(os.getpid())],
+        check=False,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if result.returncode == 0:
+        _BACKGROUND_IO_POLICY_APPLIED = True
 
 
 def _default_disk_usage(path: Path) -> DiskUsage:

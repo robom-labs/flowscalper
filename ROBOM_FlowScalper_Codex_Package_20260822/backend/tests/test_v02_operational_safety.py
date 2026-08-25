@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 
 import backend.app.runtime as runtime_module
+import backend.app.storage.parquet as parquet_module
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketDataState, MarketEvent, RuntimeMode, Venue
+from backend.app.market_data.candles import Candle
 from backend.app.ops import ProcessResourceSampler
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import DiskUsage, ParquetEventStore
@@ -29,6 +33,148 @@ def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: P
     assert float(str(second["disk_total_mb"])) > 0
     assert float(str(second["disk_free_mb"])) > 0
     assert 0 <= float(str(second["disk_free_ratio"])) <= 1
+
+
+def test_archive_worker_applies_macos_background_io_policy_once(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def record_policy(command, **options):
+        calls.append(command)
+        assert options == {
+            "check": False,
+            "stdin": subprocess.DEVNULL,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(parquet_module, "_BACKGROUND_IO_POLICY_APPLIED", False)
+    monkeypatch.setattr(parquet_module.sys, "platform", "darwin")
+    monkeypatch.setattr(parquet_module.Path, "is_file", lambda _path: True)
+    monkeypatch.setattr(parquet_module.subprocess, "run", record_policy)
+
+    parquet_module._apply_background_io_policy()
+    parquet_module._apply_background_io_policy()
+
+    assert calls == [["/usr/sbin/taskpolicy", "-b", "-p", str(parquet_module.os.getpid())]]
+
+
+def test_archive_worker_warms_arrow_and_zstd_without_disk_write(monkeypatch) -> None:
+    warmed = 0
+
+    def record_policy() -> None:
+        nonlocal warmed
+        warmed += 1
+
+    monkeypatch.setattr(parquet_module, "_apply_background_io_policy", record_policy)
+
+    assert parquet_module.warm_market_event_worker_process() == parquet_module.os.getpid()
+    assert warmed == 1
+
+
+async def test_live_runtime_prewarms_archive_worker_once(tmp_path: Path, monkeypatch) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "warm-market-parquet",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-warm-worker",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        market_event_archive=archive,
+    )
+    calls: list[object] = []
+
+    async def run_sync(function, *arguments):
+        calls.append(function)
+        assert arguments == ()
+        return 123
+
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", run_sync)
+
+    assert await runtime._warm_market_archive_worker() is True
+    assert await runtime._warm_market_archive_worker() is True
+    assert calls == [parquet_module.warm_market_event_worker_process]
+    assert runtime._persistence_worker_warmed is True
+    assert runtime._persistence_worker_warm_ms >= 0
+
+
+async def test_live_sink_defers_changed_execution_persistence_to_worker(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-threaded-execution-ledger",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    event = MarketEvent(
+        event_id="depth-threaded-ledger",
+        run_id=runtime.run_id,
+        venue=runtime.venue,
+        symbol="BTCUSDT",
+        event_type="DEPTH_UPDATE",
+        venue_ts_ms=1_000,
+        receive_monotonic_ns=1_000,
+        quality=DataQuality(
+            is_live=True,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+    )
+    calls: list[tuple[str, object]] = []
+
+    def ingest(
+        self: PaperRuntime,
+        received: MarketEvent,
+        *,
+        defer_execution_persistence: bool = False,
+    ) -> None:
+        calls.append(("ingest", defer_execution_persistence))
+        self.paper_portfolio.audit_events.append(
+            {
+                "run_id": self.run_id,
+                "ts_ms": received.venue_ts_ms,
+                "event": "LEAGUE_RISK_REJECTED",
+            }
+        )
+
+    async def run_sync(function, *arguments):
+        calls.append(("thread", arguments))
+        return function(*arguments)
+
+    monkeypatch.setattr(PaperRuntime, "ingest_live_event", ingest)
+    monkeypatch.setattr(runtime_module.to_thread, "run_sync", run_sync)
+    monkeypatch.setattr(PaperRuntime, "_persist_execution_state_safely", lambda *_: True)
+
+    await runtime.ingest_live_event_async(event)
+
+    assert calls == [("ingest", True), ("thread", (1_000,))]
+
+
+def test_unchanged_execution_state_skips_sqlite_persistence(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-no-ledger-churn",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    writes = 0
+
+    def record_write(_ts_ms: int) -> None:
+        nonlocal writes
+        writes += 1
+
+    monkeypatch.setattr(
+        PaperRuntime,
+        "_persist_execution_state",
+        lambda _self, ts: record_write(ts),
+    )
+
+    assert runtime._persist_execution_state_safely(1_000) is True
+    assert writes == 0
 
 
 def test_runtime_event_memory_rolls_one_event_at_fixed_capacity() -> None:
@@ -74,6 +220,82 @@ def test_runtime_plan_rejections_roll_one_row_at_fixed_capacity() -> None:
     assert sum(row is first for row in runtime.plan_rejections) == 1_999
 
 
+def test_live_dashboard_bounds_event_projection(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-bounded-dashboard",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    event = MarketEvent(
+        event_id="event",
+        run_id=runtime.run_id,
+        venue=runtime.venue,
+        symbol="BTCUSDT",
+        event_type="WIDE_TICKER",
+        venue_ts_ms=1,
+        receive_monotonic_ns=1,
+        quality=DataQuality(
+            is_live=True,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"last_price": "100"},
+    )
+    runtime._events.extend(
+        event.model_copy(update={"event_id": f"event-{index}", "venue_ts_ms": index})
+        for index in range(1_000)
+    )
+    observed: dict[str, object] = {}
+
+    def capture_dashboard(_status, events, **_kwargs):
+        observed["events"] = events
+        return {}
+
+    monkeypatch.setattr(runtime_module, "build_dashboard_snapshot", capture_dashboard)
+
+    runtime.dashboard()
+
+    projected = observed["events"]
+    assert isinstance(projected, tuple)
+    assert len(projected) == 512
+    assert projected[0].event_id == "event-488"
+    assert projected[-1].event_id == "event-999"
+
+
+def test_live_dashboard_strategy_statistics_are_cached_until_trade_state_changes(
+    monkeypatch,
+) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-performance-cache-a",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    calls = 0
+
+    class CountingAnalytics:
+        def strategy_reports(self, _trades, *, strategy_ids):
+            nonlocal calls
+            calls += 1
+            return [
+                {"strategy_id": strategy_id, "profile": profile}
+                for strategy_id in strategy_ids
+                for profile in ("BASE", "STRESS")
+            ]
+
+    monkeypatch.setattr(runtime_module, "TradeAnalytics", CountingAnalytics)
+
+    first = runtime.strategy_performance(include_persisted=False)
+    second = runtime.strategy_performance(include_persisted=False)
+    runtime.run_id = "run-performance-cache-b"
+    third = runtime.strategy_performance(include_persisted=False)
+
+    assert first == second == third
+    assert calls == 2
+
+
 def test_disk_pressure_is_connected_to_runtime_entry_gate_and_dashboard(
     tmp_path: Path,
 ) -> None:
@@ -111,6 +333,124 @@ def test_disk_pressure_is_connected_to_runtime_entry_gate_and_dashboard(
     )
     runtime.paper_portfolio.offer((plan,), entries_paused=runtime.paused)
     assert runtime.paper_portfolio.main.pending_entry is None
+
+
+def test_runtime_checks_active_ledger_volume_as_well_as_archive(
+    tmp_path: Path,
+) -> None:
+    archive_path = tmp_path / "archive"
+    ledger_path = tmp_path / "separate-ledger" / "ledger.sqlite3"
+
+    def disk_usage(path: Path) -> DiskUsage:
+        if path == ledger_path.parent:
+            return DiskUsage(total=1_000, used=960, free=40)
+        return DiskUsage(total=1_000, used=100, free=900)
+
+    guard = ParquetEventStore(
+        archive_path,
+        minimum_free_bytes=100,
+        minimum_free_ratio=0.10,
+        disk_usage=disk_usage,
+    )
+    ledger = SQLiteLedger(ledger_path)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-ledger-pressure",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        storage_guard=guard,
+        ledger=ledger,
+    )
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.paused = False
+
+    assert runtime._refresh_storage_safety(force=True) is False
+    dashboard = runtime.dashboard()
+    assert dashboard["system"]["storage_lock_reason"] == (
+        "LEDGER_FREE_BYTES_BELOW_LIMIT"
+    )
+    assert dashboard["system"]["archive_storage_free_bytes"] == 900
+    assert dashboard["system"]["ledger_storage_free_bytes"] == 40
+    assert runtime.paused is True
+    ledger.close()
+
+
+def test_runtime_persists_only_canonical_one_second_and_replay_candles(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "candles.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-bounded-candles",
+        venue=Venue.FIXTURE,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    candles = [
+        Candle(
+            symbol="BTCUSDT",
+            interval_seconds=interval,
+            open_ts_ms=1_000,
+            open=Decimal("100"),
+            high=Decimal("101"),
+            low=Decimal("99"),
+            close=Decimal("100.5"),
+            volume=Decimal("2"),
+            trade_count=3,
+        )
+        for interval in (1, 5, 15, 30, 60, 180, 300, 600, 900, 3600)
+    ]
+
+    runtime._buffer_completed_candles(candles)
+
+    assert {row["interval_seconds"] for row in runtime._candle_buffer} == {1, 180}
+    ledger.close()
+
+
+def test_rejection_audit_does_not_duplicate_full_recovery_snapshots(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "bounded-snapshots.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-bounded-snapshots",
+        venue=Venue.FIXTURE,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    initial_snapshots = ledger.count("snapshots")
+    initial_account_snapshots = ledger.count("strategy_account_snapshots")
+    runtime.paper_portfolio.audit_events.append(
+        {
+            "event": "LEAGUE_RISK_REJECTED",
+            "run_id": runtime.run_id,
+            "symbol": "BTCUSDT",
+            "account_id": "LSA_REVERSAL_V1:BASE",
+            "ts_ms": 1_000,
+        }
+    )
+
+    runtime._persist_execution_state(1_000)
+
+    assert ledger.count("execution_audit") == 1
+    assert ledger.count("snapshots") == initial_snapshots
+    assert ledger.count("strategy_account_snapshots") == initial_account_snapshots
+
+    runtime.paper_portfolio.audit_events.append(
+        {
+            "event": "LEAGUE_CANDIDATE_ARMED",
+            "run_id": runtime.run_id,
+            "symbol": "BTCUSDT",
+            "account_id": "LSA_REVERSAL_V1:BASE",
+            "ts_ms": 2_000,
+        }
+    )
+    runtime._persist_execution_state(2_000)
+
+    assert ledger.count("execution_audit") == 2
+    assert ledger.count("snapshots") == initial_snapshots + 1
+    assert ledger.count("strategy_account_snapshots") == initial_account_snapshots + 1
+    ledger.close()
 
 
 def test_sqlite_write_fault_fails_closed_and_bounds_retry_buffer(
@@ -338,6 +678,78 @@ def test_market_persistence_batch_is_bounded_on_slow_storage(tmp_path: Path) -> 
     assert ledger.count("market_events") == 600
     assert runtime._market_event_buffer == []
     ledger.close()
+
+
+def test_stale_trade_is_archived_but_not_used_for_candles_or_strategy_features() -> None:
+    clock = DeterministicClock(current_utc_ms=2_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-stale-trade-gate",
+        venue=Venue.BINANCE_USDM,
+        clock=clock,
+    )
+
+    def depth(event_id: str, ts_ms: int) -> MarketEvent:
+        return MarketEvent(
+            event_id=event_id,
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol="BTCUSDT",
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=ts_ms,
+            receive_monotonic_ns=clock.monotonic_ns(),
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=10,
+            ),
+            data={
+                "bid": "100",
+                "bid_qty": "2",
+                "ask": "100.1",
+                "ask_qty": "2",
+            },
+        )
+
+    def trade(event_id: str, ts_ms: int, *, stale: bool) -> MarketEvent:
+        return MarketEvent(
+            event_id=event_id,
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol="BTCUSDT",
+            event_type="TRADE",
+            venue_ts_ms=ts_ms,
+            transaction_ts_ms=ts_ms,
+            receive_monotonic_ns=clock.monotonic_ns(),
+            quality=DataQuality(
+                is_live=True,
+                is_stale=stale,
+                sequence_valid=True,
+                lag_ms=900 if stale else 10,
+                flags=("TRADE_LAG_STALE",) if stale else (),
+            ),
+            data={
+                "price": "100.05",
+                "quantity": "1",
+                "buyer_is_aggressor": True,
+            },
+        )
+
+    runtime.ingest_live_event(depth("depth-1", 2_000))
+    runtime.ingest_live_event(trade("trade-stale", 2_100, stale=True))
+    runtime.ingest_live_event(depth("depth-2", 2_600))
+
+    assert runtime.candle_builder.snapshot("BTCUSDT") == ()
+    assert runtime.latest_features["BTCUSDT"].data_healthy is False
+    assert runtime.dashboard()["system"]["stale_trade_symbols"] == 1
+
+    runtime.ingest_live_event(trade("trade-fresh", 2_700, stale=False))
+    runtime.ingest_live_event(depth("depth-3", 3_200))
+
+    assert runtime.candle_builder.snapshot("BTCUSDT")
+    assert runtime.latest_features["BTCUSDT"].data_healthy is True
+    assert runtime.dashboard()["system"]["stale_trade_symbols"] == 0
 
 
 def test_live_dashboard_never_waits_for_sqlite_writer_lock(

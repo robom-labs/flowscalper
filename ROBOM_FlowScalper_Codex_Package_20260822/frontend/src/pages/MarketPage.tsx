@@ -4,6 +4,7 @@ import { fetchJson } from '../api/client'
 import { PositionFocusWorkspace } from '../components/PositionFocusWorkspace'
 import { PriceChart, type ChartOverlay } from '../components/PriceChart'
 import { OperationStatusPanel } from '../components/OperationStatusPanel'
+import { formatUsdt } from '../format'
 import { strategyLabel } from '../strategyPresentation'
 import type { ChartData, ControlOperation, DashboardData, FocusPosition, MarketCatalog, MarketCatalogRow } from '../types'
 
@@ -40,6 +41,22 @@ function loadFocusPreference(): FocusPreference {
 
 function preferredFocus(rows: FocusPosition[], profile: 'BASE' | 'STRESS') {
   return [...rows].sort((left, right) => Number(left.profile !== profile) - Number(right.profile !== profile) || (left.opened_ts_ms ?? left.signal_ts_ms) - (right.opened_ts_ms ?? right.signal_ts_ms) || left.strategy_id.localeCompare(right.strategy_id) || left.symbol.localeCompare(right.symbol))[0] ?? null
+}
+
+function positionOverlay(position: FocusPosition, strategies: DashboardData['strategies']): ChartOverlay {
+  return {
+    key: position.focus_key,
+    label: `${strategyLabel(strategies.find((strategy) => strategy.strategy_id === position.strategy), position.strategy)} · ${position.profile}`,
+    symbol: position.symbol,
+    side: position.side,
+    signalTime: position.signal_time,
+    entry: Number(position.actual_entry),
+    tp1: Number(position.take_profit_1),
+    tp2: position.take_profit_2 ? Number(position.take_profit_2) : null,
+    stop: Number(position.current_stop),
+    initialStop: Number(position.initial_stop),
+    currentStop: Number(position.current_stop),
+  }
 }
 
 function loadMarketPreference(data: DashboardData): { source: 'BINANCE_USDM' | 'UPBIT_KRW'; symbol: string; interval: number } {
@@ -150,6 +167,16 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
   }, [data.status.run_id])
 
   useEffect(() => {
+    if (data.status.mode === 'READY') {
+      knownTrades.current = new Set(data.focus_positions.map((position) => position.trade_id))
+      lastFocus.current = null
+      const clearTimer = window.setTimeout(() => {
+        setFocusNotice('')
+        setFocusKey(null)
+        setClosedReview(null)
+      }, 0)
+      return () => window.clearTimeout(clearTimer)
+    }
     const arrivals = data.focus_positions.filter((position) => !knownTrades.current.has(position.trade_id) && position.auto_focus_eligible)
     data.focus_positions.forEach((position) => knownTrades.current.add(position.trade_id))
     const newPosition = preferredFocus(arrivals, initialFocusPreference.defaultProfile)
@@ -162,7 +189,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
     } else if (newPosition) {
       setFocusNotice(arrivals.length > 1 ? `새 PAPER 진입 ${arrivals.length}건 · 포지션 선택에서 확인하세요.` : `새 PAPER 진입 · ${newPosition.symbol} · 거래 보기를 선택하세요.`)
     }
-  }, [data.focus_positions, focusLocked, initialFocusPreference, interval, onChartChange])
+  }, [data.focus_positions, data.status.mode, focusLocked, initialFocusPreference, interval, onChartChange])
 
   const focus = data.focus_positions.find((position) => position.focus_key === focusKey) ?? null
   useEffect(() => {
@@ -192,10 +219,16 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
     for (const candle of [...(explorerEnabled ? historical : []), ...runtimeCandles]) merged.set(candle.open_ts_ms, candle)
     return { ...data.chart, symbol: selectedMarket.symbol, interval: intervals.find(([seconds]) => seconds === interval)?.[1] ?? '3분', points: canMergeRuntime ? data.chart.points : [], candles: [...merged.values()].sort((left, right) => left.open_ts_ms - right.open_ts_ms).slice(-500), lines: canMergeRuntime ? data.chart.lines : { entry: null, take_profit: null, take_profit_2: null, stop: null } }
   }, [data.chart, data.status.market_data_state, explorerEnabled, historical, interval, selectedMarket])
-  const overlay: ChartOverlay | null = displayedFocus ? {
-    key: displayedFocus.focus_key, label: `${strategyLabel(data.strategies.find((strategy) => strategy.strategy_id === displayedFocus.strategy), displayedFocus.strategy)} · ${displayedFocus.profile}`,
-    symbol: displayedFocus.symbol, side: displayedFocus.side, signalTime: displayedFocus.signal_time, entry: Number(displayedFocus.actual_entry), tp1: Number(displayedFocus.take_profit_1), tp2: displayedFocus.take_profit_2 ? Number(displayedFocus.take_profit_2) : null, stop: Number(displayedFocus.current_stop), initialStop: Number(displayedFocus.initial_stop), currentStop: Number(displayedFocus.current_stop),
-  } : null
+  const overlay = displayedFocus ? positionOverlay(displayedFocus, data.strategies) : null
+  const selectedSymbolPositions = data.focus_positions.filter((position) => position.symbol === selectedMarket.symbol)
+  const marketPosition = preferredFocus(selectedSymbolPositions, initialFocusPreference.defaultProfile)
+  const marketOverlay = marketPosition ? positionOverlay(marketPosition, data.strategies) : null
+  const openPosition = (position: FocusPosition) => {
+    setFocusKey(position.focus_key)
+    setClosedReview(null)
+    setSelectedMarket({ source: 'BINANCE_USDM', symbol: position.symbol })
+    onChartChange(position.symbol, interval)
+  }
   const selectMarket = (row: MarketCatalogRow) => {
     setSelectedMarket({ source: row.venue, symbol: row.symbol })
     setHistorical([])
@@ -209,13 +242,14 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
     <header className={data.status.mode === 'READY' ? 'market-toolbar ready-mode' : 'market-toolbar'}>
       <div><h2 id="market-heading">{displayedFocus ? `${displayedFocus.symbol} 포지션 집중` : `${selectedMarket.symbol} 시장`}</h2><span>{displayedFocus ? `${displayedFocus.side} · ${displayedFocus.strategy_display_name_ko} · ${displayedFocus.profile} · PAPER` : selectedMarket.source === 'UPBIT_KRW' ? '관찰 전용 · KRW 현물' : data.status.market_data_state === 'LIVE' ? '실제 공개시장 · PAPER만' : data.status.mode === 'DEMO_FIXTURE' ? '샘플 · LIVE 아님' : '공개시장 연결 대기'}</span></div>
       <label>시간<select aria-label="차트 시간" value={interval} onChange={(event) => { const next = Number(event.target.value); setSelectedInterval(next); if (selectedMarket.source === 'BINANCE_USDM') onChartChange(selectedMarket.symbol, next) }}>{intervals.map(([seconds, label]) => <option key={seconds} value={seconds}>{label}</option>)}</select></label>
-      {data.focus_positions.length ? <label>포지션<select aria-label="집중 포지션" value={focusKey ?? ''} onChange={(event) => setFocusKey(event.target.value || null)}><option value="">시장 보기</option>{data.focus_positions.map((position) => <option value={position.focus_key} key={position.focus_key}>{position.symbol} · {position.profile}</option>)}</select></label> : null}
+      {data.focus_positions.length ? <label>포지션<select aria-label="집중 포지션" value={focusKey ?? ''} onChange={(event) => { const position = data.focus_positions.find((row) => row.focus_key === event.target.value); if (position) openPosition(position); else setFocusKey(null) }}><option value="">시장 보기</option>{data.focus_positions.map((position) => <option value={position.focus_key} key={position.focus_key}>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'} · {position.strategy_display_name_ko} · {position.profile}</option>)}</select></label> : null}
       {displayedFocus ? <><button type="button" className={focusLocked ? 'workspace-button selected' : 'workspace-button'} aria-pressed={focusLocked} onClick={() => setFocusLocked((value) => !value)}>{focusLocked ? '현재 거래 고정됨' : '현재 거래 고정'}</button><button type="button" className="workspace-button" onClick={() => { setFocusKey(null); setClosedReview(null); setFocusNotice('') }}>시장으로</button></> : null}
       <button type="button" className="workspace-button market-drawer-button" onClick={() => setMarketDrawer(true)}>종목</button>
     </header>
     {focusNotice ? <p className="market-notice focus-toast" role="status">{focusNotice}<button type="button" onClick={() => setFocusNotice('')}>닫기</button></p> : catalogError ? <p className="market-notice" role="status">{catalogError}</p> : null}
     <OperationStatusPanel data={data} busy={busy} operation={operation} onStartLive={onStartLive} onStartDemo={onStartDemo} onPauseToggle={onPauseToggle} onCancel={onCancel} onRetry={onRetry} />
-    {displayedFocus && overlay ? <PositionFocusWorkspace mode={focus ? 'LIVE' : 'CLOSED_REVIEW'} position={displayedFocus} chart={chart} overlay={overlay} history={data.history.filter((row) => row.run_id === data.status.run_id)} /> : <div className="market-grid"><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={selectMarket} /><PriceChart chart={chart} history={selectedMarket.source === 'BINANCE_USDM' && data.status.market_data_state === 'LIVE' ? data.history.filter((row) => row.run_id === data.status.run_id) : []} compact /></div>}
+    {data.focus_positions.length ? <section className="open-position-strip" aria-label="현재 PAPER 진입 목록"><strong>진행 중 {data.focus_positions.length}건</strong><div>{data.focus_positions.map((position) => <button type="button" className={position.side === 'LONG' ? 'long' : 'short'} aria-pressed={focusKey === position.focus_key} key={position.focus_key} onClick={() => openPosition(position)}><b>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'}</b><span>{position.strategy_display_name_ko} · {position.profile} · {position.stage_ko}</span><small>{formatUsdt(position.net_pnl_usdt, { signed: true })}</small></button>)}</div></section> : null}
+    {displayedFocus && overlay ? <PositionFocusWorkspace mode={focus ? 'LIVE' : 'CLOSED_REVIEW'} position={displayedFocus} chart={chart} overlay={overlay} history={data.history.filter((row) => row.run_id === data.status.run_id)} /> : <div className="market-grid"><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={selectMarket} /><PriceChart chart={chart} overlay={marketOverlay} activePositionCount={selectedSymbolPositions.length} history={selectedMarket.source === 'BINANCE_USDM' && data.status.market_data_state === 'LIVE' ? data.history.filter((row) => row.run_id === data.status.run_id) : []} compact /></div>}
     {marketDrawer ? <div className="market-drawer-layer" role="dialog" aria-label="종목 목록"><button type="button" className="drawer-backdrop" aria-label="종목 목록 바깥 닫기" onClick={() => setMarketDrawer(false)} /><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={(row) => { selectMarket(row); setMarketDrawer(false) }} onClose={() => setMarketDrawer(false)} /></div> : null}
   </section>
 }

@@ -154,3 +154,25 @@ test('shows only the latest 120 candles on the first 200-candle load', async () 
   render(<PriceChart chart={chart('BTCUSDT', 200)} />)
   await waitFor(() => expect(chartMocks.setVisibleLogicalRange).toHaveBeenCalledWith({ from: 80, to: 199 }))
 })
+
+test('shows the current PAPER direction and protection prices directly on the chart', async () => {
+  render(<PriceChart chart={chart()} activePositionCount={2} overlay={{
+    key: 'position-1',
+    label: '호가 쏠림 순간추세 · BASE',
+    symbol: 'BTCUSDT',
+    side: 'LONG',
+    signalTime: 20_000,
+    entry: 100,
+    tp1: 101,
+    tp2: 102,
+    stop: 99,
+  }} />)
+
+  await waitFor(() => expect(chartMocks.createChart).toHaveBeenCalled())
+  const banner = screen.getByLabelText('현재 PAPER 진입')
+  expect(banner).toHaveTextContent('PAPER 진입 중 · 상승')
+  expect(banner).toHaveTextContent('같은 종목 외 1건')
+  expect(banner).toHaveTextContent('진입 100')
+  expect(banner).toHaveTextContent('TP1 101')
+  expect(banner).toHaveTextContent('SL 99')
+})
