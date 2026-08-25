@@ -1911,10 +1911,14 @@ class PaperRuntime:
         probe: LiveBootstrapProbe | None = None,
         progress: ProgressCallback | None = None,
     ) -> bool:
+        blocked = self.live_start_block()
+        if blocked is not None:
+            raise ValueError(blocked[1])
         if progress is not None:
             await progress("PREPARING", "새 PAPER Run을 준비하고 있습니다")
         await self.shutdown_supervisor()
         self._archive_current_run("USER_START_LIVE")
+        self._archive_superseded_open_runs("SUPERSEDED_BY_START_LIVE")
         self.mode = RuntimeMode.LIVE_SHADOW_PAPER
         self._manual_pause_requested = False
         self.run_id = f"run-{uuid4().hex[:12]}"
@@ -1955,12 +1959,50 @@ class PaperRuntime:
         for flag in self.runtime_health_flags:
             if flag in blocked_flags:
                 return blocked_flags[flag]
+        if any(
+            account.positions or account.pending_entries
+            for account in self.paper_portfolio.accounts
+        ):
+            return (
+                "OPEN_PAPER_EXPOSURE",
+                "진행 중인 PAPER 진입 또는 포지션이 있어 새 Run 시작을 차단했습니다.",
+            )
+        if self.mode is RuntimeMode.READY and self.ledger is not None:
+            recovered = self.ledger.recover_latest(recovered_ts_ms=self.clock.utc_ms())
+            if recovered is not None and self._recovery_payload_has_exposure(
+                recovered.payload
+            ):
+                return (
+                    "RECOVERY_OPEN_PAPER_EXPOSURE",
+                    "이전 Run에 복구할 PAPER 진입 또는 포지션이 있어 새 Run 시작을 차단했습니다.",
+                )
         if self.paper_portfolio.main.risk_state.faulted:
             return (
                 "PAPER_RECOVERY_SAFETY_LOCK",
                 "PAPER 계좌 복구 안전잠금이 있어 자동 관찰을 시작할 수 없습니다.",
             )
         return None
+
+    @staticmethod
+    def _recovery_payload_has_exposure(payload: Mapping[str, object]) -> bool:
+        if payload.get("open_position") is not None:
+            return True
+        portfolio = payload.get("portfolio")
+        if not isinstance(portfolio, Mapping):
+            return False
+        accounts = portfolio.get("accounts")
+        if not isinstance(accounts, Sequence) or isinstance(accounts, str | bytes):
+            return False
+        for account in accounts:
+            if not isinstance(account, Mapping):
+                continue
+            positions = account.get("positions")
+            pending_entries = account.get("pending_entries")
+            if isinstance(positions, Mapping) and positions:
+                return True
+            if isinstance(pending_entries, Mapping) and pending_entries:
+                return True
+        return False
 
     def _risk_dashboard_contract(self) -> dict[str, object]:
         """실제 실행 상수에서 Shared Capital과 Strategy League 위험표를 만든다."""
@@ -2022,6 +2064,7 @@ class PaperRuntime:
 
     def start_demo_run(self) -> str:
         self._archive_current_run("USER_START_DEMO")
+        self._archive_superseded_open_runs("SUPERSEDED_BY_START_DEMO")
         self.mode = RuntimeMode.DEMO_FIXTURE
         self._manual_pause_requested = False
         self.run_id = f"demo-{uuid4().hex[:12]}"
@@ -2055,6 +2098,7 @@ class PaperRuntime:
                 finalized_ts_ms=self.clock.utc_ms(),
                 summary={"trade_count": len(trades), "preserved": True},
             )
+        self._archive_superseded_open_runs("SUPERSEDED_BY_NEW_RUN")
         self.run_id = f"run-{uuid4().hex[:12]}"
         self._manual_pause_requested = False
         self._events.clear()
@@ -2084,6 +2128,17 @@ class PaperRuntime:
             self.run_id,
             finalized_ts_ms=self.clock.utc_ms(),
             summary={"reason": reason, "preserved": True},
+        )
+
+    def _archive_superseded_open_runs(self, reason: str) -> None:
+        if self.ledger is None:
+            return
+        archived = self.ledger.finalize_superseded_open_runs(
+            finalized_ts_ms=self.clock.utc_ms(),
+            reason=reason,
+        )
+        self.archived_run_ids.extend(
+            run_id for run_id in archived if run_id not in self.archived_run_ids
         )
 
     def _reset_research_state(self) -> None:
@@ -2893,6 +2948,7 @@ class PaperRuntime:
                 finalized_ts_ms=self.clock.utc_ms(),
                 summary={"reason": "PUBLIC_VENUE_FAILOVER", "preserved": True},
             )
+        self._archive_superseded_open_runs("SUPERSEDED_BY_VENUE_FAILOVER")
         self.run_id = f"run-{uuid4().hex[:12]}"
         self.venue = venue
         self._events.clear()

@@ -457,6 +457,41 @@ class SQLiteLedger:
             if cursor.rowcount != 1:
                 raise LedgerInvariantError(f"열린 Run만 종료할 수 있습니다: {run_id}")
 
+    def finalize_superseded_open_runs(
+        self,
+        *,
+        finalized_ts_ms: int,
+        reason: str,
+    ) -> tuple[str, ...]:
+        """새 Run 직전에 남은 과거 열린 Run을 삭제 없이 일괄 보존 종료한다."""
+
+        summary_json = _canonical_json(
+            {
+                "reason": reason,
+                "preserved": True,
+                "recovered_as_superseded": True,
+            }
+        )
+        with self._transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT run_id FROM runs
+                WHERE finalized_ts_ms IS NULL
+                ORDER BY started_ts_ms, run_id
+                """
+            ).fetchall()
+            run_ids = tuple(str(row["run_id"]) for row in rows)
+            if run_ids:
+                connection.execute(
+                    """
+                    UPDATE runs
+                    SET finalized_ts_ms = ?, summary_json = ?
+                    WHERE finalized_ts_ms IS NULL
+                    """,
+                    (finalized_ts_ms, summary_json),
+                )
+        return run_ids
+
     def append_transition(
         self,
         run_id: str,

@@ -263,3 +263,4 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 7. Restart only with zero main and League positions, create a Fresh 1,000 USDT Run from the implementation commit and verify 6 monitored, 4 OFF, real orders 0 and auth false in the actual browser.
 8. Measure repeated strategy and strategy-symbol API latency during active persistence, inspect browser console and run desktop, tablet and mobile Playwright.
 9. Record any resource-contention critical incident with exact duration. A recovered incident is not a zero-incident result.
+10. Before a READY service creates a new Run, preserve-finalize superseded flat Run rows. If the latest checksum-verified recovery snapshot contains any PAPER pending entry or position, block the new Run rather than orphaning exposure.

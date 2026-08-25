@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.clocks import TestClock as DeterministicClock
@@ -377,6 +378,71 @@ async def test_fresh_live_run_starts_zero_and_excludes_demo_performance(tmp_path
     }
     assert ledger.count("trades") == 1
     assert ledger.list_trades()[0]["sample_type"] == "DEMO_FIXTURE"
+    ledger.close()
+
+
+async def test_ready_start_finalizes_all_superseded_open_runs(tmp_path: Path) -> None:
+    clock = DeterministicClock()
+    ledger = SQLiteLedger(tmp_path / "superseded-runs.sqlite3")
+    for index, run_id in enumerate(("run-stale-a", "run-stale-b"), start=1):
+        ledger.start_run(
+            run_id,
+            mode=RuntimeMode.LIVE_SHADOW_PAPER.value,
+            venue=Venue.BINANCE_USDM.value,
+            config={"strategy_version": f"stale-{index}"},
+            started_ts_ms=index,
+        )
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=clock, ledger=ledger)
+
+    class VerifiedProbe:
+        async def bootstrap(
+            self,
+            venue: Venue,
+            *,
+            run_id: str,
+            clock: DeterministicClock,
+        ) -> LiveBootstrapResult:
+            return _verified_live_result(venue, run_id, clock, lag_ms=25)
+
+    assert await runtime.start_live_run(VerifiedProbe())
+
+    assert ledger.get_run("run-stale-a")["finalized_ts_ms"] == clock.utc_ms()
+    assert ledger.get_run("run-stale-b")["finalized_ts_ms"] == clock.utc_ms()
+    assert set(runtime.archived_run_ids) == {"run-stale-a", "run-stale-b"}
+    recovered = ledger.recover_latest(recovered_ts_ms=clock.utc_ms())
+    assert recovered is not None
+    assert recovered.run_id == runtime.run_id
+    ledger.close()
+
+
+async def test_ready_start_preserves_recoverable_open_paper_exposure(tmp_path: Path) -> None:
+    clock = DeterministicClock()
+    ledger = SQLiteLedger(tmp_path / "recoverable-open-run.sqlite3")
+    ledger.start_run(
+        "run-open-paper",
+        mode=RuntimeMode.LIVE_SHADOW_PAPER.value,
+        venue=Venue.BINANCE_USDM.value,
+        config={"strategy_version": "recoverable"},
+        started_ts_ms=1,
+    )
+    ledger.save_snapshot(
+        "run-open-paper",
+        lifecycle_state="PROTECTED",
+        ts_ms=2,
+        payload={
+            "open_position": {"symbol": "BTCUSDT"},
+            "portfolio": {"accounts": []},
+        },
+    )
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=clock, ledger=ledger)
+
+    assert runtime.live_start_block() == (
+        "RECOVERY_OPEN_PAPER_EXPOSURE",
+        "이전 Run에 복구할 PAPER 진입 또는 포지션이 있어 새 Run 시작을 차단했습니다.",
+    )
+    with pytest.raises(ValueError, match="복구할 PAPER"):
+        await runtime.start_live_run()
+    assert ledger.get_run("run-open-paper")["finalized_ts_ms"] is None
     ledger.close()
 
 

@@ -8,6 +8,7 @@
 
 - D OFI 눌림은 시간순 저장 train 4건에 이어 더 늦은 자연 LIVE_PUBLIC BASE 2건도 모두 비용후 손실이어서 기본 OFF로 내렸다. B만 ACTIVE, C/F/G/I/J는 SHADOW, A/D/E/H는 OFF이며 전략 코드·과거 거래·20개 독립계좌·LONG/SHORT·수동 재활성화는 보존한다.
 - LIVE 전략 성과와 전략·종목 분석 API가 활성 SQLite를 매 요청마다 다시 읽어 13.7~16.0초 대기하던 경로를 시작 시 검증한 현재-version 거래 cache와 현재 Run 메모리 거래의 고유 ID 병합으로 바꿨다. Replay·비LIVE 분석은 기존 불변 원장 읽기를 유지한다.
+- macOS 서비스의 READY 부팅 뒤 새 LIVE 시작이 이전 Run 종료를 건너뛰어 열린 Run 행이 누적되던 문제를 수정했다. 새 Run 직전에 평평한 과거 행을 삭제 없이 `preserved` 종료하고, 최근 복구 snapshot에 PAPER pending·position이 있으면 새 Run을 차단한다.
 - 실제 A~J 런타임 evaluator를 시간순 저장 `LIVE_PUBLIC` train·holdout에 그대로 적용해 A의 비용전·비용후 방향성이 모두 실패함을 확인하고 A를 기본 OFF로 내렸다. B만 ACTIVE, C/D/F/G/I/J는 SHADOW, A/E/H는 OFF이며 과거 거래·20개 독립계좌·LONG/SHORT·수동 재활성화 제어는 삭제하지 않는다.
 - 실행 감사의 후보 시각이 진입·관리·청산 이벤트에 반복되던 문제를 수정해 각 실제 호가·체결 시각을 기록한다. 자연 PAPER 거래에서 후보→진입 520ms, 진입→관리결정 28.430초, 관리결정→청산 538ms와 원장 보유시간 28.968초가 일치함을 확인했다.
 - 원시 Binance depth delta를 모두 호가장에 적용한 뒤 종목별 마지막 완성 snapshot만 500ms마다 전달하고 aggregate trade도 500ms로 합쳐, 4,096건 provider queue 포화와 오래된 표시지연을 제거했다. sequence span과 fail-closed 안전검사는 유지한다.
