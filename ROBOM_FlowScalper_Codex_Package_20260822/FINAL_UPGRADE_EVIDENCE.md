@@ -1533,6 +1533,8 @@ wide scanner p95 1,860.858ms는 실행용 정밀호가 p95 39.409ms와 분리된
 
 LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cache와 현재 메모리 완료거래의 고유 ID 병합으로 바꿨다. 기본 계좌 범위는 전체로 바꾸고 로딩·실패·진짜 0건, 전체·공동·전략별 건수를 분리했다. replay는 종목통계와 최근 1초 candle 500개만 읽는 빠른 미리보기, checksum 검증 정밀 이벤트, 동일 조건 전략 재검증의 세 단계로 나눴다. Run 변경 순간 이전 종목과 timeline을 지워 교차 Run 경합도 차단했다. 결정 근거는 ADR-042다.
 
+후속 재시작 검증에서 replay Run 요약이 저장된 전략 거래 26건과 복구 메모리 거래 28건을 더해 54건으로 표시하는 중복을 발견했다. 현재 Run 거래 수를 거래기록 cache의 거래 ID 병합 결과로 계산하도록 고쳐 거래기록 28건과 replay 요약 28건을 일치시켰다. 이 수치는 거래 자체를 추가하거나 삭제한 결과가 아니라 표시 계약을 바로잡은 결과다.
+
 ### 실제 거래와 전략 상태
 
 현재 `run-2b7135a972dd`는 2026-08-26 02:30:06 KST에 시작했으므로 전날 밤 전체를 실행한 Run이 아니다. 최초 감사 시점 저장 이벤트는 1,419,273건, main 거래 0건, 전략계좌 거래 22건이었다. 후속 수정과 안전 재시작 뒤 실제 브라우저 감사에서는 저장 이벤트 1,492,118건, main 0건, 전략계좌 28건으로 늘었다. 28행은 자연 후보 14개를 BASE와 STRESS가 독립 체결한 결과다.
@@ -1552,6 +1554,9 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | Run 변경 경합 | PASS | 소형 `demo-7f9159e59d01`로 변경한 직후 이전 ZECUSDT가 남지 않고 ADAUSDT preview가 준비된 뒤 버튼이 열렸다. alert는 0이었다. |
 | 정밀 이벤트 | PASS | 버튼을 눌러 ADAUSDT 저장 이벤트 24개를 631ms에 checksum 검증해 열었고 `전략 평가 실행 전` 문구를 확인했다. |
 | 동일 조건 전략 검증 | PASS | 버튼을 눌러 1.947초에 `replay-f8a8036c38ef4fcc`, checksum `66e3adca53e2013226f0408d16f4662346f0f1fe65b540e207e98d2a573eed97`을 만들었다. 후보·main·전략별 거래 0, 실제 주문·인증 경로 0이다. |
+| replay 거래 수 일치 | PASS | 최종 서비스 재시작 뒤 거래기록은 공동 0·전략별 28건, 현재 Run replay 요약은 main 0·shadow 28건이었다. 저장·복구 중복을 회귀검사로 고정했다. |
+| 최종 cache 응답성 | PASS_WITH_LIMIT | 실제 서비스 12회에서 거래기록은 8.3~209.2ms, Run 목록은 3.0~5.4ms였고 모두 HTTP 200이었다. 거래기록 한 표본 209.2ms는 나머지 11개보다 높아 장기 분포를 계속 관찰한다. |
+| 현재 대형 Run 전략 재검증 | IN_PROGRESS_AT_CUTOFF | 현재 ZECUSDT 정밀 이벤트 2,000개 로딩은 완료됐다. 버튼은 저장된 약 11.6만 ZECUSDT 이벤트 전체를 5% CPU 예산으로 처리해 단기 화면검증 시간 안에 끝나지 않았으며, 멈춤으로 오인하지 않도록 `전략 검증 중`을 표시했다. 소형 Run 종단간 PASS를 대형 Run 완료 증거로 대체하지 않는다. |
 
 ### 공개시장 후속 관찰과 제한
 
@@ -1563,7 +1568,7 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 
 | 검증 | 상태 | 실제 결과 |
 |---|---|---|
-| backend pytest | PASS | 362 passed, 16.47초 |
+| backend pytest | PASS | 362 passed, 27.32초. replay 현재 Run 거래 수 중복 회귀검사를 포함한다. |
 | frontend Vitest | PASS | 13 files·53 tests |
 | Ruff / mypy | PASS | 오류 0 / 91 source files 오류 0 |
 | ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
@@ -1574,6 +1579,6 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | 전략 수익성 | NOT_PROVEN | 현재 Run 14개 자연후보·28개 BASE/STRESS 행의 비용후 합계는 -25.3148 USDT이며 30건 미만이다. 기준과 Registry를 변경하지 않았다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 뒤 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
-| GitHub main / Actions | PASS | 1차 구현 `f06448632be74795abab9d0262bd89361cbd7630`의 [Actions 32909772325](https://github.com/robom-labs/flowscalper/actions/runs/32909772325)과 checkpoint 경합 후속 구현 `ba9723135a686c40bea54980f669ac054cbc8a03`의 [Actions 32910918615](https://github.com/robom-labs/flowscalper/actions/runs/32910918615)이 모두 PASS다. 최종 구현 Actions는 validate 58초, browser 1분46초와 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드를 통과했다. |
+| GitHub main / Actions | PASS | 1차 구현 `f06448632be74795abab9d0262bd89361cbd7630`의 [Actions 32909772325](https://github.com/robom-labs/flowscalper/actions/runs/32909772325), checkpoint 경합 후속 구현 `ba9723135a686c40bea54980f669ac054cbc8a03`의 [Actions 32910918615](https://github.com/robom-labs/flowscalper/actions/runs/32910918615), 최종 거래 수 교정 `1a088acb63e2ef41c592d7a69421e6edd4cbbb64`의 [Actions 32912271959](https://github.com/robom-labs/flowscalper/actions/runs/32912271959)이 모두 PASS다. 최종 Actions는 validate 1분5초, browser 1분21초와 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드를 통과했다. |
 
-기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. 최종 구현과 GitHub main의 SHA가 일치하고 같은 SHA의 독립 Actions 검증도 완료됐다. 이번 PASS는 표시·조회·replay 분리·회귀·짧은 실제 서비스 범위이며, 전략 수익성·6시간·24시간·Release ZIP은 각각 `NOT_PROVEN` 또는 `NOT_RUN`으로 유지한다.
+기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. 최종 구현 `1a088acb63e2ef41c592d7a69421e6edd4cbbb64`와 GitHub main의 SHA가 일치하고 같은 SHA의 독립 Actions도 PASS했다. 이번 PASS는 표시·조회·replay 분리·회귀·짧은 실제 서비스 범위이며, 전략 수익성·현재 대형 Run 전체 전략 재검증·6시간·24시간·Release ZIP은 각각 `NOT_PROVEN`, `IN_PROGRESS_AT_CUTOFF` 또는 `NOT_RUN`으로 유지한다.

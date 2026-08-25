@@ -1,25 +1,28 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-25T23:29:00Z",
+  "generated_at_utc": "2026-08-25T23:46:52Z",
   "wave": 36,
   "status": "COMPLETE_WITH_LIMITS",
   "baseline_git_sha": "f6e428cf33d93c9859198366edf223a094c88b31",
-  "implementation_git_sha": "ba9723135a686c40bea54980f669ac054cbc8a03",
+  "implementation_git_sha": "1a088acb63e2ef41c592d7a69421e6edd4cbbb64",
   "implementation_git_shas": [
     "f06448632be74795abab9d0262bd89361cbd7630",
-    "ba9723135a686c40bea54980f669ac054cbc8a03"
+    "ba9723135a686c40bea54980f669ac054cbc8a03",
+    "1a088acb63e2ef41c592d7a69421e6edd4cbbb64"
   ],
   "github_main": {
     "status": "PASS",
-    "sha": "ba9723135a686c40bea54980f669ac054cbc8a03"
+    "sha": "1a088acb63e2ef41c592d7a69421e6edd4cbbb64"
   },
   "github_actions": {
     "status": "PASS",
-    "run_id": 32910918615,
-    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32910918615",
-    "validate_seconds": 58,
-    "browser_seconds": 106,
+    "run_id": 32912271959,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32912271959",
+    "validate_seconds": 65,
+    "browser_seconds": 81,
     "browser_evidence_uploaded": true,
+    "prior_checkpoint_cache_run_id": 32910918615,
+    "prior_checkpoint_cache_status": "PASS",
     "prior_implementation_run_id": 32909772325,
     "prior_implementation_status": "PASS"
   },
@@ -35,7 +38,8 @@
     "The replay page automatically loaded and checksum-verified 2000 archived events before it enabled the selectors or chart.",
     "The UI did not distinguish loading from a genuine zero-row result.",
     "The header labels for open positions and deep-analysis symbols looked like completed-trade counts.",
-    "History replay-availability and replay Run listing still queried the active SQLite run summaries during long checkpoints."
+    "History replay-availability and replay Run listing still queried the active SQLite run summaries during long checkpoints.",
+    "The current replay Run summary added restored in-memory trades to already persisted trade totals and displayed 54 shadow rows instead of the 28 unique ledger rows."
   ],
   "before": {
     "history_all_seconds": 6.24,
@@ -72,13 +76,23 @@
     "cached_replay_preview_seconds_max": 0.021079,
     "actual_browser_latest_history_rows": 28,
     "actual_browser_console_errors": 0,
-    "actual_browser_latest_replay_id": "replay-19403a7336114d20"
+    "actual_browser_latest_replay_id": "replay-19403a7336114d20",
+    "final_cached_history_samples": 12,
+    "final_cached_history_seconds_min": 0.008265,
+    "final_cached_history_seconds_max": 0.209216,
+    "final_cached_replay_runs_seconds_min": 0.003021,
+    "final_cached_replay_runs_seconds_max": 0.005413,
+    "replay_current_run_shadow_count_before_dedup": 54,
+    "replay_current_run_shadow_count_after_dedup": 28,
+    "history_current_run_league_count_after_dedup": 28,
+    "current_large_run_precise_events_loaded": 2000,
+    "current_large_run_strategy_replay": "IN_PROGRESS_AT_CUTOFF"
   },
   "current_run": {
     "run_id": "run-2b7135a972dd",
     "started_kst": "2026-08-26 02:30:06 KST",
     "market_event_count_at_initial_audit": 1419273,
-    "market_event_count_at_final_browser_audit": 1492118,
+    "market_event_count_at_final_browser_audit": 1550153,
     "main_trade_count": 0,
     "league_trade_rows": 28,
     "unique_natural_candidates": 14,
@@ -98,7 +112,7 @@
     "VWAP_EXHAUSTION_REVERSION_V1": 8
   },
   "validation": {
-    "backend_pytest": "362 passed",
+    "backend_pytest": "362 passed in 27.32s",
     "frontend_vitest": "13 files, 53 tests passed",
     "fixture_pytest": "15 passed",
     "playwright": "desktop, tablet, mobile 3 passed",
@@ -133,6 +147,7 @@
     "6-hour post-change soak",
     "24-hour post-change soak",
     "active 2.3GB ledger full quick_check rerun",
-    "release ZIP"
+    "release ZIP",
+    "current large Run full strategy replay completion"
   ]
 }
