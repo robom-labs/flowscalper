@@ -19,7 +19,7 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(10)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('10개 정상 감시 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('10개 감시 · 검증 중지 0개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getAllByText('준비 중')).toHaveLength(10)
   expect([...document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')].every((button) => button.textContent?.includes('모의 중'))).toBe(true)
 
@@ -50,7 +50,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
 
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
-  expect(screen.getByText('9개 정상 감시 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('9개 감시 · 검증 중지 0개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 

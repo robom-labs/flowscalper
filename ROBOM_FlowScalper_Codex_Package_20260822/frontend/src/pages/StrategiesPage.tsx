@@ -1,4 +1,4 @@
-// 여덟 전략의 핵심 상태는 짧은 표로, BASE·STRESS 세부 성과는 drawer로 분리한다.
+// 전략의 핵심 상태는 짧은 표로, BASE·STRESS 세부 성과는 drawer로 분리한다.
 import { useCallback, useMemo, useState } from 'react'
 import { SideDrawer } from '../components/SideDrawer'
 import { formatDurationMs, formatPercentFraction, formatRatio, formatUsdt } from '../format'
@@ -98,9 +98,10 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure }: Prop
   ))
   const healthyCount = monitorRows.filter((row) => !['fault', 'off'].includes(row.tone)).length
   const faultCount = monitorRows.filter((row) => row.tone === 'fault').length
+  const offCount = monitorRows.filter((row) => row.tone === 'off').length
   return (
     <section aria-labelledby="strategies-heading">
-      <div className="page-heading"><div><p className="section-kicker">PAPER 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 실제로 평가 중인지와 지금 진입하지 않는 이유를 한 줄로 표시합니다. 조건이 맞지 않는 대기는 오류가 아닙니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 정상 감시 · 문제 {faultCount}개 · 실제 주문 0</span></div>
+      <div className="page-heading"><div><p className="section-kicker">PAPER 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 실제로 평가 중인지와 지금 진입하지 않는 이유를 한 줄로 표시합니다. 조건이 맞지 않는 대기는 오류가 아닙니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 감시 · 검증 중지 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
       {ordered.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
       <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>현재 감시</th><th>사용 상태</th><th>방향</th><th>현재 PAPER</th><th>완료</th><th>승률</th><th>표본</th><th>상세</th></tr></thead><tbody>{ordered.map((strategy) => {
         const account = leagueAccounts.find((item) => item.strategy_id === strategy.strategy_id && item.profile === 'BASE')

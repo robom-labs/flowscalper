@@ -128,13 +128,15 @@ Apply symmetric logic below support.
 - target is blocked by nearby liquidity and net reward is inadequate;
 - data gap or processing lag occurs.
 
-## 5.6 Strategies G and H — SHADOW-only research hypotheses
+## 5.6 Strategies G and H — research hypotheses
 
 `MULTILEVEL_MICROPRICE_MOMENTUM_V1` uses a top-10 cross-weighted bid/ask VWAP fair price. It requires the multi-level fair price, top microprice, 250 ms and 3 s OFI, one-second aggressor flow and price-response efficiency to align for at least 750 ms. It is rejected in WARMUP, DEGRADED or SHOCK and remains SHADOW by default.
 
-`DEPTH_ADJUSTED_OFI_IMPULSE_V1` converts three-second OFI to notional, divides it by average top-10 bid/ask depth notional and expresses the result in basis points. It requires a directional robust z-score of at least 2.0 from the prior same-symbol history, aligned OFI, aggressor flow, microprice and price response for at least 500 ms. It remains SHADOW by default.
+`DEPTH_ADJUSTED_OFI_IMPULSE_V1` converts three-second OFI to notional, divides it by average top-10 bid/ask depth notional and expresses the result in basis points. It requires a directional robust z-score of at least 2.0 from the prior same-symbol history, aligned OFI, aggressor flow, microprice and price response for at least 500 ms. Chronological stored `LIVE_PUBLIC` train and later holdout both failed after conservative costs, so it is `OFF` by default under ADR-032.
 
-Both strategies are PAPER-only, evaluate LONG and SHORT symmetrically, use independent BASE/STRESS accounts and cannot enter shared capital unless a user explicitly changes the mode after adequate evidence. The starting thresholds are research controls, not profitability claims. See ADR-016.
+Both strategies are PAPER-only, evaluate LONG and SHORT symmetrically, use independent BASE/STRESS accounts and cannot enter shared capital unless a user explicitly changes the mode after adequate evidence. The starting thresholds are research controls, not profitability claims. G remains SHADOW. H's old trades and manual controls remain available even though new entry is OFF by default. See ADR-016 and ADR-032.
+
+`QUEUE_MICROPRICE_MOMENTUM_V1` strategy E is also `OFF` by default under ADR-032 because its chronological train and later holdout expectancy remained negative after actual bid·ask and conservative costs. Strategy A is SHADOW and Strategy B is the only default ACTIVE shared-main candidate. These are reversible PAPER controls, not deleted strategies or profitability claims.
 
 ## 5.7 Strategy I — OFI and trailing-return confluence
 

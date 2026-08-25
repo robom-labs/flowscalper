@@ -16,6 +16,7 @@ from backend.app.domain.models import (
 )
 from backend.app.live_public import PublicDataUnavailable
 from backend.app.market_data.supervisor import (
+    BinanceDepthCoalescer,
     BinancePersistentProvider,
     BinanceTradeCoalescer,
     PersistentPublicSupervisor,
@@ -416,12 +417,18 @@ def test_binance_trade_coalescer_preserves_side_quantity_and_vwap() -> None:
             },
         )
 
-    assert coalescer.push(
-        trade(1, timestamp=1_000, price="100", quantity="1", buyer_is_aggressor=True)
-    ) == ()
-    assert coalescer.push(
-        trade(2, timestamp=1_050, price="102", quantity="3", buyer_is_aggressor=True)
-    ) == ()
+    assert (
+        coalescer.push(
+            trade(1, timestamp=1_000, price="100", quantity="1", buyer_is_aggressor=True)
+        )
+        == ()
+    )
+    assert (
+        coalescer.push(
+            trade(2, timestamp=1_050, price="102", quantity="3", buyer_is_aggressor=True)
+        )
+        == ()
+    )
     sell_pending = coalescer.push(
         trade(3, timestamp=1_080, price="99", quantity="2", buyer_is_aggressor=False)
     )
@@ -432,9 +439,7 @@ def test_binance_trade_coalescer_preserves_side_quantity_and_vwap() -> None:
 
     assert len(completed) == 2
     buy = next(event for event in completed if event.data["buyer_is_aggressor"])
-    sell_event = next(
-        event for event in completed if not event.data["buyer_is_aggressor"]
-    )
+    sell_event = next(event for event in completed if not event.data["buyer_is_aggressor"])
     assert buy.data == {
         "price": "101.5",
         "quantity": "4",
@@ -481,6 +486,54 @@ def test_binance_trade_coalescer_flushes_mixed_sides_in_timestamp_order() -> Non
     completed = coalescer.push(trade(3, 1_250, True))
 
     assert [event.transaction_ts_ms for event in completed] == [1_010, 1_240]
+
+
+def test_binance_depth_coalescer_preserves_sequence_span_and_latest_book() -> None:
+    quality = DataQuality(
+        is_live=True,
+        is_stale=False,
+        sequence_valid=True,
+        lag_ms=5,
+    )
+    coalescer = BinanceDepthCoalescer(bucket_ms=500)
+
+    def depth(sequence: int, timestamp: int, bid: str) -> MarketEvent:
+        return MarketEvent(
+            event_id=f"depth-{sequence}",
+            run_id="run-coalesced-depth",
+            venue=Venue.BINANCE_USDM,
+            symbol="BTCUSDT",
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=timestamp,
+            transaction_ts_ms=timestamp,
+            receive_monotonic_ns=timestamp * 1_000_000,
+            sequence_start=sequence,
+            sequence_end=sequence,
+            previous_sequence_end=sequence - 1,
+            quality=quality,
+            data={
+                "bid": bid,
+                "bid_qty": "2",
+                "ask": "101",
+                "ask_qty": "2",
+                "bids": [[bid, "2"]],
+                "asks": [["101", "2"]],
+            },
+        )
+
+    assert coalescer.push(depth(10, 1_000, "100")) == ()
+    assert coalescer.push(depth(11, 1_220, "100.2")) == ()
+    completed = coalescer.push(depth(12, 1_500, "100.4"))
+
+    assert len(completed) == 1
+    aggregate = completed[0]
+    assert aggregate.venue_ts_ms == 1_220
+    assert aggregate.sequence_start == 10
+    assert aggregate.sequence_end == 11
+    assert aggregate.previous_sequence_end == 9
+    assert aggregate.data["bid"] == "100.2"
+    assert aggregate.data["source_event_count"] == 2
+    assert len(coalescer.flush()) == 1
 
 
 def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execution() -> None:

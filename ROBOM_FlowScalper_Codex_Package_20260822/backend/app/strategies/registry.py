@@ -121,7 +121,9 @@ class StrategyRegistry:
                 strategy_id="QUEUE_MICROPRICE_MOMENTUM_V1",
                 display_name_ko="호가 쏠림 순간추세",
                 short_name="호가 쏠림",
-                summary_ko="호가 불균형·OFI·체결 흐름과 microprice 정렬을 확인합니다.",
+                summary_ko=(
+                    "호가 불균형·OFI·체결 흐름을 연구했으나 비용후 검증 실패로 기본 중지됐습니다."
+                ),
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=QueueMicropriceStrategy(),
@@ -151,7 +153,9 @@ class StrategyRegistry:
                 strategy_id="DEPTH_ADJUSTED_OFI_IMPULSE_V1",
                 display_name_ko="깊이보정 OFI 충격",
                 short_name="깊이 OFI",
-                summary_ko="호가 깊이에 비해 이례적으로 큰 OFI와 가격 반응의 지속을 확인합니다.",
+                summary_ko=(
+                    "호가 깊이보정 OFI를 연구했으나 보수적 비용후 검증 실패로 기본 중지됐습니다."
+                ),
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=DepthAdjustedOfiStrategy(),
@@ -172,8 +176,7 @@ class StrategyRegistry:
                 display_name_ko="호가 기울기 비대칭",
                 short_name="호가 기울기",
                 summary_ko=(
-                    "10단계 호가의 한쪽이 얇고 반대쪽 지지가 두꺼운 "
-                    "상태의 지속을 확인합니다."
+                    "10단계 호가의 한쪽이 얇고 반대쪽 지지가 두꺼운 상태의 지속을 확인합니다."
                 ),
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
@@ -182,12 +185,18 @@ class StrategyRegistry:
             ),
         )
         self._descriptors = {item.strategy_id: item for item in descriptors}
-        active_ids = {"LSA_REVERSAL_V1", "CBR_CONTINUATION_V1"}
+        active_ids = {"CBR_CONTINUATION_V1"}
+        retired_ids = {
+            "QUEUE_MICROPRICE_MOMENTUM_V1",
+            "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+        }
         self._settings = {
             item.strategy_id: StrategySetting(
                 mode=(
                     StrategyMode.ACTIVE
                     if item.strategy_id in active_ids
+                    else StrategyMode.OFF
+                    if item.strategy_id in retired_ids
                     else StrategyMode.SHADOW
                 )
             )
@@ -232,10 +241,10 @@ class StrategyRegistry:
 
     def shadow_enabled(self, strategy_id: str, side: Side) -> bool:
         setting = self.setting(strategy_id)
-        return (
-            setting.mode in {StrategyMode.ACTIVE, StrategyMode.SHADOW}
-            and setting.direction_enabled(side)
-        )
+        return setting.mode in {
+            StrategyMode.ACTIVE,
+            StrategyMode.SHADOW,
+        } and setting.direction_enabled(side)
 
     def rows(self) -> list[dict[str, object]]:
         return [

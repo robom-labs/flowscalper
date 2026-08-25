@@ -6,6 +6,9 @@
 
 ## 아직 배포하지 않음
 
+- 현재버전 비용후 성과와 시간순 저장 `LIVE_PUBLIC` train·holdout을 대조해 A를 공동 main PAPER에서 SHADOW로 내리고, 비용을 넘지 못한 E 호가 쏠림과 H 깊이 OFI를 기본 OFF로 전환했다. 과거 거래·독립계좌·수동 제어는 삭제하지 않는다.
+- 원시 Binance depth delta를 모두 호가장에 적용한 뒤 종목별 마지막 완성 snapshot만 500ms마다 전달하고 aggregate trade도 500ms로 합쳐, 4,096건 provider queue 포화와 오래된 표시지연을 제거했다. sequence span과 fail-closed 안전검사는 유지한다.
+- 전략 화면은 `감시`, `검증 중지`, `문제`, `실제 주문`을 분리해 의도적으로 OFF인 전략을 고장처럼 보이지 않게 표시한다.
 - 공개시장 Parquet 작성과 archive manifest·종목통계·캔들의 `synchronous=FULL` 원자 커밋 전체를 시장 처리 Python 프로세스 밖의 background I/O process로 격리했다. 별도 연결도 WAL·FULL·자동 checkpoint 0을 유지하고 실패 시 두 버퍼 복원과 새 PAPER 진입 안전잠금을 적용한다.
 - SQLite 기본 1,000-page 자동 WAL checkpoint를 COMMIT 경로에서 끄고, 8회 저장마다 별도 process의 비차단 PASSIVE checkpoint로 옮겼다. 부분 checkpoint는 재시도하고 WAL이 64MiB까지 커진 채 실패하면 새 PAPER 진입을 안전잠금한다.
 - 공개시장 Parquet 저장 뒤 archive manifest·종목별 통계·캔들을 외장 SQLite의 한 `synchronous=FULL` 커밋으로 원자 저장해 연속 FULL 커밋을 제거했다. 충돌이나 저장 실패는 전체 롤백·버퍼복구·신규 PAPER 진입 안전잠금으로 처리한다.

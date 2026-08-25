@@ -405,7 +405,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.checksum == second.checksum
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 40
+    assert first.strategy_evaluation_count == 32
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False

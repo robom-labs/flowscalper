@@ -227,3 +227,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 7. Observe at least 160,000 actual public-market events, including intentionally occurring slow FULL commits and checkpoints. Require the market path to continue without hiding any safety incident.
 8. Inspect an actual chart position and plan with strategy, direction, account scope, entry, TP1, TP2, SL, quantity and maximum loss. Inspect all A~J rows and strict wait reasons.
 9. Re-run full backend, frontend, static, production build, PAPER safety, security, repository hygiene and desktop, tablet and mobile browser validation, then push the exact evidence to GitHub main.
+
+## Cost-adjusted strategy retirement and supervisor headroom Wave
+
+1. Read current-version independent `LIVE_PUBLIC` BASE/STRESS trades before changing any strategy and report wins, losses, expectancy, Profit Factor, costs and sample size together.
+2. Re-evaluate the affected hypothesis on chronological stored-public-market train and later holdout groups. Use only prefix features, actual reconstructed bid·ask and conservative BASE/STRESS costs.
+3. Pre-register only a small strict and cost-aware revision set. Do not lower thresholds, search a large parameter grid or promote a no-signal candidate after seeing holdout results.
+4. Demote or retire a strategy whose directional movement does not survive costs. Preserve immutable old trades, independent accounts, LONG/SHORT controls and the ability to re-enable it deliberately.
+5. Keep only evidence-supported strategies eligible for shared main PAPER. A silent SHADOW or OFF strategy must not be presented as broken, and no short sample may be presented as profitable.
+6. Apply every raw depth delta to the local order book before rate limiting completed snapshots. Preserve the first and last sequence identifiers while bounding downstream depth and trade delivery to a rate the consumer can sustain.
+7. Re-run strategy, supervisor, storage/replay, frontend, browser, static, build, PAPER safety, security and repository-hygiene checks.
+8. Restart only after confirming zero open main and League PAPER positions. Start a fresh 1,000 USDT Run once and observe queue, drop, executable-book/trade/display p95, safety lock, reconnect, gap, persistence fault, CPU and memory continuously.
+9. Exercise the actual browser strategy list and a natural open PAPER position without manufacturing a signal. Record TP/SL, cost and account scope, and keep profitability plus 6-hour/24-hour soak as `NOT_PROVEN` or `NOT_RUN` until the exact gate is completed.

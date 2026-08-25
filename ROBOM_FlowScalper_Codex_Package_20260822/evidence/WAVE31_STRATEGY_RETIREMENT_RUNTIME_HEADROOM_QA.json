@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "wave": 31,
+  "observed_at": "2026-08-25T18:03:00+09:00",
+  "scope": "cost-adjusted strategy revision research, evidence-based strategy retirement, main-account demotion and public supervisor queue headroom",
+  "safety": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_key_inputs": 0,
+    "wallet_paths": 0
+  },
+  "observed_current_version_before_change": {
+    "strategy_version_revision": "2026-08-25-wave23",
+    "LSA_REVERSAL_V1_BASE": {
+      "sample_size": 18,
+      "wins": 1,
+      "losses": 17,
+      "win_rate": 0.05555555555555556,
+      "expectancy_bps": -16.27257995196525,
+      "profit_factor": 0.0119857669977418,
+      "net_pnl_usdt": -12.4191450972
+    },
+    "QUEUE_MICROPRICE_MOMENTUM_V1_BASE": {
+      "sample_size": 96,
+      "wins": 12,
+      "losses": 84,
+      "win_rate": 0.125,
+      "expectancy_bps": -12.405650044874624,
+      "profit_factor": 0.0844434725017027,
+      "net_pnl_usdt": -45.9369339162
+    },
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1_BASE": {
+      "sample_size": 20,
+      "wins": 0,
+      "losses": 20,
+      "win_rate": 0.0,
+      "expectancy_bps": -15.735575648096518,
+      "profit_factor": 0.0,
+      "net_pnl_usdt": -32.54716292
+    },
+    "claim_boundary": "Observed through the local dashboard API before the Wave 31 service restart. These are not profitability guarantees."
+  },
+  "research_method": {
+    "script": "scripts/research_strategy_revision.py",
+    "chronological_train_runs": 8,
+    "later_holdout_runs": 5,
+    "signal_lookahead": false,
+    "evaluation_interval_ms": 500,
+    "exit_horizon_seconds": 30,
+    "entry_exit": "actual ask/bid top of reconstructed 10-level book",
+    "base_cost_bps": 13,
+    "stress_cost_bps": 25,
+    "selection_policy": "baseline plus one strict and one intermediate cost-aware preregistered revision; no threshold grid search"
+  },
+  "research_results": {
+    "QUEUE_BASELINE": {
+      "train": {
+        "sample_size": 958,
+        "gross_win_rate": 0.46555323590814196,
+        "gross_expectancy_bps": -0.22203833505881604,
+        "base_win_rate": 0.12734864300626306,
+        "base_expectancy_bps": -13.222038335058816,
+        "base_profit_factor": 0.12428449370888013
+      },
+      "holdout": {
+        "sample_size": 188,
+        "gross_win_rate": 0.43617021276595747,
+        "gross_expectancy_bps": -1.0674879112649605,
+        "base_win_rate": 0.09042553191489362,
+        "base_expectancy_bps": -14.06748791126496,
+        "base_profit_factor": 0.1603814272901712
+      },
+      "decision": "RETIRED_DEFAULT_OFF"
+    },
+    "DEPTH_OFI_BASELINE": {
+      "train": {
+        "sample_size": 102,
+        "gross_win_rate": 0.5490196078431373,
+        "gross_expectancy_bps": 0.4440102855148203,
+        "base_win_rate": 0.0,
+        "base_expectancy_bps": -12.55598971448518,
+        "base_profit_factor": 0.0
+      },
+      "holdout": {
+        "sample_size": 47,
+        "gross_win_rate": 0.574468085106383,
+        "gross_expectancy_bps": 0.4448100377576988,
+        "base_win_rate": 0.0,
+        "base_expectancy_bps": -12.5551899622423,
+        "base_profit_factor": 0.0
+      },
+      "decision": "RETIRED_DEFAULT_OFF"
+    },
+    "strict_and_cost_aware_revisions": {
+      "queue_train_samples": 0,
+      "queue_holdout_samples": 0,
+      "depth_ofi_train_samples": 0,
+      "depth_ofi_holdout_samples": 0,
+      "decision": "REJECTED_NOT_DEPLOYED",
+      "reason": "No evaluable natural signals in either chronological split. Thresholds were not lowered after observing the result."
+    }
+  },
+  "strategy_control_decision": {
+    "LSA_REVERSAL_V1": "ACTIVE_TO_SHADOW",
+    "CBR_CONTINUATION_V1": "ACTIVE_RETAINED",
+    "QUEUE_MICROPRICE_MOMENTUM_V1": "SHADOW_TO_OFF",
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1": "SHADOW_TO_OFF",
+    "other_strategies": "SHADOW_RETAINED",
+    "new_strategy_revision": "2026-08-25-wave31",
+    "prior_trades_deleted": false,
+    "prior_trades_excluded_from_current_version_metrics": true
+  },
+  "runtime_root_cause_before_restart": {
+    "queue_depth": 4096,
+    "queue_capacity": 4096,
+    "dropped_events": 270796,
+    "executable_book_lag_p95_ms": 33.02294921875,
+    "stale_display_lag_p95_ms": 12127.626953125,
+    "positions_open": 0,
+    "cause": "provider output rate had no consumer headroom; the full queue preserved stale display and entry-lock state even after current executable lag recovered"
+  },
+  "implementation": {
+    "depth_snapshot_bucket_ms": 500,
+    "trade_bucket_ms": 500,
+    "raw_depth_deltas_applied_before_coalescing": true,
+    "sequence_span_preserved": true,
+    "targeted_tests": "30 passed including 18 persistent-supervisor tests",
+    "full_backend_tests": "322 passed",
+    "frontend_tests": "12 files, 47 passed",
+    "browser_e2e": "Chromium desktop, tablet and mobile 3 passed",
+    "static_build_safety": "Ruff, mypy 82 source files, ESLint, TypeScript, Vite 48 modules, PAPER build safety, security 115 files and repository hygiene passed",
+    "browser_verification": "PASS",
+    "post_restart_monitor": "PASS_10_MINUTE_HEADROOM_GATE",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "post_restart_runtime": {
+    "run_id": "run-0ca162282d14",
+    "fresh_start": {
+      "starting_equity_usdt": 1000,
+      "realized_pnl_usdt": 0,
+      "fees_usdt": 0,
+      "slippage_usdt": 0,
+      "main_trade_count": 0,
+      "real_orders_enabled": false,
+      "auth_required": false
+    },
+    "monitor_samples": 61,
+    "sample_interval_seconds": 10,
+    "duration_seconds": 600,
+    "event_count_start": 2404,
+    "event_count_end": 47648,
+    "event_count_increase": 45244,
+    "queue_depth_max": 12,
+    "queue_capacity": 4096,
+    "dropped_events_max": 0,
+    "execution_book_lag_p95_ms_min": 24.015869140625,
+    "execution_book_lag_p95_ms_max": 35.249,
+    "trade_lag_p95_ms_start": 34.821,
+    "trade_lag_p95_ms_end": 77.953125,
+    "entry_lock_samples": 0,
+    "critical_lag_incidents": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "persistence_faults": 0,
+    "persistence_buffer_drops": 0,
+    "process_cpu_percent_max": 99.157,
+    "process_memory_mb_start": 159.0,
+    "process_memory_mb_end": 267.672,
+    "natural_league_position_peak": 2,
+    "main_position_peak": 0,
+    "main_trade_count_end": 0,
+    "persistence_flush_max_ms_after_monitor": 3304.0,
+    "wal_checkpoint_max_ms_after_monitor": 7790.0,
+    "claim_boundary": "This is a ten-minute post-restart queue-headroom gate, not a six-hour or twenty-four-hour soak."
+  },
+  "actual_browser": {
+    "url": "http://127.0.0.1:8870/?refresh=202608251607",
+    "program_state": "작동 중",
+    "observed_display_lag_p95_ms": 27,
+    "strategy_summary": "8개 감시 · 검증 중지 2개 · 문제 0개 · 실제 주문 0",
+    "modes": {
+      "LSA_REVERSAL_V1": "SHADOW",
+      "CBR_CONTINUATION_V1": "ACTIVE",
+      "QUEUE_MICROPRICE_MOMENTUM_V1": "OFF",
+      "DEPTH_ADJUSTED_OFI_IMPULSE_V1": "OFF"
+    },
+    "natural_open_paper_observation": {
+      "strategy": "LSA_REVERSAL_V1",
+      "profile": "BASE",
+      "symbol": "ENAUSDT",
+      "side": "LONG",
+      "entry": "0.15095",
+      "current_at_observation": "0.15088",
+      "stop": "0.149718",
+      "tp1": "0.152409",
+      "tp2": "0.154789",
+      "quantity": "3489",
+      "notional_usdt": "526.66",
+      "observed_hold_seconds": 17,
+      "final_hold_ms": 18972,
+      "final_base_net_pnl_usdt": "-1.115878256",
+      "claim_boundary": "One natural losing sample proves the current-version path and cost accounting, not profitability."
+    },
+    "followup_current_revision_base": {
+      "strategy": "LSA_REVERSAL_V1",
+      "sample_size": 2,
+      "wins": 0,
+      "losses": 2,
+      "net_pnl_usdt": "-2.101888592",
+      "expectancy_bps": "-20.16919457084754795033776124",
+      "profit_factor": "0E+9",
+      "median_hold_ms": 16489,
+      "p90_hold_ms": 18475,
+      "sample_status": "표본 부족",
+      "main_trade_count": 0,
+      "claim_boundary": "This later screen observation reinforces the SHADOW decision but is too small for ranking or profitability conclusions."
+    },
+    "screenshot": "evidence/WAVE31_STRATEGY_RETIREMENT_MONITORING.jpg"
+  },
+  "limitations": {
+    "higher_win_rate_strategy_proven": false,
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN"
+  }
+}

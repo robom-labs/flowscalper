@@ -1230,3 +1230,59 @@ Wave 28 구현 commit은 `ef1292804ea814c7deb0757f8527055ba3b83974`이다. 같�
 기계판독 증거는 `evidence/WAVE30_OUT_OF_PROCESS_PERSISTENCE_STRATEGY_QA.json`, 상세 결정은 ADR-031이다. 구현·로컬 회귀·실제 화면·160,000-event 실제 서비스·구현 commit GitHub Actions의 미해결 FAIL과 BLOCKED는 현재 0이다. 미래 지연 0과 전략 수익성은 `NOT_PROVEN`, 활성 원장 전체검사 재실행·6시간·24시간·Release ZIP은 `NOT_RUN`이다.
 
 Wave 30 구현 commit은 `663e3857d4574aef9af9e16af3e54699c5f34984`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E·증거 업로드가 모두 통과했다.
+
+## 36. 비용후 손실전략 중지와 공개시장 처리 여유
+
+2026-08-25 현재 strategy revision `2026-08-25-wave23`의 독립 `LIVE_PUBLIC` BASE 거래를 먼저 확인했다. A는 18건 중 1승·기대값 -16.273bp·PF 0.012·순손익 -12.4191 USDT, E는 96건 중 12승·기대값 -12.406bp·PF 0.084·순손익 -45.9369 USDT, H는 20건 중 승리 0·기대값 -15.736bp·PF 0·순손익 -32.5472 USDT였다. 승률을 높게 보이게 하려고 과거 거래를 지우거나 비용을 낮추지 않았다.
+
+### 시간순 저장 공개시장 연구와 결정
+
+`scripts/research_strategy_revision.py`로 시간순 train 8개 Run과 더 늦은 holdout 5개 Run을 분리했다. 같은 종목의 현재시각 이전 데이터만 사용하고, 500ms 평가·실제 ask/bid·30초 horizon·BASE 13bp·STRESS 25bp로 계산했다.
+
+| 전략·후보 | train | holdout | 결정 |
+|---|---|---|---|
+| E baseline | 958건, 비용후 승률 12.735%, 기대값 -13.222bp, PF 0.124 | 188건, 승률 9.043%, 기대값 -14.067bp, PF 0.160 | 기본 OFF |
+| H baseline | 102건, 비용후 0승, 기대값 -12.556bp, PF 0 | 47건, 비용후 0승, 기대값 -12.555bp, PF 0 | 기본 OFF |
+| strict·cost-aware E/H 수정후보 | 자연신호 0 | 자연신호 0 | 배포 거절, 결과 확인 뒤 기준완화 없음 |
+
+H의 비용전 방향 승률은 train 54.902%, holdout 57.447%였지만 평균 가격변화가 약 0.444bp에 불과해 실제 bid·ask와 왕복비용을 넘지 못했다. 따라서 높은 겉보기 승률도 배포 근거로 사용하지 않았다. A는 공동 main PAPER의 ACTIVE에서 SHADOW로 내렸고, B만 ACTIVE로 유지했다. C/D/F/G/I/J는 SHADOW, E/H는 OFF다. LONG·SHORT 제어, 20개 독립계좌와 모든 과거 거래는 보존했다. 현재 revision은 `2026-08-25-wave31`이며 이전 revision 거래는 현재 기본 성과에서 분리한다. 상세 결정은 ADR-032다.
+
+### queue 포화 원인과 수정
+
+수정 전 `run-622167a01f3c`은 provider queue 4,096/4,096, drop 270,796, 현재 실행호가 p95 약 33ms인데 표시 p95는 12,127.627ms였다. 현재 시각이나 SQLite가 직접 원인이 아니라 소비할 수 있는 속도보다 depth snapshot과 trade를 많이 전달해 오래된 queue가 남은 것이 원인이었다.
+
+모든 raw depth delta는 먼저 로컬 Binance 호가장에 적용하고, 종목별 첫 sequence 시작과 마지막 sequence 끝을 보존한 마지막 완성 snapshot만 500ms마다 전달하도록 바꿨다. aggregate trade도 500ms로 합쳤다. stale·sequence·1,500ms fail-closed 검사는 유지했다.
+
+### 새 Run과 10분 연속 관찰
+
+열린 main·League PAPER 포지션이 모두 0인 것을 확인한 뒤 LaunchAgent를 재시작하고 시작을 한 번 호출했다. 새 `run-0ca162282d14`은 1,000 USDT, main 손익·수수료·슬리피지·거래 0에서 시작했다.
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| 10분 처리 여유 | PASS | 10초 간격 61표본, event 2,404→47,648으로 45,244건 증가했다. queue 최대 12/4,096, drop 0이었다. |
+| 지연·안전 | PASS | 실행호가 p95 관찰범위 24.016~35.249ms, trade p95 34.821→77.953ms였다. entry lock·critical incident·비계획 reconnect·sequence gap은 전 표본 0이었다. |
+| 저장 격리 | PASS_WITH_LIMIT | persistence fault·buffer drop 0이었다. 후속 dashboard에서 flush 최대 3.304초, checkpoint 최대 7.790초였지만 시장 경로 queue 포화·critical lag는 발생하지 않았다. 10분은 멀티시간 soak가 아니다. |
+| 자원 | PASS_WITH_LIMIT | CPU 표본 최대 99.157%, 메모리 159.0→267.672MB였다. 짧은 표본에서 queue headroom은 유지됐지만 장시간 메모리 안정성은 계속 관찰한다. |
+| PAPER 안전 | PASS | main 포지션·거래는 전 표본 0, 실제 주문 false, 인증 불필요였다. A 독립 BASE/STRESS 자연 포지션은 최대 2건이었다. |
+
+### 실제 브라우저와 자연 PAPER 진입
+
+실제 앱 내 브라우저를 다시 불러와 `작동 중`, 공개시장 계속 관찰, 새 PAPER 진입 작동, 자동복구 켜짐과 표시 지연 27ms를 확인했다. 전략 화면은 `8개 감시 · 검증 중지 2개 · 문제 0개 · 실제 주문 0`이었다. A SHADOW, B ACTIVE, E/H OFF와 나머지 SHADOW, 각 활성 전략의 24개 평가경로를 직접 확인했다.
+
+같은 실제 화면에서 자연 발생한 A ENAUSDT LONG BASE PAPER 포지션의 진입 0.15095, 현재 0.15088, SL 0.149718, TP1 0.152409, TP2 0.154789, 수량 3,489, 명목 526.66 USDT, 수수료·슬리피지와 17초 보유를 확인했다. 해당 거래는 18.972초, 순손익 -1.115878256 USDT로 종료됐다. 최종 재확인 시 현재 revision A BASE는 2건·0승·순손익 -2.101888592 USDT·중앙 보유 16.489초였고 main 거래는 0이었다. 이 작은 손실 표본은 현재 revision 진입·자동관리·비용회계가 연결됐고 A를 main에서 내린 결정이 안전했음을 뒷받침할 뿐 수익성이나 최종 전략순위 증거가 아니다. 화면은 `evidence/WAVE31_STRATEGY_RETIREMENT_MONITORING.jpg`에 보존했다.
+
+### 자동검증과 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 322 passed, 10.16초 |
+| supervisor 표적 pytest | PASS | 18 passed |
+| frontend Vitest | PASS | 12 files, 47 passed |
+| Playwright | PASS | 로컬 Chromium desktop·tablet·mobile 3 passed |
+| 정적·build·안전·security | PASS | Ruff, mypy backend/app 82 source, ESLint, TypeScript, Vite 48 modules, PAPER build safety, security 115 source와 repository hygiene가 통과했다. |
+| 높은 승률·전략 수익성 | NOT_PROVEN | 비용후 손실 전략은 신규진입에서 제외했지만 현재 revision의 승리 전략은 증명되지 않았다. E/H 대체후보도 자연신호 0이라 배포하지 않았다. |
+| 6시간 / 24시간 soak | NOT_RUN | 10분 queue-headroom gate를 장시간 수용결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | NOT_RUN | 로컬 구현과 증거를 먼저 확정한 뒤 동일 변경을 push하고 별도로 기록한다. |
+
+기계판독 증거는 `evidence/WAVE31_STRATEGY_RETIREMENT_RUNTIME_HEADROOM_QA.json`, 실제 화면은 `evidence/WAVE31_STRATEGY_RETIREMENT_MONITORING.jpg`, 상세 결정은 ADR-032다. 이번 결론은 나쁜 승률을 숨기는 것이 아니라 비용후 실패 전략을 기본 진입에서 제외하고, 남은 전략은 현재 revision 자연표본이 쌓일 때까지 순위를 매기지 않는 것이다.

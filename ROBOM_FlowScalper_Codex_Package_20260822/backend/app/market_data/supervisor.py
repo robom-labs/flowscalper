@@ -226,9 +226,7 @@ class SupervisorTelemetry:
             warmup_refresh
             or self._trade_samples_since_refresh >= self.lag_percentile_refresh_samples
         ):
-            self._trade_lag_p95_cache_ms = _percentile_95(
-                sorted(self.trade_lag_samples_ms)
-            )
+            self._trade_lag_p95_cache_ms = _percentile_95(sorted(self.trade_lag_samples_ms))
             self._trade_samples_since_refresh = 0
             self.lag_percentile_refresh_count += 1
 
@@ -441,9 +439,7 @@ class PersistentPublicSupervisor:
     def _observe(self, event: MarketEvent) -> None:
         self.telemetry.event_count += 1
         if event.event_type == "TRADE":
-            self.telemetry.trade_source_event_count += int(
-                event.data.get("source_event_count", 1)
-            )
+            self.telemetry.trade_source_event_count += int(event.data.get("source_event_count", 1))
             self.telemetry.trade_output_event_count += 1
         observed_ts_ms = self.clock.utc_ms()
         self.telemetry.observe_event_gap(event.receive_monotonic_ns, observed_ts_ms)
@@ -611,7 +607,8 @@ class BinancePersistentProvider:
         depth_url = router.urls(f"{symbol}@depth" for symbol in selection.deep_symbols)[0]
         trade_url = router.urls(f"{symbol}@aggTrade" for symbol in selection.deep_symbols)[0]
         started = asyncio.get_running_loop().time()
-        trade_coalescer = BinanceTradeCoalescer(bucket_ms=250)
+        depth_coalescer = BinanceDepthCoalescer(bucket_ms=500)
+        trade_coalescer = BinanceTradeCoalescer(bucket_ms=500)
         async with (
             websockets.connect(
                 wide_url,
@@ -675,8 +672,13 @@ class BinancePersistentProvider:
                             if event.event_type == "TRADE":
                                 for aggregate in trade_coalescer.push(event):
                                     yield aggregate
+                            elif event.event_type == "DEPTH_UPDATE":
+                                for aggregate in depth_coalescer.push(event):
+                                    yield aggregate
                             else:
                                 yield event
+                for aggregate in depth_coalescer.flush():
+                    yield aggregate
                 for aggregate in trade_coalescer.flush():
                     yield aggregate
             finally:
@@ -748,8 +750,7 @@ class BinancePersistentProvider:
             return
         if event_name == "aggTrade" and symbol in selection.deep_symbols:
             trade_stale = bool(
-                quality.lag_ms is not None
-                and quality.lag_ms > _STRATEGY_TRADE_LAG_MAX_MS
+                quality.lag_ms is not None and quality.lag_ms > _STRATEGY_TRADE_LAG_MAX_MS
             )
             yield MarketEvent(
                 event_id=f"binance-trade-{symbol}-{data['a']}",
@@ -848,6 +849,84 @@ class _TradeAggregate:
     quantity: Decimal
     notional: Decimal
     source_event_count: int = 1
+
+
+@dataclass(slots=True)
+class _DepthAggregate:
+    """연속 호가 델타가 만든 마지막 완성 호가와 sequence 범위를 보존한다."""
+
+    first: MarketEvent
+    last: MarketEvent
+    source_event_count: int = 1
+
+
+class BinanceDepthCoalescer:
+    """모든 델타 적용 뒤 500ms당 마지막 완성 호가만 실행 경로로 전달한다."""
+
+    def __init__(self, *, bucket_ms: int = 500) -> None:
+        if bucket_ms <= 0:
+            raise ValueError("depth bucket은 양수여야 합니다.")
+        self.bucket_ms = bucket_ms
+        self._buckets: dict[tuple[str, int], _DepthAggregate] = {}
+        self._latest_bucket = -1
+
+    def push(self, event: MarketEvent) -> tuple[MarketEvent, ...]:
+        if event.event_type != "DEPTH_UPDATE":
+            raise ValueError("DEPTH_UPDATE 이벤트만 합산할 수 있습니다.")
+        bucket = event.venue_ts_ms // self.bucket_ms
+        completed: tuple[MarketEvent, ...] = ()
+        if bucket > self._latest_bucket:
+            completed = self._flush_before(bucket)
+            self._latest_bucket = bucket
+        key = (event.symbol, bucket)
+        aggregate = self._buckets.get(key)
+        if aggregate is None:
+            self._buckets[key] = _DepthAggregate(first=event, last=event)
+        else:
+            aggregate.last = event
+            aggregate.source_event_count += 1
+        return completed
+
+    def flush(self) -> tuple[MarketEvent, ...]:
+        return self._flush_before(self._latest_bucket + 1)
+
+    def _flush_before(self, bucket: int) -> tuple[MarketEvent, ...]:
+        ready_keys = [key for key in self._buckets if key[1] < bucket]
+        ready = [self._buckets.pop(key) for key in ready_keys]
+        ready.sort(
+            key=lambda aggregate: (
+                aggregate.last.venue_ts_ms,
+                aggregate.last.receive_monotonic_ns,
+                aggregate.last.symbol,
+            )
+        )
+        return tuple(self._event(aggregate) for aggregate in ready)
+
+    @staticmethod
+    def _event(aggregate: _DepthAggregate) -> MarketEvent:
+        first = aggregate.first
+        last = aggregate.last
+        data = dict(last.data)
+        data["source_event_count"] = aggregate.source_event_count
+        first_sequence = (
+            first.sequence_start if first.sequence_start is not None else first.venue_ts_ms
+        )
+        last_sequence = last.sequence_end if last.sequence_end is not None else last.venue_ts_ms
+        return MarketEvent(
+            event_id=(f"binance-depth-bucket-{last.symbol}-{first_sequence}-{last_sequence}"),
+            run_id=last.run_id,
+            venue=last.venue,
+            symbol=last.symbol,
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=last.venue_ts_ms,
+            transaction_ts_ms=last.transaction_ts_ms,
+            receive_monotonic_ns=last.receive_monotonic_ns,
+            sequence_start=first.sequence_start,
+            sequence_end=last.sequence_end,
+            previous_sequence_end=first.previous_sequence_end,
+            quality=last.quality,
+            data=data,
+        )
 
 
 class BinanceTradeCoalescer:
