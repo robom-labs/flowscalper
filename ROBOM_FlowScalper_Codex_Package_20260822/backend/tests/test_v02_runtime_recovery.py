@@ -183,7 +183,7 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     recovered_runtime.ingest_live_event(_live_depth_event(recovered_runtime, 1_500))
     assert recovered_runtime._recovery_revalidation_symbol is None
     assert "ENTRY_LOCK_RECOVERY_REVALIDATION" not in recovered_runtime.runtime_health_flags
-    assert recovered_runtime.paused is False
+    assert recovered_runtime.paused is True
 
     tp1 = recovered_runtime.paper_portfolio.main.position.plan.take_profit_targets[0].price
     recovered_runtime.paper_portfolio.on_book(

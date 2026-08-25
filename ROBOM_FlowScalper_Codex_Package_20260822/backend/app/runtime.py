@@ -1035,7 +1035,8 @@ class PaperRuntime:
                     if flag != "ENTRY_LOCK_RECOVERY_REVALIDATION"
                 ]
                 self.paused = (
-                    self.paper_portfolio.main.risk_state.faulted
+                    self._manual_pause_requested
+                    or self.paper_portfolio.main.risk_state.faulted
                     or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
                     or not self._refresh_storage_safety(force=True)
                 )
