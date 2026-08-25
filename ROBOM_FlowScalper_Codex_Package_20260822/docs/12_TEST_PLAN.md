@@ -205,7 +205,10 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 - Verify coalesced trades preserve side, quantity, notional and VWAP, including mixed-side timestamp ordering.
 - Verify strategy history statistics are computed once per snapshot and shared by all strategy-direction evaluations.
 - Verify market Parquet files are separated by Run and both old and new Run replay reads remain exact.
-- Verify a persistence worker flushes threshold batches outside ingest and flushes a final sub-threshold batch on shutdown.
+- Verify a persistence worker flushes threshold batches in a separate process while the event-loop heartbeat continues, and flushes a final sub-threshold batch on shutdown.
+- Verify the 10,000 recent-event window and 2,000 plan-rejection window replace one oldest row per append instead of deleting a large prefix in the market event loop.
+- Correlate actual Parquet flush duration with executable-path lag across multiple flushes and at least one planned 15-minute WebSocket rotation; a short unit test alone is insufficient.
+- Verify performance summaries label current-Run account equity separately from current-strategy-version trade statistics on desktop, tablet and mobile.
 - Verify DEMO clears LIVE-only lag, universe and selection state, and permanently renders `샘플 PAPER · LIVE 아님 · 실제 주문 0` at phone width.
 - Verify a completed trade focus session contains PRE_ENTRY, OPEN and CLOSED, with no future marker and an exit ledger transition when no market event exists after exit.
 - In the actual in-app browser, click navigation, strategy modes/directions, record filters, replay controls, analytics filters, safety controls, market search/source/symbol, all intervals, all indicators, fullscreen, drawer, focus sheets and responsive states. Write PASS/FAIL per control to `evidence/PHASE03_ACTUAL_UI_SIMULATION.json`.

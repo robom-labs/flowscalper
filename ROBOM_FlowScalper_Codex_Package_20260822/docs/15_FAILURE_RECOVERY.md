@@ -111,6 +111,7 @@ Recovery requires satisfying a deterministic health check, not merely a UI toggl
 - A corrupt checksum or invalid account state starts the UI in READY fail-closed state with no new Run or fixture trade.
 - The storage guard checks the ledger volume at most once per second. Below 2GiB or 5% free by default, LIVE entries remain locked while existing PAPER position management stays independent of the browser.
 - A persistence write error faults the main risk state, keeps retry buffers bounded and cannot be cleared with the UI resume control.
+- A market-archive worker-process error follows the same fail-closed path; its popped batch is restored ahead of newly arrived rows before the bounded retry limit is applied.
 - CPU, process memory, thread count, uptime and disk figures on the System diagnostics screen come from the local process and filesystem rather than fixture constants.
 - Rolling public-event lag p95 above 1,500ms sets `CRITICAL_MARKET_LAG_ENTRY_LOCK` in both supervisor telemetry and the PAPER runtime. A fresh sequence-valid depth clears an automatically recoverable safety wait after p95 recovery; only a user-requested pause requires an explicit resume.
 - A planned WebSocket rotation enters `RECONNECTING` and locks new PAPER entries before metadata and snapshots are prepared. Public socket close waits are bounded, and the lock clears only after a new sequence-valid depth event.

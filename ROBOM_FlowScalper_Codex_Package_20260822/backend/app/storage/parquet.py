@@ -86,6 +86,7 @@ class ParquetEventStore:
         event_type: str,
         rows: Sequence[Mapping[str, object]],
         partition_run_id: str | None = None,
+        content_digest: str | None = None,
     ) -> Path:
         if not rows:
             raise ValueError("빈 이벤트 묶음은 저장하지 않습니다.")
@@ -109,8 +110,10 @@ class ParquetEventStore:
             / f"event_type={_safe_partition(event_type)}"
         )
         partition.mkdir(parents=True, exist_ok=True)
-        material = json.dumps(rows, default=str, sort_keys=True, separators=(",", ":"))
-        digest = hashlib.sha256(material.encode()).hexdigest()[:16]
+        if content_digest is None:
+            material = json.dumps(rows, default=str, sort_keys=True, separators=(",", ":"))
+            content_digest = hashlib.sha256(material.encode()).hexdigest()
+        digest = content_digest[:16]
         destination = partition / f"part-{digest}.parquet"
         table = pa.Table.from_pylist([dict(row) for row in rows])
         pq.write_table(table, destination, compression="zstd", write_statistics=True)
@@ -155,6 +158,7 @@ class ParquetEventStore:
             event_type="MARKET_EVENT",
             rows=archived_rows,
             partition_run_id=str(rows[0]["run_id"]),
+            content_digest=batch_checksum,
         )
         with path.open("rb") as handle:
             os.fsync(handle.fileno())
@@ -163,7 +167,6 @@ class ParquetEventStore:
             checksum=batch_checksum,
             event_count=len(archived_rows),
         )
-
     def read_market_event_batch_filtered(
         self,
         path: Path,
@@ -314,6 +317,22 @@ class ParquetEventStore:
 
     def dataset_files(self) -> tuple[Path, ...]:
         return tuple(sorted(self.root.rglob("*.parquet")))
+
+
+def write_market_event_batch_in_process(
+    root: str,
+    minimum_free_bytes: int,
+    minimum_free_ratio: float,
+    rows: list[dict[str, object]],
+) -> ArchivedEventBatch:
+    """직렬화·압축·fsync를 호출 프로세스 밖에서 수행할 수 있게 한다."""
+
+    store = ParquetEventStore(
+        Path(root),
+        minimum_free_bytes=minimum_free_bytes,
+        minimum_free_ratio=minimum_free_ratio,
+    )
+    return store.write_market_event_batch(rows)
 
 
 def _default_disk_usage(path: Path) -> DiskUsage:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -11,6 +12,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 from uuid import uuid4
+
+from anyio import to_process
 
 from backend.app.adapters.fixture import FixtureMarketData
 from backend.app.analytics.reports import TradeAnalytics
@@ -48,7 +51,10 @@ from backend.app.market_data.supervisor import (
 )
 from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
-from backend.app.storage.parquet import ParquetEventStore
+from backend.app.storage.parquet import (
+    ParquetEventStore,
+    write_market_event_batch_in_process,
+)
 from backend.app.storage.sqlite import RecoveryState, SQLiteLedger
 from backend.app.strategies.base import CandidateDecision
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
@@ -64,7 +70,9 @@ class PaperRuntime:
     mode: RuntimeMode = RuntimeMode.READY
     clock: Clock = field(default_factory=SystemClock)
     run_id: str = "ready"
-    _events: list[MarketEvent] = field(default_factory=list)
+    _events: deque[MarketEvent] = field(
+        default_factory=lambda: deque(maxlen=10_000),
+    )
     paused: bool = True
     position_visible: bool = False
     archived_run_ids: list[str] = field(default_factory=list)
@@ -97,7 +105,9 @@ class PaperRuntime:
     paper_portfolio: PaperPortfolioEngine = field(init=False)
     latest_books: dict[str, BookSnapshot] = field(default_factory=dict)
     candidate_planner: CandidatePlanner = field(default_factory=CandidatePlanner)
-    plan_rejections: list[dict[str, object]] = field(default_factory=list)
+    plan_rejections: deque[dict[str, object]] = field(
+        default_factory=lambda: deque(maxlen=2_000),
+    )
     data_gap_since_ms: dict[str, int] = field(default_factory=dict)
     strategy_evaluation_interval_ms: int = 500
     _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
@@ -473,7 +483,7 @@ class PaperRuntime:
                 )
                 continue
             self.venue = result.venue
-            self._events = list(result.events)
+            self._events = deque(result.events, maxlen=10_000)
             self.wide_symbol_count = result.wide_symbol_count
             self.deep_symbol_count = result.deep_symbol_count
             self.processing_lag_p95_ms = result.websocket_lag_ms
@@ -592,8 +602,6 @@ class PaperRuntime:
                 self._market_event_buffer.append(self._persistable_market_event(event))
         if event.quality.is_stale or not event.quality.sequence_valid:
             self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
-        if len(self._events) > 10_000:
-            del self._events[:2_500]
         if event.event_type == "TRADE":
             trade = TradeTick(
                 venue=event.venue,
@@ -923,8 +931,6 @@ class PaperRuntime:
                         "reason_codes": list(result.rejection_codes),
                     }
                 )
-        if len(self.plan_rejections) > 2_000:
-            del self.plan_rejections[:500]
         return tuple(plans)
 
     def configure_strategy(
@@ -2074,7 +2080,10 @@ class PaperRuntime:
             "reason_codes": list(order.reason_codes),
         }
 
-    def _flush_persistence(self, market_limit: int | None = None) -> None:
+    def _take_persistence_batch(
+        self,
+        market_limit: int | None,
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
         with self._persistence_lock:
             if market_limit is None:
                 market_batch = self._market_event_buffer
@@ -2084,38 +2093,93 @@ class PaperRuntime:
                 del self._market_event_buffer[: len(market_batch)]
             candle_batch = self._candle_buffer
             self._candle_buffer = []
+        return market_batch, candle_batch
+
+    def _restore_persistence_batch(
+        self,
+        market_batch: list[dict[str, object]],
+        candle_batch: list[dict[str, object]],
+    ) -> None:
+        with self._persistence_lock:
+            market_rows = [*market_batch, *self._market_event_buffer]
+            candle_rows = [*candle_batch, *self._candle_buffer]
+            if len(market_rows) > 10_000:
+                self._persistence_buffer_dropped += len(market_rows) - 10_000
+                market_rows = market_rows[-10_000:]
+            if len(candle_rows) > 5_000:
+                self._persistence_buffer_dropped += len(candle_rows) - 5_000
+                candle_rows = candle_rows[-5_000:]
+            self._market_event_buffer = market_rows
+            self._candle_buffer = candle_rows
+
+    @staticmethod
+    def _group_market_archive_rows(
+        market_batch: list[dict[str, object]],
+    ) -> list[list[dict[str, object]]]:
+        grouped: dict[tuple[str, str, int], list[dict[str, object]]] = {}
+        for event in market_batch:
+            key = (
+                str(event["run_id"]),
+                str(event["venue"]),
+                int(str(event["venue_ts_ms"])) // 3_600_000,
+            )
+            grouped.setdefault(key, []).append(event)
+        return list(grouped.values())
+
+    def _persist_batches(
+        self,
+        market_batch: list[dict[str, object]],
+        candle_batch: list[dict[str, object]],
+    ) -> None:
+        if self.ledger is None:
+            return
+        if market_batch:
+            if self.market_event_archive is None:
+                self.ledger.record_market_events(market_batch)
+            else:
+                for rows in self._group_market_archive_rows(market_batch):
+                    archive = self.market_event_archive.write_market_event_batch(rows)
+                    self.ledger.record_market_event_archive(archive, rows)
+        if candle_batch:
+            self.ledger.record_candles(candle_batch)
+
+    def _flush_persistence(self, market_limit: int | None = None) -> None:
+        market_batch, candle_batch = self._take_persistence_batch(market_limit)
+        try:
+            self._persist_batches(market_batch, candle_batch)
+        except Exception as error:
+            self._restore_persistence_batch(market_batch, candle_batch)
+            self._handle_persistence_fault(error)
+
+    async def _flush_persistence_isolated(self, market_limit: int | None) -> None:
+        """Parquet CPU·GIL 작업을 별도 프로세스에 두고 manifest만 원장에 쓴다."""
+
+        market_batch, candle_batch = self._take_persistence_batch(market_limit)
         if self.ledger is None:
             return
         try:
             if market_batch:
                 if self.market_event_archive is None:
-                    self.ledger.record_market_events(market_batch)
+                    await asyncio.to_thread(self.ledger.record_market_events, market_batch)
                 else:
-                    grouped: dict[tuple[str, str, int], list[dict[str, object]]] = {}
-                    for event in market_batch:
-                        key = (
-                            str(event["run_id"]),
-                            str(event["venue"]),
-                            int(str(event["venue_ts_ms"])) // 3_600_000,
+                    store = self.market_event_archive
+                    for rows in self._group_market_archive_rows(market_batch):
+                        archive = await to_process.run_sync(
+                            write_market_event_batch_in_process,
+                            str(store.root),
+                            store.minimum_free_bytes,
+                            store.minimum_free_ratio,
+                            rows,
                         )
-                        grouped.setdefault(key, []).append(event)
-                    for rows in grouped.values():
-                        archive = self.market_event_archive.write_market_event_batch(rows)
-                        self.ledger.record_market_event_archive(archive, rows)
+                        await asyncio.to_thread(
+                            self.ledger.record_market_event_archive,
+                            archive,
+                            rows,
+                        )
             if candle_batch:
-                self.ledger.record_candles(candle_batch)
+                await asyncio.to_thread(self.ledger.record_candles, candle_batch)
         except Exception as error:
-            with self._persistence_lock:
-                market_rows = [*market_batch, *self._market_event_buffer]
-                candle_rows = [*candle_batch, *self._candle_buffer]
-                if len(market_rows) > 10_000:
-                    self._persistence_buffer_dropped += len(market_rows) - 10_000
-                    market_rows = market_rows[-10_000:]
-                if len(candle_rows) > 5_000:
-                    self._persistence_buffer_dropped += len(candle_rows) - 5_000
-                    candle_rows = candle_rows[-5_000:]
-                self._market_event_buffer = market_rows
-                self._candle_buffer = candle_rows
+            self._restore_persistence_batch(market_batch, candle_batch)
             self._handle_persistence_fault(error)
 
     async def run_persistence_worker(self, stop: asyncio.Event) -> None:
@@ -2123,7 +2187,7 @@ class PaperRuntime:
 
         async def flush(limit: int | None) -> None:
             started = asyncio.get_running_loop().time()
-            await asyncio.to_thread(self._flush_persistence, limit)
+            await self._flush_persistence_isolated(limit)
             elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
             self._persistence_flush_count += 1
             self._persistence_flush_last_ms = elapsed_ms

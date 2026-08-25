@@ -239,7 +239,7 @@ Wave 22에서는 고정 wall-clock 오프셋 때문에 정상 이벤트가 약 2
 4. `FINAL_UPGRADE_EVIDENCE.md`.
 5. `PLANS.md`와 `IMPLEMENT.md`.
 6. 검토 대상에 해당하는 `docs/01`~`docs/18`.
-7. `docs/adr/ADR-013`~`ADR-020`과 검토 기능에 가까운 이전 ADR.
+7. `docs/adr/ADR-013`~`ADR-023`과 검토 기능에 가까운 이전 ADR.
 8. 기능별 코드와 대응 테스트.
 9. `01_GPT_업그레이드_방향_요청프롬프트_KO.txt`.
 
@@ -314,4 +314,6 @@ Wave 22에서는 고정 wall-clock 오프셋 때문에 정상 이벤트가 약 2
 - 지연 안전잠금과 자동 복귀는 `backend/app/runtime.py`의 `_refresh_supervisor_entry_safety()`가 담당하며, 저장 실패·복구 불일치는 자동 해제하지 않는다.
 - 거래소 시각 calibration과 wall-clock 독립 지연 계산은 `backend/app/time_sync.py`, 계획 교체의 선제 잠금·bounded close는 `backend/app/market_data/supervisor.py`가 담당하며 결정은 ADR-020에 있다.
 - 1,000단계 호가장 상위 20단계 캐시는 `backend/app/orderbook/books.py`에 있고, 추가·수정·삭제 뒤 전체 정렬과 정확히 같은지 `backend/tests/test_orderbook.py`에서 검증한다.
+- A~J 전략의 동일 snapshot 계획은 `backend/app/strategies/runtime_evaluator.py`에서 방향·청산형식별 최대 4개로 재사용하며 결정은 ADR-022, 회귀검사는 `backend/tests/test_strategy_league_signals.py`에 있다.
+- 장시간 Parquet worker의 JSON·checksum·압축·fsync는 `backend/app/runtime.py`와 `backend/app/storage/parquet.py`에서 별도 process로 격리한다. 같은 ADR-023에 최근 이벤트 10,000개와 계획거부 2,000개를 한 건씩 교체하는 고정길이 queue 결정을 기록했고 회귀검사는 `backend/tests/test_v02_operational_safety.py`에 있다.
 - 결정은 ADR-012, 실제 시작 클릭과 연속 관찰 결과는 `FINAL_UPGRADE_EVIDENCE.md`의 4차 보강과 `evidence/PHASE04_START_STATUS_AND_SOAK.json`을 본다.

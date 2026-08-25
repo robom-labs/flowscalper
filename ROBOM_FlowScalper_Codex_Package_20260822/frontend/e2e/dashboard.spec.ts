@@ -148,7 +148,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(page.getByText('승 · 패 · 보합', { exact: true }).first()).toBeVisible()
   await page.getByRole('button', { name: '전략 상세 정보 닫기' }).click()
   await page.getByRole('button', { name: '분석', exact: true }).click()
-  await expect(page.getByText(/현재 전략 버전의 공개시장 PAPER만 집계/)).toBeVisible()
+  await expect(page.getByText(/요약·현재자산은 이번 Run/)).toBeVisible()
   await capturePhase09(page, testInfo.project.name, 'current-version-performance')
   await page.getByRole('button', { name: '전략별 종목' }).click()
   await expect(page.getByRole('heading', { name: '전략별 종목 성과' })).toBeVisible()

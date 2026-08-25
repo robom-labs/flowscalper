@@ -56,6 +56,9 @@ Detailed specifications:
 - `docs/adr/ADR-018-replay-cpu-budget-focus-cache-and-venue-clock.md`
 - `docs/adr/ADR-019-ofi-return-confluence-shadow-strategy.md`
 - `docs/adr/ADR-020-monotonic-venue-clock-and-rotation-recovery.md`
+- `docs/adr/ADR-021-book-slope-asymmetry-shadow-strategy.md`
+- `docs/adr/ADR-022-snapshot-plan-input-reuse.md`
+- `docs/adr/ADR-023-process-isolated-market-archive.md`
 
 ## Supporting contracts
 

@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import replace
 from pathlib import Path
 
+import backend.app.runtime as runtime_module
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketDataState, MarketEvent, RuntimeMode, Venue
 from backend.app.ops import ProcessResourceSampler
@@ -28,6 +29,49 @@ def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: P
     assert float(str(second["disk_total_mb"])) > 0
     assert float(str(second["disk_free_mb"])) > 0
     assert 0 <= float(str(second["disk_free_ratio"])) <= 1
+
+
+def test_runtime_event_memory_rolls_one_event_at_fixed_capacity() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    first = MarketEvent(
+        event_id="first",
+        run_id="ready",
+        venue=Venue.NONE,
+        symbol="BTCUSDT",
+        event_type="WIDE_TICKER",
+        venue_ts_ms=1,
+        receive_monotonic_ns=1,
+        quality=DataQuality(
+            is_live=False,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"last_price": "100"},
+    )
+    last = first.model_copy(update={"event_id": "last", "venue_ts_ms": 2})
+
+    runtime._events.extend([first] * 10_000)
+    runtime._events.append(last)
+
+    assert runtime._events.maxlen == 10_000
+    assert len(runtime.events) == 10_000
+    assert runtime.events[-1] is last
+    assert sum(event is first for event in runtime.events) == 9_999
+
+
+def test_runtime_plan_rejections_roll_one_row_at_fixed_capacity() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    first = {"event_id": "first"}
+    last = {"event_id": "last"}
+
+    runtime.plan_rejections.extend([first] * 2_000)
+    runtime.plan_rejections.append(last)
+
+    assert runtime.plan_rejections.maxlen == 2_000
+    assert len(runtime.plan_rejections) == 2_000
+    assert runtime.plan_rejections[-1] is last
+    assert sum(row is first for row in runtime.plan_rejections) == 1_999
 
 
 def test_disk_pressure_is_connected_to_runtime_entry_gate_and_dashboard(
@@ -146,6 +190,120 @@ async def test_market_persistence_worker_flushes_outside_ingest_loop(tmp_path: P
 
     assert ledger.count("market_events") == 500
     assert runtime._persistence_fault_count == 0
+    ledger.close()
+
+
+async def test_parquet_persistence_worker_keeps_event_loop_responsive(
+    tmp_path: Path,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "worker-parquet.sqlite3",
+        market_event_archive=archive,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-parquet-worker",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+        market_event_archive=archive,
+    )
+    for index in range(2_000):
+        runtime.ingest_live_event(
+            MarketEvent(
+                event_id=f"wide-parquet-{index}",
+                run_id=runtime.run_id,
+                venue=runtime.venue,
+                symbol="BTCUSDT",
+                event_type="WIDE_TICKER",
+                venue_ts_ms=index,
+                receive_monotonic_ns=index,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=False,
+                    sequence_valid=True,
+                    lag_ms=0,
+                ),
+                data={"last_price": "100", "quote_volume_24h": "1000000"},
+            )
+        )
+
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    heartbeat_ticks = 0
+    for _ in range(500):
+        if ledger.count("market_event_archives") == 1:
+            break
+        heartbeat_ticks += 1
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert heartbeat_ticks >= 10
+    assert ledger.count("market_event_archives") == 1
+    assert ledger.market_event_symbols(runtime.run_id) == [
+        {"symbol": "BTCUSDT", "event_count": 2_000}
+    ]
+    assert runtime._persistence_flush_count >= 1
+    assert runtime._persistence_fault_count == 0
+    assert runtime._persistence_buffer_dropped == 0
+    assert runtime._market_event_buffer == []
+    ledger.close()
+
+
+async def test_parquet_process_fault_restores_batch_and_fails_closed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet-fault",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "worker-parquet-fault.sqlite3",
+        market_event_archive=archive,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-parquet-worker-fault",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+        market_event_archive=archive,
+    )
+    runtime._market_event_buffer = [
+        {
+            "event_id": "event-process-fault",
+            "run_id": runtime.run_id,
+            "venue": runtime.venue.value,
+            "symbol": "BTCUSDT",
+            "event_type": "TRADE",
+            "venue_ts_ms": 1_000,
+            "receive_monotonic_ns": 1_000,
+            "data": {"price": "100", "quantity": "1"},
+        }
+    ]
+
+    async def fail_process(*_args: object) -> object:
+        raise OSError("simulated process archive fault")
+
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", fail_process)
+    await runtime._flush_persistence_isolated(None)
+
+    assert [row["event_id"] for row in runtime._market_event_buffer] == [
+        "event-process-fault"
+    ]
+    assert runtime._persistence_fault_count == 1
+    assert runtime._persistence_buffer_dropped == 0
+    assert runtime.paused is True
+    assert runtime.paper_portfolio.main.risk_state.faulted is True
+    assert "PERSISTENCE_FAULT_ENTRY_LOCK" in runtime.runtime_health_flags
     ledger.close()
 
 

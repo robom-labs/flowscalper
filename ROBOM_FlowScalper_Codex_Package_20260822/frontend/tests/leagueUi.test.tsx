@@ -89,6 +89,10 @@ test('uses current-version report costs and drawdown in stored performance stati
 
   render(<PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
 
+  expect(screen.getByText(/요약·현재자산은 이번 Run/)).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '이번 Run 현재자산' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '현재버전 거래·승률' })).toBeInTheDocument()
+  expect(screen.getByText('이번 Run BASE 완료 거래')).toBeInTheDocument()
   const storedStatistics = document.querySelector('.strategy-performance-panel')?.textContent ?? ''
   expect(storedStatistics).toContain('12.34 USDT')
   expect(storedStatistics).toContain('23.45 USDT')
