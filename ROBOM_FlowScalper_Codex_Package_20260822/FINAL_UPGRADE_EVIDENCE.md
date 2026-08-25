@@ -989,6 +989,8 @@ Wave 23 구현 commit은 `a8a04b8c4aedfd092a13ce199d9925f2cce5505a`이다. 같�
 | 전략 수익성 | NOT_PROVEN | 현재 Run 자연 Queue 표본은 순손실이고 다른 전략도 현재버전 표본이 충분하지 않은 행이 있다. 조용한 정상 대기를 성과나 오류로 해석하지 않는다. |
 | 6시간 / 24시간 soak | NOT_RUN | 181초와 후속 실제 서비스 표본을 멀티시간 수용결과로 표현하지 않는다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
-| GitHub main / Actions | NOT_RUN | 로컬 구현·검증 뒤 push와 독립 CI 확인을 진행 중이다. |
+| GitHub main / Actions | PASS | 구현 commit `7d4175d53256bbc9735b2e0bc875ef2d7b5ee87e`을 main에 push했다. [Actions 32809307309](https://github.com/robom-labs/flowscalper/actions/runs/32809307309)의 validate 1분0초, browser 1분5초, 실제 Chromium desktop·tablet·mobile E2E와 browser evidence upload가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/WAVE25_STORAGE_RUNTIME_UI_QA.json`, 상세 결정은 ADR-024·ADR-025·ADR-026이다. 필수 로컬 회귀·실제 화면·짧은 실제 서비스 검증의 미해결 FAIL과 BLOCKED는 현재 0이다. 전략 수익성, 6시간·24시간과 Release ZIP은 `NOT_PROVEN` 또는 `NOT_RUN`으로 분리했다.
+
+Wave 25 구현 commit은 `7d4175d53256bbc9735b2e0bc875ef2d7b5ee87e`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E가 모두 통과했다.
