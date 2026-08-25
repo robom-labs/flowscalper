@@ -1,10 +1,15 @@
-"""아홉 결정적 PAPER 전략, 레지스트리와 공통 후보 계약을 공개한다."""
+"""열 결정적 PAPER 전략, 레지스트리와 공통 후보 계약을 공개한다."""
 
 from backend.app.strategies.aggressor_flow import (
     AggressorFlowContext,
     AggressorFlowStrategy,
 )
 from backend.app.strategies.base import CandidateDecision, PlanInputs
+from backend.app.strategies.book_slope_asymmetry import (
+    BookSlopeAsymmetryContext,
+    BookSlopeAsymmetryStrategy,
+    book_slope_asymmetry_ready,
+)
 from backend.app.strategies.compression_breakout import (
     CompressionBreakoutContext,
     CompressionBreakoutStrategy,
@@ -43,6 +48,8 @@ __all__ = [
     "CandidateDecision",
     "AggressorFlowContext",
     "AggressorFlowStrategy",
+    "BookSlopeAsymmetryContext",
+    "BookSlopeAsymmetryStrategy",
     "CompressionBreakoutContext",
     "CompressionBreakoutStrategy",
     "DepthAdjustedOfiContext",
@@ -63,6 +70,7 @@ __all__ = [
     "StrategyRegistry",
     "VwapExhaustionContext",
     "VwapExhaustionStrategy",
+    "book_slope_asymmetry_ready",
     "depth_adjusted_ofi_ready",
     "multilevel_alignment_ready",
     "ofi_return_confluence_ready",

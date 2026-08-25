@@ -109,7 +109,7 @@ def league_engine() -> PaperPortfolioEngine:
 
 def test_registry_builds_eighteen_independent_thousand_usdt_accounts() -> None:
     engine = league_engine()
-    assert len(engine.shadows) == 18
+    assert len(engine.shadows) == 20
     assert {account.account_id for account in engine.shadows.values()} == {
         f"{strategy_id}:{profile.value}"
         for strategy_id in StrategyRegistry().strategy_ids
@@ -369,7 +369,7 @@ def test_every_strategy_runs_entry_protection_and_exit_end_to_end(
     side: Side,
     outcome: str,
 ) -> None:
-    """A-I의 양방향 진입과 자동 TP1·TP2·SL 보호를 같은 PAPER 엔진으로 검증한다."""
+    """A-J의 양방향 진입과 자동 TP1·TP2·SL 보호를 같은 PAPER 엔진으로 검증한다."""
 
     engine = league_engine()
     plan = league_plan(strategy_id, "BTCUSDT", side)

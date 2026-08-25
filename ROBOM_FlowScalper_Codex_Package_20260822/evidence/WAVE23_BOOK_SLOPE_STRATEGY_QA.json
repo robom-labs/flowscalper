@@ -1,0 +1,223 @@
+{
+  "wave": 23,
+  "captured_date": "2026-08-25",
+  "scope": "order-book slope asymmetry SHADOW strategy, ten-strategy league, deterministic replay, actual PAPER controls and runtime verification",
+  "safety": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "execution": "PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_keys_or_secrets": 0,
+    "wallet_paths": 0
+  },
+  "research_basis": {
+    "hypothesis_only_not_profitability_evidence": true,
+    "sources": [
+      "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=565323",
+      "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2878945",
+      "https://developers.binance.com/en/docs/binance-spot-api-docs/web-socket-streams"
+    ],
+    "decision_record": "docs/adr/ADR-021-book-slope-asymmetry-shadow-strategy.md"
+  },
+  "implemented_strategy": {
+    "strategy_id": "BOOK_SLOPE_ASYMMETRY_V1",
+    "letter": "J",
+    "stability": "EXPERIMENTAL",
+    "default_mode": "SHADOW",
+    "long_enabled": true,
+    "short_enabled": true,
+    "book_levels": 10,
+    "history_samples_min": 32,
+    "history_is_prefix_only": true,
+    "opposing_slope_percentile_max": 0.15,
+    "supporting_slope_percentile_min": 0.5,
+    "supporting_to_opposing_slope_ratio_min": 1.5,
+    "spread_bps_max": 8.0,
+    "trade_imbalance_1s_min": 0.1,
+    "microprice_displacement_bps_min": 0.15,
+    "price_response_efficiency_min": 0.25,
+    "confirmation_ms": 1000,
+    "requires_250ms_and_3s_ofi_alignment": true,
+    "costed_entry_tp1_tp2_sl_quantity_and_max_loss_before_entry": true,
+    "automatic_threshold_relaxation": false
+  },
+  "registry_after_change": {
+    "strategy_count": 10,
+    "active_strategy_count": 2,
+    "shadow_strategy_count": 8,
+    "base_and_stress_account_count": 20,
+    "all_strategies_enabled_by_default": true,
+    "all_long_and_short_enabled_by_default": true
+  },
+  "stored_public_market_replay": {
+    "source_run_id": "run-f14214b3b1dd",
+    "source_event_count": 15045,
+    "replay_ids": [
+      "replay-f8d1acb75a844e9a",
+      "replay-ca674c07f9584587"
+    ],
+    "runs_compared": 2,
+    "checksum": "5880f66a673ad64d01dec42853d59e3208497fc6ab6ba6520737b7553bccc94b",
+    "strategy_evaluations": 69380,
+    "qualified_evaluations": 9,
+    "unique_candidates": 8,
+    "main_closed_trades": 0,
+    "shadow_closed_trades": 9,
+    "same_checksum_and_counts": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "status": "PASS"
+  },
+  "actual_browser_controls": {
+    "url": "http://127.0.0.1:8870/",
+    "start_control_exercised": true,
+    "start_observed_state": "RUNNING",
+    "pause_control_exercised": true,
+    "pause_observed_state": "관찰 중 · 내가 일시정지",
+    "pause_market_observation_continued": true,
+    "pause_new_paper_entry_disabled": true,
+    "resume_control_exercised": true,
+    "resume_observed_state": "RUNNING",
+    "strategy_rows": 10,
+    "strategy_mode_controls": 10,
+    "direction_controls": 20,
+    "visible_summary": "10/10 전략 켜짐 · 실제 주문 0",
+    "book_slope_detail_opened": true,
+    "book_slope_visible_mode": "SHADOW",
+    "book_slope_visible_profiles": ["BASE", "STRESS"],
+    "status": "PASS"
+  },
+  "actual_service_monitor": {
+    "run_id": "run-6d9e264f0360",
+    "duration_seconds": 181.9,
+    "event_count_start": 24608,
+    "event_count_end": 49651,
+    "event_count_delta": 25043,
+    "lag_p95_ms_min": 119.1238,
+    "lag_p95_ms_max": 349.2422,
+    "lag_p95_ms_final": 158.3132,
+    "critical_lag_count_delta": 0,
+    "critical_lag_active_samples": 0,
+    "entry_locked_samples": 0,
+    "unplanned_reconnects": 0,
+    "dropped_events": 0,
+    "sequence_gaps": 0,
+    "persistence_faults": 0,
+    "last_error": null,
+    "all_samples_running_and_safe": true,
+    "status": "PASS"
+  },
+  "post_monitor_transient_audit": {
+    "executable_critical_event_count": 4,
+    "event_types": ["TRADE"],
+    "lag_ms_range": [1500.3547, 1506.127],
+    "venue_timestamp_span_ms": 22,
+    "final_critical_lag_active": false,
+    "final_entry_locked": false,
+    "final_lag_p95_ms": 483.7051,
+    "final_queue_depth": 0,
+    "final_unplanned_reconnects": 0,
+    "final_dropped_events": 0,
+    "final_sequence_gaps": 0,
+    "final_persistence_faults": 0,
+    "final_last_error": null,
+    "finding": "Four borderline trade events crossed 1500ms in a 22ms burst after the monitor. The fail-closed detector recovered automatically and the rolling executable-path p95 remained below the threshold.",
+    "status": "PASS_WITH_OBSERVED_TRANSIENT"
+  },
+  "post_validation_load_recovery": {
+    "sample_count": 8,
+    "sample_interval_seconds": 2,
+    "event_count_start": 136166,
+    "event_count_end": 138721,
+    "event_count_delta": 2555,
+    "cumulative_critical_lag_event_count": 14,
+    "new_critical_events_during_full_validation": 10,
+    "new_critical_event_types": ["TRADE"],
+    "new_critical_lag_ms_range": [1506.606, 1544.847],
+    "new_critical_burst_span_ms": 592,
+    "sampled_lag_p95_ms_max": 1005.8843,
+    "sampled_lag_p95_ms_final": 205.4971,
+    "max_queue_depth": 2,
+    "critical_lag_active_samples": 0,
+    "entry_locked_samples": 0,
+    "unplanned_reconnects": 0,
+    "dropped_events": 0,
+    "sequence_gaps": 0,
+    "persistence_faults": 0,
+    "last_error": null,
+    "finding": "The concurrent full test and production-build load produced a second short cluster of ten borderline public trades. Eight post-load samples stayed RUNNING and recovered from p95 1005.884ms to 205.497ms without reconnect, drop, gap, persistence fault or fail-open entry.",
+    "status": "PASS_WITH_OBSERVED_TRANSIENT"
+  },
+  "actual_current_version_paper_trades": {
+    "main_closed_trades": 2,
+    "main_min_holding_ms": 17776,
+    "main_max_holding_ms": 28766,
+    "main_net_pnl_usdt": -0.219965,
+    "shadow_closed_trades": 14,
+    "shadow_min_holding_ms": 13762,
+    "shadow_max_holding_ms": 45904,
+    "shadow_net_pnl_usdt": -13.018762,
+    "one_or_two_second_exit_count": 0,
+    "sample_type": "LIVE_PUBLIC",
+    "all_reports_sample_status": "표본 부족",
+    "profitability_claim": "NOT_PROVEN"
+  },
+  "independent_candidate_audit": {
+    "same_market_execution_observed": "SUIUSDT LONG",
+    "candidate_a": {
+      "candidate_id": "candidate-6ba7eaa9ec884ad6",
+      "strategy_id": "LSA_REVERSAL_V1",
+      "status": "ARMED"
+    },
+    "candidate_b": {
+      "candidate_id": "candidate-1df054200161458c",
+      "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+      "status": "ARMED"
+    },
+    "finding": "The identical symbol, entry, exit and hold time came from two immutable strategy-specific candidates rather than a duplicated shared statistic.",
+    "status": "PASS"
+  },
+  "book_slope_natural_signal": {
+    "evaluated_paths_in_latest_snapshot": 40,
+    "qualified_paths": 0,
+    "completed_live_public_samples_base": 0,
+    "completed_live_public_samples_stress": 0,
+    "thresholds_lowered": false,
+    "status": "NOT_OBSERVED"
+  },
+  "ledger_and_process": {
+    "launch_agent_state": "running",
+    "latest_process_error_matches": 0,
+    "sqlite_quick_check": "ok",
+    "immutable_trade_or_run_deletions": 0,
+    "status": "PASS"
+  },
+  "automated_validation": {
+    "targeted_backend_pytest": "88 passed",
+    "backend_pytest": "294 passed in 8.77s",
+    "frontend_vitest": "12 files, 41 passed",
+    "playwright": "desktop, tablet, mobile 3 passed in 17.4s",
+    "ruff": "PASS",
+    "mypy": "82 source files PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "48 modules PASS",
+    "paper_build_safety": "PASS",
+    "security_scan": "115 source files, 0 violations, 0 secret-like files, real order path false",
+    "repository_hygiene": "PASS"
+  },
+  "not_proven_or_not_run": {
+    "book_slope_natural_live_signal": "NOT_OBSERVED",
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  },
+  "github_main_implementation": {
+    "commit": "PENDING",
+    "actions_run_id": "PENDING",
+    "actions_url": "PENDING",
+    "status": "PENDING"
+  }
+}

@@ -66,8 +66,11 @@ def test_features_are_deterministic_and_finite() -> None:
             first.ofi_10s,
             first.realized_volatility_30s,
             first.compression_ratio,
+            first.bid_book_slope_10,
+            first.ask_book_slope_10,
         )
     )
+    assert first.bid_book_slope_10 > first.ask_book_slope_10
 
 
 def test_single_pass_window_metrics_match_reference_calculations() -> None:
@@ -145,6 +148,12 @@ def test_single_pass_window_metrics_match_reference_calculations() -> None:
     ) / 2
     assert snapshot.depth_adjusted_ofi_3s_bps == pytest.approx(
         snapshot.ofi_3s * snapshot.mid / average_depth_notional * 10_000
+    )
+    assert snapshot.bid_book_slope_10 == pytest.approx(
+        engine._book_slope(latest.bids[:10], Decimal(str(snapshot.mid)))
+    )
+    assert snapshot.ask_book_slope_10 == pytest.approx(
+        engine._book_slope(latest.asks[:10], Decimal(str(snapshot.mid)))
     )
 
 

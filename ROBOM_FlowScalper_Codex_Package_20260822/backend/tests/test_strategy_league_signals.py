@@ -12,6 +12,8 @@ from backend.app.regime import Regime
 from backend.app.strategies import (
     AggressorFlowContext,
     AggressorFlowStrategy,
+    BookSlopeAsymmetryContext,
+    BookSlopeAsymmetryStrategy,
     DepthAdjustedOfiContext,
     DepthAdjustedOfiStrategy,
     MultilevelMicropriceContext,
@@ -50,6 +52,8 @@ def aligned_features(side: Side, *, ts_ms: int = 1_000, signed: float = 1_000.0)
         multi_level_microprice_10=100.03 if side is Side.LONG else 99.97,
         multi_level_microprice_10_minus_mid_bps=3.0 * direction,
         depth_adjusted_ofi_3s_bps=2.5 * direction,
+        bid_book_slope_10=300.0 if side is Side.LONG else 50.0,
+        ask_book_slope_10=50.0 if side is Side.LONG else 300.0,
     )
 
 
@@ -616,6 +620,102 @@ def test_ofi_return_confluence_runtime_uses_prefix_and_event_time(side: Side) ->
         Regime.RANGE,
     )
     assert "OFI_RETURN_CONFLUENCE_NOT_PERSISTENT" in decision_for(
+        first,
+        strategy_id,
+        side,
+    ).rejection_codes
+    assert decision_for(ready, strategy_id, side).status is CandidateStatus.QUALIFIED
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_book_slope_asymmetry_qualifies_both_directions(side: Side) -> None:
+    decision = BookSlopeAsymmetryStrategy().evaluate(
+        BookSlopeAsymmetryContext(
+            side=side,
+            features=aligned_features(side),
+            regime=Regime.RANGE,
+            plan=plan(side),
+            bid_slope_percentile=0.90 if side is Side.LONG else 0.10,
+            ask_slope_percentile=0.10 if side is Side.LONG else 0.90,
+            history_sample_count=32,
+            confirmation_ms=1_000,
+        )
+    )
+    assert decision.status is CandidateStatus.QUALIFIED
+    assert decision.initial_stop is not None
+    assert decision.take_profit is not None
+    assert decision.net_reward_risk is not None
+
+
+def test_book_slope_asymmetry_rejects_short_history_weak_structure_and_cost() -> None:
+    base = BookSlopeAsymmetryContext(
+        side=Side.LONG,
+        features=aligned_features(Side.LONG),
+        regime=Regime.RANGE,
+        plan=plan(Side.LONG),
+        bid_slope_percentile=0.90,
+        ask_slope_percentile=0.10,
+        history_sample_count=32,
+        confirmation_ms=1_000,
+    )
+    strategy = BookSlopeAsymmetryStrategy()
+    assert "BOOK_SLOPE_HISTORY_SHORT" in strategy.evaluate(
+        replace(base, history_sample_count=31)
+    ).rejection_codes
+    assert "OPPOSING_BOOK_NOT_THIN" in strategy.evaluate(
+        replace(base, ask_slope_percentile=0.16)
+    ).rejection_codes
+    assert "SUPPORTING_BOOK_NOT_FIRM" in strategy.evaluate(
+        replace(base, bid_slope_percentile=0.49)
+    ).rejection_codes
+    assert "BOOK_SLOPE_ASYMMETRY_WEAK" in strategy.evaluate(
+        replace(
+            base,
+            features=replace(
+                aligned_features(Side.LONG),
+                bid_book_slope_10=70.0,
+                ask_book_slope_10=50.0,
+            ),
+        )
+    ).rejection_codes
+    assert "BOOK_SLOPE_ASYMMETRY_NOT_PERSISTENT" in strategy.evaluate(
+        replace(base, confirmation_ms=999)
+    ).rejection_codes
+    expensive_plan = replace(
+        plan(Side.LONG),
+        target=plan(Side.LONG).entry + Decimal("0.40"),
+    )
+    assert "COST_FRACTION_TOO_HIGH" in strategy.evaluate(
+        replace(base, plan=expensive_plan)
+    ).rejection_codes
+
+
+@pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
+def test_book_slope_runtime_uses_prefix_percentiles_and_event_time(side: Side) -> None:
+    strategy_id = BookSlopeAsymmetryStrategy.strategy_id
+    evaluator = StrategySignalEvaluator()
+    registry = only_strategy(strategy_id)
+    for index in range(32):
+        evaluator.evaluate(
+            registry,
+            replace(
+                aligned_features(side, ts_ms=index * 100),
+                bid_book_slope_10=100.0,
+                ask_book_slope_10=100.0,
+            ),
+            Regime.WARMUP,
+        )
+    first = evaluator.evaluate(
+        registry,
+        aligned_features(side, ts_ms=4_000),
+        Regime.RANGE,
+    )
+    ready = evaluator.evaluate(
+        registry,
+        aligned_features(side, ts_ms=5_000),
+        Regime.RANGE,
+    )
+    assert "BOOK_SLOPE_ASYMMETRY_NOT_PERSISTENT" in decision_for(
         first,
         strategy_id,
         side,

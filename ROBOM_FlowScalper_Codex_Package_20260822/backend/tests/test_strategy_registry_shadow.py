@@ -24,7 +24,7 @@ from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 from backend.tests.test_strategies import features
 
 
-def test_registry_exposes_nine_strategies_and_honors_mode_and_direction() -> None:
+def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None:
     registry = StrategyRegistry()
     assert registry.strategy_ids == (
         "LSA_REVERSAL_V1",
@@ -36,12 +36,14 @@ def test_registry_exposes_nine_strategies_and_honors_mode_and_direction() -> Non
         "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
         "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
         "OFI_RETURN_CONFLUENCE_V1",
+        "BOOK_SLOPE_ASYMMETRY_V1",
     )
     assert STRATEGY_IDS == registry.strategy_ids
     assert STRATEGY_VERSION.startswith("+".join(registry.strategy_ids) + "@")
     assert [row["mode"] for row in registry.rows()] == [
         "ACTIVE",
         "ACTIVE",
+        "SHADOW",
         "SHADOW",
         "SHADOW",
         "SHADOW",
@@ -68,7 +70,7 @@ def test_registry_exposes_nine_strategies_and_honors_mode_and_direction() -> Non
     evaluator = StrategySignalEvaluator()
     decisions = evaluator.evaluate(registry, features(), Regime.WARMUP)
 
-    assert len(decisions) == 15
+    assert len(decisions) == 17
     assert all(item.decision.status is CandidateStatus.REJECTED for item in decisions)
     lsa = next(item for item in decisions if item.decision.strategy_id == "LSA_REVERSAL_V1")
     assert lsa.decision.side is Side.LONG
@@ -108,9 +110,9 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
         Regime.RANGE,
     )
 
-    assert len(decisions) == 18
+    assert len(decisions) == 20
     assert robust_calls == 4
-    assert percentile_calls == 3
+    assert percentile_calls == 5
 
 
 def test_strategy_sorted_history_evicts_with_same_exact_window() -> None:
@@ -143,6 +145,8 @@ def test_strategy_sorted_history_evicts_with_same_exact_window() -> None:
     assert ordered.depth_adjusted_ofi == sorted(
         item.depth_adjusted_ofi_3s_bps for item in window
     )
+    assert ordered.bid_book_slope == sorted(item.bid_book_slope_10 for item in window)
+    assert ordered.ask_book_slope == sorted(item.ask_book_slope_10 for item in window)
 
 
 @pytest.mark.parametrize(
@@ -234,7 +238,7 @@ def test_shadow_accounts_are_independent_by_strategy_and_cost_profile() -> None:
     ).current_equity_usdt == Decimal("1000")
 
 
-def test_live_depth_runs_all_nine_strategies_without_fake_probability() -> None:
+def test_live_depth_runs_all_ten_strategies_without_fake_probability() -> None:
     clock = DeterministicClock()
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
@@ -270,10 +274,10 @@ def test_live_depth_runs_all_nine_strategies_without_fake_probability() -> None:
     )
 
     decisions = runtime.strategy_decisions()
-    assert runtime.strategy_evaluation_count == 18
+    assert runtime.strategy_evaluation_count == 20
     assert {decision.strategy_id for decision in decisions} == set(
         runtime.strategy_registry.strategy_ids
     )
     assert all(decision.tp_probability is None for decision in decisions)
-    assert len(runtime.dashboard()["shadow_accounts"]) == 18
-    assert len(runtime.dashboard()["league_accounts"]) == 18
+    assert len(runtime.dashboard()["shadow_accounts"]) == 20
+    assert len(runtime.dashboard()["league_accounts"]) == 20

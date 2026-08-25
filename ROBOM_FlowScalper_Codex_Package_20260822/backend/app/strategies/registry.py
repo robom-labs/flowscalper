@@ -1,4 +1,4 @@
-"""A/B/C/D/E/F/G/H/I 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
+"""A/B/C/D/E/F/G/H/I/J 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from enum import StrEnum
 from backend.app.domain.models import Side
 from backend.app.regime import Regime
 from backend.app.strategies.aggressor_flow import AggressorFlowStrategy
+from backend.app.strategies.book_slope_asymmetry import BookSlopeAsymmetryStrategy
 from backend.app.strategies.compression_breakout import CompressionBreakoutStrategy
 from backend.app.strategies.depth_adjusted_ofi import DepthAdjustedOfiStrategy
 from backend.app.strategies.liquidity_sweep import LiquiditySweepStrategy
@@ -44,6 +45,7 @@ StrategyEvaluator = (
     | MultilevelMicropriceStrategy
     | DepthAdjustedOfiStrategy
     | OfiReturnConfluenceStrategy
+    | BookSlopeAsymmetryStrategy
 )
 
 
@@ -163,6 +165,19 @@ class StrategyRegistry:
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=OfiReturnConfluenceStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
+            ),
+            StrategyDescriptor(
+                strategy_id="BOOK_SLOPE_ASYMMETRY_V1",
+                display_name_ko="호가 기울기 비대칭",
+                short_name="호가 기울기",
+                summary_ko=(
+                    "10단계 호가의 한쪽이 얇고 반대쪽 지지가 두꺼운 "
+                    "상태의 지속을 확인합니다."
+                ),
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=BookSlopeAsymmetryStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
             ),
         )

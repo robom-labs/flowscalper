@@ -2,7 +2,7 @@
 
 ## 공통 원칙
 
-아홉 전략은 모두 공개시장 데이터와 내부 PAPER 체결에만 사용된다. 전략은 주문 권한이 없고 거래소 계정이나 private API를 호출하지 않는다. 같은 symbol snapshot과 과거 이력만 사용하며 현재값 이후 정보를 참조하지 않는다.
+열 전략은 모두 공개시장 데이터와 내부 PAPER 체결에만 사용된다. 전략은 주문 권한이 없고 거래소 계정이나 private API를 호출하지 않는다. 같은 symbol snapshot과 과거 이력만 사용하며 현재값 이후 정보를 참조하지 않는다.
 
 | 구분 | Strategy ID | 화면 이름 | 안정성 | 주 레짐 | 핵심 확인 |
 |---|---|---|---|---|---|
@@ -15,6 +15,7 @@
 | G | `MULTILEVEL_MICROPRICE_MOMENTUM_V1` | 다중호가 공정가 추세 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | top10 공정가, OFI, 체결, 가격반응 |
 | H | `DEPTH_ADJUSTED_OFI_IMPULSE_V1` | 깊이보정 OFI 충격 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | 깊이보정 OFI robust z, 가격반응 |
 | I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | 깊이보정 OFI와 prefix 3초 수익률 동행 |
+| J | `BOOK_SLOPE_ASYMMETRY_V1` | 호가 기울기 비대칭 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | top10 가격거리 대비 깊이의 방향 비대칭 |
 
 ## 전략 A. 유동성 쓸기 반전
 
@@ -51,6 +52,10 @@ top5·top10 호가 불균형, 250ms·3초 OFI, 1초 체결과 microprice 변위�
 ## 전략 I. OFI·단기수익률 동행
 
 깊이보정 OFI와 직전 3초 가격수익률이 같은 방향으로 이어지는지를 별도로 검증한다. 기준가격은 현재보다 3초 이전의 가장 가까운 과거 표본만 사용하고 미래값을 보지 않는다. 1,000ms 지속과 공통 비용 gate를 통과해야 하며 기본값은 독립 SHADOW PAPER다.
+
+## 전략 J. 호가 기울기 비대칭
+
+top10 각 호가의 중간가격 거리와 누적 명목깊이로 매수·매도 기울기를 계산한다. LONG은 매도호가 기울기가 동일 종목 과거창의 하위 15%이고 매수호가 기울기가 중앙값 이상이며 양쪽 비율이 1.5배 이상일 때만 구조 조건을 통과한다. SHORT는 이를 대칭 적용한다. 32개 이상의 과거표본, OFI·공격체결·microprice·가격반응과 1,000ms 지속이 모두 필요하며 기본값은 독립 SHADOW PAPER다. 공식 연구는 연구가설의 근거일 뿐 수익성 증거가 아니다.
 
 ## 모드와 방향 제어
 

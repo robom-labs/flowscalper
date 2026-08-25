@@ -103,7 +103,7 @@ Recovery requires satisfying a deterministic health check, not merely a UI toggl
 
 ## 15.7 v0.2 implemented recovery contract
 
-- SQLite snapshot schema 1 stores the complete main and eighteen strategy/profile shadow execution accounts, immutable plans, fills, protection, remaining TP quantities, pending exits, risk state and completed PAPER trades.
+- SQLite snapshot schema 1 stores the complete main and twenty strategy/profile shadow execution accounts, immutable plans, fills, protection, remaining TP quantities, pending exits, risk state and completed PAPER trades.
 - Recovery accepts only a checksum-valid snapshot whose Run, venue, Strategy Registry account set, cost profiles and quantity invariants match the active Run.
 - Latest append-only completed trades override an older open-position snapshot from a crash window and rebuild realized equity, peak equity, drawdown and trade counts.
 - A recovered LIVE Run starts paused with `ENTRY_LOCK_RECOVERY_REVALIDATION`. Its position or pending-entry symbol is pinned into both wide and deep subscriptions, and the lock clears only after that exact symbol receives a fresh sequence-valid book on the same venue.

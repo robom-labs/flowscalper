@@ -1,4 +1,4 @@
-"""LIVE 피처를 A/B/C/D/E/F/G/H/I 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
+"""LIVE 피처를 A/B/C/D/E/F/G/H/I/J 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
 
 from __future__ import annotations
 
@@ -16,6 +16,11 @@ from backend.app.strategies.aggressor_flow import (
     aggressor_alignment_ready,
 )
 from backend.app.strategies.base import CandidateDecision, PlanInputs
+from backend.app.strategies.book_slope_asymmetry import (
+    BookSlopeAsymmetryContext,
+    BookSlopeAsymmetryStrategy,
+    book_slope_asymmetry_ready,
+)
 from backend.app.strategies.compression_breakout import (
     CompressionBreakoutContext,
     CompressionBreakoutStrategy,
@@ -78,6 +83,9 @@ class _HistoryStatistics:
     short_directional_flow_z: float
     long_depth_adjusted_ofi_z: float
     short_depth_adjusted_ofi_z: float
+    bid_slope_percentile: float
+    ask_slope_percentile: float
+    history_sample_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +114,8 @@ class _SortedFeatureHistory:
     efficiency: list[float] = field(default_factory=list)
     signed_notional: list[float] = field(default_factory=list)
     depth_adjusted_ofi: list[float] = field(default_factory=list)
+    bid_book_slope: list[float] = field(default_factory=list)
+    ask_book_slope: list[float] = field(default_factory=list)
 
     def add(self, snapshot: FeatureSnapshot) -> None:
         insort(self.flow, abs(snapshot.signed_notional_3s))
@@ -117,6 +127,8 @@ class _SortedFeatureHistory:
         insort(self.efficiency, snapshot.efficiency_ratio_30s)
         insort(self.signed_notional, snapshot.signed_notional_3s)
         insort(self.depth_adjusted_ofi, snapshot.depth_adjusted_ofi_3s_bps)
+        insort(self.bid_book_slope, snapshot.bid_book_slope_10)
+        insort(self.ask_book_slope, snapshot.ask_book_slope_10)
 
     def remove(self, snapshot: FeatureSnapshot) -> None:
         self._remove(self.flow, abs(snapshot.signed_notional_3s))
@@ -128,6 +140,8 @@ class _SortedFeatureHistory:
         self._remove(self.efficiency, snapshot.efficiency_ratio_30s)
         self._remove(self.signed_notional, snapshot.signed_notional_3s)
         self._remove(self.depth_adjusted_ofi, snapshot.depth_adjusted_ofi_3s_bps)
+        self._remove(self.bid_book_slope, snapshot.bid_book_slope_10)
+        self._remove(self.ask_book_slope, snapshot.ask_book_slope_10)
 
     @staticmethod
     def _remove(values: list[float], value: float) -> None:
@@ -519,6 +533,35 @@ class StrategySignalEvaluator:
                     confirmation_ms=confirmation_ms,
                 )
             )
+        if isinstance(evaluator, BookSlopeAsymmetryStrategy):
+            plan = _momentum_plan(snapshot, side, tick_size)
+            aligned = book_slope_asymmetry_ready(
+                side,
+                snapshot,
+                regime,
+                history_statistics.bid_slope_percentile,
+                history_statistics.ask_slope_percentile,
+                history_statistics.history_sample_count,
+            )
+            confirmation_ms = self._confirmation_ms(
+                evaluator.strategy_id,
+                snapshot.symbol,
+                side,
+                snapshot.ts_ms,
+                aligned=aligned,
+            )
+            return evaluator.evaluate(
+                BookSlopeAsymmetryContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=plan,
+                    bid_slope_percentile=history_statistics.bid_slope_percentile,
+                    ask_slope_percentile=history_statistics.ask_slope_percentile,
+                    history_sample_count=history_statistics.history_sample_count,
+                    confirmation_ms=confirmation_ms,
+                )
+            )
         raise TypeError(f"지원하지 않는 전략 evaluator: {type(evaluator).__name__}")
 
     @staticmethod
@@ -526,7 +569,7 @@ class StrategySignalEvaluator:
         history: _SortedFeatureHistory,
         snapshot: FeatureSnapshot,
     ) -> _HistoryStatistics:
-        """동일 snapshot의 18개 전략·방향이 같은 정렬 통계를 공유한다."""
+        """동일 snapshot의 20개 전략·방향이 같은 정렬 통계를 공유한다."""
 
         deviation_bps = _vwap_deviation_bps(snapshot) or 0.0
         directional_flow_z = robust_z_from_sorted(
@@ -566,6 +609,15 @@ class StrategySignalEvaluator:
                 if directional_depth_adjusted_ofi_z == 0
                 else -directional_depth_adjusted_ofi_z
             ),
+            bid_slope_percentile=rolling_percentile_from_sorted(
+                history.bid_book_slope,
+                snapshot.bid_book_slope_10,
+            ),
+            ask_slope_percentile=rolling_percentile_from_sorted(
+                history.ask_book_slope,
+                snapshot.ask_book_slope_10,
+            ),
+            history_sample_count=len(history.bid_book_slope),
         )
 
     def _confirmation_ms(
@@ -697,7 +749,7 @@ def _momentum_plan(
     side: Side,
     tick_size: Decimal,
 ) -> PlanInputs:
-    """E/F/G/H/I도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
+    """E/F/G/H/I/J도 다른 추세 전략과 같은 비용후 실행가능 계획을 사용한다."""
 
     return _plan(
         snapshot,

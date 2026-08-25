@@ -18,7 +18,7 @@
 | 기본 거래소 | Binance USDⓈ-M 공개시장 |
 | 대체 공개시장 | Bybit Linear, 별도 Run 경계 |
 | wide / deep 관찰 | 최대 50종목 / 기본 20종목 |
-| 전략 | A/B ACTIVE, C~I SHADOW PAPER 연구 전략, 각 BASE·STRESS 18계좌 |
+| 전략 | A/B ACTIVE, C~J SHADOW PAPER 연구 전략, 각 BASE·STRESS 20계좌 |
 | 저장 | PAPER 상태 SQLite + 외장 공개시장 ZSTD Parquet |
 | GitHub | 공개 저장소 `robom-labs/flowscalper`, 기본 브랜치 `main` |
 | GitHub 폴더 | `ROBOM_FlowScalper_Codex_Package_20260822/` |
@@ -85,7 +85,7 @@ flowchart LR
     A["Binance/Bybit 공개 REST·WebSocket"] --> B["PersistentPublicSupervisor"]
     B --> C["정규화 MarketEvent·호가·캔들"]
     C --> D["FeatureEngine·RegimeClassifier"]
-    D --> E["Strategy Registry A~I"]
+    D --> E["Strategy Registry A~J"]
     E --> F["Candidate Planner·비용·위험 Gate"]
     F --> G["보수적 PAPER 체결·포지션 관리"]
     G --> H["SQLite PAPER 원장·성과"]
@@ -106,7 +106,7 @@ flowchart LR
 | 장시간 supervisor | `backend/app/market_data/supervisor.py` | `docs/15_FAILURE_RECOVERY.md` | `backend/tests/test_persistent_supervisor.py` |
 | 호가·캔들 | `backend/app/orderbook/`, `backend/app/market_data/candles.py` | `docs/03_MARKET_DATA_AND_VENUES.md` | `backend/tests/test_orderbook.py` |
 | 피처·레짐 | `backend/app/features/engine.py`, `backend/app/regime/` | `docs/05_STRATEGY_SPEC.md` | `backend/tests/test_features_and_regime.py` |
-| A~I 전략·Strategy League | `backend/app/strategies/`, `backend/app/paper/league.py` | `STRATEGY_CATALOG_KO.md`, `docs/19_STRATEGY_LEAGUE_SPEC_KO.md` | `backend/tests/test_strategy_registry_shadow.py`, `backend/tests/test_strategy_league_signals.py` |
+| A~J 전략·Strategy League | `backend/app/strategies/`, `backend/app/paper/league.py` | `STRATEGY_CATALOG_KO.md`, `docs/19_STRATEGY_LEAGUE_SPEC_KO.md` | `backend/tests/test_strategy_registry_shadow.py`, `backend/tests/test_strategy_league_signals.py` |
 | 후보·불변 계획 | `backend/app/candidates/` | `docs/05_STRATEGY_SPEC.md` | `backend/tests/test_candidate_paper_portfolio.py` |
 | 비용·PAPER 체결 | `backend/app/costing/`, `backend/app/execution/` | `docs/06_PAPER_EXECUTION_ENGINE.md` | `backend/tests/test_execution_and_risk.py` |
 | 포지션·청산 | `backend/app/positions/` | `docs/07_POSITION_AND_EXIT_MANAGEMENT.md` | `backend/tests/test_position_management.py` |

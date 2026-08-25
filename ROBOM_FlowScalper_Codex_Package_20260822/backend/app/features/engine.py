@@ -102,6 +102,8 @@ class FeatureSnapshot:
     multi_level_microprice_10: float = 0.0
     multi_level_microprice_10_minus_mid_bps: float = 0.0
     depth_adjusted_ofi_3s_bps: float = 0.0
+    bid_book_slope_10: float = 0.0
+    ask_book_slope_10: float = 0.0
 
     def assert_finite(self) -> None:
         for field in fields(self):
@@ -152,6 +154,8 @@ class FeatureEngine:
         spread_bps = (ask - bid) / mid * Decimal(10_000)
         depth_bid_10 = sum((price * quantity for price, quantity in latest.bids[:10]), Decimal(0))
         depth_ask_10 = sum((price * quantity for price, quantity in latest.asks[:10]), Decimal(0))
+        bid_book_slope_10 = self._book_slope(latest.bids[:10], mid)
+        ask_book_slope_10 = self._book_slope(latest.asks[:10], mid)
         microprice = (ask * bid_quantity + bid * ask_quantity) / (bid_quantity + ask_quantity)
         multi_level_bid_quantity = sum(
             (quantity for _, quantity in latest.bids[:10]),
@@ -294,6 +298,8 @@ class FeatureEngine:
                 (multi_level_microprice_10 - mid) / mid * Decimal(10_000)
             ),
             depth_adjusted_ofi_3s_bps=float(depth_adjusted_ofi_3s_bps),
+            bid_book_slope_10=bid_book_slope_10,
+            ask_book_slope_10=ask_book_slope_10,
         )
         snapshot.assert_finite()
         return snapshot
@@ -333,6 +339,24 @@ class FeatureEngine:
         ask = sum((quantity for _, quantity in frame.asks[:depth]), Decimal(0))
         total = bid + ask
         return float((bid - ask) / total) if total else 0.0
+
+    @staticmethod
+    def _book_slope(
+        levels: tuple[tuple[Decimal, Decimal], ...],
+        mid: Decimal,
+    ) -> float:
+        """가격거리 1bp당 누적 호가금액의 10단계 평균을 계산한다."""
+
+        if not levels or mid <= 0:
+            return 0.0
+        cumulative_notional = Decimal(0)
+        slopes: list[Decimal] = []
+        for price, quantity in levels:
+            cumulative_notional += price * quantity
+            distance_bps = abs(price - mid) / mid * Decimal(10_000)
+            if distance_bps > 0:
+                slopes.append(cumulative_notional / distance_bps)
+        return float(sum(slopes, Decimal(0)) / len(slopes)) if slopes else 0.0
 
     @staticmethod
     def _book_ofi(previous: BookFrame, current: BookFrame) -> float:

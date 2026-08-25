@@ -11,6 +11,7 @@ export const strategyOrder = [
   'MULTILEVEL_MICROPRICE_MOMENTUM_V1',
   'DEPTH_ADJUSTED_OFI_IMPULSE_V1',
   'OFI_RETURN_CONFLUENCE_V1',
+  'BOOK_SLOPE_ASYMMETRY_V1',
 ] as const
 
 export const modeLabels: Record<StrategyRow['mode'], string> = {
@@ -29,6 +30,7 @@ const fallbackLabels: Record<string, string> = {
   MULTILEVEL_MICROPRICE_MOMENTUM_V1: '다중호가 · 10단계 공정가 추세',
   DEPTH_ADJUSTED_OFI_IMPULSE_V1: '깊이 OFI · 깊이보정 OFI 충격',
   OFI_RETURN_CONFLUENCE_V1: 'OFI·가격동행 · OFI·단기수익률 동행',
+  BOOK_SLOPE_ASYMMETRY_V1: '호가 기울기 · 10단계 호가 비대칭',
 }
 
 export function strategyLabel(strategy: StrategyRow | undefined, strategyId: string) {

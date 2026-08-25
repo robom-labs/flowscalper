@@ -386,7 +386,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.checksum == second.checksum
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 36
+    assert first.strategy_evaluation_count == 40
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False
@@ -811,7 +811,7 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     assert results.json()[0]["checksum"] == replay.json()["checksum"]
     analytics = client.get("/api/analytics/strategies")
     assert analytics.status_code == 200
-    assert len(analytics.json()) == 18
+    assert len(analytics.json()) == 20
     assert all(
         report["analysis_scope"] == "CURRENT_STRATEGY_VERSION" for report in analytics.json()
     )

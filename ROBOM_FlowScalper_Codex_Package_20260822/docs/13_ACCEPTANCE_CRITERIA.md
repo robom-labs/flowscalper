@@ -99,9 +99,9 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Start LIVE, demo and new Run submit immediately as `202 ControlOperation`.
 - [ ] Duplicate, conflict, ordered stage, cancel, retryable and blocked outcomes are tested.
 - [ ] Cancellation leaves no unregistered supervisor and never lies about LIVE state.
-- [ ] Nine Strategy rows and eighteen independent BASE/STRESS accounts are connected.
+- [ ] Ten Strategy rows and twenty independent BASE/STRESS accounts are connected.
 - [ ] ACTIVE, SHADOW and OFF use beginner-readable meanings without `기록만 하기`.
-- [ ] Home separates nine BASE-account totals from the Shared Capital Benchmark.
+- [ ] Home separates ten BASE-account totals from the Shared Capital Benchmark.
 - [ ] League positions default to BASE and expose no real buy/sell action.
 - [ ] Scanner order, row size and chart dimensions remain stable while data and drawers change.
 - [ ] MA, EMA, VWAP, Bollinger, RSI and MACD are selectable without changing strategy rules.

@@ -142,7 +142,13 @@ Both strategies are PAPER-only, evaluate LONG and SHORT symmetrically, use indep
 
 The strategy does not require trade imbalance as an additional gate because it isolates OFI plus recent price-path confluence rather than duplicating E/F/H. It remains EXPERIMENTAL, PAPER-only and SHADOW by default. Thresholds are starting research controls, not evidence of profitability. See ADR-019.
 
-## 5.8 Candidate scoring
+## 5.8 Strategy J — order-book slope asymmetry
+
+`BOOK_SLOPE_ASYMMETRY_V1` is a distinct SHADOW-only hypothesis. The feature averages cumulative top-10 quote notional per basis point of distance from the midpoint independently on the bid and ask. A LONG requires the ask slope at or below the prior same-symbol 15th percentile, the bid slope at or above the 50th percentile, and a bid-to-ask slope ratio of at least 1.50. SHORT applies the exact mirror image.
+
+At least 32 prior snapshots are required. The 250ms and three-second OFI, one-second aggressor flow, microprice displacement and price-response efficiency must align for 1,000ms. WARMUP, DEGRADED, SHOCK, spread above 8bp and the common cost gate reject the candidate. The history prefix excludes the current snapshot until every strategy-direction decision for that snapshot is complete. The hypothesis remains EXPERIMENTAL, PAPER-only and SHADOW by default. Research on book slope and asymmetric depth motivates measurement, not profitability. See ADR-021.
+
+## 5.9 Candidate scoring
 
 A candidate score must be decomposable:
 
@@ -161,7 +167,7 @@ candidate_score =
 
 The UI must show component scores and rejection reasons. A high score alone cannot override a hard safety gate.
 
-## 5.9 Cold-start behavior
+## 5.10 Cold-start behavior
 
 Before sufficient data:
 
@@ -170,13 +176,13 @@ Before sufficient data:
 - store all qualified and near-miss candidates, not only executed trades;
 - collect enough outcome labels for later validation.
 
-## 5.10 No forced trade count
+## 5.11 No forced trade count
 
 The research target may be several trades per day across the universe, but the engine must allow zero trades. Never lower thresholds to satisfy a count target.
 
-## 5.11 Executable cost geometry and temporal confirmation
+## 5.12 Executable cost geometry and temporal confirmation
 
-- REVERSION A/C use a minimum 0.80% structural stop distance. TREND B/D/E/F/G/H/I use a minimum 0.30% distance.
+- REVERSION A/C use a minimum 0.80% structural stop distance. TREND B/D/E/F/G/H/I/J use a minimum 0.30% distance.
 - The distance is not added risk. Risk-based sizing reduces quantity so the account risk budget remains unchanged.
 - Final eligibility is recalculated from executable bid/ask, worst entry, both-side fees, expected exit slippage and the configured split exits. Net reward-risk below 1.20 remains rejected.
 - A-D confirmation durations use venue event timestamps and reset immediately when alignment breaks.

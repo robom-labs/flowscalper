@@ -19,14 +19,15 @@
 | G | `MULTILEVEL_MICROPRICE_MOMENTUM_V1` | 다중호가 공정가 추세 | SHADOW | TREND_40_60 |
 | H | `DEPTH_ADJUSTED_OFI_IMPULSE_V1` | 깊이보정 OFI 충격 | SHADOW | TREND_40_60 |
 | I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | SHADOW | TREND_40_60 |
+| J | `BOOK_SLOPE_ASYMMETRY_V1` | 호가 기울기 비대칭 | SHADOW | TREND_40_60 |
 
 - 모든 전략은 LONG·SHORT를 독립적으로 허용하거나 끌 수 있다.
 - OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다.
-- 기본값은 9개 전략 모두 OFF가 아니고 LONG·SHORT가 켜진 상태다. A/B는 ACTIVE, C~I는 SHADOW를 유지한다.
+- 기본값은 10개 전략 모두 OFF가 아니고 LONG·SHORT가 켜진 상태다. A/B는 ACTIVE, C~J는 SHADOW를 유지한다.
 
 ## 3. 독립 계좌
 
-- 9개 전략마다 BASE·STRESS를 두어 총 18개 계좌를 생성한다.
+- 10개 전략마다 BASE·STRESS를 두어 총 20개 계좌를 생성한다.
 - account ID는 `STRATEGY_ID:PROFILE`이다.
 - 각 계좌는 1,000 USDT로 시작한다.
 - 자산, 손익, 수수료, 슬리피지, 위험, cooldown, fault를 섞지 않는다.
@@ -44,7 +45,7 @@
 - 계좌 총 명목금액은 자산의 5배, 주문은 실행가능 깊이의 2%를 상한으로 둔다.
 - 5배는 강제 레버리지가 아니라 위험기반 수량의 최대 상한이다.
 - partial fill은 실제 수량의 위험·명목금액·fee만 open으로 옮긴다.
-- 시장데이터·저장·복구의 시스템 fault는 18계좌 모두의 신규 진입을 잠근다.
+- 시장데이터·저장·복구의 시스템 fault는 20계좌 모두의 신규 진입을 잠근다.
 
 ## 5. 비용과 체결
 
@@ -65,7 +66,7 @@
 - 추세·OFI·microprice edge가 2회 연속 무너지면 runner를 `EDGE_DECAY`로 종료한다.
 - 최초 stop은 불리한 방향으로 넓히지 않는다.
 
-## 7. 신규 전략 E·F·G·H·I
+## 7. 신규 전략 E·F·G·H·I·J
 
 - E는 spread, top5·top10 imbalance, 250ms·3s OFI, 1s 체결, microprice 변위를 본다.
 - F는 방향보존 signed notional robust z, 3s·10s 체결, OFI, 가격반응, microprice를 본다.
@@ -74,12 +75,13 @@
 - G는 top10 가격 간격과 수량을 함께 반영한 공정가, 최우선 microprice, OFI, 체결과 가격반응을 750ms 확인한다.
 - H는 3s OFI를 top10 평균 깊이로 보정한 bp와 과거 prefix robust z, OFI, 체결, microprice와 가격반응을 500ms 확인한다.
 - I는 깊이보정 OFI robust z, 250ms·3s OFI와 prefix 기반 3초 수익률의 방향 동행을 1,000ms 확인한다. 기준가격은 목표 시각보다 최대 1.5초까지만 오래될 수 있고 미래 timestamp는 제외한다.
-- TREND 전략 B/D/E/F/G/H/I 구조계획은 최소 0.30% stop 거리와 3.2R target을 사용해 공통 비용 gate를 낮추지 않는다.
+- J는 top10 가격거리 1bp당 누적 명목깊이의 매수·매도 기울기를 계산한다. 반대호가 하위 15%, 지지호가 중앙값 이상, 기울기비 1.5배 이상과 OFI·체결·microprice·가격반응을 1,000ms 확인한다.
+- TREND 전략 B/D/E/F/G/H/I/J 구조계획은 최소 0.30% stop 거리와 3.2R target을 사용해 공통 비용 gate를 낮추지 않는다.
 - robust statistic은 현재 시점 이전 prefix만 사용하며 Replay도 같은 timestamp 규칙을 쓴다.
 
 ## 7.1 공통 비용후 계획과 A~D 시간 조건
 
-- REVERSION 전략 A/C는 최소 0.80%, TREND 전략 B/D/E/F/G/H/I는 최소 0.30%의 구조 stop 거리를 사용한다.
+- REVERSION 전략 A/C는 최소 0.80%, TREND 전략 B/D/E/F/G/H/I/J는 최소 0.30%의 구조 stop 거리를 사용한다.
 - 이 거리는 손실예산을 늘리지 않는다. main은 현재자산의 0.1%, League는 0.5% 위험예산에 맞춰 수량을 줄인다.
 - 최종 CandidatePlanner는 실제 bid·ask, worst entry, 양방향 fee, 예상 exit slippage와 분할청산 비중을 다시 계산하고 순손익비 1.20 미만을 거부한다.
 - A의 refill·범위 재진입과 C의 구조 재진입은 실제 event timestamp로 지속시간을 계산한다.
@@ -90,9 +92,9 @@
 
 - recovery schema v2는 Registry, snapshot timestamp, 계좌별 risk, pending map, position map, order·trade를 보존한다.
 - schema v1의 `pending_entry`, `position`, `SHADOW:` account ID를 새 map과 account ID로 변환한다.
-- 과거 snapshot에 없던 E·F·G·H·I 계좌는 1,000 USDT 빈 계좌로 생성한다.
+- 과거 snapshot에 없던 E·F·G·H·I·J 계좌는 1,000 USDT 빈 계좌로 생성한다.
 - 복구한 모든 open·pending symbol은 fresh public book 재검증 전까지 신규 진입을 잠근다.
-- dashboard backend는 `league_accounts` 18행과 열린 `league_positions`를 제공한다.
+- dashboard backend는 `league_accounts` 20행과 열린 `league_positions`를 제공한다.
 - 전략·profile별 자산, 손익, 비용, 승패, 명목금액, 레버리지, drawdown, 잠금 상태를 출력한다.
 
 ## 9. 검증 명령
@@ -108,17 +110,17 @@ uv run pytest backend/tests -q
 
 ## 10. 2차 UI·제어 연결
 
-- `league_accounts` 18행은 9개 전략 카드와 BASE/STRESS 상세의 계좌 원본이다.
+- `league_accounts` 20행은 10개 전략 카드와 BASE/STRESS 상세의 계좌 원본이다.
 - `league_positions`는 BASE/STRESS 필터, 종목·방향 필터와 차트 계획선의 원본이다.
 - ACTIVE는 main Shared Capital Benchmark와 League, SHADOW는 League만 유지한다.
 - 표시 mode를 바꾸는 UI는 기존 Registry 설정 API를 사용하며 별도 체결 엔진을 만들지 않는다.
-- 차트 지표는 화면 참고용이고 A-I 진입 threshold를 변경하지 않는다.
-- 시작·새 Run은 비동기 operation으로 제어하되 18계좌 위험·복구·원장 경계는 이 문서의 PAPER 계약을 그대로 유지한다.
+- 차트 지표는 화면 참고용이고 A-J 진입 threshold를 변경하지 않는다.
+- 시작·새 Run은 비동기 operation으로 제어하되 20계좌 위험·복구·원장 경계는 이 문서의 PAPER 계약을 그대로 유지한다.
 
 ## 11. 3차 사용자 표현과 종목별 성과
 
 - 사용자 메뉴와 화면에서는 `전략`으로 줄여 표시하고, 내부 Registry·DB·개발문서의 Strategy League 식별자는 호환을 위해 유지한다.
-- 전략 설정은 9개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. A-I threshold와 위험값은 바꾸지 않는다.
+- 전략 설정은 10개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. A-J threshold와 위험값은 바꾸지 않는다.
 - `전략별 종목 성과`는 BASE/STRESS를 분리하고 실제 완료 PAPER 거래만 집계한다. 30건 미만 조합은 관찰 표본이며 순위에서 제외한다.
 - 전략 통계는 독립 Strategy League 거래만 집계하고 공동계좌 거래를 같은 전략 표본에 중복 합산하지 않는다.
 - 상세 화면은 승·패·보합, 승률 95% 범위, 기대값, Profit Factor, 비용, 낙폭과 보유시간을 표시한다.
