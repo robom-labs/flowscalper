@@ -41,7 +41,7 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
     assert STRATEGY_IDS == registry.strategy_ids
     assert STRATEGY_VERSION.startswith("+".join(registry.strategy_ids) + "@")
     assert [row["mode"] for row in registry.rows()] == [
-        "SHADOW",
+        "OFF",
         "ACTIVE",
         "SHADOW",
         "SHADOW",
@@ -80,7 +80,10 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
     )
     assert not any(
         item.decision.strategy_id
-        in {"QUEUE_MICROPRICE_MOMENTUM_V1", "DEPTH_ADJUSTED_OFI_IMPULSE_V1"}
+        in {
+            "QUEUE_MICROPRICE_MOMENTUM_V1",
+            "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+        }
         for item in decisions
     )
 
@@ -114,7 +117,7 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
         Regime.RANGE,
     )
 
-    assert len(decisions) == 16
+    assert len(decisions) == 14
     assert robust_calls == 4
     assert percentile_calls == 5
 
@@ -276,10 +279,14 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
     )
 
     decisions = runtime.strategy_decisions()
-    assert runtime.strategy_evaluation_count == 16
+    assert runtime.strategy_evaluation_count == 14
     assert {decision.strategy_id for decision in decisions} == set(
         runtime.strategy_registry.strategy_ids
-    ) - {"QUEUE_MICROPRICE_MOMENTUM_V1", "DEPTH_ADJUSTED_OFI_IMPULSE_V1"}
+    ) - {
+        "LSA_REVERSAL_V1",
+        "QUEUE_MICROPRICE_MOMENTUM_V1",
+        "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+    }
     assert all(decision.tp_probability is None for decision in decisions)
     assert len(runtime.dashboard()["shadow_accounts"]) == 20
     assert len(runtime.dashboard()["league_accounts"]) == 20

@@ -405,7 +405,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.checksum == second.checksum
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 32
+    assert first.strategy_evaluation_count == 28
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False
@@ -821,6 +821,16 @@ def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(
     assert ledger.count("trades") == 1
     assert ledger.count("shadow_trades") == 2
     assert ledger.count("execution_audit") > 0
+    persisted_main_audit_times = [
+        (str(row["event"]), int(str(row["ts_ms"])))
+        for row in ledger.list_execution_audits(runtime.run_id)
+        if row.get("account_id") == runtime.paper_portfolio.main.account_id
+    ]
+    assert ("ENTRY_FILLED", 1_250) in persisted_main_audit_times
+    assert ("TAKE_PROFIT_EXIT_PENDING", 2_000) in persisted_main_audit_times
+    assert ("EXIT_FILL", 2_250) in persisted_main_audit_times
+    assert ("TAKE_PROFIT_EXIT_PENDING", 3_000) in persisted_main_audit_times
+    assert ("EXIT_FILL", 3_250) in persisted_main_audit_times
     trade = ledger.list_trades(runtime.run_id)[0]
     run = ledger.get_run(runtime.run_id)
     assert run is not None

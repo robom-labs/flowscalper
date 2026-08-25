@@ -20,6 +20,9 @@ from backend.app.domain.market import TradeTick
 from backend.app.domain.models import Side, Venue
 from backend.app.features import BookFrame, FeatureEngine, FeatureInputError, FeatureSnapshot
 from backend.app.regime import Regime, RegimeClassifier
+from backend.app.strategies.base import CandidateStatus
+from backend.app.strategies.registry import StrategyMode, StrategyRegistry
+from backend.app.strategies.runtime_evaluator import StrategySignalEvaluator
 from backend.app.strategies.statistics import robust_z_from_sorted
 
 DEFAULT_TRAIN_RUNS = (
@@ -244,6 +247,9 @@ VARIANTS = (
     StrategyVariant("DEPTH_OFI_COST_AWARE", 1_000, _depth_cost_aware),
     StrategyVariant("DEPTH_OFI_STRICT_TREND", 1_500, _depth_strict),
 )
+RUNTIME_VARIANT_NAMES = tuple(
+    f"RUNTIME_{strategy_id}" for strategy_id in StrategyRegistry().strategy_ids
+)
 
 
 def _event_rows(run_dir: Path) -> Iterator[dict[str, Any]]:
@@ -320,6 +326,15 @@ def _resolve_outcome(signal: ResearchSignal, frame: BookFrame) -> ResearchOutcom
 def research_run(run_id: str, run_dir: Path, *, horizon_ms: int) -> list[ResearchOutcome]:
     features: dict[str, FeatureEngine] = defaultdict(FeatureEngine)
     regimes = RegimeClassifier()
+    runtime_registry = StrategyRegistry()
+    for strategy_id in runtime_registry.strategy_ids:
+        runtime_registry.configure(
+            strategy_id,
+            mode=StrategyMode.SHADOW,
+            long_enabled=True,
+            short_enabled=True,
+        )
+    runtime_evaluator = StrategySignalEvaluator()
     history: dict[str, _RollingDepthAdjustedHistory] = defaultdict(_RollingDepthAdjustedHistory)
     last_evaluation_ms: dict[str, int] = {}
     alignment_started_ms: dict[tuple[str, str, Side], int] = {}
@@ -395,6 +410,33 @@ def research_run(run_id: str, run_dir: Path, *, horizon_ms: int) -> list[Researc
                 )
                 pending[(run_id, symbol)].append(signal)
                 cooldown_until_ms[key] = signal.target_ts_ms
+        for evaluated in runtime_evaluator.evaluate(
+            runtime_registry,
+            snapshot,
+            regime,
+        ):
+            if evaluated.decision.status is not CandidateStatus.QUALIFIED:
+                continue
+            variant_name = f"RUNTIME_{evaluated.decision.strategy_id}"
+            key = (variant_name, symbol, evaluated.decision.side)
+            if snapshot.ts_ms < cooldown_until_ms.get(key, 0):
+                continue
+            entry_price = float(
+                frame.asks[0][0]
+                if evaluated.decision.side is Side.LONG
+                else frame.bids[0][0]
+            )
+            signal = ResearchSignal(
+                variant=variant_name,
+                run_id=run_id,
+                symbol=symbol,
+                side=evaluated.decision.side,
+                ts_ms=snapshot.ts_ms,
+                entry_price=entry_price,
+                target_ts_ms=snapshot.ts_ms + horizon_ms,
+            )
+            pending[(run_id, symbol)].append(signal)
+            cooldown_until_ms[key] = signal.target_ts_ms
         symbol_history.append(snapshot.depth_adjusted_ofi_3s_bps)
     return outcomes
 
@@ -427,9 +469,10 @@ def _profile(values: list[float]) -> dict[str, Any]:
 
 def summarize(outcomes: list[ResearchOutcome]) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    for variant in VARIANTS:
-        selected = [row for row in outcomes if row.variant == variant.name]
-        result[variant.name] = {
+    variant_names = tuple(variant.name for variant in VARIANTS) + RUNTIME_VARIANT_NAMES
+    for variant_name in variant_names:
+        selected = [row for row in outcomes if row.variant == variant_name]
+        result[variant_name] = {
             "gross": _profile([row.gross_bps for row in selected]),
             "base": _profile([row.base_net_bps for row in selected]),
             "stress": _profile([row.stress_net_bps for row in selected]),
@@ -457,6 +500,7 @@ def main() -> None:
         "method": {
             "signal_lookahead": False,
             "chronological_split": True,
+            "runtime_strategy_baselines": list(RUNTIME_VARIANT_NAMES),
             "entry_exit": "actual ask/bid top of reconstructed 10-level book",
             "horizon_seconds": args.horizon_seconds,
             "base_cost_bps": 13,

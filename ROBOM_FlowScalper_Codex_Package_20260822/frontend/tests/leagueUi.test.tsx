@@ -19,9 +19,9 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(10)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('10개 감시 · 검증 중지 0개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getAllByText('준비 중')).toHaveLength(10)
-  expect([...document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')].every((button) => button.textContent?.includes('모의 중'))).toBe(true)
+  expect(screen.getByText('7개 감시 · 검증 중지 3개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getAllByText('준비 중')).toHaveLength(7)
+  expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(3)
 
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[0])
   expect(screen.getByRole('dialog', { name: '전략 상세 정보' })).toBeInTheDocument()
@@ -35,13 +35,13 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
 test('distinguishes healthy condition waiting, open PAPER management and faults', () => {
   const rows = strategies.map((strategy, index) => ({
     ...strategy,
-    evaluated_paths: index === 0 ? 24 : strategy.evaluated_paths,
-    latest_status: index === 0 ? 'REJECTED' : strategy.latest_status,
-    latest_reasons: index === 0 ? ['AGGRESSOR_FLOW_NOT_ALIGNED', 'QUEUE_ALIGNMENT_NOT_PERSISTENT'] : strategy.latest_reasons,
+    evaluated_paths: index === 1 ? 24 : strategy.evaluated_paths,
+    latest_status: index === 1 ? 'REJECTED' : strategy.latest_status,
+    latest_reasons: index === 1 ? ['AGGRESSOR_FLOW_NOT_ALIGNED', 'QUEUE_ALIGNMENT_NOT_PERSISTENT'] : strategy.latest_reasons,
   }))
   const accounts = leagueAccounts.map((account) => ({ ...account }))
-  const firstBase = accounts.find((account) => account.strategy_id === rows[0].strategy_id && account.profile === 'BASE')
-  const secondStress = accounts.find((account) => account.strategy_id === rows[1].strategy_id && account.profile === 'STRESS')
+  const firstBase = accounts.find((account) => account.strategy_id === rows[1].strategy_id && account.profile === 'BASE')
+  const secondStress = accounts.find((account) => account.strategy_id === rows[2].strategy_id && account.profile === 'STRESS')
   if (!firstBase || !secondStress) throw new Error('strategy fixture account missing')
   firstBase.open_positions = 1
   secondStress.faulted = true
@@ -50,7 +50,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
 
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
-  expect(screen.getByText('9개 감시 · 검증 중지 0개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('6개 감시 · 검증 중지 3개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 

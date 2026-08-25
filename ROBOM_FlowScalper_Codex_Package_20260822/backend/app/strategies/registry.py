@@ -81,8 +81,10 @@ class StrategyRegistry:
                 strategy_id="LSA_REVERSAL_V1",
                 display_name_ko="급락·급등 쓸기 반전",
                 short_name="LSA 반전",
-                summary_ko="쓸기·흡수·호가 재충전·범위 복귀를 확인합니다.",
-                stability=StrategyStability.STABLE,
+                summary_ko=(
+                    "반전 가설을 연구했으나 비용후 train·holdout 실패로 기본 중지됐습니다."
+                ),
+                stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=LiquiditySweepStrategy(),
                 exit_style=ExitStyle.REVERSION_70_30,
@@ -187,6 +189,7 @@ class StrategyRegistry:
         self._descriptors = {item.strategy_id: item for item in descriptors}
         active_ids = {"CBR_CONTINUATION_V1"}
         retired_ids = {
+            "LSA_REVERSAL_V1",
             "QUEUE_MICROPRICE_MOMENTUM_V1",
             "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
         }

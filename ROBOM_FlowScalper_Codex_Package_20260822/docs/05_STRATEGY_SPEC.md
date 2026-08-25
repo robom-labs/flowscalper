@@ -136,7 +136,7 @@ Apply symmetric logic below support.
 
 Both strategies are PAPER-only, evaluate LONG and SHORT symmetrically, use independent BASE/STRESS accounts and cannot enter shared capital unless a user explicitly changes the mode after adequate evidence. The starting thresholds are research controls, not profitability claims. G remains SHADOW. H's old trades and manual controls remain available even though new entry is OFF by default. See ADR-016 and ADR-032.
 
-`QUEUE_MICROPRICE_MOMENTUM_V1` strategy E is also `OFF` by default under ADR-032 because its chronological train and later holdout expectancy remained negative after actual bid·ask and conservative costs. Strategy A is SHADOW and Strategy B is the only default ACTIVE shared-main candidate. These are reversible PAPER controls, not deleted strategies or profitability claims.
+`QUEUE_MICROPRICE_MOMENTUM_V1` strategy E is also `OFF` by default under ADR-032 because its chronological train and later holdout expectancy remained negative after actual bid·ask and conservative costs. Strategy A is `OFF` under ADR-034 after the same no-lookahead runtime evaluator produced 25 train and 10 later holdout signals with negative BASE expectancy and Profit Factor below one. Strategy B is the only default ACTIVE shared-main candidate. These are reversible PAPER controls, not deleted strategies or profitability claims.
 
 ## 5.7 Strategy I — OFI and trailing-return confluence
 
