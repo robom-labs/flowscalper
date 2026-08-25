@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-25T17:48:50Z",
+  "generated_at_utc": "2026-08-25T17:57:48Z",
   "wave": 34,
   "status": "COMPLETE_WITH_LIMITS",
   "source": {
     "baseline_main_commit": "de10389c76f3486aa4e1125e1a6da434f6f9a173",
     "implementation_commit": "b974d856eefbd1ffe71cf6fdec49f6c1018c8947",
-    "final_commit": "fb15494c50413650f06ec2fbd936534bdcc78ceb",
+    "final_commit": "f571487cb8e998695de0c62d7caeed7857edddb3",
     "branch": "codex/flowscalper-wave34-full-audit",
     "working_tree_clean": true
   },
@@ -197,8 +197,8 @@
     "auth_required": false
   },
   "github": {
-    "main_commit": null,
-    "actions_run": null,
-    "actions_status": "NOT_RUN"
+    "main_commit": "f571487cb8e998695de0c62d7caeed7857edddb3",
+    "actions_run": 32880481225,
+    "actions_status": "PASS"
   }
 }

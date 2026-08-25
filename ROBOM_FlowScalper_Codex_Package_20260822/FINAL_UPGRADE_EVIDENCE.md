@@ -1478,6 +1478,6 @@ macOS LaunchAgent는 항상 `READY`로 부팅하고, 기존 archive 함수는 RE
 | 실제 주문·private API·secret·wallet·런타임 AI | PASS | 모두 0이며 auth_required false다. |
 | 전략 수익성 | NOT_PROVEN | 연구 후보 OOS와 현재 자연표본이 작거나 비용후 음수다. 30건 전에 순위를 매기지 않는다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 배포 ZIP을 만들지 않았다. |
-| GitHub main / Actions | NOT_RUN | 이 문단 작성 시점에는 아직 push 전이다. push와 Actions 완료 뒤 같은 섹션을 갱신한다. |
+| GitHub main / Actions | PASS | 실행증거 commit `f571487cb8e998695de0c62d7caeed7857edddb3`을 main에 push했다. [Actions 32880481225](https://github.com/robom-labs/flowscalper/actions/runs/32880481225)의 validate 1분4초, browser 1분58초와 실제 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드가 모두 PASS했다. |
 
-기계판독 통합 증거는 `evidence/WAVE34_FULL_AUDIT_QA.json`, soak는 `evidence/PHASE03_SOAK_30M.json`, 결정 근거는 ADR-038·ADR-039·ADR-040이다. 구현 기준 commit은 `fb15494c50413650f06ec2fbd936534bdcc78ceb`이다.
+기계판독 통합 증거는 `evidence/WAVE34_FULL_AUDIT_QA.json`, soak는 `evidence/PHASE03_SOAK_30M.json`, 결정 근거는 ADR-038·ADR-039·ADR-040이다. 구현 기준 commit은 `fb15494c50413650f06ec2fbd936534bdcc78ceb`, 실행증거 기준 commit은 `f571487cb8e998695de0c62d7caeed7857edddb3`이다.
