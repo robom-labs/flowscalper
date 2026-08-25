@@ -563,6 +563,8 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert runtime.paused is True
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" in runtime.runtime_health_flags
+    assert supervisor.telemetry.critical_lag_incident_count == 1
+    assert supervisor.telemetry.critical_lag_last_started_ts_ms == 1_000
     safety_status = runtime.dashboard()["operation_status"]
     assert safety_status["state"] == "SAFETY_WAITING"
     assert safety_status["market_observation_active"] is True
@@ -571,6 +573,7 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     runtime.set_paused(False)
     assert runtime.paused is True
 
+    clock.advance_ms(2_500)
     for sequence in range(2, 2_003):
         supervisor._observe(
             _event(runtime.run_id, "BTCUSDT", clock, sequence, lag_ms=5).model_copy(
@@ -582,6 +585,9 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     runtime.ingest_live_event(recovered_depth)
 
     assert supervisor.telemetry.entry_locked is False
+    assert supervisor.telemetry.critical_lag_last_recovered_ts_ms == 3_500
+    assert supervisor.telemetry.critical_lag_last_duration_ms == 2_500
+    assert supervisor.telemetry.critical_lag_max_duration_ms == 2_500
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert runtime.paused is False
@@ -594,6 +600,27 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     manual_status = runtime.dashboard()["operation_status"]
     assert manual_status["state"] == "MANUALLY_PAUSED"
     assert manual_status["recommended_action"] == "RESUME"
+
+
+def test_supervisor_records_receive_gap_without_changing_safety_thresholds() -> None:
+    clock = DeterministicClock(current_utc_ms=10_000)
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id="run-event-gap",
+        clock=clock,
+        sink=lambda _: None,
+    )
+
+    supervisor._observe(_event("run-event-gap", "BTCUSDT", clock, 0))
+    clock.advance_ms(750)
+    supervisor._observe(_event("run-event-gap", "BTCUSDT", clock, 0))
+
+    diagnostics = supervisor.telemetry.as_dict()
+    assert diagnostics["event_gap_last_ms"] == 750
+    assert diagnostics["event_gap_max_ms"] == 750
+    assert diagnostics["event_gap_over_500ms_count"] == 1
+    assert diagnostics["event_gap_last_over_500ms_ts_ms"] == 10_750
+    assert diagnostics["critical_lag_threshold_ms"] == 1_500
 
 
 def test_wide_scanner_lag_is_visible_but_does_not_lock_executable_path() -> None:

@@ -994,3 +994,48 @@ Wave 23 구현 commit은 `a8a04b8c4aedfd092a13ce199d9925f2cce5505a`이다. 같�
 기계판독 증거는 `evidence/WAVE25_STORAGE_RUNTIME_UI_QA.json`, 상세 결정은 ADR-024·ADR-025·ADR-026이다. 필수 로컬 회귀·실제 화면·짧은 실제 서비스 검증의 미해결 FAIL과 BLOCKED는 현재 0이다. 전략 수익성, 6시간·24시간과 Release ZIP은 `NOT_PROVEN` 또는 `NOT_RUN`으로 분리했다.
 
 Wave 25 구현 commit은 `7d4175d53256bbc9735b2e0bc875ef2d7b5ee87e`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E가 모두 통과했다.
+
+## 31. 런타임 지연 사건 진단·종료 차트 정리·A~J 실동작 재검증
+
+2026-08-25 실제 LIVE PAPER에서 순간 지연이 회복된 뒤 정확한 발생시각과 지속시간을 남길 수 없던 관측 공백을 수정했다. 같은 Run에서 포지션이 자연 종료된 뒤 기존 `새 PAPER 진입` 알림이 현재 거래처럼 남을 수 있는 화면 모순도 종료 안내와 자동 정리로 교체했다. 전략 임계값·비용·TP·SL·위험과 실제 주문 0 경계는 바꾸지 않았다.
+
+### 실제 차트와 전략 감시
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 실제 시작과 Run | PASS | 새 빌드 재시작 뒤 앱 내 브라우저에서 `자동 관찰 시작`을 한 번 눌렀다. `run-4c905f26da0d`가 LIVE·RUNNING으로 진행됐고 공동계좌는 1,000 USDT, 거래·손익·비용 0을 유지했다. |
+| 현재 PAPER 차트 | PASS | 자연 발생한 BTCUSDT 깊이보정 OFI LONG BASE/STRESS와 ENAUSDT Queue SHORT BASE/STRESS를 진행 목록에서 확인했다. 선택한 BTCUSDT 차트에는 상승·전략·BASE와 entry 80,265, TP1 80,638.31, TP2 81,011.61, SL 80,024.16 보호선이 즉시 표시됐다. |
+| 종료 표시 정리 | PASS | 자연 종료 뒤 `focus_positions`가 0이 되자 현재 PAPER banner·선택 포지션은 사라졌다. 화면의 `새 PAPER 진입`은 거래 알림이 아니라 새 진입 기능의 작동 상태였고, 특정 종목의 과거 진입 알림은 남지 않았다. 같은 Run 종료 전이를 `PAPER 거래 종료 … 기록에서 확인`으로 바꾸고 15초 뒤 정리하는 회귀 테스트를 추가했다. |
+| A~J 전체 상태 | PASS | A/B ACTIVE, C~J SHADOW, A~J LONG·SHORT 켜짐, 10개 각각 12종목×양방향 24경로를 평가했고 계정 fault는 0이었다. 진입하지 않은 전략은 `REJECTED`와 시장방향·체결흐름·호가·가격구조·지속성의 최근 대기 이유를 표시했다. 조용한 상태는 고장이 아니라 엄격조건 정상 대기였다. |
+| 자연 shadow 원장 | PASS_WITH_LOSS | Queue BASE/STRESS 각 3건, Depth-adjusted OFI BASE/STRESS 각 1건으로 총 8건이 완료됐다. 보유 6.122~37.832초, 3초 미만 0건, 10초 미만 EDGE_DECAY 0건이다. 6.122초 2건은 초기 SL 도달 STOP이고 EDGE_DECAY 6건은 13.682~37.832초였다. 작동 증거이지 수익성 증거가 아니다. |
+
+### 런타임 진단과 저장 리플레이
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 사건 관측값 | PASS | 임계 실행호가 지연의 사건 수·시작·복구·최근/최장 지속시간, 최근/최대 이벤트 수신 공백·500ms 초과 횟수, 저장 flush 최근완료·최대·2초 이상 발생시각을 시스템 고급진단에 추가했다. 기존 1,500ms fail-closed 기준은 그대로다. |
+| 90초 LIVE 표본 | PASS | event 4,791→13,850, 실행호가 p95 31.6~37.6ms, 공개체결 p95 25~33ms, queue 0, 진입잠금 false, critical 사건·fault 0이었다. 포지션은 0→2→4→2로 자연 변화했다. |
+| replay 병행 LIVE | PASS | 저장 `run-f14214b3b1dd`의 15,045 이벤트를 별도 저우선순위 process로 replay하는 동안 대시보드 API는 16ms, 완료 뒤 실행호가/체결 p95 43.143/46.453ms, queue 0, critical·진입잠금·비계획 reconnect·sequence gap·drop·persistence fault 0이었다. 수신 공백 최대 610.408ms 14회와 저장 flush 최대 3,502ms 2회는 진단값으로 남겼으며 실행경로 임계사건과 동반되지 않았다. |
+| replay 결정성 | PASS | checksum `5880f66a673ad64d01dec42853d59e3208497fc6ab6ba6520737b7553bccc94b`, 69,380 전략평가, 9 적격, 8 후보계획, main 0, shadow 9가 같은 A~J 구현 revision의 이전 반복 결과들과 일치했다. 서로 다른 과거 전략 revision의 checksum과는 비교하지 않았다. |
+
+### 신규 전략 후보 결정
+
+공식 지정가호가장 복원력과 깊이정규화 OFI 연구에서 유동성 재충전 실패 추세 후보 K를 도출했다. 12개 저장 `LIVE_PUBLIC` Run에서 현재 snapshot 이전 정보만 사용하고 750ms 지속, 실제 ask·bid 진입/종료와 15초 horizon을 적용했다. train 88개는 총수익 평균 -0.196bp, BASE 비용후 -13.196bp였고 최신 holdout 25개도 총수익 평균 1.46bp, BASE 비용후 -11.54bp였다. 양쪽에서 13bp 비용을 넘은 후보는 각각 2개뿐이었다. 기준을 낮추지 않고 `REJECTED_NOT_ADDED`로 기록했다.
+
+### 자동검증과 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 313 passed |
+| frontend Vitest | PASS | 12 files, 45 passed |
+| Playwright | PASS | 실제 Chromium desktop·tablet·mobile 3 passed |
+| Ruff / mypy | PASS | 오류 0 / 82 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build | PASS | Vite 48 modules, PAPER build safety PASS |
+| security / repository hygiene | PASS | 115 source, violation·secret-like·real-order path 0 / 위반 0 |
+| 전략 수익성 | NOT_PROVEN | 현재버전 표본은 전략별로 0~76건이며 비용후 손실 전략이 있다. 30건 미만은 순위를 매기지 않고, 표본이 있는 전략도 수익성이 입증됐다고 표현하지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 90초와 replay 병행 표본을 멀티시간 수용결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | PENDING | 로컬 구현·증거 commit 전 상태다. push와 동일 SHA Actions 완료 뒤 실제 결과로 갱신한다. |
+
+기계판독 증거는 `evidence/WAVE26_INCIDENT_STRATEGY_UI_QA.json`, 상세 결정은 ADR-027이다. 필수 로컬 회귀·실제 화면·짧은 실제 서비스·저장 replay 검증의 미해결 FAIL과 BLOCKED는 현재 0이다. 전략 수익성, 6시간·24시간과 Release ZIP은 `NOT_PROVEN` 또는 `NOT_RUN`으로 분리했다.

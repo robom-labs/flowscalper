@@ -201,12 +201,19 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
     }
     if (!focusKey || !lastFocus.current || closedReview) return
     const completed = { ...lastFocus.current, stage: 'CLOSED', stage_ko: '거래 종료', management_reason: '최종 PAPER 결과 확인', management_reason_ko: '최종 PAPER 결과 확인', remaining_quantity: '0' }
-    const reviewTimer = window.setTimeout(() => setClosedReview(completed), 0)
+    const reviewTimer = window.setTimeout(() => {
+      setClosedReview(completed)
+      setFocusNotice(`PAPER 거래 종료 · ${completed.symbol} · ${completed.strategy_display_name_ko} · ${completed.profile} · 기록에서 확인`)
+    }, 0)
     return () => window.clearTimeout(reviewTimer)
   }, [closedReview, focus, focusKey])
   useEffect(() => {
     if (!closedReview || focusLocked) return
-    const timer = window.setTimeout(() => { setClosedReview(null); setFocusKey(null) }, 15_000)
+    const timer = window.setTimeout(() => {
+      setClosedReview(null)
+      setFocusKey(null)
+      setFocusNotice((current) => current.startsWith('PAPER 거래 종료') ? '' : current)
+    }, 15_000)
     return () => window.clearTimeout(timer)
   }, [closedReview, focusLocked])
   const displayedFocus = focus ?? closedReview

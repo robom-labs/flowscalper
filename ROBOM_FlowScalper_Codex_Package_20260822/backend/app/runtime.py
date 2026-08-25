@@ -64,6 +64,7 @@ from backend.app.strategies.shadow import ShadowLedger
 
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 2_000
 _MARKET_PERSISTENCE_BATCH_SIZE = 2_000
+_SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
 _PERSISTED_CANDLE_INTERVALS = frozenset({1, 180})
 _LIVE_DEEP_SYMBOL_TARGET = 12
 _LIVE_DASHBOARD_EVENT_LIMIT = 512
@@ -147,6 +148,10 @@ class PaperRuntime:
     _persistence_flush_count: int = 0
     _persistence_flush_last_ms: float = 0.0
     _persistence_flush_max_ms: float = 0.0
+    _persistence_flush_last_completed_ts_ms: int | None = None
+    _persistence_flush_max_ts_ms: int | None = None
+    _persistence_flush_slow_count: int = 0
+    _persistence_flush_last_slow_ts_ms: int | None = None
     _persistence_worker_warmed: bool = False
     _persistence_worker_warm_ms: float = 0.0
     _historical_live_trades: tuple[dict[str, object], ...] = field(
@@ -501,6 +506,12 @@ class PaperRuntime:
             "persistence_flush_count": self._persistence_flush_count,
             "persistence_flush_last_ms": round(self._persistence_flush_last_ms, 3),
             "persistence_flush_max_ms": round(self._persistence_flush_max_ms, 3),
+            "persistence_flush_last_completed_ts_ms": (
+                self._persistence_flush_last_completed_ts_ms
+            ),
+            "persistence_flush_max_ts_ms": self._persistence_flush_max_ts_ms,
+            "persistence_flush_slow_count": self._persistence_flush_slow_count,
+            "persistence_flush_last_slow_ts_ms": self._persistence_flush_last_slow_ts_ms,
             "persistence_worker_warmed": self._persistence_worker_warmed,
             "persistence_worker_warm_ms": round(self._persistence_worker_warm_ms, 3),
             "event_memory_count": len(self._events),
@@ -2384,12 +2395,16 @@ class PaperRuntime:
             started = asyncio.get_running_loop().time()
             await self._flush_persistence_isolated(limit)
             elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+            completed_ts_ms = self.clock.utc_ms()
             self._persistence_flush_count += 1
             self._persistence_flush_last_ms = elapsed_ms
-            self._persistence_flush_max_ms = max(
-                self._persistence_flush_max_ms,
-                elapsed_ms,
-            )
+            self._persistence_flush_last_completed_ts_ms = completed_ts_ms
+            if elapsed_ms > self._persistence_flush_max_ms:
+                self._persistence_flush_max_ms = elapsed_ms
+                self._persistence_flush_max_ts_ms = completed_ts_ms
+            if elapsed_ms >= _SLOW_PERSISTENCE_FLUSH_MS:
+                self._persistence_flush_slow_count += 1
+                self._persistence_flush_last_slow_ts_ms = completed_ts_ms
 
         while not stop.is_set():
             with self._persistence_lock:

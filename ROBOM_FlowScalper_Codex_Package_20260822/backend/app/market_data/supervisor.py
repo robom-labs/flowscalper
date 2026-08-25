@@ -113,6 +113,16 @@ class SupervisorTelemetry:
     critical_lag_threshold_ms: float = 1_500.0
     critical_lag_event_count: int = 0
     critical_lag_active: bool = False
+    critical_lag_incident_count: int = 0
+    critical_lag_last_started_ts_ms: int | None = None
+    critical_lag_last_recovered_ts_ms: int | None = None
+    critical_lag_last_duration_ms: float | None = None
+    critical_lag_max_duration_ms: float = 0.0
+    _critical_lag_started_monotonic_ns: int | None = None
+    event_gap_last_ms: float = 0.0
+    event_gap_max_ms: float = 0.0
+    event_gap_over_500ms_count: int = 0
+    event_gap_last_over_500ms_ts_ms: int | None = None
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     trade_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     wide_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
@@ -129,6 +139,45 @@ class SupervisorTelemetry:
     venue_clock_offset_ms: float = 0.0
     venue_clock_rtt_ms: float = 0.0
     clock_sync_status: str = "UNVERIFIED"
+
+    def observe_event_gap(self, receive_monotonic_ns: int, observed_ts_ms: int) -> None:
+        """연속 공개 이벤트의 수신 공백을 네트워크·프로세스 정지 진단용으로 남긴다."""
+
+        previous = self.last_event_monotonic_ns
+        if previous is None or receive_monotonic_ns < previous:
+            return
+        gap_ms = (receive_monotonic_ns - previous) / 1_000_000
+        self.event_gap_last_ms = gap_ms
+        self.event_gap_max_ms = max(self.event_gap_max_ms, gap_ms)
+        if gap_ms > 500:
+            self.event_gap_over_500ms_count += 1
+            self.event_gap_last_over_500ms_ts_ms = observed_ts_ms
+
+    def observe_critical_lag_state(
+        self,
+        *,
+        observed_monotonic_ns: int,
+        observed_ts_ms: int,
+    ) -> None:
+        """P95 안전 잠금의 시작·복구 시각과 지속시간을 전이마다 한 번 기록한다."""
+
+        if self.critical_lag_active:
+            if self._critical_lag_started_monotonic_ns is None:
+                self._critical_lag_started_monotonic_ns = observed_monotonic_ns
+                self.critical_lag_incident_count += 1
+                self.critical_lag_last_started_ts_ms = observed_ts_ms
+            return
+        started = self._critical_lag_started_monotonic_ns
+        if started is None:
+            return
+        duration_ms = max(0.0, (observed_monotonic_ns - started) / 1_000_000)
+        self.critical_lag_last_recovered_ts_ms = observed_ts_ms
+        self.critical_lag_last_duration_ms = duration_ms
+        self.critical_lag_max_duration_ms = max(
+            self.critical_lag_max_duration_ms,
+            duration_ms,
+        )
+        self._critical_lag_started_monotonic_ns = None
 
     def observe_lag(self, lag_ms: float, *, executable_path: bool) -> None:
         """초기 1·4·16표본과 이후 제한 주기에만 지연 분위수를 갱신한다."""
@@ -221,6 +270,15 @@ class SupervisorTelemetry:
             "entry_locked": self.entry_locked,
             "critical_lag_threshold_ms": self.critical_lag_threshold_ms,
             "critical_lag_event_count": self.critical_lag_event_count,
+            "critical_lag_incident_count": self.critical_lag_incident_count,
+            "critical_lag_last_started_ts_ms": self.critical_lag_last_started_ts_ms,
+            "critical_lag_last_recovered_ts_ms": self.critical_lag_last_recovered_ts_ms,
+            "critical_lag_last_duration_ms": self.critical_lag_last_duration_ms,
+            "critical_lag_max_duration_ms": round(self.critical_lag_max_duration_ms, 3),
+            "event_gap_last_ms": round(self.event_gap_last_ms, 3),
+            "event_gap_max_ms": round(self.event_gap_max_ms, 3),
+            "event_gap_over_500ms_count": self.event_gap_over_500ms_count,
+            "event_gap_last_over_500ms_ts_ms": self.event_gap_last_over_500ms_ts_ms,
             "lag_percentile_refresh_count": self.lag_percentile_refresh_count,
             "critical_lag_active": self.critical_lag_active,
             "last_error": self.last_error,
@@ -383,6 +441,8 @@ class PersistentPublicSupervisor:
                 event.data.get("source_event_count", 1)
             )
             self.telemetry.trade_output_event_count += 1
+        observed_ts_ms = self.clock.utc_ms()
+        self.telemetry.observe_event_gap(event.receive_monotonic_ns, observed_ts_ms)
         self.telemetry.last_event_monotonic_ns = event.receive_monotonic_ns
         if event.quality.lag_ms is not None:
             executable_path = event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}
@@ -396,6 +456,10 @@ class PersistentPublicSupervisor:
                     executable_path=executable_path,
                 )
             if executable_path:
+                self.telemetry.observe_critical_lag_state(
+                    observed_monotonic_ns=event.receive_monotonic_ns,
+                    observed_ts_ms=observed_ts_ms,
+                )
                 if event.quality.lag_ms > self.telemetry.critical_lag_threshold_ms:
                     self.telemetry.critical_lag_event_count += 1
         flags = set(event.quality.flags)

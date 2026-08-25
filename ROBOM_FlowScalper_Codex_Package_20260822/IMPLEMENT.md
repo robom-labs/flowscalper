@@ -171,3 +171,14 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 5. Show each strategy's current monitor state, last beginner-readable wait reasons and evaluated path count. Distinguish a normal strict-condition wait from safety wait, fault and OFF.
 6. Test the supervisor and runtime stale-trade boundary, frontend position and strategy states, production build and desktop·tablet·mobile Chromium flows.
 7. Restart the actual localhost service, click start once, inspect live positions and every strategy row, sample lag and health continuously, and record the exact evidence without claiming profitability or a 6-hour·24-hour soak.
+
+## Runtime incident observability and closed-position clarity Wave
+
+1. Keep bid·ask execution latency, public trade latency and wide scanner latency separate. Add incident start, recovery, duration and event-receive-gap diagnostics without changing the 1,500ms fail-closed threshold.
+2. Timestamp every persistence flush maximum and every flush taking at least 2,000ms. Keep the persistence worker isolated and diagnose correlation before attributing a market stall to storage.
+3. When a focused PAPER position closes inside the same LIVE Run, replace the entry notice with a short closed-review notice and then clear it. Never leave a closed trade looking open on the chart.
+4. Exercise A~J in the actual browser and API. Treat a strict-condition rejection with evaluated paths and no account fault as normal waiting, not a broken strategy.
+5. Inspect actual immutable shadow trades for holding time and exit reason. Preserve immediate STOP/TP and system safety exits; require the existing 10-second grace only for ordinary EDGE_DECAY.
+6. Research each new microstructure hypothesis with stored `LIVE_PUBLIC` data, an earlier train group and later holdout group, conservative bid·ask and BASE/STRESS costs. Reject a candidate whose net result does not survive costs.
+7. Replay a stored public-market Run through the same Registry, candidate, execution and accounting path. Compare checksum and counts only against results produced by the same strategy implementation revision.
+8. Record short-run performance as an observation only. Keep strategy profitability, six-hour, 24-hour and Release ZIP as `NOT_PROVEN` or `NOT_RUN` unless the exact gate was completed.

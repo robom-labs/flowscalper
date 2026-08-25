@@ -590,6 +590,8 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
         {"symbol": "BTCUSDT", "event_count": 2_000}
     ]
     assert runtime._persistence_flush_count >= 1
+    assert runtime._persistence_flush_last_completed_ts_ms == runtime.clock.utc_ms()
+    assert runtime._persistence_flush_max_ts_ms == runtime.clock.utc_ms()
     assert runtime._persistence_fault_count == 0
     assert runtime._persistence_buffer_dropped == 0
     assert runtime._market_event_buffer == []
