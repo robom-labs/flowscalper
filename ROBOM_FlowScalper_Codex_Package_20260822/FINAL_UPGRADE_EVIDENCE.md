@@ -1535,9 +1535,9 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 
 ### 실제 거래와 전략 상태
 
-현재 `run-2b7135a972dd`는 2026-08-26 02:30:06 KST에 시작했으므로 전날 밤 전체를 실행한 Run이 아니다. 감사 시점 저장 이벤트는 1,419,273건, main 거래 0건, 전략계좌 거래 22건이다. 22행은 자연 후보 11개를 BASE와 STRESS가 독립 체결한 결과다.
+현재 `run-2b7135a972dd`는 2026-08-26 02:30:06 KST에 시작했으므로 전날 밤 전체를 실행한 Run이 아니다. 최초 감사 시점 저장 이벤트는 1,419,273건, main 거래 0건, 전략계좌 거래 22건이었다. 후속 수정과 안전 재시작 뒤 실제 브라우저 감사에서는 저장 이벤트 1,492,118건, main 0건, 전략계좌 28건으로 늘었다. 28행은 자연 후보 14개를 BASE와 STRESS가 독립 체결한 결과다.
 
-전략계좌 행은 LSA 2, VWAP 8, Queue 6, Aggressor 4, Depth-adjusted OFI 2건이다. 보유시간은 16.992~85.622초이고 3초 미만 종료는 0건이다. 종료는 EDGE_DECAY 20, PROFIT_PROTECTION 1, STOP 1건이다. 현재 22행의 비용후 합계는 모든 관측 전략에서 음수다. 따라서 수익성은 `NOT_PROVEN`이며 거래를 늘리려고 전략 임계값·비용·손익비를 낮추거나 ACTIVE를 바꾸지 않았다.
+후속 28행은 LSA 6, VWAP 8, Queue 6, Aggressor 4, Depth-adjusted OFI 2, OFI pullback 2건이다. 보유시간은 14.044~85.622초이고 3초 미만 종료는 0건이다. 종료는 EDGE_DECAY 26, PROFIT_PROTECTION 1, STOP 1건이며 비용후 합계는 -25.3148 USDT다. 따라서 수익성은 `NOT_PROVEN`이며 거래를 늘리려고 전략 임계값·비용·손익비를 낮추거나 ACTIVE를 바꾸지 않았다.
 
 공동계좌 0건은 현재 유일한 ACTIVE인 CBR이 최근 24개 경로에서 압축·돌파·눌림·유동성 회복·OFI 재가속 조건을 동시에 충족하지 못했기 때문이다. 나머지 전략도 각 24개 경로를 평가하고 명시적 구조·flow·지속성 이유로 대기했다. 공개시장 event, 50 wide·12 deep, 전략평가와 저장이 멈춘 상태는 아니었다.
 
@@ -1545,9 +1545,9 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 
 | 검증 | 상태 | 이번 실행의 실제 결과 |
 |---|---|---|
-| 거래기록 API | PASS | 최초 준비 뒤 현재 Run 전체계좌 5회가 22.8~34.3ms, 전체 Run·전체 버전 65.8ms였다. 현재 Run은 공동 0·전략별 22건을 반환했다. |
-| replay 목록·미리보기 | PASS | 저장 Run 79개 목록 16ms, 현재 Run 53개 종목과 최근 candle 500개 미리보기 199ms였다. 미리보기는 archive event 본문 0개를 읽었다. |
-| 실제 거래기록 화면 | PASS | `기록`을 직접 눌러 기본 `모든 PAPER 계좌`, `표시 22건 · 공동계좌 0건 · 전략별 계좌 22건`, 거래별 수수료·슬리피지·순손익·16초 이상 보유시간을 확인했다. |
+| 거래기록 API | PASS | 최초 cache 적용 뒤 22.8~34.3ms였지만 저장 checkpoint와 겹친 후속 요청이 15~20초 제한을 넘겨 Run 요약 직접 조회를 추가 제거했다. 재시작 뒤 12회는 모두 HTTP 200·9.8~30.8ms였고 현재 공동 0·전략별 28건을 반환했다. |
+| replay 목록·미리보기 | PASS | 저장 Run 79개 목록은 후속 12회 2.5~19.2ms였다. 현재 Run 최근 candle 500개 미리보기 5회는 14.2~21.1ms였고 archive event 본문 0개를 읽었다. |
+| 실제 거래기록 화면 | PASS | `기록`을 직접 눌러 기본 `모든 PAPER 계좌`, `표시 28건 · 공동계좌 0건 · 전략별 계좌 28건`, 거래별 수수료·슬리피지·순손익·14초 이상 보유시간을 확인했다. |
 | 실제 replay 화면 | PASS | `과거 재생`을 직접 눌러 현재 대형 Run의 최근 candle 500개가 먼저 표시되고 정밀 이벤트와 전략 검증 버튼이 분리된 것을 확인했다. |
 | Run 변경 경합 | PASS | 소형 `demo-7f9159e59d01`로 변경한 직후 이전 ZECUSDT가 남지 않고 ADAUSDT preview가 준비된 뒤 버튼이 열렸다. alert는 0이었다. |
 | 정밀 이벤트 | PASS | 버튼을 눌러 ADAUSDT 저장 이벤트 24개를 631ms에 checksum 검증해 열었고 `전략 평가 실행 전` 문구를 확인했다. |
@@ -1563,7 +1563,7 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 
 | 검증 | 상태 | 실제 결과 |
 |---|---|---|
-| backend pytest | PASS | 361 passed, 21.21초 |
+| backend pytest | PASS | 362 passed, 16.47초 |
 | frontend Vitest | PASS | 13 files·53 tests |
 | Ruff / mypy | PASS | 오류 0 / 91 source files 오류 0 |
 | ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
@@ -1571,9 +1571,9 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | fixture / Playwright | PASS | fixture 15 passed, 실제 Chromium desktop·tablet·mobile 3 passed |
 | security / repository hygiene | PASS | 124 source·violation/secret-like/실제 주문 path 0 / 위반 0 |
 | 활성 원장 full quick_check | NOT_RERUN | Wave34의 같은 활성 원장 full quick_check `ok`·FK 0 뒤 이번 표시·조회 수정에서는 작동 중 writer를 멈추는 전수검사를 반복하지 않았다. 현재 persistence fault·buffer drop은 0이다. |
-| 전략 수익성 | NOT_PROVEN | 현재 Run 11개 자연후보·22개 BASE/STRESS 행은 모두 합산 비용후 음수이며 30건 미만이다. 기준과 Registry를 변경하지 않았다. |
+| 전략 수익성 | NOT_PROVEN | 현재 Run 14개 자연후보·28개 BASE/STRESS 행의 비용후 합계는 -25.3148 USDT이며 30건 미만이다. 기준과 Registry를 변경하지 않았다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 뒤 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
-| GitHub main / Actions | PASS | 구현 commit `f06448632be74795abab9d0262bd89361cbd7630`을 main에 push했다. [Actions 32909772325](https://github.com/robom-labs/flowscalper/actions/runs/32909772325)의 validate 58초, browser 1분40초와 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드가 모두 PASS했다. |
+| GitHub main / Actions | PASS | 1차 구현 `f06448632be74795abab9d0262bd89361cbd7630`의 [Actions 32909772325](https://github.com/robom-labs/flowscalper/actions/runs/32909772325)과 checkpoint 경합 후속 구현 `ba9723135a686c40bea54980f669ac054cbc8a03`의 [Actions 32910918615](https://github.com/robom-labs/flowscalper/actions/runs/32910918615)이 모두 PASS다. 최종 구현 Actions는 validate 58초, browser 1분46초와 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드를 통과했다. |
 
-기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. 구현 commit과 GitHub main의 SHA가 일치하고 같은 SHA의 독립 Actions 검증도 완료됐다. 이번 PASS는 표시·조회·replay 분리·회귀·짧은 실제 서비스 범위이며, 전략 수익성·6시간·24시간·Release ZIP은 각각 `NOT_PROVEN` 또는 `NOT_RUN`으로 유지한다.
+기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. 최종 구현과 GitHub main의 SHA가 일치하고 같은 SHA의 독립 Actions 검증도 완료됐다. 이번 PASS는 표시·조회·replay 분리·회귀·짧은 실제 서비스 범위이며, 전략 수익성·6시간·24시간·Release ZIP은 각각 `NOT_PROVEN` 또는 `NOT_RUN`으로 유지한다.

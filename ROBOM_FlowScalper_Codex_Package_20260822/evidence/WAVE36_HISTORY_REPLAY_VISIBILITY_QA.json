@@ -1,21 +1,27 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-25T23:08:43Z",
+  "generated_at_utc": "2026-08-25T23:29:00Z",
   "wave": 36,
   "status": "COMPLETE_WITH_LIMITS",
   "baseline_git_sha": "f6e428cf33d93c9859198366edf223a094c88b31",
-  "implementation_git_sha": "f06448632be74795abab9d0262bd89361cbd7630",
+  "implementation_git_sha": "ba9723135a686c40bea54980f669ac054cbc8a03",
+  "implementation_git_shas": [
+    "f06448632be74795abab9d0262bd89361cbd7630",
+    "ba9723135a686c40bea54980f669ac054cbc8a03"
+  ],
   "github_main": {
     "status": "PASS",
-    "sha": "f06448632be74795abab9d0262bd89361cbd7630"
+    "sha": "ba9723135a686c40bea54980f669ac054cbc8a03"
   },
   "github_actions": {
     "status": "PASS",
-    "run_id": 32909772325,
-    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32909772325",
+    "run_id": 32910918615,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32910918615",
     "validate_seconds": 58,
-    "browser_seconds": 100,
-    "browser_evidence_uploaded": true
+    "browser_seconds": 106,
+    "browser_evidence_uploaded": true,
+    "prior_implementation_run_id": 32909772325,
+    "prior_implementation_status": "PASS"
   },
   "paper_safety": {
     "real_orders_enabled": false,
@@ -28,7 +34,8 @@
     "The history API rescanned the active 2.3GB ledger for main and league trades on each expanded query.",
     "The replay page automatically loaded and checksum-verified 2000 archived events before it enabled the selectors or chart.",
     "The UI did not distinguish loading from a genuine zero-row result.",
-    "The header labels for open positions and deep-analysis symbols looked like completed-trade counts."
+    "The header labels for open positions and deep-analysis symbols looked like completed-trade counts.",
+    "History replay-availability and replay Run listing still queried the active SQLite run summaries during long checkpoints."
   ],
   "before": {
     "history_all_seconds": 6.24,
@@ -53,30 +60,45 @@
     "browser_precise_load_ms": 631,
     "browser_strategy_replay_ms": 1947,
     "browser_replay_id": "replay-f8a8036c38ef4fcc",
-    "browser_replay_checksum": "66e3adca53e2013226f0408d16f4662346f0f1fe65b540e207e98d2a573eed97"
+    "browser_replay_checksum": "66e3adca53e2013226f0408d16f4662346f0f1fe65b540e207e98d2a573eed97",
+    "checkpoint_contention_before_seconds_min": 15.0,
+    "checkpoint_contention_before_seconds_max": 20.0,
+    "cached_history_samples": 12,
+    "cached_history_seconds_min": 0.009805,
+    "cached_history_seconds_max": 0.03079,
+    "cached_replay_runs_seconds_min": 0.002479,
+    "cached_replay_runs_seconds_max": 0.019244,
+    "cached_replay_preview_seconds_min": 0.014188,
+    "cached_replay_preview_seconds_max": 0.021079,
+    "actual_browser_latest_history_rows": 28,
+    "actual_browser_console_errors": 0,
+    "actual_browser_latest_replay_id": "replay-19403a7336114d20"
   },
   "current_run": {
     "run_id": "run-2b7135a972dd",
     "started_kst": "2026-08-26 02:30:06 KST",
-    "market_event_count_at_audit": 1419273,
+    "market_event_count_at_initial_audit": 1419273,
+    "market_event_count_at_final_browser_audit": 1492118,
     "main_trade_count": 0,
-    "league_trade_rows": 22,
-    "unique_natural_candidates": 11,
-    "minimum_holding_ms": 16992,
+    "league_trade_rows": 28,
+    "unique_natural_candidates": 14,
+    "minimum_holding_ms": 14044,
     "maximum_holding_ms": 85622,
     "under_three_seconds": 0,
+    "net_pnl_sum_usdt": -25.314829658,
     "profitability": "NOT_PROVEN",
     "thresholds_lowered": false
   },
   "current_run_trade_rows_by_strategy": {
     "AGGRESSOR_FLOW_CONTINUATION_V1": 4,
     "DEPTH_ADJUSTED_OFI_IMPULSE_V1": 2,
-    "LSA_REVERSAL_V1": 2,
+    "LSA_REVERSAL_V1": 6,
+    "OFI_CONTINUATION_PULLBACK_V1": 2,
     "QUEUE_MICROPRICE_MOMENTUM_V1": 6,
     "VWAP_EXHAUSTION_REVERSION_V1": 8
   },
   "validation": {
-    "backend_pytest": "361 passed",
+    "backend_pytest": "362 passed",
     "frontend_vitest": "13 files, 53 tests passed",
     "fixture_pytest": "15 passed",
     "playwright": "desktop, tablet, mobile 3 passed",
