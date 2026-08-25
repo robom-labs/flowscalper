@@ -75,6 +75,20 @@ def market_event(
     )
 
 
+def candle_row(run_id: str, *, close: str = "100.1") -> dict[str, object]:
+    return {
+        "run_id": run_id,
+        "symbol": "BTCUSDT",
+        "interval_seconds": 1,
+        "open_ts_ms": 1_000,
+        "open": "100",
+        "high": "100.2",
+        "low": "99.9",
+        "close": close,
+        "volume": "1",
+    }
+
+
 def test_replay_candidate_count_deduplicates_main_and_league_accounts() -> None:
     audits = [
         {"event": "MAIN_CANDIDATE_SELECTED", "candidate_id": "candidate-1"},
@@ -482,6 +496,84 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
         created_ts_ms=3_000,
     )
     assert replay.event_count == 4
+    ledger.close()
+
+
+def test_archive_manifest_stats_and_candles_use_one_full_commit(tmp_path: Path) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet-atomic",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "atomic-ledger.sqlite3",
+        market_event_archive=archive,
+    )
+    run_id = "run-atomic-persistence"
+    ledger.start_run(
+        run_id,
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    event = market_event(run_id, event_id="atomic-event", ts_ms=1_000).model_dump(
+        mode="json"
+    )
+    batch = archive.write_market_event_batch([event])
+    statements: list[str] = []
+    ledger._connection.set_trace_callback(statements.append)
+
+    assert ledger.record_archives_and_candles(
+        [(batch, [event])],
+        [candle_row(run_id)],
+    ) == (1, 1)
+
+    assert sum(statement == "BEGIN IMMEDIATE" for statement in statements) == 1
+    assert sum(statement == "COMMIT" for statement in statements) == 1
+    assert ledger.count("market_event_archives") == 1
+    assert ledger.count("candles") == 1
+    assert ledger.market_event_symbols(run_id) == [
+        {"symbol": "BTCUSDT", "event_count": 1}
+    ]
+    ledger.close()
+
+
+def test_atomic_persistence_rolls_back_manifest_and_stats_on_candle_fault(
+    tmp_path: Path,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet-rollback",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "rollback-ledger.sqlite3",
+        market_event_archive=archive,
+    )
+    run_id = "run-atomic-rollback"
+    ledger.start_run(
+        run_id,
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    assert ledger.record_candles([candle_row(run_id)]) == 1
+    event = market_event(run_id, event_id="rollback-event", ts_ms=1_000).model_dump(
+        mode="json"
+    )
+    batch = archive.write_market_event_batch([event])
+
+    with pytest.raises(LedgerInvariantError, match="중복 캔들 payload 불일치"):
+        ledger.record_archives_and_candles(
+            [(batch, [event])],
+            [candle_row(run_id, close="101")],
+        )
+
+    assert ledger.count("market_event_archives") == 0
+    assert ledger.market_event_symbols(run_id) == []
+    assert ledger.count("candles") == 1
     ledger.close()
 
 

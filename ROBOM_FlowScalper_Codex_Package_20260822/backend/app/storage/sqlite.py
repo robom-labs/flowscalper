@@ -636,6 +636,63 @@ class SQLiteLedger:
     ) -> int:
         """외장 Parquet 배치 manifest와 종목별 건수만 내장 SQLite에 기록한다."""
 
+        run_id, manifest, stat_rows = self._prepare_market_event_archive(batch, events)
+        with self._transaction() as connection:
+            self._assert_open_run(connection, run_id)
+            return self._insert_market_event_archive(
+                connection,
+                manifest=manifest,
+                stat_rows=stat_rows,
+            )
+
+    def record_archives_and_candles(
+        self,
+        archives: Sequence[
+            tuple[ArchivedEventBatch, Sequence[Mapping[str, object]]]
+        ],
+        candles: Sequence[Mapping[str, object]],
+    ) -> tuple[int, int]:
+        """Parquet manifest·통계·캔들을 한 번의 FULL 커밋으로 원자 저장한다."""
+
+        prepared_archives = [
+            self._prepare_market_event_archive(batch, events)
+            for batch, events in archives
+        ]
+        prepared_candles = self._prepare_candles(candles) if candles else None
+        run_ids = {run_id for run_id, _, _ in prepared_archives}
+        if prepared_candles is not None:
+            run_ids.add(prepared_candles[0])
+        if not run_ids:
+            return (0, 0)
+        if len(run_ids) != 1:
+            raise LedgerInvariantError(
+                "한 영속화 커밋에 여러 Run의 데이터가 섞였습니다."
+            )
+        run_id = next(iter(run_ids))
+        with self._transaction() as connection:
+            self._assert_open_run(connection, run_id)
+            archived = sum(
+                self._insert_market_event_archive(
+                    connection,
+                    manifest=manifest,
+                    stat_rows=stat_rows,
+                )
+                for _, manifest, stat_rows in prepared_archives
+            )
+            inserted_candles = (
+                self._insert_candles(connection, prepared_candles[1])
+                if prepared_candles is not None
+                else 0
+            )
+        return (archived, inserted_candles)
+
+    @staticmethod
+    def _prepare_market_event_archive(
+        batch: ArchivedEventBatch,
+        events: Sequence[Mapping[str, object]],
+    ) -> tuple[str, tuple[object, ...], list[tuple[object, ...]]]:
+        """아카이브 입력을 트랜잭션 전에 검증하고 SQLite row로 변환한다."""
+
         if not events or batch.event_count != len(events):
             raise LedgerInvariantError("시장 이벤트 아카이브 배치 건수가 일치하지 않습니다.")
         run_ids = {str(event["run_id"]) for event in events}
@@ -647,7 +704,7 @@ class SQLiteLedger:
         event_types = sorted({str(event["event_type"]) for event in events})
         path = str(batch.path.resolve())
         batch_id = hashlib.sha256(f"{run_id}\n{path}\n{batch.checksum}".encode()).hexdigest()
-        manifest = (
+        manifest: tuple[object, ...] = (
             batch_id,
             run_id,
             path,
@@ -658,7 +715,7 @@ class SQLiteLedger:
             _canonical_json(event_types),
             batch.checksum,
         )
-        stat_rows = [
+        stat_rows: list[tuple[object, ...]] = [
             (
                 str(event["event_id"]),
                 run_id,
@@ -669,33 +726,41 @@ class SQLiteLedger:
             )
             for event in events
         ]
-        with self._transaction() as connection:
-            self._assert_open_run(connection, run_id)
-            before = connection.total_changes
-            connection.execute(
+        return run_id, manifest, stat_rows
+
+    @classmethod
+    def _insert_market_event_archive(
+        cls,
+        connection: sqlite3.Connection,
+        *,
+        manifest: tuple[object, ...],
+        stat_rows: Sequence[tuple[object, ...]],
+    ) -> int:
+        before = connection.total_changes
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO market_event_archives (
+                batch_id, run_id, path, event_count, first_ts_ms, last_ts_ms,
+                symbols_json, event_types_json, checksum
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            manifest,
+        )
+        inserted = connection.total_changes - before
+        if inserted == 0:
+            existing = connection.execute(
                 """
-                INSERT OR IGNORE INTO market_event_archives (
-                    batch_id, run_id, path, event_count, first_ts_ms, last_ts_ms,
-                    symbols_json, event_types_json, checksum
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                SELECT run_id, path, event_count, first_ts_ms, last_ts_ms,
+                       symbols_json, event_types_json, checksum
+                FROM market_event_archives WHERE batch_id = ?
                 """,
-                manifest,
-            )
-            inserted = connection.total_changes - before
-            if inserted == 0:
-                existing = connection.execute(
-                    """
-                    SELECT run_id, path, event_count, first_ts_ms, last_ts_ms,
-                           symbols_json, event_types_json, checksum
-                    FROM market_event_archives WHERE batch_id = ?
-                    """,
-                    (batch_id,),
-                ).fetchone()
-                if existing is None or tuple(existing) != manifest[1:]:
-                    raise LedgerInvariantError("중복 시장 아카이브 manifest 불일치")
-                return 0
-            self._increment_market_event_stats(connection, stat_rows)
-        return batch.event_count
+                (manifest[0],),
+            ).fetchone()
+            if existing is None or tuple(existing) != manifest[1:]:
+                raise LedgerInvariantError("중복 시장 아카이브 manifest 불일치")
+            return 0
+        cls._increment_market_event_stats(connection, stat_rows)
+        return int(str(manifest[3]))
 
     @staticmethod
     def _increment_market_event_stats(
@@ -926,6 +991,15 @@ class SQLiteLedger:
     def record_candles(self, candles: Sequence[Mapping[str, object]]) -> int:
         if not candles:
             return 0
+        run_id, rows = self._prepare_candles(candles)
+        with self._transaction() as connection:
+            self._assert_open_run(connection, run_id)
+            return self._insert_candles(connection, rows)
+
+    @staticmethod
+    def _prepare_candles(
+        candles: Sequence[Mapping[str, object]],
+    ) -> tuple[str, list[tuple[object, ...]]]:
         run_ids = {str(candle["run_id"]) for candle in candles}
         if len(run_ids) != 1:
             raise LedgerInvariantError("한 배치에 여러 Run의 캔들을 섞을 수 없습니다.")
@@ -943,33 +1017,38 @@ class SQLiteLedger:
                     hashlib.sha256(payload_json.encode()).hexdigest(),
                 )
             )
-        with self._transaction() as connection:
-            self._assert_open_run(connection, run_id)
-            before = connection.total_changes
-            connection.executemany(
-                """
-                INSERT OR IGNORE INTO candles (
-                    run_id, symbol, interval_seconds, open_ts_ms, payload_json, checksum
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                rows,
-            )
-            inserted = connection.total_changes - before
-            if inserted != len(rows):
-                for row in rows:
-                    existing = connection.execute(
-                        """
-                        SELECT checksum FROM candles
-                        WHERE run_id = ? AND symbol = ?
-                          AND interval_seconds = ? AND open_ts_ms = ?
-                        """,
-                        row[:4],
-                    ).fetchone()
-                    if existing is None or str(existing["checksum"]) != str(row[-1]):
-                        raise LedgerInvariantError(
-                            f"중복 캔들 payload 불일치: {row[1]}/{row[2]}/{row[3]}"
-                        )
-            return inserted
+        return run_id, rows
+
+    @staticmethod
+    def _insert_candles(
+        connection: sqlite3.Connection,
+        rows: Sequence[tuple[object, ...]],
+    ) -> int:
+        before = connection.total_changes
+        connection.executemany(
+            """
+            INSERT OR IGNORE INTO candles (
+                run_id, symbol, interval_seconds, open_ts_ms, payload_json, checksum
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        inserted = connection.total_changes - before
+        if inserted != len(rows):
+            for row in rows:
+                existing = connection.execute(
+                    """
+                    SELECT checksum FROM candles
+                    WHERE run_id = ? AND symbol = ?
+                      AND interval_seconds = ? AND open_ts_ms = ?
+                    """,
+                    row[:4],
+                ).fetchone()
+                if existing is None or str(existing["checksum"]) != str(row[-1]):
+                    raise LedgerInvariantError(
+                        f"중복 캔들 payload 불일치: {row[1]}/{row[2]}/{row[3]}"
+                    )
+        return inserted
 
     def list_candles(
         self,

@@ -596,8 +596,7 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     assert runtime._persistence_flush_slowest_candles >= 0
     assert runtime._persistence_flush_slowest_archive_batches == 1
     assert runtime._persistence_flush_slowest_archive_ms >= 0
-    assert runtime._persistence_flush_slowest_manifest_ms >= 0
-    assert runtime._persistence_flush_slowest_candle_ms >= 0
+    assert runtime._persistence_flush_slowest_ledger_ms >= 0
     assert runtime._persistence_fault_count == 0
     assert runtime._persistence_buffer_dropped == 0
     assert runtime._market_event_buffer == []
@@ -647,6 +646,73 @@ async def test_parquet_process_fault_restores_batch_and_fails_closed(
     assert [row["event_id"] for row in runtime._market_event_buffer] == [
         "event-process-fault"
     ]
+    assert runtime._persistence_fault_count == 1
+    assert runtime._persistence_buffer_dropped == 0
+    assert runtime.paused is True
+    assert runtime.paper_portfolio.main.risk_state.faulted is True
+    assert "PERSISTENCE_FAULT_ENTRY_LOCK" in runtime.runtime_health_flags
+    ledger.close()
+
+
+async def test_atomic_ledger_fault_restores_market_and_candle_batches(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet-ledger-fault",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "worker-ledger-fault.sqlite3",
+        market_event_archive=archive,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-atomic-ledger-fault",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+        market_event_archive=archive,
+    )
+    runtime._market_event_buffer = [
+        {
+            "event_id": "event-ledger-fault",
+            "run_id": runtime.run_id,
+            "venue": runtime.venue.value,
+            "symbol": "BTCUSDT",
+            "event_type": "TRADE",
+            "venue_ts_ms": 1_000,
+            "receive_monotonic_ns": 1_000,
+            "data": {"price": "100", "quantity": "1"},
+        }
+    ]
+    runtime._candle_buffer = [
+        {
+            "run_id": runtime.run_id,
+            "symbol": "BTCUSDT",
+            "interval_seconds": 1,
+            "open_ts_ms": 1_000,
+            "open": "100",
+            "high": "101",
+            "low": "99",
+            "close": "100.5",
+            "volume": "1",
+        }
+    ]
+
+    def fail_ledger_commit(*_args: object) -> tuple[int, int]:
+        raise OSError("simulated atomic ledger fault")
+
+    monkeypatch.setattr(ledger, "record_archives_and_candles", fail_ledger_commit)
+    await runtime._flush_persistence_isolated(None)
+
+    assert [row["event_id"] for row in runtime._market_event_buffer] == [
+        "event-ledger-fault"
+    ]
+    assert [row["open_ts_ms"] for row in runtime._candle_buffer] == [1_000]
+    assert ledger.count("market_event_archives") == 0
+    assert ledger.count("candles") == 0
     assert runtime._persistence_fault_count == 1
     assert runtime._persistence_buffer_dropped == 0
     assert runtime.paused is True

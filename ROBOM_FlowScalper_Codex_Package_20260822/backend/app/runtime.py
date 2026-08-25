@@ -53,6 +53,7 @@ from backend.app.market_data.supervisor import (
 from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
 from backend.app.storage.parquet import (
+    ArchivedEventBatch,
     ParquetEventStore,
     warm_market_event_worker_process,
     write_market_event_batch_in_process,
@@ -154,8 +155,7 @@ class PaperRuntime:
     _persistence_flush_slow_count: int = 0
     _persistence_flush_last_slow_ts_ms: int | None = None
     _persistence_flush_slowest_archive_ms: float = 0.0
-    _persistence_flush_slowest_manifest_ms: float = 0.0
-    _persistence_flush_slowest_candle_ms: float = 0.0
+    _persistence_flush_slowest_ledger_ms: float = 0.0
     _persistence_flush_slowest_market_events: int = 0
     _persistence_flush_slowest_candles: int = 0
     _persistence_flush_slowest_archive_batches: int = 0
@@ -543,12 +543,8 @@ class PaperRuntime:
                 self._persistence_flush_slowest_archive_ms,
                 3,
             ),
-            "persistence_flush_slowest_manifest_ms": round(
-                self._persistence_flush_slowest_manifest_ms,
-                3,
-            ),
-            "persistence_flush_slowest_candle_ms": round(
-                self._persistence_flush_slowest_candle_ms,
+            "persistence_flush_slowest_ledger_ms": round(
+                self._persistence_flush_slowest_ledger_ms,
                 3,
             ),
             "persistence_flush_slowest_market_events": (
@@ -2404,9 +2400,17 @@ class PaperRuntime:
             if self.market_event_archive is None:
                 self.ledger.record_market_events(market_batch)
             else:
+                archive_records: list[
+                    tuple[ArchivedEventBatch, list[dict[str, object]]]
+                ] = []
                 for rows in self._group_market_archive_rows(market_batch):
                     archive = self.market_event_archive.write_market_event_batch(rows)
-                    self.ledger.record_market_event_archive(archive, rows)
+                    archive_records.append((archive, rows))
+                self.ledger.record_archives_and_candles(
+                    archive_records,
+                    candle_batch,
+                )
+                candle_batch = []
         if candle_batch:
             self.ledger.record_candles(candle_batch)
 
@@ -2422,13 +2426,12 @@ class PaperRuntime:
         self,
         market_limit: int | None,
     ) -> dict[str, float | int]:
-        """Parquet CPU·GIL 작업을 별도 프로세스에 두고 manifest만 원장에 쓴다."""
+        """Parquet은 별도 프로세스에서 쓰고 SQLite 배치는 한 번에 확정한다."""
 
         market_batch, candle_batch = self._take_persistence_batch(market_limit)
         timings: dict[str, float | int] = {
             "archive_ms": 0.0,
-            "manifest_ms": 0.0,
-            "candle_ms": 0.0,
+            "ledger_ms": 0.0,
             "market_events": len(market_batch),
             "candles": len(candle_batch),
             "archive_batches": 0,
@@ -2437,11 +2440,14 @@ class PaperRuntime:
             return timings
         loop = asyncio.get_running_loop()
         try:
+            archive_records: list[
+                tuple[ArchivedEventBatch, list[dict[str, object]]]
+            ] = []
             if market_batch:
                 if self.market_event_archive is None:
                     started = loop.time()
                     await asyncio.to_thread(self.ledger.record_market_events, market_batch)
-                    timings["manifest_ms"] = (loop.time() - started) * 1_000
+                    timings["ledger_ms"] += (loop.time() - started) * 1_000
                 else:
                     store = self.market_event_archive
                     groups = self._group_market_archive_rows(market_batch)
@@ -2456,17 +2462,19 @@ class PaperRuntime:
                             rows,
                         )
                         timings["archive_ms"] += (loop.time() - started) * 1_000
-                        started = loop.time()
-                        await asyncio.to_thread(
-                            self.ledger.record_market_event_archive,
-                            archive,
-                            rows,
-                        )
-                        timings["manifest_ms"] += (loop.time() - started) * 1_000
-            if candle_batch:
+                        archive_records.append((archive, rows))
+            if archive_records:
+                started = loop.time()
+                await asyncio.to_thread(
+                    self.ledger.record_archives_and_candles,
+                    archive_records,
+                    candle_batch,
+                )
+                timings["ledger_ms"] += (loop.time() - started) * 1_000
+            elif candle_batch:
                 started = loop.time()
                 await asyncio.to_thread(self.ledger.record_candles, candle_batch)
-                timings["candle_ms"] = (loop.time() - started) * 1_000
+                timings["ledger_ms"] += (loop.time() - started) * 1_000
         except Exception as error:
             self._restore_persistence_batch(market_batch, candle_batch)
             self._handle_persistence_fault(error)
@@ -2489,10 +2497,7 @@ class PaperRuntime:
                 self._persistence_flush_slowest_archive_ms = float(
                     timings["archive_ms"]
                 )
-                self._persistence_flush_slowest_manifest_ms = float(
-                    timings["manifest_ms"]
-                )
-                self._persistence_flush_slowest_candle_ms = float(timings["candle_ms"])
+                self._persistence_flush_slowest_ledger_ms = float(timings["ledger_ms"])
                 self._persistence_flush_slowest_market_events = int(
                     timings["market_events"]
                 )
