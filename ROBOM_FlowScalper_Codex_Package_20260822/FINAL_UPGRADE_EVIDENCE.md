@@ -1574,6 +1574,6 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | 전략 수익성 | NOT_PROVEN | 현재 Run 11개 자연후보·22개 BASE/STRESS 행은 모두 합산 비용후 음수이며 30건 미만이다. 기준과 Registry를 변경하지 않았다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 뒤 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
-| GitHub main / Actions | NOT_RUN | 문서 작성 시점에는 아직 push하지 않았다. 로컬 검증을 원격 PASS로 쓰지 않는다. |
+| GitHub main / Actions | PASS | 구현 commit `f06448632be74795abab9d0262bd89361cbd7630`을 main에 push했다. [Actions 32909772325](https://github.com/robom-labs/flowscalper/actions/runs/32909772325)의 validate 58초, browser 1분40초와 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드가 모두 PASS했다. |
 
-기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. 구현·GitHub SHA와 Actions 결과는 push와 원격 검증 뒤 갱신한다.
+기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. 구현 commit과 GitHub main의 SHA가 일치하고 같은 SHA의 독립 Actions 검증도 완료됐다. 이번 PASS는 표시·조회·replay 분리·회귀·짧은 실제 서비스 범위이며, 전략 수익성·6시간·24시간·Release ZIP은 각각 `NOT_PROVEN` 또는 `NOT_RUN`으로 유지한다.

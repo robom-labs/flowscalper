@@ -4,9 +4,19 @@
   "wave": 36,
   "status": "COMPLETE_WITH_LIMITS",
   "baseline_git_sha": "f6e428cf33d93c9859198366edf223a094c88b31",
-  "implementation_git_sha": "PENDING",
-  "github_main": "NOT_RUN",
-  "github_actions": "NOT_RUN",
+  "implementation_git_sha": "f06448632be74795abab9d0262bd89361cbd7630",
+  "github_main": {
+    "status": "PASS",
+    "sha": "f06448632be74795abab9d0262bd89361cbd7630"
+  },
+  "github_actions": {
+    "status": "PASS",
+    "run_id": 32909772325,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32909772325",
+    "validate_seconds": 58,
+    "browser_seconds": 100,
+    "browser_evidence_uploaded": true
+  },
   "paper_safety": {
     "real_orders_enabled": false,
     "auth_required": false,
