@@ -205,3 +205,25 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 7. Restart only with no open PAPER position, click start in the actual browser and observe multiple natural FULL flushes together with lag, event gaps, reconnects, drops and faults.
 8. Inspect all A~J monitor rows, LONG and SHORT controls, evaluated paths, natural open PAPER plans and holding times without lowering any strategy threshold.
 9. Re-run backend, frontend, static, production build, safety, security, repository hygiene and desktop, tablet and mobile browser validation. Keep profitability, six-hour, 24-hour and Release ZIP status separate.
+
+## Separated passive WAL checkpoint Wave
+
+1. Continue the same actual Run beyond the first short atomic-commit sample and correct earlier evidence if the latency result is not sustained.
+2. Compare the WAL size and page count with SQLite's documented 1,000-page automatic checkpoint boundary before changing durability settings.
+3. Keep WAL and `synchronous=FULL`, disable commit-thread auto-checkpoint and run PASSIVE checkpoints in a separate process every eight persistence flushes.
+4. Retry a partial checkpoint without blocking readers or writers. Fail closed only if checkpoint failure or incompleteness lets the WAL reach the bounded 64MiB safety threshold.
+5. Expose beginner-readable auto-checkpoint, attempt, partial, duration, frame and error diagnostics and remove no existing incident measurements.
+6. Exercise real checkpoint cycles together with event gaps, critical incidents, reconnects, sequence gaps, drops and persistence faults. Do not call the Wave complete if FULL commits still correlate with market stalls.
+7. Preserve all strategy, cost, TP, SL, risk and PAPER-only boundaries and keep profitability and multi-hour soak claims separate.
+
+## Out-of-process durable market persistence Wave
+
+1. Treat residual slow FULL commits after WAL separation as a new measured problem rather than rewriting the earlier checkpoint result.
+2. Move one complete market batch's Parquet serialization, compression, fsync and atomic SQLite manifest, statistics and candle commit into the same background I/O process.
+3. Use an independent SQLite connection with WAL, `synchronous=FULL`, foreign keys, auto-checkpoint disabled and a bounded writer wait. Keep one `BEGIN IMMEDIATE` and one COMMIT.
+4. Restore both in-memory batches and fail closed on any process, Parquet or SQLite error. Preserve checksum conflicts and closed-Run rejection.
+5. Prove the separate connection is visible from the live ledger and inject a process fault to verify rollback, buffer restoration and zero silent drop.
+6. Restart with no open PAPER position, click start once and verify a fresh 1,000 USDT Run with trade, PnL and fees at zero.
+7. Observe at least 160,000 actual public-market events, including intentionally occurring slow FULL commits and checkpoints. Require the market path to continue without hiding any safety incident.
+8. Inspect an actual chart position and plan with strategy, direction, account scope, entry, TP1, TP2, SL, quantity and maximum loss. Inspect all A~J rows and strict wait reasons.
+9. Re-run full backend, frontend, static, production build, PAPER safety, security, repository hygiene and desktop, tablet and mobile browser validation, then push the exact evidence to GitHub main.

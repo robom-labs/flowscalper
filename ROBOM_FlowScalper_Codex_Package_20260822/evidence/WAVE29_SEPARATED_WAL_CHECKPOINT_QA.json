@@ -1,0 +1,102 @@
+{
+  "wave": 29,
+  "captured_date_kst": "2026-08-25",
+  "scope": "disable commit-thread WAL auto-checkpoint, run PASSIVE checkpoints in a separate process, and continue actual LIVE PAPER monitoring",
+  "implementation_commit": "48823ee7bd4358f42371448b1e856efa34e19fb7",
+  "paper_safety": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "starting_equity_usdt": 1000.0,
+    "strategy_thresholds_lowered": false
+  },
+  "before_change_actual_observation": {
+    "run_id": "run-2b0119b86432",
+    "event_count": 159663,
+    "persistence_flush_count": 79,
+    "persistence_flush_max_ms": 15783.0,
+    "slowest_archive_ms": 252.0,
+    "slowest_atomic_ledger_ms": 15520.0,
+    "event_gap_max_ms": 11822.803,
+    "event_gap_over_500ms_count": 83,
+    "critical_lag_incident_count": 6,
+    "critical_lag_max_duration_ms": 90399.77,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0
+  },
+  "implementation": {
+    "wal_autocheckpoint_pages": 0,
+    "passive_checkpoint_process": true,
+    "checkpoint_every_persistence_flushes": 8,
+    "partial_checkpoint_retry": true,
+    "wal_growth_fail_closed_bytes": 67108864,
+    "synchronous_full_preserved": true,
+    "atomic_commit_preserved": true
+  },
+  "after_change_actual_observation": {
+    "status": "PARTIAL_IMPROVEMENT_REQUIRES_WAVE30",
+    "run_id": "run-517b78c88366",
+    "event_count": 194449,
+    "persistence_flush_count": 97,
+    "persistence_flush_max_ms": 8359.0,
+    "persistence_flush_slow_count": 7,
+    "slowest_archive_ms": 605.0,
+    "slowest_atomic_ledger_ms": 7741.0,
+    "wal_checkpoint_attempts": 18,
+    "wal_checkpoint_max_ms": 17496.0,
+    "wal_checkpoint_slow_count": 9,
+    "wal_checkpoint_partial_count": 7,
+    "wal_checkpoint_fault_count": 0,
+    "event_gap_max_ms": 5866.504,
+    "event_gap_over_500ms_count": 106,
+    "critical_lag_incident_count": 4,
+    "critical_lag_max_duration_ms": 45895.907,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "entry_lock_recovered": true,
+    "interpretation": "Auto-checkpoint was removed from COMMIT and the worst atomic ledger commit improved from 15.520s to 7.741s, but residual same-process FULL commits still correlated with safety-lock incidents. Wave 30 isolates the complete durable market-persistence path in another process."
+  },
+  "actual_browser_and_strategies": {
+    "strategy_summary": "10개 정상 감시 · 문제 0개 · 실제 주문 0",
+    "strategies": 10,
+    "evaluated_paths_per_strategy": 24,
+    "long_directions_enabled": 10,
+    "short_directions_enabled": 10,
+    "browser_console_entries": 0,
+    "screenshot": "evidence/WAVE29_STRATEGY_MONITORING.jpg"
+  },
+  "validation": {
+    "backend_pytest": "320 passed",
+    "targeted_storage_runtime_pytest": "46 passed",
+    "frontend_vitest": "12 files, 47 passed",
+    "playwright_local": "desktop, tablet, mobile: 3 passed",
+    "ruff": "PASS",
+    "mypy_backend_app": "82 source files PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": "PASS, 48 modules",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS, 115 source files, real_order_path false",
+    "repository_hygiene": "PASS",
+    "github_actions": {
+      "run_id": 32817722186,
+      "url": "https://github.com/robom-labs/flowscalper/actions/runs/32817722186",
+      "validate": "PASS",
+      "browser": "PASS",
+      "browser_evidence_upload": "PASS"
+    }
+  },
+  "limitations": {
+    "performance_conclusion": "SUPERSEDED_BY_WAVE30",
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  }
+}

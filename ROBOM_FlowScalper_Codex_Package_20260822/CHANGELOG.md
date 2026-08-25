@@ -6,8 +6,10 @@
 
 ## 아직 배포하지 않음
 
+- 공개시장 Parquet 작성과 archive manifest·종목통계·캔들의 `synchronous=FULL` 원자 커밋 전체를 시장 처리 Python 프로세스 밖의 background I/O process로 격리했다. 별도 연결도 WAL·FULL·자동 checkpoint 0을 유지하고 실패 시 두 버퍼 복원과 새 PAPER 진입 안전잠금을 적용한다.
+- SQLite 기본 1,000-page 자동 WAL checkpoint를 COMMIT 경로에서 끄고, 8회 저장마다 별도 process의 비차단 PASSIVE checkpoint로 옮겼다. 부분 checkpoint는 재시도하고 WAL이 64MiB까지 커진 채 실패하면 새 PAPER 진입을 안전잠금한다.
 - 공개시장 Parquet 저장 뒤 archive manifest·종목별 통계·캔들을 외장 SQLite의 한 `synchronous=FULL` 커밋으로 원자 저장해 연속 FULL 커밋을 제거했다. 충돌이나 저장 실패는 전체 롤백·버퍼복구·신규 PAPER 진입 안전잠금으로 처리한다.
-- 고급진단의 별도 manifest·candle 시간은 `원장 통합 커밋 ms`로 교체했다. 실제 56,260 이벤트·28회 저장 표본에서 최장 저장은 24.564초에서 1.506초로 줄었고 2초 이상 저장·임계 지연·재연결·누락·저장 오류는 0회였다.
+- 고급진단의 별도 manifest·candle 시간은 `원장 통합 커밋 ms`로 교체했다. 56,260 이벤트의 초기 표본은 최장 1.506초였지만 같은 Run의 159,663 이벤트 후속 표본에서 자동 WAL checkpoint가 포함된 커밋이 15.520초로 재발해, 초기 결과를 지속 개선 증거에서 제외하고 분리 checkpoint로 후속 수정했다.
 - READY의 과거 거래통계를 백그라운드 query-only SQLite 연결로 준비해 안전 복구와 첫 화면·시작 버튼을 막지 않게 했다. 부팅 단계, 통계 준비상태, 저장 flush의 Parquet·통합 원장 단계와 최대 이벤트 수신 공백시각을 고급진단에 추가했다.
 - 현재 PAPER 목록과 차트에 같은 종목·전략·BASE라도 `공동계좌`와 `전략 독립계좌`를 구분해 중복 오류처럼 보이지 않게 했다.
 - 종료된 PAPER 포지션의 진입 알림이 같은 LIVE Run 화면에 남지 않도록 종료 안내로 바꾼 뒤 15초 후 자동 정리한다.
