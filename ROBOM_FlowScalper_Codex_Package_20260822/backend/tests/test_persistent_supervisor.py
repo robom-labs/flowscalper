@@ -24,6 +24,7 @@ from backend.app.market_data.supervisor import (
     SupervisorTelemetry,
     _wide_and_deep,
 )
+from backend.app.orderbook import BinanceOrderBook
 from backend.app.runtime import PaperRuntime
 from backend.app.time_sync import VenueClockCalibration
 
@@ -797,6 +798,76 @@ async def test_binance_marks_late_public_trade_stale_before_strategy_input() -> 
     assert len(events) == 1
     assert events[0].quality.is_stale is True
     assert events[0].quality.flags == ("TRADE_LAG_STALE",)
+
+
+async def test_binance_rotation_warmup_applies_but_suppresses_stale_depth() -> None:
+    clock = DeterministicClock(current_utc_ms=5_000)
+    selection = ProviderSelection(
+        venue=Venue.BINANCE_USDM,
+        instruments={},
+        tickers={},
+        wide_symbols=("BTCUSDT",),
+        deep_symbols=("BTCUSDT",),
+        bootstrap_events=(),
+    )
+    provider = BinancePersistentProvider()
+    book = BinanceOrderBook()
+    book.reset_snapshot(100, [["99", "1"]], [["101", "1"]])
+    books = {"BTCUSDT": book}
+    stale_payload = {
+        "e": "depthUpdate",
+        "E": 1_000,
+        "T": 1_000,
+        "s": "BTCUSDT",
+        "U": 101,
+        "u": 101,
+        "pu": 100,
+        "b": [["100", "1"]],
+        "a": [["102", "1"]],
+    }
+
+    stale_events = [
+        event
+        async for event in provider._normalize(
+            stale_payload,
+            selection,
+            books,
+            object(),
+            run_id="run-rotation-warmup",
+            clock=clock,
+            suppress_stale_depth=True,
+        )
+    ]
+
+    assert stale_events == []
+    assert book.last_update_id == 101
+
+    fresh_payload = {
+        **stale_payload,
+        "E": 5_000,
+        "T": 5_000,
+        "U": 102,
+        "u": 102,
+        "pu": 101,
+        "b": [["100", "2"]],
+    }
+    fresh_events = [
+        event
+        async for event in provider._normalize(
+            fresh_payload,
+            selection,
+            books,
+            object(),
+            run_id="run-rotation-warmup",
+            clock=clock,
+            suppress_stale_depth=True,
+        )
+    ]
+
+    assert len(fresh_events) == 1
+    assert fresh_events[0].event_type == "DEPTH_UPDATE"
+    assert fresh_events[0].quality.lag_ms == 0
+    assert book.last_update_id == 102
 
 
 def test_lag_percentile_work_is_bounded_during_high_frequency_events() -> None:

@@ -36,6 +36,7 @@ from backend.app.time_sync import (
 EventSink = Callable[[MarketEvent], Awaitable[None] | None]
 ProtectedSymbolSource = Callable[[], Sequence[str]]
 _STRATEGY_TRADE_LAG_MAX_MS = 500.0
+_ROTATION_WARMUP_DEPTH_LAG_MAX_MS = 1_500.0
 
 
 def _percentile_95(ordered: Sequence[float]) -> float | None:
@@ -609,6 +610,7 @@ class BinancePersistentProvider:
         started = asyncio.get_running_loop().time()
         depth_coalescer = BinanceDepthCoalescer(bucket_ms=500)
         trade_coalescer = BinanceTradeCoalescer(bucket_ms=500)
+        depth_warmup = True
         async with (
             websockets.connect(
                 wide_url,
@@ -668,7 +670,10 @@ class BinancePersistentProvider:
                             adapter,
                             run_id=run_id,
                             clock=clock,
+                            suppress_stale_depth=depth_warmup,
                         ):
+                            if event.event_type == "DEPTH_UPDATE":
+                                depth_warmup = False
                             if event.event_type == "TRADE":
                                 for aggregate in trade_coalescer.push(event):
                                     yield aggregate
@@ -695,6 +700,7 @@ class BinancePersistentProvider:
         *,
         run_id: str,
         clock: Clock,
+        suppress_stale_depth: bool = False,
     ) -> AsyncIterator[MarketEvent]:
         data = payload.get("data", payload)
         if not isinstance(data, dict):
@@ -809,6 +815,15 @@ class BinancePersistentProvider:
             )
             return
         if not applied:
+            return
+        if (
+            suppress_stale_depth
+            and quality.lag_ms is not None
+            and quality.lag_ms > _ROTATION_WARMUP_DEPTH_LAG_MAX_MS
+        ):
+            # 연결 직후 REST snapshot을 받는 동안 socket에 쌓인 델타는
+            # sequence 연속성에는 적용하되 과거 top-of-book으로 내보내지 않는다.
+            # 첫 fresh depth가 도착할 때까지 supervisor의 기존 진입 잠금은 유지된다.
             return
         bids, asks = book.top(20)
         yield MarketEvent(
