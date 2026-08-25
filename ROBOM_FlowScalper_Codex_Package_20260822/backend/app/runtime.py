@@ -1800,13 +1800,35 @@ class PaperRuntime:
             for event in self._market_event_buffer:
                 run_id = str(event.get("run_id", ""))
                 buffered_by_run[run_id] = buffered_by_run.get(run_id, 0) + 1
-        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and self.dashboard_trade_cache_ready:
+        use_live_cache = (
+            self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            and self.dashboard_trade_cache_ready
+        )
+        if use_live_cache:
             with self._dashboard_trade_cache_lock:
                 summaries = [dict(row) for row in self._historical_replay_run_summaries]
                 persisted_deltas = dict(self._replay_run_persisted_deltas)
         else:
             summaries = self.ledger.list_replayable_run_summaries()
             persisted_deltas = {}
+        current_main_count = (
+            sum(
+                1
+                for trade in self._history_main_trades()
+                if trade.get("run_id") == self.run_id
+            )
+            if use_live_cache
+            else 0
+        )
+        current_shadow_count = (
+            sum(
+                1
+                for trade in self._history_shadow_trades()
+                if trade.get("run_id") == self.run_id
+            )
+            if use_live_cache
+            else 0
+        )
         rows: list[dict[str, object]] = []
         for run in summaries:
             run_id = str(run["run_id"])
@@ -1824,19 +1846,6 @@ class PaperRuntime:
             )
             if not has_events:
                 continue
-            current_main_count = (
-                len(self.paper_portfolio.main.completed_trades)
-                if run_id == self.run_id
-                else 0
-            )
-            current_shadow_count = (
-                sum(
-                    len(account.completed_trades)
-                    for account in self.paper_portfolio.shadows.values()
-                )
-                if run_id == self.run_id
-                else 0
-            )
             rows.append(
                 {
                     "run_id": str(run["run_id"]),
@@ -1852,9 +1861,15 @@ class PaperRuntime:
                         else None
                     ),
                     "events_saved": has_events,
-                    "trade_count": int(str(run["trade_count"])) + current_main_count,
+                    "trade_count": (
+                        current_main_count
+                        if use_live_cache and run_id == self.run_id
+                        else int(str(run["trade_count"]))
+                    ),
                     "shadow_trade_count": (
-                        int(str(run["shadow_trade_count"])) + current_shadow_count
+                        current_shadow_count
+                        if use_live_cache and run_id == self.run_id
+                        else int(str(run["shadow_trade_count"]))
                     ),
                 }
             )

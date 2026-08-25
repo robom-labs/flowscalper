@@ -276,7 +276,18 @@ def test_live_replay_listing_uses_warmed_cache_during_active_ledger_contention(
         raise AssertionError("LIVE replay 목록이 활성 원장을 다시 읽었습니다.")
 
     monkeypatch.setattr(ledger, "list_replayable_run_summaries", unexpected_scan)
-    assert runtime.replayable_runs()[0]["market_event_count"] == 1
+    monkeypatch.setattr(
+        PaperRuntime,
+        "_history_shadow_trades",
+        lambda _runtime: (
+            {"run_id": "run-cached", "trade_id": "shadow-1"},
+            {"run_id": "run-cached", "trade_id": "shadow-2"},
+            {"run_id": "run-cached", "trade_id": "shadow-3"},
+        ),
+    )
+    listed = runtime.replayable_runs()[0]
+    assert listed["market_event_count"] == 1
+    assert listed["shadow_trade_count"] == 3
 
     second = market_event("run-cached", event_id="event-cached-2", ts_ms=2_000)
     runtime._market_event_buffer.append(second.model_dump(mode="json"))
