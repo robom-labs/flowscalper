@@ -1,0 +1,141 @@
+{
+  "wave": 28,
+  "captured_date_kst": "2026-08-25",
+  "scope": "atomic SQLite persistence commit, actual LIVE PAPER storage, strategy monitoring and chart-position visibility regression",
+  "implementation_commit": "ef1292804ea814c7deb0757f8527055ba3b83974",
+  "paper_safety": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "starting_equity_usdt": 1000.0
+  },
+  "before_change_actual_observation": {
+    "run_id": "run-d1cbbe3d2458",
+    "persistence_flush_count": 78,
+    "persistence_flush_max_ms": 24564.0,
+    "slowest_archive_ms": 237.0,
+    "slowest_manifest_ms": 621.0,
+    "slowest_candle_ms": 23689.0,
+    "event_gap_max_ms": 21236.475,
+    "event_gap_over_500ms_count": 60,
+    "critical_lag_incident_count": 1,
+    "critical_lag_max_duration_ms": 47999.049,
+    "note": "The maximum flush, maximum event gap and critical incident were nearly simultaneous. This is temporal correlation, not a complete OS-storage causality proof."
+  },
+  "atomicity_tests": {
+    "one_begin_immediate": true,
+    "one_commit": true,
+    "archive_manifest_stats_and_candles_same_transaction": true,
+    "candle_checksum_fault_rolls_back_manifest_and_stats": true,
+    "worker_ledger_fault_restores_market_buffer": true,
+    "worker_ledger_fault_restores_candle_buffer": true,
+    "worker_ledger_fault_fails_closed": true,
+    "synchronous_full_preserved": true
+  },
+  "after_change_actual_observation": {
+    "run_id": "run-2b0119b86432",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "wide_symbols": 50,
+    "deep_symbols": 12,
+    "event_count": 56260,
+    "persistence_flush_count": 28,
+    "persistence_flush_last_ms": 824.0,
+    "persistence_flush_max_ms": 1506.0,
+    "slowest_archive_ms": 728.0,
+    "slowest_atomic_ledger_ms": 770.0,
+    "persistence_flush_slow_count": 0,
+    "processing_lag_p95_last_ms": 75.968994140625,
+    "event_gap_max_ms": 1230.914,
+    "event_gap_over_500ms_count": 10,
+    "critical_lag_incident_count": 0,
+    "critical_lag_active": false,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0
+  },
+  "ledger_invariants_during_live": {
+    "archive_batches_checked": 23,
+    "archived_event_count": 46000,
+    "market_event_stats_count": 46000,
+    "persisted_candles": 4779,
+    "missing_archive_files": 0,
+    "orphan_manifests": 0,
+    "foreign_key_violations": 0,
+    "full_quick_check": "NOT_RUN",
+    "full_quick_check_reason": "The prior Wave 25 completed it. Re-scanning the multi-GiB live ledger was not repeated during latency observation."
+  },
+  "actual_browser": {
+    "start_button_clicked": true,
+    "state_after_250ms": "CONNECTING",
+    "state_after_8s": "RUNNING",
+    "displayed_lag_after_8s_ms": 44,
+    "strategy_summary": "10개 정상 감시 · 문제 0개 · 실제 주문 0",
+    "strategies": 10,
+    "long_directions_enabled": 10,
+    "short_directions_enabled": 10,
+    "evaluated_paths_per_strategy": 24,
+    "browser_console_entries": 0,
+    "screenshot": "evidence/WAVE28_STRATEGY_MONITORING.jpg"
+  },
+  "natural_strategy_observation": {
+    "thresholds_lowered": false,
+    "completed_shadow_trades": 8,
+    "strategies_with_completed_samples": [
+      "QUEUE_MICROPRICE_MOMENTUM_V1",
+      "DEPTH_ADJUSTED_OFI_IMPULSE_V1"
+    ],
+    "minimum_holding_ms": 13612,
+    "maximum_holding_ms": 33890,
+    "holding_under_3000ms": 0,
+    "exit_reasons": [
+      "EDGE_DECAY"
+    ],
+    "observed_open_position": {
+      "strategy_id": "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "profiles": [
+        "BASE",
+        "STRESS"
+      ],
+      "entry": 80747.0,
+      "stop": 80504.71,
+      "tp1": 81122.55,
+      "tp2": 81498.1,
+      "holding_ms": 13612,
+      "exit_reason": "EDGE_DECAY"
+    },
+    "profitability": "NOT_PROVEN"
+  },
+  "validation": {
+    "backend_pytest": "318 passed in 22.28s",
+    "targeted_storage_runtime_pytest": "44 passed in 8.19s",
+    "frontend_vitest": "12 files, 47 passed",
+    "playwright_local": "desktop, tablet, mobile: 3 passed in 13.6s",
+    "ruff": "PASS",
+    "mypy_backend_app": "82 source files PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": "PASS, 48 modules",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS, 115 source files, real_order_path false",
+    "repository_hygiene": "PASS",
+    "github_actions": {
+      "run_id": 32815768312,
+      "url": "https://github.com/robom-labs/flowscalper/actions/runs/32815768312",
+      "validate": "PASS",
+      "browser": "PASS",
+      "browser_evidence_upload": "PASS"
+    }
+  },
+  "limitations": {
+    "strategy_profitability": "NOT_PROVEN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  }
+}

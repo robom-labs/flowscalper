@@ -193,3 +193,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 6. When shared main PAPER and independent strategy PAPER use the same symbol, strategy and BASE profile, label the account scope in the position list, selector, chart banner and plan rail.
 7. Re-run backend, frontend, static, build, safety, security, repository hygiene and desktop, tablet and mobile browser checks. Record the broader non-gate test typing audit separately if it is not part of the repository mypy contract.
 8. Keep strategy thresholds, costs, TP, SL, risk and the real-order/private-API/credential boundary unchanged. Do not treat a short runtime sample as a six-hour or 24-hour soak.
+
+## Atomic persistence ledger commit Wave
+
+1. Preserve WAL, `synchronous=FULL`, checksum, immutable tables and storage-pressure fail-closed behavior.
+2. Write and fsync every checksum-addressed Parquet group in the existing isolated process before touching its SQLite manifest.
+3. Commit archive manifests, per-symbol event statistics and the matching candle rows in one `BEGIN IMMEDIATE` transaction per persistence batch.
+4. Roll back the complete SQLite batch on a manifest or candle checksum conflict. Restore both in-memory buffers and lock new PAPER entries on any worker failure.
+5. Replace the obsolete separate manifest and candle duration diagnostics with one beginner-readable atomic-ledger commit duration.
+6. Prove one begin and one commit, atomic rollback and worker buffer recovery with tests before restarting the real service.
+7. Restart only with no open PAPER position, click start in the actual browser and observe multiple natural FULL flushes together with lag, event gaps, reconnects, drops and faults.
+8. Inspect all A~J monitor rows, LONG and SHORT controls, evaluated paths, natural open PAPER plans and holding times without lowering any strategy threshold.
+9. Re-run backend, frontend, static, production build, safety, security, repository hygiene and desktop, tablet and mobile browser validation. Keep profitability, six-hour, 24-hour and Release ZIP status separate.

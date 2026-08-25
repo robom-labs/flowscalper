@@ -1087,3 +1087,60 @@ Wave 26 구현 commit은 `9842c330d54e0b545735776e332e413c26a0e192`이다. 같�
 기계판독 증거는 `evidence/WAVE27_STARTUP_STORAGE_ACCOUNT_QA.json`, 상세 결정은 ADR-028이다. 로컬 필수 회귀·실제 화면·짧은 실제 서비스와 구현 commit의 GitHub Actions 검증에서 미해결 FAIL과 BLOCKED는 현재 0이다. 추가 비게이트 타입검사 실패, 전략 수익성, 6시간·24시간과 Release ZIP은 각각 별도 상태로 유지했다.
 
 Wave 27 구현 commit은 `354053df30128f2a7ae7bfbc7200e538a516b82e`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E·증거 업로드가 모두 통과했다.
+
+## 33. 외장 원장 통합 커밋·실제 A~J 감시 재검증
+
+2026-08-25 실제 활성 원장의 저장 flush가 간헐적으로 5~24초까지 늘어난 경로를 단계별 진단값으로 다시 조사했다. Parquet 뒤 archive manifest·종목별 통계와 candle을 `synchronous=FULL` 트랜잭션 두 번으로 확정하던 구조를 한 원자 커밋으로 합쳤다. FULL 내구성, checksum, WAL, 불변 원장, 저장공간 안전잠금과 모든 전략 기준은 유지했다.
+
+### 구현과 실패 안전성
+
+- 한 영속화 배치의 모든 checksum-addressed Parquet 파일을 기존 별도 process에서 먼저 fsync한다.
+- 준비된 archive manifest·종목별 이벤트 통계·캔들을 한 `BEGIN IMMEDIATE`·`COMMIT`으로 확정한다.
+- 중복 candle payload나 manifest checksum이 다르면 전체 SQLite 배치를 롤백해 부분 manifest·부분 통계를 남기지 않는다.
+- Parquet 또는 원장 단계가 실패하면 시장·캔들 메모리 배치를 모두 복원하고 신규 PAPER 진입을 fail-closed한다.
+- 기존 `manifest ms`와 `candle 원장 ms` 진단 키·화면 문구를 제거하고 `원장 통합 커밋 ms`로 교체했다.
+- 실제 주문, private API, API Key, 인증과 wallet 경로는 계속 0 또는 false다.
+
+### 변경 전·후 실제 LIVE 비교
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 변경 전 진단 | PASS_DIAGNOSTIC | `run-d1cbbe3d2458`의 78번째까지 최장 flush는 24.564초였다. Parquet 0.237초·manifest 0.621초·candle 23.689초였고 최대 수신 공백 21.236초와 최장 47.999초 임계 지연 사건이 거의 같은 시각에 기록됐다. 강한 시간 연관은 확인했지만 저장장치·운영체제 내부까지 포함한 인과 증명으로 확대하지 않는다. |
+| 원자성 | PASS | 테스트 trace에서 archive manifest·종목통계·candle이 `BEGIN IMMEDIATE` 1회·`COMMIT` 1회를 사용했다. 충돌 candle을 주입하면 manifest·통계가 함께 rollback됐고 기존 candle만 보존됐다. |
+| 작업자 실패복구 | PASS | 통합 원장 오류를 주입하자 시장·candle 배치가 모두 복원되고 drop 0, PAPER pause·risk fault·`PERSISTENCE_FAULT_ENTRY_LOCK`이 적용됐다. |
+| 실제 시작 | PASS | 열린 포지션 0에서 LaunchAgent를 새 빌드로 재시작하고 앱 내 브라우저에서 `자동 관찰 시작`을 한 번 눌렀다. 250ms 뒤 `연결 중`, 8초 뒤 `작동 중·계속 작동·새 PAPER 진입 작동·자동 복구 켜짐`, 표시지연 44ms였다. |
+| 변경 후 28 flush | PASS | 새 `run-2b0119b86432`의 56,260 events·28 flush에서 최장 1.506초, 해당 Parquet 0.728초·통합 원장 0.770초, 2초 이상 flush 0이었다. 마지막 실행호가 p95는 75.969ms, 최대 수신 공백 1.231초, 임계 지연 사건·비계획 reconnect·sequence gap·drop·저장 fault·buffer drop은 모두 0이었다. |
+| 저장 원장 대조 | PASS | 중간 검증시 archive 23배치·46,000 events와 종목통계 46,000건이 일치했고 candle 4,779건, shadow trade 8건이었다. archive 파일 누락·orphan manifest·외래키 위반은 0이었다. |
+
+### 차트·진행거래·다른 전략 상태
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| A~J 감시 | PASS | 실제 전략 화면은 `10개 정상 감시 · 문제 0개 · 실제 주문 0`이었다. A/B ACTIVE, C~J SHADOW, 10개 모두 LONG·SHORT 켜짐이며 전략마다 12종목×양방향 24경로를 평가했다. |
+| 정상 대기 이유 | PASS | 최신 거절은 시장방향·가격구조·체결흐름·호가·microprice·지속성 조건으로 설명됐다. `REJECTED + 24경로 + fault 0`은 조용한 고장이 아니라 엄격조건 정상 대기이며 자연신호를 만들기 위해 기준을 낮추지 않았다. |
+| 자연 PAPER 진입 | PASS_WITH_LOSS | 실제 화면 관찰 중 Depth-adjusted OFI가 BTCUSDT LONG BASE·STRESS 두 독립계좌에 진입했다. 진행 화면은 진입 80,747, SL 80,504.71, TP1 81,122.55, TP2 81,498.1과 TP·SL·근거감쇠 자동관리를 표시했다. 13.612초 후 EDGE_DECAY로 종료됐다. |
+| 차트 현재 진입 표시 | PASS | 현재 PAPER가 열리면 선택 종목·전략·BASE/STRESS·계좌범위·방향·entry·TP1·SL을 차트 banner와 가격선으로 표시하는 회귀 47개와 Chromium 3개가 통과했다. Wave 27 실제 XRP 공동·독립 동시 진입에서도 확인했다. 이번 BTC 자연 포지션은 전략·진행 화면 확인 뒤 시장화면 전환 사이 종료돼 열린 banner의 새 스크린샷은 만들지 않았고, 종료 뒤 열린 것처럼 남지 않는 상태를 확인했다. |
+| 자연 shadow 원장 | PASS_WITH_LOSS | 현재 Run의 Queue BASE/STRESS 각 3건과 Depth-adjusted OFI BASE/STRESS 각 1건, 총 8건이 완료됐다. 보유 13.612~33.890초, 3초 미만 0건, 종료사유는 EDGE_DECAY였다. 비용후 손실 표본이며 작동 증거이지 수익성 증거가 아니다. |
+| 실제 브라우저 console | PASS | 앱 내 브라우저 dev log 항목은 0이었다. 전략 화면 캡처는 `evidence/WAVE28_STRATEGY_MONITORING.jpg`에 보존했다. |
+
+### 자동검증과 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 318 passed, 22.28초 |
+| 저장·런타임 표적 pytest | PASS | 44 passed, 8.19초 |
+| frontend Vitest | PASS | 12 files, 47 passed |
+| Playwright | PASS | 로컬 실제 Chromium desktop·tablet·mobile 3 passed, 13.6초 |
+| Ruff / mypy | PASS | 오류 0 / backend/app 82 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build | PASS | Vite 48 modules, PAPER build safety PASS |
+| security / repository hygiene | PASS | 115 source, violation·secret-like·real-order path 0 / 위반 0 |
+| 활성 원장 full quick check | NOT_RUN | Wave 25에서 완료한 다중 GiB 전체검사를 짧은 지연 관찰 중 다시 실행하지 않았다. 이번 Wave는 현재 Run 건수 일치·파일 존재·orphan·외래키를 읽기 전용으로 대조했다. |
+| 전략 수익성 | NOT_PROVEN | 현재 Run 자연 shadow 8건은 비용후 손실이고 여러 전략의 현재버전 표본은 30건 미만 또는 0건이다. 순위나 수익성을 주장하지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 56,260-event 분 단위 실제 서비스 표본을 멀티시간 수용결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | PASS | 구현 commit `ef1292804ea814c7deb0757f8527055ba3b83974`을 main에 push했다. [Actions 32815768312](https://github.com/robom-labs/flowscalper/actions/runs/32815768312)의 validate 1분2초, browser 1분21초와 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드가 모두 PASS했다. |
+
+기계판독 증거는 `evidence/WAVE28_ATOMIC_PERSISTENCE_STRATEGY_QA.json`, 실제 화면은 `evidence/WAVE28_STRATEGY_MONITORING.jpg`, 상세 결정은 ADR-029다. 필수 로컬 회귀·실제 화면·짧은 실제 서비스와 구현 commit의 GitHub Actions 검증에서 미해결 FAIL과 BLOCKED는 현재 0이다. 전략 수익성, 활성 원장 전체 quick check 재실행, 6시간·24시간과 Release ZIP은 `NOT_PROVEN` 또는 `NOT_RUN`으로 분리했다.
+
+Wave 28 구현 commit은 `ef1292804ea814c7deb0757f8527055ba3b83974`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E·증거 업로드가 모두 통과했다.
