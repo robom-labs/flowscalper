@@ -206,6 +206,12 @@ class PaperRuntime:
     _historical_all_shadow_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
+    _historical_replay_run_summaries: tuple[dict[str, object], ...] = field(
+        default_factory=tuple, repr=False
+    )
+    _replay_run_persisted_deltas: dict[str, int] = field(
+        default_factory=dict, repr=False
+    )
     _dashboard_strategy_performance_cache_key: tuple[object, ...] | None = field(
         default=None, repr=False
     )
@@ -1794,18 +1800,43 @@ class PaperRuntime:
             for event in self._market_event_buffer:
                 run_id = str(event.get("run_id", ""))
                 buffered_by_run[run_id] = buffered_by_run.get(run_id, 0) + 1
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and self.dashboard_trade_cache_ready:
+            with self._dashboard_trade_cache_lock:
+                summaries = [dict(row) for row in self._historical_replay_run_summaries]
+                persisted_deltas = dict(self._replay_run_persisted_deltas)
+        else:
+            summaries = self.ledger.list_replayable_run_summaries()
+            persisted_deltas = {}
         rows: list[dict[str, object]] = []
-        for run in self.ledger.list_replayable_run_summaries():
+        for run in summaries:
             run_id = str(run["run_id"])
             buffered_count = buffered_by_run.get(run_id, 0)
+            persisted_delta = persisted_deltas.get(run_id, 0)
             persisted_count = (
                 int(str(run["market_event_count"]))
                 if run["market_event_count"] is not None
                 else None
             )
-            has_events = bool(run["has_market_events"]) or buffered_count > 0
+            has_events = (
+                bool(run["has_market_events"])
+                or persisted_delta > 0
+                or buffered_count > 0
+            )
             if not has_events:
                 continue
+            current_main_count = (
+                len(self.paper_portfolio.main.completed_trades)
+                if run_id == self.run_id
+                else 0
+            )
+            current_shadow_count = (
+                sum(
+                    len(account.completed_trades)
+                    for account in self.paper_portfolio.shadows.values()
+                )
+                if run_id == self.run_id
+                else 0
+            )
             rows.append(
                 {
                     "run_id": str(run["run_id"]),
@@ -1816,11 +1847,15 @@ class PaperRuntime:
                     if run["finalized_ts_ms"] is not None
                     else None,
                     "market_event_count": (
-                        persisted_count + buffered_count if persisted_count is not None else None
+                        persisted_count + persisted_delta + buffered_count
+                        if persisted_count is not None
+                        else None
                     ),
                     "events_saved": has_events,
-                    "trade_count": int(str(run["trade_count"])),
-                    "shadow_trade_count": int(str(run["shadow_trade_count"])),
+                    "trade_count": int(str(run["trade_count"])) + current_main_count,
+                    "shadow_trade_count": (
+                        int(str(run["shadow_trade_count"])) + current_shadow_count
+                    ),
                 }
             )
         return rows
@@ -3003,6 +3038,8 @@ class PaperRuntime:
         except Exception as error:
             self._restore_persistence_batch(market_batch, candle_batch)
             self._handle_persistence_fault(error)
+        else:
+            self._record_replay_persisted_events(market_batch)
 
     async def _flush_persistence_isolated(
         self,
@@ -3048,7 +3085,25 @@ class PaperRuntime:
         except Exception as error:
             self._restore_persistence_batch(market_batch, candle_batch)
             self._handle_persistence_fault(error)
+        else:
+            self._record_replay_persisted_events(market_batch)
         return timings
+
+    def _record_replay_persisted_events(
+        self,
+        market_batch: list[dict[str, object]],
+    ) -> None:
+        if not market_batch or not self.dashboard_trade_cache_ready:
+            return
+        counts: dict[str, int] = {}
+        for event in market_batch:
+            run_id = str(event.get("run_id", ""))
+            counts[run_id] = counts.get(run_id, 0) + 1
+        with self._dashboard_trade_cache_lock:
+            for run_id, count in counts.items():
+                self._replay_run_persisted_deltas[run_id] = (
+                    self._replay_run_persisted_deltas.get(run_id, 0) + count
+                )
 
     async def run_persistence_worker(self, stop: asyncio.Event) -> None:
         """시장 직렬화·fsync를 시장데이터 이벤트 루프 밖에서 실행한다."""
@@ -3226,12 +3281,19 @@ class PaperRuntime:
                     self._historical_prior_version_shadow_trades = ()
                     self._historical_all_main_trades = ()
                     self._historical_all_shadow_trades = ()
+                    self._historical_replay_run_summaries = ()
+                    self._replay_run_persisted_deltas = {}
                     succeeded = True
                     return
                 all_main_trades = self.ledger.list_trades()
                 all_shadow_trades = self.ledger.list_shadow_trades()
+                replay_run_summaries = self.ledger.list_replayable_run_summaries()
                 self._historical_all_main_trades = tuple(all_main_trades)
                 self._historical_all_shadow_trades = tuple(all_shadow_trades)
+                self._historical_replay_run_summaries = tuple(
+                    dict(row) for row in replay_run_summaries
+                )
+                self._replay_run_persisted_deltas = {}
                 current_live_trades, prior_version_live_trades = (
                     self._current_strategy_version_trades(all_main_trades)
                 )

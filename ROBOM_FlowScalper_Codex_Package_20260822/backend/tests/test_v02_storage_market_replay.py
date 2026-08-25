@@ -250,6 +250,42 @@ def test_replayable_run_listing_does_not_force_live_buffer_flush(
     ledger.close()
 
 
+def test_live_replay_listing_uses_warmed_cache_during_active_ledger_contention(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "cached-replay-list.sqlite3")
+    ledger.start_run(
+        "run-cached",
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    first = market_event("run-cached", event_id="event-cached-1", ts_ms=1_000)
+    assert ledger.record_market_events([first.model_dump(mode="json")]) == 1
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-cached",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+
+    def unexpected_scan(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        raise AssertionError("LIVE replay 목록이 활성 원장을 다시 읽었습니다.")
+
+    monkeypatch.setattr(ledger, "list_replayable_run_summaries", unexpected_scan)
+    assert runtime.replayable_runs()[0]["market_event_count"] == 1
+
+    second = market_event("run-cached", event_id="event-cached-2", ts_ms=2_000)
+    runtime._market_event_buffer.append(second.model_dump(mode="json"))
+    assert runtime.replayable_runs()[0]["market_event_count"] == 2
+    runtime._flush_persistence()
+    assert runtime.replayable_runs()[0]["market_event_count"] == 2
+    ledger.close()
+
+
 def test_history_api_separates_main_league_profile_and_version_scope(
     tmp_path: Path,
 ) -> None:
@@ -362,6 +398,7 @@ def test_live_history_uses_warmed_trade_cache_without_rescanning_active_ledger(
 
     monkeypatch.setattr(ledger, "list_trades", unexpected_scan)
     monkeypatch.setattr(ledger, "list_shadow_trades", unexpected_scan)
+    monkeypatch.setattr(ledger, "list_replayable_run_summaries", unexpected_scan)
     response = runtime.history_records(account_scope="ALL", sample_type="LIVE_PUBLIC")
 
     assert {row["trade_id"] for row in response["rows"]} == {
