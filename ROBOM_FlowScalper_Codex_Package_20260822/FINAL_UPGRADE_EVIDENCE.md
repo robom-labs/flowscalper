@@ -1375,6 +1375,8 @@ macOS LaunchAgent는 항상 `READY`로 부팅하고, 기존 archive 함수는 RE
 
 32,571 events·491.849초 지점에서 실행호가 p95 26.189697ms·공개체결 p95 54.088867ms·queue 0/4,096·drop 0이었다. critical incident·비계획 reconnect·sequence gap·persistence fault·entry lock·열린 League position은 0이었다. 첫 worker `FULL` 커밋이 일시적으로 10.894초, 전체 flush가 11.142초, 첫 별도 checkpoint가 13.473초 걸렸다. 후속 flush는 357~520ms로 회복했고 두 번째 checkpoint는 1.278초였으며 그 동안 시장 처리 이상은 없었다. 이 일시 저장지연은 숨기지 않고 `PASS_WITH_LIMIT`로 남긴다.
 
+연장 관찰에서 913.309초에 15분 계획 교체가 시작돼 `RECONNECTING`·신규진입 잠금으로 바뀌었고, 914.361초 `CONNECTING`, 915.425초·62,216 events에서 `LIVE`·잠금 해제로 복귀했다. 관찰된 잠금→복귀는 2.116초였다. 계획 교체 1회와 전체 reconnect 1회가 일치했고 비계획 reconnect·sequence gap·resync·drop·critical incident·persistence fault는 0이었다.
+
 실제 앱 내 브라우저는 `6개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0`, B ACTIVE 24개 경로, C/F/G/I/J SHADOW 각 24개 경로, A/D/E/H OFF 0개 경로를 표시했다. 모든 LONG·SHORT 제어는 켜져 있고 새 revision 완료표본은 아직 0건이므로 성과화면은 `표본 부족`을 표시했다. 브라우저 console 오류는 0건이고 화면은 `evidence/WAVE33_STRATEGY_RETIREMENT_ANALYTICS_BROWSER.png`에 보존했다.
 
 ### 자동검증·외부 경쟁 한계

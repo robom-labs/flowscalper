@@ -184,6 +184,23 @@
       "checkpoint_faults": 0,
       "classification": "PASS_WITH_LIMIT: one isolated external-storage FULL commit and checkpoint spike; later flushes 357-520ms and next checkpoint 1278ms; market path remained healthy"
     },
+    "planned_rotation_observation": {
+      "status": "PASS",
+      "reconnecting_uptime_seconds": 913.309,
+      "connecting_uptime_seconds": 914.361,
+      "recovered_live_uptime_seconds": 915.425,
+      "observed_lock_to_recovery_seconds": 2.116,
+      "event_count_after_recovery": 62216,
+      "planned_rotations": 1,
+      "total_reconnects": 1,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "resyncs": 0,
+      "dropped_events": 0,
+      "critical_lag_incidents": 0,
+      "persistence_faults": 0,
+      "entry_lock_after_recovery": false
+    },
     "six_hour_soak": "NOT_RUN",
     "twenty_four_hour_soak": "NOT_RUN"
   },
