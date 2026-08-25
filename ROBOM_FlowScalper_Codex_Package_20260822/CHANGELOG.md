@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 계획 WebSocket 교체 때 REST depth snapshot 준비 중 쌓인 오래된 delta를 실행 가능한 호가로 다시 내보내 약 99초 임계지연이 생기던 문제를 수정했다. stale warmup delta는 sequence continuity에만 적용하고 첫 신선한 depth 전까지 기존 신규진입 안전잠금을 유지한다.
 - 반복 시작·명시적 새 Run·사용자 pause·자동 안전잠금·전략 설정을 idempotency key, CAS revision, actor, reason과 재시작 가능한 감사 이력으로 분리했다.
 - 기록·분석 화면에 main/전략리그, Run, BASE/STRESS, 전략 버전과 sample type 범위를 추가하고 1m·3m·5m·15m·30m·1h·4h를 단일 timeframe registry로 연결했다.
 - 연구 manifest, 시간순 Train·Validation·OOS, horizon별 purge·embargo, walk-forward, PBO, DSR와 deterministic bootstrap을 추가했다.

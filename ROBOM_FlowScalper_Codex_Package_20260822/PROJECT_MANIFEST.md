@@ -66,6 +66,7 @@ Detailed specifications:
 - `docs/adr/ADR-038-strategy-governor-lifecycle-and-audit.md`
 - `docs/adr/ADR-039-preregistered-intraday-research-and-runtime-separation.md`
 - `docs/adr/ADR-040-graceful-shutdown-and-service-intent-recovery.md`
+- `docs/adr/ADR-041-planned-rotation-depth-warmup.md`
 
 ## Supporting contracts
 
@@ -114,6 +115,7 @@ Detailed specifications:
 - `evidence/WAVE34_INTRADAY_RESEARCH.json`
 - `evidence/WAVE34_INTRADAY_RESEARCH.html`
 - `evidence/WAVE34_FULL_AUDIT_QA.json`
+- `evidence/WAVE35_ROTATION_WARMUP_QA.json`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-full.png`

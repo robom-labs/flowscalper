@@ -1481,3 +1481,44 @@ macOS LaunchAgent는 항상 `READY`로 부팅하고, 기존 archive 함수는 RE
 | GitHub main / Actions | PASS | 실행증거 commit `f571487cb8e998695de0c62d7caeed7857edddb3`을 main에 push했다. [Actions 32880481225](https://github.com/robom-labs/flowscalper/actions/runs/32880481225)의 validate 1분4초, browser 1분58초와 실제 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드가 모두 PASS했다. |
 
 기계판독 통합 증거는 `evidence/WAVE34_FULL_AUDIT_QA.json`, soak는 `evidence/PHASE03_SOAK_30M.json`, 결정 근거는 ADR-038·ADR-039·ADR-040이다. 구현 기준 commit은 `fb15494c50413650f06ec2fbd936534bdcc78ceb`, 실행증거 기준 commit은 `f571487cb8e998695de0c62d7caeed7857edddb3`이다.
+
+## 40. 계획 회전 depth warmup backlog 제거
+
+### 재현과 원인
+
+장시간 실제 서비스의 15분 계획 회전에서 임계지연 사건이 두 번 연속 99.325초와 98.882초 지속됐다. 계획 회전과 전체 reconnect 수는 일치했고 비계획 reconnect·sequence gap·resync·drop·persistence fault는 0이어서 연결 오류가 아니라 정상 교체 내부 경로를 추적했다.
+
+새 depth WebSocket을 먼저 연 뒤 REST snapshot을 받는 동안 delta가 queue에 쌓였고, snapshot 뒤 이 오래된 backlog를 실행 가능한 top-of-book으로 모두 내보낸 것이 원인이었다. sequence는 맞지만 event-time이 오래된 호가가 실행 지연을 임계치 위로 올리고, 각 stale delta의 상위 20단계 계산도 처리시간을 늘렸다.
+
+연결별 warmup 상태를 추가했다. 1,500ms보다 오래된 warmup delta는 호가장의 update id 연속성을 위해 적용하지만 실행 이벤트로 내보내지 않고 상위호가 계산도 생략한다. 첫 신선한 depth를 실제 전달할 때 warmup을 끝낸다. 그 전까지 계획교체의 기존 신규진입 안전잠금은 유지되므로 안전기준이나 전략 임계값을 낮춘 변경이 아니다. 결정 근거는 ADR-041이다.
+
+### 실제 공개시장과 생산 주기 검증
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 30초 단축 계획회전 | PASS | 실제 Binance 공개시장 75초, 전달 5,066 events, 계획회전·전체 reconnect 2·2, 비계획 reconnect 0, 임계지연 event·incident 0, p50 20.006ms·p95 22.286ms, queue·gap·resync·drop 0이다. |
+| 생산 15분 계획회전 | PASS | 배포 뒤 같은 `run-2b7135a972dd`에서 생산 주기 2회, 146,510 events, 계획회전·전체 reconnect 2·2, 비계획 reconnect 0, 임계지연 event·incident 0, 실행 p50 21.307ms·p95 39.409ms, 체결 p95 74.077ms, queue·gap·resync·drop·fault·buffer drop 0, entry lock false다. |
+| 서비스 안전 | PASS | RUNNING·LIVE, 10전략·20계좌, 열린 main·League 포지션 0, 실제 주문 false·인증 false, 메모리 288.141MB다. |
+| 실제 앱 내 브라우저 | PASS | 설정→시스템을 직접 열어 `작동 중`, 시장데이터 정상, 50/12종목, 실제 호가/체결 36/83ms, 비정상 재연결/누락 0/0, 정상 연결 교체 2회, 실제 주문 경로 0을 확인했다. console 오류·경고는 0건이다. |
+
+wide scanner p95 1,860.858ms는 실행용 정밀호가 p95 39.409ms와 분리된 넓은 관찰 수치다. 신규 PAPER 진입 안전판정은 실제 실행호가 경로를 사용한다.
+
+### 회귀검사와 남은 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| warmup 표적 회귀 | PASS | supervisor 20 passed. stale delta는 update id를 전진시키되 이벤트를 내보내지 않고 다음 fresh delta는 정상 전달된다. |
+| backend pytest | PASS | 360 passed, 48.97초 |
+| frontend Vitest | PASS | 12 files·51 tests |
+| Ruff / mypy | PASS | 오류 0 / backend/app 91 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | Vite 48 modules·PAPER 불변조건 PASS, 기존 단일 JS chunk 502.44kB 경고 유지 |
+| security / repository hygiene | PASS | 124 source·violation/secret-like/실제주문 path 0 / PASS |
+| Playwright | PASS | desktop·tablet·mobile 3 passed, fixture 15 passed, 실제 Chromium 화면 갱신 |
+| 활성 원장 full quick_check | NOT_RERUN | 같은 2.2GB 원장의 Wave34 전수검사는 `2026-08-25T17:57:48Z`에 quick_check `ok`·FK 0·545.7초로 PASS했다. 이 회전 결함과 무관한 전수검사를 작동 중 writer에 반복하지 않았고 현재 fault·buffer drop은 0이다. |
+| 수익성 | NOT_PROVEN | 전략·비용·진입 기준은 변경하지 않았고 현재 표본으로 순위나 수익성을 주장하지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 수정 배포 뒤 실제 시간을 채우지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | PENDING | 구현 commit `8bcfde29da42e4f066a225f64ff6c98f85d4c009`과 이 증거 commit을 push한 뒤 갱신한다. |
+
+기계판독 증거는 `evidence/WAVE35_ROTATION_WARMUP_QA.json`, 결정 근거는 ADR-041이다. 이 Wave는 재현한 정상 계획교체의 stale backlog 결함을 해결한 것이며, 모든 미래 네트워크 상태·6시간·24시간 안정성이나 전략 수익성을 입증한 것은 아니다.
