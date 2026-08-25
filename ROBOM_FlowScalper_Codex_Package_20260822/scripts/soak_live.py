@@ -115,9 +115,25 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
         "event_memory_bounded": max(event_memory, default=0) <= 10_000,
         "queue_bounded": max(queue_depths, default=0)
         <= int(str(supervisor_snapshot.get("queue_capacity", 0))),
+        "planned_rotation_observed": int(
+            str(supervisor_snapshot.get("planned_rotations", 0))
+        )
+        >= 1,
+        "reconnects_accounted_for": int(str(supervisor_snapshot.get("reconnects", 0)))
+        == int(str(supervisor_snapshot.get("planned_rotations", 0))),
+        "no_unplanned_reconnects": int(
+            str(supervisor_snapshot.get("unplanned_reconnects", 0))
+        )
+        == 0,
+        "no_sequence_gaps": int(str(supervisor_snapshot.get("sequence_gaps", 0))) == 0,
+        "no_resyncs": int(str(supervisor_snapshot.get("resyncs", 0))) == 0,
         "no_dropped_events": int(str(supervisor_snapshot.get("dropped_events", 0))) == 0,
         "critical_lag_fail_closed": not critical_lag_fail_open_samples,
         "final_lag_safe_or_locked": final_lag_safe_or_locked,
+        "final_live_unlocked": (
+            supervisor_snapshot.get("connection_state") == "LIVE"
+            and supervisor_snapshot.get("entry_locked") is False
+        ),
         "memory_growth_below_256mb": memory_growth <= 256,
         "real_orders_disabled": True,
         "auth_not_required": True,

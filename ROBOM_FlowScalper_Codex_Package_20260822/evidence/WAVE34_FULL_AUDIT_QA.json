@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-25T17:15:19Z",
+  "wave": 34,
+  "status": "IN_PROGRESS",
+  "source": {
+    "baseline_main_commit": "de10389c76f3486aa4e1125e1a6da434f6f9a173",
+    "implementation_commit": "b974d856eefbd1ffe71cf6fdec49f6c1018c8947",
+    "final_commit": null,
+    "branch": "codex/flowscalper-wave34-full-audit",
+    "working_tree_clean": false
+  },
+  "environment": {
+    "os": "macOS 26.5.2 build 25F84 arm64",
+    "python": "3.12.13",
+    "uv": "0.11.26",
+    "node": "26.4.0",
+    "pnpm": "9.15.9"
+  },
+  "implementation": {
+    "idempotent_start_and_explicit_new_run": "PASS",
+    "control_idempotency_key_and_state_revision": "PASS",
+    "manual_pause_and_auto_lock_separated": "PASS",
+    "strategy_cas_actor_reason_manual_lock_rollback": "PASS",
+    "history_scope_main_league_run_version_profile_sample": "PASS",
+    "timeframes_1m_3m_5m_15m_30m_1h_4h": "PASS",
+    "strategy_governor": "PASS",
+    "dynamic_strategy_accounts": "PASS",
+    "runtime_strategy_horizon_contract": "PASS",
+    "canonical_completed_candles_and_intraday_research": "PASS",
+    "graceful_persistence_shutdown": "PASS",
+    "macos_service_intent_recovery": "PASS"
+  },
+  "research": {
+    "dataset_run_count": 13,
+    "dataset_manifest_event_count": 2690582,
+    "intraday_processed_event_count": 2232327,
+    "intraday_signal_count": 19020,
+    "preregistered_key_count": 180,
+    "promotable_hypothesis_count": 120,
+    "split_outcomes": {
+      "train": 12647,
+      "validation": 2423,
+      "oos": 3456
+    },
+    "selected_candidate": "MICRO_SCALP:30:ABSORPTION_REFILL_REVERSE:ORIGINAL",
+    "selected_oos_base": {
+      "sample_size": 2,
+      "expectancy_bps": -4.8930123899884315,
+      "profit_factor": 0.5538760474348817
+    },
+    "selected_oos_stress": {
+      "sample_size": 2,
+      "expectancy_bps": -16.89301238998843,
+      "profit_factor": 0.004409474593543067
+    },
+    "pbo": 0.6285714285714286,
+    "dsr": "INSUFFICIENT_SAMPLE",
+    "bootstrap_expectancy_bps_95": [-21.93566322478157, 12.149638444804708],
+    "mirror_parity": {
+      "status": "PASS",
+      "pairs": 190,
+      "mismatches": 0
+    },
+    "promotion_status": "NOT_PROVEN",
+    "registry_changes": [],
+    "intraday_dataset_hash": "5107f072ce2584f8a25c4cc0968a1681af63165ede27e85e047bc0cce17496dc",
+    "intraday_parameter_hash": "7b52995af94fdb811637abcde8b74a2bbe9b510ae38309008e045955d1f04a80",
+    "intraday_result_hash": "ba921ad8396a59e8298ca38a32cc3da1959b2e4941369025c33bec678b1d141e",
+    "existing_strategy_result_hash": "752e28f91456952ecdb4abd953c02e17b1908564ff3d8c4fd3949b1d88b43425",
+    "full_intraday_repeat_determinism": "PASS",
+    "full_existing_strategy_repeat_determinism": "NOT_RUN",
+    "profitability": "NOT_PROVEN"
+  },
+  "validation": {
+    "backend_pytest": {"status": "PASS", "count": 358},
+    "frontend_vitest": {"status": "PASS", "files": 12, "count": 51},
+    "ruff": "PASS",
+    "mypy": {"status": "PASS", "source_files": 91},
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": "PASS_WITH_WARNING_502_44_KB_CHUNK",
+    "paper_build_safety": "PASS",
+    "playwright": {"status": "PASS", "desktop_tablet_mobile": 3},
+    "security": {"status": "PASS", "checked_source_files": 124, "violations": 0},
+    "repository_hygiene": "PASS",
+    "network_smoke": {
+      "status": "PASS",
+      "binance_eligible": 527,
+      "binance_catalog": 701,
+      "upbit_krw_catalog": 286,
+      "websocket_events": 16,
+      "credentials_sent": false,
+      "authorization_header_sent": false,
+      "real_orders_enabled": false
+    },
+    "browser_manual": {
+      "status": "PASS",
+      "start_pause_resume_new_run": "PASS",
+      "timeframe_buttons": 7,
+      "indicator_toggles": 7,
+      "replay_live_isolation": "PASS",
+      "strategy_and_history_scopes": "PASS",
+      "desktop_tablet_mobile_no_root_overflow": "PASS",
+      "console_errors": 0
+    },
+    "soak_30m": {
+      "status": "PASS",
+      "run_id": "soak-9d9cc1e8cbcf",
+      "requested_duration_seconds": 1800,
+      "event_count": 130248,
+      "planned_rotations": 1,
+      "reconnects": 1,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "resyncs": 0,
+      "dropped_events": 0,
+      "max_queue_depth": 12,
+      "max_lag_p95_ms": 62.467041015625,
+      "critical_lag_incidents": 0,
+      "memory_growth_mb": 143.407,
+      "final_entry_locked": false,
+      "real_orders_enabled": false,
+      "auth_required": false
+    },
+    "soak_6h": "NOT_RUN",
+    "soak_24h": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  },
+  "active_service": {
+    "predeploy_run_id": "run-f7118bed2264",
+    "predeploy_open_main_positions": 0,
+    "predeploy_open_league_positions": 0,
+    "predeploy_actual_orders_enabled": false,
+    "predeploy_auth_required": false,
+    "predeploy_note": "기존 서비스와 연구·soak의 동시 host 부하 중 계획회전 1회가 86.467초 critical lag로 기록된 뒤 자동 복구됐다. 독립 30분 soak에서는 재현되지 않아 PASS_WITH_LIMIT로 보존한다.",
+    "ledger_integrity_after_stop": "NOT_RUN",
+    "deployment": "NOT_RUN",
+    "postdeploy_run_id": null,
+    "restart_recovery": "NOT_RUN"
+  },
+  "safety": {
+    "actual_orders": 0,
+    "private_api_paths": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decisions": 0,
+    "auth_required": false
+  },
+  "github": {
+    "main_commit": null,
+    "actions_run": null,
+    "actions_status": "NOT_RUN"
+  }
+}

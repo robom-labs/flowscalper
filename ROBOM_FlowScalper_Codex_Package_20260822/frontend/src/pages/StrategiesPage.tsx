@@ -164,6 +164,17 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRoll
         {selected ? <>
           <p className="drawer-subtitle"><b>{lifecycleLabels[selected.lifecycle]}</b> · {modeLabels[selected.mode]} · strategy_id {selected.strategy_id}</p>
           <section className="profile-detail-block">
+            <h3>전략 운용 계약</h3>
+            <dl className="drawer-detail-list">
+              <div><dt>전략 시간축</dt><dd>{selected.horizon_class}</dd></div>
+              <div><dt>예상 보유</dt><dd>{selected.expected_holding_seconds[0]}~{selected.expected_holding_seconds[1]}초</dd></div>
+              <div><dt>신호 반감기</dt><dd>{selected.signal_half_life_seconds}초</dd></div>
+              <div><dt>사용 시간구간</dt><dd>{selected.required_timeframes.join(' · ')}</dd></div>
+              <div><dt>자동 관리</dt><dd>{selected.exit_model} · 최대 안전보유 {selected.max_hold_seconds}초</dd></div>
+              <div><dt>비용 기준</dt><dd>{selected.cost_model_version}</dd></div>
+            </dl>
+          </section>
+          <section className="profile-detail-block">
             <h3>자동 평가 상태</h3>
             <dl className="drawer-detail-list">
               <div><dt>현재 대표</dt><dd>{selected.governance.champion_id ? strategyLabel(strategies.find((item) => item.strategy_id === selected.governance.champion_id), selected.governance.champion_id) : selected.lifecycle === 'ACTIVE' ? selected.short_name : '없음'}</dd></div>

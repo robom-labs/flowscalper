@@ -85,6 +85,13 @@ class StrategyDescriptor:
     supported_regimes: tuple[Regime, ...]
     evaluator: StrategyEvaluator
     exit_style: ExitStyle
+    horizon_class: str = "MICRO_SCALP"
+    expected_holding_seconds: tuple[int, int] = (10, 180)
+    signal_half_life_seconds: int = 30
+    required_timeframes: tuple[str, ...] = ("250ms", "1s", "3s", "10s", "30s", "120s")
+    exit_model: str = "STRUCTURE_TP1_TP2_EDGE_DECAY"
+    max_hold_seconds: int = 900
+    cost_model_version: str = "TOP_OF_BOOK_BASE13_STRESS25_V1"
     paper_only: bool = True
 
 
@@ -443,6 +450,13 @@ class StrategyRegistry:
                 "stability": descriptor.stability.value,
                 "supported_regimes": [regime.value for regime in descriptor.supported_regimes],
                 "exit_style": descriptor.exit_style.value,
+                "horizon_class": descriptor.horizon_class,
+                "expected_holding_seconds": list(descriptor.expected_holding_seconds),
+                "signal_half_life_seconds": descriptor.signal_half_life_seconds,
+                "required_timeframes": list(descriptor.required_timeframes),
+                "exit_model": descriptor.exit_model,
+                "max_hold_seconds": descriptor.max_hold_seconds,
+                "cost_model_version": descriptor.cost_model_version,
                 "paper_only": descriptor.paper_only,
             }
             for descriptor in self._descriptors.values()

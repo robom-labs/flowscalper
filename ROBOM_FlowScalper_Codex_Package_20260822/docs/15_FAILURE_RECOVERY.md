@@ -68,6 +68,16 @@ At startup:
 6. resume or conservatively close according to recovery policy;
 7. record recovery incident.
 
+The supported macOS LaunchAgent inspects the active ledger read-only before startup. It
+selects `LIVE_SHADOW_PAPER` only when the latest non-finalized Run has that recoverable
+mode; missing, corrupt, finalized or unknown state falls back to `READY`. This launcher
+selection does not bypass checksum, venue, symbol or fresh-book revalidation in the
+backend. An explicitly supplied `ROBOM_MODE` still takes precedence.
+
+During shutdown, lifespan shields the persistence worker from an overlapping ASGI
+cancellation and waits for its completion. The service must not report a clean stop merely
+because the outer shutdown coroutine was cancelled.
+
 Because there are no real orders, recovery concerns the internal paper state only. Still test all lifecycle states.
 
 ## 15.4 Data gap with open paper position
@@ -119,3 +129,5 @@ Recovery requires satisfying a deterministic health check, not merely a UI toggl
 - 신규 PAPER 진입가격을 결정하는 실행호가 p95는 sequence-valid depth·order-book 입력만 사용한다. 공개 trade와 wide scanner 지연은 별도 telemetry로 유지해 느린 비실행 stream이 실제 bid·ask 안전상태로 오인되지 않게 한다.
 - 거래소 보정시각 기준 500ms보다 늦은 aggregate trade는 `TRADE_LAG_STALE`로 저장하되 candle·FeatureEngine·전략평가에서 제외한다. 해당 종목은 신선한 trade가 도착할 때까지 `data_healthy=false`로 fail-closed한다.
 - A planned WebSocket rotation enters `RECONNECTING` and locks new PAPER entries before metadata and snapshots are prepared. Public socket close waits are bounded, and the lock clears only after a new sequence-valid depth event.
+- The macOS service launcher recovers the latest open LIVE/DEMO PAPER intent read-only; all missing, invalid or unknown ledger states start `READY` fail-closed. Backend snapshot and fresh-book checks remain authoritative.
+- A cancellation arriving while lifespan awaits the persistence worker cannot cancel that worker; shutdown waits for its final flush result before completing.

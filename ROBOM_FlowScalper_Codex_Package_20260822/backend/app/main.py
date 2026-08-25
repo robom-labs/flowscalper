@@ -49,6 +49,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 
+async def _await_shutdown_task(task: asyncio.Task[None]) -> None:
+    """종료 신호가 겹쳐도 이미 시작한 안전 저장 작업은 끝까지 기다린다."""
+
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        await asyncio.gather(task, return_exceptions=True)
+
+
 class ChartSelectionRequest(BaseModel):
     """사용자가 볼 공개 종목과 로컬 캔들 시간구간을 제한한다."""
 
@@ -315,7 +324,7 @@ def create_app(
                 await asyncio.gather(broadcaster, return_exceptions=True)
             persistence_stop.set()
             if persistence_worker is not None:
-                await asyncio.gather(persistence_worker, return_exceptions=True)
+                await _await_shutdown_task(persistence_worker)
             if trade_cache_task is not None:
                 await asyncio.gather(trade_cache_task, return_exceptions=True)
             await active_runtime.shutdown()

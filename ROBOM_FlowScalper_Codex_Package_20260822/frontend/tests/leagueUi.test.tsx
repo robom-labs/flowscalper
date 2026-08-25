@@ -32,6 +32,9 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
   expect(screen.getAllByText(/현재 전략 버전의 공개시장 PAPER 기준/).length).toBeGreaterThanOrEqual(2)
   expect(screen.getAllByText('과거 버전 제외')).toHaveLength(2)
   expect(screen.getByRole('heading', { name: '자동 평가 상태' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: '전략 운용 계약' })).toBeInTheDocument()
+  expect(screen.getByText('10~180초')).toBeInTheDocument()
+  expect(screen.getByText('TOP_OF_BOOK_BASE13_STRESS25_V1')).toBeInTheDocument()
   expect(screen.getByText('아직 검증 불충분')).toBeInTheDocument()
 })
 

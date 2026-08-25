@@ -280,3 +280,5 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 11. Re-run backend, frontend, lint, typecheck, build, E2E, public network, security and repository hygiene. Verify the actual browser at desktop, tablet and phone sizes.
 12. Deploy only after every main and League PAPER position is flat. Verify the active service after atomic replacement and preserve actual orders, auth, private API, API keys, secrets, wallets and runtime AI at zero.
 13. Complete a fresh 30-minute observation after deployment. Mark 6-hour and 24-hour checks `NOT_RUN` unless their full wall-clock duration is actually observed.
+14. Publish each runtime strategy's horizon, expected holding range, signal half-life, required inputs, exit model, maximum safety hold and cost-model version without changing its entry threshold.
+15. Shield the final persistence worker during ASGI shutdown. The macOS launcher may recover only the latest non-finalized LIVE/DEMO PAPER intent from a read-only ledger query; all missing or invalid state falls back to READY.

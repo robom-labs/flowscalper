@@ -12,6 +12,8 @@
 - Strategy Governor가 RESEARCH·SHADOW·CHALLENGER·ACTIVE·QUARANTINED·RETIRED, manual lock, 원자 champion 교체, rollback과 감사 근거를 관리하되 source·임계값은 변경하지 않게 했다.
 - canonical completed candle과 연구 전용 multi-timeframe 엔진을 추가하고 180개 사전등록 ORIGINAL·기계적 미러·별도 역가설 후보를 실제 bid·ask와 BASE/STRESS 비용으로 비교한다. 연구 결과는 Registry를 자동 변경하지 않는다.
 - 전략 수와 BASE/STRESS 독립계좌 수를 Registry에서 동적으로 계산하고 10·20 표시 하드코딩을 제거했다.
+- 각 런타임 전략에 horizon, 예상 보유, 신호 반감기, 사용 시간구간, exit model, 최대 안전보유와 비용버전을 선언하고 한국어 상세 화면에 공개했다.
+- 종료 중 ASGI 취소가 persistence worker를 함께 취소하지 않게 저장 완료를 shield하고, macOS 서비스가 최신 미종료 PAPER Run의 LIVE/DEMO 의도를 읽기 전용으로 복구하되 모든 오류는 READY로 fail-closed하게 했다.
 - 전략 상태를 RESEARCH·SHADOW·CHALLENGER·ACTIVE·QUARANTINED·RETIRED로 분리하고, 작은 승률 표본이 아니라 비용후 OOS·강건성·다중검정·자연표본·cooldown을 요구하는 보수적 Governor를 추가했다.
 - 자동 격리는 기술 결함 또는 전체·최근 OOS의 두 평가 주기 연속 악화에만 허용하고, champion 교체를 원자적으로 적용하며 사용자 manual lock을 우선한다.
 - 전략 설정 CAS, 주체·이유·근거 audit, 재시작 이력 복구와 새 revision rollback을 API·SQLite·한국어 UI에 연결했다.

@@ -222,17 +222,18 @@ Charts and metrics:
 
 ## 9.12 Phase 02 current screen contract
 
-The current beginner navigation is `홈`, `전략 리그`, `진행 거래`, `거래 기록`, `과거 재생`,
-`성과`, `안전 설정`, `고급 터미널`, `시스템`. The home separates the six BASE
-account total from the 1,000 USDT Shared Capital Benchmark and always explains that
-6,000 USDT is the sum of six independent accounts.
+The current beginner navigation is `시장`, `전략`, `진행 거래`, `거래 기록`, `과거 재생`,
+`성과`, `안전 설정`, `고급진단`, `시스템`. The home separates the Registry-derived BASE
+account total from the 1,000 USDT Shared Capital Benchmark and always explains that the
+larger League total is a comparison of independent accounts, not shared or real money.
 
-The Strategy League shows six Registry rows. `ACTIVE` is `공동·독립 모의 중`,
-`SHADOW` is `독립 모의 중`, and `OFF` is `꺼짐`. The default is A/B ACTIVE,
-C/D/E/F SHADOW and LONG/SHORT enabled for all six, so every strategy is on without
-promoting experimental strategies into the shared benchmark. BASE/STRESS analytics
-open in an accessible fixed drawer. League positions default to BASE and contain no manual
-real buy or sell action.
+The Strategy League derives every row and BASE/STRESS account total from the backend
+Registry payload. `ACTIVE` is `공동·독립 모의 중`, `SHADOW` is `독립 모의 중`, and
+`OFF` is `꺼짐`. The current safe default is B ACTIVE, C/F/G/I/J SHADOW and A/D/E/H
+RETIRED/OFF, with LONG/SHORT controls preserved for all registered strategies. The drawer
+shows horizon, expected holding, signal half-life, required input intervals, exit model,
+cost version, lifecycle evidence and revision history before BASE/STRESS analytics. League
+positions default to BASE and contain no manual real buy or sell action.
 
 Strategy performance uses only each independent League account. Shared benchmark trades
 are not added to the same strategy sample. The drawer shows wins, losses, breakevens,

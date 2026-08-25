@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from backend.app.domain.safety import RealTradingDisabledError, assert_paper_onl
 from backend.app.main import _local_browser_origin
 from scripts.run_server import RemoteBindingDisabledError, validate_local_host
 from scripts.select_local_port import choose_local_port
+from scripts.select_service_mode import select_service_mode
 
 
 def test_runtime_mode_has_no_real_trading_member() -> None:
@@ -61,3 +63,35 @@ def test_clickable_launcher_selects_a_bounded_local_port() -> None:
         choose_local_port(0)
     with pytest.raises(ValueError):
         choose_local_port(65_535, attempts=2)
+
+
+def test_service_mode_recovers_only_an_open_paper_run(tmp_path: Path) -> None:
+    database = tmp_path / "ledger.sqlite3"
+    assert select_service_mode(database) == RuntimeMode.READY.value
+
+    connection = sqlite3.connect(database)
+    connection.execute(
+        """
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY,
+            mode TEXT NOT NULL,
+            started_ts_ms INTEGER NOT NULL,
+            finalized_ts_ms INTEGER
+        )
+        """
+    )
+    connection.execute(
+        "INSERT INTO runs VALUES (?, ?, ?, ?)",
+        ("closed", RuntimeMode.LIVE_SHADOW_PAPER.value, 1, 2),
+    )
+    connection.commit()
+    assert select_service_mode(database) == RuntimeMode.READY.value
+
+    connection.execute(
+        "INSERT INTO runs VALUES (?, ?, ?, NULL)",
+        ("open", RuntimeMode.LIVE_SHADOW_PAPER.value, 3),
+    )
+    connection.commit()
+    connection.close()
+
+    assert select_service_mode(database) == RuntimeMode.LIVE_SHADOW_PAPER.value

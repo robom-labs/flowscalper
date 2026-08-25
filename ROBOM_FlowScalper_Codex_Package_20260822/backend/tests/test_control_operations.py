@@ -331,7 +331,7 @@ async def test_cancel_during_supervisor_start_leaves_no_tasks(monkeypatch) -> No
     assert runtime.market_data_state.value != "LIVE"
 
 
-def test_dashboard_has_eighteen_accounts_and_split_risk_contract() -> None:
+def test_dashboard_has_registry_derived_accounts_and_split_risk_contract() -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     dashboard = runtime.dashboard()
 

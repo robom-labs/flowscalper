@@ -208,6 +208,14 @@ export type StrategyRow = {
   summary_ko: string
   stability: 'STABLE' | 'EXPERIMENTAL'
   supported_regimes: string[]
+  exit_style: string
+  horizon_class: 'MICRO_SCALP' | 'FAST_INTRADAY' | 'INTRADAY_SWING'
+  expected_holding_seconds: [number, number]
+  signal_half_life_seconds: number
+  required_timeframes: string[]
+  exit_model: string
+  max_hold_seconds: number
+  cost_model_version: string
   paper_only: true
   mode: 'ACTIVE' | 'SHADOW' | 'OFF'
   lifecycle: 'RESEARCH' | 'SHADOW' | 'CHALLENGER' | 'ACTIVE' | 'QUARANTINED' | 'RETIRED'

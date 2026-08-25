@@ -116,6 +116,9 @@ For both long and short:
 - database reopen and reconciliation;
 - corrupted snapshot safety pause;
 - disk-full entry lock.
+- lifespan cancellation while a persistence worker is still flushing;
+- macOS service mode selection for missing, open LIVE PAPER and finalized Run ledgers;
+- actual LaunchAgent restart recovery without a browser click, followed by fresh-book unlock.
 
 ## 12.10 Real-trading prohibition tests
 

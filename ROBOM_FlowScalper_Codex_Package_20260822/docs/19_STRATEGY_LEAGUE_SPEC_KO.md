@@ -79,7 +79,7 @@
 - TREND 전략 B/D/E/F/G/H/I/J 구조계획은 최소 0.30% stop 거리와 3.2R target을 사용해 공통 비용 gate를 낮추지 않는다.
 - robust statistic은 현재 시점 이전 prefix만 사용하며 Replay도 같은 timestamp 규칙을 쓴다.
 
-## 7.1 공통 비용후 계획과 A~D 시간 조건
+## 7.1 공통 비용후 계획과 event-time 조건
 
 - REVERSION 전략 A/C는 최소 0.80%, TREND 전략 B/D/E/F/G/H/I/J는 최소 0.30%의 구조 stop 거리를 사용한다.
 - 이 거리는 손실예산을 늘리지 않는다. main은 현재자산의 0.1%, League는 0.5% 위험예산에 맞춰 수량을 줄인다.

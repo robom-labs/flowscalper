@@ -59,13 +59,23 @@ top10 각 호가의 중간가격 거리와 누적 명목깊이로 매수·매도
 
 ## 모드와 방향 제어
 
+현재 안전 기본값은 B만 `ACTIVE`, C/F/G/I/J는 `SHADOW`, A/D/E/H는 `RETIRED` 생명주기의 `OFF`다. 이 상태는 과거 거래를 지우지 않으며 퇴역 전략의 BASE·STRESS 계좌와 사용자가 명시적으로 다시 연구할 수 있는 경로도 보존한다.
+
 | 화면 선택 | main PAPER 후보 | 독립 BASE·STRESS shadow | 평가 |
 |---|---:|---:|---:|
 | 실전 PAPER, `ACTIVE` | 포함 | 포함 | 실행 |
 | 가상 관찰, `SHADOW` | 제외 | 포함 | 실행 |
 | 끄기, `OFF` | 제외 | 제외 | 중지 |
 
-LONG과 SHORT는 각 전략에서 별도로 허용하거나 차단한다. 설정 변경은 같은 Run의 원장에 시각과 함께 기록되며 자동 승격, 자동 중지, 자동 임계 완화는 하지 않는다.
+LONG과 SHORT는 각 전략에서 별도로 허용하거나 차단한다. 설정 변경은 revision, actor, 이유와 함께 원장에 기록된다. Strategy Governor는 짧은 승률로 설정을 뒤집지 않고, 최소표본·OOS·STRESS·PBO·DSR·강건성 gate와 사용자 manual lock을 모두 확인한다. runtime은 source code나 임계값을 자동 수정하지 않는다.
+
+각 런타임 전략 descriptor는 `MICRO_SCALP`, 예상 보유 10~180초, 신호 반감기 30초, 250ms~120초 공개시장 피처, 구조형 TP1·TP2·SL·EDGE_DECAY 관리, 900초 비상 안전상한과 `TOP_OF_BOOK_BASE13_STRESS25_V1` 비용 기준을 API와 상세 화면에 함께 공개한다. 이는 예상 운용범위이며 건강한 포지션을 120초에 고정 종료한다는 뜻이 아니다.
+
+## 연구 전용 multi-timeframe 후보
+
+Wave 34의 후보는 런타임 A~J Registry와 분리된 연구 전용 계층이다. 1m canonical completed candle에서 3m·5m·15m·30m·1h·4h를 결정적으로 집계하고, MICRO_SCALP·FAST_INTRADAY·INTRADAY_SWING의 12개 시간축에 다섯 alpha family와 ORIGINAL·MECHANICAL_MIRROR·HYPOTHESIS_REVERSE를 사전등록했다. 전체 180개 key 중 mirror를 제외한 120개를 승격 가능 가설 수로 multiple-testing 보정에 포함했다.
+
+13개 저장 `LIVE_PUBLIC` Run 전수 OOS에서 선택 후보도 BASE 기대값 -4.893bp, PF 0.554, 표본 2건, STRESS 기대값 -16.893bp, PBO 0.629였고 모든 승격 gate가 실패했다. 따라서 신규 strategy ID나 SHADOW 계좌를 만들지 않았으며, 자연신호를 늘리기 위해 기준을 낮추지 않았다. 전체 JSON·HTML은 `evidence/WAVE34_INTRADAY_RESEARCH.*`에 보존한다.
 
 ## 후보에서 불변 계획까지
 

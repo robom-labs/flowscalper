@@ -65,6 +65,7 @@ Detailed specifications:
 - `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md`
 - `docs/adr/ADR-038-strategy-governor-lifecycle-and-audit.md`
 - `docs/adr/ADR-039-preregistered-intraday-research-and-runtime-separation.md`
+- `docs/adr/ADR-040-graceful-shutdown-and-service-intent-recovery.md`
 
 ## Supporting contracts
 
@@ -109,6 +110,10 @@ Detailed specifications:
 - `evidence/WAVE23_BOOK_SLOPE_STRATEGY_QA.json`
 - `evidence/WAVE24_RUNTIME_STALL_QA.json`
 - `evidence/WAVE25_STORAGE_RUNTIME_UI_QA.json`
+- `evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json`
+- `evidence/WAVE34_INTRADAY_RESEARCH.json`
+- `evidence/WAVE34_INTRADAY_RESEARCH.html`
+- `evidence/WAVE34_FULL_AUDIT_QA.json`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-full.png`

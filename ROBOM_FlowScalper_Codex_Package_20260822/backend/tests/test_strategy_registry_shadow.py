@@ -75,6 +75,14 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         "SHADOW",
     ]
     assert all(row["long_enabled"] and row["short_enabled"] for row in registry.rows())
+    assert all(row["horizon_class"] == "MICRO_SCALP" for row in registry.rows())
+    assert all(row["expected_holding_seconds"] == [10, 180] for row in registry.rows())
+    assert all(row["signal_half_life_seconds"] == 30 for row in registry.rows())
+    assert all(row["max_hold_seconds"] == 900 for row in registry.rows())
+    assert all(
+        row["cost_model_version"] == "TOP_OF_BOOK_BASE13_STRESS25_V1"
+        for row in registry.rows()
+    )
     registry.configure(
         "VWAP_EXHAUSTION_REVERSION_V1",
         mode=StrategyMode.OFF,
