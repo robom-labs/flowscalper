@@ -1321,6 +1321,8 @@ A는 비용전에도 train 기대값 -8.139bp, holdout -0.767bp라 단순 수수
 
 10초 간격 12표본에서 event 7,502→16,418, queue 0/4,096, drop 0, 실행호가 p95 25.406~33.535ms, 공개체결 p95 37.175~62.719ms였다. entry lock·critical incident·비계획 reconnect·sequence gap·persistence fault·buffer drop은 모두 0이었다. wide scanner p95는 1,529.573~1,671.764ms였지만 실행용 정밀 호가와 분리돼 있었고 진입잠금은 발생하지 않았다.
 
+Run을 계속 유지한 뒤 15분 계획 WebSocket 교체 1회에서 신규 진입 잠금이 한 표본에 관찰됐다. 이는 계획 교체 준비 중 fail-closed한 뒤 새 공개 호가를 검증하는 기존 안전동작이었다. 다음 표본에서 자동 해제됐고 전체 reconnect 1은 계획 교체 1과 일치했으며 비계획 reconnect·critical incident·sequence gap·resync·drop·persistence fault는 0이었다. 최대 이벤트 수신 공백은 4,132.979ms였고 회복 뒤 실행호가 p95 약 36ms, queue 0이었다.
+
 Run 생성 원장에는 A/E/H OFF가 정확히 기록됐다. 이후 열려 있던 브라우저에서 세 전략을 SHADOW로 바꾸는 명시적 `POST /api/strategies/...` 요청이 들어왔으며 자동 런타임 변경으로 오인하지 않았다. E가 잠깐 활성화된 동안 자연 BASE 5건은 1승 4패, 승률 20%, 기대값 -1.285985 USDT, PF 0.000031, 비용후 순손익 -6.429924 USDT였다. 기존 포지션은 지정된 TP1·TP2·SL과 관리청산 경로로 종료됐고 A/E/H를 다시 OFF로 설정해 추가 평가를 중지했다. 최종 main·League 열린 포지션은 0, queue/drop/critical/reconnect/gap/persistence fault는 0이다.
 
 실제 앱 내 브라우저는 `7개 감시 · 검증 중지 3개 · 문제 0개 · 실제 주문 0`, A/E/H 꺼짐, B 공동·독립 모의 중, 나머지 정상 감시를 표시했다. 차트는 자연 PAPER 포지션의 전략·방향·계좌범위·entry·TP1·SL을 표시했고 브라우저 console 로그는 0건이었다. 화면은 `evidence/WAVE32_STRATEGY_RETIREMENT_BROWSER.png`에 보존했다.

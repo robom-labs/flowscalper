@@ -109,6 +109,22 @@
     "sequence_gaps": 0,
     "persistence_faults": 0,
     "persistence_buffer_dropped": 0,
+    "post_sample_planned_rotation": {
+      "status": "PASS",
+      "planned_rotations": 1,
+      "total_reconnects": 1,
+      "unplanned_reconnects": 0,
+      "transient_entry_lock_observed": true,
+      "entry_lock_recovered": true,
+      "event_gap_max_ms": 4132.979,
+      "resyncs": 0,
+      "critical_lag_incidents": 0,
+      "sequence_gaps": 0,
+      "dropped_events": 0,
+      "persistence_faults": 0,
+      "recovered_book_lag_p95_ms": 36.015869140625,
+      "recovered_queue_depth": 0
+    },
     "six_hour_soak": "NOT_RUN",
     "twenty_four_hour_soak": "NOT_RUN"
   },
