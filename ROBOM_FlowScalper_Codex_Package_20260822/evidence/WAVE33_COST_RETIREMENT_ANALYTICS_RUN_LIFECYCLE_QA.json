@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "wave": 33,
+  "recorded_date": "2026-08-25",
+  "implementation_commits": [
+    "e199a3e48774339dd80ae423cecfe32afba63ffe",
+    "248cfefba7e9a684a68614e90760107d7a77a25b",
+    "0c256ab03be26f5169a9e31887701398d5f8f190"
+  ],
+  "implementation_actions": {
+    "run_id": 32840334068,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32840334068",
+    "status": "PASS",
+    "validate": "PASS 62 seconds",
+    "browser": "PASS 71 seconds with Chromium desktop/tablet/mobile and evidence upload"
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_keys": 0,
+    "wallet_paths": 0,
+    "security_scan": "PASS 115 source files, 0 violations"
+  },
+  "strategy_d_retirement": {
+    "status": "PASS_WITH_SAMPLE_LIMIT",
+    "strategy_id": "OFI_CONTINUATION_PULLBACK_V1",
+    "previous_default": "SHADOW",
+    "new_default": "OFF",
+    "strategy_revision": "2026-08-25-wave33",
+    "stored_train_base": {
+      "sample_size": 4,
+      "wins": 0,
+      "expectancy_bps": -14.289
+    },
+    "later_natural_live_public_base": {
+      "sample_size": 2,
+      "wins": 0,
+      "losses": 2,
+      "net_pnl_usdt": "-0.196319592",
+      "expectancy_bps": "-10.8855302173",
+      "profit_factor": "0"
+    },
+    "later_natural_live_public_stress": {
+      "sample_size": 2,
+      "wins": 0,
+      "losses": 2,
+      "net_pnl_usdt": "-0.453259184",
+      "expectancy_bps": "-23.0877574739",
+      "profit_factor": "0"
+    },
+    "natural_trades": [
+      {
+        "symbol": "BNBUSDT",
+        "side": "LONG",
+        "profile": "BASE",
+        "entry_price": "700.090",
+        "exit_price": "700.460",
+        "initial_stop": "697.9847450",
+        "take_profit": "706.61579200",
+        "holding_ms": 20146,
+        "exit_reason": "EDGE_DECAY",
+        "gross_pnl_usdt": "0.07770",
+        "fees_usdt": "0.17646930",
+        "slippage_usdt": "0.00105",
+        "net_pnl_usdt": "-0.09981930",
+        "mae_r": "-0.002375",
+        "mfe_r": "0.178126"
+      },
+      {
+        "symbol": "ENAUSDT",
+        "side": "LONG",
+        "profile": "BASE",
+        "entry_price": "0.1508500",
+        "exit_price": "0.1508100",
+        "initial_stop": "0.1503924650",
+        "holding_ms": 29580,
+        "exit_reason": "EDGE_DECAY",
+        "gross_pnl_usdt": "-0.0170800",
+        "fees_usdt": "0.077285292",
+        "slippage_usdt": "0.0021350",
+        "net_pnl_usdt": "-0.096500292",
+        "mae_r": "-0.185778",
+        "mfe_r": "0.098353"
+      }
+    ],
+    "holding_time_classification": "PASS: 20.146s and 29.580s, not the historical 1-2s churn defect",
+    "retained_capabilities": [
+      "immutable historical trades",
+      "independent BASE/STRESS accounts",
+      "LONG/SHORT controls",
+      "manual user reactivation"
+    ],
+    "profitability": "NOT_PROVEN"
+  },
+  "live_analytics_latency": {
+    "status": "PASS",
+    "root_cause": "LIVE analytics endpoints re-read active SQLite shadow trades on every request despite checksum-verified startup cache and in-process trade merge",
+    "change": "LIVE strategy, strategy-symbol and scope analytics use the verified in-memory cache; non-LIVE and replay retain persisted reads",
+    "before_strategy_api_seconds": [
+      15.940653,
+      16.010164,
+      13.722936,
+      0.028334,
+      0.027371
+    ],
+    "after_strategy_api_seconds": [
+      0.003565,
+      0.002697,
+      0.003224,
+      0.002989,
+      0.003004
+    ],
+    "after_strategy_symbol_api_seconds": [
+      0.004190,
+      0.002723,
+      0.003017,
+      0.003151,
+      0.003084
+    ],
+    "during_persistence_flush_strategy_api_seconds": [
+      0.004136,
+      0.002288,
+      0.002735,
+      0.002604,
+      0.002724,
+      0.002709
+    ],
+    "dashboard_api_seconds": "0.009-0.016 before targeted change",
+    "cached_trade_regression": "PASS: stored trade appears while a test-forbidden ledger rescan is not called"
+  },
+  "run_lifecycle_repair": {
+    "status": "PASS",
+    "root_cause": "LaunchAgent starts READY and the prior READY archive path returned before finalizing the previous recoverable Run",
+    "preservation_policy": "one transaction finalizes superseded flat runs with preserved=true and recovered_as_superseded=true; no trade, order, fill, snapshot or archive is deleted or rewritten",
+    "unfinalized_runs_before": 76,
+    "unfinalized_runs_after": 1,
+    "superseded_runs_preserve_finalized": 76,
+    "current_open_run": "run-f7118bed2264",
+    "explicitly_verified_finalized_runs": [
+      "run-04a41901147e",
+      "run-a57809b1e308"
+    ],
+    "open_exposure_guard": "PASS: READY start blocks with RECOVERY_OPEN_PAPER_EXPOSURE when the latest checksum-verified snapshot contains a position or pending entry"
+  },
+  "fresh_live_run": {
+    "status": "PASS_WITH_LIMIT",
+    "run_id": "run-f7118bed2264",
+    "operation_id": "control-2f2c6afaa49548efb77850d36143a268",
+    "operation_state": "COMPLETED",
+    "implementation_commit_recorded_in_run": "248cfefba7e9a684a68614e90760107d7a77a25b",
+    "strategy_revision": "2026-08-25-wave33",
+    "starting_equity_usdt": 1000,
+    "current_equity_usdt_at_capture": 1000,
+    "main_trade_count_at_capture": 0,
+    "main_pnl_at_capture": 0,
+    "main_fees_at_capture": 0,
+    "main_slippage_at_capture": 0,
+    "wide_symbols": 50,
+    "deep_symbols": 12,
+    "event_count_at_second_checkpoint": 32571,
+    "runtime_uptime_seconds_at_second_checkpoint": 491.849,
+    "book_lag_p95_ms": 26.189697265625,
+    "trade_lag_p95_ms": 54.0888671875,
+    "queue_depth": 0,
+    "queue_capacity": 4096,
+    "dropped_events": 0,
+    "critical_lag_incidents": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "persistence_faults": 0,
+    "entry_locked": false,
+    "league_open_positions": 0,
+    "persistence": {
+      "flush_count": 16,
+      "flush_last_ms": 520,
+      "flush_max_ms": 11142,
+      "flush_slow_count": 2,
+      "slowest_ledger_ms": 10894.267,
+      "slowest_archive_ms": 193.344,
+      "checkpoint_count": 2,
+      "checkpoint_first_ms": 13473,
+      "checkpoint_second_ms": 1278,
+      "checkpoint_faults": 0,
+      "classification": "PASS_WITH_LIMIT: one isolated external-storage FULL commit and checkpoint spike; later flushes 357-520ms and next checkpoint 1278ms; market path remained healthy"
+    },
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN"
+  },
+  "browser": {
+    "status": "PASS",
+    "actual_url": "http://127.0.0.1:8870/?refresh=202608251607",
+    "strategy_summary": "6 monitored, 4 off, 0 faults, 0 real orders",
+    "strategy_d": "OFF, 0 evaluation paths",
+    "active_strategy_b": "ACTIVE, 24 evaluation paths",
+    "shadow_strategies": [
+      "C",
+      "F",
+      "G",
+      "I",
+      "J"
+    ],
+    "long_short_controls": "enabled for all strategies",
+    "performance_view": "current wave33 revision has 0 completed trades and labels every strategy sample insufficient; older revisions are shown only as excluded counts",
+    "strategy_view_switch_ms": 767,
+    "console_errors": 0
+  },
+  "validation": {
+    "backend_pytest": "PASS 327 in 37.72s",
+    "ruff": "PASS",
+    "mypy": "PASS 82 source files",
+    "frontend_vitest": "PASS 12 files 47 tests",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "PASS 48 modules",
+    "playwright": "PASS desktop/tablet/mobile 3 in 12.5s",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS 115 source files, 0 violations",
+    "repository_hygiene": "PASS",
+    "actual_browser": "PASS 6 monitored, 4 off, 0 faults, 0 real orders, 0 console errors",
+    "active_ledger_full_integrity_check": "NOT_RUN: avoided contention with active multi-GiB writer",
+    "bounded_strategy_research_rerun": "NOT_COMPLETED: terminated after exceeding the 10-minute bound; empty partial output was not used as evidence",
+    "release_zip": "NOT_RUN"
+  },
+  "evidence_files": [
+    "evidence/WAVE33_STRATEGY_RETIREMENT_ANALYTICS_BROWSER.png",
+    "docs/adr/ADR-035-ofi-pullback-default-retirement.md",
+    "docs/adr/ADR-036-live-analytics-cache-boundary.md",
+    "docs/adr/ADR-037-ready-start-run-finalization.md"
+  ]
+}

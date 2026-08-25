@@ -1343,3 +1343,58 @@ Run 생성 원장에는 A/E/H OFF가 정확히 기록됐다. 이후 열려 있�
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 기계판독 증거는 `evidence/WAVE32_AUDIT_TIMELINE_STRATEGY_RETIREMENT_QA.json`, 실제 화면은 `evidence/WAVE32_STRATEGY_RETIREMENT_BROWSER.png`, 결정 근거는 ADR-033·ADR-034다. 구현 commit `293a3db5ccfcc270c4a8382d51bffc3d4792974f`을 GitHub main에 push했고 [Actions 32835366808](https://github.com/robom-labs/flowscalper/actions/runs/32835366808)의 validate 1분7초와 browser 1분5초, desktop·tablet·mobile Chromium 흐름 및 증거업로드가 모두 PASS했다.
+
+## 38. D 비용후 폐기, LIVE 분석 즉시화와 Fresh Run 보존 종료
+
+### 더 늦게 발생한 D 자연 PAPER 거래와 기본 OFF 결정
+
+Wave 32의 시간순 저장시장 train에서 D `OFI_CONTINUATION_PULLBACK_V1`는 BASE 4건·0승·기대값 -14.289bp였고 후기 holdout은 0건이었다. 기준을 낮추지 않고 계속 실행한 `run-04a41901147e`에서 더 늦은 자연 `LIVE_PUBLIC` BASE 2건이 발생했다.
+
+| 종목·방향 | 진입→청산 | 보유 | 총손익 | 수수료·슬리피지 | 순손익 | 종료 |
+|---|---:|---:|---:|---:|---:|---|
+| BNBUSDT LONG | 700.090→700.460 | 20.146초 | +0.07770 | 0.17646930·0.00105 | -0.09981930 USDT | EDGE_DECAY |
+| ENAUSDT LONG | 0.1508500→0.1508100 | 29.580초 | -0.0170800 | 0.077285292·0.0021350 | -0.096500292 USDT | EDGE_DECAY |
+
+합산 BASE는 0승 2패·순손익 -0.196319592 USDT·기대값 -10.8855302173bp·PF 0이고, STRESS는 0승 2패·순손익 -0.453259184 USDT·기대값 -23.0877574739bp·PF 0이다. 두 거래는 1~2초 종료 결함이 아니며 후보→진입→관리결정→청산 시간순도 일치했다. train 4건에 이은 더 늦은 자연 BASE 2건이 모두 비용후 손실이므로 D를 기본 `SHADOW`에서 `OFF`로 내렸다. 전략 코드·과거 불변 거래·BASE/STRESS 독립계좌·LONG/SHORT·수동 재활성화는 보존했다. revision은 `2026-08-25-wave33`이다. 현재 승률이 높아졌다거나 수익성이 입증됐다는 결론은 `NOT_PROVEN`이다.
+
+### LIVE 전략 분석 API 지연 제거
+
+`/api/analytics/strategies`가 15.940653초·16.010164초·13.722936초 대기하는 것을 재현했다. LIVE는 부팅 때 checksum 검증한 현재·이전 버전 cache와 현재 process 완료거래를 ID로 병합하는데도 매 API요청이 활성 2.3GiB SQLite `shadow_trades`를 다시 읽고 writer lock 경쟁을 대기한 것이 원인이었다.
+
+LIVE 전략·전략별 종목·분석 범위는 검증 cache와 현재 process 거래만 사용하고, non-LIVE·replay는 불변 원장 읽기를 유지했다. 수정 후 전략 API 5회는 2.697~3.565ms, 전략별 종목 API 5회는 2.723~4.190ms였다. 실제 541ms·833ms persistence flush 중 6회도 2.288~4.136ms였다. 저장거래가 cache에 포함되면서 테스트가 금지한 원장 재주사는 호출되지 않는 회귀검사를 추가했다. 상세 결정은 ADR-036이다.
+
+### READY→Fresh Run의 과거 Run 보존 종료
+
+macOS LaunchAgent는 항상 `READY`로 부팅하고, 기존 archive 함수는 READY에서 즉시 반환했다. 그 결과 새 LIVE Run을 만들 때 과거 Run을 종료하지 않아 `finalized_ts_ms IS NULL`인 행이 76개 누적되었다. 거래는 Run ID로 분리됐지만 수명주기는 잘못됐다.
+
+새 LIVE·DEMO·Run·venue failover 직전에 평평한 과거 Run을 한 transaction에서 `preserved=true`·`recovered_as_superseded=true`로 종료하도록 수정했다. 거래·주문·체결·snapshot·archive는 삭제하거나 다시 쓰지 않는다. 실제 이관 후 미종료는 현재 `run-f7118bed2264` 1개만 남았고 76개 과거 행이 보존 종료됐다. 최근 checksum 검증 복구 snapshot에 pending entry나 position이 있으면 `RECOVERY_OPEN_PAPER_EXPOSURE`로 새 Run을 차단하는 회귀검사도 통과했다. 상세 결정은 ADR-037이다.
+
+### Fresh LIVE PAPER 실행·저장·화면
+
+시작 작업 `control-2f2c6afaa49548efb77850d36143a268`은 `COMPLETED`였고 `run-f7118bed2264`는 구현 commit `248cfefba7e9a684a68614e90760107d7a77a25b`, 1,000 USDT·main 손익/수수료/슬리피지/거래 0·실제주문 false·인증 false·50 wide·12 deep로 시작했다.
+
+32,571 events·491.849초 지점에서 실행호가 p95 26.189697ms·공개체결 p95 54.088867ms·queue 0/4,096·drop 0이었다. critical incident·비계획 reconnect·sequence gap·persistence fault·entry lock·열린 League position은 0이었다. 첫 worker `FULL` 커밋이 일시적으로 10.894초, 전체 flush가 11.142초, 첫 별도 checkpoint가 13.473초 걸렸다. 후속 flush는 357~520ms로 회복했고 두 번째 checkpoint는 1.278초였으며 그 동안 시장 처리 이상은 없었다. 이 일시 저장지연은 숨기지 않고 `PASS_WITH_LIMIT`로 남긴다.
+
+실제 앱 내 브라우저는 `6개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0`, B ACTIVE 24개 경로, C/F/G/I/J SHADOW 각 24개 경로, A/D/E/H OFF 0개 경로를 표시했다. 모든 LONG·SHORT 제어는 켜져 있고 새 revision 완료표본은 아직 0건이므로 성과화면은 `표본 부족`을 표시했다. 브라우저 console 오류는 0건이고 화면은 `evidence/WAVE33_STRATEGY_RETIREMENT_ANALYTICS_BROWSER.png`에 보존했다.
+
+### 자동검증·외부 경쟁 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 327 passed, 37.72초 |
+| frontend Vitest | PASS | 12 files·47 tests |
+| Ruff / mypy | PASS | 오류 0 / backend/app 82 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS | Vite 48 modules / PAPER 불변조건 PASS |
+| security / repository hygiene | PASS | 115 source·violation/secret-like/real-order path 0 / PASS |
+| Playwright | PASS | desktop·tablet·mobile 3 passed, 12.5초 |
+| 실제 브라우저 | PASS | 6개 감시·4개 OFF·문제 0·실제 주문 0·console 오류 0 |
+| 전략 연구 재실행 | NOT_COMPLETED | 13개 Run 전수 재계산이 10분 한도를 넘어 중단했고 0-byte 부분 출력은 증거로 사용하지 않았다. 기존 Wave32의 완료된 시간순 결과와 더 늦은 자연 거래만 사용했다. |
+| 고CPU 연구 병행 | PASS_WITH_LIMIT | 이전 Wave32 Run에서 479.597ms 임계지연 incident 1회·43 events가 발생했다. 종료 후 p95·queue·reconnect·gap·drop·fault는 회복했다. 고CPU offline 연구를 LIVE와 같은 host에서 전속 실행하지 않는 근거다. |
+| 활성 원장 full integrity | NOT_RUN | 작동 중인 multi-GiB writer와 경쟁하는 전수검사는 반복하지 않았다. checksum·복구·보존종료 회귀검사는 PASS다. |
+| 높은 승률·수익성 | NOT_PROVEN | 실패 D를 기본 OFF했지만 남은 전략의 현재 revision 비용후 표본이 아직 없다. 30건 전에 순위를 매기지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 491.849초 표본을 멀티시간 결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | PASS | 구현·테스트 commit `0c256ab03be26f5169a9e31887701398d5f8f190`을 main에 push했다. [Actions 32840334068](https://github.com/robom-labs/flowscalper/actions/runs/32840334068)의 validate 1분2초, browser 1분11초와 Chromium desktop·tablet·mobile·증거업로드가 모두 PASS했다. |
+
+기계판독 증거는 `evidence/WAVE33_COST_RETIREMENT_ANALYTICS_RUN_LIFECYCLE_QA.json`, 실제 화면은 `evidence/WAVE33_STRATEGY_RETIREMENT_ANALYTICS_BROWSER.png`, 결정 근거는 ADR-035·ADR-036·ADR-037이다. 이번 결론은 나쁜 승률을 숨기기가 아니라, 실패 전략의 새 진입을 중지하고 현재 revision의 자연 비용후 표본을 새로 모으는 것이다.
