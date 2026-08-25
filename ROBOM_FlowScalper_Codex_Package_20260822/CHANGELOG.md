@@ -6,7 +6,8 @@
 
 ## 아직 배포하지 않음
 
-- 현재버전 비용후 성과와 시간순 저장 `LIVE_PUBLIC` train·holdout을 대조해 A를 공동 main PAPER에서 SHADOW로 내리고, 비용을 넘지 못한 E 호가 쏠림과 H 깊이 OFI를 기본 OFF로 전환했다. 과거 거래·독립계좌·수동 제어는 삭제하지 않는다.
+- 실제 A~J 런타임 evaluator를 시간순 저장 `LIVE_PUBLIC` train·holdout에 그대로 적용해 A의 비용전·비용후 방향성이 모두 실패함을 확인하고 A를 기본 OFF로 내렸다. B만 ACTIVE, C/D/F/G/I/J는 SHADOW, A/E/H는 OFF이며 과거 거래·20개 독립계좌·LONG/SHORT·수동 재활성화 제어는 삭제하지 않는다.
+- 실행 감사의 후보 시각이 진입·관리·청산 이벤트에 반복되던 문제를 수정해 각 실제 호가·체결 시각을 기록한다. 자연 PAPER 거래에서 후보→진입 520ms, 진입→관리결정 28.430초, 관리결정→청산 538ms와 원장 보유시간 28.968초가 일치함을 확인했다.
 - 원시 Binance depth delta를 모두 호가장에 적용한 뒤 종목별 마지막 완성 snapshot만 500ms마다 전달하고 aggregate trade도 500ms로 합쳐, 4,096건 provider queue 포화와 오래된 표시지연을 제거했다. sequence span과 fail-closed 안전검사는 유지한다.
 - 전략 화면은 `감시`, `검증 중지`, `문제`, `실제 주문`을 분리해 의도적으로 OFF인 전략을 고장처럼 보이지 않게 표시한다.
 - 공개시장 Parquet 작성과 archive manifest·종목통계·캔들의 `synchronous=FULL` 원자 커밋 전체를 시장 처리 Python 프로세스 밖의 background I/O process로 격리했다. 별도 연결도 WAL·FULL·자동 checkpoint 0을 유지하고 실패 시 두 버퍼 복원과 새 PAPER 진입 안전잠금을 적용한다.

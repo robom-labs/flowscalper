@@ -18,7 +18,7 @@
 | 기본 거래소 | Binance USDⓈ-M 공개시장 |
 | 대체 공개시장 | Bybit Linear, 별도 Run 경계 |
 | wide / deep 관찰 | 최대 50종목 / 기본 12종목 |
-| 전략 | B ACTIVE, A/C/D/F/G/I/J SHADOW, E/H 기본 OFF, 각 BASE·STRESS 20계좌 보존 |
+| 전략 | B ACTIVE, C/D/F/G/I/J SHADOW, A/E/H 기본 OFF, 각 BASE·STRESS 20계좌 보존 |
 | 저장 | PAPER 상태 SQLite + 외장 공개시장 ZSTD Parquet |
 | GitHub | 공개 저장소 `robom-labs/flowscalper`, 기본 브랜치 `main` |
 | GitHub 폴더 | `ROBOM_FlowScalper_Codex_Package_20260822/` |

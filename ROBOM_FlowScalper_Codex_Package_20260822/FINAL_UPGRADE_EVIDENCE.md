@@ -1288,3 +1288,56 @@ H의 비용전 방향 승률은 train 54.902%, holdout 57.447%였지만 평균 �
 기계판독 증거는 `evidence/WAVE31_STRATEGY_RETIREMENT_RUNTIME_HEADROOM_QA.json`, 실제 화면은 `evidence/WAVE31_STRATEGY_RETIREMENT_MONITORING.jpg`, 상세 결정은 ADR-032다. 이번 결론은 나쁜 승률을 숨기는 것이 아니라 비용후 실패 전략을 기본 진입에서 제외하고, 남은 전략은 현재 revision 자연표본이 쌓일 때까지 순위를 매기지 않는 것이다.
 
 Wave 31 구현 commit은 `60cecafadfa7a97e70e5b15de47b9d8e2a648c8f`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E·증거 업로드가 모두 통과했다.
+
+## 37. 실행 감사 시간축 수정과 A~J 전체 비용후 선별
+
+### 감사 시각 결함과 실제 거래 재검증
+
+`PaperPortfolioEngine`의 감사 기록은 후보의 불변 `signal_time_ms`를 진입체결·보호·관리청산·실제 청산 이벤트에도 반복해서 사용하고 있었다. 거래 원장의 실제 진입·종료와 보유시간은 정상이었지만, 감사표만 모든 동작이 동시에 발생한 것처럼 보이는 관측 결함이었다.
+
+후보 관련 이벤트만 signal time을 유지하고, 진입·청산 요청은 해당 book 시각, 실제 fill은 fill book 시각, 관리결정은 현재 decision 시각을 기록하도록 수정했다. 결정적 회귀검사는 후보 1,000ms, 진입 1,250ms, TP1 요청·체결 2,000·2,250ms, TP2 요청·체결 3,000·3,250ms, 관리청산 결정·체결 126,000·126,250ms를 각각 검증한다.
+
+실제 공개시장 A DOGEUSDT LONG PAPER 거래에서도 후보 1,787,650,399,828ms, 진입 1,787,650,400,348ms, 관리결정 1,787,650,428,778ms, 청산 1,787,650,429,316ms가 기록됐다. 후보→진입 520ms, 진입→관리결정 28.430초, 관리결정→청산 538ms이며 원장 보유시간 28.968초와 일치했다. BASE 순손익은 -0.492706494 USDT, STRESS는 -0.982675596 USDT였다. 이 결과는 감사 시간축과 비용 회계를 검증한 것이며 전략 수익성 증거가 아니다. 상세 결정은 ADR-033이다.
+
+### 실제 A~J evaluator의 시간순 저장시장 선별
+
+`scripts/research_strategy_revision.py`가 실제 A~J `StrategyRegistry`와 `StrategySignalEvaluator`를 직접 호출하도록 확장했다. 저장된 `LIVE_PUBLIC` Run 13개를 시간순 train 8개와 더 늦은 holdout 5개로 분리하고, 현재시각 이전의 피처만 사용했다. 500ms 평가, 실제 ask·bid 진입과 반대호가 청산, 30초 고정 horizon, BASE 13bp·STRESS 25bp를 적용했다.
+
+| 전략 | train BASE | holdout BASE | 결정 |
+|---|---|---|---|
+| A LSA 반전 | 25건·2승·승률 8%·기대값 -21.139bp·PF 0.072 | 10건·0승·기대값 -13.767bp·PF 0 | 기본 OFF |
+| B CBR 돌파 | 1건·0승·기대값 -10.519bp | 0건 | ACTIVE 유지, 수익성 NOT_PROVEN |
+| C VWAP 소진 | 4건·1승·기대값 -2.739bp·PF 0.535 | 1건·0승·-18.670bp | SHADOW 유지, 표본 부족 |
+| D OFI 눌림 | 4건·0승·기대값 -14.289bp | 0건 | SHADOW 유지, 표본 부족 |
+| F 체결흐름 | 3건·0승·기대값 -10.766bp | 0건 | SHADOW 유지, 표본 부족 |
+| G/I/J | 0건 | 0건 | SHADOW 유지, 기준완화 없음 |
+| E/H | ADR-032 실패 재현 | ADR-032 실패 재현 | OFF 유지 |
+
+A는 비용전에도 train 기대값 -8.139bp, holdout -0.767bp라 단순 수수료 문제만이 아니었다. 높은 승률을 만들기 위해 threshold를 낮추거나 holdout을 보고 parameter grid를 탐색하지 않았다. 전략 revision을 `2026-08-25-wave32`로 올리고 B만 ACTIVE, C/D/F/G/I/J는 SHADOW, A/E/H는 OFF로 설정했다. 상세 결정은 ADR-034다.
+
+### Fresh Run과 실제 브라우저
+
+열린 main·League 포지션 0과 실제 주문·인증 false를 확인한 뒤 서비스를 재시작했다. 새 `run-04a41901147e`은 구현 commit `293a3db5ccfcc270c4a8382d51bffc3d4792974f`, 1,000 USDT, main 손익·수수료·슬리피지·거래 0과 revision `2026-08-25-wave32`로 원장에 기록됐다. 시작 작업 `control-d805083db8f94848a0a9fe192eac6c7c`은 `COMPLETED`였다.
+
+10초 간격 12표본에서 event 7,502→16,418, queue 0/4,096, drop 0, 실행호가 p95 25.406~33.535ms, 공개체결 p95 37.175~62.719ms였다. entry lock·critical incident·비계획 reconnect·sequence gap·persistence fault·buffer drop은 모두 0이었다. wide scanner p95는 1,529.573~1,671.764ms였지만 실행용 정밀 호가와 분리돼 있었고 진입잠금은 발생하지 않았다.
+
+Run 생성 원장에는 A/E/H OFF가 정확히 기록됐다. 이후 열려 있던 브라우저에서 세 전략을 SHADOW로 바꾸는 명시적 `POST /api/strategies/...` 요청이 들어왔으며 자동 런타임 변경으로 오인하지 않았다. E가 잠깐 활성화된 동안 자연 BASE 5건은 1승 4패, 승률 20%, 기대값 -1.285985 USDT, PF 0.000031, 비용후 순손익 -6.429924 USDT였다. 기존 포지션은 지정된 TP1·TP2·SL과 관리청산 경로로 종료됐고 A/E/H를 다시 OFF로 설정해 추가 평가를 중지했다. 최종 main·League 열린 포지션은 0, queue/drop/critical/reconnect/gap/persistence fault는 0이다.
+
+실제 앱 내 브라우저는 `7개 감시 · 검증 중지 3개 · 문제 0개 · 실제 주문 0`, A/E/H 꺼짐, B 공동·독립 모의 중, 나머지 정상 감시를 표시했다. 차트는 자연 PAPER 포지션의 전략·방향·계좌범위·entry·TP1·SL을 표시했고 브라우저 console 로그는 0건이었다. 화면은 `evidence/WAVE32_STRATEGY_RETIREMENT_BROWSER.png`에 보존했다.
+
+### 자동검증과 남은 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 323 passed |
+| backend 정적검사 | PASS | Ruff와 mypy 82 source |
+| frontend | PASS | Vitest 12 files·47 tests, ESLint, TypeScript, Vite 48 modules |
+| Playwright | PASS | Chromium desktop·tablet·mobile 3 passed |
+| PAPER 안전·security·위생 | PASS | build safety, security 115 source·위반 0, repository hygiene PASS |
+| 실제 브라우저 | PASS | 7개 감시·3개 OFF·문제 0·실제 주문 0, console 오류 0 |
+| 높은 승률·수익성 | NOT_PROVEN | 실패 전략을 중지했지만 B와 나머지 전략의 충분한 비용후 자연표본이 없다. |
+| 활성 원장 full integrity check | NOT_RUN | 작동 중 writer와 경쟁하는 전체 검사는 실행하지 않았다. 기존 checksum·불변 저장 회귀는 PASS다. |
+| 6시간 / 24시간 soak | NOT_RUN | 짧은 연속 표본을 멀티시간 결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+기계판독 증거는 `evidence/WAVE32_AUDIT_TIMELINE_STRATEGY_RETIREMENT_QA.json`, 실제 화면은 `evidence/WAVE32_STRATEGY_RETIREMENT_BROWSER.png`, 결정 근거는 ADR-033·ADR-034다. 구현 commit `293a3db5ccfcc270c4a8382d51bffc3d4792974f`을 GitHub main에 push했고 [Actions 32835366808](https://github.com/robom-labs/flowscalper/actions/runs/32835366808)의 validate 1분7초와 browser 1분5초, desktop·tablet·mobile Chromium 흐름 및 증거업로드가 모두 PASS했다.

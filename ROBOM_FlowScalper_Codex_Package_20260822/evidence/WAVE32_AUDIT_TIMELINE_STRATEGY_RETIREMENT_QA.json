@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "wave": 32,
+  "recorded_date": "2026-08-25",
+  "implementation_commit": "293a3db5ccfcc270c4a8382d51bffc3d4792974f",
+  "implementation_actions": {
+    "run_id": 32835366808,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32835366808",
+    "status": "PASS",
+    "validate": "PASS 67 seconds",
+    "browser": "PASS 65 seconds"
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_paths": 0,
+    "api_keys": 0,
+    "wallet_paths": 0
+  },
+  "audit_timeline": {
+    "status": "PASS",
+    "candidate_id": "candidate-2e6eb17fbc0445a9",
+    "strategy_id": "LSA_REVERSAL_V1",
+    "symbol": "DOGEUSDT",
+    "side": "LONG",
+    "candidate_ts_ms": 1787650399828,
+    "entry_fill_ts_ms": 1787650400348,
+    "management_decision_ts_ms": 1787650428778,
+    "exit_fill_ts_ms": 1787650429316,
+    "candidate_to_entry_ms": 520,
+    "entry_to_management_ms": 28430,
+    "management_to_exit_ms": 538,
+    "ledger_holding_ms": 28968,
+    "base_net_pnl_usdt": "-0.492706494",
+    "stress_net_pnl_usdt": "-0.982675596"
+  },
+  "runtime_screening": {
+    "status": "PASS_WITH_LIMIT",
+    "input": "13 chronological stored LIVE_PUBLIC runs",
+    "train_runs": 8,
+    "holdout_runs": 5,
+    "lookahead": false,
+    "evaluation_interval_ms": 500,
+    "horizon_seconds": 30,
+    "entry_exit": "actual reconstructed ask/bid top of book",
+    "base_cost_bps": 13,
+    "stress_cost_bps": 25,
+    "lsa_train_base": {
+      "sample_size": 25,
+      "wins": 2,
+      "losses": 23,
+      "win_rate": 0.08,
+      "expectancy_bps": -21.138926681560353,
+      "profit_factor": 0.07171844902852198
+    },
+    "lsa_holdout_base": {
+      "sample_size": 10,
+      "wins": 0,
+      "losses": 10,
+      "win_rate": 0.0,
+      "expectancy_bps": -13.766731855721613,
+      "profit_factor": 0.0
+    },
+    "decision": {
+      "ACTIVE": ["CBR_CONTINUATION_V1"],
+      "SHADOW": [
+        "VWAP_EXHAUSTION_REVERSION_V1",
+        "OFI_CONTINUATION_PULLBACK_V1",
+        "AGGRESSOR_FLOW_CONTINUATION_V1",
+        "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+        "OFI_RETURN_CONFLUENCE_V1",
+        "BOOK_SLOPE_ASYMMETRY_V1"
+      ],
+      "OFF": [
+        "LSA_REVERSAL_V1",
+        "QUEUE_MICROPRICE_MOMENTUM_V1",
+        "DEPTH_ADJUSTED_OFI_IMPULSE_V1"
+      ]
+    },
+    "profitability": "NOT_PROVEN"
+  },
+  "fresh_live_run": {
+    "status": "PASS_WITH_LIMIT",
+    "run_id": "run-04a41901147e",
+    "operation_id": "control-d805083db8f94848a0a9fe192eac6c7c",
+    "operation_state": "COMPLETED",
+    "strategy_revision": "2026-08-25-wave32",
+    "starting_equity_usdt": 1000,
+    "main_trade_count_at_start": 0,
+    "main_pnl_at_start": 0,
+    "main_fees_at_start": 0,
+    "main_slippage_at_start": 0,
+    "sample_count": 12,
+    "sample_interval_seconds": 10,
+    "event_start": 7502,
+    "event_end": 16418,
+    "queue_max": 0,
+    "queue_capacity": 4096,
+    "dropped_events": 0,
+    "book_lag_p95_min_ms": 25.406494140625,
+    "book_lag_p95_max_ms": 33.53515625,
+    "trade_lag_p95_min_ms": 37.1748046875,
+    "trade_lag_p95_max_ms": 62.71875,
+    "wide_lag_p95_min_ms": 1529.572998046875,
+    "wide_lag_p95_max_ms": 1671.764404296875,
+    "entry_lock_samples": 0,
+    "critical_lag_incidents": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "persistence_faults": 0,
+    "persistence_buffer_dropped": 0,
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN"
+  },
+  "browser_configuration_observation": {
+    "status": "OBSERVED_AND_CORRECTED",
+    "initial_run_settings_persisted": "A/E/H OFF",
+    "later_http_requests": [
+      "POST /api/strategies/LSA_REVERSAL_V1 -> SHADOW",
+      "POST /api/strategies/QUEUE_MICROPRICE_MOMENTUM_V1 -> SHADOW",
+      "POST /api/strategies/DEPTH_ADJUSTED_OFI_IMPULSE_V1 -> SHADOW"
+    ],
+    "classification": "explicit browser-originated configuration requests, not an automatic runtime mode change",
+    "corrective_action": "A/E/H restored to OFF without deleting or force-closing PAPER records",
+    "temporary_queue_strategy_base": {
+      "sample_size": 5,
+      "wins": 1,
+      "losses": 4,
+      "win_rate": 0.2,
+      "expectancy_usdt": "-1.2859847712",
+      "expectancy_bps": "-13.70250791469776362506602555",
+      "profit_factor": "0.00003060346936196830048899362485",
+      "net_pnl_usdt": "-6.429923856"
+    }
+  },
+  "validation": {
+    "backend_pytest": "PASS 323",
+    "ruff": "PASS",
+    "mypy": "PASS 82 source files",
+    "frontend_vitest": "PASS 12 files 47 tests",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "PASS 48 modules",
+    "playwright": "PASS desktop/tablet/mobile 3",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS 115 source files, 0 violations",
+    "repository_hygiene": "PASS",
+    "actual_browser": "PASS 7 observed, 3 off, 0 faults, 0 real orders, 0 console errors",
+    "active_ledger_full_integrity_check": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  },
+  "evidence_files": [
+    "evidence/WAVE32_AUDIT_TIMELINE_STRATEGY_MONITORING.jpg",
+    "evidence/WAVE32_STRATEGY_RETIREMENT_BROWSER.png",
+    "docs/adr/ADR-033-execution-audit-event-time-semantics.md",
+    "docs/adr/ADR-034-runtime-strategy-cost-screening-and-lsa-retirement.md"
+  ]
+}

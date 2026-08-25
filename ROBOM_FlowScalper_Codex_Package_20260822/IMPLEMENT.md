@@ -239,3 +239,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 7. Re-run strategy, supervisor, storage/replay, frontend, browser, static, build, PAPER safety, security and repository-hygiene checks.
 8. Restart only after confirming zero open main and League PAPER positions. Start a fresh 1,000 USDT Run once and observe queue, drop, executable-book/trade/display p95, safety lock, reconnect, gap, persistence fault, CPU and memory continuously.
 9. Exercise the actual browser strategy list and a natural open PAPER position without manufacturing a signal. Record TP/SL, cost and account scope, and keep profitability plus 6-hour/24-hour soak as `NOT_PROVEN` or `NOT_RUN` until the exact gate is completed.
+
+## Execution chronology and full runtime strategy screening Wave
+
+1. Persist candidate selection, entry request, entry fill, protection request, management decision and exit fill at their actual decision, book or fill event-time. Do not reuse the immutable signal time for later lifecycle events.
+2. Prove persisted audit chronology with deterministic entry, TP1, TP2 and management-exit tests, then compare one natural `LIVE_PUBLIC` trade's audit delta with its immutable ledger holding time.
+3. Run the actual A~J `StrategyRegistry` and `StrategySignalEvaluator` on chronological stored public-market train and later holdout groups. Use prefix-only features, reconstructed top-of-book ask/bid, a fixed disclosed horizon and unchanged BASE/STRESS costs.
+4. Treat the fixed-horizon result as a screening test, not full exit-policy profitability proof. Report gross and cost-adjusted sample size, wins, expectancy and Profit Factor together.
+5. Move a repeatedly failing strategy to OFF without deleting its source, immutable trades, independent accounts, LONG/SHORT controls or deliberate user reactivation path. Do not lower thresholds to manufacture a replacement.
+6. Start a fresh 1,000 USDT PAPER Run from the exact implementation commit, verify 7 observed and 3 OFF strategies, and distinguish explicit browser configuration POSTs from automatic runtime changes.
+7. Let already-open PAPER positions finish through their existing TP/SL and management path. Turning a strategy OFF prevents new evaluation but does not erase or force-close existing research records.
+8. Re-run backend, frontend, static, build, safety, security, repository hygiene and desktop, tablet and mobile browser tests. Preserve actual orders, private API, credentials, secrets and wallets at zero.
+9. Record profitability as `NOT_PROVEN` and multi-hour soak as `NOT_RUN` until their exact sample and duration gates are completed.
