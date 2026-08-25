@@ -1400,3 +1400,84 @@ macOS LaunchAgent는 항상 `READY`로 부팅하고, 기존 archive 함수는 RE
 | GitHub main / Actions | PASS | 구현·테스트 commit `0c256ab03be26f5169a9e31887701398d5f8f190`을 main에 push했다. [Actions 32840334068](https://github.com/robom-labs/flowscalper/actions/runs/32840334068)의 validate 1분2초, browser 1분11초와 Chromium desktop·tablet·mobile·증거업로드가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/WAVE33_COST_RETIREMENT_ANALYTICS_RUN_LIFECYCLE_QA.json`, 실제 화면은 `evidence/WAVE33_STRATEGY_RETIREMENT_ANALYTICS_BROWSER.png`, 결정 근거는 ADR-035·ADR-036·ADR-037이다. 이번 결론은 나쁜 승률을 숨기기가 아니라, 실패 전략의 새 진입을 중지하고 현재 revision의 자연 비용후 표본을 새로 모으는 것이다.
+
+## 39. 전면 점검, 사전등록 장중 연구, Strategy Governor와 서비스 복구
+
+2026-08-26 첨부 실행지시 867줄을 SHA-256 `f713a2c8e95c364641035138678739922685c7539daef8fb90465495e85017b3`으로 고정해 전체를 읽고, 기존 프로젝트의 분리 작업트리에서 구현·연구·검증했다. 새 프로젝트나 실제 주문 경로는 만들지 않았다.
+
+### 상태·제어·기록·전략 운용 계약
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 시작·새 Run·pause·resume | PASS | idempotency key와 control revision을 추가해 같은 요청은 같은 operation을 반환하고, 새 Run은 명시적인 요청에서만 생성한다. 사용자 pause와 자동 안전잠금은 별도 상태다. |
+| 전략 설정 | PASS | CAS revision, actor, reason, manual lock, rollback과 불변 감사 이력을 API·SQLite·한국어 UI에 연결했다. |
+| 기록 범위 | PASS | main/전략리그, 현재/전체 Run, BASE/STRESS, 현재/과거 전략버전, LIVE_PUBLIC/OFFLINE_FIXTURE 범위를 분리했다. |
+| 시간구간 | PASS | 1m·3m·5m·15m·30m·1h·4h를 단일 registry와 canonical completed candle 경로로 통합했다. |
+| 전략 운용 정보 | PASS | 10개 런타임 전략에 horizon, 예상 보유, 신호 반감기, 입력 시간구간, exit model, 최대 안전보유와 비용모델 버전을 선언하고 전략 상세에 표시했다. |
+| Strategy Governor | PASS | RESEARCH·SHADOW·CHALLENGER·ACTIVE·QUARANTINED·RETIRED, 평가주기, minimum sample, 비용후 OOS, manual lock, 원자 champion 교체와 rollback을 구현했다. 자동 변경은 source·임계값을 생성하거나 수정하지 않는다. |
+
+### 사전등록 저장 공개시장 연구
+
+13개 저장 Run의 manifest 2,690,582 events를 입력으로 사용했고, 실제 처리된 2,232,327 events에서 19,020개 신호를 만들었다. 5개 전략계열 × ORIGINAL·MIRROR·REVERSE × horizon·parameter 조합으로 180개 key를 사전등록했다. train 12,647, validation 2,423, OOS 3,456 outcome을 시간순으로 나누고 horizon별 purge·embargo, walk-forward, PBO, DSR, deterministic bootstrap을 적용했다.
+
+| 연구 항목 | 상태 | 결과 |
+|---|---|---|
+| 선택 후보 | NOT_PROVEN | `MICRO_SCALP:30:ABSORPTION_REFILL_REVERSE:ORIGINAL`의 OOS BASE는 2건·기대값 -4.893bp·PF 0.554, STRESS는 -16.893bp·PF 0.004였다. |
+| 과적합·강건성 | NOT_PROVEN | PBO 0.6286, DSR `INSUFFICIENT_SAMPLE`, bootstrap 기대값 95% 구간 -21.936~12.150bp였다. |
+| mirror parity | PASS | 비교 가능한 190쌍의 mismatch는 0이었다. |
+| 승격 | NOT_PROVEN | 모든 promotion gate를 통과한 후보가 없어 Registry 변경은 0이다. 자연신호를 만들기 위해 기준을 낮추지 않았다. |
+| 결정성 | PASS_WITH_LIMIT | 장중 연구 전체 반복은 dataset·parameter·result hash가 일치했다. 기존 A~J 연구는 1회 완료했으며 두 번째 전체 반복은 `NOT_RUN`; 표적 결정성 회귀검사는 PASS다. |
+
+입력·파라미터·결과 hash는 각각 `5107f072ce2584f8a25c4cc0968a1681af63165ede27e85e047bc0cce17496dc`, `7b52995af94fdb811637abcde8b74a2bbe9b510ae38309008e045955d1f04a80`, `ba921ad8396a59e8298ca38a32cc3da1959b2e4941369025c33bec678b1d141e`이다. 상세 결과는 `evidence/WAVE34_INTRADAY_RESEARCH.json`, 기존 전략 결과는 `evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json`에 보존했다.
+
+### 30분 실제 공개시장과 활성 원장
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 격리 30분 soak | PASS | `soak-9d9cc1e8cbcf`, 실제 1,800초, 130,248 events, 계획 회전 1·전체 reconnect 1·비계획 reconnect 0, gap/resync/drop 0, queue 최대 12, 실행경로 p95 최대 62.467ms, critical incident 0이다. |
+| 자원 | PASS | 메모리 111.359→255.500MB, 증가 143.407MB로 256MB 기준 안이다. 최종 event memory는 10,000 제한을 지켰다. |
+| 활성 원장 전체검사 | PASS | 서비스를 평평한 상태로 내린 뒤 2.2GB 활성 SQLite의 `PRAGMA quick_check`는 `ok`, `foreign_key_check` 위반은 0이었다. 실제 545.70초를 기다려 완료했으며 부분검사를 전체검사로 쓰지 않았다. |
+| 동시 host 고부하 | PASS_WITH_LIMIT | 기존 서비스와 전체 연구·soak가 동시에 경쟁한 계획 회전 1회에서 86.467초 critical lag가 발생했으나 자동 복구됐다. 격리 30분에서는 재현되지 않았다. |
+| 6시간·24시간 | NOT_RUN | 실제 시간을 채우지 않았으므로 PASS로 기록하지 않는다. |
+
+### 배포·재시작·실제 8870 화면
+
+열린 main·League 포지션과 pending 0, 실제 주문·인증 false를 확인한 뒤 구현을 기존 서비스에 fast-forward 배포했다. 종료 중 persistence worker는 cancellation과 분리해 완료 결과를 회수했고 종료 로그에는 새 `CancelledError`, traceback 또는 ERROR가 없었다. 활성 원장의 마지막 미종료 Run을 읽어 `LIVE_SHADOW_PAPER`로 부팅하는 서비스 선택은 모든 읽기·schema 오류에서 READY로 fail-closed한다.
+
+명시적 idempotency key로 `run-2b7135a972dd`를 새로 만들었다. 생성 직후 시작자산 1,000 USDT, main 손익·수수료·슬리피지·거래는 모두 0이었고, 같은 key의 재호출은 같은 operation과 Run을 반환했다.
+
+수동 pause 뒤 서비스를 재시작해 같은 Run의 `MANUALLY_PAUSED`, `manual_pause_requested=true`가 유지되는 것을 확인했다. resume 뒤 다시 재시작했을 때 같은 Run이 `RUNNING`, `manual_pause_requested=false`로 복구됐다. supervisor 연결 성공과 fresh-book 재검증 어느 쪽도 사용자의 수동 pause를 자동 해제하지 못하도록 회귀검사와 실제 서비스를 함께 고쳤다.
+
+실제 `http://127.0.0.1:8870/`에서 다음을 직접 눌렀다.
+
+- 신규진입 pause·resume와 상태 제목·설명·버튼 전환.
+- 1분·3분·5분·15분·30분·1시간·4시간, MA·RSI와 앱 전체화면 왕복.
+- 전략 리그 10개, ACTIVE 1·SHADOW 5·OFF 4와 20개 BASE/STRESS 독립계좌.
+- 전략 상세의 시간축·예상보유·반감기·TP1·TP2·SL·EDGE_DECAY·비용모델·Governor 근거.
+- 거래기록 범위, 저장 Run 자동발견, 종목 timeline과 backend replay.
+- 분석의 기대값·PF·Omega·Sortino·Calmar·비용·낙폭·turnover·표본상태, 설정의 공개시장·시간·저장·PAPER 안전.
+
+실제 공개시장 자연 표본으로 `AGGRESSOR_FLOW_CONTINUATION_V1` BTCUSDT SHORT의 BASE·STRESS 진입, entry·TP1·TP2·SL, 수수료·슬리피지와 자동 종료를 화면에서 확인했다. BASE 보유시간은 27.488초, 순손익은 -0.63811580 USDT였고 STRESS도 별도로 기록됐다. 이는 1~2초 종료 재발이 없다는 한 표본과 종단 간 작동 증거일 뿐 수익성 증거가 아니다.
+
+저장 Run replay는 checksum `b3fb6fa517866264fe72a74117ce3f340996dd0cfc9cc3e1e2410323a8bbc2c2`, 3,939 events, 전략평가 14,328회, 후보·main·shadow 거래 0, 실제 주문·인증 0으로 완료됐다. 저우선순위 replay 중에도 LIVE events는 18,746→32,087로 증가했고 최종 p95 28.255ms, queue·gap·drop·비계획 reconnect·저장오류 0이었다. replay의 기존 process isolation과 5% CPU budget은 유지했다.
+
+최종 후속 관찰은 45,775 events, 실행호가 p50 21.311ms·p95 26.964ms, 체결 p95 55.051ms, queue·비계획 reconnect·gap·resync·drop·persistence fault·buffer drop 0, 실제 주문·인증 false였다. wide scanner p95 1,758.951ms는 진입용 정밀호가와 분리해 표시하며 실행 잠금 기준으로 사용하지 않는다.
+
+### 전체 회귀와 남은 한계
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 359 passed, 26.18초 |
+| frontend Vitest | PASS | 12 files·51 tests |
+| Ruff / mypy | PASS | 오류 0 / 91 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | Vite 48 modules와 PAPER safety PASS. 단일 JS chunk 502.44kB 경고는 남아 있다. |
+| Playwright | PASS | fixture 기반 실제 Chromium desktop·tablet·mobile 3 passed, root overflow·page/console error 0 |
+| security / repository hygiene | PASS | 124 source, violation·secret-like·실제 주문 path 0 / 위반 0 |
+| 공개시장 smoke | PASS | Binance eligible 527·catalog 701, Upbit KRW 286, WebSocket 16 events, credential·Authorization·실제 주문 0 |
+| 실제 주문·private API·secret·wallet·런타임 AI | PASS | 모두 0이며 auth_required false다. |
+| 전략 수익성 | NOT_PROVEN | 연구 후보 OOS와 현재 자연표본이 작거나 비용후 음수다. 30건 전에 순위를 매기지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 배포 ZIP을 만들지 않았다. |
+| GitHub main / Actions | NOT_RUN | 이 문단 작성 시점에는 아직 push 전이다. push와 Actions 완료 뒤 같은 섹션을 갱신한다. |
+
+기계판독 통합 증거는 `evidence/WAVE34_FULL_AUDIT_QA.json`, soak는 `evidence/PHASE03_SOAK_30M.json`, 결정 근거는 ADR-038·ADR-039·ADR-040이다. 구현 기준 commit은 `fb15494c50413650f06ec2fbd936534bdcc78ceb`이다.

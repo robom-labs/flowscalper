@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "generated_at_utc": "2026-08-25T17:15:19Z",
+  "generated_at_utc": "2026-08-25T17:48:50Z",
   "wave": 34,
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE_WITH_LIMITS",
   "source": {
     "baseline_main_commit": "de10389c76f3486aa4e1125e1a6da434f6f9a173",
     "implementation_commit": "b974d856eefbd1ffe71cf6fdec49f6c1018c8947",
-    "final_commit": null,
+    "final_commit": "fb15494c50413650f06ec2fbd936534bdcc78ceb",
     "branch": "codex/flowscalper-wave34-full-audit",
-    "working_tree_clean": false
+    "working_tree_clean": true
   },
   "environment": {
     "os": "macOS 26.5.2 build 25F84 arm64",
@@ -73,7 +73,7 @@
     "profitability": "NOT_PROVEN"
   },
   "validation": {
-    "backend_pytest": {"status": "PASS", "count": 358},
+    "backend_pytest": {"status": "PASS", "count": 359},
     "frontend_vitest": {"status": "PASS", "files": 12, "count": 51},
     "ruff": "PASS",
     "mypy": {"status": "PASS", "source_files": 91},
@@ -97,9 +97,14 @@
     "browser_manual": {
       "status": "PASS",
       "start_pause_resume_new_run": "PASS",
+      "manual_pause_survives_restart": "PASS",
+      "resume_intent_survives_restart": "PASS",
       "timeframe_buttons": 7,
       "indicator_toggles": 7,
       "replay_live_isolation": "PASS",
+      "actual_deployed_service_url": "http://127.0.0.1:8870/",
+      "actual_replay_checksum": "b3fb6fa517866264fe72a74117ce3f340996dd0cfc9cc3e1e2410323a8bbc2c2",
+      "actual_replay_strategy_evaluations": 14328,
       "strategy_and_history_scopes": "PASS",
       "desktop_tablet_mobile_no_root_overflow": "PASS",
       "console_errors": 0
@@ -134,10 +139,53 @@
     "predeploy_actual_orders_enabled": false,
     "predeploy_auth_required": false,
     "predeploy_note": "기존 서비스와 연구·soak의 동시 host 부하 중 계획회전 1회가 86.467초 critical lag로 기록된 뒤 자동 복구됐다. 독립 30분 soak에서는 재현되지 않아 PASS_WITH_LIMIT로 보존한다.",
-    "ledger_integrity_after_stop": "NOT_RUN",
-    "deployment": "NOT_RUN",
-    "postdeploy_run_id": null,
-    "restart_recovery": "NOT_RUN"
+    "ledger_integrity_after_stop": {
+      "status": "PASS",
+      "quick_check": "ok",
+      "foreign_key_violations": 0,
+      "elapsed_seconds": 545.7
+    },
+    "deployment": "PASS",
+    "postdeploy_run_id": "run-2b7135a972dd",
+    "fresh_run": {
+      "starting_equity_usdt": 1000.0,
+      "main_realized_pnl_usdt": 0.0,
+      "main_fees_usdt": 0.0,
+      "main_slippage_usdt": 0.0,
+      "main_trade_count": 0
+    },
+    "postdeploy_observation": {
+      "event_count": 45775,
+      "lag_p50_ms": 21.31103515625,
+      "lag_p95_ms": 26.9638671875,
+      "trade_lag_p95_ms": 55.05078125,
+      "wide_lag_p95_ms": 1758.951171875,
+      "queue_depth": 0,
+      "unplanned_reconnects": 0,
+      "planned_rotations": 0,
+      "sequence_gaps": 0,
+      "resyncs": 0,
+      "dropped_events": 0,
+      "persistence_faults": 0,
+      "persistence_buffer_drops": 0,
+      "memory_mb": 217.5
+    },
+    "strategy_runtime": {
+      "strategy_count": 10,
+      "account_count": 20,
+      "active": 1,
+      "shadow": 5,
+      "off": 4,
+      "current_version_base_samples": 1,
+      "observed_holding_ms": 27488,
+      "profitability": "NOT_PROVEN"
+    },
+    "restart_recovery": {
+      "status": "PASS",
+      "same_run_recovered": true,
+      "manual_pause_preserved": true,
+      "resume_intent_preserved": true
+    }
   },
   "safety": {
     "actual_orders": 0,

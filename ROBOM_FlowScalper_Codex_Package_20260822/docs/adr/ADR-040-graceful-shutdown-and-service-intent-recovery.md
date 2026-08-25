@@ -18,6 +18,7 @@
 4. 복구 가능한 mode는 `LIVE_SHADOW_PAPER`와 `DEMO_FIXTURE`뿐이다. 파일 없음, 스키마 오류, 읽기 오류, 미종료 Run 없음, 알 수 없는 mode는 모두 `READY`로 fail-closed한다.
 5. mode 선택은 Run을 생성·종료·수정하지 않는다. 실제 복구, checksum 검증, fresh-book 재검증과 신규진입 잠금은 기존 backend 계약이 수행한다.
 6. 실제 주문, 인증, private API, API Key, secret, wallet 경로는 추가하지 않는다.
+7. 원장에 저장된 사용자 수동 pause 의도는 supervisor 연결 성공과 fresh-book 재검증보다 우선한다. 자동 잠금은 정상화 뒤 해제될 수 있지만 사용자가 누른 pause는 명시적인 resume 전까지 어떤 자동 복구도 해제하지 않는다.
 
 ## 검증
 
@@ -25,6 +26,7 @@
 - 임시 SQLite 원장으로 파일 없음, 열린 LIVE Run, 종료된 Run의 READY fallback을 검증한다.
 - 실행기 shell syntax와 PAPER 안전검사를 통과시킨다.
 - 실제 배포에서는 열린 main·League PAPER 포지션 0에서 서비스를 교체한 뒤 같은 Run 자동복구, fresh quote 뒤 entry lock 해제, 실제 주문·인증 false를 확인한다.
+- 실제 배포에서 수동 pause 뒤 서비스를 재시작해 같은 Run의 `MANUALLY_PAUSED`가 유지되는지 확인하고, resume 뒤 다시 재시작해 `RUNNING` 의도가 유지되는지도 확인한다.
 - 서비스 종료 뒤 활성 원장의 `PRAGMA quick_check`와 `PRAGMA foreign_key_check`를 실행한다.
 
 ## 한계
