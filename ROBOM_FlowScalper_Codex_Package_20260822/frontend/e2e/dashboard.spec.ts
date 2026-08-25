@@ -154,7 +154,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await page.getByRole('button', { name: '전략', exact: true }).click()
   await expect(page.getByRole('heading', { name: '전략 설정' })).toBeVisible()
   await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(10)
-  await expect(page.getByText('7개 감시 · 검증 중지 3개 · 문제 0개 · 실제 주문 0')).toBeVisible()
+  await expect(page.getByText('6개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0')).toBeVisible()
   await expect(page.getByText('준비 중')).toHaveCount(7)
   await expect(page.locator('.strategy-monitor.off')).toHaveCount(3)
   await expect(page.locator('.strategy-inline-modes button[aria-pressed="true"]')).toHaveCount(10)

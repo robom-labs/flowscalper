@@ -13,7 +13,7 @@
 | A | `LSA_REVERSAL_V1` | 급락·급등 쓸기 반전 | OFF | REVERSION_70_30 |
 | B | `CBR_CONTINUATION_V1` | 압축 돌파 재가속 | ACTIVE | TREND_40_60 |
 | C | `VWAP_EXHAUSTION_REVERSION_V1` | VWAP 과도이탈 평균복귀 | SHADOW | REVERSION_70_30 |
-| D | `OFI_CONTINUATION_PULLBACK_V1` | OFI 추세 눌림 지속 | SHADOW | TREND_40_60 |
+| D | `OFI_CONTINUATION_PULLBACK_V1` | OFI 추세 눌림 지속 | OFF | TREND_40_60 |
 | E | `QUEUE_MICROPRICE_MOMENTUM_V1` | 호가 쏠림 순간추세 | OFF | TREND_40_60 |
 | F | `AGGRESSOR_FLOW_CONTINUATION_V1` | 강한 체결 흐름 지속 | SHADOW | TREND_40_60 |
 | G | `MULTILEVEL_MICROPRICE_MOMENTUM_V1` | 다중호가 공정가 추세 | SHADOW | TREND_40_60 |
@@ -23,7 +23,7 @@
 
 - 모든 전략은 LONG·SHORT를 독립적으로 허용하거나 끌 수 있다.
 - OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다.
-- 모든 전략은 LONG·SHORT 제어를 유지한다. B는 ACTIVE, C/D/F/G/I/J는 SHADOW, 비용후 시간순 검증에 실패한 A/E/H는 OFF가 기본값이다. OFF 전략도 과거 원장과 사용자의 명시적 재활성화 제어는 보존한다.
+- 모든 전략은 LONG·SHORT 제어를 유지한다. B는 ACTIVE, C/F/G/I/J는 SHADOW다. 비용후 시간순 검증에 실패한 A/E/H와 저장 train 4건·후기 자연 BASE 2건이 모두 비용후 손실이었던 D는 OFF가 기본값이다. OFF 전략도 과거 원장과 사용자의 명시적 재활성화 제어는 보존한다.
 
 ## 3. 독립 계좌
 

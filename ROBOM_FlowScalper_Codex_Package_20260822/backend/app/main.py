@@ -537,12 +537,23 @@ def create_app(
 
     @app.get("/api/analytics/strategies")
     async def strategy_analytics() -> list[dict[str, object]]:
-        return await asyncio.to_thread(active_runtime.strategy_performance)
+        include_persisted = active_runtime.mode is not RuntimeMode.LIVE_SHADOW_PAPER
+        return await asyncio.to_thread(
+            active_runtime.strategy_performance,
+            include_persisted=include_persisted,
+        )
 
     @app.get("/api/analytics/strategy-symbols")
     async def strategy_symbol_analytics() -> dict[str, object]:
-        rows = await asyncio.to_thread(active_runtime.strategy_symbol_performance)
-        scope = await asyncio.to_thread(active_runtime.strategy_analytics_scope)
+        include_persisted = active_runtime.mode is not RuntimeMode.LIVE_SHADOW_PAPER
+        rows = await asyncio.to_thread(
+            active_runtime.strategy_symbol_performance,
+            include_persisted=include_persisted,
+        )
+        scope = await asyncio.to_thread(
+            active_runtime.strategy_analytics_scope,
+            include_persisted=include_persisted,
+        )
         return {
             "generated_ts_ms": active_runtime.clock.utc_ms(),
             "rows": rows,

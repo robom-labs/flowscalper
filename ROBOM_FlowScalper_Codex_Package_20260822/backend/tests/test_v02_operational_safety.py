@@ -296,6 +296,50 @@ def test_live_dashboard_strategy_statistics_are_cached_until_trade_state_changes
     assert calls == 2
 
 
+def test_live_strategy_symbol_analytics_reuses_warmed_trade_cache(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "live-analytics-cache.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-analytics-cache",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    cached_trade = _sample_trade("shadow-current")
+    cached_trade.update(
+        {
+            "shadow_trade_id": "shadow-current",
+            "run_id": runtime.run_id,
+            "closed_ts_ms": cached_trade["exit_ts_ms"],
+            "sample_type": "LIVE_PUBLIC",
+            "strategy_version": runtime_module.STRATEGY_VERSION,
+        }
+    )
+    ledger.record_shadow_trade(cached_trade)
+    runtime._refresh_dashboard_trade_cache()
+
+    def reject_live_ledger_scan(*_args, **_kwargs):
+        raise AssertionError("LIVE 분석 요청이 활성 원장을 다시 읽었습니다.")
+
+    monkeypatch.setattr(SQLiteLedger, "list_shadow_trades", reject_live_ledger_scan)
+
+    report = next(
+        row
+        for row in runtime.strategy_performance(include_persisted=False)
+        if row["strategy_id"] == cached_trade["strategy_id"] and row["profile"] == "BASE"
+    )
+    symbols = runtime.strategy_symbol_performance(include_persisted=False)
+    scope = runtime.strategy_analytics_scope(include_persisted=False)
+
+    assert report["sample_size"] == 1
+    assert symbols[0]["sample_size"] == 1
+    assert scope["excluded_prior_version_samples"] == 0
+    ledger.close()
+
+
 def test_disk_pressure_is_connected_to_runtime_entry_gate_and_dashboard(
     tmp_path: Path,
 ) -> None:

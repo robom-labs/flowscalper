@@ -168,6 +168,56 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     ).status_code == 404
 
 
+def test_live_strategy_analytics_api_uses_nonblocking_runtime_cache(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-live-analytics-cache",
+    )
+    observed: list[tuple[str, bool]] = []
+
+    def strategy_performance(
+        _runtime: PaperRuntime,
+        *,
+        include_persisted: bool = True,
+    ) -> list[dict[str, object]]:
+        observed.append(("strategies", include_persisted))
+        return []
+
+    def strategy_symbol_performance(
+        _runtime: PaperRuntime,
+        *,
+        include_persisted: bool = True,
+    ) -> list[dict[str, object]]:
+        observed.append(("symbols", include_persisted))
+        return []
+
+    def strategy_analytics_scope(
+        _runtime: PaperRuntime,
+        *,
+        include_persisted: bool = True,
+    ) -> dict[str, object]:
+        observed.append(("scope", include_persisted))
+        return {
+            "analysis_scope": "CURRENT_STRATEGY_VERSION",
+            "strategy_version": "test-version",
+            "excluded_prior_version_samples": 0,
+        }
+
+    monkeypatch.setattr(PaperRuntime, "strategy_performance", strategy_performance)
+    monkeypatch.setattr(PaperRuntime, "strategy_symbol_performance", strategy_symbol_performance)
+    monkeypatch.setattr(PaperRuntime, "strategy_analytics_scope", strategy_analytics_scope)
+    client = TestClient(create_app(runtime))
+
+    assert client.get("/api/analytics/strategies").status_code == 200
+    assert client.get("/api/analytics/strategy-symbols").status_code == 200
+    assert observed == [
+        ("strategies", False),
+        ("symbols", False),
+        ("scope", False),
+    ]
+
+
 def test_dashboard_broadcaster_serves_multiple_local_clients() -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     with TestClient(create_app(runtime)) as client:

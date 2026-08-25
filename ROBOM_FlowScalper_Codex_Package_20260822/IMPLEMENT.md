@@ -251,3 +251,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 7. Let already-open PAPER positions finish through their existing TP/SL and management path. Turning a strategy OFF prevents new evaluation but does not erase or force-close existing research records.
 8. Re-run backend, frontend, static, build, safety, security, repository hygiene and desktop, tablet and mobile browser tests. Preserve actual orders, private API, credentials, secrets and wallets at zero.
 9. Record profitability as `NOT_PROVEN` and multi-hour soak as `NOT_RUN` until their exact sample and duration gates are completed.
+
+## Later natural-sample retirement and nonblocking analytics Wave
+
+1. Compare each new current-revision natural `LIVE_PUBLIC` BASE/STRESS trade with the earlier chronological train and holdout screen. Do not rank fewer than 30 samples or claim profitability.
+2. Retire a hypothesis from default evaluation when every available cost-adjusted screen remains negative and continuing automatic exposure lacks evidence. Preserve source, immutable trades, 20 independent accounts, LONG/SHORT controls and deliberate reactivation.
+3. Keep B as the only shared-capital ACTIVE strategy. Do not promote another strategy merely to keep the active count high.
+4. Serve LIVE strategy and strategy-symbol analytics from the startup checksum-verified current-version cache merged by trade ID with current-process completed PAPER trades. Keep Replay and non-LIVE ledger reads unchanged.
+5. Test that LIVE analytics cannot rescan the active ledger, that cached and persisted metrics match, and that current/prior strategy-version sample counts remain separated.
+6. Bound any full 13-Run research rerun. If it exceeds the declared runtime budget, stop it and record `NOT_COMPLETED` rather than treating partial output as evidence.
+7. Restart only with zero main and League positions, create a Fresh 1,000 USDT Run from the implementation commit and verify 6 monitored, 4 OFF, real orders 0 and auth false in the actual browser.
+8. Measure repeated strategy and strategy-symbol API latency during active persistence, inspect browser console and run desktop, tablet and mobile Playwright.
+9. Record any resource-contention critical incident with exact duration. A recovered incident is not a zero-incident result.

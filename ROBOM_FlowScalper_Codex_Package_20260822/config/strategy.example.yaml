@@ -17,6 +17,8 @@ strategy:
   liquidity_sweep_absorption:
     enabled: true
     strategy_id: LSA_REVERSAL_V1
+    stability: EXPERIMENTAL
+    default_mode: OFF
     permitted_regimes: [RANGE, TREND_UP, TREND_DOWN]
     structural_lookback_minutes: [5, 15, 30]
     sweep_extension_noise_units: [0.5, 2.5]
@@ -31,6 +33,8 @@ strategy:
   compression_breakout_reacceleration:
     enabled: true
     strategy_id: CBR_CONTINUATION_V1
+    stability: STABLE
+    default_mode: ACTIVE
     permitted_regimes: [TREND_UP, TREND_DOWN]
     compression_windows_seconds: [30, 60, 120]
     compression_quantile_max: 0.20
@@ -59,7 +63,7 @@ strategy:
     enabled: true
     strategy_id: OFI_CONTINUATION_PULLBACK_V1
     stability: EXPERIMENTAL
-    default_mode: SHADOW
+    default_mode: OFF
     permitted_regimes: [TREND_UP, TREND_DOWN]
     price_efficiency_percentile_min: 0.50
     pullback_seconds: [1, 15]
@@ -72,7 +76,7 @@ strategy:
     enabled: true
     strategy_id: QUEUE_MICROPRICE_MOMENTUM_V1
     stability: EXPERIMENTAL
-    default_mode: SHADOW
+    default_mode: OFF
     permitted_regimes: [RANGE, TREND_UP, TREND_DOWN]
     spread_bps_max: 8.0
     top5_imbalance_min: 0.18
@@ -119,7 +123,7 @@ strategy:
     enabled: true
     strategy_id: DEPTH_ADJUSTED_OFI_IMPULSE_V1
     stability: EXPERIMENTAL
-    default_mode: SHADOW
+    default_mode: OFF
     permitted_regimes: [RANGE, TREND_UP, TREND_DOWN]
     order_book_levels: 10
     spread_bps_max: 10.0

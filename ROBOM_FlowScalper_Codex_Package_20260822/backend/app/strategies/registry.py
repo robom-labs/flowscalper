@@ -113,7 +113,10 @@ class StrategyRegistry:
                 strategy_id="OFI_CONTINUATION_PULLBACK_V1",
                 display_name_ko="OFI 추세 눌림 지속",
                 short_name="OFI 눌림",
-                summary_ko="추세장에서 다중 OFI와 약한 역방향 눌림 뒤 재가속을 확인합니다.",
+                summary_ko=(
+                    "다중 OFI 눌림 가설을 연구했으나 저장 train과 후기 자연표본이 "
+                    "모두 비용후 실패해 기본 중지됐습니다."
+                ),
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=OfiPullbackStrategy(),
@@ -190,6 +193,7 @@ class StrategyRegistry:
         active_ids = {"CBR_CONTINUATION_V1"}
         retired_ids = {
             "LSA_REVERSAL_V1",
+            "OFI_CONTINUATION_PULLBACK_V1",
             "QUEUE_MICROPRICE_MOMENTUM_V1",
             "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
         }

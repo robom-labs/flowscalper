@@ -67,7 +67,7 @@ export const strategies: StrategyRow[] = strategyOrder.map((strategyId, index) =
   stability: index === 1 ? 'STABLE' : 'EXPERIMENTAL',
   supported_regimes: ['RANGE'],
   paper_only: true,
-  mode: index === 1 ? 'ACTIVE' : [0, 4, 7].includes(index) ? 'OFF' : 'SHADOW',
+  mode: index === 1 ? 'ACTIVE' : [0, 3, 4, 7].includes(index) ? 'OFF' : 'SHADOW',
   long_enabled: true,
   short_enabled: true,
   evaluated_paths: 0,

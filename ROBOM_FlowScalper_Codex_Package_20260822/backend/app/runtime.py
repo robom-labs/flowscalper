@@ -1249,14 +1249,23 @@ class PaperRuntime:
             account_versions,
         )
 
-    def strategy_symbol_performance(self) -> list[dict[str, object]]:
-        """현재 전략 버전의 원장 거래만 전략·프로필·종목별로 분리한다."""
+    def strategy_symbol_performance(
+        self,
+        *,
+        include_persisted: bool = True,
+    ) -> list[dict[str, object]]:
+        """현재 전략 버전 거래를 전략·프로필·종목별로 분리한다."""
 
-        if self.ledger is None:
-            trades: list[dict[str, object]] = []
+        trades: list[dict[str, object]]
+        prior_version_trades: list[dict[str, object]]
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and not include_persisted:
+            trades = list(self._dashboard_live_shadow_trades())
+            prior_version_trades = list(self._historical_prior_version_shadow_trades)
+        elif self.ledger is None:
+            trades = []
             for account in self.paper_portfolio.shadows.values():
                 trades.extend(self._paper_trade_row(trade) for trade in account.completed_trades)
-            prior_version_trades: list[dict[str, object]] = []
+            prior_version_trades = []
         else:
             trades, prior_version_trades = self._current_strategy_version_trades(
                 self.ledger.list_shadow_trades()
@@ -1279,15 +1288,19 @@ class PaperRuntime:
             )
         return rows
 
-    def strategy_analytics_scope(self) -> dict[str, object]:
+    def strategy_analytics_scope(self, *, include_persisted: bool = True) -> dict[str, object]:
         """성과 API가 제외한 과거 버전 표본 수를 투명하게 공개한다."""
 
-        source = self.ledger.list_shadow_trades() if self.ledger is not None else ()
-        _, excluded = self._current_strategy_version_trades(source)
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and not include_persisted:
+            excluded_count = len(self._historical_prior_version_shadow_trades)
+        else:
+            source = self.ledger.list_shadow_trades() if self.ledger is not None else ()
+            _, excluded = self._current_strategy_version_trades(source)
+            excluded_count = len(excluded)
         return {
             "analysis_scope": "CURRENT_STRATEGY_VERSION",
             "strategy_version": STRATEGY_VERSION,
-            "excluded_prior_version_samples": len(excluded),
+            "excluded_prior_version_samples": excluded_count,
         }
 
     @staticmethod

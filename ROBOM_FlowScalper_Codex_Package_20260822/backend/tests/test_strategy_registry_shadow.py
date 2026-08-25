@@ -44,7 +44,7 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         "OFF",
         "ACTIVE",
         "SHADOW",
-        "SHADOW",
+        "OFF",
         "OFF",
         "SHADOW",
         "SHADOW",
@@ -69,7 +69,7 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
     evaluator = StrategySignalEvaluator()
     decisions = evaluator.evaluate(registry, features(), Regime.WARMUP)
 
-    assert len(decisions) == 13
+    assert len(decisions) == 11
     assert all(item.decision.status is CandidateStatus.REJECTED for item in decisions)
     lsa = next(item for item in decisions if item.decision.strategy_id == "LSA_REVERSAL_V1")
     assert lsa.decision.side is Side.LONG
@@ -81,6 +81,7 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
     assert not any(
         item.decision.strategy_id
         in {
+            "OFI_CONTINUATION_PULLBACK_V1",
             "QUEUE_MICROPRICE_MOMENTUM_V1",
             "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
         }
@@ -117,7 +118,7 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
         Regime.RANGE,
     )
 
-    assert len(decisions) == 14
+    assert len(decisions) == 12
     assert robust_calls == 4
     assert percentile_calls == 5
 
@@ -279,11 +280,12 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
     )
 
     decisions = runtime.strategy_decisions()
-    assert runtime.strategy_evaluation_count == 14
+    assert runtime.strategy_evaluation_count == 12
     assert {decision.strategy_id for decision in decisions} == set(
         runtime.strategy_registry.strategy_ids
     ) - {
         "LSA_REVERSAL_V1",
+        "OFI_CONTINUATION_PULLBACK_V1",
         "QUEUE_MICROPRICE_MOMENTUM_V1",
         "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
     }
