@@ -583,6 +583,32 @@ def test_recovered_position_symbol_is_pinned_into_wide_and_deep_selection() -> N
     assert deep[0] == "S59USDT"
 
 
+async def test_manual_pause_survives_persistent_supervisor_connection(monkeypatch) -> None:
+    provider = RecordedProvider()
+
+    def provider_factory(**options: object) -> RecordedProvider:
+        del options
+        return provider
+
+    monkeypatch.setattr("backend.app.runtime.BinancePersistentProvider", provider_factory)
+    monkeypatch.setattr("backend.app.runtime.BybitPersistentProvider", provider_factory)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-manual-pause-start",
+        clock=DeterministicClock(),
+    )
+    runtime.set_paused(True)
+
+    try:
+        assert await runtime.start_persistent_live() is True
+        assert runtime.market_data_state is MarketDataState.LIVE
+        assert runtime._manual_pause_requested is True
+        assert runtime.paused is True
+        assert runtime.dashboard()["operation_status"]["state"] == "MANUALLY_PAUSED"
+    finally:
+        await runtime.shutdown_supervisor()
+
+
 def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() -> None:
     clock = DeterministicClock(current_utc_ms=1_000)
     provider = RecordedProvider()

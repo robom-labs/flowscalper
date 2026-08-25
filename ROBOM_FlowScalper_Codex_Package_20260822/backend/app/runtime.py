@@ -680,7 +680,9 @@ class PaperRuntime:
             self.processing_lag_p95_ms = result.websocket_lag_ms
             self.market_data_state = MarketDataState.LIVE
             self.runtime_health_flags = ["PUBLIC_DATA_VERIFIED", "NO_AUTH_HEADERS"]
-            self.paused = result.websocket_lag_ms > 1_500
+            self.paused = (
+                self._manual_pause_requested or result.websocket_lag_ms > 1_500
+            )
             if self.paused:
                 self.runtime_health_flags.append("CRITICAL_MARKET_LAG_ENTRY_LOCK")
             self._log(
@@ -767,7 +769,8 @@ class PaperRuntime:
             self.processing_lag_p95_ms = supervisor.telemetry.lag_p95_ms
             self.market_data_state = MarketDataState.LIVE
             self.paused = (
-                supervisor.telemetry.entry_locked
+                self._manual_pause_requested
+                or supervisor.telemetry.entry_locked
                 or self.paper_portfolio.main.risk_state.faulted
                 or bool(self._recovery_revalidation_symbols)
             )
