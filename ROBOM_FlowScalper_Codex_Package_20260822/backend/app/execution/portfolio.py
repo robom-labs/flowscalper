@@ -309,6 +309,7 @@ class PaperPortfolioEngine:
         self._audit(
             "MAIN_MANUAL_EXIT_PENDING",
             managed.plan,
+            audit_ts_ms=now_ms,
             account_id=self.main.account_id,
             reason=reason.value,
         )
@@ -371,6 +372,7 @@ class PaperPortfolioEngine:
                     self._audit(
                         "TREND_EDGE_DECAY_EXIT_ARMED",
                         plan,
+                        audit_ts_ms=now_ms,
                         account_id=account.account_id,
                     )
                     continue
@@ -437,6 +439,7 @@ class PaperPortfolioEngine:
                 self._audit(
                     "MANAGEMENT_EXIT_ARMED",
                     plan,
+                    audit_ts_ms=now_ms,
                     account_id=account.account_id,
                     action=decision.action.value,
                     reason_codes=list(decision.reason_codes),
@@ -846,7 +849,12 @@ class PaperPortfolioEngine:
                 plan.max_planned_loss,
                 plan.position_size * plan.worst_allowed_entry,
             )
-            self._audit("ENTRY_EXPIRED", plan, account_id=account.account_id)
+            self._audit(
+                "ENTRY_EXPIRED",
+                plan,
+                audit_ts_ms=book.ts_ms,
+                account_id=account.account_id,
+            )
             return
         arrival_ts = plan.signal_time_ms + self.cost_model.arrival_latency_ms(account.profile)
         if book.ts_ms < arrival_ts:
@@ -881,6 +889,7 @@ class PaperPortfolioEngine:
             self._audit(
                 "ENTRY_REJECTED",
                 plan,
+                audit_ts_ms=book.ts_ms,
                 account_id=account.account_id,
                 error_type=type(error).__name__,
             )
@@ -896,6 +905,7 @@ class PaperPortfolioEngine:
             self._audit(
                 "ENTRY_UNFILLED",
                 plan,
+                audit_ts_ms=book.ts_ms,
                 account_id=account.account_id,
                 reason_codes=list(result.entry_order.reason_codes),
             )
@@ -943,6 +953,7 @@ class PaperPortfolioEngine:
         self._audit(
             "ENTRY_FILLED",
             plan,
+            audit_ts_ms=result.position.entry_fill.book_ts_ms,
             account_id=account.account_id,
             filled_quantity=str(result.position.quantity),
             fill_price=str(result.position.entry_fill.average_price),
@@ -974,6 +985,7 @@ class PaperPortfolioEngine:
             self._audit(
                 "FORCED_EXIT_PENDING",
                 managed.plan,
+                audit_ts_ms=book.ts_ms,
                 account_id=account.account_id,
                 reason=managed.forced_exit_reason.value,
             )
@@ -1005,6 +1017,7 @@ class PaperPortfolioEngine:
             self._audit(
                 "STOP_EXIT_PENDING",
                 managed.plan,
+                audit_ts_ms=book.ts_ms,
                 account_id=account.account_id,
                 trigger_price=str(managed.protected.current_stop),
             )
@@ -1023,6 +1036,7 @@ class PaperPortfolioEngine:
             self._audit(
                 "TAKE_PROFIT_EXIT_PENDING",
                 managed.plan,
+                audit_ts_ms=book.ts_ms,
                 account_id=account.account_id,
                 label=target.label,
                 trigger_price=str(target.price),
@@ -1063,6 +1077,7 @@ class PaperPortfolioEngine:
             self._audit(
                 "EXIT_REJECTED",
                 managed.plan,
+                audit_ts_ms=book.ts_ms,
                 account_id=account.account_id,
                 label=pending.label,
                 error_type=type(error).__name__,
@@ -1075,6 +1090,7 @@ class PaperPortfolioEngine:
             self._audit(
                 "EXIT_UNFILLED",
                 managed.plan,
+                audit_ts_ms=book.ts_ms,
                 account_id=account.account_id,
                 label=pending.label,
             )
@@ -1114,6 +1130,7 @@ class PaperPortfolioEngine:
         self._audit(
             "EXIT_FILL",
             managed.plan,
+            audit_ts_ms=fill.book_ts_ms,
             account_id=account.account_id,
             label=pending.label,
             filled_quantity=str(fill.quantity),
@@ -1381,7 +1398,14 @@ class PaperPortfolioEngine:
             ),
         )
 
-    def _audit(self, event: str, plan: CandidatePlan, **payload: object) -> None:
+    def _audit(
+        self,
+        event: str,
+        plan: CandidatePlan,
+        *,
+        audit_ts_ms: int | None = None,
+        **payload: object,
+    ) -> None:
         self.audit_events.append(
             {
                 "event": event,
@@ -1390,7 +1414,7 @@ class PaperPortfolioEngine:
                 "symbol": plan.symbol,
                 "strategy_id": plan.strategy_id,
                 "side": plan.direction.value,
-                "ts_ms": plan.signal_time_ms,
+                "ts_ms": plan.signal_time_ms if audit_ts_ms is None else audit_ts_ms,
                 **payload,
             }
         )

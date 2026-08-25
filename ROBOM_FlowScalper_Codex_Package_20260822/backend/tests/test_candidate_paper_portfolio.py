@@ -244,6 +244,21 @@ def test_latency_executable_depth_tp1_tp2_and_live_pnl_are_end_to_end() -> None:
     assert trade.net_pnl_usdt == trade.gross_pnl_usdt - trade.fees_usdt - trade.slippage_usdt
     assert engine.main_summary()["trade_count"] == 1
 
+    main_audit_times = [
+        (str(row["event"]), int(str(row["ts_ms"])))
+        for row in engine.audit_events
+        if row.get("account_id") == engine.main.account_id
+    ]
+    assert any(
+        row["event"] == "MAIN_CANDIDATE_SELECTED" and row["ts_ms"] == 1_000
+        for row in engine.audit_events
+    )
+    assert ("ENTRY_FILLED", 1_250) in main_audit_times
+    assert ("TAKE_PROFIT_EXIT_PENDING", 2_000) in main_audit_times
+    assert ("EXIT_FILL", 2_250) in main_audit_times
+    assert ("TAKE_PROFIT_EXIT_PENDING", 3_000) in main_audit_times
+    assert ("EXIT_FILL", 3_250) in main_audit_times
+
     # STRESS는 더 긴 청산 지연을 가져 BASE와 다른 시각에 닫힌다.
     assert shadows.account(plan.strategy_id, CostProfile.BASE).open_position is None
     assert shadows.account(plan.strategy_id, CostProfile.STRESS).open_position is not None
@@ -316,6 +331,21 @@ def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exi
     engine.evaluate_health(adverse, Regime.SHOCK, now_ms=126_000)
     assert engine.main.position.pending_exit is not None
     assert engine.main.position.pending_exit.label == "EXIT_EDGE_DECAY"
+    assert any(
+        row["event"] == "MANAGEMENT_EXIT_ARMED"
+        and row["account_id"] == engine.main.account_id
+        and row["ts_ms"] == 126_000
+        for row in engine.audit_events
+    )
+
+    engine.on_book(book(126_250))
+    assert engine.main.position is None
+    assert any(
+        row["event"] == "EXIT_FILL"
+        and row["account_id"] == engine.main.account_id
+        and row["ts_ms"] == 126_250
+        for row in engine.audit_events
+    )
 
 
 def test_pending_protected_and_exit_pending_accounts_roundtrip_for_restart() -> None:
