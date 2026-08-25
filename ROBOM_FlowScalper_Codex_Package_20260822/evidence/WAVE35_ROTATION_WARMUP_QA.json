@@ -6,7 +6,7 @@
   "source": {
     "baseline_main_commit": "ccac6171eec486256104c950548689cefcdd12d7",
     "implementation_commit": "8bcfde29da42e4f066a225f64ff6c98f85d4c009",
-    "final_commit": "PENDING_EVIDENCE_COMMIT",
+    "final_commit": "e8bbc22c4b0dfaa8051efdd448a6861c32687354",
     "branch": "codex/flowscalper-wave34-full-audit"
   },
   "defect": {
@@ -116,8 +116,11 @@
     "release_zip": "NOT_RUN"
   },
   "github": {
-    "main_commit": "PENDING_PUSH",
-    "actions_run": null,
-    "actions_status": "PENDING"
+    "main_commit": "e8bbc22c4b0dfaa8051efdd448a6861c32687354",
+    "actions_run": 32906261858,
+    "actions_status": "PASS",
+    "validate_duration_seconds": 67,
+    "browser_duration_seconds": 80,
+    "browser_evidence_uploaded": true
   }
 }

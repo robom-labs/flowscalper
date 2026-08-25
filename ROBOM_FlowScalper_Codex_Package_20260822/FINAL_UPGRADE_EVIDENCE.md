@@ -1519,6 +1519,6 @@ wide scanner p95 1,860.858ms는 실행용 정밀호가 p95 39.409ms와 분리된
 | 수익성 | NOT_PROVEN | 전략·비용·진입 기준은 변경하지 않았고 현재 표본으로 순위나 수익성을 주장하지 않는다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 배포 뒤 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
-| GitHub main / Actions | PENDING | 구현 commit `8bcfde29da42e4f066a225f64ff6c98f85d4c009`과 이 증거 commit을 push한 뒤 갱신한다. |
+| GitHub main / Actions | PASS | 구현 commit `8bcfde29da42e4f066a225f64ff6c98f85d4c009`과 실행증거 commit `e8bbc22c4b0dfaa8051efdd448a6861c32687354`을 main에 push했다. [Actions 32906261858](https://github.com/robom-labs/flowscalper/actions/runs/32906261858)의 validate 1분7초, browser 1분20초와 실제 Chromium desktop·tablet·mobile E2E·증거업로드가 모두 PASS했다. |
 
-기계판독 증거는 `evidence/WAVE35_ROTATION_WARMUP_QA.json`, 결정 근거는 ADR-041이다. 이 Wave는 재현한 정상 계획교체의 stale backlog 결함을 해결한 것이며, 모든 미래 네트워크 상태·6시간·24시간 안정성이나 전략 수익성을 입증한 것은 아니다.
+기계판독 증거는 `evidence/WAVE35_ROTATION_WARMUP_QA.json`, 결정 근거는 ADR-041이다. 구현 기준 commit은 `8bcfde29da42e4f066a225f64ff6c98f85d4c009`, 실행증거 기준 commit은 `e8bbc22c4b0dfaa8051efdd448a6861c32687354`이다. 이 Wave는 재현한 정상 계획교체의 stale backlog 결함을 해결한 것이며, 모든 미래 네트워크 상태·6시간·24시간 안정성이나 전략 수익성을 입증한 것은 아니다.
