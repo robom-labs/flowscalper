@@ -897,3 +897,49 @@ Næs·Skjeltorp와 Cenesizoglu·Dionne·Zhou의 연구는 호가장 기울기와
 기계판독 증거는 `evidence/WAVE23_BOOK_SLOPE_STRATEGY_QA.json`이다. 필수 로컬 회귀·화면·서비스 검증의 FAIL과 BLOCKED는 현재 0이다. 전략 수익성, J 자연신호, 6시간·24시간과 Release ZIP은 각각 `NOT_PROVEN`, `NOT_OBSERVED` 또는 `NOT_RUN`으로 분리했다.
 
 Wave 23 구현 commit은 `a8a04b8c4aedfd092a13ce199d9925f2cce5505a`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E가 모두 통과했다.
+
+## 29. 장시간 런타임 정지 제거와 성과 범위 명확화
+
+2026-08-25 실제 공개시장 PAPER를 장시간 실행하며 간헐적 1.5초 이상 지연을 저장 flush, 메모리 일괄 폐기, 외부 공개 스트림 지연으로 분해했다. 첫 `run-e2cd64bac738`에서는 1,579ms Parquet flush와 20개 TRADE의 1,597.6~1,629.5ms 지연이 겹쳤다. 저장만 process로 옮긴 `run-64d8e843f38f`에서는 52,501번째 이벤트에서 과거 2,500개 객체를 한꺼번에 삭제하던 경계와 17개 TRADE의 1,502.1~1,577.2ms 지연이 정확히 겹쳤다. 두 진단 런은 해결 증거가 아니라 `FAIL_DIAGNOSTIC_FIXED`로 보존했다.
+
+### 구현한 수정
+
+- 같은 snapshot에서 A~J가 동일 방향·청산형식의 entry·TP·SL·비용 입력을 최대 32번 만들던 계산을 `(Side, ExitStyle)`별 최대 4번으로 재사용한다. cache는 한 snapshot 안에서만 살아 오래된 호가를 공유하지 않는다.
+- 장시간 worker의 JSON·row checksum·Arrow·zstd·fsync를 AnyIO 별도 process로 옮기고 SQLite 불변 manifest만 thread에서 반영한다. process 실패 시 뽑은 batch를 먼저 복원하고 신규 PAPER 진입을 fail-closed한다.
+- 이미 계산한 batch checksum을 Parquet 파일 digest로 재사용해 같은 row의 두 번째 전체 JSON 직렬화를 없앴다.
+- 최근 이벤트 10,000개와 계획거부 2,000개를 각각 고정길이 `deque`로 바꿔 2,500개·500개 prefix 일괄 삭제를 없앴다.
+- 성과 화면은 요약·현재자산이 `이번 Run`, 거래·승률·기대값·PF·비용·낙폭이 `현재 전략 버전` 범위임을 문장과 열 제목에 직접 표시한다.
+- 실제 주문, private API, 인증, API Key, secret과 wallet 경로는 계속 0 또는 false다.
+
+### 실제 공개시장·브라우저 검증
+
+| 검증 | 상태 | 이번 실행의 실제 결과 |
+|---|---|---|
+| 최종 16분 PAPER 런 | PASS_WITH_OBSERVED_TRANSIENT | `run-b85a51c5daed` 966초·49표본에서 event 2,150→160,850으로 158,700건 증가했고 메모리 이벤트는 warmup 뒤 10,000에 고정됐다. process flush 최대 5,591ms, 계획회전 1·전체 reconnect 1·비계획 reconnect 0, drop·gap·persistence fault·last error 0, 최종 실행경로 P95 343.373ms였다. |
+| 52,501 일괄 폐기 경계 | PASS | 최종 런은 52,691, 56,433, 59,826 events 표본을 critical 증가 없이 통과했다. 별도 process flush가 5.59초 걸린 구간에도 실행경로 표본 P95는 930.982~959.178ms였고 임계치 아래였다. |
+| 외부 순간지연 안전장치 | PASS_WITH_OBSERVED_TRANSIENT | 최종 런 누적 TRADE 임계지연 275건을 숨기지 않는다. critical active와 entry lock이 각각 2개 표본에서 함께 true였고 회복 뒤 둘 다 false였다. 비계획 reconnect·drop·gap·fault는 0이므로 지연 0을 주장하지 않고 늦은 데이터로 진입하지 않는 fail-closed와 자동회복을 PASS로 판정했다. |
+| 기본 15분 회전 | PASS | event 149,567→151,920 사이 계획회전 1·전체 reconnect 1이 됐고 비계획 reconnect 0, 이후 event 160,850까지 계속 증가했다. 회전 뒤 P95는 706.665→126.813ms로 회복됐다. |
+| 실제 시작·일시정지·재개 | PASS | 실제 앱 내 브라우저에서 시작 한 번으로 `작동 중`, 일시정지로 `관찰 중 · 내가 일시정지`, 재개로 다시 `작동 중`을 확인했다. 시장관찰과 신규 PAPER 진입 상태가 구분됐다. |
+| 실제 전략·기록·성과 | PASS | 전략 10/10, 모드 10개, LONG·SHORT 20개, 실제 주문 0을 확인했다. 이번 Run 기록 0과 과거 보존을 구분했고, 수정 빌드의 성과 화면에서 `이번 Run 현재자산`과 `현재버전 거래·승률` 열을 실제로 확인했다. |
+| 자연 main PAPER 경로 | PASS | `run-6c57522494e8` BNBUSDT SHORT는 사전 확정 entry 711.520·SL 717.2172·TP 693.30996·수량 0.14로 진입해 22.608초 뒤 EDGE_DECAY 종료됐다. 최종 빌드 `run-e6fe0a69a138` ENAUSDT SHORT는 entry 0.1547600·SL 0.1560031200·TP 0.15080301600·수량 680으로 진입해 17.670초 뒤 종료됐다. 1~2초 종료는 0이며 두 손실 표본은 작동 증거일 뿐 수익성 증거가 아니다. |
+| 저장 공개시장 replay | PASS | `run-f14214b3b1dd` 15,045 events를 `replay-436ffc42d86846bd`, `replay-b1eb7ad227964a8c`로 재생했다. 두 실행은 checksum `5880f66a673ad64d01dec42853d59e3208497fc6ab6ba6520737b7553bccc94b`, 평가 69,380·적격 9·후보 8·main 0·shadow 9가 같고 실제주문·인증은 false였다. |
+| SQLite·저장 manifest | PASS | 활성 원장 `PRAGMA quick_check=ok`, 외래키 위반 0, Run 59·main 50·shadow 434·replay 47·archive manifest 24,711을 읽었다. replay가 source batch·row checksum을 검증했다. |
+| 최종 서비스 상태 | PASS | 빌드 재시작 뒤 `run-e6fe0a69a138`은 약 15분 45초에 event 139,208·메모리 10,000·P95 218.127ms, 계획회전/전체 reconnect 1/1, 비계획 reconnect·drop·gap·fault 0, critical active·entry lock false, 실제주문·인증 false였다. |
+
+### 자동검증과 한계
+
+| 검증 | 상태 | 실제 결과 |
+|---|---|---|
+| backend pytest | PASS | 299 passed, 17.72초 |
+| frontend Vitest | PASS | 12 files, 41 passed |
+| Playwright | PASS | 실제 Chromium desktop·tablet·mobile 3 passed, 12.5초. 차트 크기·지표·전체화면·전략·기록·replay·반응형 overflow와 console/page error 0을 검사했다. |
+| Ruff / mypy | PASS | 오류 0 / 82 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build | PASS | Vite 48 modules, PAPER build safety PASS |
+| security / repository hygiene | PASS | 115 source, violation·secret-like·real-order path 0 / 위반 0 |
+| 전략 수익성 | NOT_PROVEN | 관찰된 자연 main 표본은 순손실이고 전략별 표본이 부족하다. 독립계좌 합계를 하나의 공동 1,000 USDT 수익으로 해석하지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 966초와 후속 서비스 표본을 멀티시간 수용결과로 표현하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+| GitHub main / Actions | PASS | 계산 재사용 commit `3284fc1`과 구현 commit `887b0ec1aed6a9930a5d1cf8bfa2562af22f6bee`를 main에 push했다. [Actions 32798366401](https://github.com/robom-labs/flowscalper/actions/runs/32798366401)의 validate 56초, browser 1분15초, 실제 Chromium E2E와 browser evidence upload가 모두 PASS했다. |
+
+기계판독 증거는 `evidence/WAVE24_RUNTIME_STALL_QA.json`이다. 필수 로컬 회귀·화면·서비스 검증의 미해결 FAIL과 BLOCKED는 0이다. 외부 공개시장 지연은 관찰 사실로 남기고, 내부 정지 제거와 fail-closed 자동회복만 완료로 판정했다.

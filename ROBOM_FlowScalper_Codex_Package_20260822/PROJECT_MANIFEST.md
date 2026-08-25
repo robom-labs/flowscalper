@@ -100,6 +100,8 @@ Detailed specifications:
 - `evidence/PHASE10_REPLAY_LIVE_ISOLATION.json`
 - `evidence/WAVE21_OFI_RETURN_AND_REPLAY_QA.json`
 - `evidence/WAVE22_CLOCK_ROTATION_QA.json`
+- `evidence/WAVE23_BOOK_SLOPE_STRATEGY_QA.json`
+- `evidence/WAVE24_RUNTIME_STALL_QA.json`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-full.png`
