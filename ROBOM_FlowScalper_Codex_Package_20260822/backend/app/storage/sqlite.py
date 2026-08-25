@@ -67,7 +67,7 @@ class SQLiteLedger:
                 """
                 PRAGMA journal_mode = WAL;
                 PRAGMA synchronous = FULL;
-                PRAGMA wal_autocheckpoint = 1000;
+                PRAGMA wal_autocheckpoint = 0;
                 PRAGMA foreign_keys = ON;
 
                 CREATE TABLE IF NOT EXISTS runs (
@@ -1642,6 +1642,20 @@ class _Transaction:
             self._connection.execute("COMMIT" if exc_type is None else "ROLLBACK")
         finally:
             self._lock.release()
+
+
+def run_passive_wal_checkpoint_in_process(path: str) -> tuple[int, int, int]:
+    """COMMIT 호출자와 분리된 process에서 비차단 PASSIVE checkpoint를 실행한다."""
+
+    connection = sqlite3.connect(path, timeout=0.0, isolation_level=None)
+    try:
+        connection.execute("PRAGMA wal_autocheckpoint = 0")
+        row = connection.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+        if row is None or len(row) != 3:
+            raise LedgerInvariantError("WAL checkpoint 결과 형식이 올바르지 않습니다.")
+        return (int(row[0]), int(row[1]), int(row[2]))
+    finally:
+        connection.close()
 
 
 def _canonical_json(value: object) -> str:

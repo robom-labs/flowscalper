@@ -553,6 +553,7 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
         ledger=ledger,
         market_event_archive=archive,
     )
+    runtime._wal_checkpoint_next_flush = 1
     for index in range(2_000):
         runtime.ingest_live_event(
             MarketEvent(
@@ -597,6 +598,10 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     assert runtime._persistence_flush_slowest_archive_batches == 1
     assert runtime._persistence_flush_slowest_archive_ms >= 0
     assert runtime._persistence_flush_slowest_ledger_ms >= 0
+    assert runtime._wal_checkpoint_count == 1
+    assert runtime._wal_checkpoint_log_frames >= 0
+    assert runtime._wal_checkpointed_frames == runtime._wal_checkpoint_log_frames
+    assert runtime._wal_checkpoint_fault_count == 0
     assert runtime._persistence_fault_count == 0
     assert runtime._persistence_buffer_dropped == 0
     assert runtime._market_event_buffer == []
@@ -648,6 +653,56 @@ async def test_parquet_process_fault_restores_batch_and_fails_closed(
     ]
     assert runtime._persistence_fault_count == 1
     assert runtime._persistence_buffer_dropped == 0
+    assert runtime.paused is True
+    assert runtime.paper_portfolio.main.risk_state.faulted is True
+    assert "PERSISTENCE_FAULT_ENTRY_LOCK" in runtime.runtime_health_flags
+    ledger.close()
+
+
+async def test_incomplete_oversized_wal_checkpoint_fails_closed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "oversized-wal.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-oversized-wal",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime._wal_checkpoint_next_flush = 1
+    runtime._market_event_buffer = [
+        {
+            "event_id": "event-oversized-wal",
+            "run_id": runtime.run_id,
+            "venue": runtime.venue.value,
+            "symbol": "BTCUSDT",
+            "event_type": "TRADE",
+            "venue_ts_ms": 1_000,
+            "receive_monotonic_ns": 1_000,
+            "data": {"price": "100", "quantity": "1"},
+        }
+    ]
+
+    async def incomplete_checkpoint(function, *arguments):
+        assert function is runtime_module.run_passive_wal_checkpoint_in_process
+        assert arguments == (str(ledger.path),)
+        return (0, 20_000, 0)
+
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", incomplete_checkpoint)
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    for _ in range(100):
+        if runtime._persistence_fault_count == 1:
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert runtime._wal_checkpoint_count == 1
+    assert runtime._wal_checkpoint_busy_count == 1
+    assert runtime._persistence_fault_count == 1
     assert runtime.paused is True
     assert runtime.paper_portfolio.main.risk_state.faulted is True
     assert "PERSISTENCE_FAULT_ENTRY_LOCK" in runtime.runtime_health_flags

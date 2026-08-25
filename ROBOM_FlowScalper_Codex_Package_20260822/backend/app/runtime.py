@@ -58,7 +58,11 @@ from backend.app.storage.parquet import (
     warm_market_event_worker_process,
     write_market_event_batch_in_process,
 )
-from backend.app.storage.sqlite import RecoveryState, SQLiteLedger
+from backend.app.storage.sqlite import (
+    RecoveryState,
+    SQLiteLedger,
+    run_passive_wal_checkpoint_in_process,
+)
 from backend.app.strategies.base import CandidateDecision
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal, StrategySignalEvaluator
@@ -67,6 +71,10 @@ from backend.app.strategies.shadow import ShadowLedger
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 2_000
 _MARKET_PERSISTENCE_BATCH_SIZE = 2_000
 _SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
+_WAL_CHECKPOINT_FLUSH_INTERVAL = 8
+_SLOW_WAL_CHECKPOINT_MS = 2_000.0
+_MAX_WAL_BYTES_WITHOUT_CHECKPOINT = 64 * 1024 * 1024
+_MAX_WAL_FRAMES_WITHOUT_CHECKPOINT = _MAX_WAL_BYTES_WITHOUT_CHECKPOINT // 4_096
 _PERSISTED_CANDLE_INTERVALS = frozenset({1, 180})
 _LIVE_DEEP_SYMBOL_TARGET = 12
 _LIVE_DASHBOARD_EVENT_LIMIT = 512
@@ -159,6 +167,17 @@ class PaperRuntime:
     _persistence_flush_slowest_market_events: int = 0
     _persistence_flush_slowest_candles: int = 0
     _persistence_flush_slowest_archive_batches: int = 0
+    _wal_checkpoint_next_flush: int = _WAL_CHECKPOINT_FLUSH_INTERVAL
+    _wal_checkpoint_count: int = 0
+    _wal_checkpoint_last_ms: float = 0.0
+    _wal_checkpoint_max_ms: float = 0.0
+    _wal_checkpoint_slow_count: int = 0
+    _wal_checkpoint_busy_count: int = 0
+    _wal_checkpoint_log_frames: int = 0
+    _wal_checkpointed_frames: int = 0
+    _wal_checkpoint_last_completed_ts_ms: int | None = None
+    _wal_checkpoint_fault_count: int = 0
+    _wal_checkpoint_last_error: str | None = None
     _persistence_worker_warmed: bool = False
     _persistence_worker_warm_ms: float = 0.0
     _historical_live_trades: tuple[dict[str, object], ...] = field(
@@ -554,6 +573,20 @@ class PaperRuntime:
             "persistence_flush_slowest_archive_batches": (
                 self._persistence_flush_slowest_archive_batches
             ),
+            "wal_autocheckpoint_pages": 0,
+            "wal_checkpoint_flush_interval": _WAL_CHECKPOINT_FLUSH_INTERVAL,
+            "wal_checkpoint_count": self._wal_checkpoint_count,
+            "wal_checkpoint_last_ms": round(self._wal_checkpoint_last_ms, 3),
+            "wal_checkpoint_max_ms": round(self._wal_checkpoint_max_ms, 3),
+            "wal_checkpoint_slow_count": self._wal_checkpoint_slow_count,
+            "wal_checkpoint_busy_count": self._wal_checkpoint_busy_count,
+            "wal_checkpoint_log_frames": self._wal_checkpoint_log_frames,
+            "wal_checkpointed_frames": self._wal_checkpointed_frames,
+            "wal_checkpoint_last_completed_ts_ms": (
+                self._wal_checkpoint_last_completed_ts_ms
+            ),
+            "wal_checkpoint_fault_count": self._wal_checkpoint_fault_count,
+            "wal_checkpoint_last_error": self._wal_checkpoint_last_error or "NONE",
             "persistence_worker_warmed": self._persistence_worker_warmed,
             "persistence_worker_warm_ms": round(self._persistence_worker_warm_ms, 3),
             "event_memory_count": len(self._events),
@@ -2483,6 +2516,64 @@ class PaperRuntime:
     async def run_persistence_worker(self, stop: asyncio.Event) -> None:
         """시장 직렬화·fsync를 시장데이터 이벤트 루프 밖에서 실행한다."""
 
+        async def checkpoint_wal_if_due() -> None:
+            if self.ledger is None:
+                return
+            if self._persistence_flush_count < self._wal_checkpoint_next_flush:
+                return
+            started = asyncio.get_running_loop().time()
+            try:
+                busy, log_frames, checkpointed_frames = await to_process.run_sync(
+                    run_passive_wal_checkpoint_in_process,
+                    str(self.ledger.path),
+                )
+            except Exception as error:
+                self._wal_checkpoint_fault_count += 1
+                self._wal_checkpoint_last_error = f"{type(error).__name__}: {error}"
+                if "WAL_CHECKPOINT_DEGRADED" not in self.runtime_health_flags:
+                    self.runtime_health_flags.append("WAL_CHECKPOINT_DEGRADED")
+                self._wal_checkpoint_next_flush = self._persistence_flush_count + 1
+                wal_path = self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
+                wal_size = wal_path.stat().st_size if wal_path.exists() else 0
+                if wal_size >= _MAX_WAL_BYTES_WITHOUT_CHECKPOINT:
+                    self._handle_persistence_fault(
+                        RuntimeError(
+                            "WAL_CHECKPOINT_FAILED_AND_WAL_TOO_LARGE: "
+                            f"bytes={wal_size}; error={self._wal_checkpoint_last_error}"
+                        )
+                    )
+                return
+            elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+            self._wal_checkpoint_count += 1
+            self._wal_checkpoint_last_ms = elapsed_ms
+            self._wal_checkpoint_max_ms = max(self._wal_checkpoint_max_ms, elapsed_ms)
+            self._wal_checkpoint_log_frames = log_frames
+            self._wal_checkpointed_frames = checkpointed_frames
+            self._wal_checkpoint_last_completed_ts_ms = self.clock.utc_ms()
+            self._wal_checkpoint_last_error = None
+            self.runtime_health_flags = [
+                flag
+                for flag in self.runtime_health_flags
+                if flag != "WAL_CHECKPOINT_DEGRADED"
+            ]
+            if elapsed_ms >= _SLOW_WAL_CHECKPOINT_MS:
+                self._wal_checkpoint_slow_count += 1
+            incomplete = busy != 0 or checkpointed_frames < log_frames
+            if incomplete:
+                self._wal_checkpoint_busy_count += 1
+                self._wal_checkpoint_next_flush = self._persistence_flush_count + 1
+                if log_frames >= _MAX_WAL_FRAMES_WITHOUT_CHECKPOINT:
+                    self._handle_persistence_fault(
+                        RuntimeError(
+                            "WAL_CHECKPOINT_INCOMPLETE_AND_WAL_TOO_LARGE: "
+                            f"frames={log_frames}; checkpointed={checkpointed_frames}"
+                        )
+                    )
+            else:
+                self._wal_checkpoint_next_flush = (
+                    self._persistence_flush_count + _WAL_CHECKPOINT_FLUSH_INTERVAL
+                )
+
         async def flush(limit: int | None) -> None:
             started = asyncio.get_running_loop().time()
             timings = await self._flush_persistence_isolated(limit)
@@ -2508,6 +2599,7 @@ class PaperRuntime:
             if elapsed_ms >= _SLOW_PERSISTENCE_FLUSH_MS:
                 self._persistence_flush_slow_count += 1
                 self._persistence_flush_last_slow_ts_ms = completed_ts_ms
+            await checkpoint_wal_if_due()
 
         while not stop.is_set():
             with self._persistence_lock:

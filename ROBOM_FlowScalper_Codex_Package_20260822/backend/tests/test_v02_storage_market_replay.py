@@ -26,7 +26,11 @@ from backend.app.replay.market import StoredMarketReplay, _candidate_plan_count
 from backend.app.replay.process import _REPLAY_TARGET_CPU_RATIO, _ReplayCpuBudget
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
-from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
+from backend.app.storage.sqlite import (
+    LedgerInvariantError,
+    SQLiteLedger,
+    run_passive_wal_checkpoint_in_process,
+)
 from backend.tests.test_candidate_paper_portfolio import book, candidate_plan
 from backend.tests.test_storage_replay_analytics import _sample_trade
 
@@ -175,7 +179,7 @@ def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(
     )
     assert ledger.schema_version == 7
     assert ledger._connection.execute("PRAGMA synchronous").fetchone()[0] == 2
-    assert ledger._connection.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 1_000
+    assert ledger._connection.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 0
     assert inserted == 2
     assert [row["event_id"] for row in ledger.list_market_events("run-market")] == [
         "event-1",
@@ -517,6 +521,7 @@ def test_archive_manifest_stats_and_candles_use_one_full_commit(tmp_path: Path) 
         config={"seed": 20260822},
         started_ts_ms=1_000,
     )
+    assert ledger._connection.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 0
     event = market_event(run_id, event_id="atomic-event", ts_ms=1_000).model_dump(
         mode="json"
     )
@@ -536,6 +541,33 @@ def test_archive_manifest_stats_and_candles_use_one_full_commit(tmp_path: Path) 
     assert ledger.market_event_symbols(run_id) == [
         {"symbol": "BTCUSDT", "event_count": 1}
     ]
+    ledger.close()
+
+
+def test_passive_checkpoint_runs_outside_commit_connection(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "passive-checkpoint.sqlite3")
+    run_id = "run-passive-checkpoint"
+    ledger.start_run(
+        run_id,
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    assert ledger.record_candles([candle_row(run_id)]) == 1
+
+    busy, log_frames, checkpointed_frames = run_passive_wal_checkpoint_in_process(
+        str(ledger.path)
+    )
+
+    assert busy == 0
+    assert log_frames > 0
+    assert checkpointed_frames == log_frames
+    assert ledger.list_candles(
+        run_id,
+        symbol="BTCUSDT",
+        interval_seconds=1,
+    ) == [candle_row(run_id)]
     ledger.close()
 
 
