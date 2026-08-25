@@ -1283,6 +1283,8 @@ H의 비용전 방향 승률은 train 54.902%, holdout 57.447%였지만 평균 �
 | 높은 승률·전략 수익성 | NOT_PROVEN | 비용후 손실 전략은 신규진입에서 제외했지만 현재 revision의 승리 전략은 증명되지 않았다. E/H 대체후보도 자연신호 0이라 배포하지 않았다. |
 | 6시간 / 24시간 soak | NOT_RUN | 10분 queue-headroom gate를 장시간 수용결과로 표현하지 않는다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
-| GitHub main / Actions | NOT_RUN | 로컬 구현과 증거를 먼저 확정한 뒤 동일 변경을 push하고 별도로 기록한다. |
+| GitHub main / Actions | PASS | 구현 commit `60cecafadfa7a97e70e5b15de47b9d8e2a648c8f`을 main에 push했다. [Actions 32829795266](https://github.com/robom-labs/flowscalper/actions/runs/32829795266)의 validate 54초, browser 1분9초와 Chromium desktop·tablet·mobile E2E·브라우저 증거 업로드가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/WAVE31_STRATEGY_RETIREMENT_RUNTIME_HEADROOM_QA.json`, 실제 화면은 `evidence/WAVE31_STRATEGY_RETIREMENT_MONITORING.jpg`, 상세 결정은 ADR-032다. 이번 결론은 나쁜 승률을 숨기는 것이 아니라 비용후 실패 전략을 기본 진입에서 제외하고, 남은 전략은 현재 revision 자연표본이 쌓일 때까지 순위를 매기지 않는 것이다.
+
+Wave 31 구현 commit은 `60cecafadfa7a97e70e5b15de47b9d8e2a648c8f`이다. 같은 SHA의 GitHub Actions에서 로컬과 독립된 설치·저장소 위생·lint·typecheck·backend/frontend test·production build와 실제 Chromium desktop·tablet·mobile E2E·증거 업로드가 모두 통과했다.

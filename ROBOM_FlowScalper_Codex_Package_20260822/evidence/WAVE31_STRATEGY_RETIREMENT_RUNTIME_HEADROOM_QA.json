@@ -133,7 +133,13 @@
     "static_build_safety": "Ruff, mypy 82 source files, ESLint, TypeScript, Vite 48 modules, PAPER build safety, security 115 files and repository hygiene passed",
     "browser_verification": "PASS",
     "post_restart_monitor": "PASS_10_MINUTE_HEADROOM_GATE",
-    "github_main_and_actions": "NOT_RUN"
+    "github_main_and_actions": {
+      "status": "PASS",
+      "implementation_commit": "60cecafadfa7a97e70e5b15de47b9d8e2a648c8f",
+      "actions_run_id": 32829795266,
+      "validate": "PASS in 54s",
+      "browser": "PASS in 1m9s with desktop, tablet and mobile evidence upload"
+    }
   },
   "post_restart_runtime": {
     "run_id": "run-0ca162282d14",
