@@ -53,6 +53,7 @@ from backend.app.market_data.supervisor import (
 from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
 from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
+from backend.app.replay.safety import ReplayLiveSafetySnapshot
 from backend.app.storage.parquet import (
     ArchivedEventBatch,
     ParquetEventStore,
@@ -424,6 +425,59 @@ class PaperRuntime:
             deep_symbols=self.deep_symbol_count or min(len(symbols), 10),
             processing_lag_p95_ms=self.processing_lag_p95_ms,
             health_flags=tuple(flags),
+        )
+
+    def replay_live_safety_snapshot(self) -> ReplayLiveSafetySnapshot:
+        """대용량 replay가 양보할 LIVE PAPER 최소 상태만 가볍게 읽는다."""
+
+        self._refresh_storage_safety()
+        telemetry = self._supervisor.telemetry if self._supervisor is not None else None
+        status = self.status()
+        position_count = len(self.paper_portfolio.main.positions) + sum(
+            len(account.positions) for account in self.paper_portfolio.shadows.values()
+        )
+        return ReplayLiveSafetySnapshot(
+            run_id=self.run_id,
+            runtime_mode=self.mode.value,
+            market_data_state=self.market_data_state.value,
+            event_count=telemetry.event_count if telemetry is not None else len(self._events),
+            queue_depth=telemetry.queue_depth if telemetry is not None else 0,
+            lag_p95_ms=float(
+                telemetry.lag_p95_ms
+                if telemetry is not None and telemetry.lag_p95_ms is not None
+                else self.processing_lag_p95_ms or 0.0
+            ),
+            reconnects=telemetry.reconnect_count if telemetry is not None else 0,
+            planned_rotations=(
+                telemetry.planned_rotation_count if telemetry is not None else 0
+            ),
+            unplanned_reconnects=(
+                max(0, telemetry.reconnect_count - telemetry.planned_rotation_count)
+                if telemetry is not None
+                else 0
+            ),
+            sequence_gaps=telemetry.gap_count if telemetry is not None else 0,
+            resyncs=telemetry.resync_count if telemetry is not None else 0,
+            dropped_events=(
+                telemetry.dropped_event_count if telemetry is not None else 0
+            ),
+            persistence_fault_count=self._persistence_fault_count,
+            persistence_buffer_dropped=self._persistence_buffer_dropped,
+            critical_lag_incident_count=(
+                telemetry.critical_lag_incident_count if telemetry is not None else 0
+            ),
+            critical_lag_active=(
+                telemetry.critical_lag_active if telemetry is not None else False
+            ),
+            entry_locked=(
+                (telemetry.entry_locked if telemetry is not None else False)
+                or self.paused
+            ),
+            position_count=position_count,
+            storage_entry_allowed=self._storage_entry_allowed,
+            real_orders_enabled=status.real_orders_enabled,
+            auth_required=status.auth_required,
+            last_error=telemetry.last_error if telemetry is not None else None,
         )
 
     def restore_recovery_state(self, recovered: RecoveryState) -> bool:

@@ -75,6 +75,7 @@ def replay_stored_run_from_paths(
             created_ts_ms=created_ts_ms,
             symbol=symbol.strip().upper() if symbol else None,
             cooperative_yield=cpu_budget.checkpoint,
+            persist_result=False,
         ).as_dict()
     finally:
         ledger.close()

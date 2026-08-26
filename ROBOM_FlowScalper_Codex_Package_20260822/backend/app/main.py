@@ -33,12 +33,14 @@ from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
 from backend.app.market_explorer import MarketExplorerService
 from backend.app.replay.operations import (
     ReplayOperationConflict,
+    ReplayOperationFailure,
     ReplayOperationManager,
 )
 from backend.app.replay.process import (
     replay_stored_run_from_paths,
     replay_timeline_from_paths,
 )
+from backend.app.replay.safety import ReplayLiveSafetyViolation, run_with_live_safety
 from backend.app.runtime import PaperEntryIntentConflict, PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, RecoveryState, SQLiteLedger
@@ -1304,26 +1306,52 @@ def create_app(
                     "PREPARING",
                     "저장 원장과 공개시장 이벤트를 안전하게 준비하고 있습니다",
                 )
+                ledger = active_runtime.ledger
                 if (
                     active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
-                    and active_runtime.ledger is not None
+                    and ledger is not None
                 ):
                     await asyncio.to_thread(active_runtime.flush_storage)
-                    archive = active_runtime.ledger.market_event_archive
+                    archive = ledger.market_event_archive
                     await progress(
                         "PROCESSING",
-                        "저우선순위 프로세스에서 같은 전략 조건으로 검증하고 있습니다",
+                        (
+                            "LIVE 안전상태를 감시하며 저우선순위 프로세스에서 "
+                            "같은 전략 조건으로 검증하고 있습니다"
+                        ),
                     )
                     async with replay_process_lock:
-                        completed = await to_process.run_sync(
-                            replay_stored_run_from_paths,
-                            str(active_runtime.ledger.path),
-                            str(archive.root) if archive is not None else None,
-                            run_id,
-                            active_runtime.clock.utc_ms(),
-                            symbol,
-                            cancellable=True,
-                        )
+                        async def start_process_replay() -> dict[str, object]:
+                            return await to_process.run_sync(
+                                replay_stored_run_from_paths,
+                                str(ledger.path),
+                                str(archive.root) if archive is not None else None,
+                                run_id,
+                                active_runtime.clock.utc_ms(),
+                                symbol,
+                                cancellable=True,
+                            )
+
+                        try:
+                            completed = await run_with_live_safety(
+                                start_process_replay,
+                                probe=active_runtime.replay_live_safety_snapshot,
+                            )
+                        except ReplayLiveSafetyViolation as error:
+                            reason_codes = ", ".join(error.violations)
+                            raise ReplayOperationFailure(
+                                code="REPLAY_ABORTED_LIVE_SAFETY",
+                                message_ko=(
+                                    "공개시장 PAPER 관찰 안전조건이 흔들려 저장 Run "
+                                    "검증을 자동 중단했습니다. 시장 관찰과 실제 주문 0은 "
+                                    f"유지됩니다. 원인: {reason_codes}"
+                                ),
+                                retryable=True,
+                            ) from error
+                    await asyncio.to_thread(
+                        ledger.record_replay_run,
+                        completed,
+                    )
                     remember_replay_result(completed)
                     return completed
                 await progress(

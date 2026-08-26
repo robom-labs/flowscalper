@@ -75,6 +75,7 @@ class StoredMarketReplay:
         created_ts_ms: int,
         symbol: str | None = None,
         cooperative_yield: Callable[[], None] | None = None,
+        persist_result: bool = True,
     ) -> StoredMarketReplayResult:
         run = ledger.get_run(source_run_id)
         if run is None:
@@ -165,7 +166,8 @@ class StoredMarketReplay:
             real_orders_enabled=runtime.status().real_orders_enabled,
             auth_required=runtime.status().auth_required,
         )
-        ledger.record_replay_run(result.as_dict())
+        if persist_result:
+            ledger.record_replay_run(result.as_dict())
         return result
 
     @staticmethod

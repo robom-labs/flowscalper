@@ -428,3 +428,17 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Write a failing backend descriptor test and a failing frontend detail test before the fix, then run targeted, related and full suites after the fix.
 9. Run backend pytest, frontend Vitest, Ruff, project mypy, ESLint, TypeScript, production build, fixture, PAPER safety, security, repository hygiene and desktop, tablet and mobile Playwright. Preserve intermediate selector failures and require the final source to pass.
 10. Do not deploy or restart the installed service while baseline six-hour and 24-hour observers are running. After they finish and all PAPER accounts are flat, deploy once and verify the actual 8870 API and browser before GitHub synchronization.
+
+## LIVE-priority replay auto-abort Wave
+
+1. Run a genuinely large stored-market replay against the installed service while sampling LIVE event progress, executable and trade lag, queue, reconnect, gap, resync, drop, persistence and entry-lock state. Preserve failures instead of reducing the input.
+2. If LIVE safety is breached, cancel the worker immediately and label the attempt `FAIL` or `CANCELLED`; do not report an incomplete checksum as a successful replay.
+3. Capture a replay-free comparison window before assigning causality. A provider timeout without queue growth is not proof that replay CPU alone caused the incident.
+4. Take a lightweight LIVE PAPER baseline before starting the worker and poll it once per second. Fail closed on Run or market changes, actual orders, auth, storage lock, open PAPER positions, runtime error, queue over 64, executable p95 over 500ms, critical lag, event stall or new reconnect, gap, resync, drop and persistence faults.
+5. Allow only a reconnect-counted planned rotation with a 15-second entry-lock grace. Never reinterpret an unplanned reconnect as a planned rotation.
+6. Keep the existing `nice(19)`, 5% cooperative CPU budget and cancellable process. Await worker termination before finalizing the operation state.
+7. Mark automatic safety termination `FAILED_RETRYABLE` with `REPLAY_ABORTED_LIVE_SAFETY` and include exact cause codes in the Korean message and append-only transition audit.
+8. Do not persist a LIVE replay result from the worker. Persist it in the parent only after the final safety sample passes so a cancelled or unsafe result cannot appear as checksum evidence.
+9. Add deterministic guard, planned-rotation, event-stall, critical-lag, probe-error, child-cancellation, HTTP-operation and non-persistence regression tests. Re-run complete backend, frontend, fixture, static, build, PAPER safety, security and repository-hygiene checks.
+10. Deploy only through the immutable release path after the baseline observation boundary and all PAPER accounts are flat. Retry the same full scope under the installed watchdog and verify the actual browser, ledger transition and LIVE metrics before GitHub synchronization.
+11. Preserve six-hour and 24-hour post-deploy observers as independent gates. Keep profitability `NOT_PROVEN` and do not change any strategy threshold, cost, TP, SL, fill, Governor or risk budget.

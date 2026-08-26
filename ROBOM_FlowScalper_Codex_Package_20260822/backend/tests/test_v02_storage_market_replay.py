@@ -8,6 +8,7 @@ import json
 import sqlite3
 import threading
 import time
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -19,12 +20,22 @@ import backend.app.main as main_module
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
-from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
+from backend.app.domain.models import (
+    DataQuality,
+    MarketDataState,
+    MarketEvent,
+    RuntimeMode,
+    Venue,
+)
 from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
 from backend.app.replay.engine import ReplayEngine
 from backend.app.replay.market import StoredMarketReplay, _candidate_plan_count
 from backend.app.replay.process import _REPLAY_TARGET_CPU_RATIO, _ReplayCpuBudget
+from backend.app.replay.safety import (
+    ReplayLiveSafetyThresholds,
+    run_with_live_safety,
+)
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import (
@@ -1379,6 +1390,8 @@ def test_live_http_replay_uses_isolated_process_path(
         _runtime: PaperRuntime,
         _progress=None,
     ) -> bool:
+        _runtime.market_data_state = MarketDataState.LIVE
+        _runtime.paused = False
         return True
 
     async def run_sync(function, *arguments, **_options):
@@ -1406,6 +1419,95 @@ def test_live_http_replay_uses_isolated_process_path(
         assert len(calls) == 1
         assert calls[0][0] == str(ledger.path)
     ledger.close()
+
+
+def test_live_http_replay_auto_aborts_without_persisting_unsafe_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "live-safety-abort.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-safety-abort",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="safety-depth", ts_ms=1_000)
+    )
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.paused = False
+    baseline = runtime.replay_live_safety_snapshot()
+    probe_calls = 0
+    worker_stopped = threading.Event()
+
+    async def start_persistent_live_without_network(
+        _runtime: PaperRuntime,
+        _progress=None,
+    ) -> bool:
+        _runtime.market_data_state = MarketDataState.LIVE
+        _runtime.paused = False
+        return True
+
+    def safety_probe(_runtime: PaperRuntime):
+        nonlocal probe_calls
+        probe_calls += 1
+        if probe_calls == 1:
+            return baseline
+        return replace(
+            baseline,
+            event_count=baseline.event_count + 1,
+            lag_p95_ms=2_000.0,
+            critical_lag_active=True,
+            critical_lag_incident_count=baseline.critical_lag_incident_count + 1,
+            entry_locked=True,
+        )
+
+    async def blocking_run_sync(_function, *_arguments, **_options):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            worker_stopped.set()
+        return {}
+
+    async def fast_live_safety(start_replay, *, probe):
+        return await run_with_live_safety(
+            start_replay,
+            probe=probe,
+            thresholds=ReplayLiveSafetyThresholds(poll_seconds=0.005),
+        )
+
+    monkeypatch.setattr(
+        PaperRuntime,
+        "start_persistent_live",
+        start_persistent_live_without_network,
+    )
+    monkeypatch.setattr(PaperRuntime, "replay_live_safety_snapshot", safety_probe)
+    monkeypatch.setattr(main_module.to_process, "run_sync", blocking_run_sync)
+    monkeypatch.setattr(main_module, "run_with_live_safety", fast_live_safety)
+    with TestClient(create_app(runtime)) as client:
+        response = client.post(f"/api/replay/{runtime.run_id}", json={})
+        assert response.status_code == 202
+        operation_id = response.json()["operation_id"]
+        for _ in range(200):
+            operation = client.get(f"/api/replay/operations/{operation_id}")
+            if operation.json()["state"] == "FAILED_RETRYABLE":
+                break
+            time.sleep(0.01)
+
+        payload = operation.json()
+        assert payload["state"] == "FAILED_RETRYABLE"
+        assert payload["error_code"] == "REPLAY_ABORTED_LIVE_SAFETY"
+        assert "CRITICAL_LAG_ACTIVE" in payload["error_message_ko"]
+        assert payload["real_orders_enabled"] is False
+        assert payload["auth_required"] is False
+        assert worker_stopped.is_set()
+        assert ledger.list_replay_runs(runtime.run_id) == []
+        transitions = ledger.list_incidents(category="REPLAY_STATE_TRANSITION")
+        assert transitions[-1]["payload"]["cause_code"] == (
+            "REPLAY_ABORTED_LIVE_SAFETY"
+        )
 
 
 def test_live_timeline_is_process_isolated_and_focus_uses_bounded_open_ledger_read(
