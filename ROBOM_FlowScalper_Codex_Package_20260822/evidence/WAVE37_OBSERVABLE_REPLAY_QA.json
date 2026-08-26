@@ -2,11 +2,20 @@
   "schema_version": 1,
   "generated_at_utc": "2026-08-26T00:59:49Z",
   "wave": 37,
-  "status": "LOCAL_COMPLETE_WITH_LIMITS",
+  "status": "COMPLETE_WITH_LIMITS",
   "baseline_git_sha": "18fad0b8308d028129ae91aadf7e2c5a8e5090db",
-  "implementation_git_sha": null,
-  "github_main": {"status": "PENDING", "contains_implementation_sha": null},
-  "github_actions": {"status": "PENDING", "run_id": null, "url": null},
+  "implementation_git_sha": "bc113522d9c4115f5732cc1d706b4590c3de6ce9",
+  "github_main": {"status": "PASS", "contains_implementation_sha": true},
+  "github_actions": {
+    "status": "PASS_WITH_REPAIR",
+    "run_id": 32917820261,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/32917820261",
+    "validate_seconds": 70,
+    "browser_seconds": 64,
+    "initial_failed_run_id": 32917358890,
+    "initial_failure": "The isolated replay unit test allowed a real public supervisor failover to change the prepared Run ID on the GitHub runner.",
+    "repair": "The isolated-process unit test now suppresses public-network startup and tests only the intended replay path."
+  },
   "paper_safety": {
     "real_orders_enabled": false,
     "auth_required": false,
@@ -113,6 +122,19 @@
     "persistence_fault_count": 0,
     "persistence_buffer_dropped": 0,
     "process_memory_mb": 241.344
+  },
+  "post_github_live_recheck": {
+    "dashboard_event_count_before": 104288,
+    "dashboard_event_count_after_three_seconds": 104518,
+    "processing_lag_p95_ms": 42.88720703125,
+    "history_rows": 39,
+    "queue_depth": 0,
+    "entry_locked": false,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "replay_operation_state": "CANCELLED",
+    "real_orders_enabled": false,
+    "auth_required": false
   },
   "not_run": [
     "active 2.55GB ledger full quick_check rerun",

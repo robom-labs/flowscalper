@@ -1620,6 +1620,8 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | 활성 원장 full quick_check | NOT_RERUN | 활성 2.55GB writer와 동시 전수검사를 강행하지 않았다. Wave34의 같은 원장 전수 PASS를 이번 PASS로 쓰지 않는다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 후 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
-| GitHub main / Actions | PENDING | 로컬 구현·회귀·실제 화면 검증 후 정확한 commit과 Actions를 기록한다. |
+| GitHub main / Actions | PASS_WITH_REPAIR | 구현 commit `4bc02cfe2b60dd114068a28207653b244558e4f1`을 main에 올린 첫 [Actions 32917358890](https://github.com/robom-labs/flowscalper/actions/runs/32917358890)은 LIVE 분리 replay 단위검사가 CI 공개망에서 대체 거래소로 전환되며 준비한 Run ID와 달라져 FAIL했다. 실제 네트워크가 목적이 아닌 단위검사에서 supervisor 시작을 제거한 `bc113522d9c4115f5732cc1d706b4590c3de6ce9`을 main에 추가했고, [Actions 32917820261](https://github.com/robom-labs/flowscalper/actions/runs/32917820261)의 validate 1분10초·browser 1분4초·브라우저 증거 업로드가 모두 PASS했다. |
 
-기계판독 증거는 `evidence/WAVE37_OBSERVABLE_REPLAY_QA.json`, 결정 근거는 ADR-043이다. 이 Wave는 기록·재생 표시와 취소·응답성을 검증한 것이며 전략 수익성·장시간 안정성을 입증한 것은 아니다.
+최종 GitHub 반영 뒤 실제 서비스는 3초 동안 dashboard event 104,288→104,518로 230건 전진했고, LIVE·PAPER·실행 p95 42.887ms·queue 0·entry lock false·저장 fault와 buffer drop 0·실제주문과 인증 false를 유지했다. 현재 거래기록은 39건을 유지했고 마지막 대형 replay operation은 `CANCELLED`였다.
+
+기계판독 증거는 `evidence/WAVE37_OBSERVABLE_REPLAY_QA.json`, 결정 근거는 ADR-043이다. GitHub main의 최종 구현 기준은 `bc113522d9c4115f5732cc1d706b4590c3de6ce9`이다. 이 Wave는 기록·재생 표시와 취소·응답성을 검증한 것이며 전략 수익성·장시간 안정성을 입증한 것은 아니다.
