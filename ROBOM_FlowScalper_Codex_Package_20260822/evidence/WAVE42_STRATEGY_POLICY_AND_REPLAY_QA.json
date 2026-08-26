@@ -1,0 +1,192 @@
+{
+  "evidence_version": 1,
+  "captured_at": "2026-08-26T13:59:46+09:00",
+  "waves": [39, 40, 41, 42],
+  "status": "COMPLETE_WITH_LIMITS",
+  "paper_safety": {
+    "real_order_path": false,
+    "private_api_path": false,
+    "authentication_path": false,
+    "api_key_path": false,
+    "wallet_path": false
+  },
+  "root_cause": {
+    "empty_trade_focus": "OPTIONAL_FOCUS_CACHE_SQLITE_WRITER_LOCK_RETURNED_HTTP_500",
+    "short_holding_mismatch": "GLOBAL_900_SECOND_EMERGENCY_STALE_CAP_IGNORED_STRATEGY_HORIZON",
+    "low_trade_count": "STRICT_NATURAL_SIGNAL_GATES_PLUS_REPEATED_COST_ADJUSTED_FAILURES",
+    "strategy_thresholds_lowered": false
+  },
+  "focus_repair": {
+    "source_trade_id": "paper-candidate-46668ef0a60447be-lsa_reversal_v1-stress",
+    "symbol": "XRPUSDT",
+    "side": "SHORT",
+    "profile": "STRESS",
+    "focus_api_status": 200,
+    "focus_api_seconds": 0.09,
+    "frames": 8,
+    "candles": 7,
+    "entry": 1.4437,
+    "initial_stop": 1.4553,
+    "take_profit_1": 1.4295,
+    "take_profit_2": 1.4068,
+    "exit": 1.4424,
+    "gross_pnl_usdt": 0.4121,
+    "fees_usdt": 1.098,
+    "slippage_usdt": 0.0317,
+    "net_pnl_usdt": -0.7175,
+    "holding_seconds": 23,
+    "exit_reason": "EDGE_DECAY",
+    "optional_cache_lock_returns_completed_session": true,
+    "non_lock_errors_propagate": true,
+    "screenshot": "evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png"
+  },
+  "current_version_history": {
+    "total_rows": 63,
+    "main_rows": 1,
+    "league_rows": 62,
+    "league_winning_rows": 1,
+    "league_net_pnl_usdt": -64.6068400286,
+    "minimum_holding_ms": 3046,
+    "median_holding_ms": 23842,
+    "p90_holding_ms": 51390,
+    "maximum_holding_ms": 85622,
+    "holding_under_3000_ms": 0,
+    "exit_reasons": {
+      "EDGE_DECAY": 56,
+      "PROFIT_PROTECTION": 3,
+      "STOP": 3
+    },
+    "profitability": "NOT_PROVEN"
+  },
+  "strategy_policy": {
+    "strategy_count": 11,
+    "independent_account_count": 22,
+    "active": ["CBR_CONTINUATION_V1"],
+    "shadow": [
+      "VWAP_EXHAUSTION_REVERSION_V1",
+      "AGGRESSOR_FLOW_CONTINUATION_V1",
+      "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+      "OFI_RETURN_CONFLUENCE_V1",
+      "BOOK_SLOPE_ASYMMETRY_V1",
+      "HOURLY_MOMENTUM_BREAKOUT_V1"
+    ],
+    "retired_locked": [
+      "LSA_REVERSAL_V1",
+      "OFI_CONTINUATION_PULLBACK_V1",
+      "QUEUE_MICROPRICE_MOMENTUM_V1",
+      "DEPTH_ADJUSTED_OFI_IMPULSE_V1"
+    ],
+    "retired_source_accounts_and_history_preserved": true,
+    "strategy_revision": "2026-08-26-wave41"
+  },
+  "hourly_strategy": {
+    "strategy_id": "HOURLY_MOMENTUM_BREAKOUT_V1",
+    "mode": "SHADOW",
+    "horizon": "INTRADAY_SWING",
+    "completed_1h_candles_required": 200,
+    "ready_symbols": 12,
+    "completed_1h_candles_per_symbol": 499,
+    "signal_freshness_seconds": 5,
+    "take_profit_1_r": 2.2,
+    "take_profit_1_fraction": 0.4,
+    "take_profit_2_r": 4.5,
+    "take_profit_2_fraction": 0.6,
+    "maximum_holding_hours": 36,
+    "current_natural_live_public_samples": 0,
+    "profitability": "NOT_PROVEN"
+  },
+  "public_research": {
+    "wave39": {
+      "completed_5m_candles": 414720,
+      "symbols": 12,
+      "preregistered_candidates": 6,
+      "selected_candidates": 0,
+      "pbo": 0.6286,
+      "status": "NOT_PROVEN"
+    },
+    "wave41": {
+      "diagnostic_oos_samples": 42,
+      "base_expectancy_bps": 32.212,
+      "base_profit_factor": 1.346,
+      "stress_expectancy_bps": 20.212,
+      "stress_profit_factor": 1.202,
+      "bootstrap_lower_bps": -48.537,
+      "deflated_sharpe_ratio": 0,
+      "pbo": 0.3714,
+      "future_independent_oos": "NOT_RUN",
+      "status": "NOT_PROVEN"
+    }
+  },
+  "actual_browser": {
+    "url": "http://127.0.0.1:8870/?wave=42",
+    "operation_state": "RUNNING",
+    "history_rows_visible": 63,
+    "strategy_rows_visible": 11,
+    "monitored_strategies": 7,
+    "retired_strategies": 4,
+    "problem_strategies": 0,
+    "hourly_detail_opened": true,
+    "hourly_entry_and_exit_rules_visible": true,
+    "retired_controls_disabled": true,
+    "trade_focus_loaded": true,
+    "entry_cursor_exercised": true,
+    "actual_exit_cursor_exercised": true,
+    "real_orders_visible": 0,
+    "screenshots": [
+      "evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png",
+      "evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png"
+    ]
+  },
+  "post_restart_live": {
+    "run_id": "run-2b7135a972dd",
+    "http_ready_seconds": 25,
+    "state": "RUNNING",
+    "market_data": "LIVE",
+    "execution": "PAPER",
+    "event_count": 12403,
+    "lag_p50_ms": 22.1412,
+    "lag_p95_ms": 43.7241,
+    "trade_lag_p95_ms": 56.0815,
+    "wide_observation_lag_p95_ms": 1823.0491,
+    "queue_depth": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_faults": 0,
+    "persistence_buffer_drops": 0,
+    "entry_locked": false,
+    "critical_lag_incidents": 0,
+    "process_memory_mb": 194.766
+  },
+  "active_ledger_full_check": {
+    "status": "NOT_COMPLETED_RUNTIME_CONTENTION",
+    "elapsed_seconds_before_interrupt": 547.52,
+    "read_only": true,
+    "critical_lag_incidents_during_check": 2,
+    "maximum_critical_lag_duration_ms": 89219.646,
+    "data_damage_observed": false,
+    "pass_claimed": false
+  },
+  "validation": {
+    "backend_pytest": {"status": "PASS", "passed": 393, "duration_seconds": 24.0},
+    "frontend_vitest": {"status": "PASS", "files": 13, "tests": 55},
+    "fixture_e2e": {"status": "PASS", "passed": 17},
+    "playwright": {"status": "PASS", "viewports": ["desktop", "tablet", "mobile"], "passed": 3},
+    "ruff": "PASS",
+    "mypy": {"status": "PASS", "source_files": 93},
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "build": {"status": "PASS_WITH_WARNING", "javascript_chunk_kb": 512.52},
+    "paper_safety": "PASS",
+    "security": {"status": "PASS", "source_files": 126, "violations": 0},
+    "repository_hygiene": "PASS",
+    "active_ledger_full_quick_check": "NOT_COMPLETED_RUNTIME_CONTENTION",
+    "post_change_6h_soak": "NOT_RUN",
+    "post_change_24h_soak": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main": "PENDING",
+    "github_actions": "PENDING"
+  }
+}

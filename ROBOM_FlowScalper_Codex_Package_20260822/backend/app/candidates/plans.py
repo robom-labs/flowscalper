@@ -45,6 +45,7 @@ class CandidatePlan:
     direction: Side
     signal_time_ms: int
     expires_at_ms: int
+    maximum_holding_ms: int
     regime: Regime
     planned_entry: Decimal
     worst_allowed_entry: Decimal
@@ -76,6 +77,8 @@ class CandidatePlan:
     def __post_init__(self) -> None:
         if self.expires_at_ms <= self.signal_time_ms:
             raise ValueError("후보 유효시간은 신호 시각보다 뒤여야 합니다.")
+        if self.maximum_holding_ms <= 0:
+            raise ValueError("최대 보유시간은 양수여야 합니다.")
         if self.position_size <= 0 or self.minimum_quantity <= 0:
             raise ValueError("수량과 최소 수량은 양수여야 합니다.")
         if not self.take_profit_targets:
@@ -153,10 +156,18 @@ class CandidatePlanner:
         main_eligible: bool,
         shadow_eligible: bool,
         exit_style: ExitStyle = ExitStyle.REVERSION_70_30,
+        trend_take_profit_1_r: Decimal = Decimal("1.5"),
+        trend_take_profit_2_r: Decimal = Decimal("3.0"),
+        maximum_holding_ms: int = 900_000,
         strategy_version: str = "1",
     ) -> PlanBuildResult:
         if decision.status is not CandidateStatus.QUALIFIED:
             return PlanBuildResult(None, ("STRATEGY_NOT_QUALIFIED",))
+        if (
+            trend_take_profit_1_r <= 0
+            or trend_take_profit_2_r <= trend_take_profit_1_r
+        ):
+            return PlanBuildResult(None, ("INVALID_TREND_TAKE_PROFIT_MULTIPLES",))
         if (
             decision.planned_entry is None
             or decision.initial_stop is None
@@ -200,6 +211,8 @@ class CandidatePlanner:
             final_target=final_target,
             micro_vwap=Decimal(str(snapshot.micro_vwap_10s)),
             expected_cost_bps=decision.expected_cost_bps,
+            trend_take_profit_1_r=trend_take_profit_1_r,
+            trend_take_profit_2_r=trend_take_profit_2_r,
         )
         executable_levels = book.asks if side is Side.LONG else book.bids
         executable_depth = sum(
@@ -281,6 +294,7 @@ class CandidatePlanner:
             direction=side,
             signal_time_ms=signal_time_ms,
             expires_at_ms=signal_time_ms + self.validity_ms,
+            maximum_holding_ms=maximum_holding_ms,
             regime=regime,
             planned_entry=entry,
             worst_allowed_entry=worst_entry,
@@ -306,7 +320,7 @@ class CandidatePlanner:
             reason_codes=decision.reason_codes,
             plain_korean_explanation=explanation,
             management_policy=(
-                "NO_FIXED_TIME_EXIT",
+                f"SAFETY_MAX_HOLD_{maximum_holding_ms // 1_000}S",
                 "FEE_ADJUSTED_BREAKEVEN_AFTER_TP1"
                 if exit_style is ExitStyle.TREND_40_60
                 else "STRUCTURAL_REVERSION_EXIT",
@@ -329,6 +343,8 @@ class CandidatePlanner:
         final_target: Decimal,
         micro_vwap: Decimal,
         expected_cost_bps: Decimal,
+        trend_take_profit_1_r: Decimal,
+        trend_take_profit_2_r: Decimal,
     ) -> tuple[TakeProfitTarget, ...]:
         risk_distance = abs(worst_entry - stop)
         minimum_reward = entry * expected_cost_bps / Decimal(10_000) * Decimal(2)
@@ -353,12 +369,12 @@ class CandidatePlanner:
         return (
             TakeProfitTarget(
                 "TP1",
-                entry + direction * risk_distance * Decimal("1.5"),
+                entry + direction * risk_distance * trend_take_profit_1_r,
                 Decimal("0.40"),
             ),
             TakeProfitTarget(
                 "TP2",
-                entry + direction * risk_distance * Decimal("3.0"),
+                entry + direction * risk_distance * trend_take_profit_2_r,
                 Decimal("0.60"),
             ),
         )

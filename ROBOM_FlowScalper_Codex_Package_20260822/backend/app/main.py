@@ -36,7 +36,6 @@ from backend.app.replay.operations import (
     ReplayOperationManager,
 )
 from backend.app.replay.process import (
-    replay_focus_session_from_paths,
     replay_stored_run_from_paths,
     replay_timeline_from_paths,
 )
@@ -221,9 +220,7 @@ def _runtime_from_environment() -> PaperRuntime:
     runtime.startup_ledger_open_ms = ledger_open_ms
     runtime.startup_recovery_lookup_ms = recovery_lookup_ms
     runtime.startup_runtime_init_ms = runtime_init_ms
-    runtime.startup_recovery_restore_ms = (
-        time.monotonic() - recovery_restore_started
-    ) * 1_000
+    runtime.startup_recovery_restore_ms = (time.monotonic() - recovery_restore_started) * 1_000
     runtime.startup_total_ms = (time.monotonic() - startup_started) * 1_000
     return runtime
 
@@ -242,9 +239,7 @@ def create_app(
         if ledger is None:
             return
         run_id = (
-            active_runtime.run_id
-            if ledger.get_run(active_runtime.run_id) is not None
-            else None
+            active_runtime.run_id if ledger.get_run(active_runtime.run_id) is not None else None
         )
         ledger.record_incident(
             f"{operation['operation_id']}-rev-{operation['revision']}",
@@ -300,11 +295,7 @@ def create_app(
             return
         replay_id = str(result["replay_id"])
         replay_results_cache = [
-            *(
-                row
-                for row in replay_results_cache
-                if str(row.get("replay_id")) != replay_id
-            ),
+            *(row for row in replay_results_cache if str(row.get("replay_id")) != replay_id),
             compact_replay_result(result),
         ]
 
@@ -358,15 +349,61 @@ def create_app(
                         websocket_clients.discard(client)
             await asyncio.sleep(0.5)
 
+    async def maintain_hourly_strategy_history() -> None:
+        """새 deep 종목에 인증 없는 완성 1시간 봉을 보충하고 LIVE 입력과 분리한다."""
+
+        while True:
+            selection = active_runtime.live_selection
+            symbols = selection.deep_symbols if selection is not None else ()
+            for symbol in symbols:
+                if len(active_runtime.hourly_completed_candles(symbol)) >= 200:
+                    continue
+                try:
+                    payload = await active_market_explorer.candles(
+                        "BINANCE_USDM",
+                        symbol,
+                        3_600,
+                        500,
+                    )
+                    rows = payload.get("candles", [])
+                    if not isinstance(rows, list):
+                        raise ValueError("공개 1시간 봉 응답이 배열이 아닙니다.")
+                    event_now_ms = (
+                        active_runtime.events[-1].venue_ts_ms
+                        if active_runtime.events
+                        else active_runtime.clock.utc_ms()
+                    )
+                    count = active_runtime.set_hourly_public_history(
+                        symbol,
+                        rows,
+                        now_ms=event_now_ms,
+                    )
+                    active_runtime._log(
+                        "STRATEGY",
+                        f"{symbol} 시간봉 추세 워밍업 · 완성 1시간 봉 {count}개",
+                    )
+                except (OSError, httpx.HTTPError, RuntimeError, ValueError) as error:
+                    active_runtime._log(
+                        "STRATEGY",
+                        f"{symbol} 시간봉 공개 워밍업 대기 · {type(error).__name__}",
+                    )
+                await asyncio.sleep(0.15)
+            await asyncio.sleep(60)
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         broadcaster: asyncio.Task[None] | None = None
         persistence_stop = asyncio.Event()
         persistence_worker: asyncio.Task[None] | None = None
         trade_cache_task: asyncio.Task[None] | None = None
+        hourly_history_task: asyncio.Task[None] | None = None
         try:
             if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
                 await active_runtime.start_persistent_live()
+                hourly_history_task = asyncio.create_task(
+                    maintain_hourly_strategy_history(),
+                    name="hourly-strategy-history",
+                )
             if not active_runtime.dashboard_trade_cache_ready:
                 active_runtime.dashboard_trade_cache_loading = True
                 trade_cache_task = asyncio.create_task(
@@ -390,6 +427,9 @@ def create_app(
                 await _await_shutdown_task(persistence_worker)
             if trade_cache_task is not None:
                 await asyncio.gather(trade_cache_task, return_exceptions=True)
+            if hourly_history_task is not None:
+                hourly_history_task.cancel()
+                await asyncio.gather(hourly_history_task, return_exceptions=True)
             await active_runtime.shutdown()
             if active_runtime.ledger is not None:
                 active_runtime.ledger.close()
@@ -877,9 +917,7 @@ def create_app(
                 stored_results = await asyncio.to_thread(
                     active_runtime.ledger.list_latest_replay_runs
                 )
-                replay_results_cache = [
-                    compact_replay_result(row) for row in stored_results
-                ]
+                replay_results_cache = [compact_replay_result(row) for row in stored_results]
         cached_results = replay_results_cache
         assert cached_results is not None
         return [dict(row) for row in cached_results]
@@ -996,23 +1034,6 @@ def create_app(
         profile: str = Query(default="BASE", pattern=r"^(BASE|STRESS)$"),
     ) -> dict[str, object]:
         try:
-            if (
-                active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
-                and active_runtime.ledger is not None
-            ):
-                ensure_replay_process_available()
-                await asyncio.to_thread(active_runtime.flush_storage)
-                archive = active_runtime.ledger.market_event_archive
-                async with replay_process_lock:
-                    return await to_process.run_sync(
-                        replay_focus_session_from_paths,
-                        str(active_runtime.ledger.path),
-                        str(archive.root) if archive is not None else None,
-                        run_id,
-                        trade_id,
-                        profile,
-                        active_runtime.clock.utc_ms(),
-                    )
             return await asyncio.to_thread(
                 active_runtime.replay_focus_session,
                 run_id,
@@ -1116,8 +1137,7 @@ def create_app(
                 detail={
                     "error_code": "REPLAY_BUSY",
                     "error_message_ko": (
-                        "다른 저장 기록을 검증하고 있습니다. "
-                        "진행 상태를 확인하거나 취소하세요."
+                        "다른 저장 기록을 검증하고 있습니다. 진행 상태를 확인하거나 취소하세요."
                     ),
                     "retryable": True,
                     "operation": error.current_operation,

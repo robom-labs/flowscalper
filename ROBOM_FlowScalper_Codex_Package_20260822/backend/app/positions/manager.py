@@ -21,6 +21,7 @@ class ManagementAction(StrEnum):
     EXIT_EDGE_DECAY = "EXIT_EDGE_DECAY"
     EXIT_PROFIT_PROTECTION = "EXIT_PROFIT_PROTECTION"
     EXIT_EMERGENCY_STALE = "EXIT_EMERGENCY_STALE"
+    EXIT_MAX_HOLD = "EXIT_MAX_HOLD"
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +87,7 @@ class PositionManager:
         now_ms: int,
         data_stale: bool = False,
         recovered_gap_duration_ms: int = 0,
+        maximum_holding_ms: int | None = None,
     ) -> ManagementDecision:
         health.validate()
         holding_ms = max(0, now_ms - position.opened_ts_ms)
@@ -97,13 +99,17 @@ class PositionManager:
                 proposed_stop,
                 holding_ms,
             )
-        if (
-            holding_ms >= self.config.emergency_stale_absolute_ms
-            or recovered_gap_duration_ms >= self.config.emergency_stale_absolute_ms
-        ):
+        if recovered_gap_duration_ms >= self.config.emergency_stale_absolute_ms:
             return ManagementDecision(
                 ManagementAction.EXIT_EMERGENCY_STALE,
                 ("EMERGENCY_STALE_LIMIT",),
+                proposed_stop,
+                holding_ms,
+            )
+        if maximum_holding_ms is not None and holding_ms >= maximum_holding_ms:
+            return ManagementDecision(
+                ManagementAction.EXIT_MAX_HOLD,
+                ("MAXIMUM_HOLDING_TIME_REACHED",),
                 proposed_stop,
                 holding_ms,
             )

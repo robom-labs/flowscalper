@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -249,6 +250,7 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(tmp_path: 
     session = first.json()
     assert session == second.json()
     assert ledger.count("replay_focus_cache") == 1
+    assert session["session_version"] == 6
     assert session["default_speed"] == 5
     assert session["speeds"] == [0.5, 1, 2, 5, 10, 20, 40, 80]
     assert session["paper_only"] is True
@@ -268,9 +270,47 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(tmp_path: 
     assert session["frames"][-1]["event_type"] == "PAPER_LEDGER_TRANSITION"
     assert session["frames"][-1]["phase"] == "CLOSED"
     assert [marker["kind"] for marker in session["frames"][-1]["markers"]] == [
+        "SIGNAL",
         "ENTRY",
         "EXIT",
     ]
+    assert session["levels"] == {
+        "signal_ts_ms": trade["entry_ts_ms"],
+        "entry": trade["entry_price"],
+        "initial_stop": trade["initial_stop"],
+        "take_profit_1": trade["take_profit"],
+        "take_profit_2": None,
+    }
+    assert session["reconciliation"]["replay_final_state"] == "NOT_RUN"
+
+
+def test_trade_focus_replay_returns_session_when_optional_cache_is_busy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "phase03-cache-busy.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        run_id="run-phase03-cache-busy",
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime.boot_fixture()
+    trade = ledger.list_trades(runtime.run_id)[0]
+
+    def cache_busy(*_args, **_kwargs) -> int:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(ledger, "record_replay_focus_session", cache_busy)
+    client = TestClient(create_app(runtime))
+    response = client.get(
+        f"/api/replay/{runtime.run_id}/focus"
+        f"?trade_id={trade['trade_id']}&profile=BASE"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["trade_id"] == trade["trade_id"]
+    assert ledger.count("replay_focus_cache") == 0
 
 
 def test_trade_focus_reuses_verified_replay_covering_trade_window(tmp_path: Path) -> None:

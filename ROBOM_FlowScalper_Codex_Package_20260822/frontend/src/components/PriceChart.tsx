@@ -21,7 +21,7 @@ import { bollinger, ema, macd, rsi, sma, vwap, type IndicatorCandle, type Indica
 import { seriesUpdateMode } from '../chart/seriesUpdate'
 import { formatChartKstTime, formatKstDateTime } from '../time'
 import { formatCompactNumber, formatPrice } from '../format'
-import type { ChartData, HistoryRow } from '../types'
+import type { ChartData, HistoryRow, ReplayFocusFrame } from '../types'
 
 export type ChartOverlay = {
   key: string
@@ -35,9 +35,10 @@ export type ChartOverlay = {
   stop: number
   initialStop?: number
   currentStop?: number
+  status?: 'OPEN' | 'CLOSED'
 }
 
-type Props = { chart: ChartData; overlay?: ChartOverlay | null; activePositionCount?: number; history?: HistoryRow[]; replay?: boolean; compact?: boolean }
+type Props = { chart: ChartData; overlay?: ChartOverlay | null; activePositionCount?: number; history?: HistoryRow[]; replayMilestones?: ReplayFocusFrame['markers']; replay?: boolean; compact?: boolean }
 type QuotePoint = { time: UTCTimestamp; value: number }
 type LineApi = ISeriesApi<'Line', Time>
 type CandleApi = ISeriesApi<'Candlestick', Time>
@@ -83,7 +84,7 @@ function last<T>(values: T[]) {
   return values.at(-1)
 }
 
-export const PriceChart = memo(function PriceChart({ chart, overlay = null, activePositionCount = overlay ? 1 : 0, history = [], replay = false, compact = false }: Props) {
+export const PriceChart = memo(function PriceChart({ chart, overlay = null, activePositionCount = overlay ? 1 : 0, history = [], replayMilestones = [], replay = false, compact = false }: Props) {
   const [visible, setVisible] = useState(initialIndicators)
   const [showReturn, setShowReturn] = useState(false)
   const [fullWindow, setFullWindow] = useState(false)
@@ -347,21 +348,38 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
     if (!candleMarkers || !microMarkers) return
     const times = (candleData.length ? candleData.map((item) => item.time) : microData.map((item) => item.time)) as UTCTimestamp[]
     const relevantHistory = history.filter((trade) => trade.symbol === chart.symbol).slice(-20)
-    const signature = JSON.stringify([chart.symbol, overlay?.key, times.at(-1), relevantHistory.map((trade) => [trade.trade_id, trade.entry_ts_ms, trade.exit_ts_ms])])
+    const signature = JSON.stringify([chart.symbol, overlay?.key, times.at(-1), relevantHistory.map((trade) => [trade.trade_id, trade.entry_ts_ms, trade.exit_ts_ms, trade.exit_reason, trade.take_profit_1, trade.take_profit_2]), replayMilestones])
     if (signature === markerSignatureRef.current) return
     const markers: SeriesMarker<Time>[] = []
-    if (overlay?.symbol === chart.symbol) {
+    if (overlay?.symbol === chart.symbol && replayMilestones.length === 0) {
       const time = closestTime(times, overlay.signalTime)
       if (time !== undefined) markers.push({ time, position: overlay.side === 'LONG' ? 'belowBar' : 'aboveBar', color: '#64d9be', shape: overlay.side === 'LONG' ? 'arrowUp' : 'arrowDown', text: `${overlay.label} 모의 진입` })
     }
-    for (const trade of relevantHistory) {
+    for (const milestone of replayMilestones) {
+      const time = closestTime(times, milestone.ts_ms)
+      if (time === undefined) continue
+      const isBelow = milestone.kind === 'SIGNAL' || milestone.kind === 'ENTRY'
+        ? overlay?.side !== 'SHORT'
+        : overlay?.side === 'SHORT'
+      const presentation = milestone.kind === 'SIGNAL'
+        ? { color: '#f1c96d', shape: 'circle' as const }
+        : milestone.kind === 'ENTRY'
+        ? { color: '#64d9be', shape: overlay?.side === 'SHORT' ? 'arrowDown' as const : 'arrowUp' as const }
+        : milestone.kind === 'TP1_HIT' || milestone.kind === 'TP2_HIT'
+        ? { color: '#69bff8', shape: 'circle' as const }
+        : milestone.kind === 'STOP_HIT'
+        ? { color: '#ff7e87', shape: 'square' as const }
+        : { color: '#f1c96d', shape: 'circle' as const }
+      markers.push({ time, position: isBelow ? 'belowBar' : 'aboveBar', color: presentation.color, shape: presentation.shape, text: `${milestone.label ?? milestone.kind} ${formatPrice(milestone.price)}` })
+    }
+    for (const trade of replayMilestones.length === 0 ? relevantHistory : []) {
       const entryTime = closestTime(times, trade.entry_ts_ms); const exitTime = closestTime(times, trade.exit_ts_ms)
       if (entryTime !== undefined) markers.push({ time: entryTime, position: trade.side === 'LONG' ? 'belowBar' : 'aboveBar', color: '#64d9be', shape: trade.side === 'LONG' ? 'arrowUp' : 'arrowDown', text: `모의 진입 ${trade.entry}` })
-      if (exitTime !== undefined) markers.push({ time: exitTime, position: trade.side === 'LONG' ? 'aboveBar' : 'belowBar', color: '#f1c96d', shape: 'circle', text: `종료 ${trade.exit}` })
+      if (exitTime !== undefined) markers.push({ time: exitTime, position: trade.side === 'LONG' ? 'aboveBar' : 'belowBar', color: '#f1c96d', shape: 'circle', text: `종료 · ${trade.exit_reason} ${trade.exit}` })
     }
     markers.sort((left, right) => Number(left.time) - Number(right.time))
     candleMarkers.setMarkers(candleData.length ? markers : []); microMarkers.setMarkers(candleData.length ? [] : markers); markerSignatureRef.current = signature
-  }, [candleData, chart.symbol, history, microData, overlay])
+  }, [candleData, chart.symbol, history, microData, overlay, replayMilestones])
 
   useEffect(() => {
     const onFullscreen = () => setFullWindow(Boolean(document.fullscreenElement))
@@ -389,7 +407,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
       {latestCandle ? <dl className="chart-stats"><div><dt>현재</dt><dd>{formatPrice(latestCandle.close)}</dd></div><div><dt>시가</dt><dd>{formatPrice(latestCandle.open)}</dd></div><div><dt>고가</dt><dd>{formatPrice(latestCandle.high)}</dd></div><div><dt>저가</dt><dd>{formatPrice(latestCandle.low)}</dd></div><div><dt>거래량</dt><dd>{formatCompactNumber(latestCandle.volume)}</dd></div></dl> : null}
       <div ref={containerRef} className="chart-wrap" role="img" aria-label={`${chart.symbol} 실제 캔들·거래량·전문 보조지표 PAPER 차트`}>
         {!hasData ? <div className="chart-empty"><b>시장 캔들을 기다리고 있습니다.</b><span>실제 공개시장 데이터가 도착하면 자동으로 표시됩니다.</span></div> : null}
-        {overlay?.symbol === chart.symbol ? <div className={`chart-position-banner ${overlay.side.toLowerCase()}`} aria-label="현재 PAPER 진입"><b>PAPER 진입 중 · {overlay.side === 'LONG' ? '상승' : '하락'}</b><span>{overlay.label}{activePositionCount > 1 ? ` · 같은 종목 외 ${activePositionCount - 1}건` : ''}</span><small>진입 {formatPrice(overlay.entry)} · TP1 {formatPrice(overlay.tp1)} · SL {formatPrice(overlay.currentStop ?? overlay.stop)}</small></div> : null}
+        {overlay?.symbol === chart.symbol ? <div className={`chart-position-banner ${overlay.side.toLowerCase()}`} aria-label={overlay.status === 'CLOSED' ? '종료된 PAPER 거래' : '현재 PAPER 진입'}><b>{overlay.status === 'CLOSED' ? 'PAPER 거래 종료' : 'PAPER 진입 중'} · {overlay.side === 'LONG' ? '상승' : '하락'}</b><span>{overlay.label}{activePositionCount > 1 ? ` · 같은 종목 외 ${activePositionCount - 1}건` : ''}</span><small>진입 {formatPrice(overlay.entry)} · TP1 {formatPrice(overlay.tp1)} · SL {formatPrice(overlay.currentStop ?? overlay.stop)}</small></div> : null}
         <div ref={tooltipRef} className="chart-tooltip" hidden />
         {showReturn ? <button type="button" className="return-realtime" onClick={() => chartApiRef.current?.timeScale().scrollToRealTime()}>현재로 돌아가기</button> : null}
       </div>

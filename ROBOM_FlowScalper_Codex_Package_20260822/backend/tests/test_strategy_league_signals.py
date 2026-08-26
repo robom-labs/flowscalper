@@ -93,7 +93,7 @@ def test_runtime_reuses_four_side_and_exit_style_plans(monkeypatch) -> None:
         Regime.RANGE,
     )
 
-    assert len(rows) == 12
+    assert len(rows) == 14
     assert len(calls) == 4
     assert len(set(calls)) == 4
 

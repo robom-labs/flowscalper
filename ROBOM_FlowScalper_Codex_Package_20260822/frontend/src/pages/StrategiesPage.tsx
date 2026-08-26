@@ -158,7 +158,7 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRoll
             void configure(strategy, { mode })
           }
         }
-        return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}><td><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td><td><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail} · {strategy.evaluated_paths}개 경로 확인</small></td><td><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.manual_lock ? '사용자 고정' : '자동 변경 가능'} · rev {strategy.settings_revision} · {strategy.changed_by}</small></td><td><div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div></td><td><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })}</small></td><td>{account?.trade_count ?? 0}건<small>진행 {account?.open_positions ?? 0}건</small></td><td>{winRate}</td><td>{strategy.performance.BASE.sample_status}</td><td><button type="button" className="secondary-button" onClick={() => setSelectedId(strategy.strategy_id)}>자세히</button></td></tr>
+        return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}><td><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td><td><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail} · {strategy.evaluated_paths}개 경로 확인</small></td><td><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving || (strategy.lifecycle === 'RETIRED' && mode !== 'OFF')} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.lifecycle === 'RETIRED' ? '비용후 검증 실패로 재활성화 잠금' : strategy.manual_lock ? '사용자 고정' : '자동 변경 가능'} · rev {strategy.settings_revision} · {strategy.changed_by}</small></td><td><div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving || strategy.lifecycle === 'RETIRED'} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving || strategy.lifecycle === 'RETIRED'} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div></td><td><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })}</small></td><td>{account?.trade_count ?? 0}건<small>진행 {account?.open_positions ?? 0}건</small></td><td>{winRate}</td><td>{strategy.performance.BASE.sample_status}</td><td><button type="button" className="secondary-button" onClick={() => setSelectedId(strategy.strategy_id)}>자세히</button></td></tr>
       })}</tbody></table></div></section>
       <SideDrawer title={selected ? `${selected.short_name} · ${selected.display_name_ko}` : '전략 상세'} open={selected !== null} onClose={closeDrawer} label="전략 상세 정보">
         {selected ? <>
@@ -167,17 +167,26 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRoll
             <h3>전략 운용 계약</h3>
             <dl className="drawer-detail-list">
               <div><dt>전략 시간축</dt><dd>{selected.horizon_class}</dd></div>
-              <div><dt>예상 보유</dt><dd>{selected.expected_holding_seconds[0]}~{selected.expected_holding_seconds[1]}초</dd></div>
+              <div><dt>예상 보유</dt><dd>{formatDurationMs(selected.expected_holding_seconds[0] * 1_000)}~{formatDurationMs(selected.expected_holding_seconds[1] * 1_000)}</dd></div>
               <div><dt>신호 반감기</dt><dd>{selected.signal_half_life_seconds}초</dd></div>
               <div><dt>사용 시간구간</dt><dd>{selected.required_timeframes.join(' · ')}</dd></div>
-              <div><dt>자동 관리</dt><dd>{selected.exit_model} · 최대 안전보유 {selected.max_hold_seconds}초</dd></div>
+              <div><dt>익절 설계</dt><dd>TP1 {selected.take_profit_1_r}R · TP2 {selected.take_profit_2_r}R</dd></div>
+              <div><dt>자동 관리</dt><dd>{selected.exit_model} · 안전 최대 {formatDurationMs(selected.max_hold_seconds * 1_000)}</dd></div>
               <div><dt>비용 기준</dt><dd>{selected.cost_model_version}</dd></div>
             </dl>
           </section>
+          {selected.entry_rules_ko.length || selected.exit_rules_ko.length ? <section className="profile-detail-block">
+            <h3>언제 진입하고 언제 나오나요?</h3>
+            <dl className="drawer-detail-list">
+              {selected.entry_rules_ko.length ? <div><dt>진입 조건</dt><dd>{selected.entry_rules_ko.join(' · ')}</dd></div> : null}
+              {selected.exit_rules_ko.length ? <div><dt>종료 규칙</dt><dd>{selected.exit_rules_ko.join(' · ')}</dd></div> : null}
+            </dl>
+            <p className="profile-scope-note">아직 수익성이 입증되지 않은 독립 PAPER 검증 전략입니다. 공동계좌나 실제 주문에는 연결되지 않습니다.</p>
+          </section> : null}
           <section className="profile-detail-block">
             <h3>자동 평가 상태</h3>
             <dl className="drawer-detail-list">
-              <div><dt>현재 대표</dt><dd>{selected.governance.champion_id ? strategyLabel(strategies.find((item) => item.strategy_id === selected.governance.champion_id), selected.governance.champion_id) : selected.lifecycle === 'ACTIVE' ? selected.short_name : '없음'}</dd></div>
+              <div><dt>공동계좌 현재 대표</dt><dd>{selected.governance.champion_id ? strategyLabel(strategies.find((item) => item.strategy_id === selected.governance.champion_id), selected.governance.champion_id) : selected.lifecycle === 'ACTIVE' ? selected.short_name : '없음'}</dd></div>
               <div><dt>마지막 평가</dt><dd>{evaluationTime(selected.governance.last_evaluated_ts_ms)}</dd></div>
               <div><dt>검증 결론</dt><dd>{selected.governance.evidence_status === 'PROVEN' ? '검증됨' : '아직 검증 불충분'}</dd></div>
               <div><dt>다음 평가까지</dt><dd>{selected.governance.remaining_live_samples}건 · {selected.governance.remaining_days.toFixed(1)}일 더 필요</dd></div>

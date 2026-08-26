@@ -1,8 +1,9 @@
-"""A/B/C/D/E/F/G/H/I/J 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
+"""A/B/C/D/E/F/G/H/I/J/K 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 
 from backend.app.domain.models import Side
@@ -11,6 +12,7 @@ from backend.app.strategies.aggressor_flow import AggressorFlowStrategy
 from backend.app.strategies.book_slope_asymmetry import BookSlopeAsymmetryStrategy
 from backend.app.strategies.compression_breakout import CompressionBreakoutStrategy
 from backend.app.strategies.depth_adjusted_ofi import DepthAdjustedOfiStrategy
+from backend.app.strategies.hourly_momentum_breakout import HourlyMomentumBreakoutStrategy
 from backend.app.strategies.liquidity_sweep import LiquiditySweepStrategy
 from backend.app.strategies.multilevel_microprice import MultilevelMicropriceStrategy
 from backend.app.strategies.ofi_pullback import OfiPullbackStrategy
@@ -72,7 +74,18 @@ StrategyEvaluator = (
     | DepthAdjustedOfiStrategy
     | OfiReturnConfluenceStrategy
     | BookSlopeAsymmetryStrategy
+    | HourlyMomentumBreakoutStrategy
 )
+
+POLICY_RETIRED_STRATEGY_IDS = frozenset(
+    {
+        "LSA_REVERSAL_V1",
+        "OFI_CONTINUATION_PULLBACK_V1",
+        "QUEUE_MICROPRICE_MOMENTUM_V1",
+        "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+    }
+)
+POLICY_RETIREMENT_REASON = "COST_ADJUSTED_RESEARCH_RETIREMENT_WAVE39"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +103,10 @@ class StrategyDescriptor:
     signal_half_life_seconds: int = 30
     required_timeframes: tuple[str, ...] = ("250ms", "1s", "3s", "10s", "30s", "120s")
     exit_model: str = "STRUCTURE_TP1_TP2_EDGE_DECAY"
+    take_profit_1_r: Decimal = Decimal("1.5")
+    take_profit_2_r: Decimal = Decimal("3.0")
+    entry_rules_ko: tuple[str, ...] = ()
+    exit_rules_ko: tuple[str, ...] = ()
     max_hold_seconds: int = 900
     cost_model_version: str = "TOP_OF_BOOK_BASE13_STRESS25_V1"
     paper_only: bool = True
@@ -235,37 +252,66 @@ class StrategyRegistry:
                 evaluator=BookSlopeAsymmetryStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
             ),
+            StrategyDescriptor(
+                strategy_id="HOURLY_MOMENTUM_BREAKOUT_V1",
+                display_name_ko="1시간 모멘텀 돌파",
+                short_name="시간봉 추세",
+                summary_ko=(
+                    "1시간 완성 봉의 24시간 모멘텀·20시간 돌파·거래량을 함께 확인하는 "
+                    "미입증 SHADOW 전략입니다."
+                ),
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=HourlyMomentumBreakoutStrategy(),
+                exit_style=ExitStyle.TREND_40_60,
+                horizon_class="INTRADAY_SWING",
+                expected_holding_seconds=(3_600, 129_600),
+                signal_half_life_seconds=5,
+                required_timeframes=("1h", "4h EMA", "24h momentum"),
+                exit_model="ATR_TP1_TP2_SL_MAX36H",
+                take_profit_1_r=Decimal("2.2"),
+                take_profit_2_r=Decimal("4.5"),
+                entry_rules_ko=(
+                    "완성된 1시간 봉만 사용",
+                    "EMA20·50와 EMA80·200의 상승·하락 방향 일치",
+                    "24시간 변화율이 방향별 2% 이상",
+                    "직전 20시간 고가·저가 돌파",
+                    "ADX 20 이상·상대 거래량 1.1배 이상",
+                    "신호 후 5초 이내 실제 bid·ask 비용 검사 통과",
+                ),
+                exit_rules_ko=(
+                    "초기 손절은 1.8 ATR, 최소 진입가의 0.3%",
+                    "TP1에서 2.2R·40% 분할 익절",
+                    "TP2에서 4.5R은 60% 잔량 익절",
+                    "손절은 넓히지 않고 TP1 후 비용 보전 방향으로만 조임",
+                    "36시간에서 안전 최대보유 종료",
+                ),
+                max_hold_seconds=129_600,
+            ),
         )
         self._descriptors = {item.strategy_id: item for item in descriptors}
         active_ids = {"CBR_CONTINUATION_V1"}
-        retired_ids = {
-            "LSA_REVERSAL_V1",
-            "OFI_CONTINUATION_PULLBACK_V1",
-            "QUEUE_MICROPRICE_MOMENTUM_V1",
-            "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
-        }
         self._settings = {
             item.strategy_id: StrategySetting(
                 mode=(
                     StrategyMode.ACTIVE
                     if item.strategy_id in active_ids
                     else StrategyMode.OFF
-                    if item.strategy_id in retired_ids
+                    if item.strategy_id in POLICY_RETIRED_STRATEGY_IDS
                     else StrategyMode.SHADOW
                 ),
                 lifecycle=(
                     StrategyLifecycle.ACTIVE
                     if item.strategy_id in active_ids
                     else StrategyLifecycle.RETIRED
-                    if item.strategy_id in retired_ids
+                    if item.strategy_id in POLICY_RETIRED_STRATEGY_IDS
                     else StrategyLifecycle.SHADOW
                 ),
             )
             for item in descriptors
         }
         self._revision_history = {
-            strategy_id: {0: self._setting_row(strategy_id)}
-            for strategy_id in self._settings
+            strategy_id: {0: self._setting_row(strategy_id)} for strategy_id in self._settings
         }
 
     @property
@@ -281,6 +327,34 @@ class StrategyRegistry:
     def setting(self, strategy_id: str) -> StrategySetting:
         self.descriptor(strategy_id)
         return self._settings[strategy_id]
+
+    def is_policy_retired(self, strategy_id: str) -> bool:
+        self.descriptor(strategy_id)
+        return strategy_id in POLICY_RETIRED_STRATEGY_IDS
+
+    def enforce_policy_retirements(
+        self,
+        *,
+        updated_ts_ms: int,
+    ) -> tuple[dict[str, object], ...]:
+        """구버전 Run 설정이 비용후 퇴역 결정을 되살리지 못하게 migration한다."""
+
+        changed: list[dict[str, object]] = []
+        for strategy_id in sorted(POLICY_RETIRED_STRATEGY_IDS):
+            setting = self.setting(strategy_id)
+            if setting.mode is StrategyMode.OFF and setting.lifecycle is StrategyLifecycle.RETIRED:
+                continue
+            setting.mode = StrategyMode.OFF
+            setting.lifecycle = StrategyLifecycle.RETIRED
+            setting.revision += 1
+            setting.manual_lock = False
+            setting.changed_by = StrategyChangeSource.MIGRATION
+            setting.change_reason = POLICY_RETIREMENT_REASON
+            setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
+            row = self._setting_row(strategy_id)
+            self._revision_history[strategy_id][setting.revision] = row
+            changed.append(row)
+        return tuple(changed)
 
     def configure(
         self,
@@ -300,9 +374,7 @@ class StrategyRegistry:
         if expected_revision is not None and expected_revision != setting.revision:
             raise StrategyRevisionConflict(self._setting_row(strategy_id))
         if source is StrategyChangeSource.AUTO_GOVERNOR and setting.manual_lock:
-            raise StrategyManualLockConflict(
-                f"사용자가 고정한 전략 설정입니다: {strategy_id}"
-            )
+            raise StrategyManualLockConflict(f"사용자가 고정한 전략 설정입니다: {strategy_id}")
         resolved_lifecycle = lifecycle or self.lifecycle_for_mode(mode)
         if mode is not self.mode_for_lifecycle(resolved_lifecycle):
             raise ValueError("전략 lifecycle과 실행 mode가 일치하지 않습니다.")
@@ -312,9 +384,7 @@ class StrategyRegistry:
         setting.short_enabled = short_enabled
         setting.revision += 1
         setting.manual_lock = (
-            source is StrategyChangeSource.USER_UI
-            if manual_lock is None
-            else manual_lock
+            source is StrategyChangeSource.USER_UI if manual_lock is None else manual_lock
         )
         setting.changed_by = source
         setting.change_reason = reason
@@ -406,9 +476,7 @@ class StrategyRegistry:
         if expected_revision != setting.revision:
             raise StrategyRevisionConflict(self._setting_row(strategy_id))
         if source is StrategyChangeSource.AUTO_GOVERNOR and setting.manual_lock:
-            raise StrategyManualLockConflict(
-                f"사용자가 고정한 전략 설정입니다: {strategy_id}"
-            )
+            raise StrategyManualLockConflict(f"사용자가 고정한 전략 설정입니다: {strategy_id}")
         target = self._revision_history[strategy_id].get(target_revision)
         if target is None:
             raise ValueError(f"복원할 전략 revision을 찾을 수 없습니다: {target_revision}")
@@ -455,6 +523,10 @@ class StrategyRegistry:
                 "signal_half_life_seconds": descriptor.signal_half_life_seconds,
                 "required_timeframes": list(descriptor.required_timeframes),
                 "exit_model": descriptor.exit_model,
+                "take_profit_1_r": str(descriptor.take_profit_1_r),
+                "take_profit_2_r": str(descriptor.take_profit_2_r),
+                "entry_rules_ko": list(descriptor.entry_rules_ko),
+                "exit_rules_ko": list(descriptor.exit_rules_ko),
                 "max_hold_seconds": descriptor.max_hold_seconds,
                 "cost_model_version": descriptor.cost_model_version,
                 "paper_only": descriptor.paper_only,
@@ -471,10 +543,7 @@ class StrategyRegistry:
         """복구된 과거를 포함한 전략 설정 변경 이력을 revision 순으로 복사한다."""
 
         self.setting(strategy_id)
-        return tuple(
-            dict(row)
-            for _, row in sorted(self._revision_history[strategy_id].items())
-        )
+        return tuple(dict(row) for _, row in sorted(self._revision_history[strategy_id].items()))
 
     @staticmethod
     def mode_for_lifecycle(lifecycle: StrategyLifecycle) -> StrategyMode:

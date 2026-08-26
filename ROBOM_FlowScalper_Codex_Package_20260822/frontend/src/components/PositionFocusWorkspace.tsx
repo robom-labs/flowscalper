@@ -2,7 +2,7 @@
 import { PriceChart, type ChartOverlay } from './PriceChart'
 import { useState, type ReactNode } from 'react'
 import { formatPrice, formatQuantity, formatRatio, formatUsdt, paperAccountLabel } from '../format'
-import type { ChartData, FocusPosition, HistoryRow } from '../types'
+import type { ChartData, FocusPosition, HistoryRow, ReplayFocusFrame } from '../types'
 
 type Props = {
   mode: 'LIVE' | 'REPLAY' | 'CLOSED_REVIEW'
@@ -10,6 +10,7 @@ type Props = {
   chart: ChartData
   overlay?: ChartOverlay | null
   history?: HistoryRow[]
+  replayMilestones?: ReplayFocusFrame['markers']
   controls?: ReactNode
 }
 
@@ -34,7 +35,7 @@ function PnlRail({ position, mode }: { position: FocusPosition; mode: Props['mod
   </aside>
 }
 
-export function PositionFocusWorkspace({ mode, position, chart, overlay = null, history = [], controls }: Props) {
+export function PositionFocusWorkspace({ mode, position, chart, overlay = null, history = [], replayMilestones = [], controls }: Props) {
   const [sheet, setSheet] = useState<'PLAN' | 'PNL' | null>(null)
-  return <div className="focus-stack"><div className="focus-mobile-metrics"><span>순손익 <b>{formatUsdt(position.net_pnl_usdt, { signed: true })}</b></span><span>현재가 <b>{formatPrice(position.current_mark)}</b></span><span>{position.stage_ko}</span></div><div className="focus-sheet-buttons"><button type="button" onClick={() => setSheet('PLAN')}>계획</button><button type="button" onClick={() => setSheet('PNL')}>손익 상세</button></div><div className="focus-grid"><PlanRail position={position} /><PriceChart chart={chart} overlay={overlay} history={history} replay={mode !== 'LIVE'} compact /><PnlRail position={position} mode={mode} /></div>{controls ? <div className="focus-replay-controls">{controls}</div> : null}{sheet ? <div className="focus-detail-layer" role="dialog" aria-label={sheet === 'PLAN' ? '진입 계획 상세' : 'PAPER 손익 상세'}><button type="button" className="drawer-backdrop" aria-label="상세 닫기" onClick={() => setSheet(null)} />{sheet === 'PLAN' ? <PlanRail position={position} /> : <PnlRail position={position} mode={mode} />}<button type="button" className="focus-sheet-close" onClick={() => setSheet(null)}>닫기</button></div> : null}</div>
+  return <div className="focus-stack"><div className="focus-mobile-metrics"><span>순손익 <b>{formatUsdt(position.net_pnl_usdt, { signed: true })}</b></span><span>현재가 <b>{formatPrice(position.current_mark)}</b></span><span>{position.stage_ko}</span></div><div className="focus-sheet-buttons"><button type="button" onClick={() => setSheet('PLAN')}>계획</button><button type="button" onClick={() => setSheet('PNL')}>손익 상세</button></div><div className="focus-grid"><PlanRail position={position} /><PriceChart chart={chart} overlay={overlay} history={history} replayMilestones={replayMilestones} replay={mode !== 'LIVE'} compact /><PnlRail position={position} mode={mode} /></div>{controls ? <div className="focus-replay-controls">{controls}</div> : null}{sheet ? <div className="focus-detail-layer" role="dialog" aria-label={sheet === 'PLAN' ? '진입 계획 상세' : 'PAPER 손익 상세'}><button type="button" className="drawer-backdrop" aria-label="상세 닫기" onClick={() => setSheet(null)} />{sheet === 'PLAN' ? <PlanRail position={position} /> : <PnlRail position={position} mode={mode} />}<button type="button" className="focus-sheet-close" onClick={() => setSheet(null)}>닫기</button></div> : null}</div>
 }

@@ -15,13 +15,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail', () => {
+test('shows eleven compact strategy rows, easy modes and BASE/STRESS account detail', () => {
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
-  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
-  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(10)
+  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(11)
+  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(11)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('6개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getAllByText('준비 중')).toHaveLength(6)
+  expect(screen.getByText('7개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getAllByText('준비 중')).toHaveLength(7)
   expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(4)
 
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[0])
@@ -33,9 +33,14 @@ test('shows ten compact strategy rows, easy modes and BASE/STRESS account detail
   expect(screen.getAllByText('과거 버전 제외')).toHaveLength(2)
   expect(screen.getByRole('heading', { name: '자동 평가 상태' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: '전략 운용 계약' })).toBeInTheDocument()
-  expect(screen.getByText('10~180초')).toBeInTheDocument()
+  expect(screen.getByText('10초~3분')).toBeInTheDocument()
   expect(screen.getByText('TOP_OF_BOOK_BASE13_STRESS25_V1')).toBeInTheDocument()
   expect(screen.getByText('아직 검증 불충분')).toBeInTheDocument()
+
+  fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
+  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[10])
+  expect(screen.getByText('1시간~36시간')).toBeInTheDocument()
+  expect(screen.getByText(/TP1 2.2R·40%/)).toBeInTheDocument()
 })
 
 test('shows lifecycle evidence and restores the prior revision without deleting history', async () => {
@@ -122,7 +127,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
 
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
-  expect(screen.getByText('5개 감시 · 검증 중지 4개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('6개 감시 · 검증 중지 4개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 

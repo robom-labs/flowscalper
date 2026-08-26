@@ -177,7 +177,8 @@ def test_candidate_plan_is_complete_immutable_and_risk_bounded() -> None:
     assert sum(target.quantity_fraction for target in plan.take_profit_targets) == 1
     assert plan.max_planned_loss <= plan.risk_budget == Decimal("1.000")
     assert plan.net_reward_risk >= Decimal("1.20")
-    assert "NO_FIXED_TIME_EXIT" in plan.management_policy
+    assert "SAFETY_MAX_HOLD_900S" in plan.management_policy
+    assert plan.maximum_holding_ms == 900_000
     with pytest.raises(FrozenInstanceError):
         plan.position_size = Decimal("999")  # type: ignore[misc]
 

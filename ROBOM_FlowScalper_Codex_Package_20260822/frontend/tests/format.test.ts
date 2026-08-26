@@ -23,6 +23,8 @@ describe('beginner-facing number formatting', () => {
     expect(formatQuantity('116.53000000')).toBe('116.53')
     expect(formatPercentFraction('0.60549')).toBe('60.5%')
     expect(formatDurationMs(1_696)).toBe('1.7초')
+    expect(formatDurationMs(3_600_000)).toBe('1시간')
+    expect(formatDurationMs(129_600_000)).toBe('36시간')
     expect(formatCompactNumber(12_345_678)).toBe('1,234.6만')
   })
 

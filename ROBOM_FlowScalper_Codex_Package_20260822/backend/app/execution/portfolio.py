@@ -415,6 +415,7 @@ class PaperPortfolioEngine:
                 now_ms=now_ms,
                 data_stale=not snapshot.data_healthy,
                 recovered_gap_duration_ms=recovered_gap_duration_ms,
+                maximum_holding_ms=plan.maximum_holding_ms,
             )
             if decision.proposed_stop is not None:
                 managed.protected = self.position_manager.tighten_stop(
@@ -425,6 +426,7 @@ class PaperPortfolioEngine:
                 ManagementAction.EXIT_EDGE_DECAY: ExitReason.EDGE_DECAY,
                 ManagementAction.EXIT_PROFIT_PROTECTION: ExitReason.PROFIT_PROTECTION,
                 ManagementAction.EXIT_EMERGENCY_STALE: ExitReason.EMERGENCY_STALE,
+                ManagementAction.EXIT_MAX_HOLD: ExitReason.MAX_HOLD,
             }.get(decision.action)
             if reason is not None and managed.pending_exit is None:
                 managed.forced_exit_reason = reason
@@ -510,9 +512,17 @@ class PaperPortfolioEngine:
             "management_reason": (
                 "종료 체결 지연 대기 중"
                 if managed.pending_exit is not None
-                else "고정시간 강제종료 없음 · TP·SL·근거감쇠 관리"
+                else (
+                    "TP·SL·근거감쇠 관리 · "
+                    + (
+                        f"안전 최대 {plan.maximum_holding_ms // 3_600_000}시간"
+                        if plan.maximum_holding_ms >= 3_600_000
+                        else f"안전 최대 {plan.maximum_holding_ms // 60_000}분"
+                    )
+                )
             ),
             "management_policy": list(plan.management_policy),
+            "maximum_holding_ms": plan.maximum_holding_ms,
         }
 
     def main_summary(self, book: BookSnapshot | None = None) -> dict[str, Decimal | int]:
@@ -561,7 +571,7 @@ class PaperPortfolioEngine:
         """main·shadow 실행계좌와 shadow 회계를 checksum 가능한 JSON 값으로 만든다."""
 
         return {
-            "schema_version": 2,
+            "schema_version": 3,
             "run_id": self.run_id,
             "venue": self.venue.value if self.venue is not None else None,
             "snapshot_ts_ms": snapshot_ts_ms,
@@ -574,10 +584,10 @@ class PaperPortfolioEngine:
         }
 
     def restore_state(self, payload: Mapping[str, object]) -> None:
-        """현재 Run·Registry와 정확히 일치하는 검증 snapshot만 복구한다."""
+        """기존 계좌는 엄격히 검증하고 신규 Registry 계좌만 빈 상태로 추가한다."""
 
         schema_version = int(str(payload.get("schema_version", 0)))
-        if schema_version not in {1, 2}:
+        if schema_version not in {1, 2, 3}:
             raise ValueError("지원하지 않는 PAPER 복구 snapshot 버전입니다.")
         if str(payload.get("run_id")) != self.run_id:
             raise ValueError("다른 Run의 PAPER 상태를 복구할 수 없습니다.")
@@ -602,8 +612,41 @@ class PaperPortfolioEngine:
                 raise ValueError(f"PAPER 복구 계좌가 중복되거나 미등록입니다: {account_id}")
             seen.add(account_id)
             _restore_execution_account(expected[account_id], value, run_id=self.run_id)
-        if schema_version == 2 and seen != set(expected):
-            raise ValueError("PAPER 복구 snapshot 계좌 집합이 Strategy Registry와 다릅니다.")
+        additive_registry_extension = False
+        if schema_version >= 2 and seen != set(expected):
+            registry_rows = payload.get("strategy_registry")
+            snapshot_strategy_ids = {
+                str(row["strategy_id"])
+                for row in registry_rows
+                if isinstance(row, Mapping) and row.get("strategy_id") is not None
+            } if isinstance(registry_rows, list) else set()
+            seen_strategy_ids = {
+                account_id.rsplit(":", 1)[0]
+                for account_id in seen
+                if account_id != self.MAIN_ACCOUNT_ID
+            }
+            missing_account_ids = set(expected) - seen
+            missing_strategy_ids = {
+                account_id.rsplit(":", 1)[0]
+                for account_id in missing_account_ids
+                if account_id != self.MAIN_ACCOUNT_ID
+            }
+            additive_registry_extension = bool(missing_account_ids) and (
+                self.MAIN_ACCOUNT_ID in seen
+                and snapshot_strategy_ids == seen_strategy_ids
+                and missing_strategy_ids.isdisjoint(snapshot_strategy_ids)
+                and all(
+                    {
+                        self._shadow_account_id(strategy_id, CostProfile.BASE),
+                        self._shadow_account_id(strategy_id, CostProfile.STRESS),
+                    }.issubset(missing_account_ids)
+                    for strategy_id in missing_strategy_ids
+                )
+            )
+            if not additive_registry_extension:
+                raise ValueError(
+                    "PAPER 복구 snapshot 계좌 집합이 Strategy Registry와 다릅니다."
+                )
         if self.MAIN_ACCOUNT_ID not in seen:
             raise ValueError("PAPER 복구 snapshot에 main 계좌가 없습니다.")
         shadow_payload = payload.get("shadow_ledger")
@@ -611,7 +654,7 @@ class PaperPortfolioEngine:
             raise ValueError("PAPER 복구 snapshot에 shadow 원장이 없습니다.")
         self.shadow_ledger.restore_state(
             shadow_payload,
-            allow_missing=schema_version == 1,
+            allow_missing=schema_version == 1 or additive_registry_extension,
         )
         self.audit_events = []
         self._new_main_trades = []
@@ -1221,6 +1264,13 @@ class PaperPortfolioEngine:
             mfe_r=managed.mfe_r,
             flags=tuple(leg.label for leg in managed.exit_legs),
             profile=managed.protected.profile,
+            candidate_id=managed.plan.candidate_id,
+            take_profit_1=managed.plan.take_profit_targets[0].price,
+            take_profit_2=(
+                managed.plan.take_profit_targets[1].price
+                if len(managed.plan.take_profit_targets) > 1
+                else None
+            ),
         )
 
     def _current_pnl(
@@ -1722,6 +1772,7 @@ def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
         "direction": plan.direction.value,
         "signal_time_ms": plan.signal_time_ms,
         "expires_at_ms": plan.expires_at_ms,
+        "maximum_holding_ms": plan.maximum_holding_ms,
         "regime": plan.regime.value,
         "planned_entry": str(plan.planned_entry),
         "worst_allowed_entry": str(plan.worst_allowed_entry),
@@ -1796,6 +1847,7 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         direction=Side(str(payload["direction"])),
         signal_time_ms=int(str(payload["signal_time_ms"])),
         expires_at_ms=int(str(payload["expires_at_ms"])),
+        maximum_holding_ms=int(str(payload.get("maximum_holding_ms", 900_000))),
         regime=Regime(str(payload["regime"])),
         planned_entry=Decimal(str(payload["planned_entry"])),
         worst_allowed_entry=Decimal(str(payload["worst_allowed_entry"])),
@@ -2004,6 +2056,13 @@ def _paper_trade_payload(trade: PaperTrade) -> dict[str, object]:
         "quantity": str(trade.quantity),
         "initial_stop": str(trade.initial_stop),
         "take_profit": str(trade.take_profit),
+        "candidate_id": trade.candidate_id,
+        "take_profit_1": (
+            str(trade.take_profit_1) if trade.take_profit_1 is not None else None
+        ),
+        "take_profit_2": (
+            str(trade.take_profit_2) if trade.take_profit_2 is not None else None
+        ),
         "exit_reason": trade.exit_reason.value,
         "gross_pnl_usdt": str(trade.gross_pnl_usdt),
         "fees_usdt": str(trade.fees_usdt),
@@ -2050,6 +2109,21 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
         mfe_r=Decimal(str(payload["mfe_r"])),
         flags=_strings(payload, "flags"),
         profile=CostProfile(str(payload.get("profile", CostProfile.BASE.value))),
+        candidate_id=(
+            str(payload["candidate_id"])
+            if payload.get("candidate_id") is not None
+            else None
+        ),
+        take_profit_1=(
+            Decimal(str(payload["take_profit_1"]))
+            if payload.get("take_profit_1") is not None
+            else None
+        ),
+        take_profit_2=(
+            Decimal(str(payload["take_profit_2"]))
+            if payload.get("take_profit_2") is not None
+            else None
+        ),
     )
 
 

@@ -28,13 +28,20 @@ async function installMarketFixtures(page: Page) {
   await page.route('**/api/replay/*/focus**', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      session_version: 1,
+      session_version: 5,
       run_id: 'e2e-fixture',
       trade_id: 'e2e-focus-trade',
       profile: 'BASE',
       symbol: 'BTCUSDT',
       side: 'LONG',
       strategy_id: 'LSA_REVERSAL_V1',
+      levels: { signal_ts_ms: 1_721_000_180_000, entry: '100.10', initial_stop: '99.55', take_profit_1: '101.40', take_profit_2: '102.00' },
+      milestones: [
+        { kind: 'SIGNAL', ts_ms: 1_721_000_180_000, price: '100.10', label: '진입 신호 확정' },
+        { kind: 'ENTRY', ts_ms: 1_721_000_360_000, price: '100.10', label: 'PAPER 진입 체결' },
+        { kind: 'TP1_HIT', ts_ms: 1_721_000_720_000, price: '101.40', label: 'TP1 도달' },
+        { kind: 'EXIT', ts_ms: 1_721_001_080_000, price: '101.90', label: '실제 종료 · 익절' },
+      ],
       start_ts_ms: 1_721_000_000_000,
       entry_ts_ms: 1_721_000_360_000,
       exit_ts_ms: 1_721_001_080_000,
@@ -153,12 +160,13 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
 
   await page.getByRole('button', { name: '전략', exact: true }).click()
   await expect(page.getByRole('heading', { name: '전략 설정' })).toBeVisible()
-  await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(10)
-  await expect(page.getByText('6개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0')).toBeVisible()
-  await expect(page.getByText('준비 중')).toHaveCount(6)
+  await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(11)
+  await expect(page.getByText('7개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0')).toBeVisible()
+  await expect(page.getByText('준비 중')).toHaveCount(7)
   await expect(page.locator('.strategy-monitor.off')).toHaveCount(4)
-  await expect(page.locator('.strategy-inline-modes button[aria-pressed="true"]')).toHaveCount(10)
-  await expect(page.locator('.strategy-inline-directions button[aria-pressed="true"]')).toHaveCount(20)
+  await expect(page.locator('.strategy-inline-modes button[aria-pressed="true"]')).toHaveCount(11)
+  await expect(page.locator('.strategy-inline-directions button[aria-pressed="true"]')).toHaveCount(22)
+  await expect(page.locator('.strategy-inline-directions button:disabled')).toHaveCount(8)
   await page.getByRole('button', { name: '자세히', exact: true }).first().click()
   await expect(page.getByText(/현재 전략 버전의 공개시장 PAPER 기준/).first()).toBeVisible()
   await expect(page.getByText('과거 버전 제외', { exact: true }).first()).toBeVisible()

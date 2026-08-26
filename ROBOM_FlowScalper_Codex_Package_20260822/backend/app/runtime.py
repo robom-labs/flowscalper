@@ -147,6 +147,7 @@ class PaperRuntime:
     runtime_health_flags: list[str] = field(default_factory=list)
     unrealized_pnl_usdt: float = 0.0
     candle_builder: CandleBuilder = field(default_factory=CandleBuilder)
+    hourly_public_history: dict[str, tuple[Candle, ...]] = field(default_factory=dict)
     selected_symbol: str = "BTCUSDT"
     selected_interval_seconds: int = 180
     live_selection: ProviderSelection | None = None
@@ -227,9 +228,7 @@ class PaperRuntime:
     _historical_replay_run_summaries: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
-    _replay_run_persisted_deltas: dict[str, int] = field(
-        default_factory=dict, repr=False
-    )
+    _replay_run_persisted_deltas: dict[str, int] = field(default_factory=dict, repr=False)
     _dashboard_strategy_performance_cache_key: tuple[object, ...] | None = field(
         default=None, repr=False
     )
@@ -428,6 +427,16 @@ class PaperRuntime:
         if self.ledger is None:
             self._lock_recovery("RECOVERY_LEDGER_MISSING")
             return False
+        self._persisted_main_order_ids = {
+            str(order["order_id"]) for order in self.ledger.list_orders(self.run_id)
+        }
+        self._persisted_main_trade_ids = {
+            str(trade["trade_id"]) for trade in self.ledger.list_trades(self.run_id)
+        }
+        self._persisted_shadow_trade_ids = {
+            str(trade["shadow_trade_id"])
+            for trade in self.ledger.list_shadow_trades(self.run_id)
+        }
         try:
             for setting_row in self.ledger.list_strategy_settings(self.run_id):
                 self.strategy_registry.restore_setting(
@@ -448,6 +457,18 @@ class PaperRuntime:
                         else None
                     ),
                 )
+            retirement_migrations = self.strategy_registry.enforce_policy_retirements(
+                updated_ts_ms=self.clock.utc_ms()
+            )
+            for migrated in retirement_migrations:
+                self._persist_strategy_setting(
+                    migrated,
+                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
+                    evidence={
+                        "policy": "COST_ADJUSTED_RESEARCH_RETIREMENT",
+                        "legacy_setting_reactivation_blocked": True,
+                    },
+                )
             portfolio_payload = recovered.payload.get("portfolio")
             if isinstance(portfolio_payload, Mapping):
                 self.paper_portfolio.restore_state(portfolio_payload)
@@ -456,16 +477,6 @@ class PaperRuntime:
                 )
             elif recovered.lifecycle_state not in {"SCANNING", "CLOSED"}:
                 raise ValueError("열린 lifecycle snapshot에 복구 가능한 portfolio가 없습니다.")
-            self._persisted_main_order_ids = {
-                str(order["order_id"]) for order in self.ledger.list_orders(self.run_id)
-            }
-            self._persisted_main_trade_ids = {
-                str(trade["trade_id"]) for trade in self.ledger.list_trades(self.run_id)
-            }
-            self._persisted_shadow_trade_ids = {
-                str(trade["shadow_trade_id"])
-                for trade in self.ledger.list_shadow_trades(self.run_id)
-            }
             user_intent = self.ledger.get_app_setting("paper_entry_user_intent")
             if user_intent is not None and user_intent.get("run_id") == self.run_id:
                 self._manual_pause_requested = bool(
@@ -573,9 +584,7 @@ class PaperRuntime:
             health_rows = [archive_health]
             if ledger_health is not None:
                 health_rows.append(ledger_health)
-            self._storage_entry_allowed = all(
-                health.entry_allowed for health in health_rows
-            )
+            self._storage_entry_allowed = all(health.entry_allowed for health in health_rows)
             lock_reasons: list[str] = []
             if not archive_health.entry_allowed:
                 prefix = "ARCHIVE_" if ledger_health is not None else ""
@@ -587,18 +596,14 @@ class PaperRuntime:
                 "disk_pressure_entry_lock": not self._storage_entry_allowed,
                 "storage_guard_enabled": True,
                 "storage_free_bytes": min(health.free_bytes for health in health_rows),
-                "storage_free_ratio": round(
-                    min(health.free_ratio for health in health_rows), 6
-                ),
+                "storage_free_ratio": round(min(health.free_ratio for health in health_rows), 6),
                 "archive_storage_free_bytes": archive_health.free_bytes,
                 "archive_storage_free_ratio": round(archive_health.free_ratio, 6),
                 "ledger_storage_free_bytes": (
                     ledger_health.free_bytes if ledger_health is not None else None
                 ),
                 "ledger_storage_free_ratio": (
-                    round(ledger_health.free_ratio, 6)
-                    if ledger_health is not None
-                    else None
+                    round(ledger_health.free_ratio, 6) if ledger_health is not None else None
                 ),
                 "storage_lock_reason": "+".join(lock_reasons) or "NONE",
             }
@@ -663,9 +668,7 @@ class PaperRuntime:
             "wal_checkpoint_busy_count": self._wal_checkpoint_busy_count,
             "wal_checkpoint_log_frames": self._wal_checkpoint_log_frames,
             "wal_checkpointed_frames": self._wal_checkpointed_frames,
-            "wal_checkpoint_last_completed_ts_ms": (
-                self._wal_checkpoint_last_completed_ts_ms
-            ),
+            "wal_checkpoint_last_completed_ts_ms": (self._wal_checkpoint_last_completed_ts_ms),
             "wal_checkpoint_fault_count": self._wal_checkpoint_fault_count,
             "wal_checkpoint_last_error": self._wal_checkpoint_last_error or "NONE",
             "persistence_worker_warmed": self._persistence_worker_warmed,
@@ -691,9 +694,7 @@ class PaperRuntime:
             "dashboard_trade_cache_ready": self.dashboard_trade_cache_ready,
             "dashboard_trade_cache_loading": self.dashboard_trade_cache_loading,
             "dashboard_trade_cache_last_ms": round(self.dashboard_trade_cache_last_ms, 3),
-            "dashboard_trade_cache_completed_ts_ms": (
-                self.dashboard_trade_cache_completed_ts_ms
-            ),
+            "dashboard_trade_cache_completed_ts_ms": (self.dashboard_trade_cache_completed_ts_ms),
         }
 
     def _handle_persistence_fault(self, error: Exception) -> None:
@@ -739,9 +740,7 @@ class PaperRuntime:
             self.processing_lag_p95_ms = result.websocket_lag_ms
             self.market_data_state = MarketDataState.LIVE
             self.runtime_health_flags = ["PUBLIC_DATA_VERIFIED", "NO_AUTH_HEADERS"]
-            self.paused = (
-                self._manual_pause_requested or result.websocket_lag_ms > 1_500
-            )
+            self.paused = self._manual_pause_requested or result.websocket_lag_ms > 1_500
             if self.paused:
                 self.runtime_health_flags.append("CRITICAL_MARKET_LAG_ENTRY_LOCK")
             self._log(
@@ -864,9 +863,7 @@ class PaperRuntime:
         except Exception as error:
             self._handle_persistence_fault(error)
             return False
-        self._persistence_worker_warm_ms = (
-            asyncio.get_running_loop().time() - started
-        ) * 1_000
+        self._persistence_worker_warm_ms = (asyncio.get_running_loop().time() - started) * 1_000
         self._persistence_worker_warmed = True
         return True
 
@@ -1162,6 +1159,7 @@ class PaperRuntime:
             snapshot,
             regime,
             tick_size=tick_size,
+            hourly_candles=self.hourly_completed_candles(event.symbol),
         )
         self.strategy_evaluation_count += len(signals)
         self.qualified_signal_count += sum(
@@ -1210,6 +1208,7 @@ class PaperRuntime:
             )
         plans: list[CandidatePlan] = []
         for signal in signals:
+            descriptor = self.strategy_registry.descriptor(signal.decision.strategy_id)
             result = self.candidate_planner.build(
                 signal_event_id=event.event_id,
                 run_id=self.run_id,
@@ -1223,9 +1222,10 @@ class PaperRuntime:
                 risk_state=self.paper_portfolio.main.risk_state,
                 main_eligible=signal.main_eligible,
                 shadow_eligible=signal.shadow_eligible,
-                exit_style=self.strategy_registry.descriptor(
-                    signal.decision.strategy_id
-                ).exit_style,
+                exit_style=descriptor.exit_style,
+                trend_take_profit_1_r=descriptor.take_profit_1_r,
+                trend_take_profit_2_r=descriptor.take_profit_2_r,
+                maximum_holding_ms=descriptor.max_hold_seconds * 1_000,
                 strategy_version=STRATEGY_VERSION,
             )
             if result.plan is not None:
@@ -1257,6 +1257,8 @@ class PaperRuntime:
         source: str = "USER_UI",
         reason: str = "USER_CONFIGURATION",
     ) -> None:
+        if self.strategy_registry.is_policy_retired(strategy_id) and mode is not StrategyMode.OFF:
+            raise ValueError("비용후 연구에서 퇴역한 전략은 새 검증 전 재활성화할 수 없습니다.")
         timestamp = self.clock.utc_ms()
         current_setting = self.strategy_registry.setting(strategy_id)
         resolved_lifecycle = lifecycle
@@ -1360,15 +1362,13 @@ class PaperRuntime:
 
         reports = self.strategy_performance(include_persisted=include_persisted)
         reports_by_key = {
-            (str(report["strategy_id"]), str(report["profile"])): report
-            for report in reports
+            (str(report["strategy_id"]), str(report["profile"])): report for report in reports
         }
         champion_id = next(
             (
                 strategy_id
                 for strategy_id in self.strategy_registry.strategy_ids
-                if self.strategy_registry.setting(strategy_id).lifecycle
-                is StrategyLifecycle.ACTIVE
+                if self.strategy_registry.setting(strategy_id).lifecycle is StrategyLifecycle.ACTIVE
             ),
             None,
         )
@@ -1385,11 +1385,7 @@ class PaperRuntime:
             base = reports_by_key[(strategy_id, "BASE")]
             stress = reports_by_key[(strategy_id, "STRESS")]
             windows = base.get("windows")
-            recent = (
-                windows.get("recent_50", {})
-                if isinstance(windows, Mapping)
-                else {}
-            )
+            recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
             faulted = any(
                 bool(account["faulted"])
                 for account in accounts
@@ -1448,9 +1444,7 @@ class PaperRuntime:
             )
         history = (
             {
-                strategy_id: list(
-                    self.strategy_registry.revision_history(strategy_id)[-20:]
-                )
+                strategy_id: list(self.strategy_registry.revision_history(strategy_id)[-20:])
                 for strategy_id in self.strategy_registry.strategy_ids
             }
             if include_history
@@ -1709,8 +1703,7 @@ class PaperRuntime:
                     "opened_ts_ms": managed.protected.opened_ts_ms,
                     "current_mark": str(
                         self.latest_books[str(main["symbol"])].bids[0][0]
-                        if str(main["symbol"]) in self.latest_books
-                        and str(main["side"]) == "LONG"
+                        if str(main["symbol"]) in self.latest_books and str(main["side"]) == "LONG"
                         else self.latest_books[str(main["symbol"])].asks[0][0]
                         if str(main["symbol"]) in self.latest_books
                         else main["actual_entry"]
@@ -1719,12 +1712,10 @@ class PaperRuntime:
                     "stage_ko": stage_names[stage],
                     "effective_leverage": str(min(effective_leverage, Decimal(5))),
                     "margin_usdt": str(
-                        Decimal(str(main["notional"]))
-                        / max(effective_leverage, Decimal(1))
+                        Decimal(str(main["notional"])) / max(effective_leverage, Decimal(1))
                     ),
                     "margin_used_usdt": str(
-                        Decimal(str(main["notional"]))
-                        / max(effective_leverage, Decimal(1))
+                        Decimal(str(main["notional"])) / max(effective_leverage, Decimal(1))
                     ),
                     "original_quantity": str(main["quantity"]),
                     "entry_fee_usdt": str(entry_fee),
@@ -1798,9 +1789,7 @@ class PaperRuntime:
                     "risk_budget_usdt": str(plan.risk_budget),
                     "maximum_planned_loss": str(plan.max_planned_loss),
                     "maximum_planned_loss_usdt": str(plan.max_planned_loss),
-                    "remaining_planned_loss_usdt": str(
-                        plan.max_planned_loss * remaining_fraction
-                    ),
+                    "remaining_planned_loss_usdt": str(plan.max_planned_loss * remaining_fraction),
                     "margin_usdt": str(margin),
                     "margin_used_usdt": str(margin),
                     "notional_usdt": str(position["notional"]),
@@ -1848,8 +1837,7 @@ class PaperRuntime:
                 run_id = str(event.get("run_id", ""))
                 buffered_by_run[run_id] = buffered_by_run.get(run_id, 0) + 1
         use_live_cache = (
-            self.mode is RuntimeMode.LIVE_SHADOW_PAPER
-            and self.dashboard_trade_cache_ready
+            self.mode is RuntimeMode.LIVE_SHADOW_PAPER and self.dashboard_trade_cache_ready
         )
         if use_live_cache:
             with self._dashboard_trade_cache_lock:
@@ -1859,20 +1847,12 @@ class PaperRuntime:
             summaries = self.ledger.list_replayable_run_summaries()
             persisted_deltas = {}
         current_main_count = (
-            sum(
-                1
-                for trade in self._history_main_trades()
-                if trade.get("run_id") == self.run_id
-            )
+            sum(1 for trade in self._history_main_trades() if trade.get("run_id") == self.run_id)
             if use_live_cache
             else 0
         )
         current_shadow_count = (
-            sum(
-                1
-                for trade in self._history_shadow_trades()
-                if trade.get("run_id") == self.run_id
-            )
+            sum(1 for trade in self._history_shadow_trades() if trade.get("run_id") == self.run_id)
             if use_live_cache
             else 0
         )
@@ -1886,11 +1866,7 @@ class PaperRuntime:
                 if run["market_event_count"] is not None
                 else None
             )
-            has_events = (
-                bool(run["has_market_events"])
-                or persisted_delta > 0
-                or buffered_count > 0
-            )
+            has_events = bool(run["has_market_events"]) or persisted_delta > 0 or buffered_count > 0
             if not has_events:
                 continue
             rows.append(
@@ -1957,8 +1933,7 @@ class PaperRuntime:
                 main_trades.extend(self.ledger.list_trades())
                 league_trades.extend(self.ledger.list_shadow_trades())
             main_trades.extend(
-                self._paper_trade_row(trade)
-                for trade in self.paper_portfolio.main.completed_trades
+                self._paper_trade_row(trade) for trade in self.paper_portfolio.main.completed_trades
             )
             for account in self.paper_portfolio.shadows.values():
                 league_trades.extend(
@@ -2032,9 +2007,7 @@ class PaperRuntime:
     ) -> dict[str, object]:
         raw_sample = str(trade.get("sample_type", "LIVE_PUBLIC"))
         normalized_sample = (
-            "OFFLINE_FIXTURE"
-            if raw_sample in {"DEMO_FIXTURE", "OFFLINE_FIXTURE"}
-            else raw_sample
+            "OFFLINE_FIXTURE" if raw_sample in {"DEMO_FIXTURE", "OFFLINE_FIXTURE"} else raw_sample
         )
         strategy_id = str(trade.get("strategy_id", "UNKNOWN"))
         profile = str(trade.get("profile", "BASE"))
@@ -2056,6 +2029,12 @@ class PaperRuntime:
             "exit_ts_ms": int(str(trade["exit_ts_ms"])),
             "initial_stop": str(trade.get("initial_stop", "—")),
             "take_profit": str(trade.get("take_profit", "—")),
+            "take_profit_1": (
+                str(trade["take_profit_1"]) if trade.get("take_profit_1") is not None else None
+            ),
+            "take_profit_2": (
+                str(trade["take_profit_2"]) if trade.get("take_profit_2") is not None else None
+            ),
             "quantity": str(trade.get("quantity", "—")),
             "exit_reason": str(trade["exit_reason"]),
             "gross_pnl": str(trade["gross_pnl_usdt"]),
@@ -2147,7 +2126,6 @@ class PaperRuntime:
 
         if self.ledger is None:
             raise ValueError("영속 원장이 없어 리플레이할 수 없습니다.")
-        self._flush_persistence()
         from backend.app.replay.focus import ReplayFocusSessionBuilder
 
         return ReplayFocusSessionBuilder().build(
@@ -2173,6 +2151,58 @@ class PaperRuntime:
         TIMEFRAME_REGISTRY.validate_builder(interval_seconds)
         self.selected_symbol = normalized
         self.selected_interval_seconds = interval_seconds
+
+    def set_hourly_public_history(
+        self,
+        symbol: str,
+        rows: Sequence[Mapping[str, object]],
+        *,
+        now_ms: int,
+    ) -> int:
+        """인증 없는 공개 완성 1시간 봉만 SHADOW 추세 워밍업에 보관한다."""
+
+        normalized = symbol.strip().upper()
+        candles: dict[int, Candle] = {}
+        for row in rows:
+            open_ts_ms = int(str(row["open_ts_ms"]))
+            if open_ts_ms + 3_600_000 > now_ms:
+                continue
+            candle = Candle(
+                symbol=normalized,
+                interval_seconds=3_600,
+                open_ts_ms=open_ts_ms,
+                open=Decimal(str(row["open"])),
+                high=Decimal(str(row["high"])),
+                low=Decimal(str(row["low"])),
+                close=Decimal(str(row["close"])),
+                volume=Decimal(str(row["volume"])),
+                trade_count=int(str(row.get("trade_count", 0))),
+            )
+            if not (
+                candle.open > 0
+                and candle.low > 0
+                and candle.high >= max(candle.open, candle.close)
+                and candle.low <= min(candle.open, candle.close)
+                and candle.volume >= 0
+            ):
+                raise ValueError("공개 1시간 봉 가격·거래량이 올바르지 않습니다.")
+            candles[open_ts_ms] = candle
+        ordered = tuple(candles[key] for key in sorted(candles))[-500:]
+        self.hourly_public_history[normalized] = ordered
+        return len(ordered)
+
+    def hourly_completed_candles(self, symbol: str) -> tuple[Candle, ...]:
+        normalized = symbol.strip().upper()
+        merged = {
+            candle.open_ts_ms: candle for candle in self.hourly_public_history.get(normalized, ())
+        }
+        merged.update(
+            {
+                candle.open_ts_ms: candle
+                for candle in self.candle_builder.completed_series(normalized, 3_600)
+            }
+        )
+        return tuple(merged[key] for key in sorted(merged))[-500:]
 
     async def shutdown_supervisor(self) -> None:
         supervisor = self._supervisor
@@ -2328,6 +2358,19 @@ class PaperRuntime:
             }
         )
         diagnostics.update(self._operational_diagnostics())
+        deep_symbols = (
+            self.live_selection.deep_symbols if self.live_selection is not None else ()
+        )
+        hourly_counts = {
+            symbol: len(self.hourly_completed_candles(symbol)) for symbol in deep_symbols
+        }
+        diagnostics["hourly_strategy_history"] = {
+            "required_completed_candles": 200,
+            "ready_symbols": sum(count >= 200 for count in hourly_counts.values()),
+            "total_symbols": len(hourly_counts),
+            "completed_candles_by_symbol": hourly_counts,
+            "source": "PUBLIC_BINANCE_USDM_COMPLETED_1H",
+        }
         current_position = self.paper_portfolio.main_position_snapshot(self._current_main_book())
         strategy_rows: list[dict[str, object]] = []
         performance_by_key = {
@@ -2342,9 +2385,7 @@ class PaperRuntime:
         if not isinstance(governance_rows, list):
             raise RuntimeError("governor 화면 계약이 list가 아닙니다.")
         governance_by_id = {
-            str(row["strategy_id"]): row
-            for row in governance_rows
-            if isinstance(row, Mapping)
+            str(row["strategy_id"]): row for row in governance_rows if isinstance(row, Mapping)
         }
         for row in self.strategy_registry.rows():
             strategy_id = str(row["strategy_id"])
@@ -2380,7 +2421,7 @@ class PaperRuntime:
                 }
             )
         dashboard_events = (
-            tuple(self._events)[-_LIVE_DASHBOARD_EVENT_LIMIT :]
+            tuple(self._events)[-_LIVE_DASHBOARD_EVENT_LIMIT:]
             if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
             else self.events
         )
@@ -2402,12 +2443,8 @@ class PaperRuntime:
             else None,
             strategies=tuple(strategy_rows),
             shadow_accounts=tuple(self.paper_portfolio.shadow_rows()),
-            league_accounts=tuple(
-                self.paper_portfolio.league_account_rows(self.latest_books)
-            ),
-            league_positions=tuple(
-                self.paper_portfolio.league_position_rows(self.latest_books)
-            ),
+            league_accounts=tuple(self.paper_portfolio.league_account_rows(self.latest_books)),
+            league_positions=tuple(self.paper_portfolio.league_position_rows(self.latest_books)),
             risk_contract=self._risk_dashboard_contract(),
             current_position=current_position,
             execution_audit=tuple(self.paper_portfolio.audit_events[-100:]),
@@ -2424,9 +2461,7 @@ class PaperRuntime:
         snapshot["history_scope"] = {
             "analysis_scope": "CURRENT_STRATEGY_VERSION",
             "strategy_version": STRATEGY_VERSION,
-            "excluded_prior_version_samples": len(
-                self._historical_prior_version_live_trades
-            ),
+            "excluded_prior_version_samples": len(self._historical_prior_version_live_trades),
         }
         return snapshot
 
@@ -2669,9 +2704,7 @@ class PaperRuntime:
             )
         if self.mode is RuntimeMode.READY and self.ledger is not None:
             recovered = self.ledger.recover_latest(recovered_ts_ms=self.clock.utc_ms())
-            if recovered is not None and self._recovery_payload_has_exposure(
-                recovered.payload
-            ):
+            if recovered is not None and self._recovery_payload_has_exposure(recovered.payload):
                 return (
                     "RECOVERY_OPEN_PAPER_EXPOSURE",
                     "이전 Run에 복구할 PAPER 진입 또는 포지션이 있어 새 Run 시작을 차단했습니다.",
@@ -2739,12 +2772,8 @@ class PaperRuntime:
                 "starting_equity_per_account_usdt": str(starting),
                 "risk_per_position": percentage(league.risk_per_trade_fraction),
                 "max_positions_per_account": league.max_open_positions,
-                "maximum_total_open_risk": percentage(
-                    league.maximum_total_open_risk_fraction
-                ),
-                "maximum_effective_leverage": (
-                    f"{league.maximum_gross_notional_fraction:.2f}x"
-                ),
+                "maximum_total_open_risk": percentage(league.maximum_total_open_risk_fraction),
+                "maximum_effective_leverage": (f"{league.maximum_gross_notional_fraction:.2f}x"),
                 "maximum_depth_fraction": percentage(
                     league.maximum_order_fraction_of_executable_depth
                 ),
@@ -2753,12 +2782,8 @@ class PaperRuntime:
                 "drawdown_lock": percentage(league.maximum_drawdown_fraction),
                 "base_entry_fee": bps(cost.fee_bps(entry=True, profile=CostProfile.BASE)),
                 "base_exit_fee": bps(cost.fee_bps(entry=False, profile=CostProfile.BASE)),
-                "stress_entry_fee": bps(
-                    cost.fee_bps(entry=True, profile=CostProfile.STRESS)
-                ),
-                "stress_exit_fee": bps(
-                    cost.fee_bps(entry=False, profile=CostProfile.STRESS)
-                ),
+                "stress_entry_fee": bps(cost.fee_bps(entry=True, profile=CostProfile.STRESS)),
+                "stress_exit_fee": bps(cost.fee_bps(entry=False, profile=CostProfile.STRESS)),
             },
         }
 
@@ -2900,6 +2925,15 @@ class PaperRuntime:
             "exit_price": str(trade.exit_price),
             "initial_stop": str(trade.initial_stop),
             "take_profit": str(trade.take_profit),
+            "candidate_id": trade.candidate_id,
+            "take_profit_1": (
+                str(trade.take_profit_1)
+                if trade.take_profit_1 is not None
+                else str(trade.take_profit)
+            ),
+            "take_profit_2": (
+                str(trade.take_profit_2) if trade.take_profit_2 is not None else None
+            ),
             "quantity": str(trade.quantity),
             "exit_reason": trade.exit_reason.value,
             "gross_pnl_usdt": str(trade.gross_pnl_usdt),
@@ -2932,6 +2966,7 @@ class PaperRuntime:
             "direction": plan.direction.value,
             "signal_time_ms": plan.signal_time_ms,
             "expires_at_ms": plan.expires_at_ms,
+            "maximum_holding_ms": plan.maximum_holding_ms,
             "regime": plan.regime.value,
             "planned_entry": str(plan.planned_entry),
             "worst_allowed_entry": str(plan.worst_allowed_entry),
@@ -3208,9 +3243,7 @@ class PaperRuntime:
             if self.market_event_archive is None:
                 self.ledger.record_market_events(market_batch)
             else:
-                archive_records: list[
-                    tuple[ArchivedEventBatch, list[dict[str, object]]]
-                ] = []
+                archive_records: list[tuple[ArchivedEventBatch, list[dict[str, object]]]] = []
                 for rows in self._group_market_archive_rows(market_batch):
                     archive = self.market_event_archive.write_market_event_batch(rows)
                     archive_records.append((archive, rows))
@@ -3335,9 +3368,7 @@ class PaperRuntime:
             self._wal_checkpoint_last_completed_ts_ms = self.clock.utc_ms()
             self._wal_checkpoint_last_error = None
             self.runtime_health_flags = [
-                flag
-                for flag in self.runtime_health_flags
-                if flag != "WAL_CHECKPOINT_DEGRADED"
+                flag for flag in self.runtime_health_flags if flag != "WAL_CHECKPOINT_DEGRADED"
             ]
             if elapsed_ms >= _SLOW_WAL_CHECKPOINT_MS:
                 self._wal_checkpoint_slow_count += 1
@@ -3368,17 +3399,11 @@ class PaperRuntime:
             if elapsed_ms > self._persistence_flush_max_ms:
                 self._persistence_flush_max_ms = elapsed_ms
                 self._persistence_flush_max_ts_ms = completed_ts_ms
-                self._persistence_flush_slowest_archive_ms = float(
-                    timings["archive_ms"]
-                )
+                self._persistence_flush_slowest_archive_ms = float(timings["archive_ms"])
                 self._persistence_flush_slowest_ledger_ms = float(timings["ledger_ms"])
-                self._persistence_flush_slowest_market_events = int(
-                    timings["market_events"]
-                )
+                self._persistence_flush_slowest_market_events = int(timings["market_events"])
                 self._persistence_flush_slowest_candles = int(timings["candles"])
-                self._persistence_flush_slowest_archive_batches = int(
-                    timings["archive_batches"]
-                )
+                self._persistence_flush_slowest_archive_batches = int(timings["archive_batches"])
             if elapsed_ms >= _SLOW_PERSISTENCE_FLUSH_MS:
                 self._persistence_flush_slow_count += 1
                 self._persistence_flush_last_slow_ts_ms = completed_ts_ms
@@ -3494,16 +3519,12 @@ class PaperRuntime:
                     self._current_strategy_version_trades(all_shadow_trades)
                 )
                 self._historical_shadow_trades = tuple(current_shadow_trades)
-                self._historical_prior_version_shadow_trades = tuple(
-                    prior_version_shadow_trades
-                )
+                self._historical_prior_version_shadow_trades = tuple(prior_version_shadow_trades)
                 self._dashboard_strategy_performance_cache_key = None
                 self._dashboard_strategy_performance_cache = ()
                 succeeded = True
             finally:
-                self.dashboard_trade_cache_last_ms = (
-                    time.monotonic() - started
-                ) * 1_000
+                self.dashboard_trade_cache_last_ms = (time.monotonic() - started) * 1_000
                 self.dashboard_trade_cache_completed_ts_ms = self.clock.utc_ms()
                 self.dashboard_trade_cache_loading = False
                 self.dashboard_trade_cache_ready = succeeded

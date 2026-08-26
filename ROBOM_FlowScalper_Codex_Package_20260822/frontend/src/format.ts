@@ -72,6 +72,12 @@ export function formatDurationMs(value: Numeric) {
   const seconds = Math.max(0, milliseconds) / 1_000
   if (seconds < 10) return `${localized(seconds, 1)}초`
   if (seconds < 60) return `${localized(seconds, 0)}초`
+  if (seconds >= 3_600) {
+    const hours = seconds / 3_600
+    if (hours < 48) return `${localized(hours, Number.isInteger(hours) ? 0 : 1)}시간`
+    const days = hours / 24
+    return `${localized(days, Number.isInteger(days) ? 0 : 1)}일`
+  }
   const minutes = Math.floor(seconds / 60)
   const remaining = Math.round(seconds % 60)
   return remaining ? `${minutes}분 ${remaining}초` : `${minutes}분`
@@ -104,6 +110,8 @@ const exitReasonLabels: Record<string, string> = {
   STOP: '손절',
   STOP_LOSS: '손절',
   EXIT_EMERGENCY_STALE: '데이터 안전 종료',
+  EXIT_MAX_HOLD: '최대 보유시간 도달',
+  MAX_HOLD: '최대 보유시간 도달',
   EMERGENCY_STALE: '데이터 안전 종료',
 }
 

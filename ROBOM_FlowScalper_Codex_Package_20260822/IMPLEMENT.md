@@ -295,3 +295,18 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Re-run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene.
 9. Record current natural sample counts, costs and holding times without lowering entry, exit, cost or governor gates. Keep profitability `NOT_PROVEN` below its preregistered evidence gate.
 10. Keep the active-ledger full check, six-hour soak, 24-hour soak and Release ZIP as `NOT_RUN` unless each exact operation is completed.
+
+## Cost-aware hourly trend and truthful trade-focus Wave
+
+1. Reproduce the empty trade-focus screen from an actual immutable `LIVE_PUBLIC` trade before changing strategy thresholds or ledger scope.
+2. Build the complete focus session from the immutable PAPER ledger and checksum-verified public market archive before attempting any optional cache write.
+3. Treat only SQLite `locked` and `busy` during `replay_focus_cache` persistence as a best-effort cache miss. Propagate every other integrity, schema, checksum and serialization failure.
+4. Display an explicit focus failure and retry action instead of rendering a blank chart that looks like missing trade data.
+5. Audit current-version natural BASE/STRESS samples, exit reasons and holding times. Retire repeated cost-adjusted failures without deleting source, accounts or immutable history and without lowering entry criteria.
+6. Research slower public-market hypotheses on completed candles with fixed BASE/STRESS costs, chronological partitions, bootstrap, DSR and PBO. Preserve failed candidates and no-signal rows.
+7. Add a new strategy ID only as SHADOW when its hypothesis and runtime contract are explicit. Do not describe a positive diagnostic slice as profitability.
+8. For the hourly strategy use completed 1h candles, new-bar freshness, actual bid/ask, fixed TP1·TP2·SL, quantity, cost, maximum loss and descriptor-specific maximum holding time.
+9. Upgrade recovery only through strict additive Registry extension. Preload persisted order/trade IDs and fail closed on partial profile loss or conflicting state.
+10. Exercise actual history, trade focus, entry and actual exit cursors, strategy rows, retired controls and K details in the browser. Capture screenshots from the real 8870 service.
+11. Run backend, frontend, E2E, lint, typecheck, build, PAPER safety, security, repository hygiene and active-ledger integrity checks. Record exact PASS, NOT_PROVEN and NOT_RUN boundaries.
+12. Keep actual orders, private API, credentials, secrets, wallets and runtime AI at zero. Push the reviewed implementation and evidence to GitHub main and confirm Actions before completion.

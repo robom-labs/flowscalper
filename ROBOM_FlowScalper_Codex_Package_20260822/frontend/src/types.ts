@@ -167,6 +167,8 @@ export type HistoryRow = {
   exit_ts_ms: number
   initial_stop: string
   take_profit: string
+  take_profit_1?: string | null
+  take_profit_2?: string | null
   quantity: string
   exit_reason: string
   gross_pnl: string
@@ -214,6 +216,10 @@ export type StrategyRow = {
   signal_half_life_seconds: number
   required_timeframes: string[]
   exit_model: string
+  take_profit_1_r: string
+  take_profit_2_r: string
+  entry_rules_ko: string[]
+  exit_rules_ko: string[]
   max_hold_seconds: number
   cost_model_version: string
   paper_only: true
@@ -658,18 +664,31 @@ export type ReplayFocusFrame = {
   event_type: string
   data: Record<string, unknown>
   phase: 'PRE_ENTRY' | 'OPEN' | 'CLOSED'
-  markers: { kind: 'ENTRY' | 'EXIT'; ts_ms: number; price: string; label?: string }[]
+  markers: {
+    kind: 'SIGNAL' | 'ENTRY' | 'TP1_HIT' | 'TP2_HIT' | 'STOP_HIT' | 'EXIT'
+    ts_ms: number
+    price: string
+    label?: string
+  }[]
   fills: Record<string, unknown>[]
 }
 
 export type ReplayFocusSession = {
-  session_version: 1
+  session_version: 5
   run_id: string
   trade_id: string
   profile: 'BASE' | 'STRESS'
   symbol: string
   side: 'LONG' | 'SHORT'
   strategy_id: string
+  levels: {
+    signal_ts_ms: number
+    entry: string
+    initial_stop: string
+    take_profit_1: string
+    take_profit_2: string | null
+  }
+  milestones: ReplayFocusFrame['markers']
   start_ts_ms: number
   entry_ts_ms: number
   exit_ts_ms: number

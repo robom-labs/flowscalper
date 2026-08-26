@@ -51,6 +51,7 @@ class ExitReason(StrEnum):
     STOP = "STOP"
     EDGE_DECAY = "EDGE_DECAY"
     PROFIT_PROTECTION = "PROFIT_PROTECTION"
+    MAX_HOLD = "MAX_HOLD"
     EMERGENCY_STALE = "EMERGENCY_STALE"
     DATA_GAP = "DATA_GAP"
     MANUAL_PAPER_EXIT = "MANUAL_PAPER_EXIT"
@@ -162,3 +163,6 @@ class PaperTrade:
     mfe_r: Decimal
     flags: tuple[str, ...]
     profile: CostProfile
+    candidate_id: str | None = None
+    take_profit_1: Decimal | None = None
+    take_profit_2: Decimal | None = None

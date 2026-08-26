@@ -1686,3 +1686,52 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | GitHub main / Actions | PASS | 구현 commit `1b934140258d06ad86f551232f877488815bdb58`을 main에 반영했고 [Actions 32922393330](https://github.com/robom-labs/flowscalper/actions/runs/32922393330)의 validate 58초·browser 1분11초·브라우저 증거 upload가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/WAVE38_ENTRY_INTENT_HISTORY_REPLAY_QA.json`, 결정 근거는 ADR-044다. GitHub main의 최종 구현 기준은 `1b934140258d06ad86f551232f877488815bdb58`이고 구현 Actions도 PASS했다. 이번 PASS는 사용자 의도 감사·서비스 시작·기록·replay 기본 조회·짧은 LIVE·실제 브라우저 범위이며 전략 수익성·활성 원장 전수검사·6시간·24시간 안정성을 뜻하지 않는다.
+
+## 44. 비용인식 전략정책·시간봉 SHADOW·거래 상세 재생 복구
+
+### 실제 재현과 원인
+
+현재 Run의 거래 기록은 실제로 존재했지만 거래 행의 `재생`을 누르면 불변 원장과 공개시장 archive로 세션을 완성한 뒤 선택적 `replay_focus_cache`를 기록하는 단계에서 `sqlite3.OperationalError: database is locked`가 발생해 HTTP 500을 반환했다. 활성 out-of-process durable writer와 cache 쓰기가 경합했으며 원본 거래가 없는 문제가 아니었다.
+
+최종 현재 전략버전 화면은 63행, 공동계좌 1행, 독립계좌 62행을 표시했다. 독립 62행 중 비용후 양수는 1행, 합계 순손익은 -64.6068400286 USDT였다. 종료는 EDGE_DECAY 56, PROFIT_PROTECTION 3, STOP 3건이다. 보유는 최소 3.046초, 중앙 23.842초, p90 51.390초, 최대 85.622초이며 3초 미만은 0건이다. 즉 과거 1~2초 일반 EDGE_DECAY 재발은 없고 3.046초 최단 거래는 실제 stop 도달이다.
+
+### 수정
+
+- 거래 상세 세션은 불변 원장과 checksum 검증 공개시장 자료로 먼저 완성한다. 선택적 cache 쓰기의 SQLite lock·busy는 cache miss로 처리해 완성 세션을 반환하며 다른 무결성·스키마·직렬화 오류는 계속 실패시킨다.
+- 거래 집중 화면은 실패를 빈 데이터처럼 보이지 않게 명시적 오류와 `거래 차트 다시 시도`를 제공한다.
+- 모든 포지션을 900초에 `EMERGENCY_STALE`로 끝내던 전역 상한을 계획별 `maximum_holding_ms`와 `MAX_HOLD` 종료로 분리했다. 복구 payload와 trade schema도 최대보유를 보존한다. 데이터 공백 비상종료는 별도 fail-closed 정책으로 유지한다.
+- 비용후 반복 실패한 A/D/E/H는 RETIRED·OFF로 잠그고 mode·방향 재활성화 버튼을 비활성화했다. 소스, 과거 거래, BASE·STRESS 계좌는 삭제하지 않았다. B만 ACTIVE, C/F/G/I/J는 SHADOW다.
+- 완성 공개 1시간봉 전략 K `HOURLY_MOMENTUM_BREAKOUT_V1`을 SHADOW로 추가했다. 200봉 이상, EMA20/50·EMA80/200 방향과 EMA80 기울기, 24시간 모멘텀 2%, Donchian20 돌파, ADX 20, 상대거래량 1.1을 모두 요구한다. 새 봉 뒤 5초 안의 실제 bid·ask로만 계획하며 TP1 2.2R·40%, TP2 4.5R·60%, 최대 36시간을 고정한다.
+- recovery schema 3은 완전히 새 strategy ID의 BASE·STRESS 두 계좌만 strict additive extension으로 허용하고 persisted order·trade ID를 복구 전에 준비한다. 기존 strategy profile 일부 누락은 계속 fail-closed한다.
+
+### 공개시장 연구와 정직한 판정
+
+Wave 39는 Binance USDⓈ-M 12종목의 완성 5분봉 414,720개와 사전등록 후보 6개를 평가했으나 BASE·STRESS가 모두 음수였고 PBO 0.6286이라 선택하지 않았다. Wave 41 시간봉 후보는 진단 OOS 42건에서 BASE +32.212bp·PF 1.346, STRESS +20.212bp·PF 1.202였지만 bootstrap 95% 하한 -48.537bp, DSR 0, PBO 0.3714였다. 후보 선택과 완전히 독립된 미래 OOS도 없다. 따라서 K는 미래 자연 `LIVE_PUBLIC` 표본을 모으는 SHADOW 가설이며 수익성은 `NOT_PROVEN`이다.
+
+### 실제 브라우저와 서비스
+
+- 실제 8870 전략 화면에서 11행, 7개 감시, 4개 퇴역, 문제 0, 실제 주문 0을 확인했다. 퇴역 mode·방향 버튼은 비활성화돼 있었다.
+- K 상세에서 `INTRADAY_SWING`, 예상 1시간~36시간, 신호 5초, TP1 2.2R, TP2 4.5R, 안전 최대 36시간, 한국어 진입·종료 규칙, `아직 수익성이 입증되지 않은 독립 PAPER 검증 전략`을 확인했다.
+- 실제 XRPUSDT STRESS 거래 재생은 8프레임·7캔들을 200으로 반환했다. `진입`에서 entry 1.4437, SL 1.4553, TP1 1.4295, TP2 1.4068과 차트의 PAPER 하락 진입을 확인했고 `실제 종료`에서 exit 1.4424, gross +0.4121, fee 1.098, slippage 0.0317, net -0.7175 USDT, 보유 23초, EDGE_DECAY를 확인했다.
+- 최종 flat 상태에서 정확한 최종 소스로 서비스를 다시 시작해 같은 `run-2b7135a972dd`를 복구했고 HTTP ready는 25초였다. 이후 event 12,403, 실행 p50/p95 22.141/43.724ms, trade p95 56.082ms, critical incident·queue·비계획 reconnect·gap·resync·drop·persistence fault·buffer drop 0, entry lock false였다. wide 관찰 p95 1,823.049ms는 진입 실행경로와 분리한다.
+- K의 공개 완성 1시간봉은 12종목 모두 499개로 준비됐다. 실제 주문과 인증은 false다.
+
+### 전체 검증과 한계
+
+| 검증 | 상태 | 이번 실행의 결과 |
+|---|---|---|
+| backend pytest | PASS | 최종 소스 재실행 393 passed, 24.00초 |
+| frontend Vitest | PASS | 13 files·55 tests |
+| Ruff / mypy | PASS | 오류 0 / 93 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 512.52kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed. 첫 실행은 구버전 10행 기대값으로 3 FAIL이었고 11행·7감시·22방향·퇴역 disabled 계약으로 교정한 재실행이 3 PASS다. |
+| security / repository hygiene | PASS | 126 source·violation/secret-like/실제주문 path 0 / 위반 0 |
+| 실제 서비스·브라우저 | PASS | 최종 재시작 뒤 RUNNING·LIVE·PAPER, 기록 63건, K 상세와 XRP `재생`·`진입`·`실제 종료`를 직접 눌렀다. 브라우저 앱 오류·경고 0, 실제주문·인증 0이다. |
+| 활성 원장 full quick_check | NOT_COMPLETED_RUNTIME_CONTENTION | 읽기 전용 검사를 547.52초 실행했지만 끝나지 않았고 자동 복구된 임계지연 사건 2회·최장 89.220초가 생겨 LIVE 우선 원칙으로 중단했다. 결과를 PASS로 쓰지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 독립 62행 중 양수 1, 순손익 -64.6068400286 USDT다. K 자연표본은 0이며 어떤 진입기준도 낮추지 않았다. |
+| 6시간 / 24시간 soak | NOT_RUN | 수정 뒤 실제 시간을 채우지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
+| GitHub main / Actions | PENDING | 로컬 구현·검증·증거 완료 뒤 main 반영과 Actions를 확인한다. |
+
+기계판독 증거는 `evidence/WAVE42_STRATEGY_POLICY_AND_REPLAY_QA.json`, 실제 화면은 `evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png`와 `evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png`, 결정 근거는 ADR-045·ADR-046이다. 이 Wave의 PASS는 구현·회귀·실제 PAPER 화면 범위이며 전략 수익성, 미래 독립 OOS, 활성 원장 전수검사, 6시간·24시간을 입증하지 않는다.

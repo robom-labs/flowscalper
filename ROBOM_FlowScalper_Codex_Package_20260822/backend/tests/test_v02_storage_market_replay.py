@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 import backend.app.main as main_module
 from backend.app.analytics.reports import TradeAnalytics
-from backend.app.build_identity import STRATEGY_VERSION
+from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Venue
 from backend.app.main import create_app
@@ -585,7 +585,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.checksum == second.checksum
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 24
+    assert first.strategy_evaluation_count == 28
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False
@@ -1251,7 +1251,7 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         assert results.json()[0]["decision_path"] == result["decision_path"][-20:]
         analytics = client.get("/api/analytics/strategies")
         assert analytics.status_code == 200
-        assert len(analytics.json()) == 20
+        assert len(analytics.json()) == len(STRATEGY_IDS) * 2
         assert all(
             report["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
             for report in analytics.json()
@@ -1314,7 +1314,7 @@ def test_live_http_replay_uses_isolated_process_path(
     ledger.close()
 
 
-def test_live_timeline_and_focus_use_same_isolated_process_lock(
+def test_live_timeline_is_process_isolated_and_focus_uses_bounded_open_ledger_read(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1340,15 +1340,21 @@ def test_live_timeline_and_focus_use_same_isolated_process_lock(
             "candles": [],
         }
 
-    def focus_stub(*arguments: object) -> dict[str, object]:
-        calls.append(("focus", arguments))
+    def focus_stub(
+        _runtime: PaperRuntime,
+        source_run_id: str,
+        *,
+        trade_id: str,
+        profile: str,
+    ) -> dict[str, object]:
+        calls.append(("focus", (source_run_id, trade_id, profile)))
         return {"run_id": "run-live-ui-replay", "trade_id": "trade-live-focus"}
 
     async def run_sync(function, *arguments):
         return function(*arguments)
 
     monkeypatch.setattr(main_module, "replay_timeline_from_paths", timeline_stub)
-    monkeypatch.setattr(main_module, "replay_focus_session_from_paths", focus_stub)
+    monkeypatch.setattr(PaperRuntime, "replay_focus_session", focus_stub)
     monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
     client = TestClient(create_app(runtime))
 
@@ -1361,7 +1367,8 @@ def test_live_timeline_and_focus_use_same_isolated_process_lock(
     assert timeline.status_code == 200
     assert focus.status_code == 200
     assert [name for name, _ in calls] == ["timeline", "focus"]
-    assert all(arguments[0] == str(ledger.path) for _, arguments in calls)
+    assert calls[0][1][0] == str(ledger.path)
+    assert calls[1][1] == ("run-live-ui-replay", "trade-live-focus", "BASE")
     ledger.close()
 
 

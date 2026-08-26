@@ -184,6 +184,26 @@ def test_data_gap_preserves_protection_then_emergency_exits_on_recovery() -> Non
     assert emergency.reason_codes == ("EMERGENCY_STALE_LIMIT",)
 
 
+def test_strategy_specific_maximum_holding_time_is_explicit() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    holding = manager.evaluate(
+        position,
+        health(),
+        now_ms=position.opened_ts_ms + 900_000,
+        maximum_holding_ms=129_600_000,
+    )
+    assert holding.action is ManagementAction.HOLD
+    maximum = manager.evaluate(
+        position,
+        health(),
+        now_ms=position.opened_ts_ms + 129_600_000,
+        maximum_holding_ms=129_600_000,
+    )
+    assert maximum.action is ManagementAction.EXIT_MAX_HOLD
+    assert maximum.reason_codes == ("MAXIMUM_HOLDING_TIME_REACHED",)
+
+
 def test_three_losses_create_global_cooldown() -> None:
     manager = RiskManager()
     state = RiskState()

@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { ReplayPage } from '../src/pages/ReplayPage'
+import type { HistoryRow } from '../src/types'
 
 vi.mock('../src/components/PriceChart', () => ({
   PriceChart: () => <div data-testid="replay-chart" />,
@@ -97,4 +98,33 @@ test('restores an active strategy verification and exposes a real cancel control
   expect(screen.getByText(/실제 주문과 인증 경로는 0/)).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '전략 검증 취소' }))
   expect(await screen.findByRole('button', { name: '취소 중' })).toBeDisabled()
+})
+
+test('shows a visible retry action when a focused trade chart request fails', async () => {
+  let attempts = 0
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url === '/api/replay/runs' || url === '/api/replay/results') {
+      return new Response('[]', { status: 200 })
+    }
+    if (url === '/api/replay/operations/current') {
+      return new Response('null', { status: 200 })
+    }
+    if (url.includes('/focus?')) {
+      attempts += 1
+      return new Response(JSON.stringify({ detail: { error_message_ko: '원장 캐시가 사용 중입니다.' } }), { status: 500 })
+    }
+    throw new Error(`unexpected request: ${url}`)
+  }))
+  const trade = {
+    run_id: 'run-focus-error', trade_id: 'trade-focus-error', profile: 'STRESS',
+    symbol: 'XRPUSDT',
+  } as unknown as HistoryRow
+
+  render(<ReplayPage trade={trade} />)
+
+  expect(await screen.findByRole('heading', { name: 'XRPUSDT 거래 차트를 열지 못했습니다' })).toBeInTheDocument()
+  expect(screen.getByRole('alert')).toHaveTextContent('원장 캐시가 사용 중입니다.')
+  fireEvent.click(screen.getByRole('button', { name: '거래 차트 다시 시도' }))
+  await waitFor(() => expect(attempts).toBe(2))
 })

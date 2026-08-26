@@ -12,13 +12,14 @@
 | SRC-MICROPRICE-2017 | Stoikov, [The Micro-Price: A High-Frequency Estimator of Future Prices](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2970694) | spread와 imbalance로 단기 공정가격을 추정하는 micro-price 접근을 제시한다. | 현재 코드의 microprice와 다중호가 공정가를 방향 확인 입력으로 쓰되 단독 신호로 쓰지 않는다. | 추정 공정가의 방향 적중을 체결가능 수익으로 바꾸어 해석하지 않는다. |
 | SRC-PBO-2015 | Bailey et al., [The Probability of Backtest Overfitting](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2326253) | 많은 후보 중 최선만 선택할 때 생기는 백테스트 과적합 확률을 평가한다. | 거래가 0인 사전등록 가설까지 후보 수에 포함하고, 시간순 Run fold의 PBO를 기록한다. | PBO 하나만 낮다고 전략을 승격하지 않는다. |
 | SRC-DSR-2014 | Bailey, López de Prado, [The Deflated Sharpe Ratio](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2460551) | 비정규 수익과 다중 시험의 선택 편향을 고려해 Sharpe 유의성을 조정한다. | 단기 거래 수익을 연환산하지 않고, 시험 수를 반영한 DSR과 bootstrap 기대값 하한을 함께 기록한다. | 표본 부족 DSR은 0이나 PASS로 대체하지 않고 `INSUFFICIENT`로 둔다. |
+| SRC-CRYPTO-MOMENTUM-2018 | Liu, Tsyvinski, [Risks and Returns of Cryptocurrency](https://www.nber.org/papers/w24877) | 암호화폐 수익률에서 모멘텀 요인의 표본상 관계를 분석했다. | 완성 시간봉의 중기 모멘텀과 추세 정렬을 비용후 후보로 시험한다. | 논문의 기간·자산·수익률을 현재 USDⓈ-M 초단기 PAPER 성과로 간주하지 않는다. |
 | SRC-BINANCE-AGGTRADE | Binance USDⓈ-M Futures, [Aggregate Trade Streams](https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Aggregate-Trade-Streams) | 인증 없는 공개 aggregate trade event 필드와 전송 주기를 정의한다. | event time, 가격, 수량, aggressor 방향을 canonical candle과 flow에 사용한다. | 수신 지연이 큰 trade는 archive에는 보존하되 현재 전략 입력에서는 fail-closed한다. |
 | SRC-BINANCE-DEPTH | Binance USDⓈ-M Futures, [Diff. Book Depth Streams](https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Diff-Book-Depth-Streams) | 공개 depth delta와 update ID를 이용한 로컬 호가장 복원 절차를 정의한다. | sequence-valid top-of-book의 반대쪽 bid·ask로 진입·청산을 평가한다. | sequence gap, stale, 500ms 초과 실행호가는 진입에 사용하지 않는다. |
 | SRC-BINANCE-KLINE | Binance USDⓈ-M Futures, [Kline/Candlestick Streams](https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Kline-Candlestick-Streams) | 공개 kline 필드와 마감 여부를 정의한다. | 거래 이벤트로 자체 canonical candle을 만들고 공식 필드 의미를 대조한다. | 진행 중 봉은 연구 피처에 넣지 않고 완성 봉만 사용한다. |
 
 ## 20.2 구현된 연구 경계
 
-- 실행 레지스트리 A~J와 연구 후보는 서로 다른 모듈이다. `backend/app/intraday/`와 `scripts/research_intraday_candidates.py`는 연구 결과만 만들고 `StrategyRegistry`를 변경하지 않는다.
+- 실행 레지스트리 A~K와 연구 후보는 서로 다른 모듈이다. `backend/app/intraday/`와 연구 스크립트는 연구 결과만 만들고 명시적 정책 결정 없이 `StrategyRegistry`를 변경하지 않는다.
 - `CandleBuilder`는 event ID 중복을 제거하고 종목별 늦은 이벤트를 무시하며, 1초부터 4시간까지 동일한 경계 규칙으로 완성 봉만 내보낸다.
 - OHLCV, quote volume, trade count, taker buy/sell base·quote volume을 canonical candle에 보존한다.
 - multi-timeframe feature는 ATR, realized volatility, session VWAP, EMA, Donchian, Bollinger, Keltner, RVOL, taker flow, 상위 시간구간 trend/regime을 동일 시각까지의 완성 봉으로 계산한다.
@@ -57,3 +58,13 @@
 - 장중 후보의 코드·테스트 통과와 저장 archive 결과는 실제 장시간 LIVE 성능 검증을 대신하지 않는다.
 
 관련 결정은 `docs/adr/ADR-039-preregistered-intraday-research-and-runtime-separation.md`에 기록한다.
+
+## 20.6 Wave 39~41 공개 5분봉·시간봉 진단
+
+- `scripts/research_public_trend_candidates.py`는 Binance USDⓈ-M 주요 12종목의 완성 5분봉 414,720개를 사용해 사전등록 추세 후보 6개를 동일 BASE·STRESS 비용으로 평가했다. 모든 후보가 두 비용조건에서 음수여서 선택 0, PBO 0.6286, `NOT_PROVEN`이었다.
+- `scripts/research_public_hourly_trend_diagnostic.py`는 완성 1시간봉에서 EMA 정렬, 24시간 모멘텀, Donchian 돌파, ADX와 상대거래량을 결합했다. Wave 41 적응 후보는 진단 OOS 42건에서 BASE 기대값 +32.212bp·PF 1.346, STRESS +20.212bp·PF 1.202였다.
+- 같은 결과의 bootstrap 95% 하한은 -48.537bp, DSR은 0, PBO는 0.3714로 승격 기준을 실패했다. 후보 선택과 OOS가 완전히 독립된 미래 기간도 아니다.
+- 따라서 `HOURLY_MOMENTUM_BREAKOUT_V1`은 기존 미세구조 전략을 자동 대체하지 않고 22개 독립계좌 중 BASE·STRESS SHADOW 두 계좌에서 미래 자연 `LIVE_PUBLIC` 표본만 수집한다. 수익성은 `NOT_PROVEN`이고 30건 미만에는 순위를 매기지 않는다.
+- 기계판독 원본은 `evidence/WAVE39_PUBLIC_TREND_RESEARCH.json`, `evidence/WAVE40_PUBLIC_HOURLY_TREND_DIAGNOSTIC.json`, `evidence/WAVE41_PUBLIC_COST_AWARE_TREND_DIAGNOSTIC.json`이다. 이 결과는 전략 조건을 낮추거나 실제 주문 경로를 추가하는 근거가 아니다.
+
+관련 정책 결정은 `docs/adr/ADR-045-cost-aware-hourly-trend-shadow-and-evidence-retirement.md`에 기록한다.

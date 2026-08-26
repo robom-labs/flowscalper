@@ -516,3 +516,49 @@ def test_schema_v1_single_position_payload_is_migrated_without_new_accounts() ->
     assert restored.shadows[
         "QUEUE_MICROPRICE_MOMENTUM_V1:BASE"
     ].risk_state.current_equity == Decimal("1000")
+
+
+def test_schema_v2_additive_strategy_accounts_start_empty_without_rejecting_recovery() -> None:
+    registry = StrategyRegistry()
+    legacy_ids = registry.strategy_ids[:-1]
+    legacy = PaperPortfolioEngine(
+        run_id="run-league",
+        strategy_ids=legacy_ids,
+        shadow_ledger=ShadowLedger(legacy_ids),
+        venue=Venue.FIXTURE,
+    )
+    payload = legacy.recovery_state(
+        registry_settings=registry.rows()[:-1],
+        snapshot_ts_ms=2_000,
+    )
+    payload["schema_version"] = 2
+
+    restored = league_engine()
+    restored.restore_state(payload)
+
+    for profile in CostProfile:
+        account = restored.shadows[f"HOURLY_MOMENTUM_BREAKOUT_V1:{profile.value}"]
+        assert account.risk_state.current_equity == Decimal("1000")
+        assert account.pending_entries == {}
+        assert account.positions == {}
+        shadow = restored.shadow_ledger.account(
+            "HOURLY_MOMENTUM_BREAKOUT_V1",
+            profile,
+        )
+        assert shadow.current_equity_usdt == Decimal("1000")
+        assert shadow.trades == []
+
+
+def test_current_snapshot_rejects_missing_existing_profile_account() -> None:
+    engine = league_engine()
+    payload = engine.recovery_state(
+        registry_settings=StrategyRegistry().rows(),
+        snapshot_ts_ms=2_000,
+    )
+    payload["accounts"] = [
+        row
+        for row in payload["accounts"]
+        if row["account_id"] != "CBR_CONTINUATION_V1:STRESS"
+    ]
+    with pytest.raises(ValueError, match="Strategy Registry"):
+        league_engine().restore_state(payload)

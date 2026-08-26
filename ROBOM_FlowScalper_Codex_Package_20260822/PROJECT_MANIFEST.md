@@ -67,6 +67,11 @@ Detailed specifications:
 - `docs/adr/ADR-039-preregistered-intraday-research-and-runtime-separation.md`
 - `docs/adr/ADR-040-graceful-shutdown-and-service-intent-recovery.md`
 - `docs/adr/ADR-041-planned-rotation-depth-warmup.md`
+- `docs/adr/ADR-042-nonblocking-history-and-replay-preview.md`
+- `docs/adr/ADR-043-observable-cancellable-bounded-replay.md`
+- `docs/adr/ADR-044-revisioned-entry-intent-and-nonblocking-history-startup.md`
+- `docs/adr/ADR-045-cost-aware-hourly-trend-shadow-and-evidence-retirement.md`
+- `docs/adr/ADR-046-best-effort-focus-cache-under-durable-writer.md`
 
 ## Supporting contracts
 
@@ -116,6 +121,14 @@ Detailed specifications:
 - `evidence/WAVE34_INTRADAY_RESEARCH.html`
 - `evidence/WAVE34_FULL_AUDIT_QA.json`
 - `evidence/WAVE35_ROTATION_WARMUP_QA.json`
+- `evidence/WAVE39_PUBLIC_TREND_RESEARCH.json`
+- `evidence/WAVE40_PUBLIC_HOURLY_TREND_DIAGNOSTIC.json`
+- `evidence/WAVE41_PUBLIC_COST_AWARE_TREND_DIAGNOSTIC.json`
+- `evidence/WAVE42_STRATEGY_POLICY_AND_REPLAY_QA.json`
+- `evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png`
+- `evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png`
+- `scripts/research_public_trend_candidates.py`
+- `scripts/research_public_hourly_trend_diagnostic.py`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-full.png`

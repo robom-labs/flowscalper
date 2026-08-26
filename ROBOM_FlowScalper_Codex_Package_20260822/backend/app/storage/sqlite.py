@@ -934,8 +934,8 @@ class SQLiteLedger:
                 raise ValueError("limit은 양수여야 합니다.")
             query += " LIMIT ?"
             parameters.append(limit)
-        with self._lock:
-            rows = self._connection.execute(query, tuple(parameters)).fetchall()
+        with self._read_lock:
+            rows = self._read_connection.execute(query, tuple(parameters)).fetchall()
         result: list[dict[str, Any]] = []
 
         def event_sort_key(event: Mapping[str, object]) -> tuple[int, int, str]:
@@ -1148,8 +1148,8 @@ class SQLiteLedger:
             query += " AND open_ts_ms <= ?"
             parameters.append(end_ts_ms)
         query += " ORDER BY open_ts_ms"
-        with self._lock:
-            rows = self._connection.execute(query, tuple(parameters)).fetchall()
+        with self._read_lock:
+            rows = self._read_connection.execute(query, tuple(parameters)).fetchall()
         return self._verified_payload_rows(rows, "캔들")
 
     def list_recent_candles(
@@ -1211,6 +1211,24 @@ class SQLiteLedger:
                 (run_id,),
             ).fetchall()
         return [json.loads(str(row["payload_json"])) for row in rows]
+
+    def get_candidate(self, run_id: str, candidate_id: str) -> dict[str, Any] | None:
+        """거래 집중 재생에서 한 건의 불변 진입계획만 인덱스로 읽는다."""
+
+        with self._read_lock:
+            row = self._read_connection.execute(
+                """
+                SELECT payload_json FROM candidates
+                WHERE run_id = ? AND candidate_id = ?
+                """,
+                (run_id, candidate_id),
+            ).fetchone()
+        if row is None:
+            return None
+        decoded = json.loads(str(row["payload_json"]))
+        if not isinstance(decoded, dict):
+            raise LedgerInvariantError("후보 계획 payload는 객체여야 합니다.")
+        return decoded
 
     def record_universe_snapshot(self, snapshot: Mapping[str, object]) -> None:
         """deep 유니버스 회전 결과를 수정 불가능한 새 행으로 남긴다."""
@@ -1436,7 +1454,8 @@ class SQLiteLedger:
         session_version = int(str(session["session_version"]))
         payload = _canonical_json(session).encode()
         checksum = hashlib.sha256(payload).hexdigest()
-        compressed = zlib.compress(payload, level=9)
+        # checksum은 비압축 payload로 고정되므로 대형 세션도 빠른 균형 압축을 쓴다.
+        compressed = zlib.compress(payload, level=6)
         with self._transaction() as connection:
             before = connection.total_changes
             connection.execute(

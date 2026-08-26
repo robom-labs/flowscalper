@@ -186,3 +186,11 @@ No personal credentials exist in exports.
 - Interactive timeline reads at most 100 checksum-verified events and only the 1-second candles inside that event window. The full stored count remains visible. Full strategy validation continues to process all stored events for the selected symbol.
 - When active SQLite rows and immutable Parquet archives coexist, each source is bounded before the canonical `(venue_ts_ms, receive_monotonic_ns, event_id)` merge. A later archive is skipped only when its first timestamp is strictly beyond the current limit cutoff.
 - See `docs/adr/ADR-043-observable-cancellable-bounded-replay.md`.
+
+## 10.16 활성 writer와 거래 상세 재생 cache
+
+- 거래 상세 재생의 candle·프레임·entry·TP·SL·종료 정보는 불변 원장과 공개시장 archive에서 먼저 완성하고 checksum을 계산한다.
+- `replay_focus_cache`는 같은 결과의 다음 조회를 빠르게 하기 위한 선택적 압축 cache다. cache 쓰기가 활성 외부 writer의 SQLite `locked` 또는 `busy`와 충돌하면 완성된 재생 세션을 그대로 반환하고 cache만 생략한다.
+- lock·busy가 아닌 무결성·직렬화·스키마 오류는 숨기지 않고 실패시킨다. 원본 원장 읽기나 checksum 검증이 실패한 경우에도 cache 정책으로 성공 처리하지 않는다.
+- UI는 거래 상세 API 실패를 빈 화면으로 오해하지 않도록 명시적 실패 문구와 `거래 차트 다시 시도` 버튼을 표시한다.
+- See `docs/adr/ADR-046-best-effort-focus-cache-under-durable-writer.md`.

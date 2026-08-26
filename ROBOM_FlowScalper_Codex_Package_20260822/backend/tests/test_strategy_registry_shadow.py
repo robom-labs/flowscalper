@@ -34,7 +34,7 @@ from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 from backend.tests.test_strategies import features
 
 
-def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None:
+def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> None:
     registry = StrategyRegistry()
     assert registry.strategy_ids == (
         "LSA_REVERSAL_V1",
@@ -47,6 +47,7 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
         "OFI_RETURN_CONFLUENCE_V1",
         "BOOK_SLOPE_ASYMMETRY_V1",
+        "HOURLY_MOMENTUM_BREAKOUT_V1",
     )
     assert STRATEGY_IDS == registry.strategy_ids
     assert STRATEGY_VERSION.startswith("+".join(registry.strategy_ids) + "@")
@@ -61,6 +62,7 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         "OFF",
         "SHADOW",
         "SHADOW",
+        "SHADOW",
     ]
     assert [row["lifecycle"] for row in registry.rows()] == [
         "RETIRED",
@@ -73,15 +75,24 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         "RETIRED",
         "SHADOW",
         "SHADOW",
+        "SHADOW",
     ]
     assert all(row["long_enabled"] and row["short_enabled"] for row in registry.rows())
-    assert all(row["horizon_class"] == "MICRO_SCALP" for row in registry.rows())
-    assert all(row["expected_holding_seconds"] == [10, 180] for row in registry.rows())
-    assert all(row["signal_half_life_seconds"] == 30 for row in registry.rows())
-    assert all(row["max_hold_seconds"] == 900 for row in registry.rows())
+    micro_rows = registry.rows()[:-1]
+    assert all(row["horizon_class"] == "MICRO_SCALP" for row in micro_rows)
+    assert all(row["expected_holding_seconds"] == [10, 180] for row in micro_rows)
+    assert all(row["signal_half_life_seconds"] == 30 for row in micro_rows)
+    assert all(row["max_hold_seconds"] == 900 for row in micro_rows)
+    hourly = registry.rows()[-1]
+    assert hourly["strategy_id"] == "HOURLY_MOMENTUM_BREAKOUT_V1"
+    assert hourly["horizon_class"] == "INTRADAY_SWING"
+    assert hourly["expected_holding_seconds"] == [3_600, 129_600]
+    assert hourly["signal_half_life_seconds"] == 5
+    assert hourly["take_profit_1_r"] == "2.2"
+    assert hourly["take_profit_2_r"] == "4.5"
+    assert hourly["max_hold_seconds"] == 129_600
     assert all(
-        row["cost_model_version"] == "TOP_OF_BOOK_BASE13_STRESS25_V1"
-        for row in registry.rows()
+        row["cost_model_version"] == "TOP_OF_BOOK_BASE13_STRESS25_V1" for row in registry.rows()
     )
     registry.configure(
         "VWAP_EXHAUSTION_REVERSION_V1",
@@ -99,7 +110,7 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
     evaluator = StrategySignalEvaluator()
     decisions = evaluator.evaluate(registry, features(), Regime.WARMUP)
 
-    assert len(decisions) == 11
+    assert len(decisions) == 13
     assert all(item.decision.status is CandidateStatus.REJECTED for item in decisions)
     lsa = next(item for item in decisions if item.decision.strategy_id == "LSA_REVERSAL_V1")
     assert lsa.decision.side is Side.LONG
@@ -117,6 +128,44 @@ def test_registry_exposes_ten_strategies_and_honors_mode_and_direction() -> None
         }
         for item in decisions
     )
+
+
+def test_legacy_manual_setting_cannot_revive_policy_retired_strategy() -> None:
+    registry = StrategyRegistry()
+    registry.configure(
+        "LSA_REVERSAL_V1",
+        mode=StrategyMode.SHADOW,
+        lifecycle=StrategyLifecycle.SHADOW,
+        long_enabled=True,
+        short_enabled=True,
+        manual_lock=True,
+        source=StrategyChangeSource.RECOVERY,
+        reason="LEGACY_USER_CONFIGURATION",
+        updated_ts_ms=1_000,
+    )
+
+    migrated = registry.enforce_policy_retirements(updated_ts_ms=2_000)
+    setting = registry.setting("LSA_REVERSAL_V1")
+
+    assert len(migrated) == 1
+    assert setting.mode is StrategyMode.OFF
+    assert setting.lifecycle is StrategyLifecycle.RETIRED
+    assert setting.revision == 2
+    assert setting.manual_lock is False
+    assert setting.changed_by is StrategyChangeSource.MIGRATION
+    assert registry.enforce_policy_retirements(updated_ts_ms=3_000) == ()
+
+
+def test_runtime_rejects_direct_reactivation_of_policy_retired_strategy() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+
+    with pytest.raises(ValueError, match="퇴역"):
+        runtime.configure_strategy(
+            "LSA_REVERSAL_V1",
+            mode=StrategyMode.SHADOW,
+            long_enabled=True,
+            short_enabled=True,
+        )
 
 
 def test_strategy_settings_cas_and_manual_lock_block_automatic_override() -> None:
@@ -368,15 +417,9 @@ def test_runtime_persists_auto_governor_evidence_and_audit(tmp_path: Path) -> No
 
     assert changed[0]["lifecycle"] == "CHALLENGER"
     settings = ledger.list_strategy_settings(runtime.run_id)
-    latest = [
-        row
-        for row in settings
-        if row["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
-    ][-1]
+    latest = [row for row in settings if row["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"][-1]
     assert latest["changed_by"] == "AUTO_GOVERNOR"
-    assert latest["change_evidence"]["evidence"]["evaluation_period"] == (
-        "WALK_FORWARD_OOS_2026Q3"
-    )
+    assert latest["change_evidence"]["evidence"]["evaluation_period"] == ("WALK_FORWARD_OOS_2026Q3")
     incidents = ledger.list_incidents(category="AUTO_GOVERNOR_TRANSITION")
     assert len(incidents) == 1
     assert incidents[0]["payload"]["assessment"]["automatic_action_allowed"] is True
@@ -412,7 +455,7 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
         Regime.RANGE,
     )
 
-    assert len(decisions) == 12
+    assert len(decisions) == 14
     assert robust_calls == 4
     assert percentile_calls == 5
 
@@ -574,7 +617,7 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
     )
 
     decisions = runtime.strategy_decisions()
-    assert runtime.strategy_evaluation_count == 12
+    assert runtime.strategy_evaluation_count == 14
     assert {decision.strategy_id for decision in decisions} == set(
         runtime.strategy_registry.strategy_ids
     ) - {
@@ -584,5 +627,5 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
         "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
     }
     assert all(decision.tp_probability is None for decision in decisions)
-    assert len(runtime.dashboard()["shadow_accounts"]) == 20
-    assert len(runtime.dashboard()["league_accounts"]) == 20
+    assert len(runtime.dashboard()["shadow_accounts"]) == 22
+    assert len(runtime.dashboard()["league_accounts"]) == 22

@@ -1,4 +1,4 @@
-"""LIVE 피처를 A/B/C/D/E/F/G/H/I/J 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
+"""LIVE 피처를 A/B/C/D/E/F/G/H/I/J/K 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from backend.app.domain.models import Side
 from backend.app.features import FeatureSnapshot
+from backend.app.market_data import Candle
 from backend.app.regime import Regime
 from backend.app.strategies.aggressor_flow import (
     AggressorFlowContext,
@@ -29,6 +30,12 @@ from backend.app.strategies.depth_adjusted_ofi import (
     DepthAdjustedOfiContext,
     DepthAdjustedOfiStrategy,
     depth_adjusted_ofi_ready,
+)
+from backend.app.strategies.hourly_momentum_breakout import (
+    HourlyMomentumBreakoutContext,
+    HourlyMomentumBreakoutStrategy,
+    HourlyMomentumState,
+    hourly_momentum_state,
 )
 from backend.app.strategies.liquidity_sweep import (
     LiquiditySweepContext,
@@ -161,10 +168,9 @@ class StrategySignalEvaluator:
         self._history: dict[str, deque[FeatureSnapshot]] = defaultdict(
             lambda: deque(maxlen=history_limit)
         )
-        self._sorted_history: dict[str, _SortedFeatureHistory] = defaultdict(
-            _SortedFeatureHistory
-        )
+        self._sorted_history: dict[str, _SortedFeatureHistory] = defaultdict(_SortedFeatureHistory)
         self._confirmation_started_ms: dict[tuple[str, str, Side], int] = {}
+        self._hourly_state_cache: dict[str, tuple[int | None, HourlyMomentumState]] = {}
 
     def evaluate(
         self,
@@ -173,6 +179,7 @@ class StrategySignalEvaluator:
         regime: Regime,
         *,
         tick_size: Decimal = Decimal("0.00000001"),
+        hourly_candles: tuple[Candle, ...] = (),
     ) -> tuple[EvaluatedSignal, ...]:
         history_window = self._history[snapshot.symbol]
         history = list(history_window)
@@ -205,6 +212,7 @@ class StrategySignalEvaluator:
                     history_statistics,
                     trailing_return_3s_bps,
                     plan,
+                    hourly_candles,
                 )
                 results.append(
                     EvaluatedSignal(
@@ -231,6 +239,7 @@ class StrategySignalEvaluator:
         history_statistics: _HistoryStatistics,
         trailing_return_3s_bps: float | None,
         plan: PlanInputs,
+        hourly_candles: tuple[Candle, ...],
     ) -> CandidateDecision:
         deviation_bps = (snapshot.mid - snapshot.micro_vwap_10s) / snapshot.mid * 10_000
         direction = 1 if side is Side.LONG else -1
@@ -245,9 +254,7 @@ class StrategySignalEvaluator:
                 Regime.WARMUP,
             }
             refill_ready = (
-                snapshot.data_healthy
-                and supported_regime
-                and snapshot.refill_ratio >= 0.55
+                snapshot.data_healthy and supported_regime and snapshot.refill_ratio >= 0.55
             )
             range_reentered = abs(deviation_bps) <= max(
                 2.0,
@@ -258,12 +265,9 @@ class StrategySignalEvaluator:
                 features=snapshot,
                 regime=regime,
                 plan=plan,
-                sweep_extension_noise_units=abs(deviation_bps)
-                / max(snapshot.spread_bps, 0.01),
+                sweep_extension_noise_units=abs(deviation_bps) / max(snapshot.spread_bps, 0.01),
                 aggressive_flow_robust_z=history_statistics.flow_z,
-                price_response_efficiency_quantile=(
-                    history_statistics.price_response_percentile
-                ),
+                price_response_efficiency_quantile=(history_statistics.price_response_percentile),
                 refill_persistence_ms=self._confirmation_ms(
                     f"{evaluator.strategy_id}:REFILL",
                     snapshot.symbol,
@@ -276,9 +280,7 @@ class StrategySignalEvaluator:
                     snapshot.symbol,
                     side,
                     snapshot.ts_ms,
-                    aligned=snapshot.data_healthy
-                    and supported_regime
-                    and range_reentered,
+                    aligned=snapshot.data_healthy and supported_regime and range_reentered,
                 ),
                 ofi_flip=ofi_short > 0 and ofi_medium < 0,
                 microprice_reclaimed=microprice_alignment,
@@ -340,9 +342,7 @@ class StrategySignalEvaluator:
                 vwap_deviation_robust_z=history_statistics.deviation_z,
                 excursion_direction_valid=excursion_valid,
                 aggressive_flow_robust_z=history_statistics.flow_z,
-                price_progress_stalled=(
-                    history_statistics.price_response_percentile <= 0.30
-                ),
+                price_progress_stalled=(history_statistics.price_response_percentile <= 0.30),
                 opposite_depth_refilled=snapshot.refill_ratio >= 0.55,
                 ofi_reversed=ofi_short > 0 and ofi_medium < 0,
                 microprice_reversed=microprice_alignment,
@@ -390,9 +390,7 @@ class StrategySignalEvaluator:
                 pullback_retrace_fraction=pullback.maximum_retrace_fraction,
                 counterflow_price_impact_weak=snapshot.price_response_efficiency <= 0.50,
                 original_flow_reaccelerated=(
-                    pullback.price_reaccelerated
-                    and ofi_short > 0
-                    and ofi_short >= ofi_medium * 0.1
+                    pullback.price_reaccelerated and ofi_short > 0 and ofi_short >= ofi_medium * 0.1
                 ),
                 confirmation_ms=self._confirmation_ms(
                     f"{evaluator.strategy_id}:REACCELERATION",
@@ -493,9 +491,7 @@ class StrategySignalEvaluator:
                     features=snapshot,
                     regime=regime,
                     plan=plan,
-                    directional_depth_adjusted_ofi_robust_z=(
-                        directional_depth_adjusted_ofi_z
-                    ),
+                    directional_depth_adjusted_ofi_robust_z=(directional_depth_adjusted_ofi_z),
                     confirmation_ms=confirmation_ms,
                 )
             )
@@ -525,9 +521,7 @@ class StrategySignalEvaluator:
                     features=snapshot,
                     regime=regime,
                     plan=plan,
-                    directional_depth_adjusted_ofi_robust_z=(
-                        directional_depth_adjusted_ofi_z
-                    ),
+                    directional_depth_adjusted_ofi_robust_z=(directional_depth_adjusted_ofi_z),
                     trailing_return_3s_bps=trailing_return_3s_bps,
                     confirmation_ms=confirmation_ms,
                 )
@@ -560,6 +554,48 @@ class StrategySignalEvaluator:
                     confirmation_ms=confirmation_ms,
                 )
             )
+        if isinstance(evaluator, HourlyMomentumBreakoutStrategy):
+            latest_open_ts_ms = hourly_candles[-1].open_ts_ms if hourly_candles else None
+            cached = self._hourly_state_cache.get(snapshot.symbol)
+            if cached is None or cached[0] != latest_open_ts_ms:
+                state = hourly_momentum_state(hourly_candles)
+                self._hourly_state_cache[snapshot.symbol] = (latest_open_ts_ms, state)
+            else:
+                state = cached[1]
+            entry = Decimal(str(snapshot.mid))
+            expected_cost_bps = max(
+                Decimal("13"),
+                Decimal(str(snapshot.spread_bps)) + Decimal("12"),
+            )
+            if state.atr is None or state.atr <= 0:
+                hourly_plan = PlanInputs(
+                    entry=entry,
+                    structural_stop=None,
+                    target=None,
+                    expected_total_cost_bps=expected_cost_bps,
+                )
+            else:
+                risk = max(Decimal(str(state.atr)) * Decimal("1.8"), entry * Decimal("0.003"))
+                plan_direction = Decimal(1) if side is Side.LONG else Decimal(-1)
+                hourly_plan = PlanInputs(
+                    entry=entry,
+                    structural_stop=entry - plan_direction * risk,
+                    target=entry + plan_direction * risk * Decimal("4.5"),
+                    expected_total_cost_bps=expected_cost_bps,
+                )
+            signal_ts_ms = state.signal_ts_ms
+            return evaluator.evaluate(
+                HourlyMomentumBreakoutContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=hourly_plan,
+                    state=state,
+                    signal_age_ms=(
+                        snapshot.ts_ms - signal_ts_ms if signal_ts_ms is not None else None
+                    ),
+                )
+            )
         raise TypeError(f"지원하지 않는 전략 evaluator: {type(evaluator).__name__}")
 
     @staticmethod
@@ -579,12 +615,8 @@ class StrategySignalEvaluator:
             snapshot.depth_adjusted_ofi_3s_bps,
         )
         return _HistoryStatistics(
-            flow_z=abs(
-                robust_z_from_sorted(history.flow, abs(snapshot.signed_notional_3s))
-            ),
-            deviation_z=abs(
-                robust_z_from_sorted(history.deviation, abs(deviation_bps))
-            ),
+            flow_z=abs(robust_z_from_sorted(history.flow, abs(snapshot.signed_notional_3s))),
+            deviation_z=abs(robust_z_from_sorted(history.deviation, abs(deviation_bps))),
             price_response_percentile=rolling_percentile_from_sorted(
                 history.price_response,
                 snapshot.price_response_efficiency,
@@ -598,14 +630,10 @@ class StrategySignalEvaluator:
                 snapshot.efficiency_ratio_30s,
             ),
             long_directional_flow_z=directional_flow_z,
-            short_directional_flow_z=(
-                0.0 if directional_flow_z == 0 else -directional_flow_z
-            ),
+            short_directional_flow_z=(0.0 if directional_flow_z == 0 else -directional_flow_z),
             long_depth_adjusted_ofi_z=directional_depth_adjusted_ofi_z,
             short_depth_adjusted_ofi_z=(
-                0.0
-                if directional_depth_adjusted_ofi_z == 0
-                else -directional_depth_adjusted_ofi_z
+                0.0 if directional_depth_adjusted_ofi_z == 0 else -directional_depth_adjusted_ofi_z
             ),
             bid_slope_percentile=rolling_percentile_from_sorted(
                 history.bid_book_slope,
@@ -648,11 +676,7 @@ def _pullback_metrics(
     """미래 표본 없이 impulse→눌림→현재 재가속 경로를 event time으로 계산한다."""
 
     window_start_ms = snapshot.ts_ms - maximum_duration_seconds * 1_000
-    window = [
-        item
-        for item in history
-        if window_start_ms <= item.ts_ms < snapshot.ts_ms
-    ]
+    window = [item for item in history if window_start_ms <= item.ts_ms < snapshot.ts_ms]
     window.append(snapshot)
     if len(window) < 4:
         return _PullbackMetrics(0.0, 0.0, False)
@@ -696,9 +720,7 @@ def _trailing_return_bps(
     target_ts_ms = snapshot.ts_ms - horizon_ms
     earliest_ts_ms = target_ts_ms - maximum_anchor_age_ms
     eligible = (
-        item
-        for item in history
-        if earliest_ts_ms <= item.ts_ms <= target_ts_ms and item.mid > 0
+        item for item in history if earliest_ts_ms <= item.ts_ms <= target_ts_ms and item.mid > 0
     )
     anchor = max(eligible, key=lambda item: item.ts_ms, default=None)
     if anchor is None or snapshot.mid <= 0:
@@ -719,9 +741,7 @@ def _plan(
     # 13bp 이상의 왕복 비용을 손익 양쪽에 반영해도 최종 CandidatePlan의
     # net R:R 1.20을 넘도록 exit 비중별 최소 구조 거리를 보수적으로 둔다.
     minimum_risk_fraction = (
-        Decimal("0.0080")
-        if exit_style is ExitStyle.REVERSION_70_30
-        else Decimal("0.0030")
+        Decimal("0.0080") if exit_style is ExitStyle.REVERSION_70_30 else Decimal("0.0030")
     )
     risk_distance = max(noise * Decimal("1.2"), entry * minimum_risk_fraction)
     target_distance = risk_distance * Decimal("3.2")
