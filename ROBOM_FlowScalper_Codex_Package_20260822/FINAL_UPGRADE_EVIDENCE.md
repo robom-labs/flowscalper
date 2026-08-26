@@ -1820,6 +1820,6 @@ queue·비계획 reconnect·계획회전·gap·resync·drop·persistence fault·
 | 결과 도달시간 자연표본 | NOT_OBSERVED | 신규 schema 결정적 테스트는 PASS지만 현재 버전 자연 종료 거래가 아직 없다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 후 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
-| GitHub main / Actions | PENDING | 구현·증거 commit 후 main push와 Actions를 확인한다. |
+| GitHub main / Actions | PASS | 구현 commit `e261e3fe24858fc43b206a92827943b8c3d8cad7`을 main에 push했다. [Actions 32941018295](https://github.com/robom-labs/flowscalper/actions/runs/32941018295)의 validate 1분7초, browser 1분40초, Chromium desktop·tablet·mobile E2E와 브라우저 증거 업로드가 모두 PASS했다. 설치 mirror 404는 GitHub Releases fallback으로 복구된 비차단 경고다. |
 
-기계판독 증거는 `evidence/wave46-strategy-survival/WAVE46_STRATEGY_SURVIVAL_QA.json`, 연구 원본은 같은 폴더의 `intraday-trend-diagnostic.json`과 `fixed-hourly-prior-holdout.json`, 결정 근거는 ADR-047이다. 이번 PASS는 구현·회귀·짧은 실제 PAPER 런타임·브라우저 기록과 재생 범위다. 높은 승률, 수익성, 하루 2~3건, 6시간·24시간 안정성을 입증하지 않는다.
+기계판독 증거는 `evidence/wave46-strategy-survival/WAVE46_STRATEGY_SURVIVAL_QA.json`, 연구 원본은 같은 폴더의 `intraday-trend-diagnostic.json`과 `fixed-hourly-prior-holdout.json`, 결정 근거는 ADR-047이다. 구현 기준 commit은 `e261e3fe24858fc43b206a92827943b8c3d8cad7`이다. 이번 PASS는 구현·회귀·짧은 실제 PAPER 런타임·브라우저 기록과 재생 범위다. 높은 승률, 수익성, 하루 2~3건, 6시간·24시간 안정성을 입증하지 않는다.

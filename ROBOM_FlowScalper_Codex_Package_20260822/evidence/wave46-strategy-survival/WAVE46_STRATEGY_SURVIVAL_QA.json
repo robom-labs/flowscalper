@@ -3,6 +3,17 @@
   "wave": 46,
   "generated_at_kst": "2026-08-26T15:55:00+09:00",
   "implementation_parent_commit": "60fc6b119bd2b342e82c8d85321d172422854f47",
+  "implementation_commit": "e261e3fe24858fc43b206a92827943b8c3d8cad7",
+  "github": {
+    "main_push": "PASS",
+    "actions_status": "PASS",
+    "actions_run_id": 32941018295,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/32941018295",
+    "validate_duration_seconds": 67,
+    "browser_duration_seconds": 100,
+    "browser_evidence_upload": "PASS",
+    "install_mirror_fallback_warning": true
+  },
   "product_boundary": {
     "mode": "LIVE_SHADOW_PAPER",
     "public_market_data_only": true,
