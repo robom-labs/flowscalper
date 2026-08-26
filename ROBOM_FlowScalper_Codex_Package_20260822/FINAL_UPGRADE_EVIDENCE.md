@@ -2163,3 +2163,44 @@ Playwright 중간에는 카드와 고급진단을 동시에 잡는 부분 select
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 구현 commit은 `7d0bf16f4b65663595472dcb5dd2b562c178b382`, 기계판독 증거는 `evidence/WAVE54_STRATEGY_RESEARCH_CONTRACT_QA.json`, 판단 근거는 ADR-055다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스의 실제 계약 API·8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
+
+## 54. Wave 55 불변·원자적 macOS 실행 릴리스
+
+### 실제 혼합 배포 결함 재현
+
+설치된 8870 Python 프로세스는 기준 commit `c57b988353718e03b26b93ac3208e64c5221396e`을 계속 실행했지만 정적 파일은 개발 worktree의 `frontend/dist`를 매 요청 읽었다. 후속 Wave build 뒤 실제 8870 HTML과 bundle에는 새 전략 연구 계약 화면이 포함됐으나 `/api/dashboard`의 전략 행에는 새 필드가 없었다. 실제 브라우저에서 `전략 → 첫 번째 자세히`를 누르자 React DOM 전체가 비었다.
+
+### 구현과 안전 경계
+
+- clean commit을 `git archive`로 runtime staging에 추출하고 프론트엔드를 그 snapshot 안에서만 빌드한다.
+- commit별 release manifest에 frontend 파일별 SHA-256, 공개시장 archive·활성 원장 경로, PAPER 안전 0과 이전·rollback 릴리스를 기록한다.
+- staging→release와 임시→`current` symlink를 같은 filesystem에서 원자 교체하고 `CODEX_DEPLOY` 전환을 기계판독 JSON으로 남긴다.
+- LaunchAgent는 runtime `current`의 launcher만 실행하고 manifest가 지정한 기존 시장 archive와 원장을 사용한다. 대형 데이터는 release마다 복제하지 않는다.
+- frontend HTML commit과 backend dashboard commit이 다르면 메뉴·PAPER 제어를 숨기고 한국어 버전 불일치 안전 화면만 보여 준다.
+- 전략·비용·TP·SL·Governor·계좌·원장·실제주문 0 경계는 변경하지 않았다.
+
+### 회귀·화면 검증
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 수정 전 실제 8870 재현 | FAIL_AS_EXPECTED | 구형 backend와 신형 worktree bundle 혼합을 확인했고 실제 브라우저 `전략 → 자세히` 뒤 React DOM이 비었다. observer와 서비스는 중단하지 않았다. |
+| 불변 release 단위계약 | PASS | worktree source·dist 변경 뒤 snapshot byte 불변, 원자 pointer switch, 두 번째 release rollback, actor `CODEX_DEPLOY`, 실제주문·인증 0을 6개 backend 테스트로 검증했다. |
+| backend pytest | PASS | 최종 backend 관련 구현을 포함한 441 passed, 18.30초다. |
+| frontend Vitest | PASS | 최종 13 files·62 tests다. 버전 불일치 차단과 일치 commit 진단을 포함한다. |
+| Ruff / mypy / ESLint / TypeScript | PASS | Python 오류 0·mypy 95 source files 오류 0·frontend 오류 0이다. |
+| production release build | PASS_WITH_WARNING | 별도 commit snapshot build PASS. JS 520.90kB·gzip 160.38kB의 기존 500kB 경고는 남아 있다. |
+| PAPER safety / security / repository hygiene | PASS | PAPER 불변조건 PASS. security 129 source·위반·secret-like·실제주문 path 0. 저장소 위반 0이다. |
+| 실제 브라우저 불일치 화면 | PASS | frontend commit만 존재하는 임시 사이트에서 메뉴·PAPER 제어 없이 버전 불일치·실제주문 0 안전 문구를 확인했다. |
+| 실제 브라우저 일치 릴리스 | PASS | 별도 8893 snapshot에서 HTML·backend commit 일치, release isolated true, 전략 상세의 `필요 데이터`·`현재 상태 근거`, alert 0을 확인했다. 이는 설치 8870 배포 증거가 아니다. |
+| Playwright 첫 실행 | FAIL_CLOSED_AS_DESIGNED | immutable frontend commit과 `development` backend가 달라 desktop·tablet·mobile 3건을 안전 화면으로 차단했다. 동일 commit 환경을 전달해 정상 경로로 전환했다. |
+| Playwright 중간 일치 실행 | FIXED_PRODUCT_FAILURE | 디스크 압박 장문으로 desktop root 1,521px/viewport 1,408px, mobile root 548px/viewport 390px와 모바일 진단 클릭 방해를 재현했다. 카드 내부 줄바꿈으로 수정했다. |
+| Playwright 최종 release snapshot | PASS | desktop·tablet·mobile 3 passed, 16.0초. 기준 screenshot은 덮어쓰지 않았다. |
+| 실제 commit stage·임시 activate | PASS | `1bfbd21fab905008314712582b0d1c8b082c8a68`, index SHA-256 `af8d717e...e98b5d9`, HTML·backend·manifest commit 일치와 `CODEX_DEPLOY`를 확인했다. 최초 활성화라 rollback은 없고 두 번째 release rollback은 단위계약에서 PASS했다. |
+| 설치 서비스 기준선 | PASS_BASELINE_ONLY | 같은 Run은 event 938,772·전략평가 3,021,684까지 전진했다. queue·비계획 reconnect·gap·resync·drop·fault·buffer drop·critical·lock·position·실제주문·인증은 0, 시각 SYNCED다. 이는 미배포 변경의 실행 증거가 아니다. |
+| 실제 LaunchAgent 배포 / 8870 새 commit·hash / 원장 복구 / screenshot | NOT_RUN | 기준 6시간·24시간 observer를 중단하지 않기 위해 설치 서비스는 교체하지 않았다. |
+| GitHub main / Actions | NOT_RUN | 실제 배포·원장·8870 검증 전에는 push하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 비침습 observer는 기준 commit의 같은 서비스에서 계속 실행 중이다. |
+| 전략 수익성 | NOT_PROVEN | 배포 구조만 변경했고 자연표본·전략 gate는 변경하지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+구현 commit은 `c9285927e31c4beac01a62c2bab815d91d195ee7`, `d41c81047f321e04eaeeb00ea200429b88361928`, `1bfbd21fab905008314712582b0d1c8b082c8a68`이다. 기계판독 증거는 `evidence/WAVE55_IMMUTABLE_ATOMIC_RELEASE_QA.json`, 판단 근거는 ADR-056이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 실제 설치 서비스 배포·8870·원장·GitHub는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.

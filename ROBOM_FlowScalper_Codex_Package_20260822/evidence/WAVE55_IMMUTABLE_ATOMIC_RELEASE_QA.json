@@ -1,0 +1,203 @@
+{
+  "schema": "flowscalper.wave55.immutable_atomic_release_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_service_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commits": [
+    "c9285927e31c4beac01a62c2bab815d91d195ee7",
+    "d41c81047f321e04eaeeb00ea200429b88361928",
+    "1bfbd21fab905008314712582b0d1c8b082c8a68"
+  ],
+  "final_staged_commit": "1bfbd21fab905008314712582b0d1c8b082c8a68",
+  "reproduction": {
+    "status": "FAIL_AS_EXPECTED",
+    "actual_service_url": "http://127.0.0.1:8870/",
+    "backend_loaded_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+    "served_frontend_source": "development worktree frontend/dist",
+    "mixed_asset_confirmed": true,
+    "actual_browser_path": "전략 → 첫 번째 자세히",
+    "actual_browser_result": "React DOM became empty",
+    "root_cause": "running backend and mutable worktree static assets were not released atomically",
+    "old_backend_strategy_fields_missing": [
+      "strategy_version",
+      "required_market_data",
+      "minimum_warmup_ko"
+    ],
+    "service_restarted_during_reproduction": false,
+    "observers_interrupted": false
+  },
+  "implementation": {
+    "status": "PASS",
+    "immutable_release_path": "releases/<full-commit>",
+    "source_snapshot": "clean tracked git archive HEAD",
+    "frontend_built_inside_staging_snapshot": true,
+    "worktree_dist_used_by_release_build": false,
+    "manifest_schema_version": 1,
+    "manifest_frontend_file_hashes": true,
+    "atomic_release_directory_rename": true,
+    "atomic_current_symlink_switch": true,
+    "deployment_actor": "CODEX_DEPLOY",
+    "deployment_transition_record": true,
+    "rollback_point_recorded_after_prior_release": true,
+    "market_archive_copied_per_release": false,
+    "active_ledger_copied_per_release": false,
+    "launch_agent_uses_runtime_current": true,
+    "backend_release_commit_exposed": true,
+    "frontend_release_commit_embedded": true,
+    "version_mismatch_fail_closed": true,
+    "release_diagnostic_compact": true,
+    "long_system_reason_wrap": true,
+    "strategy_logic_changed": false,
+    "paper_execution_changed": false
+  },
+  "release_snapshot_validation": {
+    "status": "PASS",
+    "temporary_runtime_only": true,
+    "actual_installed_runtime_modified": false,
+    "commit": "1bfbd21fab905008314712582b0d1c8b082c8a68",
+    "frontend_file_count": 3,
+    "frontend_index_sha256": "af8d717e1eef47523ce45ee398c9a62b709f37b76aa0970ca509b1559650ff22",
+    "frontend_javascript_sha256": "534b16ab0958609c714dc2af6960322774d11ce841c7634aec32a4f42775c182",
+    "frontend_css_sha256": "4daea798b722cc98d62afcfc223ddcfd5d529bbefb73fc64f11d70c6b7ae7150",
+    "html_commit_matches_manifest": true,
+    "backend_commit_matches_manifest": true,
+    "release_isolated": true,
+    "temporary_atomic_activation": "PASS",
+    "temporary_activation_actor": "CODEX_DEPLOY",
+    "first_activation_reversible": false,
+    "second_release_and_rollback_unit_contract": "PASS",
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "validation": {
+    "backend_pytest_final_source": {
+      "status": "PASS",
+      "tests": 441,
+      "seconds": 18.3
+    },
+    "frontend_vitest_final_source": {
+      "status": "PASS",
+      "files": 13,
+      "tests": 62
+    },
+    "release_contract_targeted_backend": {
+      "status": "PASS",
+      "tests": 6
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_release_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 520.9,
+      "gzip_kb": 160.38,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 129,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    },
+    "actual_browser_mismatch_shell": {
+      "status": "PASS",
+      "controls_hidden": true,
+      "paper_safety_copy_visible": true
+    },
+    "actual_browser_matching_release_strategy_detail": {
+      "status": "PASS",
+      "required_data_visible": true,
+      "current_evidence_visible": true,
+      "alerts": 0
+    },
+    "playwright_initial_missing_backend_commit": {
+      "status": "FAIL_CLOSED_AS_DESIGNED",
+      "projects_blocked": 3,
+      "reason": "frontend immutable commit and backend development identity differed"
+    },
+    "playwright_intermediate_layout": {
+      "status": "FIXED_PRODUCT_FAILURE",
+      "desktop_root_width_before": 1521,
+      "desktop_viewport_width": 1408,
+      "mobile_root_width_before": 548,
+      "mobile_viewport_width": 390,
+      "cause": "long disk-pressure storage lock reason did not wrap inside summary card",
+      "mobile_click_interception": true
+    },
+    "playwright_final_release_snapshot": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 16.0,
+      "baseline_screenshots_overwritten": false
+    },
+    "git_diff_check": "PASS"
+  },
+  "running_service": {
+    "status": "PASS_BASELINE_ONLY",
+    "loaded_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_state": "LIVE",
+    "execution_state": "PAPER",
+    "event_count_at_check": 938772,
+    "strategy_evaluation_count_at_check": 3021684,
+    "qualified_signal_count_at_check": 1,
+    "queue_depth_at_check": 0,
+    "lag_p50_ms_at_check": 18.307,
+    "lag_p95_ms_at_check": 72.53,
+    "trade_lag_p95_ms_at_check": 177.21,
+    "wide_lag_p95_ms_at_check": 1787.736,
+    "planned_rotations": 12,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "drops": 0,
+    "persistence_faults": 0,
+    "buffer_drops": 0,
+    "critical_incidents": 0,
+    "entry_locked": false,
+    "positions": 0,
+    "main_trade_count": 1,
+    "process_memory_mb": 285.656,
+    "clock_sync_status": "SYNCED",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "release_commit": "NOT_EXPOSED_BY_BASELINE",
+    "new_release_deployed": false
+  },
+  "independent_gates": {
+    "local_installed_service_deployment": "NOT_RUN",
+    "actual_launch_agent_restart": "NOT_RUN",
+    "actual_8870_release_commit_and_hash": "NOT_RUN",
+    "actual_post_deploy_live_browser_and_screenshot": "NOT_RUN",
+    "actual_post_deploy_ledger_recovery": "NOT_RUN",
+    "six_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "twenty_four_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}
