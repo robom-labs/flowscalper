@@ -1823,3 +1823,44 @@ queue·비계획 reconnect·계획회전·gap·resync·drop·persistence fault·
 | GitHub main / Actions | PASS | 구현 commit `e261e3fe24858fc43b206a92827943b8c3d8cad7`을 main에 push했다. [Actions 32941018295](https://github.com/robom-labs/flowscalper/actions/runs/32941018295)의 validate 1분7초, browser 1분40초, Chromium desktop·tablet·mobile E2E와 브라우저 증거 업로드가 모두 PASS했다. 설치 mirror 404는 GitHub Releases fallback으로 복구된 비차단 경고다. |
 
 기계판독 증거는 `evidence/wave46-strategy-survival/WAVE46_STRATEGY_SURVIVAL_QA.json`, 연구 원본은 같은 폴더의 `intraday-trend-diagnostic.json`과 `fixed-hourly-prior-holdout.json`, 결정 근거는 ADR-047이다. 구현 기준 commit은 `e261e3fe24858fc43b206a92827943b8c3d8cad7`이다. 이번 PASS는 구현·회귀·짧은 실제 PAPER 런타임·브라우저 기록과 재생 범위다. 높은 승률, 수익성, 하루 2~3건, 6시간·24시간 안정성을 입증하지 않는다.
+
+## 46. Wave 47 현재 RSS·최고 RSS 상태 진실성
+
+### 실제 재현과 원인
+
+2026-08-26 실제 `run-2b7135a972dd`의 시스템 고급진단은 `프로세스 메모리 323.266MB`, 측정 기준 `MAX_RSS`를 현재 상태처럼 표시했다. 같은 관찰창의 운영체제 `ps` 현재 RSS는 299.531MB였고 차이는 23.735MB였다. 4시간 41분 후 현재 RSS가 292.406MB로 감소해도 화면 값은 323.266MB로 고정돼 차이가 30.860MB로 커졌다.
+
+원인은 `ProcessResourceSampler`가 현재 resident memory 필드에 `resource.getrusage(...).ru_maxrss`를 사용한 것이다. `ru_maxrss`는 프로세스 생애 최고치이므로 메모리 해제·안정화를 표현할 수 없다. 이 결함은 PAPER 손익이나 원장 값을 바꾸지는 않았지만 6시간·24시간 메모리 증가·누수 판단을 신뢰할 수 없게 했다.
+
+### 수정과 안전경계
+
+- macOS는 `proc_pidinfo(PROC_PIDTASKINFO)`, Linux는 `/proc/self/statm`, Windows는 현재 Working Set으로 현재 RSS를 측정한다.
+- 현재 측정 실패는 최고치를 현재치로 숨기지 않고 `PEAK_MAX_RSS_FALLBACK`으로 명시한다.
+- 현재 RSS와 프로세스 생애 최고 RSS를 API·한국어 고급진단·soak 결과에서 각각 분리한다.
+- soak `memory_growth_mb`는 현재 RSS만 사용하고 `peak_memory_growth_mb`는 별도 최고치 진단으로 유지한다.
+- 전략 임계값, PAPER 계획·체결·TP·SL·포지션·손익, Strategy Registry, Governor, 원장과 실제주문 0 경계는 변경하지 않았다.
+
+### 구현·임시 화면·자동검증
+
+구현 commit은 `4dd60ed5dc7b2d310ab6be1f0953ddf3a8443d3e`이다. 격리된 `DEMO_FIXTURE` 8877 서비스의 같은 관찰창에서 API 현재 RSS 98.953MB와 운영체제 RSS 100.438MB의 절대 차이는 1.485MB였고, 최고 RSS 98.969MB는 현재치보다 작지 않았다. 실제 브라우저에서 `현재 프로세스 메모리 RSS MB`, `현재 메모리 측정 기준`, `프로세스 최고 메모리 RSS MB`, `최고 메모리 측정 기준`과 `CURRENT_RSS_LIBPROC`·`PEAK_MAX_RSS`를 직접 확인했다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| backend pytest | PASS | 405 passed, 30.79초 |
+| frontend Vitest | PASS | 13 files·57 tests |
+| Ruff / mypy | PASS | 오류 0 / 93 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 514.69kB 경고가 남아 있다. |
+| fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 126 source·위반·secret-like·실제주문 path 0 / 위반 0 |
+| 공개시장 network smoke | PASS | Binance 적격 524·catalog 698, Upbit KRW 286, 양쪽 3분봉 200, WebSocket 16 events, p95 24.909ms, credential·authorization·auth·실제주문 0 |
+| GitHub main / Actions | PASS | main `4dd60ed5`, Actions 32962941998의 validate 1분9초·browser 1분21초·증거 upload PASS. mirror 404는 GitHub Releases fallback으로 복구된 비차단 경고다. |
+| 수정 전 장시간 Run | PASS_WITH_LIMIT | 마지막 깨끗한 표본은 5시간 00분 34초, event 1,332,466, 실행 p50 19.166ms·p95 57.018ms, trade p95 112.335ms, wide p95 1,807.227ms였다. queue 0, 계획회전·reconnect 19회 일치, 비계획 reconnect·gap·resync·drop·fault·buffer drop·lock·포지션·실제주문·인증 0이었다. 뒤이은 활성 원장 전수검사 안전사건 때문에 6시간은 `NOT_COMPLETED`다. |
+| 수정 후 실제 8870 LIVE | PASS | 구현 commit으로 LaunchAgent를 안전 재시작했고 같은 Run `run-2b7135a972dd`를 복구했다. 같은 관찰창의 API 현재 RSS 189.703MB와 운영체제 RSS 190.312MB 차이는 0.609MB였다. 122.455초·13표본에서 event 7,835→16,863, 실행 p95 43.528~54.262ms, queue·비계획 reconnect·gap·resync·drop·fault·buffer drop·critical·lock·포지션·실제주문·인증 0이었다. 현재 RSS가 231.297→204.281MB로 내려갈 때 최고 RSS는 231.766MB로 유지돼 두 값의 분리도 확인했다. |
+| 수정 후 6시간 / 24시간 | NOT_RUN | 구현 commit의 새 프로세스로 실제 시간을 채우지 않았다. |
+| 활성 원장 full quick_check | FAIL_FOR_LIVE_CONCURRENCY | 처음 1초 안에 `ok`를 반환한 검사는 활성 경로가 아닌 Application Support의 비활성 DB였으므로 폐기했다. 실제 2.798GB 활성 원장에 `sqlite3 -readonly` 전수검사를 437초 실행했지만 결과가 나오지 않았고 queue가 0→2,882→4,096으로 포화돼 drop 9,736과 자동 진입잠금이 발생했다. LIVE 안전을 위해 검사를 중단하고 포지션·실제주문 0을 확인한 뒤 서비스를 재시작했다. 무결성 결과는 없으며 이후에는 작동 중 writer와 동시 전수검사를 다시 실행하지 않는다. |
+| 안전 재시작 복구 | PASS_WITH_LIMIT | 새 PID는 약 21초 뒤 HTTP 준비를 마치고 같은 Run을 복구했다. 재시작 직후 queue·drop·fault·buffer drop·lock·포지션·실제주문·인증 0이었고 새 PID 시작 뒤 서비스 오류 로그 일치도 0이었다. 전수검사 자체는 여전히 미완료다. |
+| 전략 수익성 | NOT_PROVEN | 현재버전 자연 고유 진입은 3건뿐이고 BASE·STRESS 모두 비용후 손실이다. 30건 전에는 순위·수익성·반전 효과를 판정하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
+
+수정 전 기준선, 전수검사 안전사건, 실제 재시작 뒤 관찰은 `evidence/wave47-resource-truth/`에 분리했다. 같은 실제 8870에서 시장·11전략/22계좌·69건 기록·ETHUSDT 완료거래 8-event 집중재생·현재버전 분석·설정을 직접 순회했다. 집중재생은 첫 cache 구성 중 최대 40초 동안 준비 상태를 보인 뒤 진입 2,447.43, SL 2,427.85, TP1 2,471.22, TP2 2,510.08, 실제 종료 2,447.46, 보유 30초, 순손익 -1.112 USDT를 표시했다. 실제 수정 후 브라우저 스크린샷 `actual-post-fix-system-memory.jpg`와 `actual-post-fix-memory-detail.jpg`에서는 작동 중·PAPER 실제 주문 0·화면 연결됨과 현재/최고 RSS 및 각 측정 기준을 직접 확인했다. 기계판독 증거는 `pre-fix-runtime-baseline.json`, `pre-restart-ledger-browser.json`, `actual-post-fix-verification.json`이다. ADR-048은 현재값·최고값·fallback 의미를 고정한다. 실제 재시작·운영체제 RSS 대조·짧은 LIVE 관찰까지 마친 Wave 47의 수용상태는 `COMPLETE_WITH_LIMITS`다. 수정 후 6시간·24시간, 안전한 닫힌 snapshot 또는 maintenance 절차의 활성 원장 전수검사, 전략 수익성과 Release ZIP은 각각 `NOT_RUN`, `NOT_COMPLETED`, `NOT_PROVEN`, `NOT_RUN`으로 유지한다.

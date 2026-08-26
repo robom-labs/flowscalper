@@ -1,0 +1,53 @@
+{
+  "schema": "flowscalper.wave47.resource_truth.preview.v1",
+  "implementation_commit": "4dd60ed5dc7b2d310ab6be1f0953ddf3a8443d3e",
+  "service": {
+    "url": "http://127.0.0.1:8877/",
+    "mode": "DEMO_FIXTURE",
+    "market_data_state": "FIXTURE",
+    "execution_state": "PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "purpose": "ISOLATED_PRE_RESTART_UI_AND_API_PREVIEW"
+  },
+  "api_to_os_same_window": {
+    "process_memory_mb": 98.953,
+    "process_memory_source": "CURRENT_RSS_LIBPROC",
+    "process_memory_peak_mb": 98.969,
+    "process_memory_peak_source": "PEAK_MAX_RSS",
+    "os_ps_rss_mb": 100.438,
+    "absolute_delta_mb": 1.485,
+    "current_source_truth": "PASS",
+    "peak_not_below_current": "PASS"
+  },
+  "actual_browser": {
+    "observed_at_kst": "2026-08-26T20:16:50+09:00",
+    "current_label": "현재 프로세스 메모리 RSS MB",
+    "current_value_mb": 120.547,
+    "current_source_label": "현재 메모리 측정 기준",
+    "current_source": "CURRENT_RSS_LIBPROC",
+    "peak_label": "프로세스 최고 메모리 RSS MB",
+    "peak_value_mb": 120.547,
+    "peak_source_label": "최고 메모리 측정 기준",
+    "peak_source": "PEAK_MAX_RSS",
+    "labels_and_values_visible": "PASS",
+    "screenshot": "preview-system-memory.jpg"
+  },
+  "github_implementation": {
+    "main_sha": "4dd60ed5dc7b2d310ab6be1f0953ddf3a8443d3e",
+    "actions_run_id": 32962941998,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/32962941998",
+    "validate": "PASS",
+    "validate_duration": "1m9s",
+    "browser": "PASS",
+    "browser_duration": "1m21s",
+    "browser_evidence_upload": "PASS",
+    "nonblocking_warning": "PLAYWRIGHT_MIRROR_404_RECOVERED_VIA_GITHUB_RELEASES"
+  },
+  "limits": {
+    "actual_8870_post_restart": "NOT_RUN",
+    "six_hour_post_fix": "NOT_RUN",
+    "twenty_four_hour_post_fix": "NOT_RUN",
+    "profitability": "NOT_PROVEN"
+  }
+}

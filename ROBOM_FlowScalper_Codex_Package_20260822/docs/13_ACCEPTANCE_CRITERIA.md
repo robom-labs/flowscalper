@@ -190,6 +190,8 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Six-hour and 24-hour post-change soaks are completed.
 - [ ] The active multi-gigabyte ledger full `quick_check` is rerun without disrupting the live writer.
 
+Wave 47에서 작동 중인 2.798GB writer와 `sqlite3 -readonly` 전수검사를 동시에 실행하자 437초 동안 결과 없이 queue가 4,096까지 포화되고 drop 9,736이 발생했다. 따라서 이 항목은 미충족이며, 같은 동시검사를 반복하지 않고 닫힌 snapshot 또는 maintenance 절차가 마련될 때까지 `NOT_COMPLETED`다.
+
 ## S. Strategy survival, outcome timing and history truth
 
 - [x] No strategy is default ACTIVE unless formal cost-adjusted evidence passes every promotion gate; an empty shared-account champion is a valid safe state.
@@ -210,5 +212,5 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [x] A regression test prevents a peak RSS counter from being presented as current RSS.
 - [x] The advanced Korean diagnostics view labels and displays current RSS and peak RSS separately.
 - [x] Soak memory growth uses current RSS and preserves peak growth as a separate diagnostic.
-- [ ] The restarted actual service current RSS is compared with the operating-system process RSS in the same observation window.
+- [x] The restarted actual service current RSS is compared with the operating-system process RSS in the same observation window.
 - [ ] Six-hour and 24-hour post-change memory stability is measured for the implementation commit.
