@@ -103,6 +103,14 @@ const diagnosticLabels: Record<string, string> = {
   startup_recovery_lookup_ms: '부팅 복구상태 조회 ms',
   startup_runtime_init_ms: '부팅 런타임·통계 준비 ms',
   startup_recovery_restore_ms: '부팅 PAPER 상태복구 ms',
+  startup_recovery_transition_id: '마지막 시작 복구 전이 ID',
+  startup_recovery_previous_state: '시작 복구 이전 상태',
+  startup_recovery_state: '시작 복구 결과',
+  startup_recovery_cause_code: '시작 복구 원인 코드',
+  startup_recovery_actor: '시작 복구 주체',
+  startup_recovery_run_id: '시작 복구 Run',
+  startup_recovery_occurred_ts_ms: '시작 복구 발생시각 ms',
+  startup_recovery_reversible: '시작 복구 후속 복구 가능',
   startup_total_ms: '부팅 전체 준비 ms',
   startup_portfolio_init_ms: '부팅 PAPER 계좌 준비 ms',
   startup_trade_cache_ms: '부팅 과거 거래통계 준비 ms',
@@ -139,6 +147,17 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
     : '거래소 시각 확인 중'
   const bookLag = Number(data.system.lag_p95_ms ?? data.status.processing_lag_p95_ms ?? 0)
   const tradeLag = Number(data.system.trade_lag_p95_ms ?? 0)
+  const startupRecoveryState = String(data.system.startup_recovery_state ?? 'NO_RECOVERY_NEEDED')
+  let startupRecovery = { title: '신규 시작', detail: '복구할 이전 Run 없음', healthy: true }
+  if (startupRecoveryState === 'RECOVERY_FAIL_CLOSED') {
+    startupRecovery = { title: '안전 잠금', detail: '원장 복구 검증 실패 · 신규 PAPER 진입 차단', healthy: false }
+  } else if (startupRecoveryState === 'FIXTURE_STATE_RECOVERED') {
+    startupRecovery = { title: '샘플 상태 복구됨', detail: '오프라인 DEMO 상태 복구 · LIVE 아님', healthy: true }
+  } else if (startupRecoveryState === 'RECOVERY_REVALIDATION_LOCKED') {
+    startupRecovery = { title: '상태 복구됨', detail: '새 공개호가 확인 전까지 자동 잠금', healthy: true }
+  } else if (startupRecoveryState === 'RECOVERY_DEFERRED') {
+    startupRecovery = { title: '복구 대기', detail: '기존 Run 상태는 변경하지 않음', healthy: true }
+  }
   return (
     <section aria-labelledby="system-heading">
       <div className="page-heading"><div><p className="section-kicker">SYSTEM STATUS</p><h2 id="system-heading">시스템 상태</h2><p className="heading-help">시장 연결, 시간, 저장공간, 자동 재연결 상태를 확인합니다.</p></div><span className="page-note">로그인 정보 전송 {data.system.auth_headers ? '감지됨' : '0건'}</span></div>
@@ -149,6 +168,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
         <article className="panel"><span>현재 시각 KST</span><b title={lastUpdateMs ? formatKstDateTime(lastUpdateMs) : undefined}>{lastUpdateMs ? formatKstTime(lastUpdateMs) : '대기 중'}</b><small>{connected ? `실시간 연결 · 서버 ${clockDeltaMs === null ? '동기 확인 중' : `${clockDeltaMs.toFixed(0)}ms 차이`} · ${venueClockText}` : '자동 재연결 중'}</small></article>
         <article className="panel"><span>비정상 재연결 / 누락</span><b>{reconnects} / {gaps}건</b><small>정상 연결 교체 {plannedRotations}회 · 누락 시 신규 PAPER 진입 잠금</small></article>
         <article className="panel"><span>저장소</span><b className={storageAllowed ? '' : 'warning'}>{storageAllowed ? storage.includes('SQLite') ? '정상 연결' : storage : '신규 진입 잠금'}</b><small>{storageAllowed ? `${Number(data.system.disk_free_mb ?? 0).toFixed(0)}MB 여유 · 불변 원장` : String(data.system.storage_lock_reason ?? '디스크 압박')}</small></article>
+        <article className="panel"><span>마지막 시작 복구</span><b className={startupRecovery.healthy ? 'positive' : 'warning'}>{startupRecovery.title}</b><small>{startupRecovery.detail}</small></article>
         <article className="panel"><span>실제 주문 경로</span><b className="positive">0</b><small>private API · 인증 · 주문 전송 없음</small></article>
       </section>
       <section className="panel endpoint-panel"><h3>연결 진실성</h3><p>오프라인 DEMO는 LIVE로 표시하지 않습니다. LIVE 표시는 공개 REST 메타데이터와 첫 sequence-valid WebSocket 이벤트가 모두 확인된 뒤에만 가능합니다.</p><div className="health-row"><span>시장데이터 {healthy ? '검증됨' : '미검증'}</span><span>실행 PAPER 전용</span><span>실제 주문 DISABLED</span><span>로그인·API 키 불필요</span></div></section>

@@ -79,6 +79,40 @@ test('separates current RSS from peak RSS in advanced diagnostics', async () => 
   expect(screen.getByText('323.25')).toBeInTheDocument()
 })
 
+test('shows the last startup recovery result in beginner and advanced views', async () => {
+  const recoveredDashboard = {
+    ...initialDashboard,
+    system: {
+      ...initialDashboard.system,
+      startup_recovery_transition_id: 'recovery-run-fixture-001',
+      startup_recovery_previous_state: 'SCANNING',
+      startup_recovery_state: 'RECOVERY_REVALIDATION_LOCKED',
+      startup_recovery_cause_code: 'PAPER_STATE_RECOVERED',
+      startup_recovery_actor: 'RECOVERY',
+      startup_recovery_run_id: 'run-fixture',
+      startup_recovery_occurred_ts_ms: 1_759_888_000_000,
+      startup_recovery_reversible: true,
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => recoveredDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: '설정' }))
+
+  expect(await screen.findByText('마지막 시작 복구')).toBeInTheDocument()
+  expect(screen.getByText('상태 복구됨')).toBeInTheDocument()
+  expect(screen.getByText('새 공개호가 확인 전까지 자동 잠금')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+  expect(screen.getByText('시작 복구 결과')).toBeInTheDocument()
+  expect(screen.getByText('RECOVERY_REVALIDATION_LOCKED')).toBeInTheDocument()
+  expect(screen.getByText('시작 복구 원인 코드')).toBeInTheDocument()
+  expect(screen.getByText('PAPER_STATE_RECOVERED')).toBeInTheDocument()
+})
+
 test('shows an explicit initial backend failure instead of pretending LIVE', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
   vi.stubGlobal('WebSocket', FakeWebSocket)

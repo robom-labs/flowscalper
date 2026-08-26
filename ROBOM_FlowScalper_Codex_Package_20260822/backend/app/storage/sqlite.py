@@ -1505,6 +1505,21 @@ class SQLiteLedger:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def latest_open_run(self) -> dict[str, Any] | None:
+        """복구 시도 전 가장 최근의 열린 Run 식별자만 조회한다."""
+
+        with self._read_lock:
+            row = self._read_connection.execute(
+                """
+                SELECT run_id, mode, venue, started_ts_ms
+                FROM runs
+                WHERE finalized_ts_ms IS NULL
+                ORDER BY started_ts_ms DESC, run_id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     def list_replayable_run_summaries(self) -> list[dict[str, Any]]:
         """시장 이벤트 본문 COUNT 없이 리플레이 가능한 Run을 빠르게 조회한다."""
 

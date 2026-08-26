@@ -9,7 +9,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from backend.app.clocks import TestClock as DeterministicClock
-from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side, Venue
+from backend.app.domain.models import (
+    DataQuality,
+    MarketDataState,
+    MarketEvent,
+    RuntimeMode,
+    Side,
+    Venue,
+)
 from backend.app.main import _runtime_from_environment
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import SQLiteLedger
@@ -363,6 +370,134 @@ def test_paper_entry_intent_revision_survives_process_restart(tmp_path: Path) ->
     reopened.close()
 
 
+def test_restart_recovery_transition_is_normalized_and_public(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database = tmp_path / "normalized-restart-recovery.sqlite3"
+    run_id = "run-normalized-restart-recovery"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime._persist_execution_state(1_250)
+    ledger.close()
+
+    monkeypatch.setenv("ROBOM_DB_PATH", str(database))
+    monkeypatch.setenv("ROBOM_MODE", RuntimeMode.LIVE_SHADOW_PAPER.value)
+    recovered_runtime = _runtime_from_environment()
+    assert recovered_runtime.ledger is not None
+    transition = recovered_runtime.ledger.list_incidents(
+        category="PAPER_RESTART_RECOVERY"
+    )[-1]
+    payload = transition["payload"]
+
+    assert payload["transition_id"] == transition["incident_id"]
+    assert payload["previous_state"] == "SCANNING"
+    assert payload["new_state"] == "RECOVERY_REVALIDATION_LOCKED"
+    assert payload["occurred_ts_ms"] == transition["ts_ms"]
+    assert payload["cause"] == "PAPER_STATE_RECOVERED"
+    assert payload["cause_code"] == "PAPER_STATE_RECOVERED"
+    assert payload["description_ko"] == (
+        "저장된 PAPER 상태를 복구했고 새 공개호가 확인 전까지 신규 진입을 잠갔습니다."
+    )
+    assert payload["actor"] == "RECOVERY"
+    assert payload["run_id"] == run_id
+    assert payload["strategy_id"] is None
+    assert payload["account_id"] is None
+    assert payload["symbol"] is None
+    assert payload["request_revision"] == 0
+    assert payload["response_revision"] == 1
+    assert payload["reversible"] is True
+    assert payload["lifecycle_state"] == "SCANNING"
+    assert payload["recovery_ok"] is True
+    assert payload["open_position"] is False
+    diagnostics = recovered_runtime._operational_diagnostics()
+    assert diagnostics["startup_recovery_transition_id"] == payload["transition_id"]
+    assert diagnostics["startup_recovery_previous_state"] == "SCANNING"
+    assert diagnostics["startup_recovery_state"] == "RECOVERY_REVALIDATION_LOCKED"
+    assert diagnostics["startup_recovery_cause_code"] == "PAPER_STATE_RECOVERED"
+    assert diagnostics["startup_recovery_actor"] == "RECOVERY"
+    assert diagnostics["startup_recovery_run_id"] == run_id
+    assert diagnostics["startup_recovery_reversible"] is True
+    recovered_runtime.ledger.close()
+
+
+def test_ready_mode_records_recovery_deferred_without_mutating_open_run(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database = tmp_path / "deferred-restart-recovery.sqlite3"
+    run_id = "run-deferred-restart-recovery"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime._persist_execution_state(1_250)
+    ledger.close()
+
+    monkeypatch.setenv("ROBOM_DB_PATH", str(database))
+    monkeypatch.setenv("ROBOM_MODE", RuntimeMode.READY.value)
+    ready_runtime = _runtime_from_environment()
+    assert ready_runtime.mode is RuntimeMode.READY
+    assert ready_runtime.run_id == "ready"
+    assert ready_runtime.ledger is not None
+    assert ready_runtime.ledger.get_run(run_id)["finalized_ts_ms"] is None
+    transition = ready_runtime.ledger.list_incidents(
+        category="PAPER_RESTART_RECOVERY"
+    )[-1]
+    assert transition["run_id"] == run_id
+    assert transition["payload"]["previous_state"] == "SCANNING"
+    assert transition["payload"]["new_state"] == "RECOVERY_DEFERRED"
+    assert transition["payload"]["cause_code"] == "RECOVERY_DEFERRED_READY_MODE"
+    assert transition["payload"]["recovery_ok"] is False
+    assert transition["payload"]["reversible"] is True
+    ready_runtime.ledger.close()
+
+
+def test_fixture_restart_is_never_described_as_live_revalidation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database = tmp_path / "fixture-restart-recovery.sqlite3"
+    run_id = "run-fixture-restart-recovery"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.FIXTURE,
+    )
+    runtime._persist_execution_state(1_250)
+    ledger.close()
+
+    monkeypatch.setenv("ROBOM_DB_PATH", str(database))
+    monkeypatch.setenv("ROBOM_MODE", RuntimeMode.DEMO_FIXTURE.value)
+    fixture_runtime = _runtime_from_environment()
+    assert fixture_runtime.ledger is not None
+    transition = fixture_runtime.ledger.list_incidents(
+        category="PAPER_RESTART_RECOVERY"
+    )[-1]["payload"]
+    assert transition["new_state"] == "FIXTURE_STATE_RECOVERED"
+    assert transition["cause_code"] == "PAPER_FIXTURE_STATE_RECOVERED"
+    assert transition["description_ko"] == (
+        "저장된 오프라인 샘플 PAPER 상태를 복구했습니다. LIVE 시장데이터가 아닙니다."
+    )
+    assert "공개호가" not in transition["description_ko"]
+    assert fixture_runtime.mode is RuntimeMode.DEMO_FIXTURE
+    assert fixture_runtime.market_data_state is MarketDataState.FIXTURE
+    fixture_runtime.ledger.close()
+
+
 def test_corrupt_latest_snapshot_boots_ready_and_never_creates_a_new_trade(
     tmp_path: Path,
     monkeypatch,
@@ -398,6 +533,21 @@ def test_corrupt_latest_snapshot_boots_ready_and_never_creates_a_new_trade(
     assert runtime.ledger is not None
     assert runtime.ledger.list_trades() == []
     assert runtime.ledger.list_runs()[0]["run_id"] == "run-corrupt"
+    transition = runtime.ledger.list_incidents(category="PAPER_RESTART_RECOVERY")[-1]
+    assert transition["run_id"] == "run-corrupt"
+    assert transition["payload"]["transition_id"] == transition["incident_id"]
+    assert transition["payload"]["previous_state"] == "OPEN_RUN_UNVERIFIED"
+    assert transition["payload"]["new_state"] == "RECOVERY_FAIL_CLOSED"
+    assert transition["payload"]["cause_code"] == (
+        "RECOVERY_CHECKSUM_OR_SCHEMA_INVALID"
+    )
+    assert transition["payload"]["actor"] == "RECOVERY"
+    assert transition["payload"]["run_id"] == "run-corrupt"
+    assert transition["payload"]["request_revision"] == 0
+    assert transition["payload"]["response_revision"] == 1
+    assert transition["payload"]["reversible"] is False
+    assert transition["payload"]["requested_mode"] == "LIVE_SHADOW_PAPER"
+    assert runtime.startup_recovery_audit == transition["payload"]
     assert runtime.startup_storage_init_ms >= 0
     assert runtime.startup_ledger_open_ms >= 0
     assert runtime.startup_recovery_lookup_ms >= 0

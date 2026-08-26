@@ -235,6 +235,15 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
     await capture(page, testInfo.project.name, 'position-focus')
   }
 
+  await page.getByRole('button', { name: '설정', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
+  const recoveryCard = page.locator('.system-summary-grid article').filter({ hasText: '마지막 시작 복구' })
+  await expect(recoveryCard).toBeVisible()
+  await expect(recoveryCard).toContainText(/신규 시작|샘플 상태 복구됨|상태 복구됨|복구 대기|안전 잠금/)
+  await page.getByText('고급 진단 보기').click()
+  await expect(page.getByText('시작 복구 결과')).toBeVisible()
+  await expect(page.getByText(/^(NO_RECOVERY_NEEDED|FIXTURE_STATE_RECOVERED|RECOVERY_REVALIDATION_LOCKED|RECOVERY_DEFERRED|RECOVERY_FAIL_CLOSED)$/)).toBeVisible()
+
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   expect(errors).toEqual([])
 })

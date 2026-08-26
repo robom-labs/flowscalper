@@ -264,6 +264,7 @@ class PaperRuntime:
     startup_recovery_lookup_ms: float = 0.0
     startup_runtime_init_ms: float = 0.0
     startup_recovery_restore_ms: float = 0.0
+    startup_recovery_audit: dict[str, object] = field(default_factory=dict, repr=False)
     startup_total_ms: float = 0.0
     startup_portfolio_init_ms: float = 0.0
     startup_trade_cache_ms: float = 0.0
@@ -656,6 +657,7 @@ class PaperRuntime:
 
     def _operational_diagnostics(self) -> dict[str, object]:
         self._refresh_storage_safety()
+        recovery_audit = self.startup_recovery_audit
         return {
             "server_time_ms": self.clock.utc_ms(),
             "display_timezone": "Asia/Seoul",
@@ -718,6 +720,26 @@ class PaperRuntime:
             "startup_recovery_lookup_ms": round(self.startup_recovery_lookup_ms, 3),
             "startup_runtime_init_ms": round(self.startup_runtime_init_ms, 3),
             "startup_recovery_restore_ms": round(self.startup_recovery_restore_ms, 3),
+            "startup_recovery_transition_id": str(
+                recovery_audit.get("transition_id", "NONE")
+            ),
+            "startup_recovery_previous_state": str(
+                recovery_audit.get("previous_state", "NO_OPEN_RUN")
+            ),
+            "startup_recovery_state": str(
+                recovery_audit.get("new_state", "NO_RECOVERY_NEEDED")
+            ),
+            "startup_recovery_cause_code": str(
+                recovery_audit.get("cause_code", "NO_OPEN_RUN")
+            ),
+            "startup_recovery_actor": str(recovery_audit.get("actor", "RECOVERY")),
+            "startup_recovery_run_id": str(recovery_audit.get("run_id", "NONE")),
+            "startup_recovery_occurred_ts_ms": int(
+                str(recovery_audit.get("occurred_ts_ms", 0))
+            ),
+            "startup_recovery_reversible": bool(
+                recovery_audit.get("reversible", True)
+            ),
             "startup_total_ms": round(self.startup_total_ms, 3),
             "startup_portfolio_init_ms": round(self.startup_portfolio_init_ms, 3),
             "startup_trade_cache_ms": round(self.startup_trade_cache_ms, 3),

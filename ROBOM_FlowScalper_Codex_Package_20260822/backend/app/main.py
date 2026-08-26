@@ -41,7 +41,7 @@ from backend.app.replay.process import (
 )
 from backend.app.runtime import PaperEntryIntentConflict, PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
-from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
+from backend.app.storage.sqlite import LedgerInvariantError, RecoveryState, SQLiteLedger
 from backend.app.strategies.registry import (
     StrategyLifecycle,
     StrategyMode,
@@ -106,6 +106,95 @@ def _operation_transition_audit(
         "request_revision": request_revision,
         "response_revision": response_revision,
         "reversible": new_state not in _TERMINAL_OPERATION_STATES,
+    }
+
+
+def _restart_recovery_transition_audit(
+    *,
+    transition_id: str,
+    occurred_ts_ms: int,
+    requested_mode: RuntimeMode,
+    recovered: RecoveryState | None,
+    latest_open_run: Mapping[str, object] | None,
+    resumed_run_id: str | None,
+    recovery_error: LedgerInvariantError | None,
+    recovery_ok: bool,
+    runtime: PaperRuntime,
+) -> dict[str, object]:
+    """프로세스 시작 복구 결과를 하나의 불변 상태 전이 계약으로 정규화한다."""
+
+    audit_run_id = (
+        recovered.run_id
+        if recovered is not None
+        else str(latest_open_run["run_id"])
+        if latest_open_run is not None
+        else None
+    )
+    previous_state = (
+        recovered.lifecycle_state if recovered is not None else "OPEN_RUN_UNVERIFIED"
+    )
+    applied = recovered is not None and resumed_run_id is not None and recovery_ok
+    if recovery_error is not None:
+        new_state = "RECOVERY_FAIL_CLOSED"
+        cause_code = "RECOVERY_CHECKSUM_OR_SCHEMA_INVALID"
+        description_ko = (
+            "저장된 PAPER 상태의 checksum 또는 schema 검증에 실패해 신규 진입을 잠갔습니다."
+        )
+    elif recovered is not None and resumed_run_id is None:
+        new_state = "RECOVERY_DEFERRED"
+        cause_code = (
+            "RECOVERY_DEFERRED_READY_MODE"
+            if requested_mode is RuntimeMode.READY
+            else "RECOVERY_RUN_MODE_MISMATCH"
+        )
+        description_ko = (
+            "열린 PAPER Run을 찾았지만 현재 시작 모드와 달라 상태를 적용하지 않았습니다."
+        )
+    elif not recovery_ok:
+        new_state = "RECOVERY_FAIL_CLOSED"
+        cause_code = next(
+            (
+                flag
+                for flag in runtime.runtime_health_flags
+                if flag.startswith("RECOVERY_") and flag != "RECOVERY_FAIL_CLOSED"
+            ),
+            "RECOVERY_STATE_REJECTED",
+        )
+        description_ko = (
+            "저장된 PAPER 상태를 안전하게 적용하지 못해 신규 진입을 잠갔습니다."
+        )
+    elif requested_mode is RuntimeMode.DEMO_FIXTURE:
+        new_state = "FIXTURE_STATE_RECOVERED"
+        cause_code = "PAPER_FIXTURE_STATE_RECOVERED"
+        description_ko = (
+            "저장된 오프라인 샘플 PAPER 상태를 복구했습니다. LIVE 시장데이터가 아닙니다."
+        )
+    else:
+        new_state = "RECOVERY_REVALIDATION_LOCKED"
+        cause_code = "PAPER_STATE_RECOVERED"
+        description_ko = (
+            "저장된 PAPER 상태를 복구했고 새 공개호가 확인 전까지 신규 진입을 잠갔습니다."
+        )
+    return {
+        "transition_id": transition_id,
+        "previous_state": previous_state,
+        "new_state": new_state,
+        "occurred_ts_ms": occurred_ts_ms,
+        "cause": cause_code,
+        "cause_code": cause_code,
+        "description_ko": description_ko,
+        "actor": "RECOVERY",
+        "run_id": audit_run_id,
+        "strategy_id": None,
+        "account_id": None,
+        "symbol": None,
+        "request_revision": 0,
+        "response_revision": 1,
+        "reversible": new_state != "RECOVERY_FAIL_CLOSED",
+        "lifecycle_state": previous_state,
+        "recovery_ok": applied,
+        "open_position": runtime.paper_portfolio.main.position is not None,
+        "requested_mode": requested_mode.value,
     }
 
 
@@ -192,8 +281,9 @@ def _local_browser_origin(origin: str | None) -> bool:
 
 def _runtime_from_environment() -> PaperRuntime:
     startup_started = time.monotonic()
-    requested_mode = os.environ.get("ROBOM_MODE", RuntimeMode.READY.value)
-    mode = RuntimeMode(requested_mode)
+    requested_mode_value = os.environ.get("ROBOM_MODE", RuntimeMode.READY.value)
+    requested_runtime_mode = RuntimeMode(requested_mode_value)
+    mode = requested_runtime_mode
     default_database = PROJECT_ROOT / "data" / "run-ledger.sqlite3"
     database = Path(os.environ.get("ROBOM_DB_PATH", str(default_database)))
     archive_path = os.environ.get("ROBOM_MARKET_ARCHIVE_PATH")
@@ -212,6 +302,7 @@ def _runtime_from_environment() -> PaperRuntime:
     ledger = SQLiteLedger(database, market_event_archive=market_event_archive)
     ledger_open_ms = (time.monotonic() - ledger_started) * 1_000
     clock = SystemClock()
+    latest_open_run = ledger.latest_open_run()
     recovery_error: LedgerInvariantError | None = None
     recovery_lookup_started = time.monotonic()
     try:
@@ -251,18 +342,39 @@ def _runtime_from_environment() -> PaperRuntime:
         recovery_ok = False
     elif recovered is not None and run_id is not None:
         recovery_ok = runtime.restore_recovery_state(recovered)
-    if run_id is not None:
+    audit_run_id = (
+        recovered.run_id
+        if recovered is not None
+        else str(latest_open_run["run_id"])
+        if latest_open_run is not None
+        else None
+    )
+    if audit_run_id is not None:
+        occurred_ts_ms = runtime.clock.utc_ms()
+        transition_id = f"recovery-{audit_run_id}-{uuid4().hex}"
+        recovery_audit = _restart_recovery_transition_audit(
+            transition_id=transition_id,
+            occurred_ts_ms=occurred_ts_ms,
+            requested_mode=requested_runtime_mode,
+            recovered=recovered,
+            latest_open_run=latest_open_run,
+            resumed_run_id=run_id,
+            recovery_error=recovery_error,
+            recovery_ok=recovery_ok,
+            runtime=runtime,
+        )
+        runtime.startup_recovery_audit = recovery_audit
         ledger.record_incident(
-            f"recovery-{run_id}-{runtime.clock.utc_ms()}",
-            run_id=run_id,
-            severity="INFO",
+            transition_id,
+            run_id=audit_run_id,
+            severity=(
+                "ERROR"
+                if recovery_audit["new_state"] == "RECOVERY_FAIL_CLOSED"
+                else "INFO"
+            ),
             category="PAPER_RESTART_RECOVERY",
-            ts_ms=runtime.clock.utc_ms(),
-            payload={
-                "lifecycle_state": recovered.lifecycle_state if recovered else "RUN_OPEN",
-                "recovery_ok": recovery_ok,
-                "open_position": runtime.paper_portfolio.main.position is not None,
-            },
+            ts_ms=occurred_ts_ms,
+            payload=recovery_audit,
         )
     if runtime.mode is RuntimeMode.DEMO_FIXTURE and recovery_ok:
         runtime.boot_demo()
