@@ -2573,4 +2573,34 @@ override 없는 일반 엄격 기준으로 같은 Run과 새 process의 안전�
 
 판단 근거는 ADR-064, 기계판독 증거는
 `evidence/WAVE63_FAILED_RUNTIME_MAINTENANCE_RECOVERY_QA.json`이다. 현재 수용상태는
-`IMPLEMENTED_TARGETED_PASS_PENDING_ACTUAL_HANDOFF`다.
+`ACTUAL_HANDOFF_PARTIAL_PASS_RUNTIME_SAFETY_ABORT`다. WAL 0·닫힌 clone·same-Run 불변 복구는
+PASS지만 cross-device integrity는 아래 Wave 64 안전중단 때문에 아직 PASS가 아니다.
+
+## 63. Wave 64 첫 실제 전환의 안전 중단과 I/O 순서 수정
+
+첫 실제 유지관리는 기존 PID 40454를 강제종료 없이 18.935초에 닫고 WAL frame 0,
+3,002,593,280 byte APFS clone을 만들었다. commit `a577e4d7c5d50f2d22a41e6e55aa9d2cf93c9e83`
+불변 서비스 PID 83247은 같은 Run `run-2b7135a972dd`를 46.980초 downtime 뒤 복구했다. 복구
+표본은 queue 1, 처리 p95 27.664ms, 누락·비계획 reconnect·포지션·실주문·인증 0이었다.
+
+그 뒤 source device clone을 다른 device로 복사하는 동안 LIVE FULL commit과 I/O가 겹쳤다.
+감시기는 event +10,753, 최대 queue 13, 처리 p95 231.262ms를 기록했고 한 depth 지연 사건에서
+신규진입이 잠기자 `ABORTED_RUNTIME_SAFETY`로 중단했다. 새 서비스에서 관찰된 최대 ledger flush는
+32,806.024ms다. cross-device transfer와 quick-check는 완료되지 않았고 임시 clone·부분 copy는
+제거됐다. 원본 원장, 같은 Run 서비스와 PAPER 안전은 유지됐다.
+
+수정한 순서는 정상 종료→WAL 0→APFS clone→서비스가 닫힌 상태의 cross-device 전송·양쪽
+SHA-256→source clone 제거→불변 서비스 same-Run 복구→다른 device immutable quick-check·LIVE
+감시다. 안전 임계값을 낮추지 않았고 실패시 `finally` 복구도 유지한다.
+
+수정 뒤 macOS service contract 11 passed·2.87초, 전체 backend 462 passed·53.40초, Ruff,
+backend app 96 source·변경 script mypy, security 131 source와 repository hygiene가 PASS다.
+첫 재시작 뒤 300.023초 관찰은 event +23,881, 전략평가 +80,172, consumer +23,881,
+consumer 실패·누락·queue overload·비계획 reconnect·drop 0, 최대 queue 22, 처리 p95
+197.257ms였다. 다만 같은 5분 전체에 위 전체 회귀를 같은 source volume에서 병행해 flush
+42.654초·WAL checkpoint 38.309초 상한을 실패했다. 이 표본은
+`FAIL_CONTAMINATED_LOCAL_QA`이며 깨끗한 배포 후 성능 PASS로 사용하지 않는다.
+
+기계판독 실패 증거는 `evidence/WAVE63_ACTUAL_MAINTENANCE_HANDOFF.json`, 판단 근거는 ADR-065,
+수정 증거는 `evidence/WAVE64_CLOSED_TRANSFER_BEFORE_LIVE_RESTART_QA.json`이다. 현재 상태는
+`IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_ACTUAL_RETRY`다.

@@ -291,6 +291,19 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
                 minimum_free_headroom_bytes=arguments.minimum_free_headroom_bytes,
             )
         )
+        transfer_result = result_as_dict(
+            transfer_closed_snapshot(
+                snapshot_path,
+                verification_path,
+                minimum_free_headroom_bytes=(
+                    arguments.minimum_verification_headroom_bytes
+                ),
+                chunk_bytes=arguments.transfer_chunk_bytes,
+                chunk_sleep_seconds=arguments.transfer_chunk_sleep_ms / 1_000,
+            )
+        )
+        remove_snapshot(snapshot_path)
+        snapshot_removed = not snapshot_path.exists()
         controller.ensure_started()
         service_restart_requested = True
         recovered = _wait_for_recovered_runtime(
@@ -318,20 +331,6 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
         )
         monitor.start()
         monitor_started = True
-        transfer_result = result_as_dict(
-            transfer_closed_snapshot(
-                snapshot_path,
-                verification_path,
-                minimum_free_headroom_bytes=(
-                    arguments.minimum_verification_headroom_bytes
-                ),
-                chunk_bytes=arguments.transfer_chunk_bytes,
-                chunk_sleep_seconds=arguments.transfer_chunk_sleep_ms / 1_000,
-                safety=monitor,
-            )
-        )
-        remove_snapshot(snapshot_path)
-        snapshot_removed = not snapshot_path.exists()
         integrity_result = result_as_dict(
             verify_closed_snapshot(
                 verification_path,
@@ -402,6 +401,19 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
         "closed_wal_checkpoint": checkpoint_result,
         "closed_clone": clone_result,
         "cross_device_transfer": transfer_result,
+        "handoff_order": (
+            [
+                "GRACEFUL_STOP",
+                "CLOSED_WAL_CHECKPOINT",
+                "APFS_CLONE",
+                "CROSS_DEVICE_TRANSFER_AND_SHA256",
+                "IMMUTABLE_RELEASE_RESTART",
+                "SAME_RUN_RECOVERY",
+                "CROSS_DEVICE_QUICK_CHECK_WITH_LIVE_MONITOR",
+            ]
+            if transfer_result is not None
+            else None
+        ),
         "service_restart_requested": service_restart_requested,
         "recovery": recovery_result,
         "integrity": integrity_result,

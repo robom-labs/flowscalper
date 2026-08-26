@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 닫힌 APFS clone을 다른 device로 복사하면서 새 LIVE 서비스가 같은 source device에 FULL commit을 수행해 안전잠금이 발생하던 유지관리 순서를 수정했다. cross-device 전송과 SHA-256을 서비스 재시작 전에 끝내고, 재시작 뒤에는 다른 device의 immutable copy quick-check만 LIVE 감시와 병행한다.
 - consumer 실패로 이미 신규진입이 잠기고 queue가 포화된 기준 서비스를 별도 재시작하지 않고 닫힌 원장 유지관리와 같은 Run 불변 릴리스 복구로 한 번에 전환할 수 있게 했다. 명시적 복구 옵션은 기존 `ENTRY_LOCKED`·`QUEUE_LIMIT_EXCEEDED`만 허용하고 포지션·실주문·인증 등 다른 안전 위반은 계속 차단한다.
 - SQLite의 `BEGIN IMMEDIATE`가 실패할 때 process lock을 영구 점유해 시장 처리·전략 평가·저장이 함께 멈추던 경로를 수정했다. 소비 작업은 개별 전달 예외로 종료되지 않고 안전 잠금 상태로 계속하며, queue 포화·누락·복구를 따로 집계한다. producer 또는 consumer가 실제로 멈추면 다른 안전문제와 겹쳐도 `작동 중`으로 표시하지 않으며, 다시 시작은 새 Run을 만들지 않고 같은 Run의 supervisor만 교체한다.
 - 계속 증가하는 LIVE Run을 재검증할 때 버튼을 누른 뒤 추가된 이벤트까지 섞여 입력 범위가 달라지던 문제를 수정했다. 정밀 이벤트 화면의 건수를 고정 범위로 전송하고 정확히 그 수만 재처리하며, 원본 이벤트 checksum과 전략 결정까지 포함한 종단간 checksum을 분리해 표시한다.

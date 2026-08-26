@@ -1,0 +1,103 @@
+{
+  "schema": "flowscalper.wave64.closed_transfer_before_live_restart_qa.v1",
+  "status": "IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_ACTUAL_RETRY",
+  "date": "2026-08-27",
+  "failure_first": {
+    "status": "ABORTED_RUNTIME_SAFETY",
+    "evidence": "evidence/WAVE63_ACTUAL_MAINTENANCE_HANDOFF.json",
+    "closed_wal_frames_after": 0,
+    "closed_clone_bytes": 3002593280,
+    "same_run_recovered": true,
+    "transfer_completed": false,
+    "integrity_completed": false,
+    "runtime_violations": [
+      "OPERATION_NOT_RUNNING",
+      "ENTRY_LOCKED",
+      "CRITICAL_LAG_ACTIVE",
+      "CRITICAL_LAG_INCIDENT"
+    ],
+    "maximum_live_queue_depth": 13,
+    "maximum_live_processing_lag_p95_ms": 231.26171875,
+    "maximum_persistence_ledger_ms_observed_after_restart": 32806.024,
+    "actual_orders": 0,
+    "positions": 0
+  },
+  "implementation": {
+    "graceful_stop_before_clone": true,
+    "cross_device_transfer_before_restart": true,
+    "source_and_verification_sha256_before_restart": true,
+    "source_clone_removed_before_restart": true,
+    "same_run_recovery_after_transfer": true,
+    "quick_check_on_different_device": true,
+    "live_monitor_during_quick_check": true,
+    "finally_restarts_service_on_transfer_failure": true
+  },
+  "validation": {
+    "macos_service_contract": {
+      "status": "PASS",
+      "tests": 11,
+      "seconds": 2.87
+    },
+    "full_backend": {
+      "status": "PASS",
+      "tests": 462,
+      "seconds": 53.40
+    },
+    "ruff": "PASS",
+    "backend_app_mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "maintenance_script_mypy": {
+      "status": "PASS",
+      "source_files": 1
+    },
+    "security": {
+      "status": "PASS",
+      "source_files": 131,
+      "violations": 0,
+      "secret_like_findings": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS"
+  },
+  "post_first_restart_observation": {
+    "status": "FAIL_CONTAMINATED_LOCAL_QA",
+    "duration_seconds": 300.023,
+    "samples": 61,
+    "probe_errors": 0,
+    "event_delta": 23881,
+    "strategy_evaluation_delta": 80172,
+    "consumer_delivery_delta": 23881,
+    "consumer_failures": 0,
+    "consumer_drops": 0,
+    "queue_overload_incidents": 0,
+    "maximum_queue_depth": 22,
+    "maximum_processing_lag_p95_ms": 197.2568359375,
+    "maximum_trade_lag_p95_ms": 364.3076171875,
+    "maximum_persistence_flush_last_ms": 42654.0,
+    "maximum_wal_checkpoint_last_ms": 38309.0,
+    "failures": [
+      "persistence_flush_latency_bounded",
+      "wal_checkpoint_latency_bounded"
+    ],
+    "contamination": "The full 462-test backend suite, Ruff, mypy, security and repository hygiene ran from the same source volume during the entire five-minute observation.",
+    "clean_post_deploy_evidence": false,
+    "evidence": "evidence/WAVE63_POST_DEPLOY_5M.json"
+  },
+  "remaining": {
+    "targeted_tests": "PASS_11_TESTS",
+    "full_backend": "PASS_462_TESTS",
+    "actual_maintenance_retry": "NOT_RUN",
+    "cross_device_integrity": "NOT_RUN",
+    "actual_8870": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

@@ -1,6 +1,6 @@
 {
   "schema": "flowscalper.wave63.failed_runtime_maintenance_recovery_qa.v1",
-  "status": "IMPLEMENTED_TARGETED_PASS_PENDING_ACTUAL_HANDOFF",
+  "status": "ACTUAL_HANDOFF_PARTIAL_PASS_RUNTIME_SAFETY_ABORT",
   "date": "2026-08-27",
   "actual_baseline": {
     "run_id": "run-2b7135a972dd",
@@ -53,12 +53,13 @@
     "repository_hygiene": "PASS"
   },
   "remaining": {
-    "actual_closed_ledger_handoff": "NOT_RUN",
-    "same_run_recovery": "NOT_RUN",
-    "cross_device_integrity": "NOT_RUN",
-    "actual_8870": "NOT_RUN",
+    "actual_closed_ledger_handoff": "PARTIAL_PASS_WAL_CLONE_AND_RECOVERY",
+    "same_run_recovery": "PASS",
+    "cross_device_integrity": "ABORTED_RUNTIME_SAFETY",
+    "actual_8870": "PASS_RELEASE_A577E4D_RUNNING_SAME_RUN",
     "post_deploy_soak": "NOT_RUN"
   },
+  "actual_handoff_evidence": "evidence/WAVE63_ACTUAL_MAINTENANCE_HANDOFF.json",
   "paper_safety": {
     "actual_orders": 0,
     "private_api": 0,

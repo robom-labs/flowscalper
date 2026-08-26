@@ -200,8 +200,8 @@ No personal credentials exist in exports.
 - full `PRAGMA quick_check`와 `foreign_key_check`는 활성 writer 연결이나 같은 물리 I/O device의 사본에서 직접 실행하지 않는다.
 - 유지관리 전 LIVE·PAPER·RUNNING, 동일 Run, 포지션 0, queue·임계지연·저장·재연결 안전선과 실제주문·인증 false를 확인한다.
 - LaunchAgent는 최소 60초 종료 유예로 persistence worker를 기다린다. process handle 0, WAL busy 0·0byte 후에만 macOS `clonefile(2)`로 닫힌 사본을 고정한다.
-- 사본 고정 직후 서비스를 재기동하고 동일 Run 복구를 확인한다. clone은 활성 원장과 별도로 존재하므로 이후 전수검사가 writer lock을 보유하지 않는다.
-- 활성 writer와 I/O를 분리하기 위해 닫힌 clone을 제한 chunk로 다른 device의 임시 검증 경로로 전송한다. 양쪽 SHA-256이 일치한 경우에만 `mode=ro&immutable=1`로 전수검사한다.
-- 전송·해시·전수검사 동안 event 전진, queue, 실행 p95, planned·unplanned reconnect, gap, resync, drop, persistence fault, buffer drop, critical incident, 포지션과 PAPER 안전경계를 별도 thread로 감시한다.
+- 활성 writer와 source-device I/O를 분리하기 위해 서비스가 아직 닫힌 동안 clone을 제한 chunk로 다른 device의 임시 검증 경로에 전송하고 양쪽 SHA-256을 대조한다. 일치한 뒤 source clone을 제거한다.
+- 전송 완료 뒤 불변 서비스를 재기동해 동일 Run 복구를 확인한다. 다른 device 사본만 `mode=ro&immutable=1`로 전수검사하므로 활성 writer lock과 source-device read 경쟁이 없다.
+- 전수검사 동안 event 전진, queue, 실행 p95, planned·unplanned reconnect, gap, resync, drop, persistence fault, buffer drop, critical incident, 포지션과 PAPER 안전경계를 별도 thread로 감시한다.
 - 실패하거나 안전상한을 넘으면 검사를 중단하고 서비스를 복구한다. PASS 후 외장 clone과 별도 device 임시 사본을 모두 제거한다.
 - 자세한 중단·회전·HTTP 감시 계약은 `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`를 따른다.

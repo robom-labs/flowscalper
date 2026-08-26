@@ -73,6 +73,25 @@ def test_maintenance_recovery_override_rejects_live_safety_expansion() -> None:
         )
 
 
+def test_closed_snapshot_transfer_finishes_before_live_release_restart() -> None:
+    maintenance = (
+        PROJECT_ROOT / "scripts" / "verify_macos_ledger_maintenance.py"
+    ).read_text(encoding="utf-8")
+    verification = maintenance[
+        maintenance.index("def verify_with_maintenance") : maintenance.index(
+            "def parse_arguments"
+        )
+    ]
+
+    clone_at = verification.index("create_closed_ledger_clone(")
+    transfer_at = verification.index("transfer_closed_snapshot(")
+    restart_at = verification.index("controller.ensure_started()")
+    monitor_at = verification.index("monitor.start()")
+    integrity_at = verification.index("verify_closed_snapshot(")
+
+    assert clone_at < transfer_at < restart_at < monitor_at < integrity_at
+
+
 def test_service_uses_immutable_current_release_and_manifest_paths() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
         encoding="utf-8"

@@ -504,3 +504,11 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 4. Record the requested and applied override, initial violations and fixed recovery reason in machine-readable evidence.
 5. Require the recovered immutable release to pass the normal strict runtime checks without the override.
 6. Keep the single graceful bootout, closed WAL checkpoint, APFS clone, cross-device SHA-256, full quick-check, foreign-key check and same-Run recovery contract unchanged.
+
+## Closed transfer before LIVE restart Wave
+
+1. Do not read a multi-gigabyte APFS clone from the source device while the recovered LIVE service performs FULL SQLite commits on that same device.
+2. Keep the service stopped through closed WAL checkpoint, APFS clone, cross-device transfer and source/verification SHA-256 comparison.
+3. Remove the source-side clone only after exact transfer verification, then start the prepared immutable release and require same-Run recovery.
+4. Run full immutable quick-check and foreign-key validation only on the different-device copy while strictly monitoring the recovered LIVE service.
+5. If transfer fails, restore the prepared LaunchAgent from `finally`. If post-restart integrity verification causes a safety violation, abort without weakening the safety threshold.
