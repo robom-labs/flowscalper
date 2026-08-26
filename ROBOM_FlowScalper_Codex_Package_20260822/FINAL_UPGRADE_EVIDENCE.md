@@ -1854,7 +1854,7 @@ queue·비계획 reconnect·계획회전·gap·resync·drop·persistence fault·
 | fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed |
 | security / repository hygiene | PASS | 126 source·위반·secret-like·실제주문 path 0 / 위반 0 |
 | 공개시장 network smoke | PASS | Binance 적격 524·catalog 698, Upbit KRW 286, 양쪽 3분봉 200, WebSocket 16 events, p95 24.909ms, credential·authorization·auth·실제주문 0 |
-| GitHub main / Actions | PASS | main `4dd60ed5`, Actions 32962941998의 validate 1분9초·browser 1분21초·증거 upload PASS. mirror 404는 GitHub Releases fallback으로 복구된 비차단 경고다. |
+| GitHub main / Actions | PASS | 구현 `4dd60ed5`와 증거 `2cc68f0d`를 main에 push했다. Actions 32962941998은 validate 1분9초·browser 1분21초, Actions 32966485401은 validate 1분4초·browser 1분15초와 증거 upload까지 PASS했다. mirror 404는 GitHub Releases fallback으로 복구된 비차단 경고다. |
 | 수정 전 장시간 Run | PASS_WITH_LIMIT | 마지막 깨끗한 표본은 5시간 00분 34초, event 1,332,466, 실행 p50 19.166ms·p95 57.018ms, trade p95 112.335ms, wide p95 1,807.227ms였다. queue 0, 계획회전·reconnect 19회 일치, 비계획 reconnect·gap·resync·drop·fault·buffer drop·lock·포지션·실제주문·인증 0이었다. 뒤이은 활성 원장 전수검사 안전사건 때문에 6시간은 `NOT_COMPLETED`다. |
 | 수정 후 실제 8870 LIVE | PASS | 구현 commit으로 LaunchAgent를 안전 재시작했고 같은 Run `run-2b7135a972dd`를 복구했다. 같은 관찰창의 API 현재 RSS 189.703MB와 운영체제 RSS 190.312MB 차이는 0.609MB였다. 122.455초·13표본에서 event 7,835→16,863, 실행 p95 43.528~54.262ms, queue·비계획 reconnect·gap·resync·drop·fault·buffer drop·critical·lock·포지션·실제주문·인증 0이었다. 현재 RSS가 231.297→204.281MB로 내려갈 때 최고 RSS는 231.766MB로 유지돼 두 값의 분리도 확인했다. |
 | 수정 후 6시간 / 24시간 | NOT_RUN | 구현 commit의 새 프로세스로 실제 시간을 채우지 않았다. |
