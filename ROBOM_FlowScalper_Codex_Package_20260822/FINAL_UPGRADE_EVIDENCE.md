@@ -1913,6 +1913,6 @@ SQLite Online Backup API는 단계 사이 source lock을 풀지만 외부 connec
 | 6시간 / 24시간 soak | NOT_RUN | 수정 후 정확한 실시간을 채우지 않았다. |
 | 전략 수익성 | NOT_PROVEN | 원장 무결성 PASS를 수익성으로 해석하지 않는다. 임계값도 낮추지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
-| GitHub main / Actions | PENDING | 구현·로컬 증거 commit `820e8ace4f6bffe128b80d749b76099382af63e5`을 먼저 고정했다. main push와 Actions는 이 증거 작성 후 별도로 확인한다. |
+| GitHub main / Actions | PASS | 구현 `820e8ace4f6bffe128b80d749b76099382af63e5`와 증거 `b77a8f2d7e75a5b17e4848135ae2ff79aa587613`을 main에 push했다. [Actions 32977393998](https://github.com/robom-labs/flowscalper/actions/runs/32977393998)의 validate 1분, browser 1분2초, Chromium desktop·tablet·mobile E2E와 브라우저 증거 upload가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/wave48-ledger-integrity/`에 있고 판단 근거는 ADR-049다. 중단된 5개 경로는 PASS가 아니며 최종 다른 device 검사 1개만 PASS다. Wave 48은 `COMPLETE_WITH_LIMITS`며 수정 후 6시간·24시간·수익성·Release ZIP을 입증하지 않았다.
