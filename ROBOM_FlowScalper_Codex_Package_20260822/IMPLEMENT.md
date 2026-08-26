@@ -389,3 +389,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Verify policy-locked controls, ordinary OFF reactivation and beginner-readable history in frontend unit tests and desktop, tablet and mobile Playwright.
 9. Re-run complete backend, frontend, static, production build, fixture, PAPER safety, security and repository hygiene suites. Do not change strategy or cost thresholds.
 10. Keep deployment, actual post-deploy ledger rows and actual 8870 browser verification `NOT_RUN` until the baseline long observers can finish without a process restart.
+
+## Normalized startup-recovery transition audit Wave
+
+1. Query only `PAPER_RESTART_RECOVERY` rows needed to establish the audit gap. Do not run a full integrity check against the active multi-gigabyte writer.
+2. Preserve the existing lifecycle, recovery and open-position payload while adding a normalized append-only transition contract to every new startup-recovery incident.
+3. Distinguish LIVE revalidation, READY-mode deferral, fail-closed recovery and DEMO fixture recovery with separate states, cause codes and beginner-readable Korean descriptions.
+4. Never trust an invalid snapshot payload after checksum failure. Associate the failure only with the latest open Run identity obtained through an independent read-only lookup.
+5. Emit an ERROR recovery incident for checksum, schema and restore failures. Keep the service in READY fail-closed state and mark the transition non-reversible.
+6. Expose the latest startup recovery state, cause, timestamp and Run as flat runtime diagnostics. Show a concise beginner card and preserve raw values in the collapsible advanced diagnostics.
+7. Do not rewrite historical recovery rows or migrate the storage schema. Do not change strategy thresholds, signals, costs, TP, SL, execution, Governor, risk budgets or PAPER safety.
+8. Re-run targeted recovery paths, related recovery, storage, control and replay tests, complete backend and frontend suites, lint, typecheck, production build, PAPER safety, security, repository hygiene and desktop, tablet and mobile Playwright.
+9. Preserve intermediate browser failures as fixed test evidence. Do not overwrite baseline screenshots when the Wave only verifies behavior.
+10. Keep deployment, an actual post-deploy recovery row, actual 8870 browser verification, GitHub main and Actions `NOT_RUN` until the baseline six-hour observer can finish without a process restart.

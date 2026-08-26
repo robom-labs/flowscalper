@@ -2039,3 +2039,46 @@ PAPER 전략 임계값, entry·TP1·TP2·SL, bid·ask 체결, 비용, 위험예�
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 구현 commit은 `0f5fd777e3470909030111044029373ad227d732`, 기계판독 증거는 `evidence/WAVE51_STRATEGY_POLICY_LOCK_AND_AUDIT_QA.json`, 판단 근거는 ADR-052다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스 신규 감사행·실제 8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
+
+## 51. Wave 52 시작 복구 상태 전환 감사 정규화
+
+### 활성 원장 표적 재현
+
+작동 중인 대형 원장에 full integrity check를 실행하지 않고 `PAPER_RESTART_RECOVERY` 45행만 read-only로 조회했다. 모든 행에 `lifecycle_state`, `recovery_ok`, `open_position`은 있었지만 transition ID, 이전·신규 상태, 발생시각, 원인 코드, actor, 요청·응답 revision과 reversibility는 전부 없었다. 이 조회는 활성 서비스의 Run·상태·원장을 변경하지 않았다.
+
+수정 전 격리 회귀에서 정상 LIVE 재시작 incident에 `transition_id`가 없는 것과 checksum 오류에서 `PAPER_RESTART_RECOVERY` incident 자체가 없는 것을 확인했다. 표적 2건은 수정 전 `FAIL_AS_EXPECTED`였고, 이 실패를 PASS로 계산하지 않는다.
+
+### 구현과 호환성
+
+- 신규 시작 복구 incident에 transition ID, 이전·신규 상태, 발생시각, 원인·코드, 한국어 설명, actor, Run·전략·계좌·종목, 요청·응답 revision과 reversibility를 추가했다.
+- LIVE 성공은 `RECOVERY_REVALIDATION_LOCKED`, READY의 미종료 Run은 `RECOVERY_DEFERRED`, checksum·schema·restore 실패는 `RECOVERY_FAIL_CLOSED`, DEMO fixture는 `FIXTURE_STATE_RECOVERED`로 분리했다.
+- checksum이 틀린 payload는 사용하지 않고 독립 read-only 조회의 최신 미종료 Run ID만 fail-closed incident와 연결했다.
+- 기존 lifecycle·recovery·position 필드를 보존했고 과거 행을 재작성하지 않았으며 schema migration도 하지 않았다.
+- runtime 진단에 마지막 시작 복구를 평탄 필드로 노출하고 설정 화면에 초보자용 요약 카드와 접히는 원본 감사값을 분리했다.
+- DEMO fixture는 LIVE 공개호가 재검증으로 오해하지 않도록 오프라인 데모 복구 문구로 고쳤다.
+- 전략 임계값·신호·비용·TP·SL·체결·Governor·위험예산·계좌·실제주문 0 경계는 바꾸지 않았다.
+
+### 회귀·화면 검증과 중간 실패
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 수정 전 표적 재현 | FAIL_AS_EXPECTED | 정상 복구 정규 필드 누락과 checksum 실패 incident 누락 2건을 재현했다. |
+| 수정 후 시작 복구 표적 회귀 | PASS | 4 passed, 7 deselected, 6.66초다. |
+| recovery·storage·control·replay | PASS | 77 passed, 9.17초다. |
+| backend pytest | PASS | 최종 소스 436 passed, 11.60초다. |
+| frontend Vitest | PASS | 13 files·59 tests, 3.28초다. 표적 UI 1건도 PASS했다. |
+| Ruff / mypy | PASS | 오류 0 / 95 source files 오류 0이다. |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0이다. |
+| production build / PAPER safety | PASS_WITH_WARNING | PAPER 불변조건은 PASS했다. 단일 JS 516.51kB·gzip 159.24kB로 기존 500kB 경고는 남아 있다. |
+| Playwright | PASS | Chromium desktop·tablet·mobile 3 passed, 18.6초다. 기준 screenshot은 덮어쓰지 않았다. |
+| security / repository hygiene | PASS | 128 source·위반·secret-like·실제주문 path 0 / 위반 0이다. |
+| 설치 서비스 기준선 | PASS_BASELINE_ONLY | `c57b988353718e03b26b93ac3208e64c5221396e`의 `run-2b7135a972dd`는 RUNNING·LIVE·PAPER, queue·비계획 reconnect·gap·resync·drop·fault·critical·lock·position·실제주문·인증 0이다. 이는 미배포 변경의 실행 증거가 아니다. |
+| 로컬 배포 / 실제 신규 복구행 / 실제 8870 | NOT_RUN | 기준 6시간·24시간 observer를 중단하지 않기 위해 아직 설치 서비스를 교체하지 않았다. |
+| GitHub main / Actions | NOT_RUN | 배포·실제 원장·브라우저 검증 전에는 push하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 기존 비침습 observer가 기준 commit의 동일 서비스를 계속 관찰 중이다. |
+| 전략 수익성 | NOT_PROVEN | 이 Wave는 전략·비용기준을 바꾸지 않았고 자연표본도 수익성 gate보다 부족하다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+Playwright 중간에는 카드와 고급진단을 동시에 잡는 부분 selector, 재사용 fixture 원장의 실제 복구 상태가 드러난 문구 불일치, fixture 상태와 더 긴 원인 코드를 함께 잡는 regex로 각 3건이 실패했다. 선택자를 정확히 제한하고 DEMO·LIVE 문구를 분리한 뒤 최종 3/3을 PASS했다. 중간 실패를 삭제하거나 최종 PASS로 소급 변환하지 않았다.
+
+구현 commit은 `eafbc601613f08b712a57d9743f50ba09deb6533`, 기계판독 증거는 `evidence/WAVE52_STARTUP_RECOVERY_AUDIT_QA.json`, 판단 근거는 ADR-053이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스 신규 복구행·실제 8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.

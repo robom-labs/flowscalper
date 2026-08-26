@@ -1,0 +1,201 @@
+{
+  "schema": "flowscalper.wave52.startup_recovery_audit_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "eafbc601613f08b712a57d9743f50ba09deb6533",
+  "reproduction": {
+    "status": "PASS",
+    "active_ledger_targeted_read_only_query": {
+      "category": "PAPER_RESTART_RECOVERY",
+      "rows": 45,
+      "rows_missing_normalized_fields": 45,
+      "missing_fields": [
+        "transition_id",
+        "previous_state",
+        "new_state",
+        "occurred_ts_ms",
+        "cause_code",
+        "actor",
+        "request_revision",
+        "response_revision",
+        "reversible"
+      ],
+      "legacy_fields_present": [
+        "lifecycle_state",
+        "recovery_ok",
+        "open_position"
+      ],
+      "full_integrity_check_run": false,
+      "active_service_mutated": false
+    },
+    "isolated_regression_before_fix": {
+      "status": "FAIL_AS_EXPECTED",
+      "tests": 2,
+      "failures": [
+        "successful restart recovery incident lacked transition_id",
+        "corrupt checksum recovery emitted no PAPER_RESTART_RECOVERY incident"
+      ]
+    }
+  },
+  "implementation": {
+    "status": "PASS",
+    "normalized_fields": [
+      "transition_id",
+      "previous_state",
+      "new_state",
+      "occurred_ts_ms",
+      "cause",
+      "cause_code",
+      "description_ko",
+      "actor",
+      "run_id",
+      "strategy_id",
+      "account_id",
+      "symbol",
+      "request_revision",
+      "response_revision",
+      "reversible"
+    ],
+    "state_mapping": {
+      "live_success": "RECOVERY_REVALIDATION_LOCKED",
+      "ready_with_open_run": "RECOVERY_DEFERRED",
+      "checksum_schema_or_restore_failure": "RECOVERY_FAIL_CLOSED",
+      "demo_fixture_success": "FIXTURE_STATE_RECOVERED"
+    },
+    "cause_mapping": {
+      "live_success": "PAPER_STATE_RECOVERED",
+      "ready_with_open_run": "RECOVERY_DEFERRED_READY_MODE",
+      "demo_fixture_success": "PAPER_FIXTURE_STATE_RECOVERED"
+    },
+    "checksum_failure_incident_recorded": true,
+    "invalid_snapshot_payload_trusted": false,
+    "legacy_fields_preserved": true,
+    "historical_rows_rewritten": false,
+    "schema_migration": false,
+    "fixture_live_truth_separated": true,
+    "runtime_diagnostics_flattened": true,
+    "beginner_and_advanced_ui_separated": true,
+    "strategy_thresholds_changed": false,
+    "paper_execution_changed": false,
+    "paper_safety_changed": false
+  },
+  "validation": {
+    "targeted_restart_paths": {
+      "status": "PASS",
+      "tests": 4,
+      "deselected": 7,
+      "seconds": 6.66
+    },
+    "recovery_storage_control_replay": {
+      "status": "PASS",
+      "tests": 77,
+      "seconds": 9.17
+    },
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 436,
+      "seconds": 11.6
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 13,
+      "tests": 59,
+      "seconds": 3.28
+    },
+    "frontend_targeted": {
+      "status": "PASS",
+      "tests": 1,
+      "seconds": 16.03
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 516.51,
+      "gzip_kb": 159.24,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 18.6,
+      "baseline_screenshots_overwritten": false,
+      "intermediate_failures_fixed": [
+        "recovery-card selector also matched the advanced diagnostic label",
+        "reusable fixture ledger exposed incorrect LIVE revalidation copy for DEMO recovery",
+        "fixture state selector also matched the longer cause code"
+      ]
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 128,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    }
+  },
+  "running_service": {
+    "status": "PASS_BASELINE_ONLY",
+    "loaded_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_state": "LIVE",
+    "execution_state": "PAPER",
+    "event_count_at_check": 592693,
+    "strategy_evaluation_count_at_check": 1860684,
+    "queue_depth_at_check": 0,
+    "lag_p50_ms_at_check": 23.977,
+    "lag_p95_ms_at_check": 100.544,
+    "trade_lag_p95_ms_at_check": 122.419,
+    "wide_lag_p95_ms_at_check": 1703.603,
+    "planned_rotations": 7,
+    "unplanned_reconnects": 0,
+    "gaps": 0,
+    "resyncs": 0,
+    "drops": 0,
+    "persistence_faults": 0,
+    "buffer_drops": 0,
+    "critical_incidents": 0,
+    "entry_locked": false,
+    "positions": 0,
+    "main_trade_count": 1,
+    "process_memory_mb": 280.016,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "new_startup_recovery_transition_row": "NOT_RUN"
+  },
+  "independent_gates": {
+    "local_deployment": "NOT_RUN",
+    "actual_post_deploy_recovery_transition_row": "NOT_RUN",
+    "actual_post_deploy_browser": "NOT_RUN",
+    "six_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "twenty_four_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}
