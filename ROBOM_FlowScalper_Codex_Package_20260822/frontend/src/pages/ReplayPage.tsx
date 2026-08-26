@@ -30,6 +30,21 @@ function replayOperationActive(operation: ReplayOperation | null) {
   return operation !== null && ACTIVE_REPLAY_STATES.has(operation.state)
 }
 
+function replayResultScopeSymbol(result: ReplayResult) {
+  const explicit = result.scope_symbol?.trim().toUpperCase()
+  if (explicit) return explicit
+  const symbols = Object.keys(result.symbol_counts ?? {})
+  return symbols.length === 1 ? symbols[0].trim().toUpperCase() : null
+}
+
+function matchingReplayResult(results: ReplayResult[], runId: string, symbol: string) {
+  const normalizedSymbol = symbol.trim().toUpperCase()
+  if (!runId || !normalizedSymbol) return null
+  return [...results].reverse().find((item) => (
+    item.source_run_id === runId && replayResultScopeSymbol(item) === normalizedSymbol
+  )) ?? null
+}
+
 function elapsedLabel(startedTsMs: number, nowTsMs: number) {
   const seconds = Math.max(0, Math.floor((nowTsMs - startedTsMs) / 1_000))
   const minutes = Math.floor(seconds / 60)
@@ -76,7 +91,6 @@ export function ReplayPage({ trade }: Props) {
   const [selectedRun, setSelectedRun] = useState(trade?.run_id ?? '')
   const [timeline, setTimeline] = useState<ReplayTimeline | null>(null)
   const [selectedSymbol, setSelectedSymbol] = useState(trade?.symbol ?? '')
-  const [result, setResult] = useState<ReplayResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [timelineLoading, setTimelineLoading] = useState(false)
@@ -91,6 +105,10 @@ export function ReplayPage({ trade }: Props) {
   const [focusLoading, setFocusLoading] = useState(Boolean(trade))
   const [focusAttempt, setFocusAttempt] = useState(0)
   const clockRef = useRef<ReplayClock<ReplayFocusFrame> | null>(null)
+  const result = useMemo(
+    () => running ? null : matchingReplayResult(results, selectedRun, selectedSymbol),
+    [results, running, selectedRun, selectedSymbol],
+  )
 
   const loadPreview = useCallback(async (runId: string, symbol = '') => {
     if (!runId) return
@@ -154,7 +172,6 @@ export function ReplayPage({ trade }: Props) {
         void resultRowsPromise.then((resultRows) => {
           if (cancelled) return
           setResults(resultRows)
-          setResult([...resultRows].reverse().find((item) => item.source_run_id === runId) ?? null)
         }).catch(() => {
           if (!cancelled) setError('과거 전략 검증 결과는 늦게 불러오는 중입니다. 저장 Run 미리보기는 계속 사용할 수 있습니다.')
         })
@@ -192,7 +209,6 @@ export function ReplayPage({ trade }: Props) {
         const active = replayOperationActive(next)
         setRunning(active)
         if (next.state === 'COMPLETED' && next.result) {
-          setResult(next.result)
           setResults((items) => items.some((item) => item.replay_id === next.result?.replay_id)
             ? items
             : [...items, next.result as ReplayResult])
@@ -273,7 +289,6 @@ export function ReplayPage({ trade }: Props) {
     setSelectedSymbol('')
     setTimeline(null)
     setPlaying(false)
-    setResult([...results].reverse().find((item) => item.source_run_id === runId) ?? null)
     setError('')
     try {
       await loadPreview(runId)
@@ -456,7 +471,7 @@ export function ReplayPage({ trade }: Props) {
     <section aria-labelledby="replay-heading">
       <div className="page-heading">
         <div><p className="section-kicker">PAST PLAYBACK</p><h2 id="replay-heading">과거 데이터 다시 보기</h2><p className="heading-help">저장한 시장 데이터를 같은 조건으로 다시 돌려 판단 과정을 확인합니다.</p></div>
-        <span className="page-note">{running ? '전략 검증 작동 중' : result ? `검증 완료 · ${result.replay_id}` : timeline ? '저장 데이터 확인됨' : '저장 데이터 확인 전'}</span>
+        <span className="page-note">{running ? '전략 검증 작동 중' : result ? `검증 완료 · ${replayResultScopeSymbol(result) ?? '전체 종목'} · ${result.replay_id}` : timeline ? '저장 데이터 확인됨' : '저장 데이터 확인 전'}</span>
       </div>
       {error ? <p className="control-error" role="alert">{error}</p> : null}
       <section className="panel replay-runbar">

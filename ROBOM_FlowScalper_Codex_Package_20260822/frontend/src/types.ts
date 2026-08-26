@@ -638,6 +638,7 @@ export type ReplayRun = {
 export type ReplayResult = {
   replay_id: string
   source_run_id: string
+  scope_symbol?: string | null
   created_ts_ms: number
   checksum: string
   event_count: number

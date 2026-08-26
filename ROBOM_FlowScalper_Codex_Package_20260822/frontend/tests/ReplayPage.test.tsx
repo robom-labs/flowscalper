@@ -130,3 +130,50 @@ test('shows a visible retry action when a focused trade chart request fails', as
   fireEvent.click(screen.getByRole('button', { name: '거래 차트 다시 시도' }))
   await waitFor(() => expect(attempts).toBe(2))
 })
+
+test('shows a replay result only for the selected run and symbol scope', async () => {
+  const checksum = 'a'.repeat(64)
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url === '/api/replay/runs') return new Response(JSON.stringify([{
+      run_id: 'run-scope', mode: 'LIVE_SHADOW_PAPER', venue: 'BINANCE_USDM',
+      started_ts_ms: 1_000, finalized_ts_ms: null, market_event_count: 200,
+      events_saved: true, trade_count: 0, shadow_trade_count: 0,
+    }]), { status: 200 })
+    if (url === '/api/replay/results') return new Response(JSON.stringify([{
+      replay_id: 'replay-btc', source_run_id: 'run-scope', scope_symbol: 'BTCUSDT',
+      created_ts_ms: 2_000, checksum, event_count: 100,
+      first_ts_ms: 1_000, last_ts_ms: 2_000, event_type_counts: { TRADE: 100 },
+      symbol_counts: { BTCUSDT: 100 }, strategy_evaluation_count: 10,
+      qualified_signal_count: 0, candidate_plan_count: 0, main_trade_count: 0,
+      shadow_trade_count: 0, decision_path: [], final_state: 'OBSERVING_NO_MAIN_TRADE',
+      real_orders_enabled: false, auth_required: false,
+    }]), { status: 200 })
+    if (url === '/api/replay/operations/current') return new Response('null', { status: 200 })
+    if (url.includes('/preview?')) {
+      const symbol = url.includes('symbol=ETHUSDT') ? 'ETHUSDT' : 'BTCUSDT'
+      return new Response(JSON.stringify({
+        run_id: 'run-scope', symbol, total_events: 100, truncated: true,
+        available_symbols: [
+          { symbol: 'BTCUSDT', event_count: 100 },
+          { symbol: 'ETHUSDT', event_count: 100 },
+        ], events: [], candles: [], preview_only: true,
+      }), { status: 200 })
+    }
+    throw new Error(`unexpected request: ${url}`)
+  }))
+
+  render(<ReplayPage />)
+
+  expect(await screen.findByText('검증 완료 · BTCUSDT · replay-btc')).toBeInTheDocument()
+  expect(screen.getByText(checksum)).toBeInTheDocument()
+
+  fireEvent.change(screen.getByRole('combobox', { name: '종목' }), {
+    target: { value: 'ETHUSDT' },
+  })
+
+  await waitFor(() => expect(screen.getByRole('combobox', { name: '종목' })).toHaveValue('ETHUSDT'))
+  expect(screen.getByText('저장 데이터 확인됨')).toBeInTheDocument()
+  expect(screen.queryByText(checksum)).not.toBeInTheDocument()
+  expect(screen.getByText('전략 검증 전')).toBeInTheDocument()
+})

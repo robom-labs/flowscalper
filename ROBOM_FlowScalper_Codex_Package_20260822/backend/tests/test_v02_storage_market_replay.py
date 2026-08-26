@@ -625,6 +625,8 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
         created_ts_ms=2_001,
     )
     assert first.checksum == second.checksum
+    assert first.scope_symbol is None
+    assert first.as_dict()["scope_symbol"] is None
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
     assert first.strategy_evaluation_count == 24
@@ -724,8 +726,11 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
         ledger,
         source_run_id=runtime.run_id,
         created_ts_ms=3_000,
+        symbol="btcusdt",
     )
     assert replay.event_count == 4
+    assert replay.scope_symbol == "BTCUSDT"
+    assert replay.as_dict()["scope_symbol"] == "BTCUSDT"
     ledger.close()
 
 

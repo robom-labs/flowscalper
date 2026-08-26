@@ -19,6 +19,7 @@ from backend.app.strategies.registry import StrategyMode
 class StoredMarketReplayResult:
     replay_id: str
     source_run_id: str
+    scope_symbol: str | None
     created_ts_ms: int
     checksum: str
     event_count: int
@@ -40,6 +41,7 @@ class StoredMarketReplayResult:
         return {
             "replay_id": self.replay_id,
             "source_run_id": self.source_run_id,
+            "scope_symbol": self.scope_symbol,
             "created_ts_ms": self.created_ts_ms,
             "checksum": self.checksum,
             "event_count": self.event_count,
@@ -77,9 +79,10 @@ class StoredMarketReplay:
         run = ledger.get_run(source_run_id)
         if run is None:
             raise ValueError(f"알 수 없는 소스 Run: {source_run_id}")
+        scope_symbol = symbol.strip().upper() if symbol else None
         events = ledger.list_market_events(
             source_run_id,
-            symbol=symbol,
+            symbol=scope_symbol,
             cooperative_yield=cooperative_yield,
         )
         if cooperative_yield is not None:
@@ -139,6 +142,7 @@ class StoredMarketReplay:
         result = StoredMarketReplayResult(
             replay_id=f"replay-{uuid4().hex[:16]}",
             source_run_id=source_run_id,
+            scope_symbol=scope_symbol,
             created_ts_ms=created_ts_ms,
             checksum=digest.checksum,
             event_count=digest.event_count,
