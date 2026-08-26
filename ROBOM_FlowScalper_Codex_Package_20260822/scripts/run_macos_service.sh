@@ -47,6 +47,13 @@ mkdir -p "$ACTIVE_LEDGER_DIR" "$SUPPORT_DIR/python-cache"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 export PYTHONPYCACHEPREFIX="$SUPPORT_DIR/python-cache"
 export PYTHONUNBUFFERED=1
+export PYTHONNOUSERSITE=1
+export PYTHONPATH="$PROJECT_DIR"
+BACKEND_PACKAGE_ROOT="$("$RUNTIME_PYTHON" -c 'from pathlib import Path; import backend; print(Path(backend.__file__).resolve().parent)')"
+if [[ "$BACKEND_PACKAGE_ROOT" != "$PROJECT_DIR/backend" ]]; then
+  echo "backend가 불변 실행 릴리스 밖에서 로드됐습니다: $BACKEND_PACKAGE_ROOT" >&2
+  exit 75
+fi
 export ROBOM_HOST="127.0.0.1"
 export ROBOM_PORT="8870"
 export ROBOM_OPEN_BROWSER="false"

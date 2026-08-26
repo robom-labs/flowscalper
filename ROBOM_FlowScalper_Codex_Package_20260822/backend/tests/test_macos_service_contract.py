@@ -7,6 +7,7 @@ import json
 import os
 import plistlib
 import subprocess
+import sys
 from pathlib import Path
 
 from backend.app.api.dashboard import release_identity
@@ -53,7 +54,86 @@ def test_service_uses_immutable_current_release_and_manifest_paths() -> None:
     assert 'export ROBOM_RELEASE_COMMIT="$RELEASE_COMMIT"' in runner
     assert 'export ROBOM_RELEASE_ISOLATED="true"' in runner
     assert 'export ROBOM_MARKET_ARCHIVE_PATH="$MARKET_ARCHIVE_PATH"' in runner
+    assert 'export PYTHONPATH="$PROJECT_DIR"' in runner
+    assert 'import backend' in runner
+    assert 'BACKEND_PACKAGE_ROOT' in runner
     assert 'ROBOM_MARKET_ARCHIVE_PATH="$PROJECT_DIR/data/market-parquet-v6"' not in runner
+
+
+def test_service_runner_pins_backend_import_to_physical_release(tmp_path: Path) -> None:
+    release = tmp_path / "release"
+    support = tmp_path / "home" / "Library" / "Application Support" / "ROBOM FlowScalper"
+    runtime_python = support / "runtime-venv" / "bin" / "python"
+    market_archive = tmp_path / "market-archive"
+    active_ledger = tmp_path / "active-ledger"
+    output = tmp_path / "runner-environment.json"
+    (release / "scripts").mkdir(parents=True)
+    (release / "frontend" / "dist").mkdir(parents=True)
+    (release / "backend").mkdir()
+    runtime_python.parent.mkdir(parents=True)
+    market_archive.mkdir()
+    active_ledger.mkdir()
+    (release / "frontend" / "dist" / "index.html").write_text(
+        "<html></html>", encoding="utf-8"
+    )
+    (release / "scripts" / "run_server.py").write_text("# fixture\n", encoding="utf-8")
+    (release / "release-manifest.json").write_text(
+        json.dumps(
+            {
+                "commit": "a" * 40,
+                "market_archive_path": str(market_archive),
+                "active_ledger_dir": str(active_ledger),
+            }
+        ),
+        encoding="utf-8",
+    )
+    runner = PROJECT_ROOT / "scripts" / "run_macos_service.sh"
+    (release / "scripts" / "run_macos_service.sh").write_bytes(runner.read_bytes())
+    (release / "scripts" / "run_macos_service.sh").chmod(0o755)
+    runtime_python.write_text(
+        "\n".join(
+            [
+                f"#!{sys.executable}",
+                "import json, os, pathlib, sys",
+                "if sys.argv[1] == '-c' and 'json.loads' in sys.argv[2]:",
+                "    print(json.loads(pathlib.Path(sys.argv[3]).read_text())[sys.argv[4]])",
+                "elif sys.argv[1] == '-c' and 'import backend' in sys.argv[2]:",
+                (
+                    "    print(pathlib.Path(os.environ.get('PYTHONPATH', "
+                    "'/editable/source')) / 'backend')"
+                ),
+                "else:",
+                "    pathlib.Path(os.environ['ROBOM_RUNNER_TEST_OUTPUT']).write_text(json.dumps({",
+                "        'pythonpath': os.environ.get('PYTHONPATH'),",
+                "        'release_commit': os.environ.get('ROBOM_RELEASE_COMMIT'),",
+                "        'release_isolated': os.environ.get('ROBOM_RELEASE_ISOLATED'),",
+                "        'real_orders_enabled': os.environ.get('REAL_TRADING', 'false'),",
+                "    }))",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    runtime_python.chmod(0o755)
+
+    subprocess.run(
+        ["zsh", str(release / "scripts" / "run_macos_service.sh")],
+        check=True,
+        env={
+            **os.environ,
+            "HOME": str(tmp_path / "home"),
+            "ROBOM_RUNNER_TEST_OUTPUT": str(output),
+        },
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["pythonpath"] == str(release.resolve())
+    assert payload["release_commit"] == "a" * 40
+    assert payload["release_isolated"] == "true"
+    assert payload["real_orders_enabled"] == "false"
 
 
 def test_dashboard_release_identity_is_development_or_exact_immutable_commit(
