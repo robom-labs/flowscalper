@@ -1732,6 +1732,6 @@ Wave 39는 Binance USDⓈ-M 12종목의 완성 5분봉 414,720개와 사전등�
 | 전략 수익성 | NOT_PROVEN | 독립 62행 중 양수 1, 순손익 -64.6068400286 USDT다. K 자연표본은 0이며 어떤 진입기준도 낮추지 않았다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 뒤 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
-| GitHub main / Actions | PENDING | 로컬 구현·검증·증거 완료 뒤 main 반영과 Actions를 확인한다. |
+| GitHub main / Actions | PASS | 구현 commit `067342cef9f4395a5e44a8bd4bb2c94c1c3d9699`을 main에 push했다. [Actions 32932420777](https://github.com/robom-labs/flowscalper/actions/runs/32932420777)의 validate 1분8초, browser 2분36초, 실제 Chromium desktop·tablet·mobile E2E와 브라우저 증거 업로드가 모두 PASS했다. Chromium 설치 mirror 404는 공식 GitHub Releases fallback으로 복구된 비차단 경고다. |
 
-기계판독 증거는 `evidence/WAVE42_STRATEGY_POLICY_AND_REPLAY_QA.json`, 실제 화면은 `evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png`와 `evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png`, 결정 근거는 ADR-045·ADR-046이다. 이 Wave의 PASS는 구현·회귀·실제 PAPER 화면 범위이며 전략 수익성, 미래 독립 OOS, 활성 원장 전수검사, 6시간·24시간을 입증하지 않는다.
+기계판독 증거는 `evidence/WAVE42_STRATEGY_POLICY_AND_REPLAY_QA.json`, 실제 화면은 `evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png`와 `evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png`, 결정 근거는 ADR-045·ADR-046이다. 구현 기준 commit은 `067342cef9f4395a5e44a8bd4bb2c94c1c3d9699`이다. 이 Wave의 PASS는 구현·회귀·실제 PAPER 화면 범위이며 전략 수익성, 미래 독립 OOS, 활성 원장 전수검사, 6시간·24시간을 입증하지 않는다.

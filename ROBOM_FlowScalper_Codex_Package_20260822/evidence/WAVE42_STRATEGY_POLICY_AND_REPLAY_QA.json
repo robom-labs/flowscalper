@@ -1,6 +1,6 @@
 {
   "evidence_version": 1,
-  "captured_at": "2026-08-26T13:59:46+09:00",
+  "captured_at": "2026-08-26T14:05:24+09:00",
   "waves": [39, 40, 41, 42],
   "status": "COMPLETE_WITH_LIMITS",
   "paper_safety": {
@@ -186,7 +186,17 @@
     "post_change_24h_soak": "NOT_RUN",
     "profitability": "NOT_PROVEN",
     "release_zip": "NOT_RUN",
-    "github_main": "PENDING",
-    "github_actions": "PENDING"
+    "github_main": "PASS",
+    "github_actions": "PASS"
+  },
+  "github": {
+    "implementation_commit": "067342cef9f4395a5e44a8bd4bb2c94c1c3d9699",
+    "main_contains_commit": true,
+    "actions_run_id": 32932420777,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/32932420777",
+    "conclusion": "success",
+    "validate_seconds": 68,
+    "browser_seconds": 156,
+    "browser_evidence_uploaded": true
   }
 }
