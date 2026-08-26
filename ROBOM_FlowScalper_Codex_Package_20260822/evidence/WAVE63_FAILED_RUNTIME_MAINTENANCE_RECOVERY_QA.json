@@ -1,0 +1,70 @@
+{
+  "schema": "flowscalper.wave63.failed_runtime_maintenance_recovery_qa.v1",
+  "status": "IMPLEMENTED_TARGETED_PASS_PENDING_ACTUAL_HANDOFF",
+  "date": "2026-08-27",
+  "actual_baseline": {
+    "run_id": "run-2b7135a972dd",
+    "violations": [
+      "ENTRY_LOCKED",
+      "QUEUE_LIMIT_EXCEEDED"
+    ],
+    "position_count": 0,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "execution_state": "PAPER"
+  },
+  "implementation": {
+    "explicit_cli_flag": "--allow-failed-runtime-recovery",
+    "allowed_existing_violations": [
+      "ENTRY_LOCKED",
+      "QUEUE_LIMIT_EXCEEDED"
+    ],
+    "all_other_violations_fail_closed": true,
+    "post_restart_runtime_uses_strict_checks": true,
+    "override_is_recorded_in_evidence": true
+  },
+  "validation": {
+    "macos_service_contract": {
+      "status": "PASS",
+      "tests": 10,
+      "seconds": 1.43
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 1
+    },
+    "full_backend": {
+      "status": "PASS",
+      "tests": 461,
+      "seconds": 34.93
+    },
+    "backend_app_mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "security": {
+      "status": "PASS",
+      "source_files": 131,
+      "violations": 0,
+      "secret_like_findings": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS"
+  },
+  "remaining": {
+    "actual_closed_ledger_handoff": "NOT_RUN",
+    "same_run_recovery": "NOT_RUN",
+    "cross_device_integrity": "NOT_RUN",
+    "actual_8870": "NOT_RUN",
+    "post_deploy_soak": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

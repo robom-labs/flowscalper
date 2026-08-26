@@ -10,8 +10,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from backend.app.api.dashboard import release_identity
+from backend.app.storage.integrity import RuntimeSafetyViolation
 from scripts.stage_macos_release import activate_release, stage_release
+from scripts.verify_macos_ledger_maintenance import _validate_initial_runtime
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -49,6 +53,24 @@ def test_installer_can_prepare_release_without_restarting_loaded_service() -> No
     bootout_at = installer.index('launchctl bootout "$SERVICE_TARGET"')
     assert prepare_only_at < bootout_at
     assert "exit 0" in installer[prepare_only_at:bootout_at]
+
+
+def test_maintenance_recovery_override_allows_only_existing_fail_closed_state() -> None:
+    result = _validate_initial_runtime(
+        ("ENTRY_LOCKED", "QUEUE_LIMIT_EXCEEDED"),
+        allow_failed_runtime_recovery=True,
+    )
+
+    assert result["override_applied"] is True
+    assert result["reason"] == "FAILED_CONSUMER_FAIL_CLOSED_RECOVERY"
+
+
+def test_maintenance_recovery_override_rejects_live_safety_expansion() -> None:
+    with pytest.raises(RuntimeSafetyViolation, match="복구 허용 밖"):
+        _validate_initial_runtime(
+            ("ENTRY_LOCKED", "POSITION_OPENED"),
+            allow_failed_runtime_recovery=True,
+        )
 
 
 def test_service_uses_immutable_current_release_and_manifest_paths() -> None:

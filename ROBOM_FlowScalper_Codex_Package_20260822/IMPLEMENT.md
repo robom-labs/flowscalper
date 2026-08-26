@@ -495,3 +495,12 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 9. Add failing-first tests for transaction-lock release, consumer task survival, producer/supervisor liveness, truthful stopped-task UI and same-Run control recovery. Run related and full backend, frontend, fixture, static, build, PAPER safety, security, repository hygiene and three-viewport browser checks.
 10. Deploy only after the contaminated baseline six-hour observer is written and the 24-hour observer is operator-aborted with its partial evidence preserved. Verify the exact new release through the coordinated ledger handoff.
 11. Do not alter strategy thresholds, costs, TP, SL, fills, Governor, risk budgets, account topology or PAPER-only safety. Require fresh 30-minute, six-hour and 24-hour observations after deployment.
+
+## Failed-runtime coordinated maintenance Wave
+
+1. Do not restart a failed baseline once merely to make the maintenance precondition look healthy and then restart it again for deployment.
+2. Permit an explicit failed-runtime recovery mode only when the existing violations are limited to `ENTRY_LOCKED` and `QUEUE_LIMIT_EXCEEDED` with zero open positions, zero real orders, no authentication and PAPER execution.
+3. Reject every additional runtime violation before shutdown. Do not use this mode to bypass an open position, runtime error, storage block, critical lag, Run mismatch or non-PAPER state.
+4. Record the requested and applied override, initial violations and fixed recovery reason in machine-readable evidence.
+5. Require the recovered immutable release to pass the normal strict runtime checks without the override.
+6. Keep the single graceful bootout, closed WAL checkpoint, APFS clone, cross-device SHA-256, full quick-check, foreign-key check and same-Run recovery contract unchanged.

@@ -182,6 +182,35 @@ def _wait_for_recovered_runtime(
     raise LedgerIntegrityError(f"재기동 후 안전한 동일 Run 복구 실패: {last_error}")
 
 
+def _validate_initial_runtime(
+    violations: tuple[str, ...],
+    *,
+    allow_failed_runtime_recovery: bool,
+) -> dict[str, object]:
+    """멈춘 소비경로 복구 시에만 이미 활성인 fail-closed 잠금을 허용한다."""
+
+    if not violations:
+        return {
+            "override_requested": allow_failed_runtime_recovery,
+            "override_applied": False,
+            "violations": [],
+        }
+    allowed_recovery_violations = {"ENTRY_LOCKED", "QUEUE_LIMIT_EXCEEDED"}
+    disallowed = sorted(set(violations) - allowed_recovery_violations)
+    if not allow_failed_runtime_recovery or disallowed:
+        detail = ", ".join(violations)
+        if disallowed:
+            detail += f" · 복구 허용 밖: {', '.join(disallowed)}"
+        raise RuntimeSafetyViolation("유지관리 기준선 실패: " + detail)
+    return {
+        "override_requested": True,
+        "override_applied": True,
+        "violations": list(violations),
+        "allowed_violations": sorted(allowed_recovery_violations),
+        "reason": "FAILED_CONSUMER_FAIL_CLOSED_RECOVERY",
+    }
+
+
 def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
     started_at = datetime.now(UTC)
     source_path = arguments.source.resolve()
@@ -226,6 +255,7 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
     baseline: RuntimeSafetySample | None = None
     recovered: RuntimeSafetySample | None = None
     launch_contract: dict[str, object] | None = None
+    baseline_recovery_override: dict[str, object] | None = None
     shutdown_result: dict[str, object] | None = None
     checkpoint_result: dict[str, object] | None = None
     clone_result: dict[str, object] | None = None
@@ -244,10 +274,10 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
         launch_contract = controller.validate_contract()
         baseline = _probe(arguments.runtime_url, thresholds.request_timeout_seconds)
         initial_violations = runtime_safety_violations(baseline, baseline, thresholds)
-        if initial_violations:
-            raise RuntimeSafetyViolation(
-                "유지관리 기준선 실패: " + ", ".join(initial_violations)
-            )
+        baseline_recovery_override = _validate_initial_runtime(
+            initial_violations,
+            allow_failed_runtime_recovery=arguments.allow_failed_runtime_recovery,
+        )
         downtime_started = time.monotonic()
         maintenance_started = True
         shutdown_result = controller.stop_gracefully(source_path)
@@ -366,6 +396,7 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
         "verification_copy_kept": verification_path.exists(),
         "temporary_verification_copy_removed": verification_removed,
         "launch_agent_contract": launch_contract,
+        "baseline_recovery_override": baseline_recovery_override,
         "baseline": asdict(baseline) if baseline is not None else None,
         "shutdown": shutdown_result,
         "closed_wal_checkpoint": checkpoint_result,
@@ -458,6 +489,14 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--transfer-chunk-sleep-ms", type=float, default=50.0)
     parser.add_argument("--keep-snapshot", action="store_true")
     parser.add_argument("--keep-failed-snapshot", action="store_true")
+    parser.add_argument(
+        "--allow-failed-runtime-recovery",
+        action="store_true",
+        help=(
+            "포지션·실주문·인증 문제가 없고 기존 ENTRY_LOCKED 또는 queue 포화만 "
+            "있는 소비경로 사고를 단일 유지관리 전환으로 복구합니다."
+        ),
+    )
     return parser.parse_args()
 
 

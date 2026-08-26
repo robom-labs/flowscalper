@@ -2549,3 +2549,28 @@ BASE 8건·순손익 -5.797715452 USDT, STRESS 8건·순손익 -10.428927744 USD
 변경 후 실제 설치 서비스, 같은 Run 복구, 8870 브라우저, planned rotation, flush, 고정 485,283건
 replay, 새 30분·6시간·24시간 관찰은 아직 별도 검증이 필요하다. OFFLINE FIXTURE 스크린샷은 이번
 전체 Playwright 실행에서 다시 생성했으며 실제 LIVE_PUBLIC 화면 증거로 사용하지 않는다.
+
+## 62. Wave 63 실패 기준선의 단일 유지관리 복구
+
+commit `55cd097c8e608243ee0b52510ff2eee011117d44`를 불변 릴리스로 prepare-only한 뒤 기존 PID
+40454가 계속 실행되고 새 plist만 `runtime/current`를 가리키는 것을 확인했다. 실제 기준선은
+Run `run-2b7135a972dd`, 포지션 0, PAPER, 실제 주문 false, 인증 false였지만
+`ENTRY_LOCKED`와 `QUEUE_LIMIT_EXCEEDED` 때문에 정상 런타임 전용 유지관리 사전검사를 통과할 수
+없었다. 이 상태를 정상으로 오인하지 않고 이미 fail-closed인 소비사고 복구로 분류했다.
+
+명시적 `--allow-failed-runtime-recovery`는 위 두 기존 위반만 허용한다. 포지션, 실제 주문, 인증,
+Run 변경, 오류, 저장 차단, critical lag와 비PAPER 상태는 계속 전환 전에 거부한다. 복구 뒤에는
+override 없는 일반 엄격 기준으로 같은 Run과 새 process의 안전상태를 확인한다.
+
+| 검증 | 상태 | 현재 결과 |
+|---|---|---|
+| 실제 기준선 분류 | PASS | `ENTRY_LOCKED`, `QUEUE_LIMIT_EXCEEDED`, 포지션 0, 실제 주문 false, 인증 false, PAPER다. |
+| 허용목록 단위 회귀 | PASS | 허용 두 상태는 복구 계약으로 분류하고 `POSITION_OPENED`가 추가되면 거부한다. |
+| macOS service contract | PASS | 10 passed·1.43초다. |
+| Ruff / mypy | PASS | 변경 script Ruff 오류 0, mypy 1 source 오류 0이다. |
+| 전체 backend·정적·보안 | PASS | backend 461 passed·34.93초, Ruff 오류 0, backend app 96 source와 변경 script mypy 오류 0, security 131 source·위반 0·secret-like 0·실주문 경로 false, repository hygiene PASS다. |
+| 실제 닫힌 원장·same-Run 전환 | NOT_RUN | 새 commit과 불변 stage를 갱신한 뒤 한 번만 실행한다. |
+
+판단 근거는 ADR-064, 기계판독 증거는
+`evidence/WAVE63_FAILED_RUNTIME_MAINTENANCE_RECOVERY_QA.json`이다. 현재 수용상태는
+`IMPLEMENTED_TARGETED_PASS_PENDING_ACTUAL_HANDOFF`다.
