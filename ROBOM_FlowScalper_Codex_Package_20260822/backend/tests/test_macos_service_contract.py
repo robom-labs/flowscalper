@@ -39,6 +39,18 @@ def test_installer_uses_launchd_graceful_bootout_before_new_bootstrap() -> None:
     assert 'launchctl kickstart -k "$SERVICE_TARGET"' not in installer
 
 
+def test_installer_can_prepare_release_without_restarting_loaded_service() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"${1:-}" == "--prepare-only"' in installer
+    prepare_only_at = installer.index('if [[ "$PREPARE_ONLY" == "true" ]]')
+    bootout_at = installer.index('launchctl bootout "$SERVICE_TARGET"')
+    assert prepare_only_at < bootout_at
+    assert "exit 0" in installer[prepare_only_at:bootout_at]
+
+
 def test_service_uses_immutable_current_release_and_manifest_paths() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
         encoding="utf-8"

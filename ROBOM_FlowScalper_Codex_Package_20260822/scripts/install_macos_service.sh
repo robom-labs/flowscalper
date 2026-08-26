@@ -2,6 +2,16 @@
 # FlowScalper를 로그인·재부팅·프로세스 종료 뒤 자동 복구되는 LaunchAgent로 설치한다.
 set -euo pipefail
 
+PREPARE_ONLY="false"
+if [[ "${1:-}" == "--prepare-only" ]]; then
+  PREPARE_ONLY="true"
+  shift
+fi
+if (( $# != 0 )); then
+  echo "사용법: $0 [--prepare-only]" >&2
+  exit 2
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE_PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 LABEL="kr.robom.flowscalper"
@@ -47,6 +57,13 @@ xattr -d com.apple.provenance "$TARGET_PLIST" 2>/dev/null || true
 chmod 600 "$TARGET_PLIST"
 chmod 755 "$(cd "$PROJECT_DIR" && pwd -P)/scripts/run_macos_service.sh"
 plutil -lint "$TARGET_PLIST"
+
+if [[ "$PREPARE_ONLY" == "true" ]]; then
+  echo "PASS: 불변 PAPER 릴리스와 LaunchAgent 준비 완료 · 실행 서비스 유지"
+  echo "현재 서비스는 원장 유지관리 또는 명시적 설치 전까지 재시작하지 않았습니다."
+  echo "릴리스: $(cd "$PROJECT_DIR" && pwd -P)"
+  exit 0
+fi
 
 if launchctl print "$SERVICE_TARGET" >/dev/null 2>&1; then
   launchctl bootout "$SERVICE_TARGET"

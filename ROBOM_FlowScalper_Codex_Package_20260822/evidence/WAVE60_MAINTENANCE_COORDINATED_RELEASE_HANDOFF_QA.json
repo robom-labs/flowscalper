@@ -1,0 +1,85 @@
+{
+  "schema": "flowscalper.wave60.maintenance_coordinated_release_handoff_qa.v1",
+  "status": "IMPLEMENTED_NOT_EXECUTED",
+  "date": "2026-08-27",
+  "baseline_service_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "reproduction": {
+    "loaded_service_pid": 40454,
+    "loaded_launch_agent_program": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822/scripts/run_macos_service.sh",
+    "loaded_launch_agent_uses_mutable_worktree": true,
+    "current_worktree_runner_requires_release_manifest": true,
+    "worktree_release_manifest_present": false,
+    "unsafe_sequence": "Stopping the baseline service before preparing the immutable current pointer and LaunchAgent would restart through a release-only runner in a directory without a release manifest.",
+    "double_restart_risk": "The default installer restart followed by ledger-maintenance restart would open a new writer between deployment and the closed clone."
+  },
+  "implementation": {
+    "installer_option": "--prepare-only",
+    "stages_clean_immutable_release": true,
+    "atomically_activates_current_pointer": true,
+    "writes_new_launch_agent_plist": true,
+    "restarts_loaded_service": false,
+    "unknown_arguments_fail_closed": true,
+    "default_install_behavior_retained": true,
+    "intended_next_step": "verify_macos_ledger_maintenance.py stops the old loaded job, clones the closed ledger, and bootstraps the prepared immutable job once"
+  },
+  "failure_first": {
+    "status": "FAIL_AS_EXPECTED_MISSING_PREPARE_ONLY_CONTRACT",
+    "failed": 1,
+    "passed": 7
+  },
+  "validation": {
+    "macos_service_contract": {
+      "status": "PASS",
+      "tests": 8,
+      "seconds": 0.69
+    },
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 451,
+      "seconds": 38.01
+    },
+    "zsh_syntax": "PASS",
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 131,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    },
+    "git_diff_check": "PASS"
+  },
+  "execution_gates": {
+    "baseline_six_hour_observer": "IN_PROGRESS_WITH_KNOWN_INCIDENT",
+    "all_accounts_flat": "NOT_RUN_AT_HANDOFF",
+    "prepare_only_actual": "NOT_RUN",
+    "closed_wal_checkpoint": "NOT_RUN",
+    "same_device_apfs_clone": "NOT_RUN",
+    "cross_device_sha256": "NOT_RUN",
+    "immutable_quick_check": "NOT_RUN",
+    "immutable_foreign_key_check": "NOT_RUN",
+    "new_release_same_run_recovery": "NOT_RUN",
+    "actual_8870_browser": "NOT_RUN",
+    "post_deploy_six_hour": "NOT_RUN",
+    "post_deploy_twenty_four_hour": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN",
+    "release_zip": "NOT_RUN",
+    "strategy_profitability": "NOT_PROVEN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

@@ -455,3 +455,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Add failing-first tests for all-symbol warmup, process-priority release/reapply and direct runtime import. Run related and full backend, frontend, fixture, static, build, PAPER safety, security and repository-hygiene checks.
 9. Do not deploy while the baseline six-hour observer is running. Preserve its known failures, then deploy once from an immutable clean commit while all PAPER accounts are flat.
 10. After deployment verify actual flush component timings and at least one planned rotation before retrying the same 485,283-event replay. Start new six-hour and 24-hour observers only after this runtime gate.
+
+## Maintenance-coordinated immutable release handoff Wave
+
+1. Do not stop the baseline service while its loaded LaunchAgent still points at a mutable worktree whose current runner now requires a release manifest.
+2. Add a fail-closed `--prepare-only` installer path that accepts no other arguments and preserves default installer behavior when the option is absent.
+3. From a clean commit, stage and atomically activate the immutable `current` release and write its LaunchAgent plist without booting out, bootstrapping or kickstarting the loaded baseline job.
+4. Keep the currently running dashboard scoped to its old release identity until a process restart proves otherwise. A changed `current` pointer alone is not deployment evidence.
+5. Require zero main and Strategy League pending entries and positions before handoff. Keep real orders and auth false.
+6. Run closed-ledger maintenance against the prepared plist so it gracefully unloads the old job, checkpoints WAL to zero, creates a same-device APFS clone and then bootstraps the new immutable job exactly once.
+7. Require same-Run recovery, a new process, exact release commit, physical release backend root, matching frontend hash, LIVE·PAPER·RUNNING and zero positions before cross-device work continues.
+8. Transfer the closed clone to a different physical device, require exact bytes and SHA-256, and run full immutable quick-check and foreign-key validation while independently monitoring the new LIVE service.
+9. Preserve the baseline six-hour FAIL and the operator-aborted contaminated 24-hour run. Start fresh post-deploy six-hour and 24-hour observers only after installed flush and planned-rotation gates pass.
+10. Do not change strategy thresholds, costs, TP, SL, fills, Governor, risk budgets or ledger precision. Keep actual orders, private API, API keys, secrets, wallets and runtime AI decisions at zero.

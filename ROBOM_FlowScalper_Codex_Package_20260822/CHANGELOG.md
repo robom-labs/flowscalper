@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 기준 서비스를 먼저 끄면 변경된 release-only runner가 manifest 없는 개발 폴더에서 재기동에 실패할 수 있던 배포 순서를 차단했다. `--prepare-only`는 불변 릴리스와 LaunchAgent까지만 준비하고 현재 서비스를 유지하며, 닫힌 원장 clone 절차가 기존 서비스를 한 번만 정상 종료한 뒤 준비된 릴리스로 같은 Run을 복구한다.
 - 장시간 저장 worker가 Parquet뿐 아니라 SQLite FULL 원자 커밋까지 Darwin background 우선순위로 묶어 ledger 구간이 과도하게 늘 수 있던 경계를 분리했다. archive는 background로 유지하되 짧은 원자 커밋만 정상 우선순위에서 끝내고 즉시 background로 복귀한다. planned rotation은 첫 한 종목이 아니라 정밀 종목 전체의 fresh depth가 확인될 때까지 실행호가와 신규진입을 잠근다.
 - 대형 저장 Run 검증 중 LIVE 실행지연·비계획 재연결·저장 결함·이벤트 정지가 새로 발생하면 저우선순위 worker를 자동 종료하고 재시도 가능한 원인 코드를 표시한다. 안전검사를 끝낸 결과만 replay 원장에 기록해 취소·안전실패 결과가 정상 checksum처럼 남지 않게 했다.
 - 같은 Run에서 재생 종목을 바꿔도 직전 종목의 checksum·전략 결과가 남던 문제를 수정했다. 저장 결과에 검증 종목을 기록하고 현재 Run·종목에 정확히 맞는 결과만 표시하며, 종목 대소문자도 리플레이 경계에서 동일하게 처리한다.

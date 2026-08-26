@@ -2376,3 +2376,46 @@ Binance planned rotation은 `depth_warmup=True` 한 개를 사용했다. 첫 한
 | 전략 수익성 | NOT_PROVEN | 전략 조건과 Registry를 변경하지 않았고 현재 독립 자연표본도 부족하다. |
 
 구현 commit은 `c2dca3bb0de86374ba51428d1d6e538dc79391fb`, 최초 불변 stage commit은 `15308988242aadd7844da071b0c2bfa430353977`, 판단 근거는 ADR-060, 기계판독 증거는 `evidence/WAVE59_STORAGE_COMMIT_AND_ROTATION_WARMUP_QA.json`이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·표적·관련·전체 backend, frontend·fixture·불변 release fixture Playwright와 정적·보안 검사는 PASS지만 실제 설치 flush·전체종목 planned rotation·release 활성화·실제 8870 브라우저·동일범위 replay·6시간·24시간·GitHub는 아직 `NOT_RUN` 또는 `IN_PROGRESS`이고 수익성은 `NOT_PROVEN`이다.
+
+## 59. Wave 60 원장 유지관리와 불변 릴리스 단일 전환
+
+### 배포 전 순서 결함
+
+로드된 `kr.robom.flowscalper` job은 PID 40454의 기준 commit을 계속 실행하지만 plist의
+ProgramArguments는 개발 worktree의 runner를 가리킨다. 현재 worktree runner는 ADR-056에
+따라 `release-manifest.json`과 물리 release backend를 요구하며 worktree에는 manifest가
+없다. 따라서 기준 서비스를 먼저 정지하면 기존 plist가 exit 75 경로로 재기동해 localhost
+복구가 실패할 수 있다.
+
+기본 installer를 먼저 실행하고 원장 유지관리를 뒤따라 실행하는 순서도 배포 재시작과
+유지관리 재시작을 두 번 만들며, 두 작업 사이에 새 SQLite writer를 연다. 이는 최종 commit의
+닫힌 clone과 최초 새 process 전환을 한 경계에서 증명하려는 목적과 맞지 않는다.
+
+### 구현과 현재 검증
+
+- installer의 `--prepare-only`는 clean commit 릴리스 stage, 원자 `current` 활성화와 새 plist
+  작성까지만 수행하고 현재 로드 job은 건드리지 않는다.
+- 다른 인자는 exit 2로 거부하고 인자 없는 기본 설치는 기존 bootout→bootstrap 순서를
+  유지한다.
+- 이후 유지관리기가 기존 job을 정상 종료하고 WAL 0·APFS clone을 만든 뒤 준비된 plist를
+  처음 bootstrap한다. 다른 physical device인 `ROBOM4AppsWorkspace`에서 SHA-256·immutable
+  quick-check·foreign-key 검사를 진행한다.
+- 수정 전 표적은 준비 계약 부재로 1 failed·7 passed였고 수정 뒤 service contract 8 tests
+  0.69초, 전체 backend 451 tests 38.01초, Ruff·mypy·security·repository hygiene와 `zsh -n`이
+  PASS했다.
+- 전략·비용·TP·SL·체결·Governor·원장·계좌·실제주문 0 경계는 바꾸지 않았다.
+
+| 검증 | 상태 | 현재 결과 |
+|---|---|---|
+| prepare-only 회귀 | PASS_LOCAL | 수정 전 1 failed·7 passed, 수정 뒤 표적 8 passed·0.69초, 전체 backend 451 passed·38.01초, Ruff·mypy·security·repository hygiene와 zsh syntax가 PASS다. |
+| 실제 prepare-only | NOT_RUN | 기준 6시간 observer를 중단하지 않았다. |
+| 기준 service 정상 종료·WAL 0·clone | NOT_RUN | 준비된 최종 commit과 flat 상태 확인 뒤 유지관리기가 실행해야 한다. |
+| 다른 device SHA-256·quick-check·FK | NOT_RUN | `ROBOM4AppsWorkspace`는 별도 physical store·47GiB 여유지만 아직 사본을 만들지 않았다. |
+| 새 release same-Run·실제 8870 | NOT_RUN | `current` 포인터나 plist 파일만으로 배포 완료를 주장하지 않는다. |
+| 배포 후 6시간 / 24시간 | NOT_RUN | 설치 flush·planned rotation·브라우저 gate 뒤 새 observer를 시작한다. |
+| GitHub main / Actions / Release ZIP | NOT_RUN | 로컬 배포·원장·브라우저와 독립 장시간 경계를 먼저 완료한다. |
+| 전략 수익성 | NOT_PROVEN | 자연 `LIVE_PUBLIC` 표본과 사전등록 gate가 부족하다. |
+
+판단 근거는 ADR-061, 기계판독 증거는
+`evidence/WAVE60_MAINTENANCE_COORDINATED_RELEASE_HANDOFF_QA.json`이다. 현재 수용상태는
+`IMPLEMENTED_NOT_EXECUTED`다.
