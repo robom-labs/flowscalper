@@ -102,6 +102,7 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
   changed_by: 'MIGRATION',
   change_reason: 'SAFE_DEFAULT',
   settings_updated_ts_ms: 0,
+  policy_reactivation_locked: [0, 3, 4, 7, 10].includes(index),
   evaluated_paths: 0,
   qualified_paths: 0,
   latest_status: 'WAITING_DATA',

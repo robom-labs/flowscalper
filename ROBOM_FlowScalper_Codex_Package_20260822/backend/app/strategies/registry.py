@@ -621,4 +621,5 @@ class StrategyRegistry:
             "changed_by": setting.changed_by.value,
             "change_reason": setting.change_reason,
             "settings_updated_ts_ms": setting.updated_ts_ms,
+            "policy_reactivation_locked": self.is_policy_retired(strategy_id),
         }

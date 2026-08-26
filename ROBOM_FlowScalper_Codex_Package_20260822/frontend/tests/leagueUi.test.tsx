@@ -57,6 +57,21 @@ test('shows lifecycle evidence and restores the prior revision without deleting 
     changed_by: 'MIGRATION' as const,
     change_reason: 'SAFE_DEFAULT',
     settings_updated_ts_ms: 0,
+    policy_reactivation_locked: false,
+    transition_id: `strategy-setting-run-fixture-${current.strategy_id}-rev-0`,
+    previous_state: 'NONE',
+    new_state: 'SHADOW|SHADOW|LONG=ON|SHORT=ON|MANUAL_LOCK=OFF',
+    occurred_ts_ms: 0,
+    cause: 'SAFE_DEFAULT',
+    cause_code: 'SAFE_DEFAULT',
+    description_ko: '전략 초기 설정을 적용했습니다.',
+    actor: 'RECOVERY' as const,
+    run_id: 'run-fixture',
+    account_id: null,
+    symbol: null,
+    request_revision: 0,
+    response_revision: 0,
+    reversible: true,
   }
   const revisionOne = {
     ...revisionZero,
@@ -66,6 +81,16 @@ test('shows lifecycle evidence and restores the prior revision without deleting 
     changed_by: 'USER_UI' as const,
     change_reason: 'USER_CONFIGURATION',
     settings_updated_ts_ms: 1_759_888_000_000,
+    transition_id: `strategy-setting-run-fixture-${current.strategy_id}-rev-1`,
+    previous_state: revisionZero.new_state,
+    new_state: 'SHADOW|SHADOW|LONG=ON|SHORT=OFF|MANUAL_LOCK=ON',
+    occurred_ts_ms: 1_759_888_000_000,
+    cause: 'USER_CONFIGURATION',
+    cause_code: 'USER_CONFIGURATION',
+    description_ko: '전략 설정을 SHADOW 상태로 변경했습니다.',
+    actor: 'USER_UI' as const,
+    request_revision: 0,
+    response_revision: 1,
   }
   const rows = strategies.map((strategy) => strategy.strategy_id === current.strategy_id ? {
     ...strategy,
@@ -87,12 +112,37 @@ test('shows lifecycle evidence and restores the prior revision without deleting 
   const dialog = screen.getByRole('dialog', { name: '전략 상세 정보' })
   expect(within(dialog).getByText(/rev 0/)).toBeInTheDocument()
   expect(within(dialog).getByText(/rev 1/)).toBeInTheDocument()
+  expect(within(dialog).getByText(/전략 설정을 SHADOW 상태로 변경/)).toBeInTheDocument()
+  expect(within(dialog).getByText(/SHADOW\|SHADOW\|LONG=ON\|SHORT=ON.*USER_UI/)).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '직전 설정으로 복원' }))
 
   await waitFor(() => expect(onRollback).toHaveBeenCalledWith(
     current.strategy_id,
     0,
     1,
+  ))
+})
+
+test('blocks policy-retired reactivation but keeps ordinary user OFF reversible', async () => {
+  const userOffId = 'VWAP_EXHAUSTION_REVERSION_V1'
+  const rows = strategies.map((strategy) => strategy.strategy_id === userOffId ? {
+    ...strategy,
+    mode: 'OFF' as const,
+    lifecycle: 'RETIRED' as const,
+    policy_reactivation_locked: false,
+  } : strategy)
+  const onConfigure = vi.fn(async () => undefined)
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
+
+  expect(screen.getByRole('button', { name: 'LSA 반전 공동·독립 모의 중' })).toBeDisabled()
+  const reversible = screen.getByRole('button', { name: 'VWAP 소진 독립 모의 중' })
+  expect(reversible).toBeEnabled()
+  fireEvent.click(reversible)
+
+  await waitFor(() => expect(onConfigure).toHaveBeenCalledWith(
+    userOffId,
+    expect.objectContaining({ mode: 'SHADOW', expected_revision: 0 }),
   ))
 })
 

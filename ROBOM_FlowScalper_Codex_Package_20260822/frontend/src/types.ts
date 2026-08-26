@@ -237,6 +237,7 @@ export type StrategyRow = {
   changed_by: 'USER_UI' | 'AUTO_GOVERNOR' | 'RECOVERY' | 'MIGRATION'
   change_reason: string
   settings_updated_ts_ms: number
+  policy_reactivation_locked: boolean
   evaluated_paths: number
   qualified_paths: number
   latest_status: string
@@ -271,6 +272,21 @@ export type StrategyGovernance = {
     changed_by: StrategyRow['changed_by']
     change_reason: string
     settings_updated_ts_ms: number
+    policy_reactivation_locked: boolean
+    transition_id: string
+    previous_state: string
+    new_state: string
+    occurred_ts_ms: number
+    cause: string
+    cause_code: string
+    description_ko: string
+    actor: 'USER_UI' | 'AUTO_SAFETY' | 'AUTO_GOVERNOR' | 'RECOVERY' | 'CODEX_DEPLOY'
+    run_id: string
+    account_id: null
+    symbol: null
+    request_revision: number
+    response_revision: number
+    reversible: boolean
   }>
 }
 

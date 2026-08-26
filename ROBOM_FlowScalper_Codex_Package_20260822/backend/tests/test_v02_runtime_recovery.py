@@ -197,6 +197,27 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
         long_enabled=False,
         short_enabled=True,
     )
+    setting_transition = ledger.list_incidents(
+        category="STRATEGY_SETTINGS_TRANSITION"
+    )[-1]["payload"]
+    assert setting_transition["previous_state"] == (
+        "SHADOW|SHADOW|LONG=ON|SHORT=ON|MANUAL_LOCK=OFF"
+    )
+    assert setting_transition["new_state"] == (
+        "SHADOW|SHADOW|LONG=OFF|SHORT=ON|MANUAL_LOCK=ON"
+    )
+    assert setting_transition["actor"] == "USER_UI"
+    assert setting_transition["request_revision"] == 0
+    assert setting_transition["response_revision"] == 1
+    assert setting_transition["reversible"] is True
+    persisted_setting = [
+        row
+        for row in ledger.list_strategy_settings(run_id)
+        if row["strategy_id"] == "CBR_CONTINUATION_V1"
+    ][-1]
+    assert persisted_setting["transition_id"] == setting_transition["transition_id"]
+    assert persisted_setting["previous_state"] == setting_transition["previous_state"]
+    assert persisted_setting["new_state"] == setting_transition["new_state"]
     runtime.set_paused(True)
     plan = replace(
         candidate_plan(),

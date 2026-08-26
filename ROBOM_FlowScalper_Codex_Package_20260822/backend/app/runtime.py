@@ -468,7 +468,7 @@ class PaperRuntime:
                 updated_ts_ms=self.clock.utc_ms()
             )
             for migrated in retirement_migrations:
-                self._persist_strategy_setting(
+                transition = self._persist_strategy_setting(
                     migrated,
                     timestamp=int(str(migrated["settings_updated_ts_ms"])),
                     evidence={
@@ -476,17 +476,27 @@ class PaperRuntime:
                         "legacy_setting_reactivation_blocked": True,
                     },
                 )
+                self._record_strategy_incident(
+                    category="STRATEGY_POLICY_MIGRATION",
+                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
+                    payload=transition,
+                )
             shadow_migrations = self.strategy_registry.enforce_unproven_active_defaults(
                 updated_ts_ms=self.clock.utc_ms()
             )
             for migrated in shadow_migrations:
-                self._persist_strategy_setting(
+                transition = self._persist_strategy_setting(
                     migrated,
                     timestamp=int(str(migrated["settings_updated_ts_ms"])),
                     evidence={
                         "policy": "NO_ACTIVE_STRATEGY_WITHOUT_COST_ADJUSTED_PROOF",
                         "promotion_requires_governor_gates": True,
                     },
+                )
+                self._record_strategy_incident(
+                    category="STRATEGY_POLICY_MIGRATION",
+                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
+                    payload=transition,
                 )
             portfolio_payload = recovered.payload.get("portfolio")
             if isinstance(portfolio_payload, Mapping):
@@ -1302,9 +1312,14 @@ class PaperRuntime:
             f"{strategy_id} {mode.value} · LONG {long_enabled} · SHORT {short_enabled}"
             f" · rev {setting.revision} · {source}",
         )
-        self._persist_strategy_setting(
+        transition = self._persist_strategy_setting(
             self.strategy_registry.setting_row(strategy_id),
             timestamp=timestamp,
+        )
+        self._record_strategy_incident(
+            category="STRATEGY_SETTINGS_TRANSITION",
+            timestamp=timestamp,
+            payload=transition,
         )
 
     def rollback_strategy(
@@ -1317,6 +1332,10 @@ class PaperRuntime:
     ) -> dict[str, object]:
         """과거 전략 설정을 새 revision으로 복원하고 불변 이력을 남긴다."""
 
+        if self.strategy_registry.is_policy_retired(strategy_id):
+            raise ValueError(
+                "비용후 검증으로 퇴역한 전략은 새 연구 승인 전 과거 설정으로 복원할 수 없습니다."
+            )
         timestamp = self.clock.utc_ms()
         self.strategy_registry.rollback(
             strategy_id,
@@ -1327,7 +1346,7 @@ class PaperRuntime:
             updated_ts_ms=timestamp,
         )
         row = self.strategy_registry.setting_row(strategy_id)
-        self._persist_strategy_setting(
+        transition = self._persist_strategy_setting(
             row,
             timestamp=timestamp,
             evidence={"rollback_target_revision": target_revision},
@@ -1335,7 +1354,7 @@ class PaperRuntime:
         self._record_strategy_incident(
             category="STRATEGY_SETTINGS_ROLLBACK",
             timestamp=timestamp,
-            payload=row | {"rollback_target_revision": target_revision},
+            payload=transition | {"rollback_target_revision": target_revision},
         )
         return row
 
@@ -1365,12 +1384,16 @@ class PaperRuntime:
             "evidence": evidence.as_dict(),
         }
         for row in changed:
-            self._persist_strategy_setting(row, timestamp=timestamp, evidence=metadata)
-        self._record_strategy_incident(
-            category="AUTO_GOVERNOR_TRANSITION",
-            timestamp=timestamp,
-            payload={"changed": list(changed), **metadata},
-        )
+            transition = self._persist_strategy_setting(
+                row,
+                timestamp=timestamp,
+                evidence=metadata,
+            )
+            self._record_strategy_incident(
+                category="AUTO_GOVERNOR_TRANSITION",
+                timestamp=timestamp,
+                payload=transition | metadata,
+            )
         return changed
 
     def run_strategy_governance_cycle(self) -> dict[str, object]:
@@ -1579,7 +1602,7 @@ class PaperRuntime:
             )
         history = (
             {
-                strategy_id: list(self.strategy_registry.revision_history(strategy_id)[-20:])
+                strategy_id: list(self._strategy_transition_history(strategy_id)[-20:])
                 for strategy_id in self.strategy_registry.strategy_ids
             }
             if include_history
@@ -1599,23 +1622,104 @@ class PaperRuntime:
             "auth_required": False,
         }
 
+    @staticmethod
+    def _strategy_setting_state(row: Mapping[str, object]) -> str:
+        return "|".join(
+            (
+                str(row.get("lifecycle", "UNKNOWN")),
+                str(row.get("mode", "UNKNOWN")),
+                f"LONG={'ON' if bool(row.get('long_enabled')) else 'OFF'}",
+                f"SHORT={'ON' if bool(row.get('short_enabled')) else 'OFF'}",
+                f"MANUAL_LOCK={'ON' if bool(row.get('manual_lock')) else 'OFF'}",
+            )
+        )
+
+    def _strategy_transition_payload(
+        self,
+        row: Mapping[str, object],
+        *,
+        previous: Mapping[str, object] | None = None,
+    ) -> dict[str, object]:
+        """전략 설정 revision을 UI·API·원장이 공유하는 상태 전환 계약으로 만든다."""
+
+        strategy_id = str(row["strategy_id"])
+        response_revision = int(str(row.get("settings_revision", 0)))
+        if previous is None and response_revision > 0:
+            previous = next(
+                (
+                    item
+                    for item in self.strategy_registry.revision_history(strategy_id)
+                    if int(str(item.get("settings_revision", 0))) == response_revision - 1
+                ),
+                None,
+            )
+        changed_by = str(row.get("changed_by", "RECOVERY"))
+        actor = "RECOVERY" if changed_by == "MIGRATION" else changed_by
+        lifecycle = str(row.get("lifecycle", "UNKNOWN"))
+        mode = str(row.get("mode", "UNKNOWN"))
+        descriptor = self.strategy_registry.descriptor(strategy_id)
+        transition_id = (
+            f"strategy-setting-{self.run_id}-{strategy_id}-rev-{response_revision}"
+        )
+        return {
+            **dict(row),
+            "transition_id": transition_id,
+            "previous_state": (
+                self._strategy_setting_state(previous) if previous is not None else "NONE"
+            ),
+            "new_state": self._strategy_setting_state(row),
+            "occurred_ts_ms": int(str(row.get("settings_updated_ts_ms", 0))),
+            "cause": str(row.get("change_reason", "STRATEGY_SETTINGS_CHANGE")),
+            "cause_code": str(row.get("change_reason", "STRATEGY_SETTINGS_CHANGE")),
+            "description_ko": (
+                f"{descriptor.display_name_ko} 전략 설정을 {lifecycle}·{mode} 상태로 변경했습니다."
+            ),
+            "actor": actor,
+            "run_id": self.run_id,
+            "strategy_id": strategy_id,
+            "account_id": None,
+            "symbol": None,
+            "request_revision": (
+                int(str(previous.get("settings_revision", response_revision - 1)))
+                if previous is not None
+                else 0
+            ),
+            "response_revision": response_revision,
+            "reversible": not self.strategy_registry.is_policy_retired(strategy_id),
+        }
+
+    def _strategy_transition_history(
+        self,
+        strategy_id: str,
+    ) -> tuple[dict[str, object], ...]:
+        history = self.strategy_registry.revision_history(strategy_id)
+        return tuple(
+            self._strategy_transition_payload(
+                row,
+                previous=(history[index - 1] if index > 0 else None),
+            )
+            for index, row in enumerate(history)
+        )
+
     def _persist_strategy_setting(
         self,
         row: Mapping[str, object],
         *,
         timestamp: int,
         evidence: Mapping[str, object] | None = None,
-    ) -> None:
+    ) -> dict[str, object]:
+        transition = self._strategy_transition_payload(row)
         if self.ledger is None or self.mode is RuntimeMode.READY:
-            return
+            return transition
         payload = {
             "run_id": self.run_id,
             "ts_ms": timestamp,
-            **dict(row),
+            **transition,
         }
         if evidence is not None:
             payload["change_evidence"] = dict(evidence)
         self.ledger.record_strategy_setting(payload)
+        return payload
 
     def _record_strategy_incident(
         self,
@@ -1626,8 +1730,13 @@ class PaperRuntime:
     ) -> None:
         if self.ledger is None or self.mode is RuntimeMode.READY:
             return
+        transition_id = payload.get("transition_id")
         self.ledger.record_incident(
-            f"{category.lower()}-{self.run_id}-{timestamp}",
+            (
+                str(transition_id)
+                if transition_id is not None
+                else f"{category.lower()}-{self.run_id}-{timestamp}"
+            ),
             run_id=self.run_id,
             severity="INFO",
             category=category,
@@ -2557,7 +2666,7 @@ class PaperRuntime:
                     "governance": dict(governance_by_id[strategy_id])
                     | {
                         "change_history": list(
-                            self.strategy_registry.revision_history(strategy_id)[-20:]
+                            self._strategy_transition_history(strategy_id)[-20:]
                         )
                     },
                 }
@@ -2745,7 +2854,9 @@ class PaperRuntime:
                         "transition_id": transition_id,
                         "previous_state": previous_state,
                         "new_state": ("USER_PAUSED" if paused else "ENTRY_ENABLED"),
+                        "occurred_ts_ms": timestamp,
                         "cause": self._paper_entry_intent_reason,
+                        "cause_code": self._paper_entry_intent_reason,
                         "description_ko": (
                             "사용자가 새 PAPER 진입을 잠시 멈췄습니다. 시장 관찰은 계속됩니다."
                             if paused

@@ -17,6 +17,11 @@ from backend.app.live_public import LiveBootstrapResult, PublicDataUnavailable
 from backend.app.main import create_app
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.strategies.registry import (
+    StrategyChangeSource,
+    StrategyLifecycle,
+    StrategyMode,
+)
 
 
 def _wait_control(client: TestClient, operation_id: str) -> dict[str, object]:
@@ -191,11 +196,15 @@ def test_pause_resume_is_revisioned_idempotent_and_append_only(tmp_path: Path) -
         resume_transition = by_state["ENTRY_ENABLED"]
         assert pause_transition["request_revision"] == 0
         assert pause_transition["response_revision"] == 1
+        assert pause_transition["occurred_ts_ms"] > 0
+        assert pause_transition["cause_code"] == "USER_PAUSE_TEST"
         assert pause_transition["previous_state"] == "ENTRY_ENABLED"
         assert pause_transition["actor"] == "USER_UI"
         assert pause_transition["reversible"] is True
         assert resume_transition["request_revision"] == 1
         assert resume_transition["response_revision"] == 2
+        assert resume_transition["occurred_ts_ms"] >= pause_transition["occurred_ts_ms"]
+        assert resume_transition["cause_code"] == "USER_RESUME_TEST"
 
 
 def test_user_resume_intent_does_not_clear_automatic_safety_wait() -> None:
@@ -231,6 +240,12 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     assert len(dashboard["strategies"]) == len(runtime.strategy_registry.strategy_ids)
     assert dashboard["operation_status"]["state"] == "READY"
     assert dashboard["operation_status"]["recommended_action"] == "START"
+    initial_by_id = {item["strategy_id"]: item for item in dashboard["strategies"]}
+    assert initial_by_id["LSA_REVERSAL_V1"]["policy_reactivation_locked"] is True
+    assert (
+        initial_by_id["VWAP_EXHAUSTION_REVERSION_V1"]["policy_reactivation_locked"]
+        is False
+    )
 
     changed = client.post(
         "/api/strategies/VWAP_EXHAUSTION_REVERSION_V1",
@@ -296,6 +311,19 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
         1,
         2,
     ]
+    history = restored["governance"]["change_history"]
+    assert [item["previous_state"] for item in history] == [
+        "NONE",
+        "SHADOW|SHADOW|LONG=ON|SHORT=ON|MANUAL_LOCK=OFF",
+        "SHADOW|SHADOW|LONG=ON|SHORT=OFF|MANUAL_LOCK=ON",
+    ]
+    assert [item["response_revision"] for item in history] == [0, 1, 2]
+    assert history[1]["actor"] == "USER_UI"
+    assert history[1]["cause_code"] == "USER_CONFIGURATION"
+    assert history[1]["reversible"] is True
+    assert history[1]["transition_id"].endswith(
+        "VWAP_EXHAUSTION_REVERSION_V1-rev-1"
+    )
     assert (
         client.post(
             "/api/strategies/UNKNOWN",
@@ -308,6 +336,43 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
         ).status_code
         == 404
     )
+
+
+def test_policy_retirement_cannot_be_bypassed_by_rollback_api() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    strategy_id = "LSA_REVERSAL_V1"
+    runtime.strategy_registry.restore_setting(
+        strategy_id,
+        mode=StrategyMode.SHADOW,
+        lifecycle=StrategyLifecycle.SHADOW,
+        long_enabled=True,
+        short_enabled=True,
+        revision=1,
+        manual_lock=True,
+        changed_by=StrategyChangeSource.USER_UI,
+        change_reason="LEGACY_USER_CONFIGURATION",
+        updated_ts_ms=1_000,
+    )
+    migrated = runtime.strategy_registry.enforce_policy_retirements(updated_ts_ms=2_000)
+    assert migrated[0]["settings_revision"] == 2
+    client = TestClient(create_app(runtime))
+
+    response = client.post(
+        f"/api/strategies/{strategy_id}/rollback",
+        json={
+            "target_revision": 1,
+            "expected_revision": 2,
+            "reason": "USER_ROLLBACK_POLICY_BYPASS_TEST",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["error_code"] == "STRATEGY_ROLLBACK_INVALID"
+    assert "퇴역" in response.json()["detail"]["error_message_ko"]
+    current = runtime.strategy_registry.setting_row(strategy_id)
+    assert current["mode"] == "OFF"
+    assert current["lifecycle"] == "RETIRED"
+    assert current["settings_revision"] == 2
 
 
 def test_live_strategy_analytics_api_uses_nonblocking_runtime_cache(monkeypatch) -> None:

@@ -509,6 +509,21 @@ def test_runtime_persists_auto_governor_evidence_and_audit(tmp_path: Path) -> No
     incidents = ledger.list_incidents(category="AUTO_GOVERNOR_TRANSITION")
     assert len(incidents) == 1
     assert incidents[0]["payload"]["assessment"]["automatic_action_allowed"] is True
+    transition = incidents[0]["payload"]
+    assert transition["previous_state"] == (
+        "SHADOW|SHADOW|LONG=ON|SHORT=ON|MANUAL_LOCK=OFF"
+    )
+    assert transition["new_state"] == (
+        "CHALLENGER|SHADOW|LONG=ON|SHORT=ON|MANUAL_LOCK=OFF"
+    )
+    assert transition["actor"] == "AUTO_GOVERNOR"
+    assert transition["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
+    assert transition["request_revision"] == 0
+    assert transition["response_revision"] == 1
+    assert transition["reversible"] is True
+    assert latest["transition_id"] == transition["transition_id"]
+    assert latest["previous_state"] == transition["previous_state"]
+    assert latest["new_state"] == transition["new_state"]
     ledger.close()
 
 
