@@ -177,3 +177,15 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Run list and recent-candle preview render without waiting for replay result history or archive event bodies.
 - [ ] Interactive timeline reads a bounded event/candle window; full strategy validation still uses all selected stored events.
 - [ ] Actual desktop, tablet and mobile screens show history, preview, progress and cancellation without console errors.
+
+## R. Revisioned PAPER entry intent and nonblocking history startup
+
+- [x] User `ENTRY_ENABLED`·`ENTRY_PAUSED` intent is separate from automatic safety locking and survives recovery with its revision.
+- [x] Pause and resume use expected-revision CAS and idempotency keys; stale or conflicting requests fail with the current state.
+- [x] Intent transitions persist actor, reason, revision and timestamp as immutable audit incidents.
+- [x] Automatic safety wait remains fail-closed and the actual UI cannot present a user resume action as safety recovery.
+- [x] Existing-Run trade-cache preparation runs after HTTP startup and does not block the listening port.
+- [x] Replay lists use a query-only read path and return the latest result per source Run while full stored results remain intact.
+- [x] The actual browser shows 43 current-version trades, 79 replay Runs, a 100-event precise timeline and working play/pause controls without console errors.
+- [ ] Six-hour and 24-hour post-change soaks are completed.
+- [ ] The active multi-gigabyte ledger full `quick_check` is rerun without disrupting the live writer.

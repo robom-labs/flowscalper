@@ -509,6 +509,15 @@ export type DashboardData = {
   status: SystemStatus
   paused: boolean
   operation_status: OperationStatus
+  paper_entry_intent: {
+    state: 'ENTRY_ENABLED' | 'USER_PAUSED'
+    manual_pause_requested: boolean
+    revision: number
+    actor: string
+    reason: string
+    updated_ts_ms: number | null
+    reversible: true
+  }
   scanner: ScannerRow[]
   chart: ChartData
   timeframes: TimeframeOption[]

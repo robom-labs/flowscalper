@@ -277,6 +277,7 @@ def test_live_replay_listing_uses_warmed_cache_during_active_ledger_contention(
         ledger=ledger,
         clock=DeterministicClock(),
     )
+    runtime._refresh_dashboard_trade_cache()
 
     def unexpected_scan(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
         raise AssertionError("LIVE replay 목록이 활성 원장을 다시 읽었습니다.")
@@ -590,6 +591,9 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.real_orders_enabled is False
     assert first.auth_required is False
     assert len(ledger.list_replay_runs(runtime.run_id)) == 2
+    latest = ledger.list_latest_replay_runs()
+    assert len(latest) == 1
+    assert latest[0]["replay_id"] == second.replay_id
     ledger.close()
 
 
@@ -1244,6 +1248,7 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         results = client.get("/api/replay/results")
         assert results.status_code == 200
         assert results.json()[0]["checksum"] == result["checksum"]
+        assert results.json()[0]["decision_path"] == result["decision_path"][-20:]
         analytics = client.get("/api/analytics/strategies")
         assert analytics.status_code == 200
         assert len(analytics.json()) == 20

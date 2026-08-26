@@ -45,7 +45,12 @@ export default function App() {
       // useDashboard가 서버의 실제 한국어 오류를 화면 상태로 보존한다.
     }
   }
-  const pauseToggle = () => void runControl(data.paused ? 'resume' : 'pause')
+  const pauseToggle = () => {
+    const action = data.operation_status.recommended_action
+    if (action === 'PAUSE' || action === 'RESUME') {
+      void runControl(action === 'PAUSE' ? 'pause' : 'resume')
+    }
+  }
   const newRun = () => {
     if (window.confirm('기존 Run 기록을 보존하고 새 PAPER Run을 만들까요?')) void runControl('new-run')
   }

@@ -266,6 +266,8 @@ class SQLiteLedger:
                     checksum TEXT NOT NULL,
                     result_json TEXT NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS replay_runs_source_latest
+                ON replay_runs(source_run_id, created_ts_ms DESC, replay_id DESC);
                 CREATE TABLE IF NOT EXISTS replay_focus_cache (
                     source_run_id TEXT NOT NULL REFERENCES runs(run_id),
                     trade_id TEXT NOT NULL,
@@ -1364,8 +1366,28 @@ class SQLiteLedger:
             query += " WHERE source_run_id = ?"
             parameters = (source_run_id,)
         query += " ORDER BY created_ts_ms, replay_id"
-        with self._lock:
-            rows = self._connection.execute(query, parameters).fetchall()
+        with self._read_lock:
+            rows = self._read_connection.execute(query, parameters).fetchall()
+        return [json.loads(str(row["result_json"])) for row in rows]
+
+    def list_latest_replay_runs(self) -> list[dict[str, Any]]:
+        """화면 목록에는 Run별 가장 최근 검증 결과 한 건만 반환한다."""
+
+        with self._read_lock:
+            rows = self._read_connection.execute(
+                """
+                SELECT current.result_json
+                FROM replay_runs current
+                WHERE current.replay_id = (
+                    SELECT latest.replay_id
+                    FROM replay_runs latest
+                    WHERE latest.source_run_id = current.source_run_id
+                    ORDER BY latest.created_ts_ms DESC, latest.replay_id DESC
+                    LIMIT 1
+                )
+                ORDER BY current.created_ts_ms, current.replay_id
+                """
+            ).fetchall()
         return [json.loads(str(row["result_json"])) for row in rows]
 
     def get_replay_focus_session(

@@ -40,7 +40,7 @@ from backend.app.replay.process import (
     replay_stored_run_from_paths,
     replay_timeline_from_paths,
 )
-from backend.app.runtime import PaperRuntime
+from backend.app.runtime import PaperEntryIntentConflict, PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
 from backend.app.strategies.registry import (
@@ -100,6 +100,13 @@ class StrategyRollbackRequest(BaseModel):
 
 class ControlMutationRequest(BaseModel):
     """두 탭과 재전송이 같은 PAPER 제어 의도를 중복 실행하지 않게 한다."""
+
+    expected_revision: int | None = Field(default=None, ge=0)
+    reason: str = Field(default="USER_REQUEST", min_length=3, max_length=120)
+
+
+class PaperEntryIntentRequest(BaseModel):
+    """사용자 일시정지 의도를 자동 안전잠금과 별도 revision으로 변경한다."""
 
     expected_revision: int | None = Field(default=None, ge=0)
     reason: str = Field(default="USER_REQUEST", min_length=3, max_length=120)
@@ -276,6 +283,15 @@ def create_app(
     replay_results_cache_lock = asyncio.Lock()
     replay_results_cache: list[dict[str, object]] | None = None
 
+    def compact_replay_result(result: Mapping[str, object]) -> dict[str, object]:
+        """목록 화면이 사용하는 최근 결정 20개만 전송하고 원장 원본은 보존한다."""
+
+        compact = dict(result)
+        decision_path = result.get("decision_path")
+        if isinstance(decision_path, list):
+            compact["decision_path"] = decision_path[-20:]
+        return compact
+
     def remember_replay_result(result: dict[str, object]) -> None:
         """완료 결과를 기존 캐시에 중복 없이 추가해 다음 화면 조회를 즉시 처리한다."""
 
@@ -289,7 +305,7 @@ def create_app(
                 for row in replay_results_cache
                 if str(row.get("replay_id")) != replay_id
             ),
-            dict(result),
+            compact_replay_result(result),
         ]
 
     def ensure_replay_process_available() -> None:
@@ -309,6 +325,7 @@ def create_app(
                     "operation": active_operation,
                 },
             )
+
     websocket_clients: set[WebSocket] = set()
 
     def dashboard_snapshot() -> dict[str, object]:
@@ -481,15 +498,66 @@ def create_app(
             "real_orders_enabled": False,
         }
 
-    @app.post("/api/control/pause")
-    async def pause_entries() -> dict[str, object]:
-        active_runtime.set_paused(True)
+    def change_paper_entry_intent(
+        paused: bool,
+        *,
+        request: PaperEntryIntentRequest | None,
+        idempotency_key: str | None,
+    ) -> dict[str, object]:
+        try:
+            active_runtime.set_paused(
+                paused,
+                expected_revision=(request.expected_revision if request is not None else None),
+                idempotency_key=idempotency_key,
+                actor="USER_UI",
+                reason=(
+                    request.reason
+                    if request is not None
+                    else "USER_PAUSE"
+                    if paused
+                    else "USER_RESUME"
+                ),
+            )
+        except PaperEntryIntentConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": error.error_code,
+                    "error_message_ko": (
+                        "같은 요청 식별자가 서로 다른 동작에 사용되었습니다. "
+                        "화면을 새로 확인하세요."
+                        if error.error_code == "PAPER_ENTRY_IDEMPOTENCY_CONFLICT"
+                        else "다른 화면에서 진입 상태가 바뀌었습니다. 최신 상태를 다시 확인하세요."
+                    ),
+                    "retryable": True,
+                    "expected_revision": error.expected_revision,
+                    "current_revision": error.current_revision,
+                    "current_intent": active_runtime.paper_entry_intent(),
+                },
+            ) from error
         return dashboard_snapshot()
 
+    @app.post("/api/control/pause")
+    async def pause_entries(
+        request: PaperEntryIntentRequest | None = None,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, object]:
+        return change_paper_entry_intent(
+            True,
+            request=request,
+            idempotency_key=idempotency_key,
+        )
+
     @app.post("/api/control/resume")
-    async def resume_entries() -> dict[str, object]:
-        active_runtime.set_paused(False)
-        return dashboard_snapshot()
+    async def resume_entries(
+        request: PaperEntryIntentRequest | None = None,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, object]:
+        return change_paper_entry_intent(
+            False,
+            request=request,
+            idempotency_key=idempotency_key,
+        )
 
     @app.post("/api/control/emergency-close")
     async def emergency_paper_close() -> dict[str, object]:
@@ -806,9 +874,12 @@ def create_app(
             return [dict(row) for row in replay_results_cache]
         async with replay_results_cache_lock:
             if replay_results_cache is None:
-                replay_results_cache = await asyncio.to_thread(
-                    active_runtime.ledger.list_replay_runs
+                stored_results = await asyncio.to_thread(
+                    active_runtime.ledger.list_latest_replay_runs
                 )
+                replay_results_cache = [
+                    compact_replay_result(row) for row in stored_results
+                ]
         cached_results = replay_results_cache
         assert cached_results is not None
         return [dict(row) for row in cached_results]

@@ -202,6 +202,10 @@ test('shows automatic safety waiting without a misleading manual resume button',
   expect(panel).toHaveTextContent('시장 관찰계속 작동')
   expect(panel).toHaveTextContent('정상화되면 자동으로 다시 시작합니다.')
   expect(screen.queryByRole('button', { name: '새 진입 다시 시작' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '설정' }))
+  fireEvent.click(screen.getByRole('button', { name: '안전' }))
+  expect(screen.getByRole('button', { name: '자동 안전대기 중' })).toBeDisabled()
+  expect(screen.queryByRole('button', { name: '자동 관찰 계속하기' })).not.toBeInTheDocument()
 })
 
 test('shows a manual pause clearly and resumes it with one click', async () => {
@@ -226,10 +230,26 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
       recommended_action: 'RESUME',
       lag_p95_ms: 110,
     },
+    paper_entry_intent: {
+      state: 'USER_PAUSED',
+      manual_pause_requested: true,
+      revision: 7,
+      actor: 'USER_UI',
+      reason: 'USER_PAUSE',
+      updated_ts_ms: 1,
+      reversible: true,
+    },
   }
   const running: DashboardData = {
     ...manuallyPaused,
     paused: false,
+    paper_entry_intent: {
+      ...manuallyPaused.paper_entry_intent,
+      state: 'ENTRY_ENABLED',
+      manual_pause_requested: false,
+      revision: 8,
+      reason: 'USER_RESUME',
+    },
     operation_status: {
       ...manuallyPaused.operation_status,
       state: 'RUNNING',
@@ -240,14 +260,21 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
       recommended_action: 'PAUSE',
     },
   }
-  const fetchMock = vi.fn(async (path: RequestInfo | URL) => (
-    String(path) === '/api/control/resume' ? response(running) : response(manuallyPaused)
-  ))
+  const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+    void init
+    return String(path) === '/api/control/resume' ? response(running) : response(manuallyPaused)
+  })
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: '새 진입 다시 시작' }))
 
   await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/control/resume')).toBe(true))
+  const resumeRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/control/resume')
+  expect(resumeRequest?.[1]?.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) })
+  expect(JSON.parse(String(resumeRequest?.[1]?.body))).toEqual({
+    expected_revision: 7,
+    reason: 'USER_RESUME',
+  })
   await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중'))
 })

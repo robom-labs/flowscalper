@@ -78,6 +78,24 @@ from backend.app.strategies.shadow import ShadowLedger
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 2_000
 _MARKET_PERSISTENCE_BATCH_SIZE = 2_000
 _SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
+
+
+class PaperEntryIntentConflict(RuntimeError):
+    """오래된 화면 또는 충돌한 재전송이 PAPER 진입 의도를 덮어쓰지 못하게 한다."""
+
+    def __init__(
+        self,
+        *,
+        error_code: str,
+        expected_revision: int | None,
+        current_revision: int,
+    ) -> None:
+        super().__init__(error_code)
+        self.error_code = error_code
+        self.expected_revision = expected_revision
+        self.current_revision = current_revision
+
+
 _WAL_CHECKPOINT_FLUSH_INTERVAL = 8
 _SLOW_WAL_CHECKPOINT_MS = 2_000.0
 _MAX_WAL_BYTES_WITHOUT_CHECKPOINT = 64 * 1024 * 1024
@@ -227,6 +245,14 @@ class PaperRuntime:
     _storage_health_snapshot: dict[str, object] = field(default_factory=dict)
     _recovery_revalidation_symbols: set[str] = field(default_factory=set)
     _manual_pause_requested: bool = False
+    _paper_entry_intent_revision: int = 0
+    _paper_entry_intent_actor: str = "RECOVERY"
+    _paper_entry_intent_reason: str = "INITIAL_STATE"
+    _paper_entry_intent_updated_ts_ms: int | None = None
+    _paper_entry_intent_idempotency: dict[str, bool] = field(
+        default_factory=dict,
+        repr=False,
+    )
     startup_storage_init_ms: float = 0.0
     startup_ledger_open_ms: float = 0.0
     startup_recovery_lookup_ms: float = 0.0
@@ -239,6 +265,7 @@ class PaperRuntime:
     resource_sampler: ProcessResourceSampler = field(init=False, repr=False)
     _persistence_lock: RLock = field(default_factory=RLock, repr=False)
     _dashboard_trade_cache_lock: RLock = field(default_factory=RLock, repr=False)
+    _paper_entry_intent_lock: RLock = field(default_factory=RLock, repr=False)
 
     def __post_init__(self) -> None:
         post_init_started = time.monotonic()
@@ -286,10 +313,12 @@ class PaperRuntime:
             and self.ledger.get_run(self.run_id) is None
         ):
             self._start_ledger_run()
+            self._paper_entry_intent_updated_ts_ms = self.clock.utc_ms()
+            self._persist_paper_entry_intent(updated_ts_ms=self._paper_entry_intent_updated_ts_ms)
         elif self.ledger is not None and self.mode is not RuntimeMode.READY:
-            trade_cache_started = time.monotonic()
-            self._refresh_dashboard_trade_cache()
-            self.startup_trade_cache_ms = (time.monotonic() - trade_cache_started) * 1_000
+            # 대용량 원장의 과거 거래·Replay 색인은 FastAPI lifespan에서
+            # 백그라운드로 준비해 HTTP 포트 개방과 복구 상태 확인을 막지 않는다.
+            self.dashboard_trade_cache_ready = False
         self.startup_post_init_total_ms = (time.monotonic() - post_init_started) * 1_000
 
     def boot_demo(self, event_count: int = 240) -> None:
@@ -442,6 +471,23 @@ class PaperRuntime:
                 self._manual_pause_requested = bool(
                     user_intent.get("manual_pause_requested", False)
                 )
+                self._paper_entry_intent_revision = int(user_intent.get("revision", 0))
+                self._paper_entry_intent_actor = str(user_intent.get("actor", "RECOVERY"))
+                self._paper_entry_intent_reason = str(
+                    user_intent.get("reason", "RECOVERED_USER_INTENT")
+                )
+                self._paper_entry_intent_updated_ts_ms = int(
+                    user_intent.get("updated_ts_ms", self.clock.utc_ms())
+                )
+                records = user_intent.get("idempotency_records", [])
+                if isinstance(records, Sequence) and not isinstance(records, str | bytes):
+                    self._paper_entry_intent_idempotency = {
+                        str(record["key"]): bool(record["paused"])
+                        for record in records
+                        if isinstance(record, Mapping)
+                        and record.get("key") is not None
+                        and "paused" in record
+                    }
         except (KeyError, TypeError, ValueError) as error:
             self._lock_recovery(f"RECOVERY_STATE_REJECTED:{type(error).__name__}")
             return False
@@ -631,6 +677,7 @@ class PaperRuntime:
             "stale_trade_symbols": len(self._stale_trade_symbols),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
             "manual_pause_requested": self._manual_pause_requested,
+            "paper_entry_intent_revision": self._paper_entry_intent_revision,
             "automatic_recovery_enabled": True,
             "startup_storage_init_ms": round(self.startup_storage_init_ms, 3),
             "startup_ledger_open_ms": round(self.startup_ledger_open_ms, 3),
@@ -2373,6 +2420,7 @@ class PaperRuntime:
             ),
         )
         snapshot["focus_positions"] = self.focus_positions()
+        snapshot["paper_entry_intent"] = self.paper_entry_intent()
         snapshot["history_scope"] = {
             "analysis_scope": "CURRENT_STRATEGY_VERSION",
             "strategy_version": STRATEGY_VERSION,
@@ -2382,39 +2430,164 @@ class PaperRuntime:
         }
         return snapshot
 
-    def set_paused(self, paused: bool) -> None:
+    def paper_entry_intent(self) -> dict[str, object]:
+        """사용자 진입 의도를 자동 안전잠금과 분리한 공개 상태로 반환한다."""
+
+        return {
+            "state": "USER_PAUSED" if self._manual_pause_requested else "ENTRY_ENABLED",
+            "manual_pause_requested": self._manual_pause_requested,
+            "revision": self._paper_entry_intent_revision,
+            "actor": self._paper_entry_intent_actor,
+            "reason": self._paper_entry_intent_reason,
+            "updated_ts_ms": self._paper_entry_intent_updated_ts_ms,
+            "reversible": True,
+        }
+
+    def _persist_paper_entry_intent(self, *, updated_ts_ms: int) -> None:
+        if self.ledger is None or self.mode is RuntimeMode.READY:
+            return
+        self.ledger.set_app_setting(
+            "paper_entry_user_intent",
+            {
+                "run_id": self.run_id,
+                "manual_pause_requested": self._manual_pause_requested,
+                "revision": self._paper_entry_intent_revision,
+                "actor": self._paper_entry_intent_actor,
+                "reason": self._paper_entry_intent_reason,
+                "idempotency_records": [
+                    {"key": key, "paused": target}
+                    for key, target in list(self._paper_entry_intent_idempotency.items())[-32:]
+                ],
+            },
+            updated_ts_ms=updated_ts_ms,
+        )
+
+    def _reset_paper_entry_intent(
+        self,
+        *,
+        manual_pause_requested: bool = False,
+        actor: str = "USER_UI",
+        reason: str = "RUN_STARTED",
+        persist: bool = False,
+    ) -> None:
+        self._manual_pause_requested = manual_pause_requested
+        self._paper_entry_intent_revision = 0
+        self._paper_entry_intent_actor = actor
+        self._paper_entry_intent_reason = reason
+        self._paper_entry_intent_updated_ts_ms = self.clock.utc_ms()
+        self._paper_entry_intent_idempotency.clear()
+        if persist:
+            self._persist_paper_entry_intent(updated_ts_ms=self._paper_entry_intent_updated_ts_ms)
+
+    def set_paused(
+        self,
+        paused: bool,
+        *,
+        expected_revision: int | None = None,
+        idempotency_key: str | None = None,
+        actor: str = "USER_UI",
+        reason: str | None = None,
+    ) -> dict[str, object]:
         if self.mode is RuntimeMode.READY:
             self.paused = True
             self._log("RISK", "실시간 PAPER 시작 전에는 진입할 수 없음")
-            return
-        self._manual_pause_requested = paused
-        if self.ledger is not None:
-            self.ledger.set_app_setting(
-                "paper_entry_user_intent",
-                {
-                    "run_id": self.run_id,
-                    "manual_pause_requested": paused,
-                    "actor": "USER_UI",
-                    "reason": "USER_PAUSE" if paused else "USER_RESUME",
-                },
-                updated_ts_ms=self.clock.utc_ms(),
-            )
-        if (
-            not paused
-            and self.mode is RuntimeMode.LIVE_SHADOW_PAPER
-            and (
-                self.market_data_state is not MarketDataState.LIVE
-                or "CRITICAL_MARKET_LAG_ENTRY_LOCK" in self.runtime_health_flags
-                or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
-                or self.paper_portfolio.main.risk_state.faulted
-                or not self._refresh_storage_safety(force=True)
-            )
-        ):
-            self.paused = True
-            self._log("RISK", "검증된 LIVE 데이터가 없어 PAPER 진입 재개 차단")
-            return
-        self.paused = paused
-        self._log("RISK", "페이퍼 신규 진입 일시정지" if paused else "페이퍼 신규 진입 재개")
+            return self.paper_entry_intent()
+        with self._paper_entry_intent_lock:
+            if idempotency_key is not None:
+                previous_target = self._paper_entry_intent_idempotency.get(idempotency_key)
+                if (
+                    previous_target is not None
+                    or idempotency_key in self._paper_entry_intent_idempotency
+                ):
+                    if previous_target != paused:
+                        raise PaperEntryIntentConflict(
+                            error_code="PAPER_ENTRY_IDEMPOTENCY_CONFLICT",
+                            expected_revision=expected_revision,
+                            current_revision=self._paper_entry_intent_revision,
+                        )
+                    return self.paper_entry_intent()
+            if (
+                expected_revision is not None
+                and expected_revision != self._paper_entry_intent_revision
+            ):
+                raise PaperEntryIntentConflict(
+                    error_code="PAPER_ENTRY_REVISION_CONFLICT",
+                    expected_revision=expected_revision,
+                    current_revision=self._paper_entry_intent_revision,
+                )
+            if paused == self._manual_pause_requested:
+                if idempotency_key is not None:
+                    self._paper_entry_intent_idempotency[idempotency_key] = paused
+                    self._persist_paper_entry_intent(updated_ts_ms=self.clock.utc_ms())
+                return self.paper_entry_intent()
+
+            previous_state = "USER_PAUSED" if self._manual_pause_requested else "ENTRY_ENABLED"
+            request_revision = self._paper_entry_intent_revision
+            timestamp = self.clock.utc_ms()
+            transition_id = f"paper-entry-{uuid4().hex}"
+            self._manual_pause_requested = paused
+            self._paper_entry_intent_revision += 1
+            self._paper_entry_intent_actor = actor
+            self._paper_entry_intent_reason = reason or ("USER_PAUSE" if paused else "USER_RESUME")
+            self._paper_entry_intent_updated_ts_ms = timestamp
+            if idempotency_key is not None:
+                self._paper_entry_intent_idempotency[idempotency_key] = paused
+                self._paper_entry_intent_idempotency = dict(
+                    list(self._paper_entry_intent_idempotency.items())[-32:]
+                )
+            self._persist_paper_entry_intent(updated_ts_ms=timestamp)
+
+            if (
+                not paused
+                and self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                and (
+                    self.market_data_state is not MarketDataState.LIVE
+                    or "CRITICAL_MARKET_LAG_ENTRY_LOCK" in self.runtime_health_flags
+                    or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
+                    or self.paper_portfolio.main.risk_state.faulted
+                    or not self._refresh_storage_safety(force=True)
+                )
+            ):
+                self.paused = True
+                self._log("RISK", "사용자 재개 의도 저장 · 자동 안전대기는 계속 유지")
+            else:
+                self.paused = paused
+                self._log(
+                    "RISK",
+                    "페이퍼 신규 진입 일시정지" if paused else "페이퍼 신규 진입 재개",
+                )
+
+            if self.ledger is not None:
+                self.ledger.record_incident(
+                    transition_id,
+                    run_id=self.run_id,
+                    severity="INFO",
+                    category="PAPER_ENTRY_INTENT_TRANSITION",
+                    ts_ms=timestamp,
+                    payload={
+                        "transition_id": transition_id,
+                        "previous_state": previous_state,
+                        "new_state": ("USER_PAUSED" if paused else "ENTRY_ENABLED"),
+                        "cause": self._paper_entry_intent_reason,
+                        "description_ko": (
+                            "사용자가 새 PAPER 진입을 잠시 멈췄습니다. 시장 관찰은 계속됩니다."
+                            if paused
+                            else "사용자가 새 PAPER 진입 재개를 요청했습니다. "
+                            "자동 안전잠금은 별도로 유지됩니다."
+                        ),
+                        "actor": actor,
+                        "run_id": self.run_id,
+                        "strategy_id": None,
+                        "account_id": None,
+                        "symbol": None,
+                        "request_revision": request_revision,
+                        "response_revision": self._paper_entry_intent_revision,
+                        "reversible": True,
+                        "idempotency_key": idempotency_key,
+                        "runtime_paused": self.paused,
+                    },
+                )
+            return self.paper_entry_intent()
 
     def emergency_paper_close(self) -> None:
         if self.mode is RuntimeMode.DEMO_FIXTURE:
@@ -2446,8 +2619,8 @@ class PaperRuntime:
         self._archive_current_run("USER_START_LIVE")
         self._archive_superseded_open_runs("SUPERSEDED_BY_START_LIVE")
         self.mode = RuntimeMode.LIVE_SHADOW_PAPER
-        self._manual_pause_requested = False
         self.run_id = f"run-{uuid4().hex[:12]}"
+        self._reset_paper_entry_intent(reason="USER_START_LIVE")
         self.venue = Venue.BINANCE_USDM
         self.market_data_state = MarketDataState.DISCONNECTED
         self._events.clear()
@@ -2460,6 +2633,7 @@ class PaperRuntime:
         self.processing_lag_p95_ms = None
         self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
         self._start_ledger_run()
+        self._persist_paper_entry_intent(updated_ts_ms=self.clock.utc_ms())
         self._log("RUN", "Fresh LIVE PAPER Run 생성 · 자산과 손익·비용·거래 0")
         if probe is not None:
             return await self.boot_live_public(probe)
@@ -2592,8 +2766,8 @@ class PaperRuntime:
         self._archive_current_run("USER_START_DEMO")
         self._archive_superseded_open_runs("SUPERSEDED_BY_START_DEMO")
         self.mode = RuntimeMode.DEMO_FIXTURE
-        self._manual_pause_requested = False
         self.run_id = f"demo-{uuid4().hex[:12]}"
+        self._reset_paper_entry_intent(reason="USER_START_DEMO")
         self.venue = Venue.FIXTURE
         self.market_data_state = MarketDataState.FIXTURE
         self.live_selection = None
@@ -2607,6 +2781,7 @@ class PaperRuntime:
         self.unrealized_pnl_usdt = 0.0
         self.runtime_health_flags = ["OFFLINE_DEMO_ISOLATED"]
         self._start_ledger_run()
+        self._persist_paper_entry_intent(updated_ts_ms=self.clock.utc_ms())
         self.boot_demo()
         self._log("RUN", "LIVE 성과와 분리된 오프라인 DEMO Run 생성")
         return self.run_id
@@ -2626,13 +2801,14 @@ class PaperRuntime:
             )
         self._archive_superseded_open_runs("SUPERSEDED_BY_NEW_RUN")
         self.run_id = f"run-{uuid4().hex[:12]}"
-        self._manual_pause_requested = False
+        self._reset_paper_entry_intent(reason="USER_NEW_RUN")
         self._events.clear()
         self._reset_research_state()
         self.paused = False
         self.position_visible = True
         if self.ledger is not None:
             self._start_ledger_run()
+            self._persist_paper_entry_intent(updated_ts_ms=self.clock.utc_ms())
         if self.mode is RuntimeMode.DEMO_FIXTURE:
             self.boot_demo()
         else:
@@ -3548,6 +3724,7 @@ class PaperRuntime:
         self.deep_symbol_count = 0
         if self.ledger is not None:
             self._start_ledger_run()
+            self._persist_paper_entry_intent(updated_ts_ms=self.clock.utc_ms())
 
     def _record_public_failure(self, venue: Venue, error: PublicDataUnavailable) -> None:
         flag = f"PUBLIC_DATA_BOOTSTRAP_FAILED_{venue.value}"

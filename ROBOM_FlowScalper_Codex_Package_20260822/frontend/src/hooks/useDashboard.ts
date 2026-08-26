@@ -56,6 +56,7 @@ export function useDashboard() {
   const [busyAction, setBusyAction] = useState<LongAction | null>(null)
   const [submittedOperation, setSubmittedOperation] = useState<ControlOperation | null>(null)
   const idempotencyKeys = useRef(new Map<LongAction, string>())
+  const immediateIdempotencyKeys = useRef(new Map<'pause' | 'resume', string>())
   const hasConnected = useRef(false)
   const mounted = useRef(true)
 
@@ -193,12 +194,26 @@ export function useDashboard() {
     if (action in actionNames) return submitLongControl(action as LongAction)
     setRequestError('')
     try {
+      if (action === 'pause' || action === 'resume') {
+        const idempotencyKey = immediateIdempotencyKeys.current.get(action) ?? crypto.randomUUID()
+        immediateIdempotencyKeys.current.set(action, idempotencyKey)
+        const snapshot = await updateDashboard(`/api/control/${action}`, {
+          method: 'POST',
+          headers: { 'Idempotency-Key': idempotencyKey },
+          body: JSON.stringify({
+            expected_revision: data.paper_entry_intent.revision,
+            reason: action === 'pause' ? 'USER_PAUSE' : 'USER_RESUME',
+          }),
+        })
+        immediateIdempotencyKeys.current.delete(action)
+        return snapshot
+      }
       return await updateDashboard(`/api/control/${action}`, { method: 'POST' })
     } catch (error) {
       if (mounted.current) setRequestError(errorMessage(error))
       throw error
     }
-  }, [submitLongControl, updateDashboard])
+  }, [data.paper_entry_intent.revision, submitLongControl, updateDashboard])
 
   const cancelControl = useCallback(async () => {
     const operation = data.control_operation ?? submittedOperation

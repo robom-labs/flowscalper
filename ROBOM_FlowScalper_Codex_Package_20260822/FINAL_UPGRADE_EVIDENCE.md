@@ -1625,3 +1625,64 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 최종 GitHub 반영 뒤 실제 서비스는 3초 동안 dashboard event 104,288→104,518로 230건 전진했고, LIVE·PAPER·실행 p95 42.887ms·queue 0·entry lock false·저장 fault와 buffer drop 0·실제주문과 인증 false를 유지했다. 현재 거래기록은 39건을 유지했고 마지막 대형 replay operation은 `CANCELLED`였다.
 
 기계판독 증거는 `evidence/WAVE37_OBSERVABLE_REPLAY_QA.json`, 결정 근거는 ADR-043이다. GitHub main의 최종 구현 기준은 `bc113522d9c4115f5732cc1d706b4590c3de6ce9`이다. 이 Wave는 기록·재생 표시와 취소·응답성을 검증한 것이며 전략 수익성·장시간 안정성을 입증한 것은 아니다.
+
+## 43. PAPER 진입 의도 분리와 기록·재생 시작 병목 제거
+
+### 재현과 원인
+
+사용자가 누른 신규진입 일시정지와 자동 안전잠금이 같은 `paused` 표현에 의존해, 자동 안전대기 중 재개 버튼의 의미와 재시작 복구 결과가 모호했다. 오래된 화면의 요청과 중복 요청을 구분할 revision·idempotency 계약도 없었다.
+
+실제 2.57GB 활성 SQLite 원장으로 서비스를 재시작했을 때 내부 시작은 165.615초였고, HTTP 포트가 열리기 전 현재 전략 거래 cache 동기 구축만 142.831초가 걸렸다. 그래서 저장 거래가 있어도 사이트가 오랫동안 열리지 않아 전체 기록이 사라진 것처럼 보일 수 있었다. `/api/replay/results`도 저장된 53개 replay 결과의 전체 결정경로를 한 번에 반환해 2,680,397 bytes가 되었고 첫 요청이 10초를 넘었다.
+
+### 수정
+
+- 사용자 PAPER 신규진입 의도를 `ENTRY_ENABLED`·`ENTRY_PAUSED`와 revision으로 분리했다. pause·resume은 expected revision CAS와 `Idempotency-Key`를 사용하고 actor·reason·timestamp를 `PAPER_ENTRY_INTENT_TRANSITION`으로 불변 감사한다.
+- 자동 안전잠금 중에는 사용자 의도가 허용이어도 런타임을 계속 정지하고, 실제 화면은 재개 버튼을 비활성화해 자동 복구와 사용자 제어를 혼동하지 않게 했다.
+- 같은 Run 재시작과 자동 venue 전환은 의도와 revision을 보존하며, Fresh Run에서만 의도를 초기화한다.
+- 기존 미종료 LIVE Run의 거래 cache는 HTTP 시작 이후 background에서 준비한다. 시작 전에는 안전 복구만 수행하고 검증되지 않은 거래통계는 노출하지 않는다.
+- replay 목록은 writer lock과 분리된 query-only 연결을 사용한다. source Run마다 최신 replay 하나만 기본 결과로 반환하고 API 결정경로는 최근 20개로 제한하되 SQLite 전체 결과와 원본 이벤트는 보존한다.
+
+### 실제 제어·재시작 검증
+
+실제 브라우저에서 `신규진입 일시정지`와 `신규진입 재개`를 차례로 눌러 revision 0→1→2와 불변 전환 2건을 확인했다. 이후 서비스를 여러 번 재시작해도 같은 `run-2b7135a972dd`, `ENTRY_ENABLED`, revision 2, actor `USER_UI`, reason `USER_RESUME`이 복구됐다.
+
+최종 실제 재시작은 LaunchAgent kickstart부터 HTTP 응답까지 10.180초, 내부 시작 3.651초였고 동기 거래 cache 시간은 0이었다. HTTP 시작 후 background cache는 0.903초에 완료됐다. 이전의 내부 165.615초와 비교하면 사용자가 화면을 기다리는 주된 동기 병목이 제거됐다. 이 비교에는 같은 원장의 디스크 cache 온도와 새 index 영향도 포함될 수 있으므로 순수 코드 미세벤치마크로 해석하지 않는다.
+
+### 실제 기록·재생 화면 검증
+
+- `기록` 화면 기본 전체 PAPER 계좌에서 현재 전략 버전 43건·공동계좌 1건·전략별 계좌 42건을 확인했다. API 응답은 9.068ms였다.
+- 보유시간은 최소 14.044초, 중앙 25.962초, 최대 85.622초였고 3초 미만 종료는 0건이라 1~2초 종료 재발은 없었다.
+- `과거 재생` 화면에서 저장 Run 79개와 선택한 현재 Run의 2,135,559 events를 확인했다. Run 목록 API는 3.811ms였다.
+- source Run별 최신 결과는 16개·33,397 bytes·결정경로 최대 20개였고 첫 응답 84.871ms, 반복 응답 2.082ms였다. 수정 전 전체 53개 결과는 2,680,397 bytes였다.
+- 실제 `정밀 이벤트 불러오기`는 현재 대형 Run의 100 events를 최초 약 14.7초에 표시했고, 반복 로딩은 약 0.9초였다. `재생`을 눌러 cursor 1→12 전진 뒤 `일시정지`도 확인했다. 최초 cold read는 아직 `PASS_WITH_LIMIT`다.
+- 실제 브라우저 console error·warning은 0건이고 화면은 RUNNING·LIVE·PAPER·실제주문 0·인증 0을 유지했다.
+
+### 60초 실제 LIVE 표본
+
+13회 표본의 60.08초 동안 event는 4,291건 전진했다. HTTP 응답 최대 127.29ms, 실행경로 p95 최대 36.001ms, 거래 지연 p95 최대 54.582ms, 관찰용 wide 지연 p95 최대 1,781.769ms, queue 최대 5였다. 비계획 reconnect·gap·resync·drop·persistence fault·buffer drop은 모두 0이고 최종 신규진입 잠금은 false였다. wide 지연은 진입 실행경로 지연과 분리해 기록한다.
+
+### 거래량과 전략 판정
+
+43개 행은 자연 BASE 후보 21건의 BASE·STRESS 독립계좌 42건과 공동계좌 1건이다. 전략별 BASE 표본은 LSA 5, CBR 1, VWAP 4, OFI 눌림 1, Queue imbalance 6, Aggressor impulse 2, Multilevel pressure 0, Depth-adjusted OFI 2, OFI return divergence 0, Book slope exhaustion 0건이며 모두 승리 0건이다. 전체 43행 비용후 순손익은 -45.28840655 USDT다.
+
+현재 저장된 사용자 설정은 CBR만 `ACTIVE`, 나머지 9개는 독립 `SHADOW`이고 10전략·20계좌의 LONG·SHORT 평가는 유지된다. 거래가 적거나 승률이 낮다는 이유로 전략 임계값·비용·TP/SL을 낮추거나 모든 전략을 공동계좌 ACTIVE로 바꾸지 않았다. 전략별 표본은 최대 6건이므로 순위와 수익성은 `NOT_PROVEN`이다.
+
+### 전체 회귀와 남은 한계
+
+| 검증 | 상태 | 이번 실행의 결과 |
+|---|---|---|
+| backend pytest | PASS | 371 passed, 47.16초 |
+| frontend Vitest | PASS | 13 files·54 tests |
+| Ruff / mypy | PASS | 오류 0 / 92 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 508.72kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 125 source·violation/secret-like/실제주문 path 0 / 위반 0 |
+| 실제 서비스·브라우저 | PASS_WITH_LIMIT | RUNNING·LIVE·PAPER, 기록 43건·replay Run 79개·재생 cursor 전진·console 오류 0. 대형 Run 최초 정밀 100건 14.7초는 제한으로 남긴다. |
+| 활성 원장 full quick_check | NOT_RUN | 실제 writer와 동시에 시도했으나 10초 이상 진행되어 운영 경합을 피하려고 중단했다. 과거 Wave의 결과를 이번 PASS로 재사용하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 자연 BASE 표본 0~6건, 전체 43행 승리 0·순손익 -45.28840655 USDT다. |
+| 6시간 / 24시간 soak | NOT_RUN | 수정 후 실제 시간을 채우지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
+| GitHub main / Actions | PENDING | 구현과 로컬 증거를 먼저 확정한 뒤 별도 확인한다. |
+
+기계판독 증거는 `evidence/WAVE38_ENTRY_INTENT_HISTORY_REPLAY_QA.json`, 결정 근거는 ADR-044다. 이번 PASS는 사용자 의도 감사·서비스 시작·기록·replay 기본 조회·짧은 LIVE·실제 브라우저 범위이며 전략 수익성·활성 원장 전수검사·6시간·24시간 안정성을 뜻하지 않는다.

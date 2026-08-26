@@ -140,6 +140,90 @@ def test_dashboard_controls_preserve_run_history() -> None:
     assert new_snapshot["history"][0]["run_id"] == "run-original"
 
 
+def test_pause_resume_is_revisioned_idempotent_and_append_only(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "paper-entry-intent.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        clock=DeterministicClock(),
+        run_id="run-entry-intent",
+        ledger=ledger,
+    )
+    with TestClient(create_app(runtime)) as client:
+        pause = client.post(
+            "/api/control/pause",
+            headers={"Idempotency-Key": "pause-once"},
+            json={"expected_revision": 0, "reason": "USER_PAUSE_TEST"},
+        )
+        assert pause.status_code == 200
+        assert pause.json()["paper_entry_intent"]["revision"] == 1
+        assert pause.json()["paper_entry_intent"]["state"] == "USER_PAUSED"
+
+        retry = client.post(
+            "/api/control/pause",
+            headers={"Idempotency-Key": "pause-once"},
+            json={"expected_revision": 0, "reason": "USER_PAUSE_TEST"},
+        )
+        assert retry.status_code == 200
+        assert retry.json()["paper_entry_intent"]["revision"] == 1
+
+        stale = client.post(
+            "/api/control/resume",
+            headers={"Idempotency-Key": "resume-stale"},
+            json={"expected_revision": 0, "reason": "USER_RESUME_TEST"},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["error_code"] == "PAPER_ENTRY_REVISION_CONFLICT"
+        assert stale.json()["detail"]["current_intent"]["revision"] == 1
+
+        resume = client.post(
+            "/api/control/resume",
+            headers={"Idempotency-Key": "resume-once"},
+            json={"expected_revision": 1, "reason": "USER_RESUME_TEST"},
+        )
+        assert resume.status_code == 200
+        assert resume.json()["paper_entry_intent"]["revision"] == 2
+        assert resume.json()["paper_entry_intent"]["state"] == "ENTRY_ENABLED"
+
+        incidents = ledger.list_incidents(category="PAPER_ENTRY_INTENT_TRANSITION")
+        assert len(incidents) == 2
+        by_state = {row["payload"]["new_state"]: row["payload"] for row in incidents}
+        pause_transition = by_state["USER_PAUSED"]
+        resume_transition = by_state["ENTRY_ENABLED"]
+        assert pause_transition["request_revision"] == 0
+        assert pause_transition["response_revision"] == 1
+        assert pause_transition["previous_state"] == "ENTRY_ENABLED"
+        assert pause_transition["actor"] == "USER_UI"
+        assert pause_transition["reversible"] is True
+        assert resume_transition["request_revision"] == 1
+        assert resume_transition["response_revision"] == 2
+
+
+def test_user_resume_intent_does_not_clear_automatic_safety_wait() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-entry-intent-safety",
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = [
+        "PUBLIC_SUPERVISOR_RUNNING",
+        "CRITICAL_MARKET_LAG_ENTRY_LOCK",
+    ]
+    runtime.set_paused(True, expected_revision=0, idempotency_key="pause")
+
+    intent = runtime.set_paused(
+        False,
+        expected_revision=1,
+        idempotency_key="resume",
+    )
+
+    assert intent["manual_pause_requested"] is False
+    assert intent["revision"] == 2
+    assert runtime.paused is True
+    assert runtime.dashboard()["operation_status"]["state"] == "SAFETY_WAITING"
+
+
 def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     client = TestClient(create_app(runtime))
@@ -204,18 +288,23 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     )
     assert restored["settings_revision"] == 2
     assert restored["short_enabled"] is True
-    assert [
-        item["settings_revision"] for item in restored["governance"]["change_history"]
-    ] == [0, 1, 2]
-    assert client.post(
-        "/api/strategies/UNKNOWN",
-        json={
-            "mode": "OFF",
-            "long_enabled": False,
-            "short_enabled": False,
-            "expected_revision": 0,
-        },
-    ).status_code == 404
+    assert [item["settings_revision"] for item in restored["governance"]["change_history"]] == [
+        0,
+        1,
+        2,
+    ]
+    assert (
+        client.post(
+            "/api/strategies/UNKNOWN",
+            json={
+                "mode": "OFF",
+                "long_enabled": False,
+                "short_enabled": False,
+                "expected_revision": 0,
+            },
+        ).status_code
+        == 404
+    )
 
 
 def test_live_strategy_analytics_api_uses_nonblocking_runtime_cache(monkeypatch) -> None:

@@ -66,6 +66,15 @@ export const initialDashboard: DashboardData = {
   focus_positions: [],
   control_operation: null,
   control_revision: 0,
+  paper_entry_intent: {
+    state: 'ENTRY_ENABLED',
+    manual_pause_requested: false,
+    revision: 0,
+    actor: 'RECOVERY',
+    reason: 'INITIAL_STATE',
+    updated_ts_ms: null,
+    reversible: true,
+  },
   performance: {
     sample_size: 0,
     gross_pnl: '0',

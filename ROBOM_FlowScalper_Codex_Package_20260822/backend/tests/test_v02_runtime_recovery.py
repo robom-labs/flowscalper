@@ -88,6 +88,54 @@ def test_dashboard_history_reads_do_not_wait_for_write_lock(tmp_path: Path) -> N
     ledger.close()
 
 
+def test_replay_result_reads_do_not_wait_for_write_lock(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "replay-read.sqlite3")
+    completed = threading.Event()
+    rows: list[int] = []
+
+    def read_replays() -> None:
+        rows.append(len(ledger.list_replay_runs()))
+        completed.set()
+
+    with ledger._lock:
+        reader = threading.Thread(target=read_replays)
+        reader.start()
+        assert completed.wait(timeout=1)
+    reader.join(timeout=1)
+    assert rows == [0]
+    ledger.close()
+
+
+def test_existing_live_runtime_defers_full_history_cache_until_lifespan(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "deferred-history-cache.sqlite3"
+    ledger = SQLiteLedger(database)
+    first = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-deferred-history-cache",
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    first._persist_execution_state(1_000)
+    ledger.close()
+
+    reopened = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-deferred-history-cache",
+        ledger=reopened,
+        venue=Venue.BINANCE_USDM,
+    )
+
+    assert runtime.dashboard_trade_cache_ready is False
+    assert runtime.dashboard_trade_cache_loading is False
+    assert runtime.startup_trade_cache_ms == 0
+    reopened.close()
+
+
 def test_runtime_revalidates_every_recovered_league_symbol_before_unlock(
     tmp_path: Path,
 ) -> None:
@@ -124,7 +172,7 @@ def test_runtime_revalidates_every_recovered_league_symbol_before_unlock(
         recovered_runtime.ingest_live_event(
             _live_depth_event(recovered_runtime, 1_500 + index, symbol)
         )
-        assert (symbol not in recovered_runtime._recovery_revalidation_symbols)
+        assert symbol not in recovered_runtime._recovery_revalidation_symbols
         assert recovered_runtime.paused is (index < len(symbols))
     assert "ENTRY_LOCK_RECOVERY_REVALIDATION" not in recovered_runtime.runtime_health_flags
     reopened.close()
@@ -257,6 +305,40 @@ def test_strategy_rollback_history_survives_process_restart(tmp_path: Path) -> N
     assert setting.revision == 2
     assert setting.short_enabled is True
     assert [row["settings_revision"] for row in history] == [0, 1, 2]
+    reopened.close()
+
+
+def test_paper_entry_intent_revision_survives_process_restart(tmp_path: Path) -> None:
+    database = tmp_path / "paper-entry-intent-recovery.sqlite3"
+    run_id = "run-paper-entry-intent-recovery"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime.set_paused(
+        True,
+        expected_revision=0,
+        idempotency_key="recovery-pause",
+        reason="USER_PAUSE_RECOVERY_TEST",
+    )
+    runtime._persist_execution_state(1_250)
+    ledger.close()
+
+    recovered_runtime, reopened = _reopen_runtime(database, run_id)
+
+    assert recovered_runtime.paper_entry_intent()["manual_pause_requested"] is True
+    assert recovered_runtime.paper_entry_intent()["revision"] == 1
+    assert recovered_runtime.paper_entry_intent()["reason"] == "USER_PAUSE_RECOVERY_TEST"
+    repeated = recovered_runtime.set_paused(
+        True,
+        expected_revision=0,
+        idempotency_key="recovery-pause",
+    )
+    assert repeated["revision"] == 1
     reopened.close()
 
 
