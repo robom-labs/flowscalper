@@ -238,6 +238,6 @@ Wave 47의 활성 writer 동시검사는 queue 4,096·drop 9,736을 만든 `FAIL
 - [x] Planned reconnect and critical lag may appear only with fail-closed entry locking and final RUNNING·LIVE·PAPER recovery.
 - [x] Queue, executable/trade lag, drop, gap, fault, persistence, WAL and current-RSS checks are independent; wide lag is observational.
 - [x] Tablet and mobile summary, primary-navigation and secondary-navigation controls are at least 48×48px with zero root overflow.
-- [ ] The implementation commit completes a genuine non-invasive 30-minute installed-service observation.
+- [x] The implementation commit completes a genuine non-invasive 30-minute installed-service observation.
 - [ ] The implementation commit completes genuine 6-hour and 24-hour installed-service observations.
 - [ ] Current-version natural LIVE_PUBLIC samples meet the preregistered profitability gate.

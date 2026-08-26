@@ -132,6 +132,12 @@ Detailed specifications:
 - `evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png`
 - `evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png`
 - `evidence/wave48-ledger-integrity/actual-cross-device-maintenance-integrity.json`
+- `evidence/WAVE49_PUBLIC_MARKET_SMOKE.json`
+- `evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`
+- `evidence/WAVE49_RUNNING_SERVICE_AND_UI_QA.json`
+- `evidence/screenshots/wave49-actual-system-mobile-415x734.png`
+- `evidence/screenshots/wave49-actual-trade-replay-mobile-415x734.png`
+- `scripts/observe_running_service.py`
 - `scripts/verify_ledger_snapshot.py`
 - `scripts/verify_macos_ledger_maintenance.py`
 - `scripts/research_public_trend_candidates.py`

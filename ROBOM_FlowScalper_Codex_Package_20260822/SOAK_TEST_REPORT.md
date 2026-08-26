@@ -56,3 +56,28 @@
 같은 호스트에서 별도 전체 연구와 기존 서비스를 동시에 실행했을 때 기존 서비스의 계획 회전 1회가 86.467초 critical lag로 늘어난 표본은 숨기지 않는다. 이는 격리 30분 검사에서 재현되지 않았고 자동 복구됐으므로 `PASS_WITH_LIMIT`다. 무거운 offline 연구를 LIVE와 같은 호스트에서 전속 실행하지 않는 기존 경계를 유지한다.
 
 6시간과 24시간은 이번 Wave에서 실제 시간을 채우지 않았으므로 계속 `NOT_RUN`이다.
+
+## 2026-08-26 Wave 49 실행 서비스 비침습 30분 검증
+
+기존 8870 LaunchAgent 서비스 자체를 증명하기 위해 별도 `PaperRuntime`, 공개시장 연결, Run, replay 또는 SQLite writer를 만들지 않고 `/api/dashboard`만 읽는 검사를 추가했다. `make soak-30m`과 달리 이 검사는 설치 서비스의 같은 Run·같은 프로세스가 실제로 계속 전진하는지를 본다.
+
+`evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`은 `run-2b7135a972dd`를 monotonic 1,800.038초·181표본 동안 관찰한 `PASS`다. 시스템 UTC 시각 차이는 동기화 보정 때문에 1,799.986초였고, 실제 경과 수용판정은 시각 조정에 영향받지 않는 monotonic clock을 사용했다.
+
+| 항목 | 실제 결과 |
+|---|---:|
+| event 전진 | +158,346 |
+| 전략 평가 전진 | +486,276 |
+| 적격신호·main 거래·League 거래 증가 | 0·0·0 |
+| 계획 rotation / reconnect / 비계획 reconnect | 2 / 2 / 0 |
+| gap / resync / drop / 저장 fault / buffer drop / WAL fault | 모두 0 |
+| queue 최대 | 23 / 4,096 |
+| 실행호가 p95 최대 / 체결 p95 최대 | 122.399ms / 508.430ms |
+| wide p95 최대 | 1,814.534ms, 관찰 전용 |
+| 저장 flush / WAL checkpoint | 1→80 / 0→10 |
+| flush / checkpoint 최대시간 | 10.145초 / 14.019초 |
+| 현재 RSS 기준선 / 최대 / 증가 | 184.281MB / 279.891MB / 95.610MB |
+| 전략 / 독립 BASE·STRESS 계좌 | 11 / 22, 전 표본 완전 |
+| 최대 포지션 / 실제 주문 / 인증 | 0 / false / false |
+| probe 오류 / 실패한 검사 | 0 / 0, 45개 전부 true |
+
+적격신호와 신규 거래가 0인 결과를 성능 결함이나 수익성으로 해석하지 않는다. 현재버전 BASE 5건은 -3.573282460 USDT, STRESS 5건은 -6.819651904 USDT로 표본이 부족하고 비용후 손실이다. 전략 수익성은 `NOT_PROVEN`이며 진입조건을 낮추지 않았다. 6시간·24시간은 이 구현으로 실제 시간을 채우지 않았으므로 계속 `NOT_RUN`이다.

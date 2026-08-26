@@ -352,3 +352,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 9. Fail closed on queue, executable lag, event stall, unplanned reconnect, gap, resync, drop, persistence fault, buffer drop, critical incident, position or PAPER-safety violation. Allow only a bounded planned-rotation transition and at most two consecutive probe errors.
 10. Remove successful temporary copies, re-run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene, and preserve 6-hour·24-hour·profitability·Release gates separately.
 11. Update ADR, acceptance criteria, machine-readable evidence and `FINAL_UPGRADE_EVIDENCE.md`, then push the reviewed implementation to GitHub main and confirm Actions.
+
+## Non-invasive running-service soak and mobile touch-target Wave
+
+1. Observe the installed 8870 PAPER service through its existing dashboard only. Do not create another public-market connection, Run, runtime, replay process or SQLite writer.
+2. Expose cumulative event, strategy-evaluation and qualified-signal counters so a quiet strategy can be distinguished from a stalled evaluation path without lowering any entry threshold.
+3. Derive the expected independent account shape from the current Registry. Require exactly one BASE and one STRESS account per strategy and reject missing, duplicate or unknown pairs.
+4. Keep event, strategy-evaluation, qualified-signal, reconnect, persistence and WAL counters monotonic within the same Run and process. Treat a restart, reset or unaudited strategy transition as a failure.
+5. Require every sampled PAPER position to retain initial/current stop, TP1 and maximum planned loss. Keep actual orders, auth, private API, API keys, secrets and wallets at zero.
+6. Allow planned rotation or critical lag only when PAPER entry fails closed and the final state recovers to RUNNING·LIVE·PAPER. Keep wide scanner lag observational and separate from executable bid/ask and trade lag.
+7. Require bounded queue, event stalls, persistence flush, WAL checkpoint, current-RSS growth and probe errors. Record every independent check and exact failure in machine-readable JSON.
+8. Provide exact wall-clock 30-minute, 6-hour and 24-hour targets. Never use an independent `PaperRuntime` soak or a shorter observation as proof of the installed service duration.
+9. Keep tablet and mobile summary, primary navigation and secondary navigation controls at least 48×48px and verify root horizontal overflow is zero in the actual browser and Playwright.
+10. Run backend, frontend, fixture, lint, typecheck, production build, PAPER safety, security, repository hygiene, network smoke and actual browser checks. Preserve profitability as `NOT_PROVEN` and 6-hour·24-hour as `NOT_RUN` until their independent gates are genuinely met.

@@ -32,3 +32,17 @@
 ## 검증 경계
 
 단위·통합 테스트는 parser와 수용 판정을 검증한다. 실제 30분 검사는 해당 프로세스·Run의 30분 관찰만 입증한다. 전략 수익성과 6시간·24시간 안정성은 각각 충분한 자연 `LIVE_PUBLIC` 표본과 실제 경과시간을 채우기 전까지 `NOT_PROVEN`·`NOT_RUN`이다.
+
+## 실제 30분 적용 결과
+
+2026-08-26의 설치 서비스 `run-2b7135a972dd`를 별도 공개시장 연결·Run·runtime·replay·SQLite writer 없이 monotonic 1,800.038초 동안 181회 읽었다. 시스템 시각 보정의 영향으로 UTC 시작·종료 시각 차이는 1,799.986초였지만 수용 판정은 시각 점프에 영향받지 않는 monotonic 실제 경과시간을 사용했다.
+
+- event는 2,636→160,982로 158,346건, 전략 평가는 8,664→494,940으로 486,276회 전진했다.
+- 적격신호·main 거래·독립계좌 거래와 현재버전 BASE·STRESS 표본 증가는 모두 0이었다. 자연신호를 만들기 위해 임계값을 바꾸지 않았다.
+- 계획 rotation 2회와 reconnect 2회가 일치했고 비계획 reconnect·gap·resync·drop·저장 fault·buffer drop·WAL fault·critical lag incident는 모두 0이었다.
+- queue 최대 23/4,096, 실행호가 p95 최대 122.399ms, 체결 p95 최대 508.430ms였다. wide p95 최대 1,814.534ms는 관찰 전용으로 분리했다.
+- 저장 flush는 1→80, WAL checkpoint는 0→10으로 전진했고 마지막 WAL 797 frame이 모두 checkpoint됐다. flush 최대 10.145초, checkpoint 최대 14.019초로 각각의 상한 안이었다.
+- 현재 RSS는 184.281→최대 279.891MB로 95.610MB 증가했고 256MB 상한 안이었다. 포지션은 전 표본 0, 11전략·22개 BASE/STRESS 계좌 구조는 전 표본 일치했다.
+- 45개 수용검사는 전부 true, probe 오류와 failures는 0, 최종 상태는 RUNNING·LIVE·PAPER였다. 실제 주문·인증·private API·API key·wallet 요청과 추가 시장 연결은 모두 false였다.
+
+원본은 `evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`이다. 이 PASS는 30분 설치 서비스 범위이며 6시간·24시간과 전략 수익성을 입증하지 않는다.

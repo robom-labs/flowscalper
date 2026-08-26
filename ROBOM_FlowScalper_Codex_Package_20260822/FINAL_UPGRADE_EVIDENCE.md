@@ -1916,3 +1916,55 @@ SQLite Online Backup API는 단계 사이 source lock을 풀지만 외부 connec
 | GitHub main / Actions | PASS | 구현 `820e8ace4f6bffe128b80d749b76099382af63e5`와 증거 `b77a8f2d7e75a5b17e4848135ae2ff79aa587613`을 main에 push했다. [Actions 32977393998](https://github.com/robom-labs/flowscalper/actions/runs/32977393998)의 validate 1분, browser 1분2초, Chromium desktop·tablet·mobile E2E와 브라우저 증거 upload가 모두 PASS했다. |
 
 기계판독 증거는 `evidence/wave48-ledger-integrity/`에 있고 판단 근거는 ADR-049다. 중단된 5개 경로는 PASS가 아니며 최종 다른 device 검사 1개만 PASS다. Wave 48은 `COMPLETE_WITH_LIMITS`며 수정 후 6시간·24시간·수익성·Release ZIP을 입증하지 않았다.
+
+## 48. Wave 49 실행 서비스 비침습 30분 관찰과 모바일 조작면
+
+### 관찰 경계와 구현
+
+기존 `scripts/soak_live.py`는 별도 `PaperRuntime`과 공개시장 연결을 만드는 자원 진단이므로 설치된 8870 LaunchAgent 서비스의 장시간 증거가 아니었다. `backend/app/ops/service_soak.py`와 `scripts/observe_running_service.py`를 추가해 기존 `/api/dashboard`만 읽도록 분리했다. 이 경로는 공개시장 연결, Run, runtime, replay, SQLite writer를 추가하지 않는다.
+
+대시보드에는 누적 전략 평가와 적격신호 수를 추가했다. 거래가 없어도 event와 전략 평가가 같은 Run·프로세스에서 단조 증가하는지 확인하며, Registry의 11개 strategy ID마다 BASE·STRESS가 정확히 하나씩 있는지 동적으로 검사한다. 포지션이 있으면 initial/current stop·TP1·최대 계획손실을 모두 요구한다. 전략 임계값·비용·TP/SL·위험예산·Registry·Governor·원장과 실제주문 0 경계는 변경하지 않았다.
+
+### 실제 30분 설치 서비스 결과
+
+`make service-soak-30m`은 `run-2b7135a972dd`를 monotonic 1,800.038초 동안 10초 간격 181회 읽어 `PASS`를 반환했다. 시스템 시각 동기화 보정 때문에 UTC timestamp 차이는 1,799.986초였으며 수용판정은 wall-clock 조정에 영향받지 않는 monotonic 실제 경과시간을 사용했다.
+
+- event는 2,636→160,982로 158,346건, 전략 평가는 8,664→494,940으로 486,276회 전진했다.
+- 적격신호·main 거래·League 거래와 현재버전 BASE·STRESS 표본 증가는 모두 0이었다. 거래를 만들기 위해 조건을 낮추지 않았다.
+- 계획 rotation 2회와 reconnect 2회가 일치했다. 비계획 reconnect·gap·resync·drop·persistence fault·buffer drop·WAL fault·critical lag incident는 모두 0이었다.
+- queue 최대 23/4,096, 실행호가 p95 최대 122.399ms, 체결 p95 최대 508.430ms였다. wide p95 최대 1,814.534ms는 넓은 관찰 지표로 분리했다.
+- persistence flush는 1→80, WAL checkpoint는 0→10으로 전진했다. flush 최대 10.145초, checkpoint 최대 14.019초였고 마지막 797 frame이 모두 checkpoint됐다.
+- 현재 RSS는 184.281→최대 279.891MB로 95.610MB 증가했다. 전 표본 포지션 0, 11전략·22계좌 구조 일치, probe 오류 0, 45개 수용검사 전부 true, 최종 RUNNING·LIVE·PAPER였다.
+- 실제 주문·인증·private API·API key·wallet·추가 시장 연결은 전부 false였다.
+
+현재버전 자연 표본은 BASE 5건·-3.573282460 USDT, STRESS 5건·-6.819651904 USDT다. 수익성이나 순위를 판정할 표본이 아니며 비용후 손실도 숨기지 않는다. `qualified_signal_delta=0`과 거래 증가 0은 조건을 낮추지 않은 자연 결과로 보존한다.
+
+### 실제 브라우저와 반응형 화면
+
+실제 8870 브라우저에서 시장·전략·기록·분석·설정을 순회했다. 11전략 중 감시 6·퇴역 5·문제 0, 22개 독립계좌, 거래기록 73건·공동 1건·League 72건을 확인했다. 현재버전 표본과 과거 거래를 섞어 순위를 만들지 않았다. console error·warning은 0이었다.
+
+415×734 요청 viewport에서 root 가로 넘침은 0이고 요약·주요 메뉴·하위 메뉴 control은 각각 최소 48×48px이었다. in-app browser가 저장한 실제 내용 bitmap은 400×707이며 형식은 PNG다. 시스템 화면은 공개시장 정상·50/12종목·실제 주문 0을 표시했다. BTCUSDT `AGGRESSOR_FLOW_CONTINUATION_V1` STRESS 거래 집중 화면은 entry 78,161.70, 초기 stop 78,396.24, TP1 77,798.17, TP2 77,434.65, 실제 종료 78,126.20와 순손익 -1.823 USDT를 같은 차트에 표시했다.
+
+- `evidence/screenshots/wave49-actual-system-mobile-415x734.png`.
+- `evidence/screenshots/wave49-actual-trade-replay-mobile-415x734.png`.
+
+### 공개시장·전체 회귀와 증거 경계
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| backend pytest | PASS | 최종 소스 432 passed, 21.80초 |
+| frontend Vitest | PASS | 13 files·57 tests, 6.69초 |
+| Ruff / mypy | PASS | 오류 0 / 95 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 514.80kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 128 source·위반·secret-like·실제주문 path 0 / 위반 0 |
+| 공개시장 network smoke | PASS | Binance 적격 524·catalog 698, Upbit KRW 287, 양쪽 3분봉 200, WebSocket 16 events, p95 13.326ms, credential·authorization·auth·실제주문 0 |
+| 실제 30분 설치 서비스 | PASS | 1,800.038초·181표본, event +158,346·전략평가 +486,276, 계획교체/reconnect 2/2, queue 최대 23, 실행호가/체결 p95 최대 122.399/508.430ms, 45 checks 전부 true |
+| 회귀 후 실제 8870 | PASS | 5초 event +491·전략평가 +1,392, RUNNING·LIVE·PAPER, queue·비계획 reconnect·gap·resync·drop·fault·critical·lock·포지션·실제주문·인증 0 |
+| 전략 수익성 | NOT_PROVEN | 현재버전 BASE/STRESS 각 5건이며 모두 합산 비용후 손실이다. 새 자연표본 0이고 임계값은 변경하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | NOT_RUN | 이번 구현으로 각각의 실제 시간을 채우지 않았다. 30분 PASS를 더 긴 시간으로 일반화하지 않는다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
+| GitHub main / Actions | PENDING | 로컬 구현·증거 검토 뒤 push와 Actions를 별도로 확인한다. |
+
+원본 관찰은 `evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`, 종합 기계판독 증거는 `evidence/WAVE49_RUNNING_SERVICE_AND_UI_QA.json`, 공개시장 입력은 `evidence/WAVE49_PUBLIC_MARKET_SMOKE.json`, 결정 근거는 ADR-050이다. Wave 49의 현재 수용상태는 `COMPLETE_WITH_LIMITS`다. 실제 30분 설치 서비스·회귀·브라우저 범위는 PASS지만 6시간·24시간·전략 수익성·Release ZIP은 각각 `NOT_RUN`·`NOT_RUN`·`NOT_PROVEN`·`NOT_RUN`이다.

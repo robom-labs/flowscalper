@@ -1,0 +1,214 @@
+{
+  "schema": "flowscalper.wave49.running_service_and_ui_qa.v1",
+  "status": "COMPLETE_WITH_LIMITS",
+  "date": "2026-08-26",
+  "implementation_commits": [
+    "ab4b279",
+    "d585f20"
+  ],
+  "running_service_soak": {
+    "status": "PASS",
+    "evidence": "evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json",
+    "run_id": "run-2b7135a972dd",
+    "requested_duration_seconds": 1800.0,
+    "monotonic_observed_duration_seconds": 1800.038,
+    "utc_interval_seconds": 1799.986,
+    "sample_count": 181,
+    "probe_error_count": 0,
+    "acceptance_check_count": 45,
+    "failed_checks": [],
+    "event_delta": 158346,
+    "strategy_evaluation_delta": 486276,
+    "qualified_signal_delta": 0,
+    "main_trade_delta": 0,
+    "league_trade_delta": 0,
+    "planned_rotation_delta": 2,
+    "reconnect_delta": 2,
+    "unplanned_reconnect_delta": 0,
+    "gap_delta": 0,
+    "resync_delta": 0,
+    "drop_delta": 0,
+    "persistence_fault_delta": 0,
+    "persistence_buffer_drop_delta": 0,
+    "wal_checkpoint_fault_delta": 0,
+    "critical_lag_incident_delta": 0,
+    "maximum_queue_depth": 23,
+    "queue_capacity": 4096,
+    "maximum_executable_lag_p95_ms": 122.398681640625,
+    "maximum_trade_lag_p95_ms": 508.430419921875,
+    "maximum_wide_lag_p95_ms_observational": 1814.534423828125,
+    "maximum_persistence_flush_ms": 10145.0,
+    "maximum_wal_checkpoint_ms": 14019.0,
+    "final_wal_log_frames": 797,
+    "final_wal_checkpointed_frames": 797,
+    "baseline_current_rss_mb": 184.281,
+    "maximum_current_rss_mb": 279.891,
+    "current_rss_growth_mb": 95.61,
+    "maximum_open_positions": 0,
+    "strategy_count": 11,
+    "independent_account_count": 22,
+    "final_state": "RUNNING_LIVE_PAPER"
+  },
+  "strategy_evidence": {
+    "status": "NOT_PROVEN",
+    "current_version_base_samples": 5,
+    "current_version_stress_samples": 5,
+    "current_version_base_net_pnl_usdt": "-3.573282460",
+    "current_version_stress_net_pnl_usdt": "-6.819651904",
+    "new_natural_samples_during_soak": 0,
+    "ranking_permitted": false,
+    "thresholds_lowered": false
+  },
+  "public_market_smoke": {
+    "status": "PASS",
+    "evidence": "evidence/WAVE49_PUBLIC_MARKET_SMOKE.json",
+    "binance_eligible_symbols": 524,
+    "binance_catalog_symbols": 698,
+    "upbit_krw_catalog_symbols": 287,
+    "binance_btcusdt_3m_candles": 200,
+    "binance_tail_symbol_3m_candles": 200,
+    "upbit_krw_btc_3m_candles": 200,
+    "websocket_events": 16,
+    "lag_p50_ms": 11.405,
+    "lag_p95_ms": 13.326,
+    "credentials_sent": false,
+    "authorization_header_sent": false,
+    "auth_required": false,
+    "real_orders_enabled": false
+  },
+  "actual_browser": {
+    "status": "PASS",
+    "runtime": "http://127.0.0.1:8870",
+    "requested_mobile_viewport": {
+      "width": 415,
+      "height": 734
+    },
+    "saved_bitmap": {
+      "width": 400,
+      "height": 707,
+      "format": "PNG"
+    },
+    "root_horizontal_overflow_px": 0,
+    "summary_control_minimum_px": 48,
+    "primary_navigation_minimum_px": 48,
+    "secondary_navigation_minimum_px": 48,
+    "console_errors": 0,
+    "console_warnings": 0,
+    "strategy_rows": 11,
+    "monitored_strategies": 6,
+    "retired_strategies": 5,
+    "strategy_problems": 0,
+    "visible_trade_records": 73,
+    "main_trade_records": 1,
+    "league_trade_records": 72,
+    "replay": {
+      "symbol": "BTCUSDT",
+      "strategy": "AGGRESSOR_FLOW_CONTINUATION_V1",
+      "account": "STRESS",
+      "entry": 78161.7,
+      "initial_stop": 78396.24,
+      "tp1": 77798.17,
+      "tp2": 77434.65,
+      "actual_exit": 78126.2,
+      "net_pnl_usdt": -1.823,
+      "entry_stop_targets_and_actual_exit_visible": true
+    },
+    "screenshots": [
+      {
+        "path": "evidence/screenshots/wave49-actual-system-mobile-415x734.png",
+        "sha256": "71cbfacbbfa2c9fd52f615c9df9e8f5c5ffb881724da62a752fca612700e18b3"
+      },
+      {
+        "path": "evidence/screenshots/wave49-actual-trade-replay-mobile-415x734.png",
+        "sha256": "a4648d29fa9aa64988595ebabafc09ec79f860bce5e27d2382101ba71e4f4eaa"
+      }
+    ]
+  },
+  "regression": {
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 432,
+      "seconds": 21.8
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 13,
+      "tests": 57,
+      "seconds": 6.69
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 514.8,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "fixture": {
+      "status": "PASS",
+      "tests": 17,
+      "seconds": 1.17
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 19.9
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 128,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    }
+  },
+  "post_regression_runtime": {
+    "status": "PASS",
+    "event_delta_5_seconds": 491,
+    "strategy_evaluation_delta_5_seconds": 1392,
+    "queue_depth": 0,
+    "executable_lag_p95_ms": 64.490234375,
+    "trade_lag_p95_ms": 143.626953125,
+    "unplanned_reconnects": 0,
+    "gap_count": 0,
+    "resync_count": 0,
+    "drop_count": 0,
+    "persistence_fault_count": 0,
+    "buffer_drop_count": 0,
+    "wal_checkpoint_fault_count": 0,
+    "critical_lag_incident_count": 0,
+    "entry_locked": false,
+    "position_count": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  },
+  "independent_gates": {
+    "six_hour_installed_service_soak": "NOT_RUN",
+    "twenty_four_hour_installed_service_soak": "NOT_RUN",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "PENDING"
+  }
+}
