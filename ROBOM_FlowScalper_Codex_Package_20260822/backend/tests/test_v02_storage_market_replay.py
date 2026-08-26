@@ -1276,10 +1276,21 @@ def test_live_http_replay_uses_isolated_process_path(
     )
     calls: list[tuple[object, ...]] = []
 
+    async def start_persistent_live_without_network(
+        _runtime: PaperRuntime,
+        _progress=None,
+    ) -> bool:
+        return True
+
     async def run_sync(function, *arguments, **_options):
         calls.append(arguments)
         return function(*arguments)
 
+    monkeypatch.setattr(
+        PaperRuntime,
+        "start_persistent_live",
+        start_persistent_live_without_network,
+    )
     monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
     with TestClient(create_app(runtime)) as client:
         response = client.post(f"/api/replay/{runtime.run_id}", json={})
