@@ -376,3 +376,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 6. Do not migrate or rewrite historical incident rows. Do not change PAPER strategy thresholds, entry, exit, cost, account, ledger trade or Governor behavior.
 7. Re-run targeted transition, control, replay, recovery and storage tests plus the complete backend, frontend, static, build, PAPER safety, security, repository hygiene and three-viewport browser suite.
 8. Do not call the Wave deployed until the installed service loads the implementation and an actual new transition row satisfies the normalized contract. Keep the already-running 6-hour and 24-hour observations scoped to their baseline commit.
+
+## Policy-retirement lock and strategy-transition audit Wave
+
+1. Read only strategy-setting revisions needed to reproduce a rollback-policy gap. Do not alter the active PAPER service to prove that a protected control can fail.
+2. Reproduce the same current RETIRED and prior SHADOW revision in an isolated runtime and require the pre-fix rollback request to demonstrate the bypass.
+3. Separate a cost-adjusted policy-retirement lock from the generic OFF·RETIRED display. Keep ordinary user OFF reversible through the explicit revisioned control.
+4. Block policy-retired rollback in the backend, not only in the browser. Preserve every historical revision, account and immutable trade.
+5. Normalize strategy setting transitions in API history, checksum-verified strategy-settings rows and incidents with previous/new state, actor, cause, Run, strategy, revisions and reversibility.
+6. Persist USER_UI configure, rollback, AUTO_GOVERNOR and recovery policy migration as strategy-specific transition events. Preserve MIGRATION in the original setting while presenting RECOVERY as the audit actor.
+7. Add missing occurrence time and cause code to PAPER entry-intent transitions without changing pause or automatic-safety semantics.
+8. Verify policy-locked controls, ordinary OFF reactivation and beginner-readable history in frontend unit tests and desktop, tablet and mobile Playwright.
+9. Re-run complete backend, frontend, static, production build, fixture, PAPER safety, security and repository hygiene suites. Do not change strategy or cost thresholds.
+10. Keep deployment, actual post-deploy ledger rows and actual 8870 browser verification `NOT_RUN` until the baseline long observers can finish without a process restart.

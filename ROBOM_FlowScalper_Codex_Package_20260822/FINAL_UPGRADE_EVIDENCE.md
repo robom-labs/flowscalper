@@ -2001,3 +2001,41 @@ PAPER 전략 임계값, entry·TP1·TP2·SL, bid·ask 체결, 비용, 위험예�
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 구현 commit은 `482f334a6bd7d8716b50c2a28eb249b324324079`, 기계판독 증거는 `evidence/WAVE50_OPERATION_TRANSITION_AUDIT_QA.json`, 판단 근거는 ADR-051이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀 검증은 PASS지만 실제 설치 서비스의 신규 정규 행, GitHub main·Actions, 6시간·24시간과 수익성은 각각 `NOT_RUN`, `NOT_RUN`, `IN_PROGRESS`, `NOT_PROVEN`이다.
+
+## 50. Wave 51 정책 퇴역 잠금과 전략 전환 감사
+
+### 실제 원장 범위와 격리 재현
+
+활성 대형 원장에는 LSA·D·E·H의 과거 revision 1 SHADOW와 이후 revision 2 RETIRED가 모두 보존돼 있었다. 과거 기록 보존은 정상이나 backend rollback은 정책 퇴역을 확인하지 않았다. 활성 서비스의 전략을 바꾸지 않고 같은 revision 이력을 격리 runtime에 구성해 rollback API를 호출했으며 수정 전 HTTP 200·SHADOW 복원을 재현했다.
+
+같은 재현 묶음에서 전략 API 변경이력과 AUTO_GOVERNOR incident에 `previous_state`가 없는 것도 확인했다. 수정 전 표적 3건은 각각 이력 KeyError, 퇴역 rollback 200, Governor 감사 KeyError로 실패했다.
+
+### 수정과 진실성 경계
+
+- Registry가 `policy_reactivation_locked`를 명시해 비용후 정책 퇴역과 일반 사용자 OFF를 구분한다.
+- 정책 퇴역 rollback은 backend에서 422로 거부하고 현재 OFF·RETIRED revision을 유지한다.
+- 정책 잠금이 없는 전략은 사용자가 OFF로 바꾼 뒤에도 확인·revision·감사를 거쳐 다시 켤 수 있다.
+- 사용자 전략 설정, rollback, AUTO_GOVERNOR와 복구 policy migration은 전략별 transition ID와 이전·새 복합상태, actor, 원인, Run, 요청·응답 revision, reversibility를 strategy-settings 원장과 incident에 기록한다.
+- PAPER 진입 의도에는 누락됐던 payload 발생시각과 원인 코드를 추가했다.
+- 과거 revision·거래·계좌를 삭제하지 않았고 schema migration도 하지 않았다. 전략 임계값·신호·비용·TP·SL·체결·Governor gate는 변경하지 않았다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 수정 전 표적 재현 | FAIL_AS_EXPECTED | 3 failed. 전략 이전상태 누락 2건과 정책 퇴역 rollback HTTP 200을 각각 재현했다. |
+| 수정 후 표적 회귀 | PASS | 3 passed, 3.78초 |
+| fixture·전략·Governor·복구 | PASS | 45 passed, 1.07초 |
+| backend pytest | PASS | 433 passed, 34.38초 |
+| frontend Vitest | PASS | 13 files·58 tests, 18.73초. 전략 UI 표적 9 passed, 1.04초다. |
+| Ruff / mypy | PASS | 오류 0 / 95 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 515.19kB 경고가 남아 있다. |
+| fixture / Playwright | PASS | fixture 18 passed, Chromium desktop·tablet·mobile 3 passed. 정책 잠금, 일반 OFF 복구, 한국어 설명과 상세 감사정보를 검증했다. |
+| security / repository hygiene | PASS | 128 source·위반·secret-like·실제주문 path 0 / 위반 0 |
+| 설치 서비스 기준선 | PASS_BASELINE_ONLY | 기준 commit의 같은 Run은 event 460,224·전략평가 1,414,332까지 전진했다. queue 1, 비계획 reconnect·gap·resync·drop·fault·buffer drop·critical·lock·position·실제주문·인증 0이었다. 미배포 변경의 실행 증거는 아니다. |
+| 로컬 배포 / 실제 신규 전략 전환 행 / 실제 8870 화면 | NOT_RUN | 기준 commit의 6시간·24시간 observer를 중단하지 않기 위해 아직 교체하지 않았다. |
+| GitHub main / Actions | NOT_RUN | 실제 배포·원장·브라우저 검증과 최종 증거 전에는 push하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 기존 설치 서비스 비침습 observer가 계속 실행 중이다. 완료 전 PASS로 표시하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 자연 표본 gate 미달이며 이번 변경은 전략·비용 기준을 바꾸지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+구현 commit은 `0f5fd777e3470909030111044029373ad227d732`, 기계판독 증거는 `evidence/WAVE51_STRATEGY_POLICY_LOCK_AND_AUDIT_QA.json`, 판단 근거는 ADR-052다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스 신규 감사행·실제 8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.

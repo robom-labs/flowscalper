@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 정책 퇴역 전략을 과거 SHADOW revision으로 rollback해 재활성화할 수 있던 backend 우회를 차단했다. 일반 사용자 OFF는 정책 잠금과 분리해 다시 켤 수 있으며, 전략 설정·Governor·rollback·migration 이력은 이전·새 상태와 actor·원인·revision을 UI·API·원장에 함께 남긴다.
 - control·replay 작업의 신규 불변 incident에 이전·새 상태, 원인, 한국어 설명, actor, Run·종목, 요청·응답 revision과 terminal reversibility를 직접 기록한다. 기존 operation snapshot·history와 과거 행은 보존하며 PAPER 전략·체결·손익·Governor와 실제주문 0 경계는 바꾸지 않는다.
 - 이미 실행 중인 PAPER 서비스만 읽는 비침습 장시간 관찰기를 추가했다. 별도 공개시장 연결·Run·runtime·replay·SQLite writer 없이 이벤트·전략평가 전진, 동적 전략별 BASE/STRESS 계좌, 포지션 보호, 실행 지연, queue, 재연결, 저장 flush·WAL, 현재 RSS와 실제주문·인증 0을 30분·6시간·24시간 명령으로 각각 검증한다.
 - 고급진단에 누적 전략 평가·적격신호 수를 추가해 거래가 없을 때도 전략 경로가 실제로 전진하는지 확인할 수 있게 했다. 태블릿·모바일의 요약·주요 메뉴·하위 메뉴 버튼은 48×48px 이상으로 맞추고 root 가로 넘침을 막았다.

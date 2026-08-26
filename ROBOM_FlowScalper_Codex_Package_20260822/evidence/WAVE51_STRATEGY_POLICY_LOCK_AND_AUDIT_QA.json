@@ -1,0 +1,171 @@
+{
+  "schema": "flowscalper.wave51.strategy_policy_lock_and_audit_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "0f5fd777e3470909030111044029373ad227d732",
+  "reproduction": {
+    "status": "PASS",
+    "active_ledger_targeted_read_only_query": {
+      "full_integrity_check_run": false,
+      "finding": "policy-retired strategies retained earlier SHADOW revisions and later RETIRED revisions",
+      "examples": [
+        "LSA_REVERSAL_V1 revision 1 SHADOW then revision 2 RETIRED",
+        "OFI_CONTINUATION_PULLBACK_V1 revision 1 SHADOW then revision 2 RETIRED",
+        "QUEUE_MICROPRICE_MOMENTUM_V1 revision 1 SHADOW then revision 2 RETIRED",
+        "DEPTH_ADJUSTED_OFI_IMPULSE_V1 revision 1 SHADOW then revision 2 RETIRED"
+      ]
+    },
+    "isolated_regression_before_fix": {
+      "status": "FAIL_AS_EXPECTED",
+      "tests": 3,
+      "failures": [
+        "strategy history lacked previous_state",
+        "policy-retired rollback returned HTTP 200 instead of 422",
+        "AUTO_GOVERNOR incident lacked normalized previous_state"
+      ]
+    },
+    "active_service_mutated_for_reproduction": false
+  },
+  "implementation": {
+    "status": "PASS",
+    "policy_retired_rollback_blocked_server_side": true,
+    "ordinary_user_off_reversible": true,
+    "policy_reactivation_lock_explicit": true,
+    "historical_revisions_deleted": false,
+    "schema_migration": false,
+    "historical_rows_rewritten": false,
+    "strategy_thresholds_changed": false,
+    "paper_execution_changed": false,
+    "strategy_transition_fields": [
+      "transition_id",
+      "previous_state",
+      "new_state",
+      "occurred_ts_ms",
+      "cause",
+      "cause_code",
+      "description_ko",
+      "actor",
+      "run_id",
+      "strategy_id",
+      "account_id",
+      "symbol",
+      "request_revision",
+      "response_revision",
+      "reversible"
+    ],
+    "paper_entry_intent_added_fields": [
+      "occurred_ts_ms",
+      "cause_code"
+    ]
+  },
+  "validation": {
+    "targeted_after_fix": {
+      "status": "PASS",
+      "tests": 3,
+      "seconds": 3.78
+    },
+    "strategy_fixture_governor_recovery": {
+      "status": "PASS",
+      "tests": 45,
+      "seconds": 1.07
+    },
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 433,
+      "seconds": 34.38
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 13,
+      "tests": 58,
+      "seconds": 18.73
+    },
+    "strategy_ui_targeted": {
+      "status": "PASS",
+      "tests": 9,
+      "seconds": 1.04
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 515.19,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "fixture": {
+      "status": "PASS",
+      "tests": 18,
+      "seconds": 4.55
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 21.3,
+      "baseline_screenshots_overwritten": false
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 128,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    }
+  },
+  "running_service": {
+    "status": "PASS_BASELINE_ONLY",
+    "loaded_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_state": "LIVE",
+    "execution_state": "PAPER",
+    "event_count_at_check": 460224,
+    "strategy_evaluation_count_at_check": 1414332,
+    "queue_depth_at_check": 1,
+    "unplanned_reconnects": 0,
+    "gaps": 0,
+    "resyncs": 0,
+    "drops": 0,
+    "persistence_faults": 0,
+    "buffer_drops": 0,
+    "critical_incidents": 0,
+    "entry_locked": false,
+    "positions": 0,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "new_strategy_transition_row": "NOT_RUN"
+  },
+  "independent_gates": {
+    "local_deployment": "NOT_RUN",
+    "actual_post_deploy_strategy_transition_row": "NOT_RUN",
+    "actual_post_deploy_browser": "NOT_RUN",
+    "six_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "twenty_four_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}
