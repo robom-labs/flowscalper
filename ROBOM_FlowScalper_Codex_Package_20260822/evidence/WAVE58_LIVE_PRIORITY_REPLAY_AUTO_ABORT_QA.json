@@ -1,0 +1,178 @@
+{
+  "schema": "flowscalper.wave58.live_priority_replay_auto_abort_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_service_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "e33ef4e50b232ed079dfc0333fbe1f1f195a6311",
+  "first_full_replay_attempt": {
+    "status": "FAIL_CANCELLED_LIVE_SAFETY",
+    "operation_id": "replay-operation-ebf3dca53f5f47b08869f3c1da4662e4",
+    "source_run_id": "run-2b7135a972dd",
+    "scope_symbol": "ONGUSDT",
+    "total_events": 485283,
+    "started_ts_ms": 1787767118661,
+    "finished_ts_ms": 1787770716038,
+    "duration_seconds": 3597.377,
+    "final_state": "CANCELLED",
+    "result": null,
+    "error": null,
+    "history": [
+      "REQUESTED",
+      "PREPARING",
+      "PROCESSING",
+      "CANCELLING",
+      "CANCELLED"
+    ],
+    "worker_priority_nice": 19,
+    "cooperative_cpu_budget_ratio": 0.05,
+    "observed_live_safety_failure": {
+      "maximum_processing_lag_p95_ms_approx": 23938.0,
+      "maximum_trade_lag_p95_ms_approx": 11216.0,
+      "maximum_wide_lag_p95_ms_approx": 11071.0,
+      "maximum_queue_depth": 1,
+      "critical_lag_active": true,
+      "entry_locked": true,
+      "new_unplanned_reconnects": 1,
+      "provider_error": "ConnectionClosedError keepalive ping timeout",
+      "new_sequence_gaps": 0,
+      "new_resyncs": 0,
+      "new_dropped_events": 0,
+      "new_persistence_faults": 0,
+      "new_persistence_buffer_drops": 0
+    },
+    "causality": "NOT_PROVEN",
+    "replay_result_persisted": false,
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "post_cancel_public_rest_time_probe": {
+    "status": "PASS_OBSERVATIONAL_ONLY",
+    "requests": 20,
+    "successes": 20,
+    "latency_p50_ms": 43.674,
+    "latency_p95_ms": 47.563,
+    "latency_max_ms": 69.794,
+    "auth_used": false,
+    "causality_proof": false
+  },
+  "replay_free_comparison_30m": {
+    "status": "FAIL",
+    "source": "evidence/WAVE58_POST_REPLAY_RECOVERY_30M.json",
+    "requested_duration_seconds": 1800.0,
+    "observed_duration_seconds": 1800.079,
+    "sample_count": 180,
+    "probe_error_count": 0,
+    "event_delta": 134570,
+    "strategy_evaluation_delta": 476160,
+    "qualified_signal_delta": 1,
+    "main_trade_delta": 0,
+    "league_trade_delta": 0,
+    "maximum_queue_depth": 1,
+    "maximum_processing_lag_p95_ms": 496.67626953125,
+    "maximum_trade_lag_p95_ms": 1343.622314453125,
+    "maximum_wide_lag_p95_ms_observational": 2006.970703125,
+    "maximum_persistence_flush_last_ms": 22636.0,
+    "maximum_wal_checkpoint_last_ms": 24649.0,
+    "critical_lag_incident_delta": 1,
+    "last_critical_lag_duration_ms": 8027.236875,
+    "maximum_open_positions": 0,
+    "memory_growth_mb": 20.734,
+    "failures": [
+      "trade_lag_bounded",
+      "persistence_flush_latency_bounded"
+    ],
+    "new_unplanned_reconnects": 0,
+    "new_sequence_gaps": 0,
+    "new_resyncs": 0,
+    "new_dropped_events": 0,
+    "new_persistence_faults": 0,
+    "new_persistence_buffer_drops": 0,
+    "paper_safety_passed": true,
+    "interpretation": "The initial trade percentile retained the prior incident, while a separate 22.636 second flush and an 8.027 second planned-rotation critical incident occurred without a replay worker. Replay-only causality is not proven."
+  },
+  "implementation": {
+    "status": "PASS_LOCAL_SOURCE",
+    "lightweight_live_snapshot": true,
+    "pre_worker_fail_closed_baseline": true,
+    "poll_seconds": 1.0,
+    "max_queue_depth": 64,
+    "max_processing_lag_p95_ms": 500.0,
+    "max_event_stall_seconds": 30.0,
+    "max_consecutive_probe_errors": 3,
+    "planned_rotation_lock_grace_seconds": 15.0,
+    "cancellable_process_worker": true,
+    "worker_termination_awaited": true,
+    "operation_error_code": "REPLAY_ABORTED_LIVE_SAFETY",
+    "operation_failure_state": "FAILED_RETRYABLE",
+    "worker_result_persistence_disabled": true,
+    "parent_persistence_after_final_safe_sample": true,
+    "strategy_logic_changed": false,
+    "cost_model_changed": false,
+    "tp_sl_changed": false,
+    "governor_changed": false,
+    "risk_budget_changed": false
+  },
+  "validation": {
+    "backend_targeted_and_related": {
+      "status": "PASS",
+      "tests": 38,
+      "seconds": 37.7
+    },
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 448,
+      "seconds": 45.18
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 64,
+      "seconds": 4.85
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 131,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    },
+    "production_build": "NOT_RUN",
+    "fixture": "NOT_RUN",
+    "playwright": "NOT_RUN",
+    "git_diff_check": "PASS"
+  },
+  "independent_gates": {
+    "actual_installed_new_guard": "NOT_RUN",
+    "same_full_scope_guarded_retry": "NOT_RUN",
+    "actual_8870_error_ui": "NOT_RUN",
+    "actual_post_deploy_ledger_recovery": "NOT_RUN",
+    "baseline_six_hour_installed_service_soak": "IN_PROGRESS_WITH_KNOWN_INCIDENT",
+    "baseline_twenty_four_hour_installed_service_soak": "IN_PROGRESS_WITH_KNOWN_INCIDENT",
+    "post_deploy_six_hour_soak": "NOT_RUN",
+    "post_deploy_twenty_four_hour_soak": "NOT_RUN",
+    "closed_snapshot_full_integrity": "NOT_RUN",
+    "strategy_profitability": "NOT_PROVEN",
+    "github_main_and_actions": "NOT_RUN",
+    "release_zip": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

@@ -2287,3 +2287,46 @@ Playwright 중간에는 카드와 고급진단을 동시에 잡는 부분 select
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 구현 commit은 `7b593cbc5ca24e366a23cf28df4d983ffb604c2f`이다. 기계판독 증거는 `evidence/WAVE57_REPLAY_SCOPE_AND_LIVE_BROWSER_QA.json`, 판단 근거는 ADR-058이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 실제 기준 거래 기록·미리보기·정밀 이벤트·재생 제어는 확인했지만, 48만 건 replay와 6시간·24시간 observer는 `IN_PROGRESS`, 새 구현의 설치 8870·원장·GitHub는 `NOT_RUN`, 수익성은 `NOT_PROVEN`이다.
+
+## 57. Wave 58 LIVE 우선 저장 replay 자동중단
+
+### 첫 실제 전체범위 시도와 안전 실패
+
+기준 설치 서비스의 같은 `run-2b7135a972dd`에서 `ONGUSDT` 저장 이벤트 485,283건을 처리한 `replay-operation-ebf3dca53f5f47b08869f3c1da4662e4`는 2026-08-27 02:58:38 KST에 시작했다. `nice(19)`·5% 협력 CPU worker를 사용했지만 약 59분 뒤 설치 LIVE의 처리 p95는 관찰 표본 최대 약 23,938ms, 공개 체결 p95는 약 11,216ms, wide p95는 약 11,071ms까지 상승했다. critical lag와 신규진입 잠금이 활성화되고 공개 provider `keepalive ping timeout` 뒤 비계획 reconnect가 0에서 1로 증가했다. queue는 0~1이었고 sequence gap·resync·drop·persistence fault·buffer drop은 0이었다.
+
+이 상태에서 replay 완료보다 LIVE 복구를 우선해 03:58:35 KST에 수동 취소했다. operation은 `REQUESTED → PREPARING → PROCESSING → CANCELLING → CANCELLED`, 종료시각 03:58:36 KST, 경과 3,597.377초, result·error는 null이다. worker는 종료됐고 약 1분 안에 설치 서비스는 `RUNNING`, 신규진입 잠금 false, critical active false로 자동 복구했다. 취소 뒤 `/api/replay/results`에는 이 operation의 완료 결과가 없고 같은 Run의 더 이른 3,939건 결과만 남아 있었다. 따라서 이 시도는 `FAIL/CANCELLED`이며 checksum PASS가 아니다.
+
+queue 포화 없이 공개 provider timeout이 함께 있었으므로 replay가 단독 원인이라고 확정하지 않는다. 장애 뒤 공개 Binance 무인증 server-time 20회는 모두 성공해 p50 43.674ms·p95 47.563ms·최대 69.794ms였지만, 이는 장애 구간의 원인을 소급 증명하지 않는다. replay가 원인이 아니더라도 LIVE 안전상태가 깨진 뒤 worker가 스스로 중단되지 않은 것은 별도 안전 결함으로 판정했다.
+
+### 구현과 안전 경계
+
+- LIVE worker 시작 전에 Run·LIVE 공개시장·PAPER·실제주문 0·인증 0·저장 허용·진입잠금·포지션과 누적 오류계수를 가벼운 snapshot으로 고정한다.
+- 1초마다 event 전진, queue, 실행 p95, reconnect·planned rotation, gap·resync·drop, 저장 fault·buffer drop, critical incident, 잠금·포지션을 확인한다.
+- queue 64 초과, p95 500ms 초과, 30초 event 정지 또는 새 안전사건이 하나라도 생기면 cancellable worker를 종료하고 operation을 `FAILED_RETRYABLE`·`REPLAY_ABORTED_LIVE_SAFETY`로 기록한다.
+- reconnect 계수와 맞는 planned rotation만 15초 동안 진입잠금을 허용한다. 비계획 reconnect나 계수 불일치는 허용하지 않는다.
+- LIVE worker는 replay 결과를 직접 기록하지 않는다. worker 종료 뒤 최종 안전 snapshot까지 통과한 결과만 부모 프로세스가 원장과 메모리 cache에 기록한다.
+- 전략 신호·임계값·비용·TP·SL·체결·Governor·위험예산·계좌는 변경하지 않았다. 실제 주문·private API·API Key·secret·wallet·runtime AI 주문판단은 계속 0이다.
+
+### 현재 검증 상태
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 첫 485,283건 실제 replay | FAIL/CANCELLED | LIVE 안전실패 뒤 3,597.377초에 수동 취소했다. 결과와 checksum은 완료 증거로 기록하지 않았다. |
+| 자동중단 표적·관련 backend | PASS | guard·planned rotation·stall·critical lag·probe 오류·worker 취소·HTTP operation·안전실패 미기록을 포함해 38 passed, 37.70초다. |
+| backend pytest | PASS | 최종 소스 448 passed, 45.18초다. |
+| frontend Vitest | PASS | 14 files·64 tests, 4.85초다. |
+| Ruff / mypy / ESLint / TypeScript | PASS | Ruff 오류 0, mypy 96 source files 오류 0, frontend lint·typecheck 오류 0이다. |
+| PAPER safety / security / repository hygiene | PASS | security 131 source·위반·secret-like·실제주문 path 0, 저장소 위반 0이다. production build와 fixture·Playwright는 이 Wave 최종 commit 기준으로 아직 `NOT_RUN`이다. |
+| replay 없는 복구 비교 30분 | FAIL | 1,800.079초·180표본에서 event +134,570·전략평가 +476,160, queue 최대 1, 비계획 reconnect·gap·resync·drop·fault·buffer drop 0, 주문·인증 0이었다. 그러나 trade p95 최대 1,343.622ms와 저장 flush 최대 22,636ms가 각각 1,000ms·20,000ms 상한을 넘었고 planned rotation 구간에 8.027초 critical incident 1건이 추가되어 `trade_lag_bounded`, `persistence_flush_latency_bounded`가 실패했다. |
+| 실제 설치 서비스의 새 자동중단 | NOT_RUN | 현재 8870은 기준 commit을 계속 실행한다. baseline 6시간 observer를 보존해 아직 새 코드를 배포하지 않았다. |
+| 같은 485,283건 보호경로 재시도 | NOT_RUN | 새 불변 release 배포와 실제 안전경로 확인 뒤 동일 범위로 재시도한다. |
+| 기준 6시간 / 24시간 observer | IN_PROGRESS_WITH_KNOWN_INCIDENT | 첫 replay 안전사건을 포함하므로 6시간 PASS를 기대하거나 오염된 표본을 삭제하지 않는다. 실제 종료 결과를 그대로 보존한다. |
+| 배포 후 6시간 / 24시간 observer | NOT_RUN | 새 자동중단을 설치한 뒤 별도 관찰을 새로 시작해야 한다. |
+| 원장 유지관리 snapshot·full check | NOT_RUN | 활성 writer에서 full `quick_check`를 병행하지 않는다. 평탄 종료와 APFS snapshot 절차 뒤 검증한다. |
+| 실제 8870 브라우저·원장·불변 release | NOT_RUN | 최종 commit 배포 뒤 직접 버튼·오류문구·commit/hash·same-Run 복구를 확인한다. |
+| GitHub main / Actions / Release ZIP | NOT_RUN | 로컬 runtime과 장기경계가 끝나기 전에 push·릴리스를 완료로 기록하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 전략 조건을 바꾸지 않았고 현재버전 독립 `LIVE_PUBLIC` 표본은 승격 gate보다 부족하다. |
+
+첫 40초의 높은 trade p95에는 replay 장애 구간의 rolling percentile이 남아 있었으므로 새 독립 지연사건으로 단정하지 않는다. 반면 14분대의 22.636초 flush와 27분대 planned rotation 중 신규 critical incident는 replay worker가 없는 구간에서 실제로 추가됐다. 따라서 replay가 단독 원인이라는 가설은 기각하고 설치 기준 서비스 자체의 저장·회전 장시간 한계도 후속 원인으로 유지한다.
+
+구현 commit은 `e33ef4e50b232ed079dfc0333fbe1f1f195a6311`, 판단 근거는 ADR-059, 기계판독 증거는 `evidence/WAVE58_LIVE_PRIORITY_REPLAY_AUTO_ABORT_QA.json`과 `evidence/WAVE58_POST_REPLAY_RECOVERY_30M.json`이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 자동중단 코드와 로컬 회귀는 PASS지만 첫 실제 전체 replay는 `FAIL/CANCELLED`, replay 없는 30분 비교도 `FAIL`, 설치 경로·동일범위 재시도·원장·브라우저·GitHub·6시간·24시간은 `NOT_RUN` 또는 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
