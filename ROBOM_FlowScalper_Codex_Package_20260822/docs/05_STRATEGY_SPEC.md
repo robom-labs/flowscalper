@@ -54,6 +54,23 @@ Suggested inputs:
 
 `SHOCK`, `DEGRADED` and `WARMUP` prohibit new entries.
 
+### 5.3.1 Runtime descriptor contract
+
+Every registered runtime strategy exposes one machine-readable contract through the dashboard API and the Korean strategy-detail drawer. The contract includes:
+
+- strategy ID and explicit strategy version;
+- horizon class, required public-market inputs and timeframes;
+- minimum warmup;
+- entry hypothesis and falsification conditions;
+- exit style, TP1, TP2, maximum hold and edge-decay model;
+- cost-model version and shared/independent PAPER risk-budget rule;
+- target universe and supported regimes;
+- point-in-time data-leakage guards;
+- primary research Source IDs from `docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md`;
+- current lifecycle and its change reason.
+
+These fields document the existing evaluator. They do not alter a threshold, promote a strategy, or treat a cited paper as profitability evidence. Runtime conditions remain defined by the evaluator and tested decision path; the descriptor must be updated in the same change when that path changes.
+
 ## 5.4 Strategy A — Liquidity Sweep Absorption Reversal
 
 ### Long setup

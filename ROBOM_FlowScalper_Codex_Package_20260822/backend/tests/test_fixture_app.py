@@ -271,6 +271,17 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     assert row["manual_lock"] is True
     assert row["changed_by"] == "USER_UI"
     assert row["lifecycle"] == "SHADOW"
+    assert row["strategy_version"] == "V1"
+    assert row["required_market_data"]
+    assert row["minimum_warmup_ko"]
+    assert row["entry_hypothesis_ko"]
+    assert row["falsification_conditions_ko"]
+    assert row["edge_decay_policy_ko"]
+    assert row["risk_budget_rule_ko"]
+    assert row["target_universe_ko"]
+    assert row["data_leakage_guards_ko"]
+    assert row["research_source_ids"]
+    assert row["change_reason"] == "USER_CONFIGURATION"
     assert row["governance"]["evidence_status"] == "NOT_PROVEN"
     governance = client.get("/api/governance")
     assert governance.status_code == 200

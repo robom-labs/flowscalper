@@ -6,7 +6,7 @@
 
 | 구분 | Strategy ID | 화면 이름 | 안정성 | 주 레짐 | 핵심 확인 |
 |---|---|---|---|---|---|
-| A | `LSA_REVERSAL_V1` | 유동성 쓸기 반전 | STABLE | RANGE, TREND_UP, TREND_DOWN | 쓸기, 흡수, 호가 재충전, 범위 복귀 |
+| A | `LSA_REVERSAL_V1` | 유동성 쓸기 반전 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | 쓸기, 흡수, 호가 재충전, 범위 복귀 |
 | B | `CBR_CONTINUATION_V1` | 압축 돌파 재가속 | STABLE | TREND_UP, TREND_DOWN | 압축, 돌파, 눌림, 재가속 |
 | C | `VWAP_EXHAUSTION_REVERSION_V1` | VWAP 과도이탈 평균복귀 | EXPERIMENTAL | RANGE | micro-VWAP 이탈, 공격 흐름 소진, 구조 복귀 |
 | D | `OFI_CONTINUATION_PULLBACK_V1` | OFI 추세 눌림 지속 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 다중 OFI 정렬, 약한 역방향 눌림, 원 흐름 재가속 |
@@ -60,11 +60,11 @@ top10 각 호가의 중간가격 거리와 누적 명목깊이로 매수·매도
 
 ## 전략 K. 시간봉 추세 돌파
 
-완성된 공개 1시간봉 200개 이상에서 EMA20·50과 EMA80·200의 방향 및 EMA80 기울기를 확인한다. 같은 방향의 24시간 수익률이 2% 이상이고 직전 20개 완성봉 Donchian 고가·저가를 돌파하며 ADX 20 이상, 상대거래량 1.1 이상일 때만 후보가 된다. 새 완성봉 뒤 5초 안의 실제 bid·ask만 사용한다. TP1은 2.2R에서 40%, TP2는 4.5R에서 60%이고 안전 최대보유는 36시간이다. 저장 공개시장 진단에서 일부 양의 구간이 있었지만 bootstrap 하한·DSR·PBO와 미래 OOS가 실패 또는 미충족이라 독립 SHADOW PAPER이며 수익성은 `NOT_PROVEN`이다.
+완성된 공개 1시간봉 200개 이상에서 EMA20·50과 EMA80·200의 방향 및 EMA80 기울기를 확인한다. 같은 방향의 24시간 수익률이 2% 이상이고 직전 20개 완성봉 Donchian 고가·저가를 돌파하며 ADX 20 이상, 상대거래량 1.1 이상일 때만 후보가 된다. 새 완성봉 뒤 5초 안의 실제 bid·ask만 사용한다. TP1은 2.2R에서 40%, TP2는 4.5R에서 60%이고 안전 최대보유는 36시간이다. 초기 진단의 일부 양의 구간은 bootstrap 하한·DSR·PBO와 미래 OOS를 통과하지 못했고, 이후 고정된 독립 과거구간 147일·166건에서 BASE·STRESS 모두 비용후 실패해 현재 `RETIRED·OFF`다. 소스·과거 거래·BASE·STRESS 계좌는 보존하며 수익성은 `NOT_PROVEN`이다.
 
 ## 모드와 방향 제어
 
-현재 안전 기본값은 B만 `ACTIVE`, C/F/G/I/J/K는 `SHADOW`, A/D/E/H는 `RETIRED` 생명주기의 `OFF`다. 이 상태는 과거 거래를 지우지 않으며 퇴역 전략의 BASE·STRESS 계좌와 사용자가 명시적으로 다시 연구할 수 있는 경로도 보존한다. 퇴역 전략은 별도 연구와 코드 변경 없이 화면에서 다시 켤 수 없다.
+현재 안전 기본값은 공동계좌 `ACTIVE` 0개, B/C/F/G/I/J `SHADOW` 6개, A/D/E/H/K `RETIRED·OFF` 5개다. 이 상태는 과거 거래를 지우지 않으며 퇴역 전략의 BASE·STRESS 계좌와 명시적인 새 연구 경로도 보존한다. 퇴역 전략은 별도 사전등록 연구와 코드 변경 없이 화면에서 다시 켤 수 없다.
 
 | 화면 선택 | main PAPER 후보 | 독립 BASE·STRESS shadow | 평가 |
 |---|---:|---:|---:|
@@ -74,7 +74,7 @@ top10 각 호가의 중간가격 거리와 누적 명목깊이로 매수·매도
 
 LONG과 SHORT는 각 전략에서 별도로 허용하거나 차단한다. 설정 변경은 revision, actor, 이유와 함께 원장에 기록된다. Strategy Governor는 짧은 승률로 설정을 뒤집지 않고, 최소표본·OOS·STRESS·PBO·DSR·강건성 gate와 사용자 manual lock을 모두 확인한다. runtime은 source code나 임계값을 자동 수정하지 않는다.
 
-A~J 런타임 descriptor는 `MICRO_SCALP`, 예상 보유 10~180초, 신호 반감기 30초, 250ms~120초 공개시장 피처와 900초 안전상한을 공개한다. K는 `INTRADAY_SWING`, 예상 보유 1~36시간, 5초 신호 반감기, 완성 1시간봉과 36시간 안전상한을 공개한다. 모든 전략은 구조형 TP1·TP2·SL·EDGE_DECAY 관리와 `TOP_OF_BOOK_BASE13_STRESS25_V1` 비용 기준을 API와 상세 화면에 함께 표시한다. 예상 운용범위는 건강한 포지션을 그 시간에 고정 종료한다는 뜻이 아니다.
+A~J 런타임 descriptor는 `MICRO_SCALP`, 예상 보유 10~180초, 신호 반감기 30초, 250ms~120초 공개시장 피처와 900초 안전상한을 공개한다. K는 `INTRADAY_SWING`, 예상 보유 1~36시간, 5초 신호 반감기, 완성 1시간봉과 36시간 안전상한을 공개한다. 각 descriptor는 strategy version, 필요한 공개시장 데이터, 최소 warmup, 진입 가설·반증 조건, 비용모델, 공동·독립 PAPER 위험예산, 대상 종목·레짐, 미래정보 방지 규칙, 1차 연구 Source ID와 현재 lifecycle·변경 이유를 API와 상세 화면에 함께 제공한다. 예상 운용범위는 건강한 포지션을 그 시간에 고정 종료한다는 뜻이 아니다.
 
 ## 연구 전용 multi-timeframe 후보
 
@@ -82,7 +82,7 @@ Wave 34의 후보는 런타임 A~J Registry와 분리된 연구 전용 계층이
 
 13개 저장 `LIVE_PUBLIC` Run 전수 OOS에서 선택 후보도 BASE 기대값 -4.893bp, PF 0.554, 표본 2건, STRESS 기대값 -16.893bp, PBO 0.629였고 모든 승격 gate가 실패했다. 따라서 신규 strategy ID나 SHADOW 계좌를 만들지 않았으며, 자연신호를 늘리기 위해 기준을 낮추지 않았다. 전체 JSON·HTML은 `evidence/WAVE34_INTRADAY_RESEARCH.*`에 보존한다.
 
-Wave 39의 Binance USDⓈ-M 12종목·완성 5분봉 414,720개 사전등록 후보 6개도 BASE와 STRESS가 모두 음수여서 선택하지 않았다. Wave 41은 완성 1시간봉의 비용인식 추세가 진단 OOS 42건에서 BASE +32.212bp·PF 1.346, STRESS +20.212bp·PF 1.202였으나 bootstrap 95% 하한 -48.537bp, DSR 0, PBO 0.3714로 승격 gate를 통과하지 못했다. 따라서 K는 미래 독립 OOS와 충분한 자연 `LIVE_PUBLIC` 표본을 모으는 SHADOW 가설이며 `NOT_PROVEN`이다. 기계판독 결과는 `evidence/WAVE39_PUBLIC_TREND_RESEARCH.json`, `evidence/WAVE40_PUBLIC_HOURLY_TREND_DIAGNOSTIC.json`, `evidence/WAVE41_PUBLIC_COST_AWARE_TREND_DIAGNOSTIC.json`에 보존한다.
+Wave 39의 Binance USDⓈ-M 12종목·완성 5분봉 414,720개 사전등록 후보 6개도 BASE와 STRESS가 모두 음수여서 선택하지 않았다. Wave 41은 완성 1시간봉의 비용인식 추세가 진단 OOS 42건에서 BASE +32.212bp·PF 1.346, STRESS +20.212bp·PF 1.202였으나 bootstrap 95% 하한 -48.537bp, DSR 0, PBO 0.3714로 승격 gate를 통과하지 못했다. Wave 46의 고정 독립 과거구간 재현도 147일·166건에서 BASE 기대값 -18.263bp·PF 0.856, STRESS -30.263bp·PF 0.775로 실패해 K는 `RETIRED·OFF`이며 수익성은 `NOT_PROVEN`이다. 기계판독 결과는 `evidence/WAVE39_PUBLIC_TREND_RESEARCH.json`, `evidence/WAVE40_PUBLIC_HOURLY_TREND_DIAGNOSTIC.json`, `evidence/WAVE41_PUBLIC_COST_AWARE_TREND_DIAGNOSTIC.json`과 `evidence/wave46-strategy-survival/fixed-hourly-prior-holdout.json`에 보존한다.
 
 ## 후보에서 불변 계획까지
 

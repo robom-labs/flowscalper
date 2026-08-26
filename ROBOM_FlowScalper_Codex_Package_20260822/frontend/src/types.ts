@@ -227,6 +227,16 @@ export type StrategyRow = {
   exit_rules_ko: string[]
   max_hold_seconds: number
   cost_model_version: string
+  strategy_version: string
+  required_market_data: string[]
+  minimum_warmup_ko: string
+  entry_hypothesis_ko: string
+  falsification_conditions_ko: string[]
+  edge_decay_policy_ko: string
+  risk_budget_rule_ko: string
+  target_universe_ko: string
+  data_leakage_guards_ko: string[]
+  research_source_ids: string[]
   paper_only: true
   mode: 'ACTIVE' | 'SHADOW' | 'OFF'
   lifecycle: 'RESEARCH' | 'SHADOW' | 'CHALLENGER' | 'ACTIVE' | 'QUARANTINED' | 'RETIRED'

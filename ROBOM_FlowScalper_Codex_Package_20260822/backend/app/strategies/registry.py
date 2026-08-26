@@ -77,6 +77,22 @@ StrategyEvaluator = (
     | HourlyMomentumBreakoutStrategy
 )
 
+
+@dataclass(frozen=True, slots=True)
+class StrategyResearchContract:
+    """전략별 가설·반증·데이터·위험·연구 출처를 실행 API와 함께 고정한다."""
+
+    strategy_version: str
+    required_market_data: tuple[str, ...]
+    minimum_warmup_ko: str
+    entry_hypothesis_ko: str
+    falsification_conditions_ko: tuple[str, ...]
+    edge_decay_policy_ko: str
+    risk_budget_rule_ko: str
+    target_universe_ko: str
+    data_leakage_guards_ko: tuple[str, ...]
+    research_source_ids: tuple[str, ...]
+
 POLICY_RETIRED_STRATEGY_IDS = frozenset(
     {
         "LSA_REVERSAL_V1",
@@ -107,6 +123,7 @@ class StrategyDescriptor:
     supported_regimes: tuple[Regime, ...]
     evaluator: StrategyEvaluator
     exit_style: ExitStyle
+    research_contract: StrategyResearchContract
     horizon_class: str = "MICRO_SCALP"
     expected_holding_seconds: tuple[int, int] = (10, 180)
     signal_half_life_seconds: int = 30
@@ -119,6 +136,306 @@ class StrategyDescriptor:
     max_hold_seconds: int = 900
     cost_model_version: str = "TOP_OF_BOOK_BASE13_STRESS25_V1"
     paper_only: bool = True
+
+
+_MICRO_REQUIRED_MARKET_DATA = (
+    "sequence-valid 공개 top-10 bid·ask 호가",
+    "공개 aggregate trade 가격·수량·aggressor 방향",
+    "종목별 250ms~120초 과거 피처와 시장 레짐",
+)
+_MICRO_MINIMUM_WARMUP_KO = "건전한 종목별 공개시장 10초 이상과 현재 이전 prefix 통계"
+_RISK_BUDGET_RULE_KO = "공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산"
+_EDGE_DECAY_POLICY_KO = "진입 후 10초 grace·불리한 근거 2개·3초 지속 뒤 PAPER 관리청산"
+_MICRO_TARGET_UNIVERSE_KO = "동적 정밀분석 종목 중 지원 레짐·유동성·비용 gate 통과 종목"
+_MICRO_DATA_LEAKAGE_GUARDS_KO = (
+    "현재 event timestamp 이전의 동일 종목 이력만 사용",
+    "현재 snapshot은 모든 전략·방향 평가가 끝난 뒤 과거창에 추가",
+    "stale·sequence invalid·미래 timestamp 입력은 fail-closed",
+)
+
+_RESEARCH_CONTRACTS = {
+    "LSA_REVERSAL_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("sweep 구조·refill·micro-VWAP 범위 재진입",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "유동성 쓸기 뒤 공격 흐름의 가격 진전이 멈추고 반대호가 refill·OFI 반전·"
+            "microprice 회복·범위 재진입이 지속되면 단기 평균복귀 가능성이 높아진다."
+        ),
+        falsification_conditions_ko=(
+            "쓸기 방향 가격 진전과 공격 흐름이 계속됨",
+            "refill·OFI 반전·범위 재진입이 지속되지 않음",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-OFI-2010",
+            "SRC-QI-2015",
+            "SRC-MICROPRICE-2017",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "CBR_CONTINUATION_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("30초 변동성·압축·구조 돌파·10초 pullback 가격 경로",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "건전한 추세 레짐의 압축 돌파 뒤 얕은 눌림에서 반대 흐름의 가격영향이 약하고 "
+            "refill·OFI·microprice·가격이 재가속하면 단기 추세가 이어질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "압축이 stale 데이터나 비정상 spread에서 발생함",
+            "눌림이 깊거나 원래 흐름·microprice 재가속이 끊김",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-OFI-2010",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "VWAP_EXHAUSTION_REVERSION_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("micro-VWAP 이탈·공격 흐름 robust 통계·구조 재진입",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "RANGE에서 micro-VWAP 과도이탈 대비 공격 흐름의 가격 진전이 둔화되고 "
+            "반대호가 refill·OFI·microprice·구조가 복귀하면 평균복귀 가능성이 높아진다."
+        ),
+        falsification_conditions_ko=(
+            "RANGE가 아니거나 가격 진전이 계속 강함",
+            "반대호가 refill·OFI·microprice·구조 복귀가 확인되지 않음",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-OFI-2010",
+            "SRC-MICROPRICE-2017",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "OFI_CONTINUATION_PULLBACK_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("250ms·3초 OFI 정렬·15초 pullback 경로·가격반응 효율",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "추세 레짐에서 다중 OFI와 공격체결이 정렬된 뒤 약한 반대 pullback을 거쳐 "
+            "원 흐름·microprice·가격이 재가속하면 추세가 이어질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "추세 레짐 또는 다중 OFI 정렬이 무너짐",
+            "반대 pullback의 가격영향이 강하거나 원 흐름 재가속이 없음",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-OFI-2010",
+            "SRC-MLOFI-2019",
+            "SRC-MICROPRICE-2017",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "QUEUE_MICROPRICE_MOMENTUM_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("top-1·5·10 queue imbalance·microprice 변위·500ms 지속",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "여러 호가 단계의 queue·OFI·공격체결·microprice가 같은 방향으로 지속되고 "
+            "가격이 반응하면 매우 짧은 방향 이동 가능성이 높아진다."
+        ),
+        falsification_conditions_ko=(
+            "queue·OFI·체결·microprice 방향이 불일치하거나 500ms 전에 소멸",
+            "가격반응이 없거나 spread·stale·sequence 조건 실패",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-QI-2015",
+            "SRC-MLOFI-2019",
+            "SRC-MICROPRICE-2017",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "AGGRESSOR_FLOW_CONTINUATION_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("3초·10초 signed notional robust z·가격반응·500ms 지속",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "추세 레짐에서 비정상적으로 강한 공격체결이 OFI·microprice와 정렬되고 "
+            "실제 가격을 효율적으로 밀면 단기 흐름이 이어질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "공격체결 robust z·OFI·microprice 방향이 불일치하거나 지속 실패",
+            "큰 체결에도 실제 가격반응이 둔화됨",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-OFI-2010",
+            "SRC-BINANCE-AGGTRADE",
+            "SRC-BINANCE-DEPTH",
+        ),
+    ),
+    "MULTILEVEL_MICROPRICE_MOMENTUM_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("top-10 cross-weighted 공정가·최우선 microprice·750ms 지속",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "top-10 공정가와 최우선 microprice·OFI·체결·가격반응이 같은 방향으로 "
+            "지속되면 단일 호가보다 강한 단기 방향 정보가 될 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "다중호가 공정가와 최우선 microprice 방향이 불일치",
+            "OFI·체결·가격반응 정렬이 750ms 전에 소멸",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-MLOFI-2019",
+            "SRC-MICROPRICE-2017",
+            "SRC-QI-2015",
+            "SRC-BINANCE-DEPTH",
+        ),
+    ),
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("top-10 평균깊이 보정 3초 OFI robust z·500ms 지속",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "동일 종목 과거깊이에 비해 이례적인 깊이보정 OFI가 체결·microprice·"
+            "가격반응과 정렬되면 단기 충격이 이어질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "깊이보정 OFI robust z 또는 방향 정렬 실패",
+            "체결·microprice·가격반응 정렬이 500ms 전에 소멸",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-OFI-2010",
+            "SRC-MLOFI-2019",
+            "SRC-BINANCE-DEPTH",
+        ),
+    ),
+    "OFI_RETURN_CONFLUENCE_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("깊이보정 OFI robust z·현재 이전 3초 가격수익률·1,000ms 지속",),
+        minimum_warmup_ko=_MICRO_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "깊이보정 OFI와 현재 이전 3초 수익률·microprice·가격반응이 같은 방향으로 "
+            "지속되면 주문흐름과 가격 경로의 단기 동행이 이어질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "OFI와 prefix 3초 수익률 방향이 불일치하거나 anchor가 없음",
+            "microprice·가격반응 정렬이 1,000ms 전에 소멸",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO
+        + ("3초 수익률 anchor는 목표시각 이전 1.5초 범위의 가장 가까운 prefix만 사용",),
+        research_source_ids=(
+            "SRC-OFI-2010",
+            "SRC-MLOFI-2019",
+            "SRC-BINANCE-DEPTH",
+        ),
+    ),
+    "BOOK_SLOPE_ASYMMETRY_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=_MICRO_REQUIRED_MARKET_DATA
+        + ("top-10 가격거리별 명목깊이 기울기·동일 종목 과거 32표본·1,000ms 지속",),
+        minimum_warmup_ko="건전한 공개시장 10초 이상·동일 종목 prefix 호가기울기 32표본 이상",
+        entry_hypothesis_ko=(
+            "진행 방향 반대호가가 과거보다 얇고 지지호가가 두꺼우며 OFI·체결·"
+            "microprice·가격반응이 정렬되면 단기 유동성 비대칭이 이어질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "prefix 호가기울기 32표본 미만 또는 양쪽 기울기 비대칭 실패",
+            "OFI·체결·microprice·가격반응 정렬이 1,000ms 전에 소멸",
+            "실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_MICRO_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_MICRO_DATA_LEAKAGE_GUARDS_KO
+        + ("현재 호가기울기는 percentile 계산 뒤 과거창에 추가",),
+        research_source_ids=(
+            "SRC-MLOFI-2019",
+            "SRC-QI-2015",
+            "SRC-BINANCE-DEPTH",
+        ),
+    ),
+    "HOURLY_MOMENTUM_BREAKOUT_V1": StrategyResearchContract(
+        strategy_version="V1",
+        required_market_data=(
+            "완성 공개 1시간봉 OHLCV 200개 이상",
+            "EMA20·50·80·200, 24시간 모멘텀, Donchian, ADX, 상대거래량",
+            "신호 후 5초 이내 sequence-valid 공개 bid·ask 실행호가",
+        ),
+        minimum_warmup_ko="완성 1시간봉 200개 이상",
+        entry_hypothesis_ko=(
+            "완성 시간봉의 장단기 EMA·24시간 모멘텀·Donchian 돌파·ADX·상대거래량이 "
+            "같은 방향이면 비용을 넘는 수시간 추세가 이어질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "완성봉 200개 미만 또는 EMA·모멘텀·돌파·ADX·상대거래량 중 하나라도 실패",
+            "진행 중 봉이나 신호 후 5초를 넘긴 실행호가만 존재",
+            "BASE·STRESS 비용후 OOS·강건성 gate 실패",
+        ),
+        edge_decay_policy_ko=_EDGE_DECAY_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko="동적 정밀분석 종목 중 완성 1시간봉 200개 이상과 추세 레짐을 갖춘 종목",
+        data_leakage_guards_ko=(
+            "현재 진행 중 1시간봉 제외",
+            "신호 시각까지 완성된 봉과 현재 이전 공개호가만 사용",
+            "과거 연구결과를 본 뒤 runtime 조건을 자동 변경하지 않음",
+        ),
+        research_source_ids=(
+            "SRC-CRYPTO-MOMENTUM-2018",
+            "SRC-BINANCE-KLINE",
+            "SRC-BINANCE-DEPTH",
+        ),
+    ),
+}
 
 
 @dataclass(slots=True)
@@ -161,6 +478,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=LiquiditySweepStrategy(),
                 exit_style=ExitStyle.REVERSION_70_30,
+                research_contract=_RESEARCH_CONTRACTS["LSA_REVERSAL_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="CBR_CONTINUATION_V1",
@@ -171,6 +489,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=CompressionBreakoutStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["CBR_CONTINUATION_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
@@ -181,6 +500,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE,),
                 evaluator=VwapExhaustionStrategy(),
                 exit_style=ExitStyle.REVERSION_70_30,
+                research_contract=_RESEARCH_CONTRACTS["VWAP_EXHAUSTION_REVERSION_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="OFI_CONTINUATION_PULLBACK_V1",
@@ -194,6 +514,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=OfiPullbackStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["OFI_CONTINUATION_PULLBACK_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="QUEUE_MICROPRICE_MOMENTUM_V1",
@@ -206,6 +527,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=QueueMicropriceStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["QUEUE_MICROPRICE_MOMENTUM_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
@@ -216,6 +538,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=AggressorFlowStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["AGGRESSOR_FLOW_CONTINUATION_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="MULTILEVEL_MICROPRICE_MOMENTUM_V1",
@@ -226,6 +549,9 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=MultilevelMicropriceStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS[
+                    "MULTILEVEL_MICROPRICE_MOMENTUM_V1"
+                ],
             ),
             StrategyDescriptor(
                 strategy_id="DEPTH_ADJUSTED_OFI_IMPULSE_V1",
@@ -238,6 +564,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=DepthAdjustedOfiStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["DEPTH_ADJUSTED_OFI_IMPULSE_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="OFI_RETURN_CONFLUENCE_V1",
@@ -248,6 +575,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=OfiReturnConfluenceStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["OFI_RETURN_CONFLUENCE_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="BOOK_SLOPE_ASYMMETRY_V1",
@@ -260,6 +588,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=BookSlopeAsymmetryStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["BOOK_SLOPE_ASYMMETRY_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="HOURLY_MOMENTUM_BREAKOUT_V1",
@@ -272,6 +601,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=HourlyMomentumBreakoutStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["HOURLY_MOMENTUM_BREAKOUT_V1"],
                 horizon_class="INTRADAY_SWING",
                 expected_holding_seconds=(3_600, 129_600),
                 signal_half_life_seconds=5,
@@ -577,6 +907,28 @@ class StrategyRegistry:
                 "max_hold_seconds": descriptor.max_hold_seconds,
                 "cost_model_version": descriptor.cost_model_version,
                 "paper_only": descriptor.paper_only,
+                "strategy_version": descriptor.research_contract.strategy_version,
+                "required_market_data": list(
+                    descriptor.research_contract.required_market_data
+                ),
+                "minimum_warmup_ko": descriptor.research_contract.minimum_warmup_ko,
+                "entry_hypothesis_ko": (
+                    descriptor.research_contract.entry_hypothesis_ko
+                ),
+                "falsification_conditions_ko": list(
+                    descriptor.research_contract.falsification_conditions_ko
+                ),
+                "edge_decay_policy_ko": (
+                    descriptor.research_contract.edge_decay_policy_ko
+                ),
+                "risk_budget_rule_ko": descriptor.research_contract.risk_budget_rule_ko,
+                "target_universe_ko": descriptor.research_contract.target_universe_ko,
+                "data_leakage_guards_ko": list(
+                    descriptor.research_contract.data_leakage_guards_ko
+                ),
+                "research_source_ids": list(
+                    descriptor.research_contract.research_source_ids
+                ),
             }
             for descriptor in self._descriptors.values()
         ]

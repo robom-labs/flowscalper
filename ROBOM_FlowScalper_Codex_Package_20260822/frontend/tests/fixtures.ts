@@ -92,6 +92,20 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
   exit_rules_ko: index === 10 ? ['TP1 2.2R·40%', 'TP2 4.5R·60%'] : [],
   max_hold_seconds: index === 10 ? 129600 : 900,
   cost_model_version: 'TOP_OF_BOOK_BASE13_STRESS25_V1',
+  strategy_version: 'V1',
+  required_market_data: index === 10
+    ? ['완성 공개 1시간봉', 'sequence-valid 공개 bid·ask']
+    : ['sequence-valid 공개 top-10 bid·ask', '공개 aggregate trade', '종목별 과거 피처'],
+  minimum_warmup_ko: index === 10 ? '완성 1시간봉 200개 이상' : '건전한 종목별 공개시장 10초 이상과 현재 이전 prefix 통계',
+  entry_hypothesis_ko: '현재 이전 공개시장 정보가 같은 방향으로 정렬되고 비용 gate를 통과하면 PAPER 후보로 평가합니다.',
+  falsification_conditions_ko: ['필수 데이터 또는 방향 정렬 실패', '비용후 순 R:R gate 실패'],
+  edge_decay_policy_ko: '진입 후 10초 grace·불리한 근거 2개·3초 지속 뒤 PAPER 관리청산',
+  risk_budget_rule_ko: '공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산',
+  target_universe_ko: '동적 정밀분석 종목 중 지원 레짐·유동성·비용 gate 통과 종목',
+  data_leakage_guards_ko: ['현재 event timestamp 이전의 동일 종목 이력만 사용', '미래 timestamp 입력 fail-closed'],
+  research_source_ids: index === 10
+    ? ['SRC-CRYPTO-MOMENTUM-2018', 'SRC-BINANCE-KLINE', 'SRC-BINANCE-DEPTH']
+    : ['SRC-OFI-2010', 'SRC-BINANCE-DEPTH', 'SRC-BINANCE-AGGTRADE'],
   paper_only: true,
   mode: [0, 3, 4, 7, 10].includes(index) ? 'OFF' : 'SHADOW',
   lifecycle: [0, 3, 4, 7, 10].includes(index) ? 'RETIRED' : 'SHADOW',

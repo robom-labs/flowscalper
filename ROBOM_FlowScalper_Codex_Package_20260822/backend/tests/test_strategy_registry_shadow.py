@@ -78,6 +78,40 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
         "RETIRED",
     ]
     assert all(row["long_enabled"] and row["short_enabled"] for row in registry.rows())
+    required_descriptor_contract = {
+        "strategy_version",
+        "required_market_data",
+        "minimum_warmup_ko",
+        "entry_hypothesis_ko",
+        "falsification_conditions_ko",
+        "edge_decay_policy_ko",
+        "risk_budget_rule_ko",
+        "target_universe_ko",
+        "data_leakage_guards_ko",
+        "research_source_ids",
+    }
+    research_foundations = Path("docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md").read_text()
+    for row in registry.rows():
+        assert required_descriptor_contract <= row.keys()
+        assert row["strategy_version"] == "V1"
+        assert row["required_market_data"]
+        assert row["minimum_warmup_ko"]
+        assert row["entry_hypothesis_ko"]
+        assert row["falsification_conditions_ko"]
+        assert row["edge_decay_policy_ko"] == (
+            "진입 후 10초 grace·불리한 근거 2개·3초 지속 뒤 PAPER 관리청산"
+        )
+        assert row["risk_budget_rule_ko"] == (
+            "공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산"
+        )
+        assert row["target_universe_ko"]
+        assert row["data_leakage_guards_ko"]
+        assert row["research_source_ids"]
+        assert all(
+            f"| {source_id} |" in research_foundations
+            for source_id in row["research_source_ids"]
+        )
+        assert row["change_reason"]
     micro_rows = registry.rows()[:-1]
     assert all(row["horizon_class"] == "MICRO_SCALP" for row in micro_rows)
     assert all(row["expected_holding_seconds"] == [10, 180] for row in micro_rows)
@@ -92,6 +126,8 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
     assert hourly["take_profit_1_r"] == "2.2"
     assert hourly["take_profit_2_r"] == "4.5"
     assert hourly["max_hold_seconds"] == 129_600
+    assert hourly["minimum_warmup_ko"] == "완성 1시간봉 200개 이상"
+    assert "SRC-CRYPTO-MOMENTUM-2018" in hourly["research_source_ids"]
     assert all(
         row["cost_model_version"] == "TOP_OF_BOOK_BASE13_STRESS25_V1" for row in registry.rows()
     )

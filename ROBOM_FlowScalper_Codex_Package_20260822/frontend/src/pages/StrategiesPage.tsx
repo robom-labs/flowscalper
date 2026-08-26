@@ -182,6 +182,17 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRoll
               <div><dt>익절 설계</dt><dd>TP1 {selected.take_profit_1_r}R · TP2 {selected.take_profit_2_r}R</dd></div>
               <div><dt>자동 관리</dt><dd>{selected.exit_model} · 안전 최대 {formatDurationMs(selected.max_hold_seconds * 1_000)}</dd></div>
               <div><dt>비용 기준</dt><dd>{selected.cost_model_version}</dd></div>
+              <div><dt>전략 버전</dt><dd>{selected.strategy_version}</dd></div>
+              <div><dt>필요 데이터</dt><dd>{selected.required_market_data.join(' · ')}</dd></div>
+              <div><dt>최소 준비</dt><dd>{selected.minimum_warmup_ko}</dd></div>
+              <div><dt>진입 가설</dt><dd>{selected.entry_hypothesis_ko}</dd></div>
+              <div><dt>반증 조건</dt><dd>{selected.falsification_conditions_ko.join(' · ')}</dd></div>
+              <div><dt>근거 약화 종료</dt><dd>{selected.edge_decay_policy_ko}</dd></div>
+              <div><dt>위험예산</dt><dd>{selected.risk_budget_rule_ko}</dd></div>
+              <div><dt>대상 범위</dt><dd>{selected.target_universe_ko} · {selected.supported_regimes.join(' · ')}</dd></div>
+              <div><dt>미래정보 방지</dt><dd>{selected.data_leakage_guards_ko.join(' · ')}</dd></div>
+              <div><dt>연구 근거</dt><dd>{selected.research_source_ids.join(' · ')}</dd></div>
+              <div><dt>현재 상태 근거</dt><dd>{selected.change_reason}</dd></div>
             </dl>
           </section>
           {selected.entry_rules_ko.length || selected.exit_rules_ko.length ? <section className="profile-detail-block">
