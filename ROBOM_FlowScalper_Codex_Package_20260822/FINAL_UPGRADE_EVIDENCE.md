@@ -2330,3 +2330,46 @@ queue 포화 없이 공개 provider timeout이 함께 있었으므로 replay가 
 첫 40초의 높은 trade p95에는 replay 장애 구간의 rolling percentile이 남아 있었으므로 새 독립 지연사건으로 단정하지 않는다. 반면 14분대의 22.636초 flush와 27분대 planned rotation 중 신규 critical incident는 replay worker가 없는 구간에서 실제로 추가됐다. 따라서 replay가 단독 원인이라는 가설은 기각하고 설치 기준 서비스 자체의 저장·회전 장시간 한계도 후속 원인으로 유지한다.
 
 구현 commit은 `e33ef4e50b232ed079dfc0333fbe1f1f195a6311`, 판단 근거는 ADR-059, 기계판독 증거는 `evidence/WAVE58_LIVE_PRIORITY_REPLAY_AUTO_ABORT_QA.json`과 `evidence/WAVE58_POST_REPLAY_RECOVERY_30M.json`이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 자동중단 코드와 로컬 회귀는 PASS지만 첫 실제 전체 replay는 `FAIL/CANCELLED`, replay 없는 30분 비교도 `FAIL`, 설치 경로·동일범위 재시도·원장·브라우저·GitHub·6시간·24시간은 `NOT_RUN` 또는 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
+
+## 58. Wave 59 저장 커밋 우선순위와 전체종목 회전 warmup
+
+### replay 없는 30분에서 분리된 두 결함
+
+Wave 58의 replay worker를 종료한 뒤에도 저장 flush 한 건이 22.636초로 20초 상한을 넘었고 planned rotation 중 8.027초 critical incident가 새로 발생했다. 같은 30분에 event +134,570, 전략평가 +476,160, queue 최대 1, 비계획 reconnect·gap·resync·drop·persistence fault·buffer drop 0이었으므로 event loop 포화나 replay 단독 원인으로 묶지 않았다.
+
+설치 Run의 누적 최장 flush 세부값은 archive 588.476ms, SQLite ledger 66,179.757ms였다. 현재 저장 process는 처음에 `taskpolicy -b`로 background가 된 뒤 Parquet뿐 아니라 큰 원장의 `BEGIN IMMEDIATE`·`synchronous=FULL` COMMIT까지 같은 우선순위를 유지했다. 30분의 22.636초 flush와 누적 66.180초가 정확히 같은 내부 구간이라는 직접 표본은 없으므로 이것은 코드·진단이 함께 지지하는 원인 가설이며, 실제 배포 후 재측정 전에는 해결로 판정하지 않는다.
+
+Binance planned rotation은 `depth_warmup=True` 한 개를 사용했다. 첫 한 종목의 fresh depth가 도착하면 false로 바뀌어 나머지 정밀 종목의 1,500ms 초과 backlog도 실행호가로 나갈 수 있었다. 12종목 전체의 warmup을 한 종목의 성공으로 대표한 구현 결함이다.
+
+### 구현과 안전 경계
+
+- Parquet 직렬화·압축·파일 fsync는 기존 Darwin background 우선순위를 유지한다.
+- archive 준비 뒤 SQLite 연결·원자 metadata/candle 삽입·FULL COMMIT 구간만 `taskpolicy -B`로 정상 우선순위에 두고 성공·실패 모두 `finally`에서 background로 되돌린다.
+- WAL·`synchronous=FULL`·checksum·단일 transaction·rollback·버퍼 복원은 유지한다. 저장을 생략하거나 느슨하게 만들어 빠르게 보이지 않는다.
+- planned rotation마다 선택된 deep symbol 전체를 warmup 집합으로 시작한다. stale delta는 book sequence에는 적용하지만 모든 종목에서 1,500ms 이하 fresh depth를 확인할 때까지 실행 가능한 depth를 한 건도 내보내지 않는다.
+- 첫 한 종목만 정상이라고 신규진입 잠금을 풀지 않는다. 전체가 준비되지 않으면 fail-closed를 유지한다.
+- `runtime.py`의 replay 안전 type은 TYPE_CHECKING과 함수 내부 import로 바꿔 단독 import 순서에서도 순환 의존성을 없앴다.
+- 전략·비용·TP·SL·체결·Governor·위험예산·PAPER 원장 정밀도는 바꾸지 않았고 실제 주문·private API·API Key·secret·wallet·runtime AI 주문판단은 계속 0이다.
+
+### 실패 재현과 현재 검증
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| runtime 단독 import 수정 전 | FAIL_AS_EXPECTED | `runtime → replay.safety → replay.__init__ → replay.market → runtime` 순환 import로 두 표적 파일이 수집되지 않았다. 전체 suite의 기존 import 순서가 결함을 가리고 있었다. |
+| 전체종목 warmup 수정 전 | FAIL_AS_EXPECTED | `_rotation_depth_output_ready` 계약이 없어 첫 종목 뒤 나머지 종목을 계속 잠그는 표적이 실패했다. |
+| SQLite priority bracket 수정 전 | FAIL_AS_EXPECTED | `_set_persistence_background_io_policy`가 없어 commit 전 `-B`, 성공 뒤 `-b` 계약이 실패했다. |
+| 수정 뒤 표적 | PASS | 전체종목 warmup, macOS `-b/-B/-b`, 실제 원자 archive+ledger commit 3 passed, 1.52초다. |
+| 관련 backend | PASS | supervisor·운영안전·replay 안전·저장 replay 84 passed, 13.17초다. |
+| backend pytest | PASS | 최종 소스 450 passed, 22.42초다. |
+| runtime 단독 import | PASS | 새 Python process에서 `PaperRuntime` 직접 import가 성공했다. |
+| 실제 macOS taskpolicy 전환 | PASS_LOCAL_PROCESS_ONLY | 별도 child process에서 background true, foreground true를 확인했다. 설치 8870 worker 성능 증거는 아니다. |
+| Ruff / mypy / ESLint / TypeScript | PASS | Python 오류 0·mypy 96 source files 오류 0·frontend 오류 0이다. |
+| security / repository hygiene | PASS | security 131 source·위반·secret-like·실제주문 path 0, 저장소 위반 0이다. |
+| production build / fixture / Playwright | NOT_RUN | 최종 clean commit의 불변 release에서 실행해야 한다. 현재 기준 frontend를 덮어쓰지 않았다. |
+| 기준 6시간 / 24시간 observer | IN_PROGRESS_WITH_KNOWN_INCIDENT | replay와 기존 저장·회전 실패를 포함한 표본을 중단하거나 삭제하지 않고 계속 보존한다. |
+| 실제 8870 새 저장·회전 경로 | NOT_RUN | 기준 6시간 observer가 끝나기 전에는 설치 서비스를 교체하지 않는다. |
+| 동일 485,283건 자동보호 replay | NOT_RUN | 불변 배포와 실제 planned rotation·flush 확인 뒤 같은 범위로 재시도한다. |
+| 원장 snapshot / 브라우저 / GitHub / Release ZIP | NOT_RUN | 평탄 유지관리·배포·실제 화면·Actions 전에는 완료로 기록하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 전략 조건과 Registry를 변경하지 않았고 현재 독립 자연표본도 부족하다. |
+
+구현 commit은 `c2dca3bb0de86374ba51428d1d6e538dc79391fb`, 판단 근거는 ADR-060, 기계판독 증거는 `evidence/WAVE59_STORAGE_COMMIT_AND_ROTATION_WARMUP_QA.json`이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·표적·관련·전체 backend와 정적·보안 검사는 PASS지만 실제 설치 flush·전체종목 planned rotation·불변 release·브라우저·동일범위 replay·6시간·24시간·GitHub는 아직 `NOT_RUN` 또는 `IN_PROGRESS`이고 수익성은 `NOT_PROVEN`이다.

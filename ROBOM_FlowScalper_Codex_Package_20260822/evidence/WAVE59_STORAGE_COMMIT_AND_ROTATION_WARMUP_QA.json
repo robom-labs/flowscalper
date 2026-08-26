@@ -1,0 +1,129 @@
+{
+  "schema": "flowscalper.wave59.storage_commit_rotation_warmup_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_service_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "c2dca3bb0de86374ba51428d1d6e538dc79391fb",
+  "reproduction": {
+    "source": "evidence/WAVE58_POST_REPLAY_RECOVERY_30M.json",
+    "replay_worker_running": false,
+    "observed_duration_seconds": 1800.079,
+    "event_delta": 134570,
+    "strategy_evaluation_delta": 476160,
+    "maximum_queue_depth": 1,
+    "maximum_persistence_flush_ms": 22636.0,
+    "persistence_threshold_ms": 20000.0,
+    "planned_rotation_critical_incident_delta": 1,
+    "last_critical_incident_duration_ms": 8027.236875,
+    "new_unplanned_reconnects": 0,
+    "new_sequence_gaps": 0,
+    "new_resyncs": 0,
+    "new_dropped_events": 0,
+    "new_persistence_faults": 0,
+    "new_persistence_buffer_drops": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "root_cause_evidence": {
+    "cumulative_slowest_archive_ms": 588.476,
+    "cumulative_slowest_ledger_ms": 66179.757,
+    "storage_code_path": "taskpolicy -b covered both archive work and synchronous FULL SQLite commit",
+    "rotation_code_path": "one global depth_warmup boolean was cleared by the first fresh deep symbol",
+    "runtime_import_cycle": "runtime imported replay.safety while replay package initialization imported replay.market and runtime",
+    "storage_causality": "STRONG_HYPOTHESIS_REQUIRES_POST_DEPLOY_RUNTIME_PROOF",
+    "rotation_causality": "IMPLEMENTATION_DEFECT_REPRODUCED"
+  },
+  "implementation": {
+    "archive_background_priority_retained": true,
+    "sqlite_full_commit_foreground_bracket": true,
+    "background_priority_restored_in_finally": true,
+    "sqlite_synchronous_full_retained": true,
+    "wal_retained": true,
+    "checksum_retained": true,
+    "atomic_rollback_retained": true,
+    "buffer_restore_retained": true,
+    "rotation_warmup_scope": "ALL_SELECTED_DEEP_SYMBOLS",
+    "rotation_fresh_depth_max_lag_ms": 1500.0,
+    "stale_delta_sequence_application_retained": true,
+    "executable_depth_before_all_symbols_ready": false,
+    "runtime_import_order_independent": true,
+    "strategy_logic_changed": false,
+    "cost_model_changed": false,
+    "tp_sl_changed": false,
+    "governor_changed": false,
+    "risk_budget_changed": false
+  },
+  "failure_first": {
+    "isolated_runtime_import": "FAIL_AS_EXPECTED_CIRCULAR_IMPORT",
+    "all_symbol_rotation_warmup": "FAIL_AS_EXPECTED_MISSING_CONTRACT",
+    "sqlite_priority_bracket": "FAIL_AS_EXPECTED_MISSING_CONTRACT"
+  },
+  "validation": {
+    "targeted": {
+      "status": "PASS",
+      "tests": 3,
+      "seconds": 1.52
+    },
+    "related_backend": {
+      "status": "PASS",
+      "tests": 84,
+      "seconds": 13.17
+    },
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 450,
+      "seconds": 22.42
+    },
+    "isolated_runtime_import": "PASS",
+    "macos_taskpolicy_child_probe": {
+      "status": "PASS_LOCAL_PROCESS_ONLY",
+      "background": true,
+      "foreground": true
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 131,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    },
+    "production_build": "NOT_RUN",
+    "frontend_vitest": "NOT_RUN_CURRENT_WAVE",
+    "fixture": "NOT_RUN",
+    "playwright": "NOT_RUN",
+    "git_diff_check": "PASS"
+  },
+  "independent_gates": {
+    "baseline_six_hour_installed_service_soak": "IN_PROGRESS_WITH_KNOWN_INCIDENT",
+    "baseline_twenty_four_hour_installed_service_soak": "IN_PROGRESS_WITH_KNOWN_INCIDENT",
+    "actual_installed_new_storage_path": "NOT_RUN",
+    "actual_installed_all_symbol_rotation": "NOT_RUN",
+    "same_full_scope_guarded_replay": "NOT_RUN",
+    "post_deploy_six_hour_soak": "NOT_RUN",
+    "post_deploy_twenty_four_hour_soak": "NOT_RUN",
+    "closed_snapshot_full_integrity": "NOT_RUN",
+    "actual_browser": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN",
+    "release_zip": "NOT_RUN",
+    "strategy_profitability": "NOT_PROVEN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}
