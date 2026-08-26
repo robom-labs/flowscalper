@@ -442,3 +442,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 9. Add deterministic guard, planned-rotation, event-stall, critical-lag, probe-error, child-cancellation, HTTP-operation and non-persistence regression tests. Re-run complete backend, frontend, fixture, static, build, PAPER safety, security and repository-hygiene checks.
 10. Deploy only through the immutable release path after the baseline observation boundary and all PAPER accounts are flat. Retry the same full scope under the installed watchdog and verify the actual browser, ledger transition and LIVE metrics before GitHub synchronization.
 11. Preserve six-hour and 24-hour post-deploy observers as independent gates. Keep profitability `NOT_PROVEN` and do not change any strategy threshold, cost, TP, SL, fill, Governor or risk budget.
+
+## Storage commit priority and all-symbol rotation warmup Wave
+
+1. Preserve the replay-free 30-minute FAIL. Do not dismiss the 22.636-second flush or the 8.027-second planned-rotation critical incident because event progress and queue remained healthy.
+2. Separate observed facts from causality. The cumulative slowest archive/ledger split and code path identify a strong hypothesis, while only post-deploy observation can prove the remedy.
+3. Keep Parquet serialization, compression and file fsync under Darwin background policy. Temporarily leave background only for the SQLite connection, `BEGIN IMMEDIATE`, immutable metadata/candle inserts and `synchronous=FULL` commit.
+4. Restore background policy in `finally` after both success and failure. Preserve WAL, FULL durability, checksum, atomic rollback and buffer restoration.
+5. Replace the single Binance depth warmup boolean with a set of every selected deep symbol. Apply stale deltas to sequence state but emit no executable depth until every symbol has produced fresh depth within 1,500ms.
+6. Keep entry locked while the set is incomplete. Do not shorten warmup or lower lag limits to avoid aborting replay.
+7. Remove the runtime/replay circular import so isolated test collection and installed startup do not depend on prior import order.
+8. Add failing-first tests for all-symbol warmup, process-priority release/reapply and direct runtime import. Run related and full backend, frontend, fixture, static, build, PAPER safety, security and repository-hygiene checks.
+9. Do not deploy while the baseline six-hour observer is running. Preserve its known failures, then deploy once from an immutable clean commit while all PAPER accounts are flat.
+10. After deployment verify actual flush component timings and at least one planned rotation before retrying the same 485,283-event replay. Start new six-hour and 24-hour observers only after this runtime gate.

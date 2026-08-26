@@ -39,6 +39,18 @@ _STRATEGY_TRADE_LAG_MAX_MS = 500.0
 _ROTATION_WARMUP_DEPTH_LAG_MAX_MS = 1_500.0
 
 
+def _rotation_depth_output_ready(
+    event: MarketEvent,
+    warming_symbols: set[str],
+) -> bool:
+    """모든 정밀 종목의 fresh depth가 확인될 때까지 실행호가 출력을 잠근다."""
+
+    if event.event_type != "DEPTH_UPDATE":
+        return True
+    warming_symbols.discard(event.symbol)
+    return not warming_symbols
+
+
 def _percentile_95(ordered: Sequence[float]) -> float | None:
     if not ordered:
         return None
@@ -610,7 +622,7 @@ class BinancePersistentProvider:
         started = asyncio.get_running_loop().time()
         depth_coalescer = BinanceDepthCoalescer(bucket_ms=500)
         trade_coalescer = BinanceTradeCoalescer(bucket_ms=500)
-        depth_warmup = True
+        depth_warmup_symbols = set(selection.deep_symbols)
         async with (
             websockets.connect(
                 wide_url,
@@ -670,10 +682,13 @@ class BinancePersistentProvider:
                             adapter,
                             run_id=run_id,
                             clock=clock,
-                            suppress_stale_depth=depth_warmup,
+                            suppress_stale_depth=bool(depth_warmup_symbols),
                         ):
-                            if event.event_type == "DEPTH_UPDATE":
-                                depth_warmup = False
+                            if not _rotation_depth_output_ready(
+                                event,
+                                depth_warmup_symbols,
+                            ):
+                                continue
                             if event.event_type == "TRADE":
                                 for aggregate in trade_coalescer.push(event):
                                     yield aggregate

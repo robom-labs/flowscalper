@@ -11,6 +11,7 @@ from pathlib import Path
 import backend.app.ops.resources as resources_module
 import backend.app.runtime as runtime_module
 import backend.app.storage.parquet as parquet_module
+import backend.app.storage.sqlite as sqlite_module
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketDataState, MarketEvent, RuntimeMode, Venue
 from backend.app.market_data.candles import Candle
@@ -104,6 +105,70 @@ def test_archive_worker_applies_macos_background_io_policy_once(monkeypatch) -> 
     parquet_module._apply_background_io_policy()
 
     assert calls == [["/usr/sbin/taskpolicy", "-b", "-p", str(parquet_module.os.getpid())]]
+    assert parquet_module._set_background_io_policy(False) is True
+    assert parquet_module._set_background_io_policy(True) is True
+    assert calls == [
+        ["/usr/sbin/taskpolicy", "-b", "-p", str(parquet_module.os.getpid())],
+        ["/usr/sbin/taskpolicy", "-B", "-p", str(parquet_module.os.getpid())],
+        ["/usr/sbin/taskpolicy", "-b", "-p", str(parquet_module.os.getpid())],
+    ]
+
+
+def test_atomic_sqlite_commit_temporarily_leaves_background_priority(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[object] = []
+    archive = ParquetEventStore(
+        tmp_path / "priority-archive",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(tmp_path / "priority-ledger.sqlite3")
+    ledger.start_run(
+        "run-priority",
+        mode=RuntimeMode.LIVE_SHADOW_PAPER.value,
+        venue=Venue.BINANCE_USDM.value,
+        config={"execution": "PAPER"},
+        started_ts_ms=1_000,
+    )
+    rows = [
+        {
+            "event_id": "priority-event",
+            "run_id": "run-priority",
+            "venue": Venue.BINANCE_USDM.value,
+            "symbol": "BTCUSDT",
+            "event_type": "TRADE",
+            "venue_ts_ms": 1_000,
+            "receive_monotonic_ns": 1_000,
+            "data": {"price": "100", "quantity": "1"},
+        }
+    ]
+
+    monkeypatch.setattr(
+        sqlite_module,
+        "_apply_persistence_background_io_policy",
+        lambda: calls.append("ARCHIVE_BACKGROUND"),
+    )
+    monkeypatch.setattr(
+        sqlite_module,
+        "_set_persistence_background_io_policy",
+        lambda enabled: calls.append(enabled) or True,
+    )
+
+    timings = sqlite_module.persist_archives_and_candles_in_process(
+        str(archive.root),
+        0,
+        0,
+        str(ledger.path),
+        [rows],
+        [],
+    )
+
+    assert calls == ["ARCHIVE_BACKGROUND", False, True]
+    assert timings["archive_batches"] == 1
+    assert ledger.count("market_event_archives") == 1
+    ledger.close()
 
 
 def test_archive_worker_warms_arrow_and_zstd_without_disk_write(monkeypatch) -> None:

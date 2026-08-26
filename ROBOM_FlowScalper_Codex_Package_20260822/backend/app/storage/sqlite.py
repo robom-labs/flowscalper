@@ -17,6 +17,9 @@ from backend.app.storage.parquet import ArchivedEventBatch, ParquetEventStore
 from backend.app.storage.parquet import (
     _apply_background_io_policy as _apply_persistence_background_io_policy,
 )
+from backend.app.storage.parquet import (
+    _set_background_io_policy as _set_persistence_background_io_policy,
+)
 
 
 class LedgerInvariantError(RuntimeError):
@@ -1883,42 +1886,49 @@ def persist_archives_and_candles_in_process(
     run_id = next(iter(run_ids))
 
     ledger_started = time.perf_counter()
-    connection = sqlite3.connect(ledger_path, timeout=60.0, isolation_level=None)
-    connection.row_factory = sqlite3.Row
+    foreground_commit = _set_persistence_background_io_policy(False)
     try:
-        connection.executescript(
-            """
-            PRAGMA foreign_keys = ON;
-            PRAGMA synchronous = FULL;
-            PRAGMA wal_autocheckpoint = 0;
-            PRAGMA busy_timeout = 60000;
-            """
-        )
-        mode = connection.execute("PRAGMA journal_mode").fetchone()
-        if mode is None or str(mode[0]).lower() != "wal":
-            raise LedgerInvariantError("분리 영속화 연결의 journal_mode가 WAL이 아닙니다.")
-        connection.execute("BEGIN IMMEDIATE")
+        connection = sqlite3.connect(ledger_path, timeout=60.0, isolation_level=None)
+        connection.row_factory = sqlite3.Row
         try:
-            run = connection.execute(
-                "SELECT finalized_ts_ms FROM runs WHERE run_id = ?",
-                (run_id,),
-            ).fetchone()
-            if run is None or run["finalized_ts_ms"] is not None:
-                raise LedgerInvariantError(f"열린 Run이 아닙니다: {run_id}")
-            for _, manifest, stat_rows in prepared_archives:
-                SQLiteLedger._insert_market_event_archive(
-                    connection,
-                    manifest=manifest,
-                    stat_rows=stat_rows,
+            connection.executescript(
+                """
+                PRAGMA foreign_keys = ON;
+                PRAGMA synchronous = FULL;
+                PRAGMA wal_autocheckpoint = 0;
+                PRAGMA busy_timeout = 60000;
+                """
+            )
+            mode = connection.execute("PRAGMA journal_mode").fetchone()
+            if mode is None or str(mode[0]).lower() != "wal":
+                raise LedgerInvariantError(
+                    "분리 영속화 연결의 journal_mode가 WAL이 아닙니다."
                 )
-            if prepared_candles is not None:
-                SQLiteLedger._insert_candles(connection, prepared_candles[1])
-            connection.execute("COMMIT")
-        except BaseException:
-            connection.execute("ROLLBACK")
-            raise
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                run = connection.execute(
+                    "SELECT finalized_ts_ms FROM runs WHERE run_id = ?",
+                    (run_id,),
+                ).fetchone()
+                if run is None or run["finalized_ts_ms"] is not None:
+                    raise LedgerInvariantError(f"열린 Run이 아닙니다: {run_id}")
+                for _, manifest, stat_rows in prepared_archives:
+                    SQLiteLedger._insert_market_event_archive(
+                        connection,
+                        manifest=manifest,
+                        stat_rows=stat_rows,
+                    )
+                if prepared_candles is not None:
+                    SQLiteLedger._insert_candles(connection, prepared_candles[1])
+                connection.execute("COMMIT")
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
+        finally:
+            connection.close()
     finally:
-        connection.close()
+        if foreground_commit:
+            _set_persistence_background_io_policy(True)
     return {
         "archive_ms": archive_ms,
         "ledger_ms": (time.perf_counter() - ledger_started) * 1_000,

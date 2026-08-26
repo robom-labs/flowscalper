@@ -11,7 +11,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from pathlib import Path
 from threading import RLock
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from anyio import to_process, to_thread
@@ -53,7 +53,6 @@ from backend.app.market_data.supervisor import (
 from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
 from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
-from backend.app.replay.safety import ReplayLiveSafetySnapshot
 from backend.app.storage.parquet import (
     ArchivedEventBatch,
     ParquetEventStore,
@@ -75,6 +74,9 @@ from backend.app.strategies.registry import (
 )
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal, StrategySignalEvaluator
 from backend.app.strategies.shadow import ShadowLedger
+
+if TYPE_CHECKING:
+    from backend.app.replay.safety import ReplayLiveSafetySnapshot
 
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 2_000
 _MARKET_PERSISTENCE_BATCH_SIZE = 2_000
@@ -429,6 +431,8 @@ class PaperRuntime:
 
     def replay_live_safety_snapshot(self) -> ReplayLiveSafetySnapshot:
         """대용량 replay가 양보할 LIVE PAPER 최소 상태만 가볍게 읽는다."""
+
+        from backend.app.replay.safety import ReplayLiveSafetySnapshot
 
         self._refresh_storage_safety()
         telemetry = self._supervisor.telemetry if self._supervisor is not None else None

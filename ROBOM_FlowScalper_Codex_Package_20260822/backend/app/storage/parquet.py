@@ -359,21 +359,35 @@ def _apply_background_io_policy() -> None:
     global _BACKGROUND_IO_POLICY_APPLIED
     if _BACKGROUND_IO_POLICY_APPLIED:
         return
+    _set_background_io_policy(True)
+
+
+def _set_background_io_policy(enabled: bool) -> bool:
+    """archive 구간에만 Darwin background 우선순위를 적용하거나 해제한다."""
+
+    global _BACKGROUND_IO_POLICY_APPLIED
     if sys.platform != "darwin":
-        _BACKGROUND_IO_POLICY_APPLIED = True
-        return
+        _BACKGROUND_IO_POLICY_APPLIED = enabled
+        return True
     taskpolicy = Path("/usr/sbin/taskpolicy")
     if not taskpolicy.is_file():
-        return
+        return False
     result = subprocess.run(
-        [str(taskpolicy), "-b", "-p", str(os.getpid())],
+        [
+            str(taskpolicy),
+            "-b" if enabled else "-B",
+            "-p",
+            str(os.getpid()),
+        ],
         check=False,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
     if result.returncode == 0:
-        _BACKGROUND_IO_POLICY_APPLIED = True
+        _BACKGROUND_IO_POLICY_APPLIED = enabled
+        return True
+    return False
 
 
 def _default_disk_usage(path: Path) -> DiskUsage:

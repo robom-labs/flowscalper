@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 
+import backend.app.market_data.supervisor as supervisor_module
 from backend.app.adapters.base import BackoffPolicy, ConnectionState
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import (
@@ -871,6 +872,28 @@ async def test_binance_rotation_warmup_applies_but_suppresses_stale_depth() -> N
     assert fresh_events[0].event_type == "DEPTH_UPDATE"
     assert fresh_events[0].quality.lag_ms == 0
     assert book.last_update_id == 102
+
+
+def test_rotation_waits_for_fresh_depth_from_every_selected_symbol() -> None:
+    clock = DeterministicClock(current_utc_ms=5_000)
+    warming_symbols = {"BTCUSDT", "ETHUSDT"}
+    btc = _event("run-rotation-all-symbols", "BTCUSDT", clock, 1).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
+    )
+    eth = _event("run-rotation-all-symbols", "ETHUSDT", clock, 2).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
+    )
+
+    assert (
+        supervisor_module._rotation_depth_output_ready(btc, warming_symbols) is False
+    )
+    assert warming_symbols == {"ETHUSDT"}
+    assert (
+        supervisor_module._rotation_depth_output_ready(btc, warming_symbols) is False
+    )
+    assert warming_symbols == {"ETHUSDT"}
+    assert supervisor_module._rotation_depth_output_ready(eth, warming_symbols) is True
+    assert warming_symbols == set()
 
 
 def test_lag_percentile_work_is_bounded_during_high_frequency_events() -> None:
