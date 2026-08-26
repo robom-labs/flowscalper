@@ -15,6 +15,7 @@ type Props = {
   onStartDemo: () => void
   onPauseToggle: () => void
   busy: boolean
+  immediateAction: 'pause' | 'resume' | null
   operation: ControlOperation | null
   onCancel: () => void
   onRetry: () => void
@@ -106,7 +107,7 @@ function MarketRail({ rows, selected, onSelect, onClose }: { rows: MarketCatalog
   </aside>
 }
 
-export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPauseToggle, busy, operation, onCancel, onRetry }: Props) {
+export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPauseToggle, busy, immediateAction, operation, onCancel, onRetry }: Props) {
   const [initialPreference] = useState(() => loadMarketPreference(data))
   const [initialFocusPreference] = useState(loadFocusPreference)
   const [initialFocused] = useState(() => initialFocusPreference.autoFocusOnFill ? preferredFocus(data.focus_positions, initialFocusPreference.defaultProfile) : null)
@@ -253,7 +254,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
       <button type="button" className="workspace-button market-drawer-button" onClick={() => setMarketDrawer(true)}>종목</button>
     </header>
     {focusNotice ? <p className="market-notice focus-toast" role="status">{focusNotice}<button type="button" onClick={() => setFocusNotice('')}>닫기</button></p> : catalogError ? <p className="market-notice" role="status">{catalogError}</p> : null}
-    <OperationStatusPanel data={data} busy={busy} operation={operation} onStartLive={onStartLive} onStartDemo={onStartDemo} onPauseToggle={onPauseToggle} onCancel={onCancel} onRetry={onRetry} />
+    <OperationStatusPanel data={data} busy={busy} immediateAction={immediateAction} operation={operation} onStartLive={onStartLive} onStartDemo={onStartDemo} onPauseToggle={onPauseToggle} onCancel={onCancel} onRetry={onRetry} />
     {data.focus_positions.length ? <section className="open-position-strip" aria-label="현재 PAPER 진입 목록"><strong>진행 중 {data.focus_positions.length}건</strong><div>{data.focus_positions.map((position) => <button type="button" className={position.side === 'LONG' ? 'long' : 'short'} aria-pressed={focusKey === position.focus_key} key={position.focus_key} onClick={() => openPosition(position)}><b>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'}</b><span>{position.strategy_display_name_ko} · {position.profile} · {paperAccountLabel(position.account_id)} · {position.stage_ko}</span><small>{formatUsdt(position.net_pnl_usdt, { signed: true })}</small></button>)}</div></section> : null}
     {displayedFocus && overlay ? <PositionFocusWorkspace mode={focus ? 'LIVE' : 'CLOSED_REVIEW'} position={displayedFocus} chart={chart} overlay={overlay} history={data.history.filter((row) => row.run_id === data.status.run_id)} /> : <div className="market-grid"><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={selectMarket} /><PriceChart chart={chart} overlay={marketOverlay} activePositionCount={selectedSymbolPositions.length} history={selectedMarket.source === 'BINANCE_USDM' && data.status.market_data_state === 'LIVE' ? data.history.filter((row) => row.run_id === data.status.run_id) : []} compact /></div>}
     {marketDrawer ? <div className="market-drawer-layer" role="dialog" aria-label="종목 목록"><button type="button" className="drawer-backdrop" aria-label="종목 목록 바깥 닫기" onClick={() => setMarketDrawer(false)} /><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={(row) => { selectMarket(row); setMarketDrawer(false) }} onClose={() => setMarketDrawer(false)} /></div> : null}

@@ -2604,3 +2604,60 @@ consumer 실패·누락·queue overload·비계획 reconnect·drop 0, 최대 que
 기계판독 실패 증거는 `evidence/WAVE63_ACTUAL_MAINTENANCE_HANDOFF.json`, 판단 근거는 ADR-065,
 수정 증거는 `evidence/WAVE64_CLOSED_TRANSFER_BEFORE_LIVE_RESTART_QA.json`이다. 현재 상태는
 `IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_ACTUAL_RETRY`다.
+
+## 64. Wave 65 실제 재시도의 오염 경계
+
+수정된 순서로 실제 유지관리를 다시 실행해 기준 서비스를 강제종료 없이 7.433초에 닫고 WAL
+busy·log frame·checkpoint frame과 WAL byte를 모두 0으로 확인했다. 3,009,531,904 byte APFS
+clone은 0.001초에 만들어졌고 다른 physical device로 634.909초에 전송됐다. source와 verification
+copy의 SHA-256은 모두
+`db3554afc2af0ac29134aed72c7d0e4c71cd57dec858bf012224d676233529e3`으로 일치했다. commit
+`1adf0ba6becf4d02693a66f6bfbbad105aafd99b` 서비스는 같은 Run `run-2b7135a972dd`를 복구했고
+첫 표본은 RUNNING·LIVE·PAPER, queue 0, 처리 p95 20.080ms, 비계획 reconnect·drop·저장결함·
+포지션·실주문·인증 0이었다.
+
+전수검사 안전감시와 동시에 실제 브라우저 pause·resume·전체 메뉴 이동·거래 focus replay와
+backend·frontend·정적·build·security 회귀를 실행했다. 감시 표본은 사용자가 일시정지한
+`MANUALLY_PAUSED`를 `OPERATION_NOT_RUNNING`으로 감지해 quick-check 완료 전에
+`ABORTED_RUNTIME_SAFETY`로 중단했다. 따라서 cross-device 전송·SHA-256과 same-Run 복구는 PASS지만
+SQLite quick-check·foreign key 결과는 `NOT_RUN`이다. 이 결과를 원장 손상이나 외부 device 결함으로
+해석하지 않으며, 성능도 `NOT_PROVEN_CONTAMINATED`다. failed verification copy는 감사용으로 보존하고
+새 깨끗한 PASS 뒤 제거한다.
+
+원본은 `evidence/WAVE64_ACTUAL_MAINTENANCE_HANDOFF_RETRY.json`, 해석 경계는 갱신된
+`evidence/WAVE64_CLOSED_TRANSFER_BEFORE_LIVE_RESTART_QA.json`이다. 현재 상태는
+`ACTUAL_RETRY_ABORTED_CONTAMINATED_LOCAL_QA_PENDING_CLEAN_RETRY`다.
+
+## 65. Wave 66 즉시 제어 피드백과 거래 집중 재생 격리
+
+### 실제 기준 화면과 원인
+
+commit `1adf0ba6becf4d02693a66f6bfbbad105aafd99b` 실제 8870 화면에서 pause와 resume를 직접 눌렀다.
+서버 상태는 `MANUALLY_PAUSED`와 `RUNNING`으로 바뀌었고 같은 Run을 유지했으며 콘솔 오류는 0이었다.
+다만 resume 뒤 화면 변화까지 약 5초 동안 버튼 문구가 그대로였다. 같은 화면의 SOLUSDT STRESS
+거래 focus replay는 entry·TP1·TP2·SL·실제 EDGE_DECAY 종료와 14초 보유를 8프레임으로 정확히
+표시했지만, 유지관리와 회귀 I/O가 겹친 조건에서 준비에 약 3분이 걸렸다.
+
+기존 focus builder는 main·shadow 전체 거래를 역직렬화해 한 거래를 찾고 LIVE process의 thread에서
+작업했다. 실제 지연은 오염된 관찰이므로 단독 인과로 단정하지 않지만, 대형 활성 원장 전체 읽기와
+LIVE process 공유는 제거해야 할 코드 경계였다.
+
+### 구현과 검증
+
+- pause·resume 요청 전에 즉시 작업 상태를 설정하고 응답까지 버튼을 비활성화해 `잠시 멈추는 중…`과
+  `다시 시작하는 중…`을 표시한다. 서버 revision·idempotency·사용자 의도 계약은 유지한다.
+- LIVE focus는 저장 timeline과 같은 process lock·worker를 사용한다. 대상 거래는
+  `(run_id, trade_id, profile)`로 한 건만 읽고 비교도 같은 Run·전략·종목·방향으로 제한한다.
+- broad 거래 조회를 호출하면 실패하는 회귀와 LIVE endpoint의 process 경로 회귀를 추가했다.
+- 표적 backend 2 passed·19.10초, 전체 backend 462 passed·65.15초, frontend 14 files·66 tests·
+  6.57초, Ruff, mypy 96 source, ESLint, TypeScript, PAPER build safety, security 131 source·위반 0·
+  실주문 경로 false와 repository hygiene가 PASS다.
+- production build는 50 modules, JS 524,190 byte·gzip 161,300 byte로 완료됐고 기존 500kB 경고는
+  남아 있다.
+
+전략 임계값, 진입조건, 비용, TP, SL, 체결, Governor, 위험예산과 계좌 구성은 변경하지 않았다.
+실제 주문·private API·API key·secret·wallet·런타임 AI 주문판단은 0이고 수익성은 `NOT_PROVEN`이다.
+새 코드의 불변 배포, 실제 pending 문구·focus 지연, 깨끗한 원장 전수검사, 30분·6시간·24시간은
+아직 `NOT_RUN`이다. 판단 근거는 ADR-066, 기계판독 증거는
+`evidence/WAVE66_CONTROL_AND_FOCUS_REPLAY_QA.json`이다. 현재 수용상태는
+`IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_IMMUTABLE_DEPLOY`다.

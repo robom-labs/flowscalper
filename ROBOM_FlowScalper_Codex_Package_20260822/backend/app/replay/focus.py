@@ -319,15 +319,9 @@ class ReplayFocusSessionBuilder:
         trade_id: str,
         profile: str,
     ) -> dict[str, Any]:
-        rows = (
-            ledger.list_trades(run_id)
-            if profile == "BASE"
-            else ledger.list_shadow_trades(run_id)
-        )
-        for trade in rows:
-            identity = str(trade.get("trade_id", trade.get("shadow_trade_id", "")))
-            if identity == trade_id and str(trade.get("profile", "BASE")) == profile:
-                return trade
+        trade = ledger.get_paper_trade(run_id, trade_id, profile)
+        if trade is not None:
+            return trade
         raise ValueError(f"저장 PAPER 거래를 찾을 수 없습니다: {trade_id}/{profile}")
 
     @staticmethod
@@ -621,13 +615,12 @@ class ReplayFocusSessionBuilder:
         run_id: str,
         source: Mapping[str, object],
     ) -> list[dict[str, object]]:
-        matches = [
-            row
-            for row in [*ledger.list_trades(run_id), *ledger.list_shadow_trades(run_id)]
-            if str(row.get("strategy_id")) == str(source.get("strategy_id"))
-            and str(row.get("symbol")) == str(source.get("symbol"))
-            and str(row.get("side")) == str(source.get("side"))
-        ]
+        matches = ledger.list_comparable_paper_trades(
+            run_id,
+            strategy_id=str(source.get("strategy_id")),
+            symbol=str(source.get("symbol")),
+            side=str(source.get("side")),
+        )
         return [
             {
                 "profile": str(row.get("profile", "BASE")),

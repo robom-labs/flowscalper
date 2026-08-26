@@ -54,6 +54,7 @@ export function useDashboard() {
   const [connectionError, setConnectionError] = useState('')
   const [requestError, setRequestError] = useState('')
   const [busyAction, setBusyAction] = useState<LongAction | null>(null)
+  const [immediateBusyAction, setImmediateBusyAction] = useState<'pause' | 'resume' | null>(null)
   const [submittedOperation, setSubmittedOperation] = useState<ControlOperation | null>(null)
   const idempotencyKeys = useRef(new Map<LongAction, string>())
   const immediateIdempotencyKeys = useRef(new Map<'pause' | 'resume', string>())
@@ -195,18 +196,23 @@ export function useDashboard() {
     setRequestError('')
     try {
       if (action === 'pause' || action === 'resume') {
+        setImmediateBusyAction(action)
         const idempotencyKey = immediateIdempotencyKeys.current.get(action) ?? crypto.randomUUID()
         immediateIdempotencyKeys.current.set(action, idempotencyKey)
-        const snapshot = await updateDashboard(`/api/control/${action}`, {
-          method: 'POST',
-          headers: { 'Idempotency-Key': idempotencyKey },
-          body: JSON.stringify({
-            expected_revision: data.paper_entry_intent.revision,
-            reason: action === 'pause' ? 'USER_PAUSE' : 'USER_RESUME',
-          }),
-        })
-        immediateIdempotencyKeys.current.delete(action)
-        return snapshot
+        try {
+          const snapshot = await updateDashboard(`/api/control/${action}`, {
+            method: 'POST',
+            headers: { 'Idempotency-Key': idempotencyKey },
+            body: JSON.stringify({
+              expected_revision: data.paper_entry_intent.revision,
+              reason: action === 'pause' ? 'USER_PAUSE' : 'USER_RESUME',
+            }),
+          })
+          immediateIdempotencyKeys.current.delete(action)
+          return snapshot
+        } finally {
+          if (mounted.current) setImmediateBusyAction(null)
+        }
       }
       return await updateDashboard(`/api/control/${action}`, { method: 'POST' })
     } catch (error) {
@@ -290,6 +296,7 @@ export function useDashboard() {
     connectionError,
     requestError,
     busyAction,
+    immediateBusyAction,
     controlOperation: data.control_operation ?? submittedOperation,
     control,
     cancelControl,

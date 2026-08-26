@@ -230,7 +230,10 @@ def test_strategy_symbol_report_requires_thirty_samples() -> None:
     assert report["sample_status"] == "RESEARCH_SAMPLE"
 
 
-def test_trade_focus_replay_hides_future_markers_and_is_deterministic(tmp_path: Path) -> None:
+def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     ledger = SQLiteLedger(tmp_path / "phase03.sqlite3")
     runtime = PaperRuntime(
         mode=RuntimeMode.DEMO_FIXTURE,
@@ -240,6 +243,12 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(tmp_path: 
     )
     runtime.boot_fixture()
     trade = ledger.list_trades(runtime.run_id)[0]
+
+    def broad_trade_scan_forbidden(*_args, **_kwargs):
+        raise AssertionError("거래 집중 재생은 전체 거래표를 읽으면 안 됩니다.")
+
+    monkeypatch.setattr(ledger, "list_trades", broad_trade_scan_forbidden)
+    monkeypatch.setattr(ledger, "list_shadow_trades", broad_trade_scan_forbidden)
     client = TestClient(create_app(runtime))
     path = f"/api/replay/{runtime.run_id}/focus?trade_id={trade['trade_id']}&profile=BASE"
 

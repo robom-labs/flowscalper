@@ -1,6 +1,6 @@
 {
   "schema": "flowscalper.wave64.closed_transfer_before_live_restart_qa.v1",
-  "status": "IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_ACTUAL_RETRY",
+  "status": "ACTUAL_RETRY_ABORTED_CONTAMINATED_LOCAL_QA_PENDING_CLEAN_RETRY",
   "date": "2026-08-27",
   "failure_first": {
     "status": "ABORTED_RUNTIME_SAFETY",
@@ -85,12 +85,104 @@
     "clean_post_deploy_evidence": false,
     "evidence": "evidence/WAVE63_POST_DEPLOY_5M.json"
   },
+  "actual_retry": {
+    "raw_status": "ABORTED_RUNTIME_SAFETY",
+    "interpreted_status": "ABORTED_CONTAMINATED_LOCAL_QA",
+    "evidence": "evidence/WAVE64_ACTUAL_MAINTENANCE_HANDOFF_RETRY.json",
+    "started_at": "2026-08-26T21:41:45.411630+00:00",
+    "completed_at": "2026-08-26T22:09:28.976833+00:00",
+    "duration_seconds": 1663.565,
+    "graceful_shutdown_seconds": 7.433,
+    "forced_kill": false,
+    "closed_wal": {
+      "busy": 0,
+      "log_frames": 0,
+      "checkpointed_frames": 0,
+      "wal_size_bytes": 0,
+      "page_count": 734749,
+      "user_version": 7,
+      "duration_seconds": 0.221
+    },
+    "closed_clone": {
+      "bytes": 3009531904,
+      "api": "clonefile(2)",
+      "duration_seconds": 0.001
+    },
+    "cross_device_transfer": {
+      "status": "PASS",
+      "bytes": 3009531904,
+      "source_sha256": "db3554afc2af0ac29134aed72c7d0e4c71cd57dec858bf012224d676233529e3",
+      "verification_sha256": "db3554afc2af0ac29134aed72c7d0e4c71cd57dec858bf012224d676233529e3",
+      "duration_seconds": 634.909
+    },
+    "same_run_recovery": {
+      "status": "PASS",
+      "run_id": "run-2b7135a972dd",
+      "release_commit": "1adf0ba6becf4d02693a66f6bfbbad105aafd99b",
+      "downtime_seconds": 671.821,
+      "operation_state": "RUNNING",
+      "queue_depth": 0,
+      "lag_p95_ms": 20.07958984375,
+      "unplanned_reconnects": 0,
+      "drops": 0,
+      "persistence_faults": 0,
+      "positions": 0,
+      "actual_orders": 0,
+      "auth": false
+    },
+    "integrity": {
+      "status": "NOT_RUN",
+      "quick_check": null,
+      "foreign_key_violations": null,
+      "reason": "실제 브라우저 pause와 로컬 회귀·focus replay가 LIVE 안전감시와 겹쳐 OPERATION_NOT_RUNNING이 발생했고 전수검사가 완료 전에 중단됐다."
+    },
+    "contamination": {
+      "operation_violation": "OPERATION_NOT_RUNNING",
+      "observed_operation_state": "MANUALLY_PAUSED",
+      "concurrent_work": [
+        "actual_browser_pause_resume_and_navigation",
+        "actual_trade_focus_replay",
+        "backend_and_frontend_regression",
+        "static_build_and_security_checks"
+      ],
+      "causality_boundary": "유지관리 원장 또는 외부 device 결함으로 판정하지 않는다. 깨끗한 단독 재시도가 필요하다."
+    },
+    "cleanup": {
+      "source_clone_removed": true,
+      "failed_verification_copy_kept_for_audit": true
+    }
+  },
+  "post_retry_contaminated_runtime_snapshot": {
+    "observed_at": "2026-08-26T22:19:03Z",
+    "release_commit": "1adf0ba6becf4d02693a66f6bfbbad105aafd99b",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "event_count": 125798,
+    "queue_depth": 0,
+    "consumer_running": true,
+    "supervisor_running": true,
+    "consumer_failures": 0,
+    "consumer_drops": 0,
+    "unplanned_reconnects": 0,
+    "persistence_faults": 0,
+    "persistence_buffer_dropped": 0,
+    "lag_p95_ms": 127.361328125,
+    "trade_lag_p95_ms": 444.912109375,
+    "wide_lag_p95_ms": 1655.911865234375,
+    "critical_lag_active": false,
+    "entry_locked": false,
+    "positions": 0,
+    "actual_orders": 0,
+    "auth": false,
+    "performance_acceptance": "NOT_PROVEN_CONTAMINATED"
+  },
   "remaining": {
     "targeted_tests": "PASS_11_TESTS",
     "full_backend": "PASS_462_TESTS",
-    "actual_maintenance_retry": "NOT_RUN",
+    "actual_maintenance_retry": "ABORTED_CONTAMINATED_LOCAL_QA",
     "cross_device_integrity": "NOT_RUN",
-    "actual_8870": "NOT_RUN"
+    "actual_8870": "PASS_BASELINE_RELEASE_1ADF0BA_ONLY",
+    "clean_maintenance_retry": "NOT_RUN"
   },
   "paper_safety": {
     "actual_orders": 0,

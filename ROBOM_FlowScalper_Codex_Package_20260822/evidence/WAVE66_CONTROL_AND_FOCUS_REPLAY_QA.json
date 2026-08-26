@@ -1,0 +1,120 @@
+{
+  "schema": "flowscalper.wave66.control_and_focus_replay_qa.v1",
+  "status": "IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_IMMUTABLE_DEPLOY",
+  "date": "2026-08-27",
+  "baseline_release": {
+    "commit": "1adf0ba6becf4d02693a66f6bfbbad105aafd99b",
+    "run_id": "run-2b7135a972dd",
+    "actual_browser": {
+      "pause_clicked": true,
+      "pause_state": "MANUALLY_PAUSED",
+      "resume_clicked": true,
+      "resume_state": "RUNNING",
+      "same_run_preserved": true,
+      "resume_visible_delay_seconds_approx": 5,
+      "navigation_clicked": ["시장", "전략", "기록", "분석", "설정"],
+      "console_errors": 0
+    },
+    "actual_focus_replay": {
+      "trade": "SOLUSDT_STRESS_LIVE_PUBLIC",
+      "frames": 8,
+      "entry_tp1_tp2_sl_and_actual_exit_visible": true,
+      "final_exit_reason": "EDGE_DECAY",
+      "holding_seconds": 14,
+      "actual_load_delay_minutes_approx": 3,
+      "concurrent_io_contaminated": true,
+      "timing_causality": "STRONG_CODE_PATH_MATCH_NOT_ISOLATED_TIMING_CAUSALITY"
+    }
+  },
+  "implementation": {
+    "immediate_pause_resume_feedback": true,
+    "duplicate_click_disabled_while_pending": true,
+    "server_revision_and_idempotency_unchanged": true,
+    "live_focus_replay_process_isolated": true,
+    "exact_trade_lookup": true,
+    "bounded_profile_comparison_lookup": true,
+    "shadow_checksum_verification_preserved": true,
+    "future_event_non_disclosure_preserved": true
+  },
+  "changed_files": [
+    "backend/app/main.py",
+    "backend/app/replay/focus.py",
+    "backend/app/storage/sqlite.py",
+    "backend/tests/test_phase03_market_focus.py",
+    "backend/tests/test_v02_storage_market_replay.py",
+    "frontend/src/App.tsx",
+    "frontend/src/components/OperationStatusPanel.tsx",
+    "frontend/src/hooks/useDashboard.ts",
+    "frontend/src/pages/MarketPage.tsx",
+    "frontend/src/pages/RiskPage.tsx",
+    "frontend/tests/App.test.tsx",
+    "frontend/tests/controlUi.test.tsx"
+  ],
+  "validation": {
+    "targeted_backend": {
+      "status": "PASS",
+      "tests": 2,
+      "seconds": 19.10,
+      "regression": "focus replay fails if broad list_trades or list_shadow_trades is used and LIVE focus uses the isolated process path"
+    },
+    "full_backend": {"status": "PASS", "tests": 462, "seconds": 65.15},
+    "frontend": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 66,
+      "seconds": 6.57,
+      "pending_control_contract": "deferred response keeps the immediate Korean pending label visible and disables the button"
+    },
+    "ruff": "PASS",
+    "mypy": {"status": "PASS", "source_files": 96},
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS",
+      "modules": 50,
+      "js_bytes": 524190,
+      "js_gzip_bytes": 161300,
+      "existing_large_chunk_warning": true
+    },
+    "paper_build_safety": "PASS",
+    "security": {
+      "status": "PASS",
+      "source_files": 131,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "strategy_and_execution_boundary": {
+    "strategy_thresholds_changed": false,
+    "entry_conditions_changed": false,
+    "cost_model_changed": false,
+    "tp_sl_changed": false,
+    "paper_fill_changed": false,
+    "governor_changed": false,
+    "risk_budget_changed": false,
+    "account_topology_changed": false,
+    "profitability": "NOT_PROVEN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  },
+  "remaining": {
+    "immutable_release_deploy": "NOT_RUN",
+    "actual_new_release_pending_label": "NOT_RUN",
+    "actual_new_release_focus_latency": "NOT_RUN",
+    "clean_maintenance_integrity": "NOT_RUN",
+    "clean_30m_soak": "NOT_RUN",
+    "fixed_485283_event_replay": "NOT_RUN",
+    "post_deploy_6h": "NOT_RUN",
+    "post_deploy_24h": "NOT_RUN",
+    "github_main_actions_release": "NOT_RUN"
+  }
+}

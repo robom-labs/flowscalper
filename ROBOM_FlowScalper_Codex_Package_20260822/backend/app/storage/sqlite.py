@@ -1647,6 +1647,73 @@ class SQLiteLedger:
             rows = self._read_connection.execute(query, parameters).fetchall()
         return [json.loads(str(row["payload_json"])) for row in rows]
 
+    def get_paper_trade(
+        self,
+        run_id: str,
+        trade_id: str,
+        profile: str,
+    ) -> dict[str, Any] | None:
+        """집중 재생은 전체 거래표를 훑지 않고 불변 거래 한 건만 읽는다."""
+
+        with self._read_lock:
+            main = self._read_connection.execute(
+                """
+                SELECT payload_json FROM trades
+                WHERE run_id = ? AND trade_id = ? AND profile = ?
+                """,
+                (run_id, trade_id, profile),
+            ).fetchone()
+            if main is not None:
+                decoded = json.loads(str(main["payload_json"]))
+                if not isinstance(decoded, dict):
+                    raise LedgerInvariantError("PAPER 거래 payload는 객체여야 합니다.")
+                return decoded
+            shadow = self._read_connection.execute(
+                """
+                SELECT payload_json, checksum FROM shadow_trades
+                WHERE run_id = ? AND shadow_trade_id = ? AND profile = ?
+                """,
+                (run_id, trade_id, profile),
+            ).fetchone()
+        if shadow is None:
+            return None
+        return self._verified_payload_rows([shadow], "shadow 거래")[0]
+
+    def list_comparable_paper_trades(
+        self,
+        run_id: str,
+        *,
+        strategy_id: str,
+        symbol: str,
+        side: str,
+    ) -> list[dict[str, Any]]:
+        """집중 재생의 BASE·STRESS 비교에 필요한 전략 행만 제한해 읽는다."""
+
+        with self._read_lock:
+            main_rows = self._read_connection.execute(
+                """
+                SELECT payload_json FROM trades
+                WHERE run_id = ? AND strategy_id = ? AND symbol = ?
+                ORDER BY exit_ts_ms, trade_id
+                """,
+                (run_id, strategy_id, symbol),
+            ).fetchall()
+            shadow_rows = self._read_connection.execute(
+                """
+                SELECT payload_json, checksum FROM shadow_trades
+                WHERE run_id = ? AND strategy_id = ?
+                ORDER BY closed_ts_ms, shadow_trade_id
+                """,
+                (run_id, strategy_id),
+            ).fetchall()
+        main = [json.loads(str(row["payload_json"])) for row in main_rows]
+        shadow = self._verified_payload_rows(shadow_rows, "shadow 거래")
+        return [
+            row
+            for row in [*main, *shadow]
+            if str(row.get("symbol")) == symbol and str(row.get("side")) == side
+        ]
+
     def list_transitions(self, run_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._connection.execute(

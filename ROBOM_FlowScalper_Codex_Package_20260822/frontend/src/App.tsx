@@ -28,6 +28,7 @@ export default function App() {
     connectionError,
     requestError,
     busyAction,
+    immediateBusyAction,
     controlOperation,
     control,
     cancelControl,
@@ -136,8 +137,8 @@ export default function App() {
       {page === 'replay' ? <ReplayPage trade={replayTrade} /> : null}
       {page === 'performance' ? <PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={data.history} /> : null}
       {page === 'strategy-symbol' ? <StrategySymbolPage strategies={data.strategies} /> : null}
-      {page === 'risk' ? <RiskPage data={data} onPauseToggle={pauseToggle} onNewRun={newRun} /> : null}
-      {page === 'terminal' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onPauseToggle={pauseToggle} busy={busyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
+      {page === 'risk' ? <RiskPage data={data} onPauseToggle={pauseToggle} onNewRun={newRun} immediateAction={immediateBusyAction} /> : null}
+      {page === 'terminal' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onPauseToggle={pauseToggle} busy={busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} immediateAction={immediateBusyAction} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
       {page === 'system' ? <SystemPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} /> : null}
     </main>
   )

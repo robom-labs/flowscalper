@@ -4,6 +4,7 @@ import type { ControlOperation, DashboardData } from '../types'
 type Props = {
   data: DashboardData
   busy: boolean
+  immediateAction: 'pause' | 'resume' | null
   operation: ControlOperation | null
   onStartLive: () => void
   onStartDemo: () => void
@@ -14,7 +15,7 @@ type Props = {
 
 const activeOperationStates = new Set(['REQUESTED', 'PREPARING', 'CONNECTING_PRIMARY', 'CONNECTING_FALLBACK', 'CANCELLING'])
 
-export function OperationStatusPanel({ data, busy, operation, onStartLive, onStartDemo, onPauseToggle, onCancel, onRetry }: Props) {
+export function OperationStatusPanel({ data, busy, immediateAction, operation, onStartLive, onStartDemo, onPauseToggle, onCancel, onRetry }: Props) {
   const status = data.operation_status
   const connecting = Boolean(operation && activeOperationStates.has(operation.state))
   const failed = operation?.state === 'FAILED_RETRYABLE' || operation?.state === 'FAILED_BLOCKED'
@@ -38,8 +39,8 @@ export function OperationStatusPanel({ data, busy, operation, onStartLive, onSta
       {status.state === 'READY' && !connecting && !failed ? <><button type="button" className="operation-primary" disabled={busy} onClick={onStartLive}>자동 관찰 시작</button><button type="button" className="operation-secondary" disabled={busy} onClick={onStartDemo}>샘플로 보기</button></> : null}
       {connecting ? <button type="button" className="operation-secondary" onClick={onCancel}>연결 취소</button> : null}
       {operation?.state === 'FAILED_RETRYABLE' ? <button type="button" className="operation-primary" onClick={onRetry}>다시 연결</button> : null}
-      {status.recommended_action === 'PAUSE' && !connecting ? <button type="button" className="operation-secondary" onClick={onPauseToggle}>{status.state === 'DEMO_RUNNING' ? '샘플 멈춤' : '새 진입 잠시 멈춤'}</button> : null}
-      {status.recommended_action === 'RESUME' && !connecting ? <button type="button" className="operation-primary" onClick={onPauseToggle}>{status.state === 'DEMO_PAUSED' ? '샘플 다시 재생' : '새 진입 다시 시작'}</button> : null}
+      {status.recommended_action === 'PAUSE' && !connecting ? <button type="button" className="operation-secondary" disabled={immediateAction !== null} onClick={onPauseToggle}>{immediateAction === 'pause' ? '잠시 멈추는 중…' : status.state === 'DEMO_RUNNING' ? '샘플 멈춤' : '새 진입 잠시 멈춤'}</button> : null}
+      {status.recommended_action === 'RESUME' && !connecting ? <button type="button" className="operation-primary" disabled={immediateAction !== null} onClick={onPauseToggle}>{immediateAction === 'resume' ? '다시 시작하는 중…' : status.state === 'DEMO_PAUSED' ? '샘플 다시 재생' : '새 진입 다시 시작'}</button> : null}
       {status.state === 'SAFETY_WAITING' ? <span className="operation-auto-note">정상화되면 자동으로 다시 시작합니다.</span> : null}
       {status.state === 'SAFETY_BLOCKED' ? <span className="operation-auto-note blocked">고급진단에서 원인을 확인하세요.</span> : null}
     </div>

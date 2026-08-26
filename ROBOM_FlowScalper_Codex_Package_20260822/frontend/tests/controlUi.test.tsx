@@ -260,15 +260,20 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
       recommended_action: 'PAUSE',
     },
   }
+  let finishResume: ((result: Response) => void) | undefined
   const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
     void init
-    return String(path) === '/api/control/resume' ? response(running) : response(manuallyPaused)
+    if (String(path) === '/api/control/resume') {
+      return await new Promise<Response>((resolve) => { finishResume = resolve })
+    }
+    return response(manuallyPaused)
   })
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: '새 진입 다시 시작' }))
 
+  expect(screen.getByRole('button', { name: '다시 시작하는 중…' })).toBeDisabled()
   await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/control/resume')).toBe(true))
   const resumeRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/control/resume')
   expect(resumeRequest?.[1]?.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) })
@@ -276,5 +281,6 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
     expected_revision: 7,
     reason: 'USER_RESUME',
   })
+  await act(async () => { finishResume?.(response(running)) })
   await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중'))
 })

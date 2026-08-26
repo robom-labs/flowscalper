@@ -401,7 +401,7 @@ test('clears a previous run PAPER entry notice when the run changes', async () =
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   const { rerender } = render(<MarketPage data={initialDashboard} {...handlers} />)
   const liveDashboard = {
@@ -439,7 +439,7 @@ test('distinguishes shared and independent BASE positions in the live list', () 
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   render(<MarketPage data={{
     ...initialDashboard,
@@ -468,7 +468,7 @@ test('clears a PAPER entry notice when READY reuses the same run id', async () =
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   const liveSameRun = {
     ...initialDashboard,
@@ -502,7 +502,7 @@ test('relabels a PAPER entry notice when the position closes in the same live ru
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   const liveDashboard = {
     ...initialDashboard,

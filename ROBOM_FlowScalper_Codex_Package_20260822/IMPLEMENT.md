@@ -512,3 +512,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 3. Remove the source-side clone only after exact transfer verification, then start the prepared immutable release and require same-Run recovery.
 4. Run full immutable quick-check and foreign-key validation only on the different-device copy while strictly monitoring the recovered LIVE service.
 5. If transfer fails, restore the prepared LaunchAgent from `finally`. If post-restart integrity verification causes a safety violation, abort without weakening the safety threshold.
+
+## Immediate control feedback and focus-replay isolation Wave
+
+1. Reproduce pause and resume with a deferred HTTP response and require the visible control to change immediately, stay disabled and return to the server-authored state after completion.
+2. Keep `Idempotency-Key`, expected revision, actor and reason payload unchanged. The pending label is acknowledgement of the request only and never overrides the server state.
+3. Add an exact `(run_id, trade_id, profile)` ledger read for main and checksum-verified shadow PAPER trades.
+4. Limit the focus BASE·STRESS comparison to the same Run, strategy, symbol and side. Make tests fail if focus falls back to broad `list_trades` or `list_shadow_trades` scans.
+5. Route LIVE focus construction through `to_process.run_sync` and the existing replay process lock with immutable ledger and archive paths. Keep non-LIVE fixture behavior in process.
+6. Run targeted focus/process tests, the full backend and frontend suites, Ruff, mypy, ESLint, TypeScript, production build, PAPER build safety, security and repository hygiene.
+7. Write ADR-066 and `evidence/WAVE66_CONTROL_AND_FOCUS_REPLAY_QA.json`. Preserve the raw contaminated maintenance evidence separately and do not convert an aborted quick-check into integrity PASS.
+8. Commit and stage a clean immutable release. Run the maintenance handoff alone, with no browser, replay, tests, build, source scan or other local I/O until it completes.
+9. After clean integrity and same-Run recovery, reload the actual 8870 browser, click pause and resume, verify the immediate labels, navigate every primary page and replay an uncached completed PAPER trade while measuring latency and LIVE safety.
+10. Continue with a clean 5-minute comparison, 30-minute soak, fixed 485,283-event replay and only then new six-hour and 24-hour observers. Keep every unfilled duration `NOT_RUN` and profitability `NOT_PROVEN`.

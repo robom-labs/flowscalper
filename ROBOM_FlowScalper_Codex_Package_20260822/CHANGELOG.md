@@ -6,6 +6,8 @@
 
 ## 아직 배포하지 않음
 
+- 새 진입 일시정지·재개 버튼은 서버 응답 전부터 `멈추는 중`·`다시 시작하는 중`으로 바뀌고 중복 클릭을 막는다. 거래 집중 재생은 LIVE process와 분리하고 정확한 거래 한 건과 같은 전략·종목·방향의 BASE·STRESS 비교 행만 읽어 대형 활성 원장 전체 역직렬화를 제거했다.
+- 닫힌 3,009,531,904 byte 원장의 실제 재시도에서 cross-device 전송과 양쪽 SHA-256 일치는 PASS했고 같은 Run 불변 복구도 PASS했다. 다만 전수검사 중 실제 브라우저 pause·replay와 로컬 회귀를 겹쳐 `OPERATION_NOT_RUNNING`으로 안전중단했으므로 integrity는 PASS가 아니라 `NOT_RUN`으로 유지하고 깨끗한 단독 재시도를 요구한다.
 - 닫힌 APFS clone을 다른 device로 복사하면서 새 LIVE 서비스가 같은 source device에 FULL commit을 수행해 안전잠금이 발생하던 유지관리 순서를 수정했다. cross-device 전송과 SHA-256을 서비스 재시작 전에 끝내고, 재시작 뒤에는 다른 device의 immutable copy quick-check만 LIVE 감시와 병행한다.
 - consumer 실패로 이미 신규진입이 잠기고 queue가 포화된 기준 서비스를 별도 재시작하지 않고 닫힌 원장 유지관리와 같은 Run 불변 릴리스 복구로 한 번에 전환할 수 있게 했다. 명시적 복구 옵션은 기존 `ENTRY_LOCKED`·`QUEUE_LIMIT_EXCEEDED`만 허용하고 포지션·실주문·인증 등 다른 안전 위반은 계속 차단한다.
 - SQLite의 `BEGIN IMMEDIATE`가 실패할 때 process lock을 영구 점유해 시장 처리·전략 평가·저장이 함께 멈추던 경로를 수정했다. 소비 작업은 개별 전달 예외로 종료되지 않고 안전 잠금 상태로 계속하며, queue 포화·누락·복구를 따로 집계한다. producer 또는 consumer가 실제로 멈추면 다른 안전문제와 겹쳐도 `작동 중`으로 표시하지 않으며, 다시 시작은 새 Run을 만들지 않고 같은 Run의 supervisor만 교체한다.

@@ -37,6 +37,7 @@ from backend.app.replay.operations import (
     ReplayOperationManager,
 )
 from backend.app.replay.process import (
+    replay_focus_session_from_paths,
     replay_stored_run_from_paths,
     replay_timeline_from_paths,
 )
@@ -1254,6 +1255,22 @@ def create_app(
         profile: str = Query(default="BASE", pattern=r"^(BASE|STRESS)$"),
     ) -> dict[str, object]:
         try:
+            if (
+                active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                and active_runtime.ledger is not None
+            ):
+                ensure_replay_process_available()
+                archive = active_runtime.ledger.market_event_archive
+                async with replay_process_lock:
+                    return await to_process.run_sync(
+                        replay_focus_session_from_paths,
+                        str(active_runtime.ledger.path),
+                        str(archive.root) if archive is not None else None,
+                        run_id,
+                        trade_id,
+                        profile,
+                        active_runtime.clock.utc_ms(),
+                    )
             return await asyncio.to_thread(
                 active_runtime.replay_focus_session,
                 run_id,

@@ -1594,7 +1594,7 @@ def test_live_http_replay_auto_aborts_without_persisting_unsafe_result(
         )
 
 
-def test_live_timeline_is_process_isolated_and_focus_uses_bounded_open_ledger_read(
+def test_live_timeline_and_focus_are_process_isolated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1621,20 +1621,33 @@ def test_live_timeline_is_process_isolated_and_focus_uses_bounded_open_ledger_re
         }
 
     def focus_stub(
-        _runtime: PaperRuntime,
+        database_path: str,
+        archive_root: str | None,
         source_run_id: str,
-        *,
         trade_id: str,
         profile: str,
+        created_ts_ms: int,
     ) -> dict[str, object]:
-        calls.append(("focus", (source_run_id, trade_id, profile)))
+        calls.append(
+            (
+                "focus",
+                (
+                    database_path,
+                    archive_root,
+                    source_run_id,
+                    trade_id,
+                    profile,
+                    created_ts_ms,
+                ),
+            )
+        )
         return {"run_id": "run-live-ui-replay", "trade_id": "trade-live-focus"}
 
     async def run_sync(function, *arguments):
         return function(*arguments)
 
     monkeypatch.setattr(main_module, "replay_timeline_from_paths", timeline_stub)
-    monkeypatch.setattr(PaperRuntime, "replay_focus_session", focus_stub)
+    monkeypatch.setattr(main_module, "replay_focus_session_from_paths", focus_stub)
     monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
     client = TestClient(create_app(runtime))
 
@@ -1648,7 +1661,14 @@ def test_live_timeline_is_process_isolated_and_focus_uses_bounded_open_ledger_re
     assert focus.status_code == 200
     assert [name for name, _ in calls] == ["timeline", "focus"]
     assert calls[0][1][0] == str(ledger.path)
-    assert calls[1][1] == ("run-live-ui-replay", "trade-live-focus", "BASE")
+    assert calls[1][1][:5] == (
+        str(ledger.path),
+        None,
+        "run-live-ui-replay",
+        "trade-live-focus",
+        "BASE",
+    )
+    assert calls[1][1][5] == runtime.clock.utc_ms()
     ledger.close()
 
 
