@@ -53,29 +53,29 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
     assert STRATEGY_VERSION.startswith("+".join(registry.strategy_ids) + "@")
     assert [row["mode"] for row in registry.rows()] == [
         "OFF",
-        "ACTIVE",
-        "SHADOW",
-        "OFF",
-        "OFF",
         "SHADOW",
         "SHADOW",
         "OFF",
+        "OFF",
         "SHADOW",
         "SHADOW",
+        "OFF",
         "SHADOW",
+        "SHADOW",
+        "OFF",
     ]
     assert [row["lifecycle"] for row in registry.rows()] == [
         "RETIRED",
-        "ACTIVE",
-        "SHADOW",
-        "RETIRED",
-        "RETIRED",
         "SHADOW",
         "SHADOW",
         "RETIRED",
+        "RETIRED",
         "SHADOW",
         "SHADOW",
+        "RETIRED",
         "SHADOW",
+        "SHADOW",
+        "RETIRED",
     ]
     assert all(row["long_enabled"] and row["short_enabled"] for row in registry.rows())
     micro_rows = registry.rows()[:-1]
@@ -85,6 +85,7 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
     assert all(row["max_hold_seconds"] == 900 for row in micro_rows)
     hourly = registry.rows()[-1]
     assert hourly["strategy_id"] == "HOURLY_MOMENTUM_BREAKOUT_V1"
+    assert hourly["change_reason"] == "FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46"
     assert hourly["horizon_class"] == "INTRADAY_SWING"
     assert hourly["expected_holding_seconds"] == [3_600, 129_600]
     assert hourly["signal_half_life_seconds"] == 5
@@ -110,7 +111,7 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
     evaluator = StrategySignalEvaluator()
     decisions = evaluator.evaluate(registry, features(), Regime.WARMUP)
 
-    assert len(decisions) == 13
+    assert len(decisions) == 11
     assert all(item.decision.status is CandidateStatus.REJECTED for item in decisions)
     lsa = next(item for item in decisions if item.decision.strategy_id == "LSA_REVERSAL_V1")
     assert lsa.decision.side is Side.LONG
@@ -156,6 +157,29 @@ def test_legacy_manual_setting_cannot_revive_policy_retired_strategy() -> None:
     assert registry.enforce_policy_retirements(updated_ts_ms=3_000) == ()
 
 
+def test_retired_hourly_strategy_repairs_legacy_generic_reason() -> None:
+    registry = StrategyRegistry()
+    registry.restore_setting(
+        "HOURLY_MOMENTUM_BREAKOUT_V1",
+        mode=StrategyMode.OFF,
+        lifecycle=StrategyLifecycle.RETIRED,
+        long_enabled=True,
+        short_enabled=True,
+        revision=0,
+        manual_lock=False,
+        changed_by=StrategyChangeSource.MIGRATION,
+        change_reason="SAFE_DEFAULT",
+        updated_ts_ms=1_000,
+    )
+
+    migrated = registry.enforce_policy_retirements(updated_ts_ms=2_000)
+    setting = registry.setting("HOURLY_MOMENTUM_BREAKOUT_V1")
+
+    assert len(migrated) == 1
+    assert setting.revision == 1
+    assert setting.change_reason == "FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46"
+
+
 def test_runtime_rejects_direct_reactivation_of_policy_retired_strategy() -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
 
@@ -166,6 +190,31 @@ def test_runtime_rejects_direct_reactivation_of_policy_retired_strategy() -> Non
             long_enabled=True,
             short_enabled=True,
         )
+
+
+def test_legacy_default_active_is_migrated_to_shadow_until_proven() -> None:
+    registry = StrategyRegistry()
+    registry.restore_setting(
+        "CBR_CONTINUATION_V1",
+        mode=StrategyMode.ACTIVE,
+        lifecycle=StrategyLifecycle.ACTIVE,
+        long_enabled=True,
+        short_enabled=True,
+        revision=0,
+        manual_lock=False,
+        changed_by=StrategyChangeSource.MIGRATION,
+        change_reason="LEGACY_ACTIVE_DEFAULT",
+        updated_ts_ms=1_000,
+    )
+
+    migrated = registry.enforce_unproven_active_defaults(updated_ts_ms=2_000)
+    setting = registry.setting("CBR_CONTINUATION_V1")
+
+    assert len(migrated) == 1
+    assert setting.mode is StrategyMode.SHADOW
+    assert setting.lifecycle is StrategyLifecycle.SHADOW
+    assert setting.revision == 1
+    assert registry.enforce_unproven_active_defaults(updated_ts_ms=3_000) == ()
 
 
 def test_strategy_settings_cas_and_manual_lock_block_automatic_override() -> None:
@@ -230,8 +279,8 @@ def test_strategy_rollback_creates_new_revision_without_deleting_audit_history()
     )
 
     assert restored.revision == 2
-    assert restored.mode is StrategyMode.ACTIVE
-    assert restored.lifecycle is StrategyLifecycle.ACTIVE
+    assert restored.mode is StrategyMode.SHADOW
+    assert restored.lifecycle is StrategyLifecycle.SHADOW
     assert restored.short_enabled is True
     assert restored.manual_lock is True
     assert restored.change_reason == "USER_ROLLBACK_TO_REV_0"
@@ -240,6 +289,16 @@ def test_strategy_rollback_creates_new_revision_without_deleting_audit_history()
 def test_governor_requires_multiple_testing_then_swaps_champion_atomically() -> None:
     registry = StrategyRegistry()
     governor = StrategyGovernor()
+    registry.configure(
+        "CBR_CONTINUATION_V1",
+        mode=StrategyMode.ACTIVE,
+        lifecycle=StrategyLifecycle.ACTIVE,
+        long_enabled=True,
+        short_enabled=True,
+        expected_revision=0,
+        source=StrategyChangeSource.AUTO_GOVERNOR,
+        reason="TEST_PROVEN_CHAMPION",
+    )
     strategy_id = "VWAP_EXHAUSTION_REVERSION_V1"
     insufficient = GovernanceEvidence(
         base_sample_size=35,
@@ -343,9 +402,36 @@ def test_governor_quarantines_fault_but_never_overrides_user_lock() -> None:
     assert blocked.automatic_action_allowed is False
 
 
+def test_runtime_governance_cycle_quarantines_fault_but_does_not_promote_empty_sample() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    faulted = runtime.paper_portfolio.shadows["CBR_CONTINUATION_V1:BASE"]
+    faulted.risk_state.faulted = True
+
+    result = runtime.run_strategy_governance_cycle()
+
+    assert result["promotion_without_formal_oos_evidence"] is False
+    assert len(result["changes"]) == 1
+    assert runtime.strategy_registry.setting("CBR_CONTINUATION_V1").lifecycle is (
+        StrategyLifecycle.QUARANTINED
+    )
+    assert runtime.strategy_registry.setting("VWAP_EXHAUSTION_REVERSION_V1").lifecycle is (
+        StrategyLifecycle.SHADOW
+    )
+
+
 def test_governor_never_quarantines_active_strategy_from_one_bad_evaluation() -> None:
     registry = StrategyRegistry()
     governor = StrategyGovernor()
+    registry.configure(
+        "CBR_CONTINUATION_V1",
+        mode=StrategyMode.ACTIVE,
+        lifecycle=StrategyLifecycle.ACTIVE,
+        long_enabled=True,
+        short_enabled=True,
+        expected_revision=0,
+        source=StrategyChangeSource.AUTO_GOVERNOR,
+        reason="TEST_PROVEN_CHAMPION",
+    )
     one_bad_cycle = GovernanceEvidence(
         base_sample_size=120,
         stress_sample_size=120,
@@ -455,7 +541,7 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
         Regime.RANGE,
     )
 
-    assert len(decisions) == 14
+    assert len(decisions) == 12
     assert robust_calls == 4
     assert percentile_calls == 5
 
@@ -617,7 +703,7 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
     )
 
     decisions = runtime.strategy_decisions()
-    assert runtime.strategy_evaluation_count == 14
+    assert runtime.strategy_evaluation_count == 12
     assert {decision.strategy_id for decision in decisions} == set(
         runtime.strategy_registry.strategy_ids
     ) - {
@@ -625,6 +711,7 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
         "OFI_CONTINUATION_PULLBACK_V1",
         "QUEUE_MICROPRICE_MOMENTUM_V1",
         "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+        "HOURLY_MOMENTUM_BREAKOUT_V1",
     }
     assert all(decision.tp_probability is None for decision in decisions)
     assert len(runtime.dashboard()["shadow_accounts"]) == 22

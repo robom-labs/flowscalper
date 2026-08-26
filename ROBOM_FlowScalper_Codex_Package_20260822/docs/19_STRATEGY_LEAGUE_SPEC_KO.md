@@ -11,7 +11,7 @@
 | 구분 | strategy_id | 한국어 이름 | 기본 mode | exit style |
 |---|---|---|---|---|
 | A | `LSA_REVERSAL_V1` | 급락·급등 쓸기 반전 | OFF | REVERSION_70_30 |
-| B | `CBR_CONTINUATION_V1` | 압축 돌파 재가속 | ACTIVE | TREND_40_60 |
+| B | `CBR_CONTINUATION_V1` | 압축 돌파 재가속 | SHADOW | TREND_40_60 |
 | C | `VWAP_EXHAUSTION_REVERSION_V1` | VWAP 과도이탈 평균복귀 | SHADOW | REVERSION_70_30 |
 | D | `OFI_CONTINUATION_PULLBACK_V1` | OFI 추세 눌림 지속 | OFF | TREND_40_60 |
 | E | `QUEUE_MICROPRICE_MOMENTUM_V1` | 호가 쏠림 순간추세 | OFF | TREND_40_60 |
@@ -20,11 +20,12 @@
 | H | `DEPTH_ADJUSTED_OFI_IMPULSE_V1` | 깊이보정 OFI 충격 | OFF | TREND_40_60 |
 | I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | SHADOW | TREND_40_60 |
 | J | `BOOK_SLOPE_ASYMMETRY_V1` | 호가 기울기 비대칭 | SHADOW | TREND_40_60 |
-| K | `HOURLY_MOMENTUM_BREAKOUT_V1` | 시간봉 추세 돌파 | SHADOW | TREND_40_60 |
+| K | `HOURLY_MOMENTUM_BREAKOUT_V1` | 시간봉 추세 돌파 | OFF | TREND_40_60 |
 
 - 모든 전략은 LONG·SHORT를 독립적으로 허용하거나 끌 수 있다.
 - OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다.
-- 모든 전략은 LONG·SHORT 제어를 유지한다. B는 ACTIVE, C/F/G/I/J/K는 SHADOW다. 비용후 시간순 검증에 실패한 A/E/H와 저장 train 4건·후기 자연 BASE 2건이 모두 비용후 손실이었던 D는 RETIRED·OFF가 기본값이다. RETIRED 전략은 과거 원장과 계좌를 보존하지만 별도 연구와 코드 변경 없이는 다시 켤 수 없다.
+- 모든 전략은 LONG·SHORT 제어를 유지한다. 검증되지 않은 B/C/F/G/I/J는 SHADOW다. 비용후 시간순 검증에 실패한 A/D/E/H와 고정된 독립 과거구간 147일·166거래에서 재현에 실패한 K는 RETIRED·OFF다. RETIRED 전략은 과거 원장과 계좌를 보존하지만 별도 사전등록 연구와 코드 변경 없이는 다시 켤 수 없다.
+- 공동계좌 ACTIVE 대표 전략은 기본값으로 두지 않는다. Strategy Governor의 비용후 OOS·강건성·표본 gate를 통과한 전략만 ACTIVE 후보가 되며 작은 승률 표본이나 거래 빈도만으로 자동 승격하지 않는다.
 
 ## 3. 독립 계좌
 
@@ -86,7 +87,7 @@
 - LONG은 EMA20>EMA50, EMA80>EMA200, EMA80 상승 기울기, 24시간 수익률 +2% 이상, 직전 20봉 Donchian 상단 돌파, ADX 20 이상, 상대거래량 1.1 이상을 함께 요구한다. SHORT는 대칭 조건이다.
 - 동일 완성봉을 반복 진입신호로 사용하지 않으며 새 완성봉 뒤 5초 이내의 sequence-valid 실제 bid·ask가 있을 때만 계획을 만든다.
 - TP1은 2.2R에서 40%, TP2는 4.5R에서 60%다. 예상 보유는 1~36시간이고 `maximum_holding_ms`는 36시간이다.
-- K의 SHADOW 등록은 수익성 승격이 아니다. Wave 41 진단의 bootstrap 하한·DSR·PBO와 미래 독립 OOS가 기준을 충족하지 않아 `NOT_PROVEN`을 유지한다.
+- Wave 41의 같은 기간 진단은 일부 양수였지만 bootstrap 하한·DSR·PBO와 독립성 gate를 충족하지 못했다. 조건을 고정한 뒤 다운로드한 앞선 147일에서 166건을 재검증한 Wave 46 결과는 BASE 기대값 -18.263bp·PF 0.856, STRESS 기대값 -30.263bp·PF 0.775였다. 따라서 K는 RETIRED·OFF이며 수익성은 `NOT_PROVEN`이다.
 
 ## 7.2 공통 비용후 계획과 event-time 조건
 
@@ -132,5 +133,5 @@ uv run pytest backend/tests -q
 - 전략 설정은 11개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. A-K threshold와 위험값은 바꾸지 않는다. RETIRED 행의 mode·방향 버튼은 비활성화한다.
 - `전략별 종목 성과`는 BASE/STRESS를 분리하고 실제 완료 PAPER 거래만 집계한다. 30건 미만 조합은 관찰 표본이며 순위에서 제외한다.
 - 전략 통계는 독립 Strategy League 거래만 집계하고 공동계좌 거래를 같은 전략 표본에 중복 합산하지 않는다.
-- 상세 화면은 승·패·보합, 승률 95% 범위, 기대값, Profit Factor, 비용, 낙폭과 보유시간을 표시한다.
+- 상세 화면은 승·패·보합, 승률 95% 범위, 기대값, Profit Factor, 비용, 낙폭, 보유시간과 진입→TP1·TP2·손절 중앙시간 및 각 표본 수를 표시한다.
 - 포지션 집중 selector는 BASE를 먼저 정렬하지만 모든 계좌는 독립 회계와 최대 5배 위험 상한을 그대로 유지한다.

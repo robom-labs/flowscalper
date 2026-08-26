@@ -83,9 +83,18 @@ POLICY_RETIRED_STRATEGY_IDS = frozenset(
         "OFI_CONTINUATION_PULLBACK_V1",
         "QUEUE_MICROPRICE_MOMENTUM_V1",
         "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+        "HOURLY_MOMENTUM_BREAKOUT_V1",
     }
 )
-POLICY_RETIREMENT_REASON = "COST_ADJUSTED_RESEARCH_RETIREMENT_WAVE39"
+POLICY_RETIREMENT_REASONS = {
+    strategy_id: "COST_ADJUSTED_RESEARCH_RETIREMENT_WAVE39"
+    for strategy_id in POLICY_RETIRED_STRATEGY_IDS
+}
+POLICY_RETIREMENT_REASONS["HOURLY_MOMENTUM_BREAKOUT_V1"] = (
+    "FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46"
+)
+POLICY_SHADOW_DEFAULT_IDS = frozenset({"CBR_CONTINUATION_V1"})
+POLICY_SHADOW_DEFAULT_REASON = "NO_ACTIVE_STRATEGY_WITHOUT_COST_ADJUSTED_PROOF_WAVE46"
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +146,7 @@ class LifecycleTransition:
 
 
 class StrategyRegistry:
-    """설정 변경은 명시적 사용자 동작으로만 허용하고 자동 승격·중지는 하지 않는다."""
+    """전략 메타데이터와 증거 기반 lifecycle 변경 이력을 중앙 관리한다."""
 
     def __init__(self) -> None:
         descriptors = (
@@ -257,8 +266,7 @@ class StrategyRegistry:
                 display_name_ko="1시간 모멘텀 돌파",
                 short_name="시간봉 추세",
                 summary_ko=(
-                    "1시간 완성 봉의 24시간 모멘텀·20시간 돌파·거래량을 함께 확인하는 "
-                    "미입증 SHADOW 전략입니다."
+                    "시간봉 가설은 독립 과거구간 166건에서 비용후 재현 실패해 기본 중지됐습니다."
                 ),
                 stability=StrategyStability.EXPERIMENTAL,
                 supported_regimes=(Regime.TREND_UP, Regime.TREND_DOWN),
@@ -290,7 +298,7 @@ class StrategyRegistry:
             ),
         )
         self._descriptors = {item.strategy_id: item for item in descriptors}
-        active_ids = {"CBR_CONTINUATION_V1"}
+        active_ids: set[str] = set()
         self._settings = {
             item.strategy_id: StrategySetting(
                 mode=(
@@ -306,6 +314,13 @@ class StrategyRegistry:
                     else StrategyLifecycle.RETIRED
                     if item.strategy_id in POLICY_RETIRED_STRATEGY_IDS
                     else StrategyLifecycle.SHADOW
+                ),
+                change_reason=(
+                    POLICY_RETIREMENT_REASONS[item.strategy_id]
+                    if item.strategy_id in POLICY_RETIRED_STRATEGY_IDS
+                    else POLICY_SHADOW_DEFAULT_REASON
+                    if item.strategy_id in POLICY_SHADOW_DEFAULT_IDS
+                    else "SAFE_DEFAULT"
                 ),
             )
             for item in descriptors
@@ -342,14 +357,46 @@ class StrategyRegistry:
         changed: list[dict[str, object]] = []
         for strategy_id in sorted(POLICY_RETIRED_STRATEGY_IDS):
             setting = self.setting(strategy_id)
-            if setting.mode is StrategyMode.OFF and setting.lifecycle is StrategyLifecycle.RETIRED:
+            desired_reason = POLICY_RETIREMENT_REASONS[strategy_id]
+            if (
+                setting.mode is StrategyMode.OFF
+                and setting.lifecycle is StrategyLifecycle.RETIRED
+                and setting.change_reason == desired_reason
+            ):
                 continue
             setting.mode = StrategyMode.OFF
             setting.lifecycle = StrategyLifecycle.RETIRED
             setting.revision += 1
             setting.manual_lock = False
             setting.changed_by = StrategyChangeSource.MIGRATION
-            setting.change_reason = POLICY_RETIREMENT_REASON
+            setting.change_reason = desired_reason
+            setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
+            row = self._setting_row(strategy_id)
+            self._revision_history[strategy_id][setting.revision] = row
+            changed.append(row)
+        return tuple(changed)
+
+    def enforce_unproven_active_defaults(
+        self,
+        *,
+        updated_ts_ms: int,
+    ) -> tuple[dict[str, object], ...]:
+        """과거 기본값이었던 미입증 ACTIVE만 SHADOW로 안전 이관한다."""
+
+        changed: list[dict[str, object]] = []
+        for strategy_id in sorted(POLICY_SHADOW_DEFAULT_IDS):
+            setting = self.setting(strategy_id)
+            if (
+                setting.lifecycle is not StrategyLifecycle.ACTIVE
+                or setting.changed_by is not StrategyChangeSource.MIGRATION
+                or setting.manual_lock
+            ):
+                continue
+            setting.mode = StrategyMode.SHADOW
+            setting.lifecycle = StrategyLifecycle.SHADOW
+            setting.revision += 1
+            setting.changed_by = StrategyChangeSource.MIGRATION
+            setting.change_reason = POLICY_SHADOW_DEFAULT_REASON
             setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
             row = self._setting_row(strategy_id)
             self._revision_history[strategy_id][setting.revision] = row

@@ -66,6 +66,7 @@ class ManagedPaperPosition:
     original_quantity: Decimal
     remaining_quantity: Decimal
     target_remaining: dict[str, Decimal]
+    target_hit_ts_ms: dict[str, int] = field(default_factory=dict)
     exit_legs: list[ExitLeg] = field(default_factory=list)
     pending_exit: PendingExit | None = None
     mfe_r: Decimal = Decimal(0)
@@ -487,6 +488,14 @@ class PaperPortfolioEngine:
                 }
                 for target in plan.take_profit_targets
             ],
+            "time_to_tp1_ms": _elapsed_from_open(
+                managed.protected.opened_ts_ms,
+                managed.target_hit_ts_ms.get("TP1"),
+            ),
+            "time_to_tp2_ms": _elapsed_from_open(
+                managed.protected.opened_ts_ms,
+                managed.target_hit_ts_ms.get("TP2"),
+            ),
             "initial_stop": str(plan.initial_stop),
             "current_stop": str(managed.protected.current_stop),
             "planned_quantity": str(plan.position_size),
@@ -1139,6 +1148,8 @@ class PaperPortfolioEngine:
             )
             return
         managed.exit_legs.append(ExitLeg(pending.label, pending.reason, fill))
+        if pending.label in managed.target_remaining:
+            managed.target_hit_ts_ms.setdefault(pending.label, fill.book_ts_ms)
         managed.remaining_quantity -= fill.quantity
         if pending.label in managed.target_remaining:
             managed.target_remaining[pending.label] = max(
@@ -1218,6 +1229,11 @@ class PaperPortfolioEngine:
                 ),
                 closed_ts_ms=book.ts_ms,
                 exit_reason=pending.label,
+                tp1_hit_ts_ms=trade.tp1_hit_ts_ms,
+                tp2_hit_ts_ms=trade.tp2_hit_ts_ms,
+                time_to_tp1_ms=trade.time_to_tp1_ms,
+                time_to_tp2_ms=trade.time_to_tp2_ms,
+                time_to_stop_ms=trade.time_to_stop_ms,
             )
         account.positions.pop(managed.plan.symbol, None)
 
@@ -1269,6 +1285,21 @@ class PaperPortfolioEngine:
             take_profit_2=(
                 managed.plan.take_profit_targets[1].price
                 if len(managed.plan.take_profit_targets) > 1
+                else None
+            ),
+            tp1_hit_ts_ms=managed.target_hit_ts_ms.get("TP1"),
+            tp2_hit_ts_ms=managed.target_hit_ts_ms.get("TP2"),
+            time_to_tp1_ms=_elapsed_from_open(
+                managed.protected.opened_ts_ms,
+                managed.target_hit_ts_ms.get("TP1"),
+            ),
+            time_to_tp2_ms=_elapsed_from_open(
+                managed.protected.opened_ts_ms,
+                managed.target_hit_ts_ms.get("TP2"),
+            ),
+            time_to_stop_ms=(
+                max(0, closed_ts_ms - managed.protected.opened_ts_ms)
+                if final_reason is ExitReason.STOP
                 else None
             ),
         )
@@ -1690,6 +1721,7 @@ def _managed_position_payload(position: ManagedPaperPosition) -> dict[str, objec
         "target_remaining": {
             key: str(value) for key, value in position.target_remaining.items()
         },
+        "target_hit_ts_ms": dict(position.target_hit_ts_ms),
         "exit_legs": [_exit_leg_payload(leg) for leg in position.exit_legs],
         "pending_exit": _pending_exit_payload(position.pending_exit)
         if position.pending_exit is not None
@@ -1708,11 +1740,13 @@ def _managed_position_from_payload(payload: Mapping[str, object]) -> ManagedPape
     plan_payload = payload.get("plan")
     protected_payload = payload.get("protected")
     remaining_payload = payload.get("target_remaining")
+    target_hit_payload = payload.get("target_hit_ts_ms", {})
     leg_rows = payload.get("exit_legs")
     if (
         not isinstance(plan_payload, Mapping)
         or not isinstance(protected_payload, Mapping)
         or not isinstance(remaining_payload, Mapping)
+        or not isinstance(target_hit_payload, Mapping)
         or not isinstance(leg_rows, list)
     ):
         raise ValueError("복구 포지션 payload 형식이 잘못됐습니다.")
@@ -1732,6 +1766,9 @@ def _managed_position_from_payload(payload: Mapping[str, object]) -> ManagedPape
         remaining_quantity=remaining,
         target_remaining={
             str(key): Decimal(str(value)) for key, value in remaining_payload.items()
+        },
+        target_hit_ts_ms={
+            str(key): int(str(value)) for key, value in target_hit_payload.items()
         },
         exit_legs=[
             _exit_leg_from_payload(value) for value in leg_rows if isinstance(value, Mapping)
@@ -2063,6 +2100,11 @@ def _paper_trade_payload(trade: PaperTrade) -> dict[str, object]:
         "take_profit_2": (
             str(trade.take_profit_2) if trade.take_profit_2 is not None else None
         ),
+        "tp1_hit_ts_ms": trade.tp1_hit_ts_ms,
+        "tp2_hit_ts_ms": trade.tp2_hit_ts_ms,
+        "time_to_tp1_ms": trade.time_to_tp1_ms,
+        "time_to_tp2_ms": trade.time_to_tp2_ms,
+        "time_to_stop_ms": trade.time_to_stop_ms,
         "exit_reason": trade.exit_reason.value,
         "gross_pnl_usdt": str(trade.gross_pnl_usdt),
         "fees_usdt": str(trade.fees_usdt),
@@ -2124,7 +2166,20 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
             if payload.get("take_profit_2") is not None
             else None
         ),
+        tp1_hit_ts_ms=_optional_int(payload.get("tp1_hit_ts_ms")),
+        tp2_hit_ts_ms=_optional_int(payload.get("tp2_hit_ts_ms")),
+        time_to_tp1_ms=_optional_int(payload.get("time_to_tp1_ms")),
+        time_to_tp2_ms=_optional_int(payload.get("time_to_tp2_ms")),
+        time_to_stop_ms=_optional_int(payload.get("time_to_stop_ms")),
     )
+
+
+def _optional_int(value: object | None) -> int | None:
+    return None if value is None else int(str(value))
+
+
+def _elapsed_from_open(opened_ts_ms: int, milestone_ts_ms: int | None) -> int | None:
+    return None if milestone_ts_ms is None else max(0, milestone_ts_ms - opened_ts_ms)
 
 
 def _trailing_losses(trades: list[PaperTrade]) -> int:

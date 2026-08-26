@@ -259,7 +259,10 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     assert row["governance"]["evidence_status"] == "NOT_PROVEN"
     governance = client.get("/api/governance")
     assert governance.status_code == 200
-    assert governance.json()["champion_id"] == "CBR_CONTINUATION_V1"
+    assert governance.json()["champion_id"] is None
+    evaluation = client.post("/api/governance/evaluate")
+    assert evaluation.status_code == 200
+    assert evaluation.json()["promotion_without_formal_oos_evidence"] is False
     assert len(governance.json()["rows"]) == len(runtime.strategy_registry.strategy_ids)
     stale = client.post(
         "/api/strategies/VWAP_EXHAUSTION_REVERSION_V1",

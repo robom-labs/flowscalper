@@ -12,7 +12,7 @@ from backend.app.candidates import CandidatePlan, CandidatePlanner
 from backend.app.costing import CostProfile
 from backend.app.domain.market import Instrument
 from backend.app.domain.models import Side, Venue
-from backend.app.execution import BookSnapshot
+from backend.app.execution import BookSnapshot, ExitReason
 from backend.app.execution.portfolio import PaperPortfolioEngine
 from backend.app.regime import Regime
 from backend.app.risk import RiskState
@@ -242,6 +242,12 @@ def test_latency_executable_depth_tp1_tp2_and_live_pnl_are_end_to_end() -> None:
     assert len(engine.main.completed_trades) == 1
     trade = engine.main.completed_trades[0]
     assert trade.flags == ("TP1", "TP2")
+    assert trade.tp1_hit_ts_ms == 2_250
+    assert trade.tp2_hit_ts_ms == 3_250
+    assert trade.time_to_tp1_ms == 1_000
+    assert trade.time_to_tp2_ms == 2_000
+    assert trade.time_to_stop_ms is None
+    assert trade.holding_ms == 2_000
     assert trade.net_pnl_usdt == trade.gross_pnl_usdt - trade.fees_usdt - trade.slippage_usdt
     assert engine.main_summary()["trade_count"] == 1
 
@@ -347,6 +353,28 @@ def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exi
         and row["ts_ms"] == 126_250
         for row in engine.audit_events
     )
+
+
+def test_stop_trade_records_entry_to_stop_duration_without_inventing_targets() -> None:
+    plan = candidate_plan()
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    engine.offer((plan,), entries_paused=False)
+    engine.on_book(book(1_250))
+    engine.on_book(book(2_000, bids=(("98.9", "100"),), asks=(("99.0", "100"),)))
+    engine.on_book(book(2_250, bids=(("98.8", "100"),), asks=(("98.9", "100"),)))
+
+    trade = engine.main.completed_trades[0]
+    assert trade.exit_reason is ExitReason.STOP
+    assert trade.tp1_hit_ts_ms is None
+    assert trade.tp2_hit_ts_ms is None
+    assert trade.time_to_tp1_ms is None
+    assert trade.time_to_tp2_ms is None
+    assert trade.time_to_stop_ms == 1_000
+    assert trade.holding_ms == 1_000
 
 
 def test_pending_protected_and_exit_pending_accounts_roundtrip_for_restart() -> None:

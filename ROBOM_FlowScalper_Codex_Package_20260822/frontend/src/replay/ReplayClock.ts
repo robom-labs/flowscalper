@@ -12,6 +12,7 @@ export class ReplayClock<T extends ReplayClockFrame> {
   private anchorRealMs = 0
   private anchorVirtualMs = 0
   private frameHandle = 0
+  private playbackTsMs: number[]
 
   constructor(
     private readonly frames: readonly T[],
@@ -19,13 +20,30 @@ export class ReplayClock<T extends ReplayClockFrame> {
     private readonly now: Now = () => performance.now(),
     private readonly requestFrame: RequestFrame = (callback) => requestAnimationFrame(callback),
     private readonly cancelFrame: CancelFrame = (handle) => cancelAnimationFrame(handle),
-  ) {}
+  ) {
+    this.playbackTsMs = frames.map((frame) => frame.ts_ms)
+  }
+
+  setMaximumFrameGap(maximumGapMs: number) {
+    if (!Number.isFinite(maximumGapMs) || maximumGapMs <= 0) {
+      throw new Error('리플레이 최대 프레임 간격은 0보다 커야 합니다.')
+    }
+    const wasPlaying = this.playing
+    this.pause()
+    this.playbackTsMs = this.frames.reduce<number[]>((timestamps, frame, index) => {
+      if (index === 0) return [frame.ts_ms]
+      const sourceGap = Math.max(0, frame.ts_ms - this.frames[index - 1].ts_ms)
+      timestamps.push(timestamps[index - 1] + Math.min(sourceGap, maximumGapMs))
+      return timestamps
+    }, [])
+    if (wasPlaying) this.play()
+  }
 
   play() {
     if (this.playing || !this.frames.length) return
     this.playing = true
     this.anchorRealMs = this.now()
-    this.anchorVirtualMs = this.frames[this.index].ts_ms
+    this.anchorVirtualMs = this.playbackTsMs[this.index]
     this.frameHandle = this.requestFrame(this.tick)
   }
 
@@ -62,7 +80,7 @@ export class ReplayClock<T extends ReplayClockFrame> {
     if (!this.playing || !this.frames.length) return
     const target = this.anchorVirtualMs + (this.now() - this.anchorRealMs) * this.speed
     let emitted = false
-    while (this.index + 1 < this.frames.length && this.frames[this.index + 1].ts_ms <= target) {
+    while (this.index + 1 < this.frames.length && this.playbackTsMs[this.index + 1] <= target) {
       this.index += 1
       this.onFrame(this.frames[this.index], this.index, this.index === this.frames.length - 1)
       emitted = true

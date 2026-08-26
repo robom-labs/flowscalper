@@ -34,7 +34,7 @@ strategy:
     enabled: true
     strategy_id: CBR_CONTINUATION_V1
     stability: STABLE
-    default_mode: ACTIVE
+    default_mode: SHADOW
     permitted_regimes: [TREND_UP, TREND_DOWN]
     compression_windows_seconds: [30, 60, 120]
     compression_quantile_max: 0.20
@@ -170,6 +170,27 @@ strategy:
     price_response_efficiency_min: 0.25
     confirmation_ms: 1000
     minimum_structural_risk_fraction: 0.0030
+
+  hourly_momentum_breakout:
+    enabled: true
+    strategy_id: HOURLY_MOMENTUM_BREAKOUT_V1
+    stability: EXPERIMENTAL
+    default_mode: OFF
+    permitted_regimes: [TREND_UP, TREND_DOWN]
+    completed_timeframe: 1h
+    minimum_completed_bars: 200
+    momentum_hours: 24
+    momentum_minimum: 0.02
+    donchian_lookback: 20
+    adx_minimum: 20
+    relative_volume_minimum: 1.1
+    signal_freshness_seconds: 5
+    stop_atr: 1.8
+    take_profit_1_r: 2.2
+    take_profit_2_r: 4.5
+    maximum_holding_hours: 36
+    policy_status: RETIRED
+    policy_reason: FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46
 
   registry:
     modes: [ACTIVE, SHADOW, OFF]

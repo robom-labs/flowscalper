@@ -394,6 +394,11 @@ def _history_rows(
                 "exit_ts_ms": int(str(trade["exit_ts_ms"])),
                 "initial_stop": str(trade.get("initial_stop", "—")),
                 "take_profit": str(trade.get("take_profit", "—")),
+                "tp1_hit_ts_ms": _optional_int(trade.get("tp1_hit_ts_ms")),
+                "tp2_hit_ts_ms": _optional_int(trade.get("tp2_hit_ts_ms")),
+                "time_to_tp1_ms": _optional_int(trade.get("time_to_tp1_ms")),
+                "time_to_tp2_ms": _optional_int(trade.get("time_to_tp2_ms")),
+                "time_to_stop_ms": _optional_int(trade.get("time_to_stop_ms")),
                 "quantity": str(trade.get("quantity", "—")),
                 "exit_reason": str(trade["exit_reason"]),
                 "gross_pnl": str(trade["gross_pnl_usdt"]),
@@ -422,6 +427,11 @@ def _history_rows(
             "exit_ts_ms": 1_721_000_185_000,
             "initial_stop": "99.65",
             "take_profit": "101.85",
+            "tp1_hit_ts_ms": 1_721_000_121_000,
+            "tp2_hit_ts_ms": 1_721_000_185_000,
+            "time_to_tp1_ms": 120_000,
+            "time_to_tp2_ms": 184_000,
+            "time_to_stop_ms": None,
             "quantity": "0.869",
             "exit_reason": "TAKE_PROFIT",
             "gross_pnl": "1.80",
@@ -434,6 +444,10 @@ def _history_rows(
             "sample_type": "OFFLINE_FIXTURE",
         }
     ]
+
+
+def _optional_int(value: object | None) -> int | None:
+    return None if value is None else int(str(value))
 
 
 def _performance_rows(

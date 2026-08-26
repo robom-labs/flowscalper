@@ -390,6 +390,26 @@ def create_app(
                 await asyncio.sleep(0.15)
             await asyncio.sleep(60)
 
+    async def maintain_strategy_governance() -> None:
+        """15분마다 신규 자연표본·운영 결함만 평가해 검증된 격리를 적용한다."""
+
+        await asyncio.sleep(15)
+        while True:
+            try:
+                result = await asyncio.to_thread(active_runtime.run_strategy_governance_cycle)
+                changes = result.get("changes", [])
+                if isinstance(changes, list) and changes:
+                    active_runtime._log(
+                        "STRATEGY",
+                        f"자동 전략 평가 전환 {len(changes)}건 · 충분한 증거만 반영",
+                    )
+            except (OSError, RuntimeError, ValueError) as error:
+                active_runtime._log(
+                    "STRATEGY",
+                    f"자동 전략 평가 보류 · {type(error).__name__}",
+                )
+            await asyncio.sleep(900)
+
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         broadcaster: asyncio.Task[None] | None = None
@@ -397,12 +417,17 @@ def create_app(
         persistence_worker: asyncio.Task[None] | None = None
         trade_cache_task: asyncio.Task[None] | None = None
         hourly_history_task: asyncio.Task[None] | None = None
+        governance_task: asyncio.Task[None] | None = None
         try:
             if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
                 await active_runtime.start_persistent_live()
                 hourly_history_task = asyncio.create_task(
                     maintain_hourly_strategy_history(),
                     name="hourly-strategy-history",
+                )
+                governance_task = asyncio.create_task(
+                    maintain_strategy_governance(),
+                    name="strategy-governance",
                 )
             if not active_runtime.dashboard_trade_cache_ready:
                 active_runtime.dashboard_trade_cache_loading = True
@@ -430,6 +455,9 @@ def create_app(
             if hourly_history_task is not None:
                 hourly_history_task.cancel()
                 await asyncio.gather(hourly_history_task, return_exceptions=True)
+            if governance_task is not None:
+                governance_task.cancel()
+                await asyncio.gather(governance_task, return_exceptions=True)
             await active_runtime.shutdown()
             if active_runtime.ledger is not None:
                 active_runtime.ledger.close()
@@ -850,6 +878,10 @@ def create_app(
             active_runtime.strategy_governance,
             include_persisted=include_persisted,
         )
+
+    @app.post("/api/governance/evaluate")
+    async def evaluate_strategy_governance() -> dict[str, object]:
+        return await asyncio.to_thread(active_runtime.run_strategy_governance_cycle)
 
     @app.get("/api/analytics/strategies")
     async def strategy_analytics() -> list[dict[str, object]]:

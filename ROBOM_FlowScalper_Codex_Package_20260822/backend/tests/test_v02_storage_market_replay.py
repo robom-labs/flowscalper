@@ -427,6 +427,48 @@ def test_live_history_uses_warmed_trade_cache_without_rescanning_active_ledger(
     ledger.close()
 
 
+def test_recovered_trade_does_not_overwrite_persisted_strategy_version(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "recovered-history-version.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-001",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    prior_trade = {
+        **_sample_trade("recovered-prior"),
+        "sample_type": "LIVE_PUBLIC",
+        "strategy_version": "prior-strategy-version",
+    }
+    ledger.record_trade(prior_trade)
+    runtime._refresh_dashboard_trade_cache()
+
+    class RecoveredTradeStub:
+        trade_id = "recovered-prior"
+
+    runtime.paper_portfolio.main.completed_trades.append(RecoveredTradeStub())  # type: ignore[arg-type]
+
+    current = runtime.history_records(
+        account_scope="MAIN",
+        version_scope="CURRENT",
+        sample_type="LIVE_PUBLIC",
+    )
+    all_versions = runtime.history_records(
+        account_scope="MAIN",
+        version_scope="ALL",
+        sample_type="LIVE_PUBLIC",
+    )
+
+    assert current["rows"] == []
+    assert runtime._dashboard_live_main_trades() == ()
+    assert len(all_versions["rows"]) == 1
+    assert all_versions["rows"][0]["strategy_version"] == "prior-strategy-version"
+    ledger.close()
+
+
 def test_replayable_run_listing_does_not_wait_for_live_writer_lock(
     tmp_path: Path,
 ) -> None:
@@ -585,7 +627,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.checksum == second.checksum
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 28
+    assert first.strategy_evaluation_count == 24
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False

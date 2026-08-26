@@ -1,0 +1,474 @@
+{
+  "adaptive_boundary": {
+    "reason": "사전등록은 실행 전에 커밋했지만 미래 수집 구간이 아니므로 새 OOS 전에는 승격하지 않는다.",
+    "registry_changes": [],
+    "status": "NOT_PROMOTION_EVIDENCE"
+  },
+  "auth_required": false,
+  "code_hash": "60fc6b119bd2b342e82c8d85321d172422854f47",
+  "development_profiles": {
+    "INTRADAY_BREAKOUT_15M_V1": {
+      "base": {
+        "expectancy_bps": -9.03461741432363,
+        "losses": 179,
+        "maximum_drawdown_bps": 3629.197767716076,
+        "net_sum_bps": -2710.3852242970893,
+        "payoff_ratio": 1.2159047507731262,
+        "profit_factor": 0.8219244404667502,
+        "sample_size": 300,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4033333333333333,
+        "wins": 121
+      },
+      "stress": {
+        "expectancy_bps": -21.034617414323634,
+        "losses": 183,
+        "maximum_drawdown_bps": 6310.38522429709,
+        "net_sum_bps": -6310.38522429709,
+        "payoff_ratio": 0.9962059687615916,
+        "profit_factor": 0.6369185701918372,
+        "sample_size": 300,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.39,
+        "wins": 117
+      },
+      "validation_stress": {
+        "expectancy_bps": -15.8742538402822,
+        "losses": 47,
+        "maximum_drawdown_bps": 1317.563068743422,
+        "net_sum_bps": -1317.5630687434227,
+        "payoff_ratio": 0.9037302478135993,
+        "profit_factor": 0.6922189132189273,
+        "sample_size": 83,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.43373493975903615,
+        "wins": 36
+      }
+    },
+    "INTRADAY_BREAKOUT_30M_V1": {
+      "base": {
+        "expectancy_bps": 2.256704417132206,
+        "losses": 128,
+        "maximum_drawdown_bps": 3381.746498557296,
+        "net_sum_bps": 514.528607106143,
+        "payoff_ratio": 1.321722411116859,
+        "profit_factor": 1.0325956336850461,
+        "sample_size": 228,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.43859649122807015,
+        "wins": 100
+      },
+      "stress": {
+        "expectancy_bps": -9.743295582867795,
+        "losses": 128,
+        "maximum_drawdown_bps": 4089.746498557296,
+        "net_sum_bps": -2221.4713928938572,
+        "payoff_ratio": 1.115837971316843,
+        "profit_factor": 0.8717484150912836,
+        "sample_size": 228,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.43859649122807015,
+        "wins": 100
+      },
+      "validation_stress": {
+        "expectancy_bps": 18.36466480196947,
+        "losses": 29,
+        "maximum_drawdown_bps": 941.175876519856,
+        "net_sum_bps": 1175.3385473260462,
+        "payoff_ratio": 1.1030347573197288,
+        "profit_factor": 1.331248845041052,
+        "sample_size": 64,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.546875,
+        "wins": 35
+      }
+    },
+    "INTRADAY_MOMENTUM_30M_V1": {
+      "base": {
+        "expectancy_bps": -7.572429137704418,
+        "losses": 169,
+        "maximum_drawdown_bps": 4063.8366689722943,
+        "net_sum_bps": -2233.8665956228033,
+        "payoff_ratio": 1.1734566019837016,
+        "profit_factor": 0.8748848038458368,
+        "sample_size": 295,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4271186440677966,
+        "wins": 126
+      },
+      "stress": {
+        "expectancy_bps": -19.572429137704418,
+        "losses": 171,
+        "maximum_drawdown_bps": 6727.836668972292,
+        "net_sum_bps": -5773.866595622803,
+        "payoff_ratio": 0.9787894357842705,
+        "profit_factor": 0.7097654388143247,
+        "sample_size": 295,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.42033898305084744,
+        "wins": 124
+      },
+      "validation_stress": {
+        "expectancy_bps": -5.767716634096314,
+        "losses": 46,
+        "maximum_drawdown_bps": 1772.988047296385,
+        "net_sum_bps": -496.02363053228305,
+        "payoff_ratio": 1.0354477129618405,
+        "profit_factor": 0.9003893156189918,
+        "sample_size": 86,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.46511627906976744,
+        "wins": 40
+      }
+    },
+    "INTRADAY_PULLBACK_15M_V1": {
+      "base": {
+        "expectancy_bps": -4.035434602607331,
+        "losses": 169,
+        "maximum_drawdown_bps": 2703.6737693447044,
+        "net_sum_bps": -1255.0201614108798,
+        "payoff_ratio": 1.06830862927357,
+        "profit_factor": 0.8976321027032362,
+        "sample_size": 311,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4565916398713826,
+        "wins": 142
+      },
+      "stress": {
+        "expectancy_bps": -16.03543460260733,
+        "losses": 180,
+        "maximum_drawdown_bps": 5134.411051115241,
+        "net_sum_bps": -4987.02016141088,
+        "payoff_ratio": 0.8954400367978896,
+        "profit_factor": 0.6516813601140197,
+        "sample_size": 311,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4212218649517685,
+        "wins": 131
+      },
+      "validation_stress": {
+        "expectancy_bps": -23.297431085681946,
+        "losses": 50,
+        "maximum_drawdown_bps": 2193.229457699886,
+        "net_sum_bps": -2050.1739355400114,
+        "payoff_ratio": 0.7212812332427887,
+        "profit_factor": 0.5481737372645195,
+        "sample_size": 88,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4318181818181818,
+        "wins": 38
+      }
+    }
+  },
+  "diagnostic_oos": {
+    "base": {
+      "expectancy_bps": null,
+      "losses": 0,
+      "maximum_drawdown_bps": 0.0,
+      "net_sum_bps": 0.0,
+      "payoff_ratio": null,
+      "profit_factor": null,
+      "sample_size": 0,
+      "sample_status": "INSUFFICIENT",
+      "win_rate": null,
+      "wins": 0
+    },
+    "daily_frequency": 0.0,
+    "examples": [],
+    "sample_span_days": 35.25,
+    "stress": {
+      "expectancy_bps": null,
+      "losses": 0,
+      "maximum_drawdown_bps": 0.0,
+      "net_sum_bps": 0.0,
+      "payoff_ratio": null,
+      "profit_factor": null,
+      "sample_size": 0,
+      "sample_status": "INSUFFICIENT",
+      "win_rate": null,
+      "wins": 0
+    },
+    "symbol_concentration": {
+      "base_net_bps_by_symbol": {},
+      "largest_positive_contribution_share": null,
+      "largest_positive_contributor": null
+    }
+  },
+  "generated_ts_ms": 1787724995307,
+  "metric_gates": {
+    "bootstrap_lower_positive": false,
+    "dsr_at_least_0_95": false,
+    "frequency_half_to_four_per_day": false,
+    "largest_symbol_share_at_most_0_50": false,
+    "oos_base_expectancy_positive": false,
+    "oos_base_profit_factor_at_least_1_15": false,
+    "oos_payoff_ratio_at_least_1_10": false,
+    "oos_sample_at_least_40": false,
+    "oos_stress_expectancy_positive": false,
+    "oos_win_rate_at_least_0_45": false,
+    "pbo_at_most_0_20": false,
+    "selected_candidate_exists": false
+  },
+  "paper_only": true,
+  "promotion_assessment": {
+    "new_future_oos_required": true,
+    "registry_changes": [],
+    "status": "NOT_PROVEN"
+  },
+  "protocol": {
+    "annualization": false,
+    "base_cost_bps": 13.0,
+    "candidates": [
+      {
+        "adx_minimum": 18,
+        "candidate_id": "INTRADAY_PULLBACK_15M_V1",
+        "cooldown_hours": 6,
+        "interval_minutes": 15,
+        "lookback": 20,
+        "maximum_holding_hours": 8,
+        "momentum_minimum": 0.01,
+        "relative_volume_minimum": 0.8,
+        "signal_kind": "EMA20_RECLAIM",
+        "stop_atr": 1.5,
+        "tp1_r": 1.4,
+        "tp2_r": 2.8
+      },
+      {
+        "adx_minimum": 20,
+        "candidate_id": "INTRADAY_BREAKOUT_15M_V1",
+        "cooldown_hours": 8,
+        "interval_minutes": 15,
+        "lookback": 32,
+        "maximum_holding_hours": 12,
+        "momentum_minimum": 0.015,
+        "relative_volume_minimum": 1.1,
+        "signal_kind": "DONCHIAN",
+        "stop_atr": 1.6,
+        "tp1_r": 1.6,
+        "tp2_r": 3.2
+      },
+      {
+        "adx_minimum": 20,
+        "candidate_id": "INTRADAY_BREAKOUT_30M_V1",
+        "cooldown_hours": 10,
+        "interval_minutes": 30,
+        "lookback": 24,
+        "maximum_holding_hours": 18,
+        "momentum_minimum": 0.015,
+        "relative_volume_minimum": 1.0,
+        "signal_kind": "DONCHIAN",
+        "stop_atr": 1.7,
+        "tp1_r": 1.6,
+        "tp2_r": 3.2
+      },
+      {
+        "adx_minimum": 18,
+        "candidate_id": "INTRADAY_MOMENTUM_30M_V1",
+        "cooldown_hours": 8,
+        "interval_minutes": 30,
+        "lookback": 20,
+        "maximum_holding_hours": 16,
+        "momentum_minimum": 0.012,
+        "relative_volume_minimum": 0.9,
+        "signal_kind": "MOMENTUM_CONTINUATION",
+        "stop_atr": 1.6,
+        "tp1_r": 1.5,
+        "tp2_r": 3.0
+      }
+    ],
+    "hypothesis_id": "HYP-046-PUBLIC-INTRADAY-TREND-V1",
+    "maximum_concurrent_positions": 2,
+    "maximum_daily_entries": 4,
+    "natural_signal_thresholds_lowered": false,
+    "next_bar_open_entry": true,
+    "preregistration_path": "docs/research/HYP-046-public-intraday-trend-v1.md",
+    "purge_embargo_ms": 64800000,
+    "same_bar_stop_before_target": true,
+    "split": "chronological 50% train / 20% validation / 30% diagnostic OOS",
+    "stress_cost_bps": 25.0,
+    "tp1_fraction": 0.4
+  },
+  "real_orders_enabled": false,
+  "schema_version": 1,
+  "selected_on_train_validation": null,
+  "selection_bias": {
+    "no_trade_baseline_bps": 0.0,
+    "oos_deflated_sharpe": {
+      "dsr_probability": null,
+      "observed_sharpe": null,
+      "status": "INSUFFICIENT_SAMPLE",
+      "trials": 4
+    },
+    "oos_expectancy_bootstrap_95": {
+      "lower": null,
+      "resamples": 0,
+      "status": "INSUFFICIENT_SAMPLE",
+      "upper": null
+    },
+    "pbo": {
+      "combinations": 35,
+      "logits": [
+        -20.72326583594641,
+        -20.72326583594641,
+        -20.72326583594641,
+        -20.72326583594641,
+        -0.6931471805599454,
+        -0.6931471805599454,
+        -20.72326583594641,
+        -20.72326583594641,
+        -20.72326583594641,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641,
+        -20.72326583594641,
+        -20.72326583594641,
+        -20.72326583594641,
+        -0.6931471805599454,
+        -20.72326583594641,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641,
+        -0.6931471805599454,
+        -20.72326583594641,
+        -20.72326583594641,
+        0.6931471805599452,
+        -20.72326583594641
+      ],
+      "pbo": 0.7714285714285715,
+      "status": "CALCULATED"
+    }
+  },
+  "source": {
+    "base_interval": "5m",
+    "dataset_hash": "25fb0e7cfa44741a3583af45076417402d9448671dfabb6f6c2c2b04b1b3eab4",
+    "datasets": [
+      {
+        "bar_count": 34560,
+        "checksum": "a7c44a62ba60031ffebad9abf762d756d13e242ee0482611713a8eba49931bf8",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "85e63f393a63b7b3feb48a4e1174d641abd900c2624daf66c661f0be0e9d1db1",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "AVAXUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "6f332e8b85e76815db5976549881e3aa19c1ff486b7a6a4d850621db101d47c4",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "BCHUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "f2b3797433d6ff745bcbf76125b1dd3971bf4e8bf26927c879d33ad7f14c67c5",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "BNBUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "e683f8608885ad59336b3109b9277dc752f28f04f8e2f78fca9839583b621a35",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "BTCUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "982ccbd7a77c3aee4d3dd9423e98dc66052332712e063f56fc6c0f77b8151ceb",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "DOGEUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "f5f3fe6a9d40f52dab9c58fe31fc11fd7e9b6c200983a3d2dbc8c09c7cb42b5a",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "DOTUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "061036aaaf7f1689d773c20ada352fdefb672d5760ce473d0b94d2423620fc2e",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "ETHUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "d61751d0e78e632217a83b41fb631b89bac0ad9166e07a9ffbe56d294b8d3255",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "LINKUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "72950c5ecd8f7f5ee9134c2f31b9707ab71d0cb24ccdcdf505f86eee301327a6",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "LTCUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "f4de964fc04587651449a588bfae7b71a016b4dc8abea9a680bca9bc14d3ed1b",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "SOLUSDT"
+      },
+      {
+        "bar_count": 34560,
+        "checksum": "3c464991f7ab54f2f5d614c20c9ea2ad20bec8085942e53b4dc2c0e7a0383de5",
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "source": "https://fapi.binance.com/fapi/v1/klines",
+        "start_ts_ms": 1777248000000,
+        "symbol": "XRPUSDT"
+      }
+    ],
+    "end_ts_ms": 1787616000000,
+    "public_only": true,
+    "research_intervals": [
+      "15m",
+      "30m"
+    ],
+    "start_ts_ms": 1777248000000,
+    "venue": "BINANCE_USDM"
+  },
+  "status": "NOT_PROVEN"
+}

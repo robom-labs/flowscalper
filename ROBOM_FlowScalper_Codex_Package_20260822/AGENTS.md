@@ -18,7 +18,7 @@ Build a production-quality **real-market-data / paper-execution-only** crypto sc
 10. Never claim profitability or safety guarantees.
 11. Keep the Shared Capital Benchmark at one position and each Strategy League account at three different symbols maximum.
 12. Strategy League accounts are `strategy_id:BASE` and `strategy_id:STRESS`; capital, risk, fees, cooldowns, orders and PnL must never cross accounts.
-13. A/B default to `ACTIVE`; C~J default to `SHADOW`. Every strategy and profile remains PAPER-only.
+13. No strategy defaults to `ACTIVE` without cost-adjusted out-of-sample proof. B/C/F/G/I/J default to `SHADOW`; policy-retired A/D/E/H/K default to `OFF`. Every strategy and profile remains PAPER-only.
 
 ## Source of truth
 

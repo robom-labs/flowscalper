@@ -166,3 +166,8 @@ class PaperTrade:
     candidate_id: str | None = None
     take_profit_1: Decimal | None = None
     take_profit_2: Decimal | None = None
+    tp1_hit_ts_ms: int | None = None
+    tp2_hit_ts_ms: int | None = None
+    time_to_tp1_ms: int | None = None
+    time_to_tp2_ms: int | None = None
+    time_to_stop_ms: int | None = None

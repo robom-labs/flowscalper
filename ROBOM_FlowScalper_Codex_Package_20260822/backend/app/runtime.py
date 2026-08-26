@@ -154,6 +154,13 @@ class PaperRuntime:
     _supervisor: PersistentPublicSupervisor | None = field(default=None, init=False, repr=False)
     strategy_registry: StrategyRegistry = field(default_factory=StrategyRegistry)
     strategy_governor: StrategyGovernor = field(default_factory=StrategyGovernor)
+    _governance_last_sample_size: dict[str, int] = field(default_factory=dict, repr=False)
+    _governance_full_degraded_cycles: dict[str, int] = field(default_factory=dict, repr=False)
+    _governance_recent_degraded_cycles: dict[str, int] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    _governance_last_cycle_ts_ms: int | None = None
     strategy_evaluator: StrategySignalEvaluator = field(default_factory=StrategySignalEvaluator)
     regime_classifier: RegimeClassifier = field(default_factory=RegimeClassifier)
     feature_engines: dict[str, FeatureEngine] = field(default_factory=dict)
@@ -467,6 +474,18 @@ class PaperRuntime:
                     evidence={
                         "policy": "COST_ADJUSTED_RESEARCH_RETIREMENT",
                         "legacy_setting_reactivation_blocked": True,
+                    },
+                )
+            shadow_migrations = self.strategy_registry.enforce_unproven_active_defaults(
+                updated_ts_ms=self.clock.utc_ms()
+            )
+            for migrated in shadow_migrations:
+                self._persist_strategy_setting(
+                    migrated,
+                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
+                    evidence={
+                        "policy": "NO_ACTIVE_STRATEGY_WITHOUT_COST_ADJUSTED_PROOF",
+                        "promotion_requires_governor_gates": True,
                     },
                 )
             portfolio_payload = recovered.payload.get("portfolio")
@@ -1352,6 +1371,120 @@ class PaperRuntime:
         )
         return changed
 
+    def run_strategy_governance_cycle(self) -> dict[str, object]:
+        """새 자연표본 또는 운영 결함이 있을 때만 보수적 자동 전환을 적용한다."""
+
+        reports = self.strategy_performance(include_persisted=True)
+        reports_by_key = {
+            (str(report["strategy_id"]), str(report["profile"])): report
+            for report in reports
+        }
+        champion_id = next(
+            (
+                strategy_id
+                for strategy_id in self.strategy_registry.strategy_ids
+                if self.strategy_registry.setting(strategy_id).lifecycle
+                is StrategyLifecycle.ACTIVE
+            ),
+            None,
+        )
+        champion_base = (
+            reports_by_key.get((champion_id, "BASE"))
+            if champion_id is not None
+            else None
+        )
+        champion_expectancy = (
+            champion_base.get("expectancy_usdt") if champion_base is not None else None
+        )
+        accounts = self.paper_portfolio.league_account_rows(self.latest_books)
+        evaluated_ts_ms = self.clock.utc_ms()
+        assessments: list[dict[str, object]] = []
+        changes: list[dict[str, object]] = []
+        for strategy_id in self.strategy_registry.strategy_ids:
+            base = reports_by_key[(strategy_id, "BASE")]
+            stress = reports_by_key[(strategy_id, "STRESS")]
+            windows = base.get("windows")
+            recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
+            sample_size = min(
+                int(str(base["sample_size"])),
+                int(str(stress["sample_size"])),
+            )
+            previous_sample_size = self._governance_last_sample_size.get(strategy_id, -1)
+            if sample_size > previous_sample_size:
+                full_degraded = (
+                    sample_size >= 30
+                    and base.get("expectancy_usdt") is not None
+                    and Decimal(str(base["expectancy_usdt"])) < 0
+                    and base.get("profit_factor") is not None
+                    and Decimal(str(base["profit_factor"])) < Decimal("0.90")
+                )
+                recent_degraded = (
+                    recent.get("expectancy_usdt") is not None
+                    and Decimal(str(recent["expectancy_usdt"])) < 0
+                    and recent.get("profit_factor") is not None
+                    and Decimal(str(recent["profit_factor"])) < Decimal("0.90")
+                )
+                self._governance_full_degraded_cycles[strategy_id] = (
+                    self._governance_full_degraded_cycles.get(strategy_id, 0) + 1
+                    if full_degraded
+                    else 0
+                )
+                self._governance_recent_degraded_cycles[strategy_id] = (
+                    self._governance_recent_degraded_cycles.get(strategy_id, 0) + 1
+                    if recent_degraded
+                    else 0
+                )
+                self._governance_last_sample_size[strategy_id] = sample_size
+            faulted = any(
+                bool(account["faulted"])
+                for account in accounts
+                if account["strategy_id"] == strategy_id
+            )
+            evidence = GovernanceEvidence.from_reports(
+                base,
+                stress,
+                multiple_testing={
+                    "recent_expectancy_usdt": recent.get("expectancy_usdt"),
+                    "recent_profit_factor": recent.get("profit_factor"),
+                    "live_public_sample_size": sample_size,
+                    "full_oos_degraded_evaluations": (
+                        self._governance_full_degraded_cycles.get(strategy_id, 0)
+                    ),
+                    "recent_oos_degraded_evaluations": (
+                        self._governance_recent_degraded_cycles.get(strategy_id, 0)
+                    ),
+                    "evaluation_period": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
+                    "evaluated_ts_ms": evaluated_ts_ms,
+                },
+                champion_expectancy_usdt=champion_expectancy,
+                operational={"operational_fault": faulted},
+            )
+            assessment = self.strategy_governor.assess(
+                self.strategy_registry,
+                strategy_id,
+                evidence,
+            )
+            assessments.append(assessment.as_dict())
+            if assessment.transition_required and assessment.automatic_action_allowed:
+                setting = self.strategy_registry.setting(strategy_id)
+                changed = self.apply_strategy_governance(
+                    strategy_id,
+                    evidence,
+                    expected_revision=setting.revision,
+                )
+                changes.extend(changed)
+        self._governance_last_cycle_ts_ms = evaluated_ts_ms
+        return {
+            "evaluated_ts_ms": evaluated_ts_ms,
+            "evaluation_period": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
+            "assessments": assessments,
+            "changes": changes,
+            "promotion_without_formal_oos_evidence": False,
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+
     def strategy_governance(
         self,
         *,
@@ -1456,6 +1589,8 @@ class PaperRuntime:
             "champion_id": champion_id,
             "strategy_version": STRATEGY_VERSION,
             "analysis_scope": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
+            "last_automatic_cycle_ts_ms": self._governance_last_cycle_ts_ms,
+            "automatic_cycle_interval_ms": 900_000,
             "profitability_status": "NOT_PROVEN",
             "paper_only": True,
             "real_orders_enabled": False,
@@ -2035,6 +2170,11 @@ class PaperRuntime:
             "take_profit_2": (
                 str(trade["take_profit_2"]) if trade.get("take_profit_2") is not None else None
             ),
+            "tp1_hit_ts_ms": _optional_int(trade.get("tp1_hit_ts_ms")),
+            "tp2_hit_ts_ms": _optional_int(trade.get("tp2_hit_ts_ms")),
+            "time_to_tp1_ms": _optional_int(trade.get("time_to_tp1_ms")),
+            "time_to_tp2_ms": _optional_int(trade.get("time_to_tp2_ms")),
+            "time_to_stop_ms": _optional_int(trade.get("time_to_stop_ms")),
             "quantity": str(trade.get("quantity", "—")),
             "exit_reason": str(trade["exit_reason"]),
             "gross_pnl": str(trade["gross_pnl_usdt"]),
@@ -2934,6 +3074,11 @@ class PaperRuntime:
             "take_profit_2": (
                 str(trade.take_profit_2) if trade.take_profit_2 is not None else None
             ),
+            "tp1_hit_ts_ms": trade.tp1_hit_ts_ms,
+            "tp2_hit_ts_ms": trade.tp2_hit_ts_ms,
+            "time_to_tp1_ms": trade.time_to_tp1_ms,
+            "time_to_tp2_ms": trade.time_to_tp2_ms,
+            "time_to_stop_ms": trade.time_to_stop_ms,
             "quantity": str(trade.quantity),
             "exit_reason": trade.exit_reason.value,
             "gross_pnl_usdt": str(trade.gross_pnl_usdt),
@@ -3534,30 +3679,31 @@ class PaperRuntime:
 
     def _dashboard_live_main_trades(self) -> tuple[dict[str, object], ...]:
         rows = {str(trade["trade_id"]): trade for trade in self._historical_live_trades}
-        rows.update(
-            {
-                trade.trade_id: self._paper_trade_row(trade)
-                for trade in self.paper_portfolio.main.completed_trades
-            }
-        )
+        persisted_ids = {
+            str(trade["trade_id"]) for trade in self._historical_all_main_trades
+        }
+        for trade in self.paper_portfolio.main.completed_trades:
+            if trade.trade_id not in persisted_ids:
+                rows[trade.trade_id] = self._paper_trade_row(trade)
         return tuple(rows.values())
 
     def _dashboard_live_shadow_trades(self) -> tuple[dict[str, object], ...]:
         rows = {str(trade["trade_id"]): trade for trade in self._historical_shadow_trades}
+        persisted_ids = {
+            str(trade.get("trade_id", trade.get("shadow_trade_id")))
+            for trade in self._historical_all_shadow_trades
+        }
         for account in self.paper_portfolio.shadows.values():
-            rows.update(
-                {trade.trade_id: self._paper_trade_row(trade) for trade in account.completed_trades}
-            )
+            for trade in account.completed_trades:
+                if trade.trade_id not in persisted_ids:
+                    rows[trade.trade_id] = self._paper_trade_row(trade)
         return tuple(rows.values())
 
     def _history_main_trades(self) -> tuple[dict[str, object], ...]:
         rows = {str(trade["trade_id"]): trade for trade in self._historical_all_main_trades}
-        rows.update(
-            {
-                trade.trade_id: self._paper_trade_row(trade)
-                for trade in self.paper_portfolio.main.completed_trades
-            }
-        )
+        for trade in self.paper_portfolio.main.completed_trades:
+            if trade.trade_id not in rows:
+                rows[trade.trade_id] = self._paper_trade_row(trade)
         return tuple(rows.values())
 
     def _history_shadow_trades(self) -> tuple[dict[str, object], ...]:
@@ -3566,9 +3712,9 @@ class PaperRuntime:
             for trade in self._historical_all_shadow_trades
         }
         for account in self.paper_portfolio.shadows.values():
-            rows.update(
-                {trade.trade_id: self._paper_trade_row(trade) for trade in account.completed_trades}
-            )
+            for trade in account.completed_trades:
+                if trade.trade_id not in rows:
+                    rows[trade.trade_id] = self._paper_trade_row(trade)
         return tuple(rows.values())
 
     def _ensure_fixture_completed_trade(self) -> None:
@@ -3770,3 +3916,7 @@ class PaperRuntime:
                 "message": message,
             }
         )
+
+
+def _optional_int(value: object | None) -> int | None:
+    return None if value is None else int(str(value))

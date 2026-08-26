@@ -169,6 +169,11 @@ export type HistoryRow = {
   take_profit: string
   take_profit_1?: string | null
   take_profit_2?: string | null
+  tp1_hit_ts_ms?: number | null
+  tp2_hit_ts_ms?: number | null
+  time_to_tp1_ms?: number | null
+  time_to_tp2_ms?: number | null
+  time_to_stop_ms?: number | null
   quantity: string
   exit_reason: string
   gross_pnl: string
@@ -301,6 +306,12 @@ export type StrategyPerformance = {
   mfe_r_mean: string | null
   median_hold_ms: number | null
   p90_hold_ms: number | null
+  tp1_sample_size: number
+  tp2_sample_size: number
+  stop_sample_size: number
+  median_time_to_tp1_ms: number | null
+  median_time_to_tp2_ms: number | null
+  median_time_to_stop_ms: number | null
   regime_contributions: { regime: string; sample_size: number; net_pnl: string; expectancy_usdt: string }[]
   metric_status: Record<string, string>
   sample_status: string

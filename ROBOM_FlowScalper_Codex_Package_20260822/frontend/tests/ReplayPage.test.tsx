@@ -71,6 +71,7 @@ test('restores an active strategy verification and exposes a real cancel control
     retryable: false, error_code: null, error_message_ko: null, result: null, revision: 3,
     paper_only: true, real_orders_enabled: false, auth_required: false,
   }
+  let currentOperation = operation
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     if (url === '/api/replay/runs') return new Response(JSON.stringify([{
@@ -85,9 +86,10 @@ test('restores an active strategy verification and exposes a real cancel control
       available_symbols: [{ symbol: 'ETHUSDT', event_count: 12_345 }], events: [], candles: [], preview_only: true,
     }), { status: 200 })
     if (url === '/api/replay/operations/replay-operation-active' && init?.method === 'DELETE') {
-      return new Response(JSON.stringify({ ...operation, state: 'CANCELLING', stage_ko: '저장 Run 검증을 안전하게 취소하고 있습니다', revision: 4 }), { status: 202 })
+      currentOperation = { ...operation, state: 'CANCELLING', stage_ko: '저장 Run 검증을 안전하게 취소하고 있습니다', revision: 4 }
+      return new Response(JSON.stringify(currentOperation), { status: 202 })
     }
-    if (url === '/api/replay/operations/replay-operation-active') return new Response(JSON.stringify(operation), { status: 200 })
+    if (url === '/api/replay/operations/replay-operation-active') return new Response(JSON.stringify(currentOperation), { status: 200 })
     throw new Error(`unexpected request: ${url}`)
   }))
 

@@ -295,6 +295,9 @@ def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
         "initial_stop": str(trade.get("initial_stop", "0")),
         "quantity": str(trade.get("quantity", "0")),
         "holding_ms": int(str(trade.get("holding_ms", 0))),
+        "time_to_tp1_ms": _optional_int(trade.get("time_to_tp1_ms")),
+        "time_to_tp2_ms": _optional_int(trade.get("time_to_tp2_ms")),
+        "time_to_stop_ms": _optional_int(trade.get("time_to_stop_ms")),
         "gross_pnl_usdt": str(trade["gross_pnl_usdt"]),
         "fees_usdt": str(trade["fees_usdt"]),
         "slippage_usdt": str(trade["slippage_usdt"]),
@@ -405,6 +408,12 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
             "mfe_r_mean": None,
             "median_hold_ms": None,
             "p90_hold_ms": None,
+            "tp1_sample_size": 0,
+            "tp2_sample_size": 0,
+            "stop_sample_size": 0,
+            "median_time_to_tp1_ms": None,
+            "median_time_to_tp2_ms": None,
+            "median_time_to_stop_ms": None,
             "regime_contributions": [],
             "metric_status": {
                 "omega_ratio": "NOT_AVAILABLE_NO_LOSSES",
@@ -473,6 +482,21 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         Decimal(0),
     )
     holds = sorted(int(str(trade["holding_ms"])) for trade in trades)
+    times_to_tp1 = sorted(
+        int(str(trade["time_to_tp1_ms"]))
+        for trade in trades
+        if trade.get("time_to_tp1_ms") is not None
+    )
+    times_to_tp2 = sorted(
+        int(str(trade["time_to_tp2_ms"]))
+        for trade in trades
+        if trade.get("time_to_tp2_ms") is not None
+    )
+    times_to_stop = sorted(
+        int(str(trade["time_to_stop_ms"]))
+        for trade in trades
+        if trade.get("time_to_stop_ms") is not None
+    )
     mae_values = [
         Decimal(str(trade["mae_r"]))
         for trade in trades
@@ -545,6 +569,18 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         else None,
         "median_hold_ms": int(median(holds)),
         "p90_hold_ms": _percentile(holds, 0.90),
+        "tp1_sample_size": len(times_to_tp1),
+        "tp2_sample_size": len(times_to_tp2),
+        "stop_sample_size": len(times_to_stop),
+        "median_time_to_tp1_ms": (
+            int(median(times_to_tp1)) if times_to_tp1 else None
+        ),
+        "median_time_to_tp2_ms": (
+            int(median(times_to_tp2)) if times_to_tp2 else None
+        ),
+        "median_time_to_stop_ms": (
+            int(median(times_to_stop)) if times_to_stop else None
+        ),
         "regime_contributions": regime_contributions,
         "metric_status": {
             "omega_ratio": (
@@ -615,3 +651,7 @@ def _required_row(row: tuple[Any, ...] | None) -> tuple[Any, ...]:
 
 def _optional_number(value: object | None) -> float | None:
     return None if value is None else float(str(value))
+
+
+def _optional_int(value: object | None) -> int | None:
+    return None if value is None else int(str(value))

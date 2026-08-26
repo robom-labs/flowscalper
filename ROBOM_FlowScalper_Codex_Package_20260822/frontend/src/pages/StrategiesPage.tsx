@@ -51,6 +51,12 @@ function evaluationTime(timestamp: number) {
   return timestamp > 0 ? new Date(timestamp).toLocaleString('ko-KR') : '시작 설정'
 }
 
+function milestoneTiming(value: number | null, sampleSize: number) {
+  return value === null || sampleSize === 0
+    ? `표본 없음 · ${sampleSize}건`
+    : `${formatDurationMs(value)} · ${sampleSize}건`
+}
+
 function number(value: string) {
   return Number(value || 0)
 }
@@ -94,7 +100,10 @@ function ProfileDetails({ report, account }: { report: StrategyPerformance; acco
         <div><dt>최대 낙폭</dt><dd>{formatUsdt(report.maximum_drawdown)}</dd></div>
         <div><dt>양방향 거래대금</dt><dd>{formatUsdt(report.turnover_usdt)}<small> · 시작자산 대비 {formatRatio(report.turnover_ratio, 'x')}</small></dd></div>
         <div><dt>평균 MAE · MFE</dt><dd>{formatRatio(report.mae_r_mean, ' R')} · {formatRatio(report.mfe_r_mean, ' R')}</dd></div>
-        <div><dt>보유 중앙 · p90</dt><dd>{formatDurationMs(report.median_hold_ms)} · {formatDurationMs(report.p90_hold_ms)}</dd></div>
+        <div><dt>보유 중앙 · p90</dt><dd>{report.sample_size === 0 ? '표본 없음' : `${formatDurationMs(report.median_hold_ms)} · ${formatDurationMs(report.p90_hold_ms)}`}</dd></div>
+        <div><dt>TP1까지 중앙</dt><dd>{milestoneTiming(report.median_time_to_tp1_ms, report.tp1_sample_size)}</dd></div>
+        <div><dt>TP2까지 중앙</dt><dd>{milestoneTiming(report.median_time_to_tp2_ms, report.tp2_sample_size)}</dd></div>
+        <div><dt>손절까지 중앙</dt><dd>{milestoneTiming(report.median_time_to_stop_ms, report.stop_sample_size)}</dd></div>
         <div><dt>LONG · SHORT</dt><dd>{report.sides.LONG} · {report.sides.SHORT}</dd></div>
         <div><dt>종목 · 시장상태</dt><dd>{report.symbols.length}개 · {report.regime_count}개</dd></div>
         <div><dt>시장상태별 기여</dt><dd>{report.regime_contributions.length ? report.regime_contributions.map((row) => `${row.regime} ${formatUsdt(row.net_pnl, { signed: true })}`).join(' · ') : '표본 없음'}</dd></div>

@@ -64,7 +64,9 @@
 - `scripts/research_public_trend_candidates.py`는 Binance USDⓈ-M 주요 12종목의 완성 5분봉 414,720개를 사용해 사전등록 추세 후보 6개를 동일 BASE·STRESS 비용으로 평가했다. 모든 후보가 두 비용조건에서 음수여서 선택 0, PBO 0.6286, `NOT_PROVEN`이었다.
 - `scripts/research_public_hourly_trend_diagnostic.py`는 완성 1시간봉에서 EMA 정렬, 24시간 모멘텀, Donchian 돌파, ADX와 상대거래량을 결합했다. Wave 41 적응 후보는 진단 OOS 42건에서 BASE 기대값 +32.212bp·PF 1.346, STRESS +20.212bp·PF 1.202였다.
 - 같은 결과의 bootstrap 95% 하한은 -48.537bp, DSR은 0, PBO는 0.3714로 승격 기준을 실패했다. 후보 선택과 OOS가 완전히 독립된 미래 기간도 아니다.
-- 따라서 `HOURLY_MOMENTUM_BREAKOUT_V1`은 기존 미세구조 전략을 자동 대체하지 않고 22개 독립계좌 중 BASE·STRESS SHADOW 두 계좌에서 미래 자연 `LIVE_PUBLIC` 표본만 수집한다. 수익성은 `NOT_PROVEN`이고 30건 미만에는 순위를 매기지 않는다.
-- 기계판독 원본은 `evidence/WAVE39_PUBLIC_TREND_RESEARCH.json`, `evidence/WAVE40_PUBLIC_HOURLY_TREND_DIAGNOSTIC.json`, `evidence/WAVE41_PUBLIC_COST_AWARE_TREND_DIAGNOSTIC.json`이다. 이 결과는 전략 조건을 낮추거나 실제 주문 경로를 추가하는 근거가 아니다.
+- Wave 46은 K의 조건을 먼저 고정한 뒤 이전 2025-12-01~2026-04-26 공개시장 구간을 다운로드해 독립 재현했다. 147일·166건에서 BASE 기대값 -18.263bp·PF 0.856, STRESS 기대값 -30.263bp·PF 0.775, bootstrap 95% 하한 -60.868bp였고 양의 기여는 ADA에 64.71% 집중됐다. K는 RETIRED·OFF로 전환하며 소스·불변 거래·두 독립계좌는 보존한다.
+- 같은 Wave의 사전등록 15분·30분 pullback·breakout·momentum 후보 4개도 개발 STRESS gate를 통과하지 못해 선택과 Registry 추가가 모두 0이다. 30분 돌파의 BASE 기대값은 +2.257bp였지만 STRESS는 -9.743bp여서 비용 강건성을 실패했다.
+- 기계판독 원본은 `evidence/WAVE39_PUBLIC_TREND_RESEARCH.json`, `evidence/WAVE40_PUBLIC_HOURLY_TREND_DIAGNOSTIC.json`, `evidence/WAVE41_PUBLIC_COST_AWARE_TREND_DIAGNOSTIC.json`, `evidence/wave46-strategy-survival/fixed-hourly-prior-holdout.json`, `evidence/wave46-strategy-survival/intraday-trend-diagnostic.json`이다. 이 결과는 전략 조건을 낮추거나 실제 주문 경로를 추가하는 근거가 아니다.
 
 관련 정책 결정은 `docs/adr/ADR-045-cost-aware-hourly-trend-shadow-and-evidence-retirement.md`에 기록한다.
+Wave 46의 독립 재현·퇴역·기본 SHADOW 정책은 `docs/adr/ADR-047-strategy-survival-governor-and-outcome-timing.md`에 기록한다.

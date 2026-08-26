@@ -45,6 +45,11 @@ class ShadowTrade:
     opened_ts_ms: int
     closed_ts_ms: int
     exit_reason: str
+    tp1_hit_ts_ms: int | None = None
+    tp2_hit_ts_ms: int | None = None
+    time_to_tp1_ms: int | None = None
+    time_to_tp2_ms: int | None = None
+    time_to_stop_ms: int | None = None
 
 
 @dataclass(slots=True)
@@ -129,6 +134,11 @@ class ShadowLedger:
         exit_slippage_usdt: Decimal,
         closed_ts_ms: int,
         exit_reason: str,
+        tp1_hit_ts_ms: int | None = None,
+        tp2_hit_ts_ms: int | None = None,
+        time_to_tp1_ms: int | None = None,
+        time_to_tp2_ms: int | None = None,
+        time_to_stop_ms: int | None = None,
     ) -> ShadowTrade:
         account = self.account(strategy_id, profile)
         matches = [
@@ -162,6 +172,11 @@ class ShadowLedger:
             opened_ts_ms=position.opened_ts_ms,
             closed_ts_ms=closed_ts_ms,
             exit_reason=exit_reason,
+            tp1_hit_ts_ms=tp1_hit_ts_ms,
+            tp2_hit_ts_ms=tp2_hit_ts_ms,
+            time_to_tp1_ms=time_to_tp1_ms,
+            time_to_tp2_ms=time_to_tp2_ms,
+            time_to_stop_ms=time_to_stop_ms,
         )
         account.trades.append(trade)
         account.open_positions.pop(position.symbol, None)
@@ -319,6 +334,11 @@ def _shadow_trade_payload(trade: ShadowTrade) -> dict[str, object]:
         "opened_ts_ms": trade.opened_ts_ms,
         "closed_ts_ms": trade.closed_ts_ms,
         "exit_reason": trade.exit_reason,
+        "tp1_hit_ts_ms": trade.tp1_hit_ts_ms,
+        "tp2_hit_ts_ms": trade.tp2_hit_ts_ms,
+        "time_to_tp1_ms": trade.time_to_tp1_ms,
+        "time_to_tp2_ms": trade.time_to_tp2_ms,
+        "time_to_stop_ms": trade.time_to_stop_ms,
     }
 
 
@@ -339,4 +359,13 @@ def _shadow_trade_from_payload(payload: Mapping[str, object]) -> ShadowTrade:
         opened_ts_ms=int(str(payload["opened_ts_ms"])),
         closed_ts_ms=int(str(payload["closed_ts_ms"])),
         exit_reason=str(payload["exit_reason"]),
+        tp1_hit_ts_ms=_optional_int(payload.get("tp1_hit_ts_ms")),
+        tp2_hit_ts_ms=_optional_int(payload.get("tp2_hit_ts_ms")),
+        time_to_tp1_ms=_optional_int(payload.get("time_to_tp1_ms")),
+        time_to_tp2_ms=_optional_int(payload.get("time_to_tp2_ms")),
+        time_to_stop_ms=_optional_int(payload.get("time_to_stop_ms")),
     )
+
+
+def _optional_int(value: object | None) -> int | None:
+    return None if value is None else int(str(value))

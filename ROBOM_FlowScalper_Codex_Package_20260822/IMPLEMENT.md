@@ -310,3 +310,18 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 10. Exercise actual history, trade focus, entry and actual exit cursors, strategy rows, retired controls and K details in the browser. Capture screenshots from the real 8870 service.
 11. Run backend, frontend, E2E, lint, typecheck, build, PAPER safety, security, repository hygiene and active-ledger integrity checks. Record exact PASS, NOT_PROVEN and NOT_RUN boundaries.
 12. Keep actual orders, private API, credentials, secrets, wallets and runtime AI at zero. Push the reviewed implementation and evidence to GitHub main and confirm Actions before completion.
+
+## Strategy survival, outcome timing and visible history Wave
+
+1. Start from the immutable current Run history. Separate missing rows caused by Run, account and strategy-version filters from genuinely absent trades before changing any strategy rule.
+2. Aggregate current natural `LIVE_PUBLIC` BASE/STRESS samples by strategy, exit reason, cost, holding time and account. Do not rank or promote sparse samples and do not convert a high gross-win rate into a cost-adjusted claim.
+3. Freeze every research threshold before downloading or opening the evaluation period. Preserve dataset, config and result hashes for rejected candidates.
+4. Require BASE and STRESS expectancy, Profit Factor, chronological OOS, bootstrap lower bound, DSR/PBO, robustness and natural sample gates before a strategy can become a shared-account champion.
+5. Keep zero default ACTIVE strategies when none passes. Preserve B/C/F/G/I/J as independent SHADOW research accounts and A/D/E/H/K as immutable-history RETIRED accounts.
+6. Run the Strategy Governor every 15 minutes, but count only a newly completed natural sample as another degradation evaluation. Allow automatic quarantine or demotion, never evidence-free promotion.
+7. Persist first TP1, first TP2 and actual STOP timestamps and elapsed durations through the PAPER trade model, restart recovery, schema, history API and strategy analytics. Never relabel EDGE_DECAY or other exits as STOP.
+8. Show all accounts and prior versions by default in history, while keeping performance analytics current-version-only. Persisted ledger rows win when recovered in-memory rows share the same trade ID.
+9. Bound focused replay idle gaps so a real Play click visibly advances within one second at the default speed, without changing source timestamps, frame order or reconciliation.
+10. Exercise the actual browser history filters, detail drawer, trade replay Play, pause/complete, first, next and end controls. Check console warnings and capture screenshots.
+11. Run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene. Record the short LIVE observation separately from six-hour and 24-hour soak evidence.
+12. Keep actual orders, private API, credentials, secrets, wallets and profitability claims at zero. Push implementation and final evidence to GitHub main and confirm Actions before completion.

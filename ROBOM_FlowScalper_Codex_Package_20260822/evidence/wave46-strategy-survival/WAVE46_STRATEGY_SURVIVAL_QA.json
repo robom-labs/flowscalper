@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "wave": 46,
+  "generated_at_kst": "2026-08-26T15:55:00+09:00",
+  "implementation_parent_commit": "60fc6b119bd2b342e82c8d85321d172422854f47",
+  "product_boundary": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "public_market_data_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "api_keys_present": false,
+    "wallet_path_present": false
+  },
+  "strategy_policy": {
+    "default_active": [],
+    "shadow": [
+      "CBR_CONTINUATION_V1",
+      "VWAP_EXHAUSTION_REVERSION_V1",
+      "AGGRESSOR_FLOW_CONTINUATION_V1",
+      "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+      "OFI_RETURN_CONFLUENCE_V1",
+      "BOOK_SLOPE_ASYMMETRY_V1"
+    ],
+    "retired": [
+      "LSA_REVERSAL_V1",
+      "OFI_CONTINUATION_PULLBACK_V1",
+      "QUEUE_MICROPRICE_MOMENTUM_V1",
+      "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+      "HOURLY_MOMENTUM_BREAKOUT_V1"
+    ],
+    "automatic_governor_interval_ms": 900000,
+    "promotion_without_formal_oos_evidence": false,
+    "profitability_status": "NOT_PROVEN"
+  },
+  "preregistered_research": {
+    "intraday_candidates": {
+      "status": "NOT_PROVEN",
+      "selected_candidate": null,
+      "registry_changes": [],
+      "stress_gate_pass_count": 0,
+      "evidence_path": "evidence/wave46-strategy-survival/intraday-trend-diagnostic.json",
+      "sha256": "08ecbad12d05f6ed5292405dd81866da9b28b7365c122b01706edb84fa252bc1"
+    },
+    "fixed_hourly_prior_holdout": {
+      "status": "NOT_PROVEN",
+      "period": "2025-12-01/2026-04-26",
+      "days": 147,
+      "trades": 166,
+      "base": {
+        "win_rate_pct": 33.73,
+        "expectancy_bps": -18.263,
+        "profit_factor": 0.856
+      },
+      "stress": {
+        "win_rate_pct": 32.53,
+        "expectancy_bps": -30.263,
+        "profit_factor": 0.775
+      },
+      "bootstrap_expectancy_lower_bps": -60.868,
+      "evidence_path": "evidence/wave46-strategy-survival/fixed-hourly-prior-holdout.json",
+      "sha256": "60b71d96d36261fe2b88e5d7e246de5b845305fb6b6cb2fe2c95e183aecd2c52"
+    }
+  },
+  "actual_history": {
+    "run_id": "run-2b7135a972dd",
+    "all_versions_rows": 63,
+    "current_version_rows": 0,
+    "main_rows": 1,
+    "league_rows": 62,
+    "wins": 1,
+    "losses": 62,
+    "net_pnl_usdt": -64.8911299486,
+    "first_entry_kst": "2026-08-26T02:38:55+09:00",
+    "last_exit_kst": "2026-08-26T13:33:05+09:00",
+    "median_holding_ms": 23842,
+    "under_5_seconds": 1,
+    "under_13_seconds": 1,
+    "exit_reasons": {
+      "EDGE_DECAY": 57,
+      "PROFIT_PROTECTION": 3,
+      "STOP": 3
+    },
+    "version_merge_regression": "PASS",
+    "past_milestone_label": "과거 기록 없음"
+  },
+  "outcome_timing": {
+    "fields": [
+      "tp1_hit_ts_ms",
+      "tp2_hit_ts_ms",
+      "time_to_tp1_ms",
+      "time_to_tp2_ms",
+      "time_to_stop_ms"
+    ],
+    "deterministic_tp_and_stop_tests": "PASS",
+    "analytics_sample_count_and_median_tests": "PASS",
+    "current_version_natural_timed_rows": 0,
+    "current_version_natural_timing_status": "NOT_OBSERVED"
+  },
+  "actual_browser": {
+    "url": "http://127.0.0.1:8870/",
+    "history_default_all_versions_rows": 63,
+    "history_current_version_rows": 0,
+    "history_detail_opened": true,
+    "replay_frames": 7,
+    "replay_play_start": "1/7",
+    "replay_play_end": "7/7",
+    "manual_first": "1/7",
+    "manual_next": "2/7",
+    "manual_end": "7/7",
+    "console_error_count": 0,
+    "console_warning_count": 0,
+    "screenshots": [
+      {
+        "path": "evidence/wave46-strategy-survival/actual-strategy-governance.png",
+        "sha256": "48de98f4ef7d4927246e0942e406340d5af784284f9a26d9075cc9dcb8c6cc85"
+      },
+      {
+        "path": "evidence/wave46-strategy-survival/actual-history-restored.png",
+        "sha256": "8dcce94582907fcfd5126d1f08cc0d9da7ddf747de1235693d9ef9e28e823e10"
+      },
+      {
+        "path": "evidence/wave46-strategy-survival/actual-trade-replay-completed.png",
+        "sha256": "61a194e24a20cad1e164a875cd6152ea691bdc11efa4778160e1bedde6710d24"
+      }
+    ]
+  },
+  "live_observation_61_seconds": {
+    "status": "PASS_WITH_LIMIT",
+    "samples": 13,
+    "duration_ms": 61030,
+    "event_start": 23766,
+    "event_end": 27723,
+    "event_advance": 3957,
+    "operation_states": ["RUNNING"],
+    "market_states": ["LIVE"],
+    "execution_states": ["PAPER"],
+    "max_lag_p50_ms": 19.0233154296875,
+    "max_lag_p95_ms": 44.068359375,
+    "max_trade_lag_p95_ms": 64.479248046875,
+    "max_wide_observation_lag_p95_ms": 1896.186279296875,
+    "max_queue_depth": 0,
+    "max_unplanned_reconnects": 0,
+    "max_sequence_gaps": 0,
+    "max_resyncs": 0,
+    "max_dropped_events": 0,
+    "max_persistence_faults": 0,
+    "max_persistence_buffer_dropped": 0,
+    "max_critical_incidents": 0,
+    "entry_locked_seen": false,
+    "storage_allowed_all": true,
+    "max_memory_mb": 234.141,
+    "max_positions": 0,
+    "real_orders_all_false": true,
+    "auth_all_false": true
+  },
+  "validation": {
+    "backend_pytest": {"status": "PASS", "tests": 402},
+    "frontend_vitest": {"status": "PASS", "files": 13, "tests": 56},
+    "fixture_pytest": {"status": "PASS", "tests": 17},
+    "playwright": {"status": "PASS", "projects": ["desktop", "tablet", "mobile"], "tests": 3},
+    "ruff": "PASS",
+    "mypy": {"status": "PASS", "source_files": 93},
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": "PASS_WITH_WARNING_SINGLE_CHUNK_514_55_KB",
+    "paper_build_safety": "PASS",
+    "security_scan": {"status": "PASS", "checked_source_files": 126, "violations": 0, "real_order_path": false},
+    "repository_hygiene": "PASS"
+  },
+  "not_run": [
+    "active_multi_gigabyte_sqlite_full_quick_check",
+    "post_change_6_hour_soak",
+    "post_change_24_hour_soak",
+    "release_zip"
+  ]
+}

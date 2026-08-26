@@ -301,7 +301,7 @@ def test_strategy_rollback_history_survives_process_restart(tmp_path: Path) -> N
         "CBR_CONTINUATION_V1"
     )
 
-    assert setting.mode is StrategyMode.ACTIVE
+    assert setting.mode is StrategyMode.SHADOW
     assert setting.revision == 2
     assert setting.short_enabled is True
     assert [row["settings_revision"] for row in history] == [0, 1, 2]

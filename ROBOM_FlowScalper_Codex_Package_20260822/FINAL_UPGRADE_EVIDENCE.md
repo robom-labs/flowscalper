@@ -1735,3 +1735,91 @@ Wave 39는 Binance USDⓈ-M 12종목의 완성 5분봉 414,720개와 사전등�
 | GitHub main / Actions | PASS | 구현 commit `067342cef9f4395a5e44a8bd4bb2c94c1c3d9699`을 main에 push했다. [Actions 32932420777](https://github.com/robom-labs/flowscalper/actions/runs/32932420777)의 validate 1분8초, browser 2분36초, 실제 Chromium desktop·tablet·mobile E2E와 브라우저 증거 업로드가 모두 PASS했다. Chromium 설치 mirror 404는 공식 GitHub Releases fallback으로 복구된 비차단 경고다. |
 
 기계판독 증거는 `evidence/WAVE42_STRATEGY_POLICY_AND_REPLAY_QA.json`, 실제 화면은 `evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png`와 `evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png`, 결정 근거는 ADR-045·ADR-046이다. 구현 기준 commit은 `067342cef9f4395a5e44a8bd4bb2c94c1c3d9699`이다. 이 Wave의 PASS는 구현·회귀·실제 PAPER 화면 범위이며 전략 수익성, 미래 독립 OOS, 활성 원장 전수검사, 6시간·24시간을 입증하지 않는다.
+
+## 45. Wave 46 전략 생존정책·결과 도달시간·거래기록과 재생 복구
+
+### 사용자가 본 빈 기록의 원인과 실제 원장
+
+실제 사이트의 `거래 기록` 기본 필터가 현재 전략 버전만 선택해 과거 버전 거래를 숨기고 있었다. 재시작 복구 후에는 동일 거래 ID의 메모리 객체가 원장 행보다 나중에 병합되면서 원장에 저장된 과거 전략 버전을 현재 버전으로 덮어쓰는 결함도 있었다. 원장 행을 우선하고 메모리에는 아직 저장되지 않은 신규 거래만 합치도록 수정했다.
+
+수정 후 같은 실제 `run-2b7135a972dd`에서 API와 브라우저가 다음처럼 일치했다.
+
+- 과거 전략 버전 포함은 63건이며 공동계좌 1건·전략별 독립계좌 62건이다.
+- 현재 Wave 46 전략 버전은 0건이다. 과거 행을 현재 성과에 섞지 않았다.
+- 63건은 2026-08-26 02:38:55 KST부터 13:33:05 KST까지 발생했다. 거래가 밤사이 전혀 없었던 것이 아니라 화면 범위 때문에 보이지 않았다.
+- 비용후 양수 1건·음수 62건, 합계 순손익 -64.8911299486 USDT다. 중앙 보유시간은 23.842초다.
+- 종료는 `EDGE_DECAY` 57건, `PROFIT_PROTECTION` 3건, 실제 `STOP` 3건이다. 5초 미만은 1건이고 13초 미만도 같은 실제 STOP 1건이다.
+- 현재 버전의 자연 거래와 새로운 결과 도달시간 표본은 0건이라 `NOT_OBSERVED`다.
+
+거래 기록 기본값은 이번 Run·모든 PAPER 계좌·BASE+STRESS·과거 버전 포함으로 바꿨다. 사용자는 처음부터 보존 거래를 볼 수 있고 `현재 버전`을 선택하면 0건과 명시적 안내를 본다. 과거 거래에 새 필드가 없을 때 TP1·TP2·손절 소요시간을 0초로 만들지 않고 `과거 기록 없음`으로 표시한다.
+
+### 낮은 승률 전략의 생존정책
+
+기존 63행은 승률 약 1.59%이고 비용후 손실이므로 좋은 전략으로 볼 수 없다. 낮은 승률을 숨기거나 거래 수를 늘리기 위해 진입기준을 낮추지 않았다.
+
+- 기본 공동계좌 `ACTIVE`는 0개다. 비용후 formal OOS와 강건성 gate를 통과한 champion이 없다는 뜻이다.
+- B/C/F/G/I/J는 각각의 BASE·STRESS 독립계좌에서 `SHADOW`로 자연 공개시장 표본을 계속 모은다.
+- A/D/E/H/K는 `RETIRED·OFF`다. 소스·과거 거래·독립계좌·감사 이력은 삭제하지 않았다.
+- 15분 Strategy Governor는 현재 전략 버전의 새 자연표본이 생긴 주기만 악화 평가 횟수에 포함한다. 운영 fault 또는 충분한 반복 손실은 격리·강등할 수 있지만 formal OOS 근거 없이 자동 승격하지 않는다.
+- 실제 `/api/governance/evaluate`는 자동 변경 0건, champion 없음, `promotion_without_formal_oos_evidence=false`, 실제주문·인증 false를 반환했다.
+
+### 사전등록 후보 연구
+
+임계값을 먼저 문서와 코드로 고정한 뒤 공개시장 완성 캔들을 평가했다.
+
+- 15분·30분 돌파·모멘텀·눌림 후보 4개는 개발 STRESS gate를 모두 실패했다. 가장 나은 30분 돌파도 BASE +2.257bp였지만 STRESS -9.743bp였다. 선택 후보와 Registry 변경은 0이다.
+- K 시간봉 가설은 이전 선택에 쓰지 않은 2025-12-01~2026-04-26의 147일·166건으로 고정 복제했다. BASE 승률 33.73%·기대값 -18.263bp·PF 0.856, STRESS 승률 32.53%·기대값 -30.263bp·PF 0.775, bootstrap 기대값 95% 하한 -60.868bp였다.
+- K는 `FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46` 사유로 퇴역했다. 실패한 가설을 사후 조정해 다시 통과시키지 않았다.
+- 연구 결과의 판정은 `NOT_PROVEN`이며 수익성·하루 거래 수를 보장하지 않는다.
+
+### TP1·TP2·손절 소요시간
+
+신규 PAPER 거래 모델·복구 payload·원장 schema·API에 `tp1_hit_ts_ms`, `tp2_hit_ts_ms`, `time_to_tp1_ms`, `time_to_tp2_ms`, `time_to_stop_ms`를 추가했다. TP1·TP2는 최초 체결 시각만 고정하며 `time_to_stop_ms`는 실제 `STOP` 종료에만 기록한다. `EDGE_DECAY`, `PROFIT_PROTECTION`, `MAX_HOLD`와 데이터 안전종료를 손절로 오표시하지 않는다.
+
+전략 성과는 TP1·TP2·STOP 각각의 표본 수와 중앙 소요시간을 분리한다. 결정적 BASE TP1/TP2와 STOP 시나리오, SHADOW 계좌, 복구, API와 analytics 집계가 테스트를 통과했다. 과거 63행을 추정해 채우지 않았기 때문에 실제 자연 Wave 46 소요시간 표본은 아직 `NOT_OBSERVED`다.
+
+### 거래 재생 멈춤 수정과 실제 버튼 검증
+
+실제 PUMPUSDT 거래 재생은 7프레임이 있었지만 첫 프레임과 다음 프레임 사이 저장 시각이 6분이라 기본 5배속에서 약 72초 동안 1/7에 머물렀다. 버튼 상태만 `일시정지`로 바뀌어 고장처럼 보였다.
+
+표시하는 원본 시각·프레임 순서·최종 checksum은 유지하면서 UI 재생용 프레임 간 가상 간격만 최대 5초로 제한했다. 기본 5배속에서는 늦어도 약 1초마다 다음 프레임이 보인다.
+
+실제 브라우저에서 다음을 직접 확인했다.
+
+- `기록` 기본화면은 63건·공동계좌 1건·전략별 계좌 62건을 표시했다.
+- `전략 버전`을 현재 버전으로 바꾸면 0건과 선택 범위 안내를 표시했다.
+- 첫 거래 `상세`는 보유 27초와 TP1·TP2·손절 `과거 기록 없음`을 표시했다.
+- `이 Run 리플레이 열기`는 저장 이벤트 7프레임 차트를 완성했다.
+- `재생`은 1/7→2/7로 약 1.4초 안에 이동하고 자동으로 7/7·거래 종료까지 완료됐다.
+- `처음 → 다음 이벤트 → 끝`은 각각 1/7 → 2/7 → 7/7로 이동했다.
+- 브라우저 console error·warning은 0건이었다.
+
+실제 화면은 `evidence/wave46-strategy-survival/actual-strategy-governance.png`, `actual-history-restored.png`, `actual-trade-replay-completed.png`에 보존했다.
+
+### 61초 실제 LIVE 관찰
+
+최종 코드 서비스에서 13회·61.03초를 표본화했다. operation은 전부 RUNNING, 시장은 LIVE, 실행은 PAPER였고 event 23,766→27,723으로 3,957건 전진했다. 실행 p50 최대 19.023ms, 실행 p95 최대 44.068ms, 체결 p95 최대 64.479ms, 관찰 전용 wide p95 최대 1,896.186ms였다.
+
+queue·비계획 reconnect·계획회전·gap·resync·drop·persistence fault·buffer drop·critical incident는 모두 0이었다. 신규진입 잠금은 한 번도 활성화되지 않았고 저장 허용은 전 표본 true였다. 메모리 최대 234.141MB, 포지션 최대 0, 사용자 PAPER 진입 의도는 ENTRY_ENABLED였다. 실제주문과 인증은 전 표본 false였다.
+
+### 전체 회귀와 증거 경계
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| backend pytest | PASS | 402 passed, 39.06초 |
+| frontend Vitest | PASS | 13 files·56 tests |
+| Ruff / mypy | PASS | 오류 0 / 93 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 514.55kB 경고가 남아 있다. |
+| fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 126 source·위반·secret-like·실제주문 path 0 / 위반 0 |
+| 실제 기록·상세·재생 | PASS | 63건 복구, 현재 버전 0건 분리, 과거 기록 없음, 자동 1/7→7/7, 수동 1/7→2/7→7/7, console 오류·경고 0 |
+| 61초 LIVE | PASS_WITH_LIMIT | event +3,957, 실행 p95 최대 44.068ms, queue/reconnect/gap/drop/fault/lock 0, 실제주문·인증 0 |
+| 활성 원장 full quick_check | NOT_RUN | 이전 장시간 검사에서 LIVE writer 경합이 확인돼 이번 Wave에서는 재시도하지 않았다. 과거 결과를 이번 PASS로 재사용하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 과거 63행은 1승 62패·-64.8911299486 USDT, 현재 버전 자연표본은 0이다. |
+| 결과 도달시간 자연표본 | NOT_OBSERVED | 신규 schema 결정적 테스트는 PASS지만 현재 버전 자연 종료 거래가 아직 없다. |
+| 6시간 / 24시간 soak | NOT_RUN | 수정 후 실제 시간을 채우지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
+| GitHub main / Actions | PENDING | 구현·증거 commit 후 main push와 Actions를 확인한다. |
+
+기계판독 증거는 `evidence/wave46-strategy-survival/WAVE46_STRATEGY_SURVIVAL_QA.json`, 연구 원본은 같은 폴더의 `intraday-trend-diagnostic.json`과 `fixed-hourly-prior-holdout.json`, 결정 근거는 ADR-047이다. 이번 PASS는 구현·회귀·짧은 실제 PAPER 런타임·브라우저 기록과 재생 범위다. 높은 승률, 수익성, 하루 2~3건, 6시간·24시간 안정성을 입증하지 않는다.

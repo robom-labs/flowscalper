@@ -22,6 +22,9 @@ const trade: HistoryRow = {
   exit_ts_ms: 2_000,
   initial_stop: '99',
   take_profit: '103',
+  time_to_tp1_ms: 800,
+  time_to_tp2_ms: 1_696,
+  time_to_stop_ms: null,
   quantity: '1',
   exit_reason: 'TP2',
   gross_pnl: '1',
@@ -39,7 +42,7 @@ function historyResponse(rows: HistoryRow[]) {
     rows,
     scope: {
       run_scope: 'CURRENT', account_scope: 'ALL', profile: 'ALL',
-      version_scope: 'CURRENT', sample_type: 'ALL', strategy_version: 'current-v2',
+      version_scope: 'ALL', sample_type: 'ALL', strategy_version: 'current-v2',
       returned_count: rows.length, limit: 1000,
     },
     paper_only: true, real_orders_enabled: false, auth_required: false,
@@ -52,11 +55,16 @@ beforeEach(() => {
 
 test('clears stale trade detail when the current history no longer contains it', async () => {
   const view = render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
+  fireEvent.change(screen.getByLabelText('전략 버전'), { target: { value: 'CURRENT' } })
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
   expect(screen.getByText('1.7초')).toBeInTheDocument()
   expect(screen.getByText('2차 익절')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '상세' }))
   expect(screen.getByRole('complementary', { name: '거래 상세' })).toBeInTheDocument()
+  expect(screen.getByText('TP1까지')).toBeInTheDocument()
+  expect(screen.getByText('TP2까지')).toBeInTheDocument()
+  expect(screen.getByText('손절까지')).toBeInTheDocument()
+  expect(screen.getByText('해당 없음')).toBeInTheDocument()
 
   view.rerender(<HistoryPage rows={[]} currentRunId="run-history" onReplay={vi.fn()} />)
 
@@ -68,6 +76,7 @@ test('clears stale trade detail when the current history no longer contains it',
 test('shows only the current Run by default and can reveal immutable history', () => {
   const past = { ...trade, run_id: 'run-past', trade_id: 'paper-history-past' }
   render(<HistoryPage rows={[trade, past]} currentRunId="run-history" onReplay={vi.fn()} />)
+  fireEvent.change(screen.getByLabelText('전략 버전'), { target: { value: 'CURRENT' } })
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
 
   expect(screen.getByText('paper-history-1')).toBeInTheDocument()
@@ -119,6 +128,10 @@ test('loads independent strategy accounts and marks rows without replay events',
     expect.stringContaining('account_scope=LEAGUE'),
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining('version_scope=ALL'),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 })
 
 test('shows all PAPER accounts by default with a visible loading and count summary', async () => {
@@ -133,6 +146,7 @@ test('shows all PAPER accounts by default with a visible loading and count summa
   render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
 
   expect(screen.getByLabelText('계좌 범위')).toHaveValue('ALL')
+  expect(screen.getByLabelText('전략 버전')).toHaveValue('ALL')
   expect(await screen.findByText('shadow-history-default')).toBeInTheDocument()
   expect(screen.getByRole('status')).toHaveTextContent('표시 2건 · 공동계좌 1건 · 전략별 계좌 1건')
 })

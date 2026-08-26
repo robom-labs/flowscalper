@@ -54,4 +54,28 @@ describe('ReplayClock', () => {
     callbacks.shift()?.(now)
     expect(emitted).toEqual([1, 2, 3, 4])
   })
+
+  it('compresses long idle gaps without changing frame order or displayed timestamps', () => {
+    let now = 0
+    const callbacks: FrameRequestCallback[] = []
+    const emitted: { index: number; ts_ms: number }[] = []
+    const frames = [{ ts_ms: 1_000 }, { ts_ms: 361_000 }, { ts_ms: 541_000 }]
+    const clock = new ReplayClock(
+      frames,
+      (frame, index) => emitted.push({ index, ts_ms: frame.ts_ms }),
+      () => now,
+      (next) => { callbacks.push(next); return callbacks.length },
+      () => undefined,
+    )
+    clock.setMaximumFrameGap(5_000)
+    clock.play()
+
+    now = 1_000
+    callbacks.shift()?.(now)
+    expect(emitted.at(-1)).toEqual({ index: 1, ts_ms: 361_000 })
+    now = 2_000
+    callbacks.shift()?.(now)
+    expect(emitted.at(-1)).toEqual({ index: 2, ts_ms: 541_000 })
+    expect(() => clock.setMaximumFrameGap(0)).toThrow('0보다 커야')
+  })
 })

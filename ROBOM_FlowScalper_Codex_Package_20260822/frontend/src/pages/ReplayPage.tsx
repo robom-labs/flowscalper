@@ -242,6 +242,8 @@ export function ReplayPage({ trade }: Props) {
       setCursor(index)
       if (completed) setPlaying(false)
     })
+    // 긴 무거래 구간도 버튼이 멈춘 것처럼 보이지 않도록 프레임 간 대기를 최대 1초(5배속 기준)로 압축한다.
+    clockRef.current.setMaximumFrameGap(5_000)
     clockRef.current.setSpeed(focusSession.default_speed)
     clockRef.current.seek(0)
     return () => clockRef.current?.dispose()

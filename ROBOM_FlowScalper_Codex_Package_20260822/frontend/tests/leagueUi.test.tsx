@@ -20,9 +20,9 @@ test('shows eleven compact strategy rows, easy modes and BASE/STRESS account det
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(11)
   expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(11)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('7개 감시 · 검증 중지 4개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getAllByText('준비 중')).toHaveLength(7)
-  expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(4)
+  expect(screen.getByText('6개 감시 · 검증 중지 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getAllByText('준비 중')).toHaveLength(6)
+  expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(5)
 
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[0])
   expect(screen.getByRole('dialog', { name: '전략 상세 정보' })).toBeInTheDocument()
@@ -36,6 +36,7 @@ test('shows eleven compact strategy rows, easy modes and BASE/STRESS account det
   expect(screen.getByText('10초~3분')).toBeInTheDocument()
   expect(screen.getByText('TOP_OF_BOOK_BASE13_STRESS25_V1')).toBeInTheDocument()
   expect(screen.getByText('아직 검증 불충분')).toBeInTheDocument()
+  expect(screen.getAllByText('표본 없음 · 0건')).toHaveLength(6)
 
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[10])
@@ -100,11 +101,11 @@ test('confirms mode changes and sends the visible settings revision', async () =
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
 
-  fireEvent.click(screen.getByRole('button', { name: 'CBR 돌파 독립 모의 중' }))
+  fireEvent.click(screen.getByRole('button', { name: 'CBR 돌파 공동·독립 모의 중' }))
 
   await waitFor(() => expect(onConfigure).toHaveBeenCalledWith(
     'CBR_CONTINUATION_V1',
-    expect.objectContaining({ mode: 'SHADOW', expected_revision: 0 }),
+    expect.objectContaining({ mode: 'ACTIVE', expected_revision: 0 }),
   ))
   expect(confirm).toHaveBeenCalledWith(expect.stringContaining('진행 중 PAPER는 기존 계획대로 관리'))
 })
@@ -127,7 +128,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
 
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
-  expect(screen.getByText('6개 감시 · 검증 중지 4개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('5개 감시 · 검증 중지 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 

@@ -99,6 +99,9 @@ def test_strategy_metrics_include_nonannualized_risk_turnover_and_regime_attribu
         **_sample_trade("metric-win"),
         "sample_type": "LIVE_PUBLIC",
         "regime": "RANGE",
+        "time_to_tp1_ms": 60_000,
+        "time_to_tp2_ms": 120_000,
+        "time_to_stop_ms": None,
     }
     loss = {
         **_sample_trade(
@@ -110,6 +113,9 @@ def test_strategy_metrics_include_nonannualized_risk_turnover_and_regime_attribu
         ),
         "sample_type": "LIVE_PUBLIC",
         "regime": "TREND_DOWN",
+        "time_to_tp1_ms": None,
+        "time_to_tp2_ms": None,
+        "time_to_stop_ms": 184_000,
     }
 
     report = TradeAnalytics().strategy_reports([win, loss])[0]
@@ -124,6 +130,12 @@ def test_strategy_metrics_include_nonannualized_risk_turnover_and_regime_attribu
         "RANGE",
         "TREND_DOWN",
     }
+    assert report["tp1_sample_size"] == 1
+    assert report["tp2_sample_size"] == 1
+    assert report["stop_sample_size"] == 1
+    assert report["median_time_to_tp1_ms"] == 60_000
+    assert report["median_time_to_tp2_ms"] == 120_000
+    assert report["median_time_to_stop_ms"] == 184_000
     assert report["metric_status"] == {
         "omega_ratio": "CALCULATED",
         "sortino_ratio_per_trade": "CALCULATED",

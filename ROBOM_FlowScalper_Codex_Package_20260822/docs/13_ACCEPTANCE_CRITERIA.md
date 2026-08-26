@@ -189,3 +189,17 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [x] The actual browser shows 43 current-version trades, 79 replay Runs, a 100-event precise timeline and working play/pause controls without console errors.
 - [ ] Six-hour and 24-hour post-change soaks are completed.
 - [ ] The active multi-gigabyte ledger full `quick_check` is rerun without disrupting the live writer.
+
+## S. Strategy survival, outcome timing and history truth
+
+- [x] No strategy is default ACTIVE unless formal cost-adjusted evidence passes every promotion gate; an empty shared-account champion is a valid safe state.
+- [x] B/C/F/G/I/J remain independent SHADOW accounts and A/D/E/H/K remain immutable-history RETIRED accounts after restart.
+- [x] The automatic Governor evaluates on a fixed interval, counts only new natural samples and cannot promote without formal OOS evidence.
+- [x] New PAPER trades persist TP1, TP2 and actual STOP timestamps and elapsed durations through recovery, API, analytics and UI.
+- [x] Past rows with no milestone fields show `과거 기록 없음`, not zero seconds or an inferred loss event.
+- [x] History opens all PAPER accounts and prior strategy versions by default while current-version performance remains isolated.
+- [x] Recovery cannot overwrite a persisted trade's strategy version when the same completed trade is present in memory.
+- [x] Focused replay visibly advances across long idle gaps while preserving source timestamps, event order and final reconciliation.
+- [x] Actual orders, private API, auth, API keys, secrets and wallet paths remain zero.
+- [ ] Current-version natural LIVE_PUBLIC samples meet the preregistered profitability gate.
+- [ ] Six-hour and 24-hour post-change soaks and a non-disruptive active-ledger full `quick_check` are completed.
