@@ -1,0 +1,193 @@
+{
+  "schema": "flowscalper.wave57.replay_scope_live_browser_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_service_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "7b593cbc5ca24e366a23cf28df4d983ffb604c2f",
+  "actual_baseline_browser": {
+    "status": "PASS_BASELINE_ONLY",
+    "url": "http://127.0.0.1:8870/",
+    "history": {
+      "filters": {
+        "run_scope": "CURRENT_RUN",
+        "account_scope": "ALL_PAPER_ACCOUNTS",
+        "cost_scope": "BASE_AND_STRESS",
+        "strategy_version_scope": "CURRENT_AND_PRIOR",
+        "sample_scope": "ALL"
+      },
+      "visible_rows": 75,
+      "main_rows": 1,
+      "strategy_account_rows": 74,
+      "prior_version_rows_retained": 63
+    },
+    "replay": {
+      "stored_run": "run-2b7135a972dd",
+      "selected_symbol": "ONGUSDT",
+      "selected_symbol_total_events_at_load": 484911,
+      "precision_events_loaded": 100,
+      "next_event_position": "2 / 100",
+      "automatic_play_position_before_pause": "16 / 100",
+      "play_pause_controls": "PASS",
+      "full_strategy_validation_operation_id": "replay-operation-ebf3dca53f5f47b08869f3c1da4662e4",
+      "full_strategy_validation_total_events": 485283,
+      "full_strategy_validation_status": "IN_PROGRESS_BASELINE_COMMIT",
+      "full_strategy_validation_error": null,
+      "paper_only": true,
+      "real_orders_enabled": false,
+      "auth_required": false
+    },
+    "alerts_after_baseline_reload": 0,
+    "console_errors": "NOT_CAPTURED"
+  },
+  "failure_reproduction": {
+    "backend_before_fix": {
+      "status": "FAIL_AS_EXPECTED",
+      "test": "test_external_parquet_market_archive_keeps_sqlite_small_and_replays",
+      "expected_event_count": 4,
+      "actual_event_count": 0,
+      "cause": "StoredMarketReplay.run did not normalize a lowercase symbol before ledger filtering"
+    },
+    "frontend_before_fix": {
+      "status": "FAIL_AS_EXPECTED",
+      "test": "shows a replay result only for the selected run and symbol scope",
+      "failed_tests": 1,
+      "existing_header": "검증 완료 · replay-btc",
+      "missing_scope_header": "검증 완료 · BTCUSDT · replay-btc",
+      "stale_checksum_risk": true
+    }
+  },
+  "implementation": {
+    "status": "PASS",
+    "normalized_symbol_filter": true,
+    "result_scope_symbol": true,
+    "selected_run_and_symbol_match_required": true,
+    "legacy_single_symbol_result_inference": true,
+    "ambiguous_legacy_result_hidden": true,
+    "previous_result_hidden_while_running": true,
+    "database_schema_changed": false,
+    "historical_result_rows_rewritten": false,
+    "strategy_logic_changed": false,
+    "paper_execution_changed": false,
+    "ledger_trade_data_changed": false
+  },
+  "validation": {
+    "backend_targeted_after_fix": {
+      "status": "PASS",
+      "tests": 1
+    },
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 442,
+      "seconds": 174.45
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 64
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 130,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    },
+    "immutable_release": {
+      "status": "PASS_WITH_WARNING",
+      "temporary_runtime_only": true,
+      "commit": "7b593cbc5ca24e366a23cf28df4d983ffb604c2f",
+      "frontend_file_count": 3,
+      "index_sha256": "98725172eedf64334a73b07790c2e8c38ac28b22c1ea123375f0cf4f69bffa60",
+      "javascript_sha256": "c2bd2c43b9786d4ef806e3f45d67de00f4066182b5c128a37d7a4a1d23163cbe",
+      "css_sha256": "4daea798b722cc98d62afcfc223ddcfd5d529bbefb73fc64f11d70c6b7ae7150",
+      "javascript_kb": 522.23,
+      "gzip_kb": 160.78,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "immutable_release_e2e": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 28.7,
+      "release_pythonpath_pinned": true,
+      "baseline_screenshots_overwritten": false
+    },
+    "git_diff_check": "PASS"
+  },
+  "baseline_static_consistency": {
+    "status": "RESTORED_AFTER_SOURCE_BUILD",
+    "service_restarted": false,
+    "run_changed": false,
+    "observers_interrupted": false,
+    "served_index_sha256": "728396be4de566d17825a4ebd412e8eaac8d6e8cd964354b09333c9b89bb3fc0",
+    "served_javascript_sha256": "b6e98395d4f8fe2844d91bb8d9feedec50c1d2afa93c114af7693d60c2681646",
+    "served_css_sha256": "592bd5208e54c525d0f4fc7e1a616d1771d3b692c42f765996231a36ef32fc3f",
+    "new_worktree_build_backup_retained": true,
+    "new_release_deployed": false
+  },
+  "running_service_during_replay": {
+    "status": "PASS_SAMPLED_IN_PROGRESS",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "event_count_at_latest_sample": 1144030,
+    "strategy_evaluation_count_at_latest_sample": 3733128,
+    "qualified_signal_count": 3,
+    "queue_depth_at_latest_sample": 1,
+    "sampled_processing_lag_p95_max_ms": 199.59,
+    "sampled_trade_lag_p95_max_ms": 437.701,
+    "wide_lag_p95_ms_at_latest_sample": 1851.524,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "positions": 0,
+    "main_trade_count": 1,
+    "league_trade_count": 74,
+    "strategy_count": 11,
+    "league_account_count": 22,
+    "independent_account_shape_valid": true,
+    "entry_locked": false,
+    "storage_entry_allowed": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "last_error": null
+  },
+  "independent_gates": {
+    "actual_installed_new_release": "NOT_RUN",
+    "actual_8870_new_scope_ui": "NOT_RUN",
+    "actual_post_deploy_ledger_recovery": "NOT_RUN",
+    "six_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "twenty_four_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

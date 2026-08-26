@@ -2244,3 +2244,46 @@ Playwright 중간에는 카드와 고급진단을 동시에 잡는 부분 select
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 구현 commit은 `503f84efb4e529e6e4918e763946462c1639702f`, `d8e5bae154ef693c37b88af980d1c5d0031ca806`이다. 기계판독 증거는 `evidence/WAVE56_PAPER_SAFE_RENDER_AND_IMPORT_ISOLATION_QA.json`, 판단 근거는 ADR-057이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 기준 8870 화면만 현재 backend와 같은 기준 commit으로 회복됐고, 새 구현의 실제 설치 서비스·원장·screenshot·GitHub는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
+
+## 56. Wave 57 리플레이 Run·종목 증거 범위
+
+### 실제 거래 기록과 과거 재생 확인
+
+기준 설치 8870의 `기록 → 거래 기록`을 실제로 열었다. 선택 범위는 이번 Run·모든 PAPER 계좌·BASE+STRESS·과거 버전 포함·전체 기록이었고 표시 75건, 공동계좌 1건, 전략별 계좌 74건, 원장에 보존된 과거 버전 63건이었다. 따라서 이전의 빈 화면은 현재 기준 상태에서 재현되지 않았다.
+
+`기록 → 과거 재생`에는 저장 Run 목록과 종목별 이벤트 수가 표시됐다. `run-2b7135a972dd`의 ONGUSDT 미리보기에서 정밀 이벤트 100개를 실제로 불러오고 `다음 이벤트`로 2/100, 자동 재생으로 16/100까지 이동한 뒤 일시정지했다. 이어 `같은 조건으로 전략 검증`을 눌러 485,283건 저우선순위 작업 `replay-operation-ebf3dca53f5f47b08869f3c1da4662e4`를 시작했다. 이 작업은 증거 작성 시점에 `PROCESSING`이며 완료로 기록하지 않는다.
+
+### 발견한 증거 범위 결함
+
+화면은 Run별 최신 replay 결과 한 건을 가져오고 결과에는 검증 종목이 없었다. 같은 Run에서 종목을 바꾸면 직전 종목의 checksum·전략 평가·종단 결과가 새 종목 결과처럼 남을 수 있었다. `StoredMarketReplay.run()` 직접 경로는 소문자 종목을 원장 조회 전에 정규화하지 않아 저장된 4건을 0건으로 처리했다.
+
+- 결과 JSON에 정규화된 `scope_symbol`을 추가했다. 전체 Run은 null이다.
+- 원장 필터와 결과 범위가 같은 정규화 값을 사용한다.
+- 화면은 선택한 Run·종목에 정확히 맞는 결과만 표시하고 실행 중에는 직전 결과를 숨긴다.
+- `scope_symbol`이 없는 과거 결과는 `symbol_counts`가 한 종목일 때만 복구한다. 모호한 결과는 현재 종목 증거로 표시하지 않는다.
+- 상단에는 `검증 완료 · <종목> · <replay_id>`를 표시한다.
+- DB schema·전략·체결·비용·TP·SL·거래 원장은 변경하지 않았다.
+
+### 실패 재현과 최종 검증
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| backend 수정 전 표적 | FAIL_AS_EXPECTED | 소문자 `btcusdt`가 저장 이벤트 4건을 찾지 못해 event_count 0으로 실패했다. |
+| frontend 수정 전 표적 | FAIL_AS_EXPECTED | 범위 없는 `검증 완료 · replay-btc`가 남아 Run+종목 범위 테스트 1건이 실패했다. |
+| 수정 뒤 backend 표적 | PASS | 1 passed. 소문자 필터 4건과 `scope_symbol=BTCUSDT`를 검증했다. |
+| backend pytest | PASS | 442 passed, 174.45초다. |
+| frontend Vitest | PASS | 14 files·64 tests다. |
+| Ruff / mypy / ESLint / TypeScript | PASS | Ruff 오류 0·mypy 95 source files 오류 0·frontend 오류 0이다. |
+| 불변 release build | PASS_WITH_WARNING | commit `7b593cbc5ca24e366a23cf28df4d983ffb604c2f`, JS 522.23kB·gzip 160.78kB다. 기존 500kB 경고가 남아 있다. |
+| 불변 release E2E | PASS | release backend import를 고정한 desktop·tablet·mobile 3 passed, 28.7초다. 기준 screenshot은 덮어쓰지 않았다. |
+| PAPER safety / security / repository hygiene | PASS | PAPER 불변조건 PASS. security 130 source·위반·secret-like·실제주문 path 0. 저장소 위반 0이다. |
+| 실행 중 저장 replay와 LIVE 동시 표본 | IN_PROGRESS | replay 실행 중 event가 1,144,030까지 전진했다. 표본 최대 처리 p95 199.590ms·trade p95 437.701ms, queue 최대 1, 비계획 reconnect·gap·resync·drop·persistence fault·buffer drop 0이었다. |
+| 기준 정적 화면 재복구 | PASS_BASELINE_ONLY | source build 뒤 기준 index SHA-256 `728396be...`를 다시 제공했다. process·Run·observer는 중단하지 않았다. |
+| 실제 저장 replay 최종 결과 | IN_PROGRESS_BASELINE_COMMIT | 485,283건 작업은 아직 PROCESSING이다. |
+| 실제 LaunchAgent 새 release / 8870 범위 문구 / 배포 후 원장 | NOT_RUN | 기준 observer를 보존해 새 commit으로 전환하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 같은 기준 서비스 observer가 계속 실행 중이다. |
+| GitHub main / Actions | NOT_RUN | 실제 배포·원장·8870 검증 전에는 push하지 않았다. |
+| 전략 수익성 | NOT_PROVEN | 결과 범위 표시만 수정했고 자연표본은 승격 gate보다 부족하다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+구현 commit은 `7b593cbc5ca24e366a23cf28df4d983ffb604c2f`이다. 기계판독 증거는 `evidence/WAVE57_REPLAY_SCOPE_AND_LIVE_BROWSER_QA.json`, 판단 근거는 ADR-058이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 실제 기준 거래 기록·미리보기·정밀 이벤트·재생 제어는 확인했지만, 48만 건 replay와 6시간·24시간 observer는 `IN_PROGRESS`, 새 구현의 설치 8870·원장·GitHub는 `NOT_RUN`, 수익성은 `NOT_PROVEN`이다.
