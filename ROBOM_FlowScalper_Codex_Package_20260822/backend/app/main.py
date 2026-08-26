@@ -51,6 +51,63 @@ from backend.app.strategies.registry import (
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
+_TERMINAL_OPERATION_STATES = {
+    "COMPLETED",
+    "FAILED_RETRYABLE",
+    "FAILED_BLOCKED",
+    "CANCELLED",
+}
+
+
+def _operation_transition_audit(
+    operation: Mapping[str, object],
+    *,
+    transition_id: str,
+    run_id: str | None,
+    symbol: str | None,
+) -> dict[str, object]:
+    """실행·replay 작업 스냅샷을 한 행의 불변 상태 전환 계약으로 정규화한다."""
+
+    raw_history = operation.get("history")
+    history = (
+        [row for row in raw_history if isinstance(row, Mapping)]
+        if isinstance(raw_history, list)
+        else []
+    )
+    current = history[-1] if history else {}
+    previous = history[-2] if len(history) >= 2 else {}
+    response_revision = int(str(operation.get("revision", 0)))
+    request_revision = int(str(previous.get("revision", max(0, response_revision - 1))))
+    new_state = str(operation.get("state", current.get("state", "UNKNOWN")))
+    cause_code = str(
+        operation.get("error_code")
+        or operation.get("reason")
+        or "OPERATION_STATE_CHANGE"
+    )
+    description_ko = str(
+        operation.get("stage_ko")
+        or current.get("stage_ko")
+        or "작업 상태가 변경되었습니다."
+    )
+    return {
+        **dict(operation),
+        "transition_id": transition_id,
+        "previous_state": str(previous.get("state", "NONE")),
+        "new_state": new_state,
+        "occurred_ts_ms": int(str(operation.get("updated_ts_ms", 0))),
+        "cause": cause_code,
+        "cause_code": cause_code,
+        "description_ko": description_ko,
+        "actor": str(operation.get("actor", "RECOVERY")),
+        "run_id": run_id,
+        "strategy_id": None,
+        "account_id": None,
+        "symbol": symbol,
+        "request_revision": request_revision,
+        "response_revision": response_revision,
+        "reversible": new_state not in _TERMINAL_OPERATION_STATES,
+    }
+
 
 async def _await_shutdown_task(task: asyncio.Task[None]) -> None:
     """종료 신호가 겹쳐도 이미 시작한 안전 저장 작업은 끝까지 기다린다."""
@@ -241,13 +298,19 @@ def create_app(
         run_id = (
             active_runtime.run_id if ledger.get_run(active_runtime.run_id) is not None else None
         )
+        transition_id = f"{operation['operation_id']}-rev-{operation['revision']}"
         ledger.record_incident(
-            f"{operation['operation_id']}-rev-{operation['revision']}",
+            transition_id,
             run_id=run_id,
             severity="INFO",
             category="CONTROL_STATE_TRANSITION",
             ts_ms=int(str(operation["updated_ts_ms"])),
-            payload=operation,
+            payload=_operation_transition_audit(
+                operation,
+                transition_id=transition_id,
+                run_id=run_id,
+                symbol=None,
+            ),
         )
 
     operation_manager = ControlOperationManager(
@@ -261,13 +324,19 @@ def create_app(
             return
         source_run_id = str(operation["source_run_id"])
         run_id = source_run_id if ledger.get_run(source_run_id) is not None else None
+        transition_id = f"{operation['operation_id']}-rev-{operation['revision']}"
         ledger.record_incident(
-            f"{operation['operation_id']}-rev-{operation['revision']}",
+            transition_id,
             run_id=run_id,
             severity="INFO",
             category="REPLAY_STATE_TRANSITION",
             ts_ms=int(str(operation["updated_ts_ms"])),
-            payload=operation,
+            payload=_operation_transition_audit(
+                operation,
+                transition_id=transition_id,
+                run_id=run_id,
+                symbol=(str(operation["symbol"]) if operation.get("symbol") else None),
+            ),
         )
 
     replay_operation_manager = ReplayOperationManager(

@@ -185,6 +185,20 @@ async def test_control_transition_actor_and_reason_are_written_to_ledger(tmp_pat
     assert [row["payload"]["state"] for row in rows] == ["REQUESTED", "COMPLETED"]
     assert all(row["payload"]["actor"] == "USER_UI" for row in rows)
     assert all(row["payload"]["reason"] == "USER_START_LIVE" for row in rows)
+    assert [row["payload"]["previous_state"] for row in rows] == ["NONE", "REQUESTED"]
+    assert [row["payload"]["new_state"] for row in rows] == ["REQUESTED", "COMPLETED"]
+    assert [row["payload"]["request_revision"] for row in rows] == [0, 1]
+    assert [row["payload"]["response_revision"] for row in rows] == [1, 2]
+    assert [row["payload"]["reversible"] for row in rows] == [True, False]
+    assert all(
+        row["payload"]["transition_id"] == row["incident_id"] for row in rows
+    )
+    assert all(row["payload"]["run_id"] is None for row in rows)
+    assert all(row["payload"]["strategy_id"] is None for row in rows)
+    assert all(row["payload"]["account_id"] is None for row in rows)
+    assert all(row["payload"]["symbol"] is None for row in rows)
+    assert all(row["payload"]["cause_code"] == "USER_START_LIVE" for row in rows)
+    assert rows[-1]["payload"]["description_ko"] == "자동 관찰을 시작했습니다"
     ledger.close()
 
 

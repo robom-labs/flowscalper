@@ -1303,6 +1303,29 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         assert symbols.json()["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
         assert symbols.json()["strategy_version"] == STRATEGY_VERSION
         assert symbols.json()["excluded_prior_version_samples"] == 0
+        replay_transitions = ledger.list_incidents(category="REPLAY_STATE_TRANSITION")
+        assert replay_transitions
+        assert replay_transitions[0]["payload"]["previous_state"] == "NONE"
+        assert replay_transitions[0]["payload"]["new_state"] == "REQUESTED"
+        assert replay_transitions[0]["payload"]["request_revision"] == 0
+        assert replay_transitions[0]["payload"]["response_revision"] == 1
+        assert replay_transitions[0]["payload"]["reversible"] is True
+        assert replay_transitions[-1]["payload"]["new_state"] == "COMPLETED"
+        assert replay_transitions[-1]["payload"]["reversible"] is False
+        assert all(
+            row["payload"]["transition_id"] == row["incident_id"]
+            for row in replay_transitions
+        )
+        assert all(
+            row["payload"]["run_id"] == runtime.run_id for row in replay_transitions
+        )
+        assert all(
+            row["payload"]["cause_code"] == "USER_REPLAY_REQUEST"
+            for row in replay_transitions
+        )
+        assert all(row["payload"]["actor"] == "USER_UI" for row in replay_transitions)
+        assert all(row["payload"]["strategy_id"] is None for row in replay_transitions)
+        assert all(row["payload"]["account_id"] is None for row in replay_transitions)
     ledger.close()
 
 
