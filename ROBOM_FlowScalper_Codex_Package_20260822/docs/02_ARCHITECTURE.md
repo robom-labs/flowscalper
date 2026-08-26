@@ -209,3 +209,11 @@ No real order, credential, transfer or withdrawal endpoint may exist.
 - The production `StrategyRegistry` remains the sole runtime strategy source. An intraday research result cannot register, promote or alter a runtime strategy.
 - Registry strategy count and BASE/STRESS account count are derived from the backend registry payload. Removed strategies retain immutable accounts and trades; newly approved IDs require an explicit migration.
 - See ADR-039 and `docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md`.
+
+## 2.14 Process resource truth boundary
+
+- `ProcessResourceSampler` exposes current resident memory and lifetime peak resident memory as separate values. A peak counter must never be labeled as current usage.
+- macOS reads current RSS from `proc_pidinfo(PROC_PIDTASKINFO)`, Linux reads `/proc/self/statm`, and Windows reads the current working set. Platform-native failure falls back to the peak value with the explicit source label `PEAK_MAX_RSS_FALLBACK`.
+- `process_memory_mb` and soak `memory_growth_mb` mean current RSS. `process_memory_peak_mb` and `peak_memory_growth_mb` are diagnostic high-water marks.
+- The advanced Korean system view names both meanings explicitly. A smaller current RSS after garbage collection or buffer release is valid even while the lifetime peak remains unchanged.
+- This telemetry change does not alter strategy thresholds, PAPER plans, fills, positions, safety locks, Registry state or ledger records. See ADR-048.

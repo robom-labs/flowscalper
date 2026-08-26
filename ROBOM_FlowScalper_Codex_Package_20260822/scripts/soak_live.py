@@ -14,6 +14,12 @@ from backend.app.domain.models import RuntimeMode, Venue
 from backend.app.runtime import PaperRuntime
 
 
+def maximum_observed_growth(values: list[float], baseline: float) -> float:
+    """기준선 이후 실제로 관찰된 최대 증가량을 0 이상으로 반환한다."""
+
+    return max(0.0, max(values, default=baseline) - baseline)
+
+
 async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
     started_at = datetime.now(UTC)
     runtime = PaperRuntime(
@@ -61,6 +67,7 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
                         "main_trades": len(runtime.paper_portfolio.main.completed_trades),
                         "process_cpu_percent": resources["process_cpu_percent"],
                         "process_memory_mb": resources["process_memory_mb"],
+                        "process_memory_peak_mb": resources["process_memory_peak_mb"],
                         "disk_free_mb": resources["disk_free_mb"],
                     }
                 )
@@ -78,6 +85,9 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
     final_resources = runtime.resource_sampler.sample()
     event_counts = [int(str(sample["event_count"])) for sample in samples]
     memory_values = [float(str(sample["process_memory_mb"])) for sample in samples]
+    peak_memory_values = [
+        float(str(sample["process_memory_peak_mb"])) for sample in samples
+    ]
     queue_depths = [int(str(sample["queue_depth"])) for sample in samples]
     event_memory = [int(str(sample["event_memory_count"])) for sample in samples]
     lag_values = [
@@ -103,8 +113,13 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
         final_lag_below_threshold
         or (supervisor_snapshot.get("entry_locked") is True and runtime.paused)
     )
-    memory_growth = (
-        max(memory_values) - float(str(baseline["process_memory_mb"])) if memory_values else 0.0
+    memory_growth = maximum_observed_growth(
+        memory_values,
+        float(str(baseline["process_memory_mb"])),
+    )
+    peak_memory_growth = maximum_observed_growth(
+        peak_memory_values,
+        float(str(baseline["process_memory_peak_mb"])),
     )
     checks = {
         "public_live_started": started,
@@ -149,6 +164,7 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
         "baseline_resources": baseline,
         "final_resources": final_resources,
         "memory_growth_mb": round(memory_growth, 3),
+        "peak_memory_growth_mb": round(peak_memory_growth, 3),
         "max_event_memory_count": max(event_memory, default=0),
         "max_queue_depth": max(queue_depths, default=0),
         "max_lag_p95_ms": max(lag_values, default=0),

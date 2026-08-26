@@ -203,3 +203,12 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [x] Actual orders, private API, auth, API keys, secrets and wallet paths remain zero.
 - [ ] Current-version natural LIVE_PUBLIC samples meet the preregistered profitability gate.
 - [ ] Six-hour and 24-hour post-change soaks and a non-disruptive active-ledger full `quick_check` are completed.
+
+## T. Current and peak process-memory truth
+
+- [x] The backend reports current resident memory and lifetime peak resident memory as separate fields with explicit source labels.
+- [x] A regression test prevents a peak RSS counter from being presented as current RSS.
+- [x] The advanced Korean diagnostics view labels and displays current RSS and peak RSS separately.
+- [x] Soak memory growth uses current RSS and preserves peak growth as a separate diagnostic.
+- [ ] The restarted actual service current RSS is compared with the operating-system process RSS in the same observation window.
+- [ ] Six-hour and 24-hour post-change memory stability is measured for the implementation commit.

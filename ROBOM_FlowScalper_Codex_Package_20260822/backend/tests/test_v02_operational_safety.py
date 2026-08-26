@@ -8,6 +8,7 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+import backend.app.ops.resources as resources_module
 import backend.app.runtime as runtime_module
 import backend.app.storage.parquet as parquet_module
 from backend.app.clocks import TestClock as DeterministicClock
@@ -19,6 +20,7 @@ from backend.app.storage.parquet import DiskUsage, ParquetEventStore
 from backend.app.storage.sqlite import SQLiteLedger
 from backend.tests.test_candidate_paper_portfolio import candidate_plan
 from backend.tests.test_storage_replay_analytics import _sample_trade
+from scripts.soak_live import maximum_observed_growth
 
 
 def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: Path) -> None:
@@ -28,11 +30,56 @@ def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: P
     second = sampler.sample()
 
     assert float(str(first["process_memory_mb"])) > 0
+    assert first["process_memory_source"] in {
+        "CURRENT_RSS_LIBPROC",
+        "CURRENT_RSS_PROCFS",
+        "CURRENT_WORKING_SET",
+    }
+    assert float(str(first["process_memory_peak_mb"])) >= float(
+        str(first["process_memory_mb"])
+    )
+    assert str(first["process_memory_peak_source"]).startswith("PEAK_")
     assert float(str(second["process_cpu_percent"])) >= 0
     assert int(str(second["process_threads"])) >= 1
     assert float(str(second["disk_total_mb"])) > 0
     assert float(str(second["disk_free_mb"])) > 0
     assert 0 <= float(str(second["disk_free_ratio"])) <= 1
+
+
+def test_current_memory_does_not_relabel_peak_rss_as_current(monkeypatch) -> None:
+    current_bytes = 128 * 1024**2
+    monkeypatch.setattr(resources_module.sys, "platform", "darwin")
+    monkeypatch.setattr(resources_module, "_darwin_current_rss_bytes", lambda: current_bytes)
+
+    measured_bytes, source = resources_module._process_memory_bytes()
+
+    assert measured_bytes == current_bytes
+    assert source == "CURRENT_RSS_LIBPROC"
+    assert source != "PEAK_MAX_RSS"
+
+
+def test_current_memory_fallback_is_labeled_as_peak(monkeypatch) -> None:
+    peak_bytes = 192 * 1024**2
+    monkeypatch.setattr(resources_module.sys, "platform", "darwin")
+    monkeypatch.setattr(resources_module, "_darwin_current_rss_bytes", lambda: 0)
+    monkeypatch.setattr(
+        resources_module,
+        "_peak_process_memory_bytes",
+        lambda: (peak_bytes, "PEAK_MAX_RSS"),
+    )
+
+    measured_bytes, source = resources_module._process_memory_bytes()
+
+    assert measured_bytes == peak_bytes
+    assert source == "PEAK_MAX_RSS_FALLBACK"
+
+
+def test_soak_current_and_peak_memory_growth_remain_independent() -> None:
+    current_growth = maximum_observed_growth([96.0, 94.0, 95.0], 100.0)
+    peak_growth = maximum_observed_growth([162.0, 170.0, 170.0], 150.0)
+
+    assert current_growth == 0.0
+    assert peak_growth == 20.0
 
 
 def test_archive_worker_applies_macos_background_io_policy_once(monkeypatch) -> None:

@@ -325,3 +325,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 10. Exercise the actual browser history filters, detail drawer, trade replay Play, pause/complete, first, next and end controls. Check console warnings and capture screenshots.
 11. Run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene. Record the short LIVE observation separately from six-hour and 24-hour soak evidence.
 12. Keep actual orders, private API, credentials, secrets, wallets and profitability claims at zero. Push implementation and final evidence to GitHub main and confirm Actions before completion.
+
+## Current and peak process-memory truth Wave
+
+1. Compare the dashboard process-memory number with the operating-system current RSS before changing telemetry. Record the exact Run, process and observation time.
+2. Never use a lifetime peak counter as current usage. Expose current resident memory and lifetime peak resident memory as separate values with explicit source labels.
+3. Use platform-native current RSS on macOS, Linux and Windows. If the native measurement fails, label the peak fallback explicitly instead of silently presenting it as current.
+4. Calculate soak memory growth from current RSS. Preserve peak growth only as a separate diagnostic high-water mark.
+5. Keep strategy thresholds, PAPER entry and exit rules, Registry state, ledger rows, actual-order safety and current Run state unchanged.
+6. Add backend regression tests for current-versus-peak semantics and frontend tests for the beginner-readable Korean advanced diagnostics labels.
+7. Preserve the running service until a useful long-run boundary is recorded when it is safe to do so. Restart only when all main and Strategy League PAPER positions are flat.
+8. After restart, compare API current RSS with the operating-system RSS, verify peak is not lower than current, and exercise the actual advanced diagnostics screen in the browser.
+9. Re-run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene. Record six-hour and 24-hour stability separately and never infer them from a short sample.
+10. Update machine-readable evidence and `FINAL_UPGRADE_EVIDENCE.md`, push the reviewed implementation to GitHub main and confirm Actions before calling the Wave complete.

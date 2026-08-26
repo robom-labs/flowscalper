@@ -258,3 +258,13 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 - Verify main, Strategy League and combined history across current/all Run, current/all strategy version, BASE/STRESS and LIVE_PUBLIC/OFFLINE sample type.
 - Verify every public timeframe is accepted end-to-end and unsupported values fail explicitly.
 - Verify replay discovery keeps an event-only Run with no completed trade.
+
+## 12.21 Current and peak process-memory regression
+
+- Require the current-memory source to be `CURRENT_RSS_LIBPROC`, `CURRENT_RSS_PROCFS` or `CURRENT_WORKING_SET` on a supported platform.
+- Require the separately reported peak RSS to be greater than or equal to current RSS and to use an explicit `PEAK_` source.
+- Mock a lower current RSS and a higher peak RSS. Verify the current field cannot silently reuse or relabel the peak counter.
+- Verify the advanced Korean system view displays both labels and values independently.
+- Verify soak `memory_growth_mb` is calculated from current RSS while `peak_memory_growth_mb` remains a separate high-water diagnostic.
+- Compare the restarted service current RSS with the operating-system process RSS. Record tolerance and source in machine-readable evidence.
+- A unit test or short sample does not prove six-hour or 24-hour memory stability. Those gates remain `NOT_RUN` until their exact wall-clock duration completes.

@@ -52,6 +52,33 @@ test('navigates five main groups and contextual subpages', async () => {
   }
 })
 
+test('separates current RSS from peak RSS in advanced diagnostics', async () => {
+  const resourceDashboard = {
+    ...initialDashboard,
+    system: {
+      ...initialDashboard.system,
+      process_memory_mb: 245.5,
+      process_memory_source: 'CURRENT_RSS_LIBPROC',
+      process_memory_peak_mb: 323.25,
+      process_memory_peak_source: 'PEAK_MAX_RSS',
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => resourceDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: '설정' }))
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+
+  expect(await screen.findByText('현재 프로세스 메모리 RSS MB')).toBeInTheDocument()
+  expect(screen.getByText('프로세스 최고 메모리 RSS MB')).toBeInTheDocument()
+  expect(screen.getByText('245.5')).toBeInTheDocument()
+  expect(screen.getByText('323.25')).toBeInTheDocument()
+})
+
 test('shows an explicit initial backend failure instead of pretending LIVE', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
   vi.stubGlobal('WebSocket', FakeWebSocket)
