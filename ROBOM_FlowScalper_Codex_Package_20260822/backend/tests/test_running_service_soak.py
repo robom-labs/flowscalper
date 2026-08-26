@@ -57,6 +57,17 @@ def _payload() -> dict[str, object]:
             "qualified_signal_count": 2,
             "queue_depth": 0,
             "queue_capacity": 4_096,
+            "supervisor_running": True,
+            "consumer_running": True,
+            "consumer_delivery_count": 100,
+            "consumer_delivery_failure_count": 0,
+            "consumer_delivery_drop_count": 0,
+            "consumer_recovery_count": 0,
+            "consumer_fault_active": False,
+            "queue_overload_active": False,
+            "queue_overload_incident_count": 0,
+            "queue_overload_recovery_count": 0,
+            "queue_overload_drop_count": 0,
             "lag_p95_ms": 50.0,
             "trade_lag_p95_ms": 80.0,
             "wide_lag_p95_ms": 1_200.0,
@@ -115,6 +126,7 @@ def _advanced_payload() -> dict[str, object]:
             "event_count": 300,
             "strategy_evaluation_count": 1_500,
             "qualified_signal_count": 3,
+            "consumer_delivery_count": 300,
             "persistence_flush_count": 12,
             "wal_checkpoint_count": 3,
             "process_memory_mb": 210.0,
@@ -156,6 +168,58 @@ def test_running_service_soak_rejects_stalled_strategy_and_new_faults() -> None:
     assert "strategy_evaluations_continued" in result["failures"]
     assert "no_dropped_events" in result["failures"]
     assert "no_persistence_faults" in result["failures"]
+
+
+def test_running_service_soak_requires_consumer_progress_and_no_task_faults() -> None:
+    baseline = _payload()
+    baseline_system = baseline["system"]
+    assert isinstance(baseline_system, dict)
+    baseline_system.update(
+        {
+            "supervisor_running": True,
+            "consumer_running": True,
+            "consumer_delivery_count": 100,
+            "consumer_delivery_failure_count": 0,
+            "consumer_delivery_drop_count": 0,
+            "consumer_recovery_count": 0,
+            "consumer_fault_active": False,
+            "queue_overload_active": False,
+            "queue_overload_incident_count": 0,
+            "queue_overload_recovery_count": 0,
+            "queue_overload_drop_count": 0,
+        }
+    )
+    unsafe = _advanced_payload()
+    unsafe_system = unsafe["system"]
+    assert isinstance(unsafe_system, dict)
+    unsafe_system.update(
+        {
+            "supervisor_running": False,
+            "consumer_running": False,
+            "consumer_delivery_count": 100,
+            "consumer_delivery_failure_count": 1,
+            "consumer_delivery_drop_count": 1,
+            "consumer_recovery_count": 0,
+            "consumer_fault_active": True,
+            "queue_overload_active": True,
+            "queue_overload_incident_count": 1,
+            "queue_overload_recovery_count": 0,
+            "queue_overload_drop_count": 10,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(baseline, 0.0), _sample(unsafe, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "FAIL"
+    assert "supervisor_running_throughout" in result["failures"]
+    assert "consumer_running_throughout" in result["failures"]
+    assert "consumer_deliveries_continued" in result["failures"]
+    assert "no_consumer_delivery_failures" in result["failures"]
+    assert "no_consumer_delivery_drops" in result["failures"]
+    assert "no_queue_overload_incidents" in result["failures"]
 
 
 def test_running_service_soak_allows_fail_closed_reconnect_that_recovers() -> None:

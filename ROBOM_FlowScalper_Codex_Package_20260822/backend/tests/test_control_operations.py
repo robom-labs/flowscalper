@@ -155,6 +155,48 @@ async def test_start_live_while_same_run_is_observed_is_noop(monkeypatch) -> Non
     assert "이미 같은 PAPER Run" in current["history"][-2]["stage_ko"]
 
 
+async def test_start_live_restarts_stopped_supervisor_without_creating_new_run(
+    monkeypatch,
+) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id="run-restart-same-live",
+        venue=Venue.BINANCE_USDM,
+    )
+    monkeypatch.setattr(PaperRuntime, "live_observation_running", lambda _self: False)
+    restarts: list[str] = []
+
+    async def restart_same_run(_self, progress=None):
+        restarts.append(_self.run_id)
+        if progress is not None:
+            await progress("CONNECTING_PRIMARY", "같은 PAPER Run을 다시 연결하고 있습니다")
+        return True
+
+    async def fail_if_new_run_created(*_args, **_kwargs):
+        raise AssertionError("멈춘 LIVE supervisor 복구가 새 Run을 만들면 안 됩니다.")
+
+    monkeypatch.setattr(PaperRuntime, "start_persistent_live", restart_same_run)
+    monkeypatch.setattr(PaperRuntime, "start_live_run", fail_if_new_run_created)
+    transport = httpx.ASGITransport(app=create_app(runtime))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/control/start-live",
+            headers={"Idempotency-Key": "restart-same-live"},
+            json={"expected_revision": 0, "reason": "USER_RESTART_LIVE"},
+        )
+        assert response.status_code == 202
+        for _ in range(20):
+            current = (await client.get("/api/control/operations/current")).json()
+            if current["state"] in {"COMPLETED", "FAILED_BLOCKED", "FAILED_RETRYABLE"}:
+                break
+            await asyncio.sleep(0)
+
+    assert current["state"] == "COMPLETED"
+    assert runtime.run_id == "run-restart-same-live"
+    assert restarts == ["run-restart-same-live"]
+
+
 async def test_control_transition_actor_and_reason_are_written_to_ledger(tmp_path) -> None:
     ledger = SQLiteLedger(tmp_path / "control-audit.sqlite3")
     runtime = PaperRuntime(

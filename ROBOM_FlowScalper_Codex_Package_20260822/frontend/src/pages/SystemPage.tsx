@@ -31,6 +31,22 @@ const diagnosticLabels: Record<string, string> = {
   planned_rotations: '계획 회전',
   entry_locked: '신규 진입 잠금',
   last_error: '최근 오류',
+  supervisor_running: '시장 관찰 작업 실행',
+  consumer_running: '시장 처리 작업 실행',
+  consumer_delivery_count: '시장 처리 완료 이벤트',
+  consumer_delivery_failure_count: '시장 처리 오류',
+  consumer_delivery_drop_count: '시장 처리 오류 누락',
+  consumer_recovery_count: '시장 처리 자동 복구',
+  consumer_fault_active: '시장 처리 안전잠금',
+  consumer_last_delivery_ts_ms: '최근 시장 처리 완료시각 ms',
+  consumer_last_failure_ts_ms: '최근 시장 처리 오류시각 ms',
+  consumer_last_recovered_ts_ms: '최근 시장 처리 복구시각 ms',
+  queue_overload_active: 'queue 과부하 안전잠금',
+  queue_overload_incident_count: 'queue 과부하 사건',
+  queue_overload_recovery_count: 'queue 과부하 복구',
+  queue_overload_drop_count: 'queue 과부하 누락',
+  queue_overload_last_started_ts_ms: '최근 queue 과부하 시작시각 ms',
+  queue_overload_last_recovered_ts_ms: '최근 queue 과부하 복구시각 ms',
   storage: '저장소',
   retention_deep_book_days: '호가 보존일',
   retention_feature_days: '특징 보존일',
@@ -148,7 +164,24 @@ function readableDiagnostic(name: string, value: string | number | boolean) {
 }
 
 export function SystemPage({ data, connected, lastUpdateMs }: Props) {
-  const healthy = data.status.market_data_state === 'LIVE' || data.status.market_data_state === 'FIXTURE'
+  const marketConnected = data.status.market_data_state === 'LIVE' || data.status.market_data_state === 'FIXTURE'
+  const supervisorStopped = data.system.supervisor_running === false
+  const consumerStopped = data.system.consumer_running === false
+  const consumerFault = data.system.consumer_fault_active === true
+  const queueOverload = data.system.queue_overload_active === true
+  const consumerHealthy = !supervisorStopped && !consumerStopped && !consumerFault && !queueOverload
+  const healthy = marketConnected && consumerHealthy
+  const marketStatusTitle = consumerStopped
+    ? '시장 처리 멈춤'
+    : supervisorStopped
+      ? '시장 관찰 멈춤'
+      : consumerFault || queueOverload
+        ? '처리 안전 대기'
+        : healthy
+          ? '정상'
+          : data.status.mode === 'READY'
+            ? '시작 대기'
+            : '재연결 확인 필요'
   const reconnects = Number(data.system.unplanned_reconnects ?? data.system.reconnects ?? 0)
   const plannedRotations = Number(data.system.planned_rotations ?? 0)
   const gaps = Number(data.system.sequence_gaps ?? 0)
@@ -196,7 +229,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
     <section aria-labelledby="system-heading">
       <div className="page-heading"><div><p className="section-kicker">SYSTEM STATUS</p><h2 id="system-heading">시스템 상태</h2><p className="heading-help">시장 연결, 시간, 저장공간, 자동 재연결 상태를 확인합니다.</p></div><span className="page-note">로그인 정보 전송 {data.system.auth_headers ? '감지됨' : '0건'}</span></div>
       <section className="system-summary-grid">
-        <article className="panel"><span>시장데이터</span><b className={healthy ? 'positive' : 'warning'}>{healthy ? '정상' : data.status.mode === 'READY' ? '시작 대기' : '재연결 확인 필요'}</b><small>{data.status.mode === 'DEMO_FIXTURE' ? '오프라인 DEMO · LIVE 아님' : data.status.venue}</small></article>
+        <article className="panel"><span>시장데이터</span><b className={healthy ? 'positive' : 'warning'}>{marketStatusTitle}</b><small>{data.status.mode === 'DEMO_FIXTURE' ? '오프라인 DEMO · LIVE 아님' : data.status.venue}</small></article>
         <article className="panel"><span>감시 / 정밀 분석</span><b>{data.status.wide_symbols} / {data.status.deep_symbols}종목</b><small>넓게 감시한 뒤 상위 종목을 정밀 분석</small></article>
         <article className="panel"><span>실제 호가 / 체결 지연 p95</span><b>{bookLag.toFixed(0)} / {tradeLag.toFixed(0)}ms</b><small>신규 진입은 실제 호가 지연으로 안전 판단</small></article>
         <article className="panel"><span>현재 시각 KST</span><b title={lastUpdateMs ? formatKstDateTime(lastUpdateMs) : undefined}>{lastUpdateMs ? formatKstTime(lastUpdateMs) : '대기 중'}</b><small>{connected ? `실시간 연결 · 서버 ${clockDeltaMs === null ? '동기 확인 중' : `${clockDeltaMs.toFixed(0)}ms 차이`} · ${venueClockText}` : '자동 재연결 중'}</small></article>
@@ -206,7 +239,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
         <article className="panel"><span>마지막 PAPER 상태</span><b>{paperTransitionTitle}</b><small>{paperTransitionDetail}</small></article>
         <article className="panel"><span>실제 주문 경로</span><b className="positive">0</b><small>private API · 인증 · 주문 전송 없음</small></article>
       </section>
-      <section className="panel endpoint-panel"><h3>연결 진실성</h3><p>오프라인 DEMO는 LIVE로 표시하지 않습니다. LIVE 표시는 공개 REST 메타데이터와 첫 sequence-valid WebSocket 이벤트가 모두 확인된 뒤에만 가능합니다.</p><div className="health-row"><span>시장데이터 {healthy ? '검증됨' : '미검증'}</span><span>실행 PAPER 전용</span><span>실제 주문 DISABLED</span><span>로그인·API 키 불필요</span></div></section>
+      <section className="panel endpoint-panel"><h3>연결 진실성</h3><p>오프라인 DEMO는 LIVE로 표시하지 않습니다. LIVE 표시는 공개 REST 메타데이터와 첫 sequence-valid WebSocket 이벤트가 모두 확인된 뒤에만 가능합니다.</p><div className="health-row"><span>시장데이터 {marketConnected ? '검증됨' : '미검증'}</span><span>시장 처리 {consumerHealthy ? '정상' : '안전대기'}</span><span>실행 PAPER 전용</span><span>실제 주문 DISABLED</span><span>로그인·API 키 불필요</span></div></section>
       <details className="panel advanced-details system-diagnostics"><summary>고급 진단 보기</summary><div className="diagnostic-grid">{Object.entries(data.system).map(([name, value]) => <div key={name}><span>{diagnosticLabels[name] ?? name.replaceAll('_', ' ')}</span><b title={name === 'release_commit' ? String(value) : undefined}>{readableDiagnostic(name, value)}</b></div>)}</div></details>
     </section>
   )

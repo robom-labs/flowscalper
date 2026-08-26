@@ -268,6 +268,7 @@ class ReplayRequest(BaseModel):
         max_length=30,
         pattern=r"^[A-Za-z0-9]+$",
     )
+    event_limit: int | None = Field(default=None, ge=1)
 
 
 def _local_browser_origin(origin: str | None) -> bool:
@@ -826,7 +827,11 @@ def create_app(
                 message_ko=blocked[1],
                 retryable=False,
             )
-        started = await active_runtime.start_live_run(progress=progress)
+        started = (
+            await active_runtime.start_persistent_live(progress=progress)
+            if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            else await active_runtime.start_live_run(progress=progress)
+        )
         if not started:
             raise ControlOperationFailure(
                 code="PUBLIC_DATA_UNAVAILABLE",
@@ -1300,6 +1305,32 @@ def create_app(
                 )
                 if selected_run is not None and selected_run.get("market_event_count") is not None:
                     total_events = int(str(selected_run["market_event_count"]))
+            if total_events is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error_code": "REPLAY_SCOPE_COUNT_UNAVAILABLE",
+                        "error_message_ko": (
+                            "저장 이벤트 전체 건수를 확인할 수 없어 같은 입력 범위를 "
+                            "고정하지 못했습니다. 잠시 뒤 다시 시도하세요."
+                        ),
+                        "retryable": True,
+                    },
+                )
+            if request.event_limit is not None:
+                if request.event_limit > total_events:
+                    raise HTTPException(
+                        status_code=409,
+                        detail={
+                            "error_code": "REPLAY_SCOPE_NOT_AVAILABLE",
+                            "error_message_ko": (
+                                "요청한 저장 이벤트 고정 범위가 현재 원장보다 큽니다. "
+                                "정밀 이벤트를 다시 불러온 뒤 시도하세요."
+                            ),
+                            "retryable": True,
+                        },
+                    )
+                total_events = request.event_limit
 
             async def runner(progress: ProgressCallback) -> dict[str, object]:
                 await progress(
@@ -1329,6 +1360,7 @@ def create_app(
                                 run_id,
                                 active_runtime.clock.utc_ms(),
                                 symbol,
+                                total_events,
                                 cancellable=True,
                             )
 
@@ -1362,6 +1394,7 @@ def create_app(
                     active_runtime.replay_stored_run,
                     run_id,
                     symbol=symbol,
+                    event_limit=total_events,
                 )
                 remember_replay_result(completed)
                 return completed

@@ -1,0 +1,208 @@
+{
+  "schema": "flowscalper.wave62.consumer_lock_and_overload_recovery_qa.v1",
+  "status": "IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_DEPLOY",
+  "date": "2026-08-27",
+  "baseline_incident": {
+    "service_release": "MUTABLE_WORKTREE_BASELINE",
+    "run_id": "run-2b7135a972dd",
+    "first_detected_kst": "2026-08-27T05:22:30+09:00",
+    "later_sample_kst": "2026-08-27T05:38:37.826000+09:00",
+    "operation_ui_state": "RUNNING",
+    "event_count": 1769529,
+    "strategy_evaluation_count_stuck": 5607312,
+    "queue_depth": 4096,
+    "queue_capacity": 4096,
+    "dropped_events": 106297,
+    "entry_locked": true,
+    "planned_rotations": 24,
+    "reconnects": 25,
+    "unplanned_reconnects": 1,
+    "persistence_flush_count_stuck": 829,
+    "persistence_flush_last_completed_kst": "2026-08-27T05:13:34.004000+09:00",
+    "market_persistence_buffer_stuck": 222,
+    "actual_orders": 0,
+    "auth": 0
+  },
+  "process_evidence": {
+    "sample_path": "/tmp/python_2026-08-27_052510_dp6u.sample.txt",
+    "main_process": "public provider parsing continued",
+    "worker_threads": "two idle SimpleQueue workers and one worker blocked in lock_PyThread_acquire_lock",
+    "child_archive_worker": "idle while reading its process pipe",
+    "causality": "STRONG_MATCH_NOT_DIRECTLY_LOGGED"
+  },
+  "confirmed_code_defects": [
+    {
+      "defect": "SQLite _Transaction.__enter__ retained RLock when BEGIN IMMEDIATE raised",
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "another worker could not acquire the process lock within 0.2 seconds"
+    },
+    {
+      "defect": "one sink exception terminated paper-consumer while producer continued",
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "Task exception was never retrieved and consumer task completed"
+    },
+    {
+      "defect": "dashboard could display RUNNING while queue was full and entry_locked was true",
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "operation state was SAFETY_WAITING instead of explicit consumer-stopped SAFETY_BLOCKED"
+    },
+    {
+      "defect": "overlapping persistence lock could mask a stopped consumer as active market observation",
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "market_observation_active was true while the consumer was stopped"
+    },
+    {
+      "defect": "producer or supervisor task termination was not connected to runtime entry safety",
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "stale consumer_running true allowed runtime.paused false although supervisor tasks were not running"
+    },
+    {
+      "defect": "START after supervisor termination archived the current Run instead of reconnecting it",
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "same-Run recovery operation failed because the new-Run path was invoked"
+    },
+    {
+      "defect": "long service soak ignored supervisor and consumer progress counters",
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "a stopped supervisor, stopped consumer and new delivery failures still produced PASS"
+    }
+  ],
+  "implementation": {
+    "transaction_begin_failure_releases_lock": true,
+    "consumer_exception_isolated_per_event": true,
+    "consumer_task_survives": true,
+    "supervisor_task_liveness_fail_closed": true,
+    "consumer_and_queue_fault_metrics": true,
+    "queue_low_water_recovery_gate": true,
+    "paper_entry_fail_closed": true,
+    "runtime_reason_flags": [
+      "ENTRY_LOCK_CONSUMER_NOT_RUNNING",
+      "ENTRY_LOCK_PUBLIC_SUPERVISOR_NOT_RUNNING",
+      "ENTRY_LOCK_CONSUMER_DELIVERY_FAULT",
+      "ENTRY_LOCK_EVENT_QUEUE_OVERLOAD"
+    ],
+    "consumer_stopped_ui_is_truthful": true,
+    "task_stop_precedes_overlapping_storage_status": true,
+    "restart_preserves_same_run": true,
+    "service_soak_gates_consumer_progress": true
+  },
+  "targeted_validation": {
+    "focused_regressions": {"status": "PASS", "tests": 4, "seconds": 0.31},
+    "supervisor_and_ledger_files": {"status": "PASS", "tests": 40, "seconds": 0.43},
+    "fixture_and_operational_safety_files": {"status": "PASS", "tests": 46, "seconds": 4.17},
+    "frontend_consumer_truth": {
+      "failure_first": "FAIL_AS_EXPECTED",
+      "observed_failure": "stopped consumer was shown as start waiting and raw English diagnostics",
+      "status": "PASS",
+      "full_frontend_files": 14,
+      "full_frontend_tests": 66,
+      "seconds": 5.51
+    },
+    "supervisor_file": {"status": "PASS", "tests": 24, "seconds": 1.52},
+    "control_file": {"status": "PASS", "tests": 11, "seconds": 0.88},
+    "service_soak_file": {"status": "PASS", "tests": 10, "seconds": 0.58},
+    "ruff": "PASS",
+    "mypy_scope": {"status": "PASS", "source_files": 4},
+    "eslint": "PASS",
+    "typescript": "PASS"
+  },
+  "full_regression": {
+    "backend": {
+      "status": "PASS",
+      "tests": 459,
+      "seconds": 27.09
+    },
+    "frontend": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 66,
+      "seconds": 5.51
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "security": {
+      "status": "PASS",
+      "source_files": 131,
+      "violations": 0,
+      "secret_like_findings": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "production_build": {
+      "status": "PASS",
+      "modules": 50,
+      "javascript_bytes": 523760,
+      "javascript_gzip_bytes": 161180,
+      "warning": "EXISTING_BUNDLE_OVER_500_KB"
+    },
+    "paper_build_safety": "PASS",
+    "fixture_backend": {
+      "status": "PASS",
+      "tests": 18,
+      "seconds": 5.90
+    },
+    "playwright": {
+      "status": "PASS",
+      "viewports": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 22.1,
+      "data_scope": "OFFLINE_FIXTURE"
+    }
+  },
+  "baseline_observation": {
+    "six_hour": {
+      "status": "FAIL",
+      "requested_duration_completed": true,
+      "observed_duration_seconds": 21601.135,
+      "event_delta": 1644522,
+      "strategy_evaluation_delta": 4832976,
+      "final_queue_depth": 4096,
+      "final_dropped_events": 239541,
+      "critical_lag_incident_delta": 11,
+      "current_version_base_samples": 8,
+      "current_version_base_net_pnl": "-5.797715452",
+      "current_version_stress_samples": 8,
+      "current_version_stress_net_pnl": "-10.428927744",
+      "evidence": "evidence/WAVE49_RUNNING_SERVICE_SOAK_6H.json"
+    },
+    "twenty_four_hour": {
+      "status": "ABORTED_OPERATOR",
+      "requested_duration_completed": false,
+      "observed_duration_seconds": 21566.902,
+      "evidence": "evidence/WAVE49_RUNNING_SERVICE_SOAK_24H.json"
+    }
+  },
+  "remaining": {
+    "baseline_six_hour_result": "FAIL_REQUESTED_DURATION_COMPLETED",
+    "baseline_twenty_four_hour_result": "ABORTED_OPERATOR_REQUESTED_DURATION_NOT_COMPLETED",
+    "full_backend": "PASS_459_TESTS",
+    "full_frontend": "PASS_14_FILES_66_TESTS",
+    "fixture": "PASS_18_TESTS",
+    "production_build": "PASS_WITH_EXISTING_BUNDLE_SIZE_WARNING",
+    "security": "PASS",
+    "repository_hygiene": "PASS",
+    "playwright_three_viewports": "PASS_OFFLINE_FIXTURE_ONLY",
+    "deployment": "NOT_RUN",
+    "post_deploy_thirty_minute": "NOT_RUN",
+    "post_deploy_six_hour": "NOT_RUN",
+    "post_deploy_twenty_four_hour": "NOT_RUN",
+    "strategy_profitability": "NOT_PROVEN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

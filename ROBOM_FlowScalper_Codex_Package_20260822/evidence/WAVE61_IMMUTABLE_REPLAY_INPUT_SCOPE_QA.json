@@ -1,0 +1,128 @@
+{
+  "schema": "flowscalper.wave61.immutable_replay_input_scope_qa.v1",
+  "status": "IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_DEPLOY",
+  "date": "2026-08-27",
+  "reproduction": {
+    "source_run_id": "run-2b7135a972dd",
+    "symbol": "ONGUSDT",
+    "cancelled_operation_id": "replay-operation-ebf3dca53f5f47b08869f3c1da4662e4",
+    "cancelled_operation_event_count": 485283,
+    "later_preview_event_count": 494535,
+    "old_request_fields": ["symbol"],
+    "root_cause": "An open LIVE Run appended events while replay scope was identified only by Run and symbol."
+  },
+  "implementation": {
+    "request_event_limit": true,
+    "operation_total_events_is_fixed_scope": true,
+    "isolated_process_uses_event_limit": true,
+    "in_process_replay_uses_event_limit": true,
+    "exact_loaded_count_required": true,
+    "input_checksum_separate_from_end_to_end_checksum": true,
+    "legacy_result_label_is_honest": true
+  },
+  "failure_first": {
+    "status": "FAIL_AS_EXPECTED",
+    "failed": 1,
+    "reason": "StoredMarketReplay.run did not accept event_limit."
+  },
+  "targeted_validation": {
+    "backend": {"status": "PASS", "tests": 4, "seconds": 0.61},
+    "frontend": {"status": "PASS", "files": 1, "tests": 4, "seconds": 0.83},
+    "ruff": "PASS",
+    "mypy_scope": {"status": "PASS", "source_files": 5},
+    "typescript": "PASS"
+  },
+  "full_regression": {
+    "backend": {
+      "status": "PASS",
+      "tests": 459,
+      "seconds": 27.09
+    },
+    "frontend": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 66,
+      "seconds": 5.51
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "security": {
+      "status": "PASS",
+      "source_files": 131,
+      "violations": 0,
+      "secret_like_findings": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "production_build": {
+      "status": "PASS",
+      "modules": 50,
+      "javascript_bytes": 523760,
+      "javascript_gzip_bytes": 161180,
+      "warning": "EXISTING_BUNDLE_OVER_500_KB"
+    },
+    "paper_build_safety": "PASS",
+    "fixture_backend": {
+      "status": "PASS",
+      "tests": 18,
+      "seconds": 5.90
+    },
+    "playwright": {
+      "status": "PASS",
+      "viewports": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 22.1,
+      "data_scope": "OFFLINE_FIXTURE"
+    }
+  },
+  "baseline_observation": {
+    "six_hour": {
+      "status": "FAIL",
+      "requested_duration_completed": true,
+      "observed_duration_seconds": 21601.135,
+      "samples": 720,
+      "probe_errors": 0,
+      "evidence": "evidence/WAVE49_RUNNING_SERVICE_SOAK_6H.json"
+    },
+    "twenty_four_hour": {
+      "status": "ABORTED_OPERATOR",
+      "requested_duration_completed": false,
+      "observed_duration_seconds": 21566.902,
+      "samples": 360,
+      "probe_errors": 0,
+      "evidence": "evidence/WAVE49_RUNNING_SERVICE_SOAK_24H.json"
+    }
+  },
+  "remaining": {
+    "full_backend": "PASS_459_TESTS",
+    "full_frontend": "PASS_14_FILES_66_TESTS",
+    "fixture": "PASS_18_TESTS",
+    "production_build": "PASS_WITH_EXISTING_BUNDLE_SIZE_WARNING",
+    "security": "PASS",
+    "repository_hygiene": "PASS",
+    "playwright_three_viewports": "PASS_OFFLINE_FIXTURE_ONLY",
+    "actual_fixed_485283_event_replay": "NOT_RUN",
+    "cancelled_attempt_input_checksum_match": "NOT_PROVEN",
+    "deployment": "NOT_RUN",
+    "post_deploy_six_hour": "NOT_RUN",
+    "post_deploy_twenty_four_hour": "NOT_RUN",
+    "strategy_profitability": "NOT_PROVEN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

@@ -468,3 +468,30 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Transfer the closed clone to a different physical device, require exact bytes and SHA-256, and run full immutable quick-check and foreign-key validation while independently monitoring the new LIVE service.
 9. Preserve the baseline six-hour FAIL and the operator-aborted contaminated 24-hour run. Start fresh post-deploy six-hour and 24-hour observers only after installed flush and planned-rotation gates pass.
 10. Do not change strategy thresholds, costs, TP, SL, fills, Governor, risk budgets or ledger precision. Keep actual orders, private API, API keys, secrets, wallets and runtime AI decisions at zero.
+
+## Immutable replay-input scope Wave
+
+1. Treat an open LIVE Run as an append-only source whose event count can increase while a long replay is running. A matching Run ID and symbol alone do not prove matching input.
+2. Capture the selected timeline event count when the user requests strategy verification and submit it as an explicit positive `event_limit`.
+3. Resolve and validate the effective count before starting the asynchronous operation. Reject a requested count larger than the currently persisted scope instead of silently widening or shortening it.
+4. Apply the effective count in the isolated process and the in-process replay path. Require the loader to return exactly that many checksum-verified ordered events.
+5. Keep the operation `total_events` field as the exact frozen input count, not an approximate progress label.
+6. Expose a SHA-256 over the normalized source-event stream separately from the end-to-end checksum that also binds strategy version, configuration and decision path.
+7. Label older stored results without an input-only checksum honestly. Do not relabel the existing end-to-end checksum as an input checksum.
+8. Preserve the previous cancelled 485,283-event operation as FAIL/CANCELLED. A new 485,283-event attempt may prove its own fixed input checksum but cannot retroactively prove the cancelled attempt's unfinished checksum.
+9. Add failing-first backend fixed-scope and frontend request-contract tests, then run complete backend, frontend, static, build, PAPER safety, security, repository hygiene and three-viewport browser validation.
+10. Do not alter strategies, thresholds, costs, TP, SL, fills, Governor, risk, account topology or PAPER safety. Deploy only after the baseline six-hour boundary and the maintenance-coordinated immutable handoff.
+
+## Consumer lock-leak and overload-recovery Wave
+
+1. Preserve the baseline queue-full incident and its increasing drop count until the six-hour observer finishes. Do not restart the installed service early to make the metrics look healthy.
+2. Treat event progress from the provider as insufficient proof of market processing. Compare consumer delivery, strategy evaluation and persistence completion independently.
+3. Release the process `RLock` when SQLite `BEGIN IMMEDIATE` raises before a transaction context has been entered. Re-raise the original exception and keep FULL durability unchanged.
+4. Isolate one sink exception to one explicitly counted delivery drop. Keep the consumer task alive, lock new PAPER entry and expose the exact failure count and last failure time.
+5. Treat a full bounded queue as an active safety incident. Keep the lock until consecutive successful deliveries and a low-water queue depth prove recovery.
+6. Expose supervisor and consumer running, delivery, failure, drop, recovery and queue overload start/recovery metrics through the existing diagnostics contract.
+7. Refresh supervisor safety while building the dashboard. If either task is not running, do not report active market observation or PAPER entry. Show task termination before any overlapping storage lock and offer same-Run start recovery instead.
+8. Make same-Run recovery literal. `자동 관찰 시작` must replace only the stopped supervisor while preserving Run ID, PAPER accounts, ledger and replay scope; only the separate `새 Run` action may archive and create a Run.
+9. Add failing-first tests for transaction-lock release, consumer task survival, producer/supervisor liveness, truthful stopped-task UI and same-Run control recovery. Run related and full backend, frontend, fixture, static, build, PAPER safety, security, repository hygiene and three-viewport browser checks.
+10. Deploy only after the contaminated baseline six-hour observer is written and the 24-hour observer is operator-aborted with its partial evidence preserved. Verify the exact new release through the coordinated ledger handoff.
+11. Do not alter strategy thresholds, costs, TP, SL, fills, Governor, risk budgets, account topology or PAPER-only safety. Require fresh 30-minute, six-hour and 24-hour observations after deployment.

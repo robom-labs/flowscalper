@@ -641,6 +641,7 @@ export type ReplayResult = {
   scope_symbol?: string | null
   created_ts_ms: number
   checksum: string
+  input_checksum?: string
   event_count: number
   first_ts_ms: number | null
   last_ts_ms: number | null

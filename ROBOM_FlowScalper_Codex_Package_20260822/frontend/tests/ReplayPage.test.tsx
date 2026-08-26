@@ -16,7 +16,8 @@ afterEach(() => {
 
 test('loads recent candles first and defers the expensive event timeline until requested', async () => {
   const requests: string[] = []
-  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+  let replayRequest: RequestInit | undefined
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     requests.push(url)
     if (url === '/api/replay/runs') {
@@ -46,6 +47,17 @@ test('loads recent candles first and defers the expensive event timeline until r
         candles: [], preview_only: false,
       }), { status: 200 })
     }
+    if (url === '/api/replay/run-preview' && init?.method === 'POST') {
+      replayRequest = init
+      return new Response(JSON.stringify({
+        operation_id: 'replay-operation-fixed-scope', source_run_id: 'run-preview',
+        symbol: 'BTCUSDT', total_events: 10_000, state: 'CANCELLED',
+        stage_ko: '검증 범위 고정 확인', started_ts_ms: 2_000, updated_ts_ms: 2_000,
+        finished_ts_ms: 2_000, retryable: false, error_code: null,
+        error_message_ko: null, result: null, revision: 1, paper_only: true,
+        real_orders_enabled: false, auth_required: false,
+      }), { status: 202 })
+    }
     throw new Error(`unexpected request: ${url}`)
   }))
 
@@ -61,6 +73,14 @@ test('loads recent candles first and defers the expensive event timeline until r
   expect(requests).toContain('/api/replay/run-preview/timeline?symbol=BTCUSDT&limit=100')
   expect(await screen.findByText(/정밀 이벤트 1개를 불러왔습니다/)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '같은 조건으로 전략 검증' })).toBeEnabled()
+
+  fireEvent.click(screen.getByRole('button', { name: '같은 조건으로 전략 검증' }))
+
+  await waitFor(() => expect(replayRequest).toBeDefined())
+  expect(JSON.parse(String(replayRequest?.body))).toEqual({
+    symbol: 'BTCUSDT',
+    event_limit: 10_000,
+  })
 })
 
 test('restores an active strategy verification and exposes a real cancel control', async () => {
@@ -96,7 +116,7 @@ test('restores an active strategy verification and exposes a real cancel control
   render(<ReplayPage />)
 
   expect(await screen.findByText('같은 전략 조건으로 검증하고 있습니다')).toBeInTheDocument()
-  expect(screen.getByText(/약 12,345건/)).toBeInTheDocument()
+  expect(screen.getByText(/고정 입력 12,345건/)).toBeInTheDocument()
   expect(screen.getByText(/실제 주문과 인증 경로는 0/)).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '전략 검증 취소' }))
   expect(await screen.findByRole('button', { name: '취소 중' })).toBeDisabled()
@@ -133,6 +153,7 @@ test('shows a visible retry action when a focused trade chart request fails', as
 
 test('shows a replay result only for the selected run and symbol scope', async () => {
   const checksum = 'a'.repeat(64)
+  const inputChecksum = 'b'.repeat(64)
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url === '/api/replay/runs') return new Response(JSON.stringify([{
@@ -142,7 +163,7 @@ test('shows a replay result only for the selected run and symbol scope', async (
     }]), { status: 200 })
     if (url === '/api/replay/results') return new Response(JSON.stringify([{
       replay_id: 'replay-btc', source_run_id: 'run-scope', scope_symbol: 'BTCUSDT',
-      created_ts_ms: 2_000, checksum, event_count: 100,
+      created_ts_ms: 2_000, checksum, input_checksum: inputChecksum, event_count: 100,
       first_ts_ms: 1_000, last_ts_ms: 2_000, event_type_counts: { TRADE: 100 },
       symbol_counts: { BTCUSDT: 100 }, strategy_evaluation_count: 10,
       qualified_signal_count: 0, candidate_plan_count: 0, main_trade_count: 0,
@@ -167,6 +188,7 @@ test('shows a replay result only for the selected run and symbol scope', async (
 
   expect(await screen.findByText('검증 완료 · BTCUSDT · replay-btc')).toBeInTheDocument()
   expect(screen.getByText(checksum)).toBeInTheDocument()
+  expect(screen.getByText(inputChecksum)).toBeInTheDocument()
 
   fireEvent.change(screen.getByRole('combobox', { name: '종목' }), {
     target: { value: 'ETHUSDT' },
@@ -175,5 +197,6 @@ test('shows a replay result only for the selected run and symbol scope', async (
   await waitFor(() => expect(screen.getByRole('combobox', { name: '종목' })).toHaveValue('ETHUSDT'))
   expect(screen.getByText('저장 데이터 확인됨')).toBeInTheDocument()
   expect(screen.queryByText(checksum)).not.toBeInTheDocument()
+  expect(screen.queryByText(inputChecksum)).not.toBeInTheDocument()
   expect(screen.getByText('전략 검증 전')).toBeInTheDocument()
 })

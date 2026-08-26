@@ -153,6 +153,21 @@ class SupervisorTelemetry:
     venue_clock_offset_ms: float = 0.0
     venue_clock_rtt_ms: float = 0.0
     clock_sync_status: str = "UNVERIFIED"
+    consumer_running: bool = False
+    consumer_delivery_count: int = 0
+    consumer_delivery_failure_count: int = 0
+    consumer_delivery_drop_count: int = 0
+    consumer_recovery_count: int = 0
+    consumer_fault_active: bool = False
+    consumer_last_delivery_ts_ms: int | None = None
+    consumer_last_failure_ts_ms: int | None = None
+    consumer_last_recovered_ts_ms: int | None = None
+    queue_overload_active: bool = False
+    queue_overload_incident_count: int = 0
+    queue_overload_recovery_count: int = 0
+    queue_overload_drop_count: int = 0
+    queue_overload_last_started_ts_ms: int | None = None
+    queue_overload_last_recovered_ts_ms: int | None = None
 
     def observe_event_gap(self, receive_monotonic_ns: int, observed_ts_ms: int) -> None:
         """연속 공개 이벤트의 수신 공백을 네트워크·프로세스 정지 진단용으로 남긴다."""
@@ -300,6 +315,21 @@ class SupervisorTelemetry:
             "venue_clock_offset_ms": self.venue_clock_offset_ms,
             "venue_clock_rtt_ms": self.venue_clock_rtt_ms,
             "clock_sync_status": self.clock_sync_status,
+            "consumer_running": self.consumer_running,
+            "consumer_delivery_count": self.consumer_delivery_count,
+            "consumer_delivery_failure_count": self.consumer_delivery_failure_count,
+            "consumer_delivery_drop_count": self.consumer_delivery_drop_count,
+            "consumer_recovery_count": self.consumer_recovery_count,
+            "consumer_fault_active": self.consumer_fault_active,
+            "consumer_last_delivery_ts_ms": self.consumer_last_delivery_ts_ms,
+            "consumer_last_failure_ts_ms": self.consumer_last_failure_ts_ms,
+            "consumer_last_recovered_ts_ms": self.consumer_last_recovered_ts_ms,
+            "queue_overload_active": self.queue_overload_active,
+            "queue_overload_incident_count": self.queue_overload_incident_count,
+            "queue_overload_recovery_count": self.queue_overload_recovery_count,
+            "queue_overload_drop_count": self.queue_overload_drop_count,
+            "queue_overload_last_started_ts_ms": self.queue_overload_last_started_ts_ms,
+            "queue_overload_last_recovered_ts_ms": self.queue_overload_last_recovered_ts_ms,
         }
 
 
@@ -341,6 +371,9 @@ class PersistentPublicSupervisor:
         self._ready = asyncio.Event()
         self._stopping = asyncio.Event()
         self._tasks: tuple[asyncio.Task[None], asyncio.Task[None]] | None = None
+        self._consumer_recovery_success_streak = 0
+        self._consumer_recovery_successes_required = max(4, min(64, queue_capacity))
+        self._queue_recovery_depth = queue_capacity // 8
 
     async def start(self) -> ProviderSelection:
         if self._tasks is not None:
@@ -376,6 +409,14 @@ class PersistentPublicSupervisor:
             await asyncio.gather(*tasks, return_exceptions=True)
         self.telemetry.state = ConnectionState.DISCONNECTED
         self.telemetry.entry_locked = True
+
+    def running(self) -> bool:
+        tasks = self._tasks
+        return bool(
+            tasks is not None
+            and self.telemetry.consumer_running
+            and all(not task.done() for task in tasks)
+        )
 
     async def _produce(self) -> None:
         attempt = 0
@@ -488,13 +529,19 @@ class PersistentPublicSupervisor:
             and event.quality.sequence_valid
             and not event.quality.is_stale
         ):
-            self.telemetry.last_error = None
+            if not (
+                self.telemetry.consumer_fault_active
+                or self.telemetry.queue_overload_active
+            ):
+                self.telemetry.last_error = None
             self.telemetry.state = ConnectionState.LIVE
             self.telemetry.entry_locked = bool(
                 current_critical_lag
                 or (
                     lag_p95_ms is not None and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
                 )
+                or self.telemetry.consumer_fault_active
+                or self.telemetry.queue_overload_active
             )
             self._ready.set()
         elif current_critical_lag or (
@@ -505,7 +552,9 @@ class PersistentPublicSupervisor:
     def _enqueue(self, event: MarketEvent) -> None:
         if self._queue.full():
             self.telemetry.dropped_event_count += 1
+            self.telemetry.queue_overload_drop_count += 1
             self.telemetry.entry_locked = True
+            self._activate_queue_overload()
             try:
                 self._queue.get_nowait()
                 self._queue.task_done()
@@ -513,18 +562,95 @@ class PersistentPublicSupervisor:
                 pass
         self._queue.put_nowait(event)
         self.telemetry.queue_depth = self._queue.qsize()
+        if self.telemetry.queue_depth >= self.telemetry.queue_capacity:
+            self._activate_queue_overload()
+
+    def _activate_queue_overload(self) -> None:
+        if not self.telemetry.queue_overload_active:
+            self.telemetry.queue_overload_active = True
+            self.telemetry.queue_overload_incident_count += 1
+            self.telemetry.queue_overload_last_started_ts_ms = self.clock.utc_ms()
+        self._consumer_recovery_success_streak = 0
+        self.telemetry.entry_locked = True
+        self.telemetry.last_error = (
+            f"QueueOverload: depth={self._queue.qsize()}; "
+            f"capacity={self.telemetry.queue_capacity}"
+        )
+
+    def _record_consumer_failure(self, error: Exception) -> None:
+        self.telemetry.consumer_delivery_failure_count += 1
+        self.telemetry.consumer_delivery_drop_count += 1
+        self.telemetry.dropped_event_count += 1
+        self.telemetry.consumer_fault_active = True
+        self.telemetry.consumer_last_failure_ts_ms = self.clock.utc_ms()
+        self.telemetry.entry_locked = True
+        self.telemetry.last_error = (
+            f"ConsumerDeliveryError: {type(error).__name__}: {error}"
+        )
+        self._consumer_recovery_success_streak = 0
+
+    def _record_consumer_success(self) -> None:
+        self.telemetry.consumer_delivery_count += 1
+        self.telemetry.consumer_last_delivery_ts_ms = self.clock.utc_ms()
+        if not (
+            self.telemetry.consumer_fault_active
+            or self.telemetry.queue_overload_active
+        ):
+            return
+        self._consumer_recovery_success_streak += 1
+        if (
+            self._consumer_recovery_success_streak
+            < self._consumer_recovery_successes_required
+            or self._queue.qsize() > self._queue_recovery_depth
+        ):
+            self.telemetry.entry_locked = True
+            return
+        recovered_ts_ms = self.clock.utc_ms()
+        if self.telemetry.consumer_fault_active:
+            self.telemetry.consumer_fault_active = False
+            self.telemetry.consumer_recovery_count += 1
+            self.telemetry.consumer_last_recovered_ts_ms = recovered_ts_ms
+        if self.telemetry.queue_overload_active:
+            self.telemetry.queue_overload_active = False
+            self.telemetry.queue_overload_recovery_count += 1
+            self.telemetry.queue_overload_last_recovered_ts_ms = recovered_ts_ms
+        self._consumer_recovery_success_streak = 0
+        lag_p95_ms = self.telemetry.lag_p95_ms
+        self.telemetry.entry_locked = bool(
+            self.telemetry.critical_lag_active
+            or (
+                lag_p95_ms is not None
+                and lag_p95_ms > self.telemetry.critical_lag_threshold_ms
+            )
+        )
+        if not self.telemetry.entry_locked:
+            self.telemetry.last_error = None
 
     async def _consume(self) -> None:
-        while not self._stopping.is_set():
-            try:
-                event = await self._queue.get()
-            except asyncio.CancelledError:
-                raise
-            try:
-                await self._deliver(event)
-            finally:
-                self._queue.task_done()
-                self.telemetry.queue_depth = self._queue.qsize()
+        self.telemetry.consumer_running = True
+        try:
+            while not self._stopping.is_set():
+                try:
+                    event = await self._queue.get()
+                except asyncio.CancelledError:
+                    raise
+                try:
+                    await self._deliver(event)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    self._record_consumer_failure(error)
+                else:
+                    self._record_consumer_success()
+                finally:
+                    self._queue.task_done()
+                    self.telemetry.queue_depth = self._queue.qsize()
+        finally:
+            self.telemetry.consumer_running = False
+            if not self._stopping.is_set():
+                self.telemetry.consumer_fault_active = True
+                self.telemetry.entry_locked = True
+                self.telemetry.last_error = "ConsumerStopped: consumer task exited"
 
     async def _deliver(self, event: MarketEvent) -> None:
         outcome = self.sink(event)

@@ -284,6 +284,60 @@ def _operation_status(
             "RECOVERY_FAIL_CLOSED",
         }
     )
+    if (
+        mode == "LIVE_SHADOW_PAPER"
+        and paused
+        and diagnostics.get("consumer_running") is False
+    ):
+        return {
+            "state": "SAFETY_BLOCKED",
+            "title_ko": (
+                "시장 처리 멈춤 · 안전 확인 필요"
+                if hard_blocked
+                else "시장 처리 멈춤 · 다시 시작 필요"
+            ),
+            "detail_ko": (
+                "내부 시장 처리 작업이 멈췄고 저장 또는 복구 안전문제도 남아 있어 "
+                "자동 재시작을 차단했습니다. 고급 진단의 원장 오류를 확인하세요."
+                if hard_blocked
+                else (
+                    "공개시장 연결 화면은 남아 있지만 내부 시장 처리 작업이 멈췄습니다. "
+                    "자동 관찰 시작을 누르면 같은 Run에서 안전하게 다시 연결합니다."
+                )
+            ),
+            "market_observation_active": False,
+            "paper_entry_active": False,
+            "automatic_recovery": False,
+            "recommended_action": "NONE" if hard_blocked else "START",
+            "lag_p95_ms": lag,
+        }
+    if (
+        mode == "LIVE_SHADOW_PAPER"
+        and paused
+        and diagnostics.get("supervisor_running") is False
+    ):
+        return {
+            "state": "SAFETY_BLOCKED",
+            "title_ko": (
+                "시장 관찰 멈춤 · 안전 확인 필요"
+                if hard_blocked
+                else "시장 관찰 멈춤 · 다시 시작 필요"
+            ),
+            "detail_ko": (
+                "공개시장 연결 작업이 종료됐고 저장 또는 복구 안전문제도 남아 있어 "
+                "자동 재시작을 차단했습니다. 고급 진단의 원장 오류를 확인하세요."
+                if hard_blocked
+                else (
+                    "공개시장 연결 작업이 종료돼 새 이벤트를 안전하게 처리할 수 없습니다. "
+                    "자동 관찰 시작을 누르면 같은 Run에서 다시 연결합니다."
+                )
+            ),
+            "market_observation_active": False,
+            "paper_entry_active": False,
+            "automatic_recovery": False,
+            "recommended_action": "NONE" if hard_blocked else "START",
+            "lag_p95_ms": lag,
+        }
     if mode == "LIVE_SHADOW_PAPER" and paused and hard_blocked:
         return {
             "state": "SAFETY_BLOCKED",

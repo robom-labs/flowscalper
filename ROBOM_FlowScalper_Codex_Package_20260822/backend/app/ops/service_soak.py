@@ -63,6 +63,17 @@ class RunningServiceSample:
     qualified_signal_count: int
     queue_depth: int
     queue_capacity: int
+    supervisor_running: bool
+    consumer_running: bool
+    consumer_delivery_count: int
+    consumer_delivery_failure_count: int
+    consumer_delivery_drop_count: int
+    consumer_recovery_count: int
+    consumer_fault_active: bool
+    queue_overload_active: bool
+    queue_overload_incident_count: int
+    queue_overload_recovery_count: int
+    queue_overload_drop_count: int
     processing_lag_p95_ms: float
     trade_lag_p95_ms: float
     wide_lag_p95_ms: float
@@ -182,6 +193,44 @@ def parse_running_service_sample(
         ),
         queue_depth=_integer(system.get("queue_depth"), "system.queue_depth"),
         queue_capacity=_integer(system.get("queue_capacity"), "system.queue_capacity"),
+        supervisor_running=_boolean(
+            system.get("supervisor_running"), "system.supervisor_running"
+        ),
+        consumer_running=_boolean(
+            system.get("consumer_running"), "system.consumer_running"
+        ),
+        consumer_delivery_count=_integer(
+            system.get("consumer_delivery_count"), "system.consumer_delivery_count"
+        ),
+        consumer_delivery_failure_count=_integer(
+            system.get("consumer_delivery_failure_count"),
+            "system.consumer_delivery_failure_count",
+        ),
+        consumer_delivery_drop_count=_integer(
+            system.get("consumer_delivery_drop_count"),
+            "system.consumer_delivery_drop_count",
+        ),
+        consumer_recovery_count=_integer(
+            system.get("consumer_recovery_count"), "system.consumer_recovery_count"
+        ),
+        consumer_fault_active=_boolean(
+            system.get("consumer_fault_active"), "system.consumer_fault_active"
+        ),
+        queue_overload_active=_boolean(
+            system.get("queue_overload_active"), "system.queue_overload_active"
+        ),
+        queue_overload_incident_count=_integer(
+            system.get("queue_overload_incident_count"),
+            "system.queue_overload_incident_count",
+        ),
+        queue_overload_recovery_count=_integer(
+            system.get("queue_overload_recovery_count"),
+            "system.queue_overload_recovery_count",
+        ),
+        queue_overload_drop_count=_integer(
+            system.get("queue_overload_drop_count"),
+            "system.queue_overload_drop_count",
+        ),
         processing_lag_p95_ms=_number(system.get("lag_p95_ms"), "system.lag_p95_ms"),
         trade_lag_p95_ms=_number(
             system.get("trade_lag_p95_ms"), "system.trade_lag_p95_ms"
@@ -344,6 +393,19 @@ def summarize_running_service_soak(
     adjacent_samples = tuple(zip(samples, samples[1:], strict=False))
     baseline_strategy_ids = {state.strategy_id for state in baseline.strategy_states}
     counter_checks = {
+        "no_consumer_delivery_failures": (
+            final.consumer_delivery_failure_count
+            == baseline.consumer_delivery_failure_count
+        ),
+        "no_consumer_delivery_drops": (
+            final.consumer_delivery_drop_count == baseline.consumer_delivery_drop_count
+        ),
+        "no_queue_overload_incidents": (
+            final.queue_overload_incident_count == baseline.queue_overload_incident_count
+        ),
+        "no_queue_overload_drops": (
+            final.queue_overload_drop_count == baseline.queue_overload_drop_count
+        ),
         "no_unplanned_reconnects": final.unplanned_reconnects == baseline.unplanned_reconnects,
         "no_sequence_gaps": final.sequence_gaps == baseline.sequence_gaps,
         "no_resyncs": final.resyncs == baseline.resyncs,
@@ -394,6 +456,25 @@ def summarize_running_service_soak(
         "qualified_signals_monotonic": all(
             current.qualified_signal_count >= previous.qualified_signal_count
             for previous, current in adjacent_samples
+        ),
+        "supervisor_running_throughout": all(
+            sample.supervisor_running for sample in samples
+        ),
+        "consumer_running_throughout": all(
+            sample.consumer_running for sample in samples
+        ),
+        "consumer_deliveries_continued": (
+            final.consumer_delivery_count > baseline.consumer_delivery_count
+        ),
+        "consumer_delivery_count_monotonic": all(
+            current.consumer_delivery_count >= previous.consumer_delivery_count
+            for previous, current in adjacent_samples
+        ),
+        "consumer_fault_never_active": all(
+            not sample.consumer_fault_active for sample in samples
+        ),
+        "queue_overload_never_active": all(
+            not sample.queue_overload_active for sample in samples
         ),
         "strategy_shape_stable": all(
             sample.strategy_count == baseline.strategy_count for sample in samples
@@ -505,6 +586,28 @@ def summarize_running_service_soak(
         ),
         "qualified_signal_delta": (
             final.qualified_signal_count - baseline.qualified_signal_count
+        ),
+        "consumer_delivery_delta": (
+            final.consumer_delivery_count - baseline.consumer_delivery_count
+        ),
+        "consumer_delivery_failure_delta": (
+            final.consumer_delivery_failure_count
+            - baseline.consumer_delivery_failure_count
+        ),
+        "consumer_delivery_drop_delta": (
+            final.consumer_delivery_drop_count - baseline.consumer_delivery_drop_count
+        ),
+        "consumer_recovery_delta": (
+            final.consumer_recovery_count - baseline.consumer_recovery_count
+        ),
+        "queue_overload_incident_delta": (
+            final.queue_overload_incident_count - baseline.queue_overload_incident_count
+        ),
+        "queue_overload_recovery_delta": (
+            final.queue_overload_recovery_count - baseline.queue_overload_recovery_count
+        ),
+        "queue_overload_drop_delta": (
+            final.queue_overload_drop_count - baseline.queue_overload_drop_count
         ),
         "main_trade_delta": final.main_trade_count - baseline.main_trade_count,
         "league_trade_delta": final.league_trade_count - baseline.league_trade_count,

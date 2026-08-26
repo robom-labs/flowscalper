@@ -63,6 +63,7 @@ def replay_stored_run_from_paths(
     source_run_id: str,
     created_ts_ms: int,
     symbol: str | None,
+    event_limit: int | None,
 ) -> dict[str, object]:
     """독립 SQLite 연결과 낮은 OS 우선순위로 결정적 PAPER replay를 실행한다."""
 
@@ -74,6 +75,7 @@ def replay_stored_run_from_paths(
             source_run_id=source_run_id,
             created_ts_ms=created_ts_ms,
             symbol=symbol.strip().upper() if symbol else None,
+            event_limit=event_limit,
             cooperative_yield=cpu_budget.checkpoint,
             persist_result=False,
         ).as_dict()

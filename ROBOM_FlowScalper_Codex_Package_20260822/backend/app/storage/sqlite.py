@@ -1812,7 +1812,11 @@ class _Transaction:
 
     def __enter__(self) -> sqlite3.Connection:
         self._lock.acquire()
-        self._connection.execute("BEGIN IMMEDIATE")
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+        except BaseException:
+            self._lock.release()
+            raise
         return self._connection
 
     def __exit__(

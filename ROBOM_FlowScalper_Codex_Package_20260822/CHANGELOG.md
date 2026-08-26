@@ -6,6 +6,8 @@
 
 ## 아직 배포하지 않음
 
+- SQLite의 `BEGIN IMMEDIATE`가 실패할 때 process lock을 영구 점유해 시장 처리·전략 평가·저장이 함께 멈추던 경로를 수정했다. 소비 작업은 개별 전달 예외로 종료되지 않고 안전 잠금 상태로 계속하며, queue 포화·누락·복구를 따로 집계한다. producer 또는 consumer가 실제로 멈추면 다른 안전문제와 겹쳐도 `작동 중`으로 표시하지 않으며, 다시 시작은 새 Run을 만들지 않고 같은 Run의 supervisor만 교체한다.
+- 계속 증가하는 LIVE Run을 재검증할 때 버튼을 누른 뒤 추가된 이벤트까지 섞여 입력 범위가 달라지던 문제를 수정했다. 정밀 이벤트 화면의 건수를 고정 범위로 전송하고 정확히 그 수만 재처리하며, 원본 이벤트 checksum과 전략 결정까지 포함한 종단간 checksum을 분리해 표시한다.
 - 기준 서비스를 먼저 끄면 변경된 release-only runner가 manifest 없는 개발 폴더에서 재기동에 실패할 수 있던 배포 순서를 차단했다. `--prepare-only`는 불변 릴리스와 LaunchAgent까지만 준비하고 현재 서비스를 유지하며, 닫힌 원장 clone 절차가 기존 서비스를 한 번만 정상 종료한 뒤 준비된 릴리스로 같은 Run을 복구한다.
 - 장시간 저장 worker가 Parquet뿐 아니라 SQLite FULL 원자 커밋까지 Darwin background 우선순위로 묶어 ledger 구간이 과도하게 늘 수 있던 경계를 분리했다. archive는 background로 유지하되 짧은 원자 커밋만 정상 우선순위에서 끝내고 즉시 background로 복귀한다. planned rotation은 첫 한 종목이 아니라 정밀 종목 전체의 fresh depth가 확인될 때까지 실행호가와 신규진입을 잠근다.
 - 대형 저장 Run 검증 중 LIVE 실행지연·비계획 재연결·저장 결함·이벤트 정지가 새로 발생하면 저우선순위 worker를 자동 종료하고 재시도 가능한 원인 코드를 표시한다. 안전검사를 끝낸 결과만 replay 원장에 기록해 취소·안전실패 결과가 정상 checksum처럼 남지 않게 했다.

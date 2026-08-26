@@ -28,6 +28,7 @@ class ReplayResult:
 @dataclass(frozen=True, slots=True)
 class MarketReplayDigest:
     checksum: str
+    input_checksum: str
     event_count: int
     first_ts_ms: int | None
     last_ts_ms: int | None
@@ -128,13 +129,14 @@ class ReplayEngine:
             _length_prefixed_update(decision_path_digest, item.encode())
         if cooperative_yield is not None:
             cooperative_yield()
+        input_checksum = event_stream_digest.hexdigest()
         material = {
             "schema_version": 3,
             "strategy_version": strategy_version,
             "seed": seed,
             "config": dict(config),
             "event_count": len(ordered_events),
-            "event_stream_checksum": event_stream_digest.hexdigest(),
+            "event_stream_checksum": input_checksum,
             "event_type_counts": dict(sorted(event_type_counts.items())),
             "symbol_counts": dict(sorted(symbol_counts.items())),
             "decision_path_count": len(normalized_path),
@@ -144,6 +146,7 @@ class ReplayEngine:
         checksum = hashlib.sha256(_canonical_json(material).encode()).hexdigest()
         return MarketReplayDigest(
             checksum=checksum,
+            input_checksum=input_checksum,
             event_count=len(ordered_events),
             first_ts_ms=(
                 int(str(ordered_events[0]["venue_ts_ms"])) if ordered_events else None

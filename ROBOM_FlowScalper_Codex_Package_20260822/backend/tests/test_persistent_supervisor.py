@@ -332,9 +332,95 @@ async def test_supervisor_reconnects_and_bounds_overload_queue() -> None:
     assert supervisor.telemetry.dropped_event_count > 0
     assert supervisor.telemetry.queue_depth <= 4
     assert supervisor.telemetry.entry_locked
-    assert supervisor.telemetry.last_error is None
+    assert supervisor.telemetry.last_error == "QueueOverload: depth=4; capacity=4"
+    assert supervisor.telemetry.queue_overload_active is True
 
     sink_gate.set()
+    for _ in range(50):
+        if supervisor.telemetry.queue_overload_recovery_count == 1:
+            break
+        await asyncio.sleep(0.01)
+    assert supervisor.telemetry.queue_overload_active is False
+    assert supervisor.telemetry.queue_overload_recovery_count == 1
+    assert supervisor.telemetry.queue_depth == 0
+    assert supervisor.telemetry.entry_locked is False
+    assert supervisor.telemetry.last_error is None
+    await supervisor.stop()
+
+
+async def test_consumer_delivery_failure_locks_then_recovers_without_task_death() -> None:
+    class GatedRecoveryProvider(RecordedProvider):
+        def __init__(self) -> None:
+            super().__init__(burst=0)
+            self.allow_recovery = asyncio.Event()
+
+        async def events(
+            self,
+            selection: ProviderSelection,
+            *,
+            run_id: str,
+            clock: DeterministicClock,
+        ) -> AsyncIterator[MarketEvent]:
+            yield _event(run_id, selection.deep_symbols[0], clock, 0)
+            await self.allow_recovery.wait()
+            for sequence in range(1, 7):
+                yield _event(run_id, selection.deep_symbols[0], clock, sequence).model_copy(
+                    update={"event_type": "DEPTH_UPDATE"}
+                )
+                await asyncio.sleep(0)
+            await self.release.wait()
+
+    provider = GatedRecoveryProvider()
+    delivery_attempts = 0
+    delivered: list[str] = []
+
+    async def flaky_sink(event: MarketEvent) -> None:
+        nonlocal delivery_attempts
+        delivery_attempts += 1
+        if delivery_attempts == 1:
+            raise RuntimeError("recorded sink failure")
+        delivered.append(event.event_id)
+
+    supervisor = PersistentPublicSupervisor(
+        provider,
+        run_id="run-consumer-recovery",
+        clock=DeterministicClock(),
+        sink=flaky_sink,
+        queue_capacity=4,
+        startup_timeout_seconds=1,
+    )
+
+    await supervisor.start()
+    for _ in range(20):
+        if supervisor.telemetry.consumer_delivery_failure_count == 1:
+            break
+        await asyncio.sleep(0.01)
+
+    assert supervisor.telemetry.consumer_delivery_failure_count == 1
+    assert supervisor.telemetry.consumer_delivery_drop_count == 1
+    assert supervisor.telemetry.consumer_fault_active is True
+    assert supervisor.telemetry.consumer_running is True
+    assert supervisor.telemetry.entry_locked is True
+    assert supervisor.telemetry.dropped_event_count == 1
+    assert supervisor._tasks is not None
+    assert all(not task.done() for task in supervisor._tasks)
+
+    provider.allow_recovery.set()
+    for _ in range(50):
+        if supervisor.telemetry.consumer_recovery_count == 1:
+            break
+        await asyncio.sleep(0.01)
+
+    assert supervisor.telemetry.consumer_recovery_count == 1
+    assert supervisor.telemetry.consumer_fault_active is False
+    assert supervisor.telemetry.consumer_delivery_count >= 4
+    assert supervisor.telemetry.consumer_last_delivery_ts_ms is not None
+    assert supervisor.telemetry.entry_locked is False
+    assert supervisor.telemetry.last_error is None
+    assert len(delivered) >= 4
+    assert supervisor._tasks is not None
+    assert all(not task.done() for task in supervisor._tasks)
+
     await supervisor.stop()
 
 
@@ -630,6 +716,8 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
         sink=runtime.ingest_live_event,
     )
     runtime._supervisor = supervisor
+    supervisor.telemetry.consumer_running = True
+    supervisor.running = lambda: True  # type: ignore[method-assign]
     runtime.market_data_state = MarketDataState.LIVE
     runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
 
@@ -684,6 +772,96 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     manual_status = runtime.dashboard()["operation_status"]
     assert manual_status["state"] == "MANUALLY_PAUSED"
     assert manual_status["recommended_action"] == "RESUME"
+
+
+def test_runtime_surfaces_consumer_and_queue_entry_lock_reasons() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-consumer-health",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    runtime._supervisor = supervisor
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
+
+    supervisor.telemetry.consumer_running = False
+    supervisor.telemetry.entry_locked = True
+    runtime._refresh_supervisor_entry_safety()
+    runtime.runtime_health_flags.append("PERSISTENCE_FAULT_ENTRY_LOCK")
+
+    assert runtime.paused is True
+    assert "ENTRY_LOCK_CONSUMER_NOT_RUNNING" in runtime.runtime_health_flags
+    assert "SUPERVISOR_ENTRY_LOCK" in runtime.runtime_health_flags
+    stopped_status = runtime.dashboard()["operation_status"]
+    assert stopped_status["state"] == "SAFETY_BLOCKED"
+    assert stopped_status["market_observation_active"] is False
+    assert stopped_status["paper_entry_active"] is False
+    assert stopped_status["automatic_recovery"] is False
+    assert stopped_status["recommended_action"] == "NONE"
+    assert "저장 또는 복구 안전문제" in stopped_status["detail_ko"]
+    runtime.runtime_health_flags.remove("PERSISTENCE_FAULT_ENTRY_LOCK")
+    restartable_status = runtime.dashboard()["operation_status"]
+    assert restartable_status["recommended_action"] == "START"
+    supervisor.running = lambda: True  # type: ignore[method-assign]
+
+    supervisor.telemetry.consumer_running = True
+    supervisor.telemetry.consumer_fault_active = True
+    supervisor.telemetry.queue_overload_active = True
+    runtime._refresh_supervisor_entry_safety()
+
+    assert "ENTRY_LOCK_CONSUMER_NOT_RUNNING" not in runtime.runtime_health_flags
+    assert "ENTRY_LOCK_CONSUMER_DELIVERY_FAULT" in runtime.runtime_health_flags
+    assert "ENTRY_LOCK_EVENT_QUEUE_OVERLOAD" in runtime.runtime_health_flags
+
+    supervisor.telemetry.consumer_fault_active = False
+    supervisor.telemetry.queue_overload_active = False
+    supervisor.telemetry.entry_locked = False
+    runtime._refresh_supervisor_entry_safety()
+
+    assert runtime.paused is False
+    assert "ENTRY_LOCK_CONSUMER_DELIVERY_FAULT" not in runtime.runtime_health_flags
+    assert "ENTRY_LOCK_EVENT_QUEUE_OVERLOAD" not in runtime.runtime_health_flags
+    assert "SUPERVISOR_ENTRY_LOCK" not in runtime.runtime_health_flags
+
+
+def test_runtime_blocks_when_supervisor_task_stops_with_stale_consumer_flag() -> None:
+    clock = DeterministicClock(current_utc_ms=2_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-supervisor-health",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    runtime._supervisor = supervisor
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
+    supervisor.telemetry.consumer_running = True
+    supervisor.telemetry.entry_locked = False
+
+    runtime._refresh_supervisor_entry_safety()
+
+    assert runtime.paused is True
+    assert "ENTRY_LOCK_PUBLIC_SUPERVISOR_NOT_RUNNING" in runtime.runtime_health_flags
+    status = runtime.dashboard()["operation_status"]
+    assert status["state"] == "SAFETY_BLOCKED"
+    assert status["market_observation_active"] is False
+    assert status["paper_entry_active"] is False
+    assert status["automatic_recovery"] is False
+    assert status["recommended_action"] == "START"
 
 
 def test_supervisor_records_receive_gap_without_changing_safety_thresholds() -> None:

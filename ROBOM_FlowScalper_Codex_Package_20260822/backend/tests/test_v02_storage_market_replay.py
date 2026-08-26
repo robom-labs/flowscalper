@@ -160,6 +160,47 @@ def test_cooperative_market_replay_preserves_canonical_checksum() -> None:
     assert checkpoints >= 2
 
 
+def test_market_replay_event_limit_freezes_open_run_input_scope(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "event-limit-replay.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-event-limit",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="event-1", ts_ms=1_000)
+    )
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="event-2", ts_ms=2_000)
+    )
+    runtime.flush_storage()
+
+    first = StoredMarketReplay().run(
+        ledger,
+        source_run_id=runtime.run_id,
+        created_ts_ms=2_100,
+        event_limit=2,
+    )
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="event-3", ts_ms=3_000)
+    )
+    runtime.flush_storage()
+    second = StoredMarketReplay().run(
+        ledger,
+        source_run_id=runtime.run_id,
+        created_ts_ms=3_100,
+        event_limit=2,
+    )
+
+    assert first.event_count == second.event_count == 2
+    assert first.input_checksum == second.input_checksum
+    assert first.checksum == second.checksum
+    assert len(first.input_checksum) == 64
+    ledger.close()
+
+
 def test_replay_cpu_budget_yields_without_carrying_unbounded_sleep_debt() -> None:
     assert _REPLAY_TARGET_CPU_RATIO == 0.05
     wall_values = iter((0.0, 1.0, 2.5))
@@ -1310,6 +1351,14 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         assert operation.json()["state"] == "COMPLETED"
         result = operation.json()["result"]
         assert result["event_count"] == 1
+        assert len(result["input_checksum"]) == 64
+        assert operation.json()["total_events"] == 1
+        unavailable = client.post(
+            f"/api/replay/{runtime.run_id}",
+            json={"event_limit": 2},
+        )
+        assert unavailable.status_code == 409
+        assert unavailable.json()["detail"]["error_code"] == "REPLAY_SCOPE_NOT_AVAILABLE"
         timeline = client.get(f"/api/replay/{runtime.run_id}/timeline")
         assert timeline.status_code == 200
         assert timeline.json()["symbol"] == "BTCUSDT"
@@ -1369,6 +1418,40 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     ledger.close()
 
 
+def test_http_replay_fails_closed_when_input_scope_count_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "unknown-replay-scope.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-unknown-replay-scope",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    monkeypatch.setattr(
+        SQLiteLedger,
+        "market_event_symbols",
+        lambda _ledger, _run_id: [{"symbol": "BTCUSDT", "event_count": None}],
+    )
+    monkeypatch.setattr(
+        PaperRuntime,
+        "replayable_runs",
+        lambda _runtime: [{"run_id": runtime.run_id, "market_event_count": None}],
+    )
+
+    with TestClient(create_app(runtime)) as client:
+        response = client.post(
+            f"/api/replay/{runtime.run_id}",
+            json={"symbol": "BTCUSDT"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["error_code"] == "REPLAY_SCOPE_COUNT_UNAVAILABLE"
+    ledger.close()
+
+
 def test_live_http_replay_uses_isolated_process_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1418,6 +1501,7 @@ def test_live_http_replay_uses_isolated_process_path(
         assert operation.json()["result"]["real_orders_enabled"] is False
         assert len(calls) == 1
         assert calls[0][0] == str(ledger.path)
+        assert calls[0][5] == 1
     ledger.close()
 
 

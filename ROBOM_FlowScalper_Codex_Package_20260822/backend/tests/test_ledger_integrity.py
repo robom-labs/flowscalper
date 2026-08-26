@@ -8,6 +8,7 @@ import sqlite3
 import time
 from dataclasses import replace
 from pathlib import Path
+from threading import RLock, Thread
 
 import pytest
 
@@ -25,7 +26,7 @@ from backend.app.storage.integrity import (
     transfer_closed_snapshot,
     verify_closed_snapshot,
 )
-from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.storage.sqlite import SQLiteLedger, _Transaction
 
 
 class CountingSafety:
@@ -86,6 +87,39 @@ def _ledger(path: Path) -> SQLiteLedger:
         started_ts_ms=1_000,
     )
     return ledger
+
+
+def test_transaction_begin_failure_releases_process_lock() -> None:
+    class BeginFailureConnection:
+        def execute(self, statement: str) -> None:
+            assert statement == "BEGIN IMMEDIATE"
+            raise sqlite3.OperationalError("database is locked")
+
+    lock = RLock()
+    transaction = _Transaction(BeginFailureConnection(), lock)  # type: ignore[arg-type]
+
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            transaction.__enter__()
+
+        acquired: list[bool] = []
+
+        def acquire_from_another_worker() -> None:
+            worker_acquired = lock.acquire(timeout=0.2)
+            acquired.append(worker_acquired)
+            if worker_acquired:
+                lock.release()
+
+        worker = Thread(target=acquire_from_another_worker)
+        worker.start()
+        worker.join(timeout=1)
+
+        assert acquired == [True]
+    finally:
+        try:
+            lock.release()
+        except RuntimeError:
+            pass
 
 
 def test_online_snapshot_is_verified_without_direct_source_quick_check(tmp_path: Path) -> None:

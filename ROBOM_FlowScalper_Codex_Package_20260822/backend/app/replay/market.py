@@ -22,6 +22,7 @@ class StoredMarketReplayResult:
     scope_symbol: str | None
     created_ts_ms: int
     checksum: str
+    input_checksum: str
     event_count: int
     first_ts_ms: int | None
     last_ts_ms: int | None
@@ -44,6 +45,7 @@ class StoredMarketReplayResult:
             "scope_symbol": self.scope_symbol,
             "created_ts_ms": self.created_ts_ms,
             "checksum": self.checksum,
+            "input_checksum": self.input_checksum,
             "event_count": self.event_count,
             "first_ts_ms": self.first_ts_ms,
             "last_ts_ms": self.last_ts_ms,
@@ -74,18 +76,26 @@ class StoredMarketReplay:
         source_run_id: str,
         created_ts_ms: int,
         symbol: str | None = None,
+        event_limit: int | None = None,
         cooperative_yield: Callable[[], None] | None = None,
         persist_result: bool = True,
     ) -> StoredMarketReplayResult:
         run = ledger.get_run(source_run_id)
         if run is None:
             raise ValueError(f"알 수 없는 소스 Run: {source_run_id}")
+        if event_limit is not None and event_limit <= 0:
+            raise ValueError("리플레이 이벤트 고정 범위는 양수여야 합니다.")
         scope_symbol = symbol.strip().upper() if symbol else None
         events = ledger.list_market_events(
             source_run_id,
             symbol=scope_symbol,
+            limit=event_limit,
             cooperative_yield=cooperative_yield,
         )
+        if event_limit is not None and len(events) != event_limit:
+            raise LedgerInvariantError(
+                "요청한 리플레이 이벤트 고정 범위를 원장에서 모두 읽지 못했습니다."
+            )
         if cooperative_yield is not None:
             cooperative_yield()
         venue = Venue(str(run["venue"]))
@@ -146,6 +156,7 @@ class StoredMarketReplay:
             scope_symbol=scope_symbol,
             created_ts_ms=created_ts_ms,
             checksum=digest.checksum,
+            input_checksum=digest.input_checksum,
             event_count=digest.event_count,
             first_ts_ms=digest.first_ts_ms,
             last_ts_ms=digest.last_ts_ms,

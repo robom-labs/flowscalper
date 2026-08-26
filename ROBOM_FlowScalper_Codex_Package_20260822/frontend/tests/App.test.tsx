@@ -169,6 +169,89 @@ test('shows the last startup recovery result in beginner and advanced views', as
   expect(screen.getByText('PAPER_STATE_RECOVERED')).toBeInTheDocument()
 })
 
+test('shows a stopped market consumer as a processing failure with Korean diagnostics', async () => {
+  const stoppedConsumerDashboard = {
+    ...initialDashboard,
+    operation_status: {
+      ...initialDashboard.operation_status,
+      state: 'SAFETY_BLOCKED',
+      title_ko: '시장 처리 멈춤 · 다시 시작 필요',
+      detail_ko: '내부 시장 처리 작업이 멈춰습니다.',
+      market_observation_active: false,
+      paper_entry_active: false,
+      automatic_recovery: false,
+      recommended_action: 'START',
+    },
+    system: {
+      ...initialDashboard.system,
+      consumer_running: false,
+      consumer_delivery_count: 1234,
+      consumer_delivery_failure_count: 1,
+      consumer_delivery_drop_count: 1,
+      consumer_recovery_count: 0,
+      consumer_fault_active: true,
+      queue_overload_active: true,
+      queue_overload_incident_count: 1,
+      queue_overload_drop_count: 88,
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => stoppedConsumerDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: '설정' }))
+
+  expect(await screen.findByText('시장 처리 멈춤')).toBeInTheDocument()
+  expect(screen.queryByText('정상')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+  expect(screen.getByText('시장 처리 작업 실행')).toBeInTheDocument()
+  expect(screen.getByText('시장 처리 오류')).toBeInTheDocument()
+  expect(screen.getByText('queue 과부하 누락')).toBeInTheDocument()
+})
+
+test('shows a stopped public supervisor even when the consumer flag is stale', async () => {
+  const stoppedSupervisorDashboard = {
+    ...initialDashboard,
+    status: {
+      ...initialDashboard.status,
+      mode: 'LIVE_SHADOW_PAPER' as const,
+      market_data_state: 'LIVE' as const,
+      venue: 'BINANCE_USDM' as const,
+    },
+    operation_status: {
+      ...initialDashboard.operation_status,
+      state: 'SAFETY_BLOCKED',
+      title_ko: '시장 관찰 멈춤 · 다시 시작 필요',
+      market_observation_active: false,
+      paper_entry_active: false,
+      automatic_recovery: false,
+      recommended_action: 'START',
+    },
+    system: {
+      ...initialDashboard.system,
+      supervisor_running: false,
+      consumer_running: true,
+      consumer_fault_active: false,
+      queue_overload_active: false,
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => stoppedSupervisorDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: '설정' }))
+
+  expect(await screen.findByText('시장 관찰 멈춤')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+  expect(screen.getByText('시장 관찰 작업 실행')).toBeInTheDocument()
+})
+
 test('shows the latest paper lifecycle transition without calling a fill a real order', async () => {
   const transitionedDashboard = {
     ...initialDashboard,

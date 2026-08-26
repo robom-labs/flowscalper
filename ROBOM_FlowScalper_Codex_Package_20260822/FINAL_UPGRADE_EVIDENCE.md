@@ -2419,3 +2419,133 @@ ProgramArguments는 개발 worktree의 runner를 가리킨다. 현재 worktree r
 판단 근거는 ADR-061, 기계판독 증거는
 `evidence/WAVE60_MAINTENANCE_COORDINATED_RELEASE_HANDOFF_QA.json`이다. 현재 수용상태는
 `IMPLEMENTED_NOT_EXECUTED`다.
+
+## 60. Wave 61 증가 중인 Run의 리플레이 입력 범위 고정
+
+### 재현한 문제
+
+취소된 실제 작업 `replay-operation-ebf3dca53f5f47b08869f3c1da4662e4`는
+`run-2b7135a972dd`의 `ONGUSDT` 485,283건을 대상으로 시작했다. 기준 서비스가 계속 공개시장을
+저장하면서 2026-08-27 05:12 KST의 같은 Run·종목 미리보기는 494,535건을 표시했다. 기존 POST
+본문은 종목만 전송했고 worker는 실행 시점의 전체 이벤트를 다시 읽었으므로, 같은 버튼을 다시
+눌러도 이전과 다른 입력을 처리했다. Run과 종목만 맞는 것을 같은 조건 재현으로 표시할 수 없는
+결함이다.
+
+기존 결과 `checksum`은 이벤트뿐 아니라 전략 version·config·decision path·final state도 함께
+묶은 종단간 checksum인데 화면은 이를 `입력 Checksum`이라고 표시했다. 입력 원본 일치와 전체
+결정경로 일치를 구분할 수 없었다.
+
+### 구현과 현재 경계
+
+- 정밀 이벤트를 불러온 시점의 `total_events`를 `event_limit`으로 전송한다.
+- 서버는 현재 저장 건수보다 큰 요청을 409 `REPLAY_SCOPE_NOT_AVAILABLE`로 거부하고, 비동기
+  operation의 `total_events`를 정확한 고정 입력 건수로 기록한다.
+- LIVE 격리 process와 비LIVE 경로 모두 checksum 검증 정렬 이벤트를 정확히 그 수만 읽는다.
+  요청 수와 실제 로드 수가 다르면 정상 결과를 만들지 않는다.
+- ReplayEngine은 정규화된 원본 이벤트 stream SHA-256 `input_checksum`과 전략 결정까지 포함한
+  기존 종단간 `checksum`을 별도로 반환·보존한다.
+- 화면은 진행 중 `고정 입력 N건`, 결과의 입력 checksum과 접이식 종단간 checksum을 구분한다.
+  과거 결과에 새 필드가 없으면 입력 checksum이 없다고 정직하게 표시한다.
+- 전략·임계값·비용·TP·SL·체결·Governor·위험·계좌는 변경하지 않았고 실제 주문·private API·
+  API key·secret·wallet·runtime AI 주문판단은 계속 0이다.
+
+| 검증 | 상태 | 현재 결과 |
+|---|---|---|
+| 실패 우선 고정범위 표적 | FAIL_AS_EXPECTED | `StoredMarketReplay.run()`이 `event_limit`을 받지 않아 1 failed였다. |
+| backend 고정범위·HTTP·격리 process 표적 | PASS | 4 passed·0.61초다. 열린 Run에 이벤트를 추가한 뒤에도 첫 2건의 입력 checksum과 종단간 checksum이 일치했고 저장건수 미확인 요청은 fail-closed했다. |
+| ReplayPage 고정범위 요청 | PASS | 1 file·4 tests·0.83초다. 10,000건 정밀 범위를 POST 본문에 그대로 전송했다. |
+| Ruff / 부분 mypy / TypeScript | PASS | 변경 Python Ruff 오류 0, 핵심 5 source mypy 오류 0, TypeScript 오류 0이다. |
+| 전체 backend·frontend·fixture·build·security·hygiene·Playwright | PASS | backend 459 passed·27.09초, frontend 14 files·66 tests·5.51초, fixture backend 18 passed·5.90초, Ruff·96 source mypy·ESLint·TypeScript·security 131 source·repository hygiene·PAPER build safety가 PASS다. production build는 50 modules·JS 523,760 bytes·gzip 161,180 bytes로 완료됐고 기존 500kB 경고는 남아 있다. OFFLINE FIXTURE Playwright는 desktop·tablet·mobile 3 passed·22.1초다. |
+| 실제 485,283건 고정범위 재시도 | NOT_RUN | 새 불변 릴리스 배포, 실제 flush·planned rotation 확인 뒤 실행한다. |
+| 취소된 첫 작업과 input checksum 일치 | NOT_PROVEN | 첫 작업은 결과 생성 전에 취소돼 input checksum이 없다. 새 실행은 자기 입력을 고정·증명하지만 과거 미완료 checksum을 소급 생성하지 않는다. |
+| 기준 6시간 / 오염된 24시간 | FAIL / ABORTED_OPERATOR | 6시간은 실제 21,601.135초·720표본·probe 오류 0으로 끝났으나 queue 포화·누락·critical lag·flush·WAL·reconnect 기준 때문에 FAIL이다. 24시간 관찰은 같은 오염 상태를 21,566.902초·360표본 보존한 뒤 operator-abort했고 요청 시간을 채우지 않았으므로 24시간 PASS가 아니다. |
+| 배포·실제 8870·GitHub·Release ZIP | NOT_RUN | 기준 경계와 전체 회귀 전에는 완료로 기록하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 전략 조건과 표본을 바꾸지 않았다. |
+
+판단 근거는 ADR-062, 기계판독 증거는
+`evidence/WAVE61_IMMUTABLE_REPLAY_INPUT_SCOPE_QA.json`이다. 현재 수용상태는
+`IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_DEPLOY`다.
+
+## 61. Wave 62 소비 lock 누수와 queue 과부하 복구
+
+### 실제 기준 서비스에서 재현한 사고
+
+`run-2b7135a972dd`의 기준 서비스는 planned rotation 23회차 직후부터
+provider event는 계속 전진했지만 전략 평가 5,607,312회, persistence flush 829회,
+시장 저장 buffer 222건이 더 이상 전진하지 않았다. 2026-08-27 05:38:37 KST 표본은
+event 1,769,529건, queue 4,096/4,096, 누락 106,297건, planned rotation 24회,
+비계획 reconnect 1회였다. 실제 주문과 인증은 false, 신규 PAPER 진입은
+`entry_locked=true`로 차단됐다.
+
+이전 대시보드는 consumer가 안전잠금을 runtime으로 전달할 수 없는 상태에서도
+`작동 중`·`PAPER 진입 활성`을 표시했다. provider 수신, 시장 소비, 전략 평가,
+저장 완료를 독립 상태로 나누지 않은 진실성 결함이다.
+
+### root cause와 구현
+
+- process stack에서 worker 2개는 작업 queue에서 유휴 상태였고 다른 worker 1개는
+  `lock_PyThread_acquire_lock`에서 전체 표본 동안 대기했다. archive child worker는 process pipe를
+  읽으며 유휴 상태였다.
+- SQLite `_Transaction.__enter__`는 `RLock`을 얻은 뒤 `BEGIN IMMEDIATE`를 실행했다.
+  `BEGIN`이 예외를 내면 context에 진입하지 못해 `__exit__`가 호출되지 않고 lock이
+  영구 점유됐다. 수정 전 실패 우선 테스트에서 다른 worker의 0.2초 재획득이
+  실제로 실패했다.
+- `_consume`는 sink 예외를 처리하지 않아 한 건의 예외로 task 전체가 종료됐다.
+  수정 전 실패 우선 테스트는 `Task exception was never retrieved`와 종료된 consumer를
+  재현했다.
+- `BEGIN` 실패 시 `BaseException`까지 lock을 먼저 해제하고 원래 예외를 다시 전달한다.
+- 개별 sink 예외는 소비 실패·누락으로 집계하고 task는 유지한다. 소비 결함과
+  queue 포화는 즉시 신규 PAPER 진입을 잠그고, 4~64건 연속 성공과 queue 1/8
+  이하를 확인한 뒤만 자동 복구한다.
+- consumer 실행·성공·실패·누락·복구와 queue 과부하 시작·복구·누락을 진단에
+  추가했다. 소비가 실제로 종료됐으면 화면은 시장 관찰 활성을 false로
+  표시하고 같은 Run의 `자동 관찰 시작`을 안내한다.
+- producer 또는 consumer 어느 task라도 종료되면 supervisor 전체 실행상태를 별도
+  `ENTRY_LOCK_PUBLIC_SUPERVISOR_NOT_RUNNING`으로 잠근다. 저장 안전잠금이 겹쳐도 task
+  종료를 `시장 관찰 중`보다 먼저 표시하되, 영구 저장잠금이 남아 있으면 실행 불가능한
+  START를 권하지 않는다.
+- 멈춘 LIVE에서 START는 기존 Run을 보관하지 않고 supervisor만 교체한다. 수정 전에는
+  화면 문구와 달리 `start_live_run()`이 현재 Run을 보관하고 새 Run을 만들었으며,
+  실패 우선 제어 테스트에서 `FAILED_RETRYABLE`로 재현했다.
+- 장시간 관찰기는 provider event뿐 아니라 supervisor·consumer 실행, 소비 완료 전진,
+  소비 실패·누락과 queue 과부하 사건을 독립 gate로 판정한다. 수정 전에는 이 상태가
+  모두 실패해도 합성 표본이 PASS였다.
+
+기준 사고가 위 `BEGIN` 실패에서 시작했다는 첫 예외 문자열은 이전 서비스가
+보존하지 않았다. 실행 stack·정지 경계·재현된 lock 누수는 강하게 일치하지만
+직접 인과는 `STRONG_MATCH_NOT_DIRECTLY_LOGGED`로 유지한다.
+
+| 검증 | 상태 | 현재 결과 |
+|---|---|---|
+| SQLite lock 누수 실패 우선 | FAIL_AS_EXPECTED | 수정 전 다른 worker가 0.2초 내 lock을 획득하지 못했다. |
+| consumer task 종료 실패 우선 | FAIL_AS_EXPECTED | sink `RuntimeError`가 task 전체를 종료했고 예외도 회수되지 않았다. |
+| supervisor·같은 Run·soak 실패 우선 | FAIL_AS_EXPECTED | producer task 정지를 runtime이 정상으로 보였고, START는 새 Run 경로를 호출했으며, 소비 정지 합성 soak도 PASS였다. |
+| 수정 뒤 표적 | PASS | lock 해제·consumer 유지·queue 복구·진단·UI 표적 4 passed·0.31초다. |
+| supervisor·ledger 관련 파일 | PASS | 40 passed·0.43초다. |
+| fixture·운영안전 관련 파일 | PASS | 46 passed·4.17초다. |
+| Ruff / 부분 mypy | PASS | 변경 Python 오류 0, 4 source files mypy 오류 0이다. |
+| frontend 소비상태 진실성 실패 우선 | FAIL_AS_EXPECTED | 멈춘 consumer가 `시작 대기`와 영문 원시 진단으로 표시돼 `시장 처리 멈춤`을 찾지 못했다. |
+| 추가 관련 회귀 | PASS | supervisor 24 passed·1.52초, control 11 passed·0.88초, service soak 10 passed·0.58초다. 변경 Python Ruff와 핵심 9 source mypy도 PASS다. |
+| frontend 전체 / ESLint / TypeScript | PASS | consumer·supervisor 종료를 각각 초보자 문구와 한국어 고급진단으로 표시하며 14 files·66 tests·5.51초, ESLint·TypeScript 오류 0이다. |
+| 기준 6시간 observer | FAIL | 실제 21,601.135초·720표본·probe 오류 0을 채웠다. event는 1,644,522건, 전략 평가는 총 4,832,976회 전진했지만 후반 5,607,312회에서 멈췄다. 최종 queue 4,096/4,096, 누락 239,541건, critical lag +11, 비계획 reconnect +1, 진입 잠금 true다. 기계판독 원본은 `evidence/WAVE49_RUNNING_SERVICE_SOAK_6H.json`이다. |
+| 오염된 24시간 observer | ABORTED_OPERATOR | 실제 21,566.902초·360표본·probe 오류 0을 보존한 뒤 6시간 경계 이후 종료했다. 요청한 86,400초를 채우지 않았으므로 24시간 검증은 NOT_RUN과 동등한 미완료 상태이며 PASS가 아니다. 원본은 `evidence/WAVE49_RUNNING_SERVICE_SOAK_24H.json`이다. |
+| 전체 backend·fixture·build·security·hygiene·Playwright | PASS | backend 459 passed·27.09초, frontend 14 files·66 tests·5.51초, fixture backend 18 passed·5.90초, Ruff·96 source mypy·ESLint·TypeScript·security 131 source·repository hygiene·PAPER build safety가 PASS다. production build는 50 modules로 완료됐고 JS 523,760 bytes·gzip 161,180 bytes의 기존 500kB 경고가 남았다. OFFLINE FIXTURE Playwright desktop·tablet·mobile은 3 passed·22.1초다. |
+| 실제 불변 배포·same-Run 복구·planned rotation·flush | NOT_RUN | 원장 유지관리 단일 전환 뒤 검증한다. |
+| 배포 후 30분 / 6시간 / 24시간 | NOT_RUN | 기준 사고 표본을 새 릴리스 PASS로 재사용하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 전략 조건·임계값·비용·TP·SL·Governor를 바꾸지 않았다. |
+
+판단 근거는 ADR-063, 기계판독 증거는
+`evidence/WAVE62_CONSUMER_LOCK_AND_OVERLOAD_RECOVERY_QA.json`이다. 현재 수용상태는
+`IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_DEPLOY`다.
+
+### 기준 장시간 관찰의 해석 경계
+
+6시간 결과는 변경 전 mutable-worktree 기준 서비스의 실제 실패 증거다. 새 Wave 61·62 코드의
+장시간 PASS로 재사용하지 않는다. 같은 Run의 공개시장 event는 계속 증가했지만 소비·전략·저장
+경로가 후반에 멈췄고, 이전 화면은 이를 `작동 중`으로 잘못 표시했다. 전략별 현재 version 표본은
+BASE 8건·순손익 -5.797715452 USDT, STRESS 8건·순손익 -10.428927744 USDT다. 표본이 매우
+적고 비용 반영 결과도 음수이므로 수익성은 `NOT_PROVEN`이다.
+
+변경 후 실제 설치 서비스, 같은 Run 복구, 8870 브라우저, planned rotation, flush, 고정 485,283건
+replay, 새 30분·6시간·24시간 관찰은 아직 별도 검증이 필요하다. OFFLINE FIXTURE 스크린샷은 이번
+전체 Playwright 실행에서 다시 생성했으며 실제 LIVE_PUBLIC 화면 증거로 사용하지 않는다.

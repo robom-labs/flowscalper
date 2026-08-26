@@ -1112,6 +1112,19 @@ class PaperRuntime:
             self._record_universe_selection(selection, reason="SAFE_DEEP_ROTATION")
         telemetry = self._supervisor.telemetry
         self.processing_lag_p95_ms = telemetry.lag_p95_ms
+        supervisor_flags = {
+            "ENTRY_LOCK_PUBLIC_SUPERVISOR_NOT_RUNNING": not self._supervisor.running(),
+            "ENTRY_LOCK_CONSUMER_NOT_RUNNING": not telemetry.consumer_running,
+            "ENTRY_LOCK_CONSUMER_DELIVERY_FAULT": telemetry.consumer_fault_active,
+            "ENTRY_LOCK_EVENT_QUEUE_OVERLOAD": telemetry.queue_overload_active,
+        }
+        for flag, active in supervisor_flags.items():
+            if active and flag not in self.runtime_health_flags:
+                self.runtime_health_flags.append(flag)
+            elif not active:
+                self.runtime_health_flags = [
+                    current for current in self.runtime_health_flags if current != flag
+                ]
         if telemetry.entry_locked:
             self.paused = True
             if "SUPERVISOR_ENTRY_LOCK" not in self.runtime_health_flags:
@@ -1859,6 +1872,7 @@ class PaperRuntime:
             self.mode is RuntimeMode.LIVE_SHADOW_PAPER
             and self.market_data_state is MarketDataState.LIVE
             and self._supervisor is not None
+            and self._supervisor.running()
             and "PUBLIC_SUPERVISOR_RUNNING" in self.runtime_health_flags
         )
 
@@ -2420,6 +2434,7 @@ class PaperRuntime:
         source_run_id: str,
         *,
         symbol: str | None = None,
+        event_limit: int | None = None,
     ) -> dict[str, object]:
         if self.ledger is None:
             raise ValueError("영속 원장이 없어 리플레이할 수 없습니다.")
@@ -2431,6 +2446,7 @@ class PaperRuntime:
             source_run_id=source_run_id,
             created_ts_ms=self.clock.utc_ms(),
             symbol=symbol.strip().upper() if symbol else None,
+            event_limit=event_limit,
         )
         return result.as_dict()
 
@@ -2654,6 +2670,8 @@ class PaperRuntime:
         return tuple({**row, "rank": rank} for rank, row in enumerate(ordered, 1))
 
     def dashboard(self) -> dict[str, object]:
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and self._supervisor is not None:
+            self._refresh_supervisor_entry_safety()
         if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
             persisted_trades = tuple(
                 self._paper_trade_row(trade) for trade in self.paper_portfolio.main.completed_trades
@@ -2716,6 +2734,8 @@ class PaperRuntime:
                 "entry_locked": self.paused,
             }
         )
+        if self._supervisor is not None:
+            diagnostics["supervisor_running"] = self._supervisor.running()
         diagnostics.update(self._operational_diagnostics())
         deep_symbols = (
             self.live_selection.deep_symbols if self.live_selection is not None else ()
