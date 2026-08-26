@@ -4,6 +4,22 @@
   "date": "2026-08-27",
   "baseline_service_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
   "implementation_commit": "c2dca3bb0de86374ba51428d1d6e538dc79391fb",
+  "staged_release": {
+    "status": "PASS_NOT_ACTIVATED",
+    "commit": "15308988242aadd7844da071b0c2bfa430353977",
+    "release_path": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/releases/15308988242aadd7844da071b0c2bfa430353977",
+    "manifest_commit_match": true,
+    "release_backend_import_root_match": true,
+    "frontend_index_sha256": "df8b75987bff634c773677859cbfb11dcaef9ce829e6413a159450d2a209da0a",
+    "frontend_css_sha256": "4daea798b722cc98d62afcfc223ddcfd5d529bbefb73fc64f11d70c6b7ae7150",
+    "frontend_javascript_sha256": "c2bd2c43b9786d4ef806e3f45d67de00f4066182b5c128a37d7a4a1d23163cbe",
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "wallet_paths_enabled": false,
+    "activation": "NOT_RUN_BASELINE_SIX_HOUR_OBSERVER_IN_PROGRESS"
+  },
   "reproduction": {
     "source": "evidence/WAVE58_POST_REPLAY_RECOVERY_30M.json",
     "replay_worker_running": false,
@@ -98,10 +114,41 @@
       "status": "PASS",
       "violations": 0
     },
-    "production_build": "NOT_RUN",
-    "frontend_vitest": "NOT_RUN_CURRENT_WAVE",
-    "fixture": "NOT_RUN",
-    "playwright": "NOT_RUN",
+    "production_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 522.23,
+      "javascript_gzip_kb": 160.78,
+      "warning": "MINIFIED_CHUNK_OVER_500_KB"
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 64,
+      "seconds": 4.07
+    },
+    "fixture": {
+      "status": "PASS",
+      "tests": 18,
+      "seconds": 2.70
+    },
+    "paper_build_safety": "PASS",
+    "playwright": {
+      "status": "PASS_RELEASE_SERVER_FIXTURE_UI_ONLY",
+      "tests": 3,
+      "seconds": 15.5,
+      "viewports": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "release_server_commit": "15308988242aadd7844da071b0c2bfa430353977",
+      "release_server_cwd_match": true,
+      "release_isolated": true,
+      "screenshots_captured": false,
+      "preceding_release_fixture_screenshots_refreshed": 14,
+      "actual_installed_8870": false,
+      "scope_note": "Worktree Playwright tests targeted an externally started DEMO_FIXTURE server whose backend and built frontend were served from the immutable release root. This does not prove the installed 8870 LIVE_PUBLIC service or natural-market behavior."
+    },
     "git_diff_check": "PASS"
   },
   "independent_gates": {

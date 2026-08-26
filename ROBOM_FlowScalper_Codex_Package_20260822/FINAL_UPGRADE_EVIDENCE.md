@@ -2365,11 +2365,14 @@ Binance planned rotation은 `depth_warmup=True` 한 개를 사용했다. 첫 한
 | 실제 macOS taskpolicy 전환 | PASS_LOCAL_PROCESS_ONLY | 별도 child process에서 background true, foreground true를 확인했다. 설치 8870 worker 성능 증거는 아니다. |
 | Ruff / mypy / ESLint / TypeScript | PASS | Python 오류 0·mypy 96 source files 오류 0·frontend 오류 0이다. |
 | security / repository hygiene | PASS | security 131 source·위반·secret-like·실제주문 path 0, 저장소 위반 0이다. |
-| production build / fixture / Playwright | NOT_RUN | 최종 clean commit의 불변 release에서 실행해야 한다. 현재 기준 frontend를 덮어쓰지 않았다. |
+| production build | PASS_WITH_WARNING | 불변 릴리스 commit `15308988242aadd7844da071b0c2bfa430353977`의 frontend를 빌드했다. JS 522.23kB·gzip 160.78kB이고 500kB 초과 경고가 남았다. |
+| frontend / fixture | PASS | frontend 14 files·64 tests 4.07초, offline fixture 18 tests 2.70초, PAPER build safety가 PASS했다. |
+| 불변 release fixture Playwright | PASS_FIXTURE_UI_ONLY | release root에서 backend·빌드 frontend를 제공한 외부 `DEMO_FIXTURE` 서버의 commit·격리 flag·cwd를 확인하고 desktop·tablet·mobile 3 tests를 15.5초에 통과했다. 직전 동일 stage 실행이 fixture screenshot 14개를 갱신했으며 이 이미지는 실제 설치 8870이나 LIVE_PUBLIC 자연시장 증거가 아니다. |
+| 불변 release stage | PASS_NOT_ACTIVATED | manifest commit은 `15308988242aadd7844da071b0c2bfa430353977`, index SHA-256은 `df8b75987bff634c773677859cbfb11dcaef9ce829e6413a159450d2a209da0a`다. release-root backend import와 PAPER-only·주문·인증·private·wallet 0을 확인했지만 기준 observer 보존 때문에 `current` 활성화는 하지 않았다. |
 | 기준 6시간 / 24시간 observer | IN_PROGRESS_WITH_KNOWN_INCIDENT | replay와 기존 저장·회전 실패를 포함한 표본을 중단하거나 삭제하지 않고 계속 보존한다. |
 | 실제 8870 새 저장·회전 경로 | NOT_RUN | 기준 6시간 observer가 끝나기 전에는 설치 서비스를 교체하지 않는다. |
 | 동일 485,283건 자동보호 replay | NOT_RUN | 불변 배포와 실제 planned rotation·flush 확인 뒤 같은 범위로 재시도한다. |
 | 원장 snapshot / 브라우저 / GitHub / Release ZIP | NOT_RUN | 평탄 유지관리·배포·실제 화면·Actions 전에는 완료로 기록하지 않는다. |
 | 전략 수익성 | NOT_PROVEN | 전략 조건과 Registry를 변경하지 않았고 현재 독립 자연표본도 부족하다. |
 
-구현 commit은 `c2dca3bb0de86374ba51428d1d6e538dc79391fb`, 판단 근거는 ADR-060, 기계판독 증거는 `evidence/WAVE59_STORAGE_COMMIT_AND_ROTATION_WARMUP_QA.json`이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·표적·관련·전체 backend와 정적·보안 검사는 PASS지만 실제 설치 flush·전체종목 planned rotation·불변 release·브라우저·동일범위 replay·6시간·24시간·GitHub는 아직 `NOT_RUN` 또는 `IN_PROGRESS`이고 수익성은 `NOT_PROVEN`이다.
+구현 commit은 `c2dca3bb0de86374ba51428d1d6e538dc79391fb`, 최초 불변 stage commit은 `15308988242aadd7844da071b0c2bfa430353977`, 판단 근거는 ADR-060, 기계판독 증거는 `evidence/WAVE59_STORAGE_COMMIT_AND_ROTATION_WARMUP_QA.json`이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·표적·관련·전체 backend, frontend·fixture·불변 release fixture Playwright와 정적·보안 검사는 PASS지만 실제 설치 flush·전체종목 planned rotation·release 활성화·실제 8870 브라우저·동일범위 replay·6시간·24시간·GitHub는 아직 `NOT_RUN` 또는 `IN_PROGRESS`이고 수익성은 `NOT_PROVEN`이다.

@@ -54,6 +54,11 @@ Wave 58 구현은 `runtime.py`가 `backend.app.replay.safety`를 module import�
 hygiene가 PASS했다. 실제 macOS child에서 `taskpolicy -b`와 `-B` 반환도 모두 true였다.
 
 현재 8870은 여전히 기준 commit이므로 새 우선순위와 종목별 warmup의 실제 flush·rotation,
-불변 release 배포, 브라우저, 동일 485,283건 replay, GitHub main·Actions는 `NOT_RUN`이다.
-기준 6시간·24시간 observer는 기존 실패를 포함한 채 `IN_PROGRESS`, 전략 수익성은
-`NOT_PROVEN`이다.
+불변 release 활성화, 실제 브라우저, 동일 485,283건 replay, GitHub main·Actions는
+`NOT_RUN`이다. commit `15308988242aadd7844da071b0c2bfa430353977`은 불변 릴리스로
+stage했고 manifest의 commit·frontend hash와 release-root backend import를 확인했다.
+그 릴리스의 격리 `DEMO_FIXTURE` 서버를 대상으로 frontend 64건, fixture 18건,
+desktop·tablet·mobile Playwright 3건과 PAPER build safety가 PASS했다. Playwright는 고정
+fixture UI 회귀이므로 실제 설치 8870·LIVE_PUBLIC 검증으로 해석하지 않는다. production
+bundle 522.23kB에는 500kB 초과 경고가 남아 `PASS_WITH_WARNING`이다. 기준 6시간·24시간
+observer는 기존 실패를 포함한 채 `IN_PROGRESS`, 전략 수익성은 `NOT_PROVEN`이다.
