@@ -72,6 +72,9 @@ Detailed specifications:
 - `docs/adr/ADR-044-revisioned-entry-intent-and-nonblocking-history-startup.md`
 - `docs/adr/ADR-045-cost-aware-hourly-trend-shadow-and-evidence-retirement.md`
 - `docs/adr/ADR-046-best-effort-focus-cache-under-durable-writer.md`
+- `docs/adr/ADR-047-strategy-survival-governor-and-outcome-timing.md`
+- `docs/adr/ADR-048-current-and-peak-process-memory.md`
+- `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`
 
 ## Supporting contracts
 
@@ -127,6 +130,9 @@ Detailed specifications:
 - `evidence/WAVE42_STRATEGY_POLICY_AND_REPLAY_QA.json`
 - `evidence/WAVE42_TRADE_REPLAY_ACTUAL_EXIT.png`
 - `evidence/WAVE42_STRATEGY_POLICY_ACTUAL.png`
+- `evidence/wave48-ledger-integrity/actual-cross-device-maintenance-integrity.json`
+- `scripts/verify_ledger_snapshot.py`
+- `scripts/verify_macos_ledger_maintenance.py`
 - `scripts/research_public_trend_candidates.py`
 - `scripts/research_public_hourly_trend_diagnostic.py`
 - `evidence/screenshots/wave21-live-market-1280x720.png`

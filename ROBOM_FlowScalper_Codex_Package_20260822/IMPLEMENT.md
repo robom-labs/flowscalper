@@ -338,3 +338,17 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. After restart, compare API current RSS with the operating-system RSS, verify peak is not lower than current, and exercise the actual advanced diagnostics screen in the browser.
 9. Re-run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene. Record six-hour and 24-hour stability separately and never infer them from a short sample.
 10. Update machine-readable evidence and `FINAL_UPGRADE_EVIDENCE.md`, push the reviewed implementation to GitHub main and confirm Actions before calling the Wave complete.
+
+## Closed cross-device large-ledger integrity Wave
+
+1. Never run full `quick_check` or `foreign_key_check` on the active writer after a reproduced queue, drop or lag incident. Preserve every failed attempt with its exact status.
+2. Bound the Online Backup API by total duration and no-progress duration. Treat completion under continuous external writes as unproven and remove partial copies after abort.
+3. Start maintenance only from LIVE·PAPER·RUNNING with zero main and Strategy League positions, safe storage, bounded queue and lag, and actual orders·auth false.
+4. Give LaunchAgent at least 60 seconds to finish the shielded persistence worker. Require source process handles 0, WAL busy 0 and WAL size 0 before snapshot creation.
+5. Use macOS `clonefile(2)` directly on the closed same-device ledger and do not allow a normal-copy fallback that would silently extend downtime.
+6. Restart the service immediately after clone creation. Require the same Run, a new process, LIVE·PAPER·RUNNING, zero positions and actual orders·auth false before long work continues.
+7. Transfer the closed clone in bounded chunks to an explicitly different device. Require exact byte count and matching source·target SHA-256 before reading the verification copy.
+8. Run full `quick_check` and `foreign_key_check` only on the read-only immutable different-device copy. Monitor LIVE independently through transfer, hashing and checks.
+9. Fail closed on queue, executable lag, event stall, unplanned reconnect, gap, resync, drop, persistence fault, buffer drop, critical incident, position or PAPER-safety violation. Allow only a bounded planned-rotation transition and at most two consecutive probe errors.
+10. Remove successful temporary copies, re-run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene, and preserve 6-hour·24-hour·profitability·Release gates separately.
+11. Update ADR, acceptance criteria, machine-readable evidence and `FINAL_UPGRADE_EVIDENCE.md`, then push the reviewed implementation to GitHub main and confirm Actions.

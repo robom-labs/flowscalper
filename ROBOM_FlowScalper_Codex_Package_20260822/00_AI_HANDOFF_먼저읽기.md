@@ -114,6 +114,7 @@ flowchart LR
 | 포지션·청산 | `backend/app/positions/` | `docs/07_POSITION_AND_EXIT_MANAGEMENT.md` | `backend/tests/test_position_management.py` |
 | 위험관리 | `backend/app/risk/` | `docs/08_RISK_MANAGEMENT.md` | `backend/tests/test_v02_operational_safety.py` |
 | SQLite 원장 | `backend/app/storage/sqlite.py` | `docs/10_STORAGE_REPLAY_ANALYTICS.md` | `backend/tests/test_v02_storage_market_replay.py` |
+| 대형 원장 닫힌 무결성 | `backend/app/storage/integrity.py`, `scripts/verify_macos_ledger_maintenance.py` | `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md` | `backend/tests/test_ledger_integrity.py`, `backend/tests/test_macos_service_contract.py`, 실제 유지관리 증거 |
 | Parquet archive | `backend/app/storage/parquet.py` | `docs/10_STORAGE_REPLAY_ANALYTICS.md`, `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md` | `backend/tests/test_v02_storage_market_replay.py` |
 | ReplayEngine | `backend/app/replay/` | `docs/10_STORAGE_REPLAY_ANALYTICS.md` | `backend/tests/test_storage_replay_analytics.py`, `backend/tests/test_v02_storage_market_replay.py` |
 | 전략 성과 | `backend/app/analytics/`, `backend/app/strategies/statistics.py` | `docs/16_MODEL_CALIBRATION.md` | `backend/tests/test_storage_replay_analytics.py`, `backend/tests/test_strategy_registry_shadow.py` |
@@ -122,7 +123,7 @@ flowchart LR
 | candle·MA chart·현재 PAPER 표시 | `frontend/src/components/PriceChart.tsx`, `frontend/src/pages/MarketPage.tsx` | `docs/09_DASHBOARD_UI_UX.md`, `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md` | `frontend/tests/PriceChart.test.tsx`, `frontend/e2e/dashboard.spec.ts` |
 | 전략 감시상태 | `frontend/src/pages/StrategiesPage.tsx`, `frontend/src/strategyPresentation.ts` | `docs/adr/ADR-026-executable-book-trade-lag-and-strategy-visibility.md` | `frontend/tests/leagueUi.test.tsx`, `frontend/e2e/dashboard.spec.ts` |
 | 스타일·반응형 | `frontend/src/styles.css` | `design-qa.md`, `docs/09_DASHBOARD_UI_UX.md` | Vitest·E2E |
-| macOS 자동실행 | `scripts/install_macos_service.sh`, `scripts/run_macos_service.sh`, `packaging/macos/` | `README.md`, `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md` | shell syntax·plist·실제 LaunchAgent |
+| macOS 자동실행 | `scripts/install_macos_service.sh`, `scripts/run_macos_service.sh`, `packaging/macos/` | `README.md`, `docs/adr/ADR-008-nonblocking-ledger-always-on-simple-dashboard.md`, `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md` | shell syntax·plist·종료 유예·실제 LaunchAgent |
 | 릴리스·보안 | `scripts/package_release.py`, `scripts/security_scan.py` | `docs/11_SECURITY_PRIVACY.md`, `docs/14_BUILD_AND_RELEASE.md` | security scan·ZIP checksum |
 | 버전·저장소 위생 | `VERSION`, `scripts/check_repository_hygiene.py` | `CHANGELOG.md`, `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`, ADR-009 | `backend/tests/test_repository_hygiene.py`, `make repo-hygiene` |
 

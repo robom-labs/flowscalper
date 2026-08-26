@@ -3,7 +3,7 @@ PYTHON := .venv/bin/python
 UV := uv
 PNPM := pnpm
 
-.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke security-scan repo-hygiene soak-30m soak-6h soak-24h package-release clean-data-safe
+.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke security-scan repo-hygiene soak-30m soak-6h soak-24h ledger-verify-snapshot ledger-verify-maintenance package-release clean-data-safe
 
 setup:
 	$(UV) sync --all-groups
@@ -55,6 +55,17 @@ soak-6h:
 
 soak-24h:
 	./scripts/soak_24h.command
+
+ledger-verify-snapshot:
+	@test -n "$${ROBOM_DB_PATH}" || (echo "ROBOM_DB_PATH가 필요합니다." >&2; exit 2)
+	@test -n "$${ROBOM_LEDGER_SNAPSHOT_DIR}" || (echo "ROBOM_LEDGER_SNAPSHOT_DIR가 필요합니다." >&2; exit 2)
+	$(UV) run python scripts/verify_ledger_snapshot.py --source "$${ROBOM_DB_PATH}" --snapshot-dir "$${ROBOM_LEDGER_SNAPSHOT_DIR}" --output evidence/WAVE48_LEDGER_SNAPSHOT_INTEGRITY.json
+
+ledger-verify-maintenance:
+	@test -n "$${ROBOM_DB_PATH}" || (echo "ROBOM_DB_PATH가 필요합니다." >&2; exit 2)
+	@test -n "$${ROBOM_LEDGER_SNAPSHOT_DIR}" || (echo "ROBOM_LEDGER_SNAPSHOT_DIR가 필요합니다." >&2; exit 2)
+	@test -n "$${ROBOM_LEDGER_VERIFICATION_DIR}" || (echo "ROBOM_LEDGER_VERIFICATION_DIR가 필요합니다." >&2; exit 2)
+	$(UV) run python scripts/verify_macos_ledger_maintenance.py --source "$${ROBOM_DB_PATH}" --snapshot-dir "$${ROBOM_LEDGER_SNAPSHOT_DIR}" --verification-dir "$${ROBOM_LEDGER_VERIFICATION_DIR}" --output evidence/WAVE48_MACOS_LEDGER_MAINTENANCE.json
 
 package-release: build security-scan repo-hygiene
 	$(UV) run python scripts/package_release.py

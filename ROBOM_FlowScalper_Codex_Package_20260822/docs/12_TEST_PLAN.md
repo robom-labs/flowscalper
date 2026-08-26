@@ -268,3 +268,17 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 - Verify soak `memory_growth_mb` is calculated from current RSS while `peak_memory_growth_mb` remains a separate high-water diagnostic.
 - Compare the restarted service current RSS with the operating-system process RSS. Record tolerance and source in machine-readable evidence.
 - A unit test or short sample does not prove six-hour or 24-hour memory stability. Those gates remain `NOT_RUN` until their exact wall-clock duration completes.
+
+## 12.22 Large-ledger closed integrity regression
+
+- Unit-test Online Backup API time and no-progress limits, partial-file cleanup, source-overwrite refusal and safety-checkpoint cancellation.
+- Unit-test a closed WAL checkpoint, same-device clone size contract, different-device byte transfer, SHA-256 equality and partial-transfer cleanup.
+- Statically verify the LaunchAgent template keeps `RunAtLoad`, `KeepAlive`, `ProcessType=Background` and at least 60 seconds of `ExitTimeOut`.
+- Before actual maintenance require LIVE·PAPER·RUNNING, a flat main and Strategy League portfolio, storage entry allowed, queue and lag below the maintenance thresholds, and actual orders·auth false.
+- After `launchctl bootout`, require no process handle on the source, WAL busy 0 and 0 bytes, then create the same-device snapshot through `clonefile(2)` without a normal-copy fallback.
+- Restart before full verification and require the same Run to recover with a fresh process, LIVE·PAPER·RUNNING, zero positions and actual orders·auth false.
+- Transfer the closed clone to an explicitly different device with bounded chunks. Require exact byte count and matching source·target SHA-256 before immutable `quick_check` and `foreign_key_check`.
+- During transfer, hashing and full checks, observe event progress, queue, executable p95, planned·unplanned reconnects, gap, resync, drop, persistence fault, buffer drop, critical incidents, positions and PAPER safety in a separate thread.
+- Permit only the bounded planned-rotation transition in which the planned counter leads reconnect by at most one. Record an isolated probe failure, but fail closed after three consecutive failures.
+- Preserve every aborted actual attempt as `ABORTED_RUNTIME_SAFETY` or `ABORTED_OPERATOR`; never relabel it PASS. Remove successful temporary copies and verify both temporary directories are empty.
+- Six-hour and 24-hour runtime stability, strategy profitability and Release packaging remain separate evidence and are not implied by an integrity PASS.

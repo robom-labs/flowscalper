@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 활성 2.8GB SQLite에 전수 `quick_check`를 직접 병행하여 queue·drop을 만들던 검증 경로를 제거했다. 평평한 PAPER Run을 유지관리로 잠시 닫고 WAL 0·APFS clone을 고정한 뒤 동일 Run을 먼저 재기동하며, 다른 device의 SHA-256 일치 사본에서만 full `quick_check`·외래키 검사를 실행한다. 온라인 backup은 시간·무진행 상한을 두고 런타임 감시가 안전상한을 넘으면 부분 사본을 제거한다.
 - 장시간 진단의 `프로세스 메모리`가 현재 RSS가 아니라 프로세스 시작 이후 최고 RSS를 표시하던 문제를 수정했다. 현재 RSS와 최고 RSS를 별도 필드·한국어 문구로 표시하며 soak의 메모리 증가량은 현재 RSS만 사용한다.
 - 검증된 비용후 전략이 없는 상태에서 공동계좌 기본 `ACTIVE`를 0개로 바꾸고 B/C/F/G/I/J는 독립 `SHADOW`, A/D/E/H/K는 `RETIRED·OFF`로 정리했다. 15분 자동 Governor는 새 자연표본과 운영 결함만 평가하며 formal OOS·강건성 gate 없이 자동 승격하지 않는다.
 - 사전등록 장중 후보 4개와 K 시간봉 가설을 고정 조건·BASE/STRESS 비용으로 재검증했다. 장중 후보는 모두 STRESS gate를 실패했고, K는 독립 과거구간 147일·166건에서 BASE 기대값 -18.263bp·PF 0.856, STRESS -30.263bp·PF 0.775라 퇴역했다. 실패 증거는 보존하고 Registry에는 통과하지 못한 신규 전략을 추가하지 않았다.

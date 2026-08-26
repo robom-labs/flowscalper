@@ -53,6 +53,18 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 ./scripts/uninstall_macos_service.sh
 ```
 
+대형 활성 원장에 full `quick_check`를 직접 실행하지 마세요. 포지션이 0인 유지관리 시간에만 다음 명령으로 닫힌 APFS clone을 만든 뒤 서비스를 먼저 복구하고, 다른 device의 임시 사본에서만 전수검사합니다. 실행 전 원장 크기와 외장·검증 device 여유공간을 확인하고 경로를 명시적으로 지정해야 합니다.
+
+```bash
+uv run python scripts/verify_macos_ledger_maintenance.py \
+  --source "$ROBOM_DB_PATH" \
+  --snapshot-dir "$ROBOM_LEDGER_SNAPSHOT_DIR" \
+  --verification-dir "$ROBOM_LEDGER_VERIFICATION_DIR" \
+  --output evidence/WAVE48_MACOS_LEDGER_MAINTENANCE.json
+```
+
+유지관리는 localhost를 잠시 내린다. 실제 Wave 48에서 동일 Run은 16.912초 후 복구됐고 전송·검사 동안은 작동 중이었다. 안전선을 넘으면 fail-closed하며, PASS 후 외장 clone과 검증 device의 임시 사본을 제거한다. 세부 계약은 `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`에 있습니다.
+
 ## Windows 첫 실행
 
 ```powershell
@@ -91,7 +103,7 @@ Windows Command Prompt에서는 `set ROBOM_MODE=LIVE_SHADOW_PAPER`를 실행한 
 
 ## 저장·복구·내보내기
 
-- 수동 실행은 `data/run-ledger.sqlite3`, macOS 자동 서비스는 `~/Library/Application Support/ROBOM FlowScalper/active-ledger/run-ledger.sqlite3`에 Run, 상태 전이, PAPER 주문·체결·거래, 위험 잠금, archive manifest와 사고를 WAL 트랜잭션으로 보존합니다.
+- 수동 실행은 `data/run-ledger.sqlite3`을 사용합니다. macOS 자동 서비스가 외장 APFS 프로젝트에 있으면 같은 volume의 `05_RUNTIME/ROBOM_FlowScalper/active-ledger/run-ledger.sqlite3`을 기본으로 사용하고, 외장 프로젝트가 아니면 Application Support의 `active-ledger/run-ledger.sqlite3`을 사용합니다. `ROBOM_ACTIVE_LEDGER_DIR`·`ROBOM_DB_PATH`가 있으면 명시값이 우선합니다.
 - 자동 서비스의 공개시장 event는 외장 `data/market-parquet-v6`에 ZSTD Parquet으로 보존합니다. 각 row와 batch checksum, root 경로 검증 뒤 SQLite event와 시간순 병합해 replay합니다. candle, 후보, strategy account와 replay 결과는 Run 범위의 SQLite 원장에 보존합니다.
 - 기본 보존기간은 deep-book 7일, 1초 특징·캔들 90일입니다. 후보·거래 창은 자동 정리에서 보호됩니다.
 - 저장소 여유 공간이 기준보다 작으면 원장을 우선 보호하고 신규 PAPER 진입을 잠깁니다.

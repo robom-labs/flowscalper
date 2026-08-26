@@ -188,9 +188,9 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [x] Replay lists use a query-only read path and return the latest result per source Run while full stored results remain intact.
 - [x] The actual browser shows 43 current-version trades, 79 replay Runs, a 100-event precise timeline and working play/pause controls without console errors.
 - [ ] Six-hour and 24-hour post-change soaks are completed.
-- [ ] The active multi-gigabyte ledger full `quick_check` is rerun without disrupting the live writer.
+- [x] The multi-gigabyte ledger is closed and cloned within a bounded maintenance window, the same Run is restarted before full checks, and full `quick_check` plus foreign-key validation run only on a byte-verified different-device copy while LIVE remains within safety thresholds.
 
-Wave 47에서 작동 중인 2.798GB writer와 `sqlite3 -readonly` 전수검사를 동시에 실행하자 437초 동안 결과 없이 queue가 4,096까지 포화되고 drop 9,736이 발생했다. 따라서 이 항목은 미충족이며, 같은 동시검사를 반복하지 않고 닫힌 snapshot 또는 maintenance 절차가 마련될 때까지 `NOT_COMPLETED`다.
+Wave 47의 활성 writer 동시검사는 queue 4,096·drop 9,736을 만든 `FAIL_FOR_LIVE_CONCURRENCY`로 보존한다. Wave 48은 포지션 0에서 유지관리를 시작해 16.912초 후 동일 Run을 복구하고, 2,842,066,944byte clone을 다른 device로 SHA-256 대조한 후 `quick_check=ok`·외래키 위반 0을 확인했다. 이 검증은 활성 원장에 full check를 실행하지 않았다.
 
 ## S. Strategy survival, outcome timing and history truth
 
@@ -204,7 +204,8 @@ Wave 47에서 작동 중인 2.798GB writer와 `sqlite3 -readonly` 전수검사�
 - [x] Focused replay visibly advances across long idle gaps while preserving source timestamps, event order and final reconciliation.
 - [x] Actual orders, private API, auth, API keys, secrets and wallet paths remain zero.
 - [ ] Current-version natural LIVE_PUBLIC samples meet the preregistered profitability gate.
-- [ ] Six-hour and 24-hour post-change soaks and a non-disruptive active-ledger full `quick_check` are completed.
+- [ ] Six-hour and 24-hour post-change soaks are completed.
+- [x] The large-ledger full integrity check uses the accepted bounded-maintenance and different-device snapshot contract without reading the active writer directly.
 
 ## T. Current and peak process-memory truth
 
@@ -214,3 +215,16 @@ Wave 47에서 작동 중인 2.798GB writer와 `sqlite3 -readonly` 전수검사�
 - [x] Soak memory growth uses current RSS and preserves peak growth as a separate diagnostic.
 - [x] The restarted actual service current RSS is compared with the operating-system process RSS in the same observation window.
 - [ ] Six-hour and 24-hour post-change memory stability is measured for the implementation commit.
+
+## U. Closed cross-device large-ledger integrity
+
+- [x] Online snapshot attempts have explicit total-duration and no-progress limits and remove partial files after abort.
+- [x] LaunchAgent shutdown has at least 60 seconds of grace, waits for persistence completion and never directly requests a forced kill.
+- [x] Maintenance starts only with a flat LIVE PAPER Run and actual orders·auth false.
+- [x] The closed ledger has process handles 0, WAL busy 0 and WAL size 0 before `clonefile(2)`.
+- [x] The same Run is restarted before transfer and remains LIVE·PAPER·RUNNING during the long verification phase.
+- [x] The verification copy is on a different device, matches the closed clone byte count and SHA-256, and is opened read-only immutable.
+- [x] Full `quick_check=ok`, foreign-key violations 0, schema v7 and all 23 tables are observed on the verification copy.
+- [x] During the successful pass event count advances, queue remains at most 22, executable p95 remains at most 189.040ms and every unplanned reconnect·gap·resync·drop·persistence fault·buffer drop·critical incident stays 0.
+- [x] The external clone and different-device verification copy are both removed after PASS and both temporary directories are empty.
+- [ ] Six-hour and 24-hour stability, strategy profitability and Release ZIP are independently completed.

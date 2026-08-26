@@ -11,6 +11,7 @@ SUPPORT_DIR="$HOME/Library/Application Support/ROBOM FlowScalper"
 TARGET_PLIST="$LAUNCH_AGENT_DIR/$LABEL.plist"
 TEMPLATE_PLIST="$PROJECT_DIR/packaging/macos/$LABEL.plist"
 RUNTIME_VENV="$SUPPORT_DIR/runtime-venv"
+SERVICE_TARGET="gui/$USER_ID/$LABEL"
 
 if [[ ! -f "$TEMPLATE_PLIST" || ! -x "$PROJECT_DIR/.venv/bin/python" || ! -f "$PROJECT_DIR/frontend/dist/index.html" ]]; then
   echo "먼저 외장 저장소에서 ./scripts/setup_macos.sh를 실행해야 합니다." >&2
@@ -25,14 +26,17 @@ fi
 escaped_project="${PROJECT_DIR//&/\\&}"
 escaped_logs="${SUPPORT_DIR//&/\\&}"
 sed -e "s|__PROJECT_DIR__|$escaped_project|g" -e "s|__LOG_DIR__|$escaped_logs|g" "$TEMPLATE_PLIST" > "$TARGET_PLIST"
+xattr -d com.apple.provenance "$TARGET_PLIST" 2>/dev/null || true
 chmod 600 "$TARGET_PLIST"
 chmod 755 "$PROJECT_DIR/scripts/run_macos_service.sh"
 plutil -lint "$TARGET_PLIST"
 
-launchctl bootout "gui/$USER_ID" "$TARGET_PLIST" 2>/dev/null || true
+if launchctl print "$SERVICE_TARGET" >/dev/null 2>&1; then
+  launchctl bootout "$SERVICE_TARGET"
+fi
 launchctl bootstrap "gui/$USER_ID" "$TARGET_PLIST"
-launchctl enable "gui/$USER_ID/$LABEL"
-launchctl kickstart -k "gui/$USER_ID/$LABEL"
+launchctl enable "$SERVICE_TARGET"
+launchctl kickstart "$SERVICE_TARGET"
 
 echo "PASS: 자동 실행 서비스 설치 완료"
 echo "주소: http://127.0.0.1:8870/"
