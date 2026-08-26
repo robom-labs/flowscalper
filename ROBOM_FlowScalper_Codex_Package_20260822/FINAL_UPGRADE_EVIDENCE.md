@@ -1864,3 +1864,55 @@ queue·비계획 reconnect·계획회전·gap·resync·drop·persistence fault·
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
 
 수정 전 기준선, 전수검사 안전사건, 실제 재시작 뒤 관찰은 `evidence/wave47-resource-truth/`에 분리했다. 같은 실제 8870에서 시장·11전략/22계좌·69건 기록·ETHUSDT 완료거래 8-event 집중재생·현재버전 분석·설정을 직접 순회했다. 집중재생은 첫 cache 구성 중 최대 40초 동안 준비 상태를 보인 뒤 진입 2,447.43, SL 2,427.85, TP1 2,471.22, TP2 2,510.08, 실제 종료 2,447.46, 보유 30초, 순손익 -1.112 USDT를 표시했다. 실제 수정 후 브라우저 스크린샷 `actual-post-fix-system-memory.jpg`와 `actual-post-fix-memory-detail.jpg`에서는 작동 중·PAPER 실제 주문 0·화면 연결됨과 현재/최고 RSS 및 각 측정 기준을 직접 확인했다. 기계판독 증거는 `pre-fix-runtime-baseline.json`, `pre-restart-ledger-browser.json`, `actual-post-fix-verification.json`이다. ADR-048은 현재값·최고값·fallback 의미를 고정한다. 실제 재시작·운영체제 RSS 대조·짧은 LIVE 관찰까지 마친 Wave 47의 수용상태는 `COMPLETE_WITH_LIMITS`다. 수정 후 6시간·24시간, 안전한 닫힌 snapshot 또는 maintenance 절차의 활성 원장 전수검사, 전략 수익성과 Release ZIP은 각각 `NOT_RUN`, `NOT_COMPLETED`, `NOT_PROVEN`, `NOT_RUN`으로 유지한다.
+
+## 47. Wave 48 닫힌 다른 device 대형 원장 전수검사
+
+### 재현과 안전한 경로 선정
+
+Wave 47에서 2.798GB 활성 writer와 `quick_check`를 병행했던 경로는 437초 동안 결과 없이 queue 4,096·drop 9,736을 만들었다. 이를 PASS로 재사용하지 않고 `FAIL_FOR_LIVE_CONCURRENCY`로 보존했다.
+
+SQLite Online Backup API는 단계 사이 source lock을 풀지만 외부 connection의 쓰기가 발생하면 backup이 처음부터 재시작될 수 있다. 실제 원장에서도 진행률이 완료되지 않아 운영자 중단과 LIVE 안전중단을 각각 기록했다. 온라인 경로는 총 300초·무진행 30초 상한이 있는 작거나 조용한 원장용으로만 남겼다.
+
+최종 경로는 평평한 LIVE PAPER Run에서 LaunchAgent를 정상 종료하고, process handle 0·WAL busy 0·0byte를 확인한 뒤 fallback 없는 macOS `clonefile(2)`로 사본을 고정하는 방식이다. clone 직후 동일 Run을 먼저 재기동하고, 사본을 다른 device로 제한 전송·SHA-256 대조한 후 `mode=ro&immutable=1`에서만 전수검사한다.
+
+### 중단 시도와 감시 교정
+
+- `online-snapshot-operator-abort.json`은 162.647초 후 운영자가 중단한 `ABORTED_OPERATOR`다.
+- `online-snapshot-runtime-safety-abort.json`은 108.554초 후 안전감시가 중단한 `ABORTED_RUNTIME_SAFETY`다.
+- 같은 device 사본 검사 중 계획 회전 counter가 reconnect보다 먼저 증가하는 중간 상태와 단발 localhost timeout을 각각 과민반응으로 재현했다. 계획 회전 중간 상태는 최대 15초, probe 오류는 연속 3회 전까지 증거로만 남기도록 교정했다.
+- 교정 후 같은 device 검사는 실제 실행 p95 736.122ms로 500ms 상한을 넘어 513.811초에 의도대로 `ABORTED_RUNTIME_SAFETY`했다. 중단을 성공으로 오표시하지 않았다.
+- 초기 서비스 installer 재적용에서 KeepAlive와 종료 절차가 충돌했고, 생성된 plist의 `com.apple.provenance` xattr가 bootstrap I/O 오류를 만들어 일시적으로 서비스가 중단됐다. 직접 `launchctl bootout`·정상 bootstrap으로 바꾸고 provenance xattr를 제거해 복구했다. 최종 LaunchAgent는 running·`ExitTimeOut=60`이다.
+
+### 실제 2.842GB 전수검사
+
+`evidence/wave48-ledger-integrity/actual-cross-device-maintenance-integrity.json`의 최종 `status` 는 `PASS`다.
+
+- 원장은 2,842,066,944byte·693,864page·schema v7·23 tables였다.
+- LaunchAgent 정상 종료는 6.436초, `clonefile(2)`는 0.002초, 동일 `run-2b7135a972dd` 복구는 유지관리 시작 후 16.912초였다. 강제 종료를 요청하지 않았다.
+- 외장 device 16,777,248에서 검증 device 16,777,233으로 2,842,066,944byte를 215.789초에 전송했다. 양쪽 SHA-256은 `187cfcec20887f7825790a4187238b5f6500b759cce60c13e6a7011ece5c5676`으로 일치했다.
+- immutable 사본의 full `quick_check=ok`, 외래키 위반 0은 78.467초에 완료됐다.
+- 재기동 후 244회 감시에서 event +28,348, queue 최대 22, 실행 p95 최대 189.040ms, probe 오류 0이였다. 비계획 reconnect·gap·resync·drop·persistence fault·buffer drop·critical incident·position·실제주문·인증은 모두 0이였다.
+- PASS 후 외장 clone과 검증 device 사본을 모두 제거했고 두 임시 디렉터리가 빈 것을 확인했다.
+
+### 현재 실행과 전체 회귀
+
+구현 commit `820e8ace4f6bffe128b80d749b76099382af63e5`으로 LaunchAgent는 running·PID 35929·종료 유예 60초를 유지했다. 실제 8870의 같은 Run은 3초 동안 event 110,870→111,189로 319건 전진했다. RUNNING·LIVE·PAPER, queue 0, 실행 p95 66.334ms, 계획 회전·reconnect 1:1, 비계획 reconnect·gap·resync·drop·fault·buffer drop·critical·lock·position·실제주문·인증 0, 저장 허용 true, 최근 오류 null이었다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| backend pytest | PASS | 최종 소스 423 passed, 27.30초 |
+| 원장·LaunchAgent 타겟 회귀 | PASS | 18 passed, 3.10초 |
+| frontend Vitest | PASS | 13 files·57 tests |
+| Ruff / mypy | PASS | 오류 0 / 94 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 514.69kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 127 source·위반·secret-like·실제주문 path 0 / 위반 0 |
+| 실제 대형 원장 | PASS | 다른 device 바이트·SHA-256 대조, immutable full check, LIVE 독립 감시가 모두 PASS했다. |
+| 공개시장 network smoke | NOT_RERUN | 이번 변경은 원장 유지관리였고 실제 8870 LIVE event 전진으로 입력경로를 확인했다. Wave 47 결과를 이번 PASS로 쓰지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 수정 후 정확한 실시간을 채우지 않았다. |
+| 전략 수익성 | NOT_PROVEN | 원장 무결성 PASS를 수익성으로 해석하지 않는다. 임계값도 낮추지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
+| GitHub main / Actions | PENDING | 구현·로컬 증거 commit `820e8ace4f6bffe128b80d749b76099382af63e5`을 먼저 고정했다. main push와 Actions는 이 증거 작성 후 별도로 확인한다. |
+
+기계판독 증거는 `evidence/wave48-ledger-integrity/`에 있고 판단 근거는 ADR-049다. 중단된 5개 경로는 PASS가 아니며 최종 다른 device 검사 1개만 PASS다. Wave 48은 `COMPLETE_WITH_LIMITS`며 수정 후 6시간·24시간·수익성·Release ZIP을 입증하지 않았다.
