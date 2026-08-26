@@ -282,3 +282,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 13. Complete a fresh 30-minute observation after deployment. Mark 6-hour and 24-hour checks `NOT_RUN` unless their full wall-clock duration is actually observed.
 14. Publish each runtime strategy's horizon, expected holding range, signal half-life, required inputs, exit model, maximum safety hold and cost-model version without changing its entry threshold.
 15. Shield the final persistence worker during ASGI shutdown. The macOS launcher may recover only the latest non-finalized LIVE/DEMO PAPER intent from a read-only ledger query; all missing or invalid state falls back to READY.
+
+## Observable replay and bounded timeline Wave
+
+1. Reproduce history and replay visibility from the actual 8870 browser before changing storage or strategy settings.
+2. Compare visible zero rows with the current-version main and independent Strategy League ledger scopes. Preserve immutable prior-version rows.
+3. Replace synchronous full replay requests with an explicit background operation, ordered transitions, idempotency, conflict, timeout, cancellation and shutdown cleanup.
+4. Keep the isolated `nice(19)` child and 5% cooperative CPU budget. Cancellation must terminate its child work and must not pause LIVE public observation.
+5. Load Run metadata and recent candles before historical replay results. Reattach to an active operation after refresh.
+6. Bound interactive event and candle reads while leaving the full strategy replay input unchanged. Merge active SQLite and archive rows by the canonical event key.
+7. Exercise current history, a small completed replay and a cancellable large replay in the actual desktop, tablet and phone browser. Check console output.
+8. Re-run backend, frontend, fixture, Playwright, lint, typecheck, build, PAPER safety, security and repository hygiene.
+9. Record current natural sample counts, costs and holding times without lowering entry, exit, cost or governor gates. Keep profitability `NOT_PROVEN` below its preregistered evidence gate.
+10. Keep the active-ledger full check, six-hour soak, 24-hour soak and Release ZIP as `NOT_RUN` unless each exact operation is completed.

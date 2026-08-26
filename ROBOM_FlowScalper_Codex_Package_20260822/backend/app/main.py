@@ -31,6 +31,10 @@ from backend.app.control import (
 from backend.app.control.operations import ControlRunner, ProgressCallback
 from backend.app.domain.models import MarketDataState, RuntimeMode, Venue
 from backend.app.market_explorer import MarketExplorerService
+from backend.app.replay.operations import (
+    ReplayOperationConflict,
+    ReplayOperationManager,
+)
 from backend.app.replay.process import (
     replay_focus_session_from_paths,
     replay_stored_run_from_paths,
@@ -248,20 +252,61 @@ def create_app(
         active_runtime.clock.utc_ms,
         audit=audit_control_transition,
     )
+
+    def audit_replay_transition(operation: dict[str, object]) -> None:
+        ledger = active_runtime.ledger
+        if ledger is None:
+            return
+        source_run_id = str(operation["source_run_id"])
+        run_id = source_run_id if ledger.get_run(source_run_id) is not None else None
+        ledger.record_incident(
+            f"{operation['operation_id']}-rev-{operation['revision']}",
+            run_id=run_id,
+            severity="INFO",
+            category="REPLAY_STATE_TRANSITION",
+            ts_ms=int(str(operation["updated_ts_ms"])),
+            payload=operation,
+        )
+
+    replay_operation_manager = ReplayOperationManager(
+        active_runtime.clock.utc_ms,
+        audit=audit_replay_transition,
+    )
     replay_process_lock = asyncio.Lock()
+    replay_results_cache_lock = asyncio.Lock()
+    replay_results_cache: list[dict[str, object]] | None = None
+
+    def remember_replay_result(result: dict[str, object]) -> None:
+        """완료 결과를 기존 캐시에 중복 없이 추가해 다음 화면 조회를 즉시 처리한다."""
+
+        nonlocal replay_results_cache
+        if replay_results_cache is None:
+            return
+        replay_id = str(result["replay_id"])
+        replay_results_cache = [
+            *(
+                row
+                for row in replay_results_cache
+                if str(row.get("replay_id")) != replay_id
+            ),
+            dict(result),
+        ]
 
     def ensure_replay_process_available() -> None:
         """긴 replay 중 다른 화면 조회를 대기열에 묶지 않고 즉시 안내한다."""
 
-        if replay_process_lock.locked():
+        active_operation = replay_operation_manager.active_public()
+        if replay_process_lock.locked() or active_operation is not None:
             raise HTTPException(
                 status_code=409,
                 detail={
                     "error_code": "REPLAY_BUSY",
                     "error_message_ko": (
-                        "다른 저장 기록을 검증하고 있습니다. 완료 뒤 다시 시도하세요."
+                        "다른 저장 기록을 검증하고 있습니다. "
+                        "진행 상태를 확인하거나 취소한 뒤 다시 시도하세요."
                     ),
                     "retryable": True,
+                    "operation": active_operation,
                 },
             )
     websocket_clients: set[WebSocket] = set()
@@ -319,6 +364,7 @@ def create_app(
             yield
         finally:
             await operation_manager.shutdown()
+            await replay_operation_manager.shutdown()
             if broadcaster is not None:
                 broadcaster.cancel()
                 await asyncio.gather(broadcaster, return_exceptions=True)
@@ -334,6 +380,7 @@ def create_app(
     app = FastAPI(title="ROBOM FlowScalper", version="0.2.0-paper", lifespan=lifespan)
     app.state.runtime = active_runtime
     app.state.control_operation_manager = operation_manager
+    app.state.replay_operation_manager = replay_operation_manager
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -343,7 +390,7 @@ def create_app(
         ],
         allow_origin_regex=r"https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?",
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type", "Idempotency-Key"],
     )
 
@@ -752,9 +799,53 @@ def create_app(
 
     @app.get("/api/replay/results")
     async def replay_results() -> list[dict[str, object]]:
+        nonlocal replay_results_cache
         if active_runtime.ledger is None:
             return []
-        return await asyncio.to_thread(active_runtime.ledger.list_replay_runs)
+        if replay_results_cache is not None:
+            return [dict(row) for row in replay_results_cache]
+        async with replay_results_cache_lock:
+            if replay_results_cache is None:
+                replay_results_cache = await asyncio.to_thread(
+                    active_runtime.ledger.list_replay_runs
+                )
+        cached_results = replay_results_cache
+        assert cached_results is not None
+        return [dict(row) for row in cached_results]
+
+    @app.get("/api/replay/operations/current")
+    async def current_replay_operation() -> dict[str, object] | None:
+        """새로고침 뒤에도 현재 장시간 검증 상태를 다시 붙일 수 있게 한다."""
+
+        return replay_operation_manager.current_public()
+
+    @app.get("/api/replay/operations/{operation_id}")
+    async def replay_operation(operation_id: str) -> dict[str, object]:
+        operation = replay_operation_manager.get_public(operation_id)
+        if operation is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "REPLAY_OPERATION_NOT_FOUND",
+                    "error_message_ko": "저장 Run 검증 작업을 찾을 수 없습니다.",
+                    "retryable": False,
+                },
+            )
+        return operation
+
+    @app.delete("/api/replay/operations/{operation_id}", status_code=202)
+    async def cancel_replay_operation(operation_id: str) -> dict[str, object]:
+        operation = await replay_operation_manager.cancel(operation_id)
+        if operation is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "REPLAY_OPERATION_NOT_FOUND",
+                    "error_message_ko": "취소할 저장 Run 검증 작업을 찾을 수 없습니다.",
+                    "retryable": False,
+                },
+            )
+        return operation
 
     @app.get("/api/replay/{run_id}/preview")
     async def replay_preview(
@@ -867,30 +958,102 @@ def create_app(
                 },
             ) from error
 
-    @app.post("/api/replay/{run_id}")
+    @app.post("/api/replay/{run_id}", status_code=202)
     async def replay_run(run_id: str, request: ReplayRequest) -> dict[str, object]:
-        try:
-            if (
-                active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
-                and active_runtime.ledger is not None
-            ):
-                ensure_replay_process_available()
-                await asyncio.to_thread(active_runtime.flush_storage)
-                archive = active_runtime.ledger.market_event_archive
-                async with replay_process_lock:
-                    return await to_process.run_sync(
-                        replay_stored_run_from_paths,
-                        str(active_runtime.ledger.path),
-                        str(archive.root) if archive is not None else None,
-                        run_id,
-                        active_runtime.clock.utc_ms(),
-                        request.symbol,
-                    )
-            return await asyncio.to_thread(
-                active_runtime.replay_stored_run,
-                run_id,
-                symbol=request.symbol,
+        if active_runtime.ledger is None or active_runtime.ledger.get_run(run_id) is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "REPLAY_RUN_NOT_FOUND",
+                    "error_message_ko": f"알 수 없는 소스 Run: {run_id}",
+                    "retryable": False,
+                },
             )
+        symbol = request.symbol.strip().upper() if request.symbol else None
+        try:
+            if replay_process_lock.locked():
+                ensure_replay_process_available()
+            total_events: int | None = None
+            if symbol is not None:
+                symbols = await asyncio.to_thread(
+                    active_runtime.ledger.market_event_symbols,
+                    run_id,
+                )
+                selected = next(
+                    (row for row in symbols if str(row["symbol"]) == symbol),
+                    None,
+                )
+                if selected is not None and selected.get("event_count") is not None:
+                    total_events = int(str(selected["event_count"]))
+            if total_events is None:
+                replayable = await asyncio.to_thread(active_runtime.replayable_runs)
+                selected_run = next(
+                    (row for row in replayable if str(row["run_id"]) == run_id),
+                    None,
+                )
+                if selected_run is not None and selected_run.get("market_event_count") is not None:
+                    total_events = int(str(selected_run["market_event_count"]))
+
+            async def runner(progress: ProgressCallback) -> dict[str, object]:
+                await progress(
+                    "PREPARING",
+                    "저장 원장과 공개시장 이벤트를 안전하게 준비하고 있습니다",
+                )
+                if (
+                    active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                    and active_runtime.ledger is not None
+                ):
+                    await asyncio.to_thread(active_runtime.flush_storage)
+                    archive = active_runtime.ledger.market_event_archive
+                    await progress(
+                        "PROCESSING",
+                        "저우선순위 프로세스에서 같은 전략 조건으로 검증하고 있습니다",
+                    )
+                    async with replay_process_lock:
+                        completed = await to_process.run_sync(
+                            replay_stored_run_from_paths,
+                            str(active_runtime.ledger.path),
+                            str(archive.root) if archive is not None else None,
+                            run_id,
+                            active_runtime.clock.utc_ms(),
+                            symbol,
+                            cancellable=True,
+                        )
+                    remember_replay_result(completed)
+                    return completed
+                await progress(
+                    "PROCESSING",
+                    "저장 이벤트를 같은 전략 조건으로 검증하고 있습니다",
+                )
+                completed = await asyncio.to_thread(
+                    active_runtime.replay_stored_run,
+                    run_id,
+                    symbol=symbol,
+                )
+                remember_replay_result(completed)
+                return completed
+
+            return await replay_operation_manager.submit(
+                source_run_id=run_id,
+                symbol=symbol,
+                total_events=total_events,
+                runner=runner,
+            )
+        except ReplayOperationConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "REPLAY_BUSY",
+                    "error_message_ko": (
+                        "다른 저장 기록을 검증하고 있습니다. "
+                        "진행 상태를 확인하거나 취소하세요."
+                    ),
+                    "retryable": True,
+                    "operation": error.current_operation,
+                },
+            ) from error
+        except HTTPException:
+            raise
         except ValueError as error:
             raise HTTPException(
                 status_code=404,

@@ -167,3 +167,13 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Retired or removed strategy ledgers are preserved and never hidden by a count migration.
 - [ ] Browser, network, 30m, 6h and 24h evidence are independently marked PASS, FAIL, NOT_RUN or BLOCKED.
 - [ ] Profitability remains `NOT_PROVEN` unless current-version natural LIVE_PUBLIC evidence meets its preregistered gate.
+
+## Q. Observable and cancellable stored replay
+
+- [ ] Strategy replay POST returns 202 with an operation ID and never holds the browser request until a large Run finishes.
+- [ ] Requested, preparing, processing, cancelling, completed, retryable failure, blocked failure and cancelled states are ordered and tested.
+- [ ] Duplicate scope is idempotent, conflicting scope returns `REPLAY_BUSY`, timeout is explicit and cancellation terminates child processing.
+- [ ] Browser refresh reattaches to an active operation and shows Run, symbol, estimated events, elapsed time, PAPER safety and a working cancel button.
+- [ ] Run list and recent-candle preview render without waiting for replay result history or archive event bodies.
+- [ ] Interactive timeline reads a bounded event/candle window; full strategy validation still uses all selected stored events.
+- [ ] Actual desktop, tablet and mobile screens show history, preview, progress and cancellation without console errors.

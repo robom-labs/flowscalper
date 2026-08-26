@@ -143,7 +143,7 @@ No personal credentials exist in exports.
 ## 10.11 Large replay isolation and focus cache
 
 - While LIVE public observation is active, full Run replay, timeline reads and trade-focus replay share one process lock and execute in a low-priority child process with independent SQLite and Parquet readers.
-- A `nice(19)` child process applies a one-core 10% cooperative CPU budget to each checkpoint interval across archive decoding, strategy ingestion, event sorting, duplicate checks and streaming SHA-256. The interval calculation prevents old high-load work from creating unbounded later sleep debt. Replay completion time is secondary to uninterrupted LIVE ingestion.
+- A `nice(19)` child process applies a one-core 5% cooperative CPU budget to each checkpoint interval across archive decoding, strategy ingestion, event sorting, duplicate checks and streaming SHA-256. The interval calculation prevents old high-load work from creating unbounded later sleep debt. Replay completion time is secondary to uninterrupted LIVE ingestion.
 - Replay checksum schema 3 length-prefixes each normalized event and decision-path item into separate streaming SHA-256 digests. The final canonical material contains only those digests, counts, config, version and final state, so it does not duplicate the full event list in memory.
 - New archive batches expose `venue_ts_ms`, `symbol`, `event_type` and `batch_checksum` columns. Time-bounded UI reads select relevant manifests, verify the complete selected batch checksum before filtering and decode only matching rows; truncated batches fail even when the remaining filtered rows look valid. Legacy batches keep the full checksum-compatible fallback.
 - Trade-focus reads are bounded to the configured pre/post trade window. Completed sessions are zlib-compressed in schema v7 `replay_focus_cache` and verified by SHA-256 before reuse.
@@ -177,3 +177,12 @@ No personal credentials exist in exports.
 - The intraday report retains all 180 preregistered hypotheses, including no-signal rows. The 60 mechanical mirrors are baselines, while 120 ORIGINAL and separate reverse hypotheses count toward multiple-testing correction.
 - JSON is the machine-readable source. HTML is a human-readable projection of the same result. A hash or deterministic replay PASS proves reproducibility, not profitability.
 - Research outputs never modify current Registry settings, PAPER accounts or immutable execution ledgers.
+
+## 10.15 Observable replay operations and bounded UI timeline
+
+- Full strategy replay is a persisted-audit background operation. POST returns 202 immediately; status and cancellation endpoints expose ordered states, elapsed time, scope, estimated event count and terminal result.
+- LIVE replay cancellation propagates into the isolated process call. Refreshing the browser reattaches to an active operation, while server shutdown cancels it before closing the ledger.
+- Replay result history loads after the Run list and preview. A slow historical result scan cannot leave Run and symbol controls blank, and subsequent reads use the verified in-process cache.
+- Interactive timeline reads at most 100 checksum-verified events and only the 1-second candles inside that event window. The full stored count remains visible. Full strategy validation continues to process all stored events for the selected symbol.
+- When active SQLite rows and immutable Parquet archives coexist, each source is bounded before the canonical `(venue_ts_ms, receive_monotonic_ns, event_id)` merge. A later archive is skipped only when its first timestamp is strictly beyond the current limit cutoff.
+- See `docs/adr/ADR-043-observable-cancellable-bounded-replay.md`.

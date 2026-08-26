@@ -927,7 +927,7 @@ class SQLiteLedger:
                 archive_query,
                 tuple(archive_parameters),
             ).fetchall()
-        if limit is not None and not archive_rows:
+        if limit is not None:
             if limit <= 0:
                 raise ValueError("limit은 양수여야 합니다.")
             query += " LIMIT ?"
@@ -935,6 +935,13 @@ class SQLiteLedger:
         with self._lock:
             rows = self._connection.execute(query, tuple(parameters)).fetchall()
         result: list[dict[str, Any]] = []
+
+        def event_sort_key(event: Mapping[str, object]) -> tuple[int, int, str]:
+            return (
+                int(str(event["venue_ts_ms"])),
+                int(str(event["receive_monotonic_ns"])),
+                str(event["event_id"]),
+            )
         for index, row in enumerate(rows, start=1):
             payload_json = str(row["payload_json"])
             if hashlib.sha256(payload_json.encode()).hexdigest() != row["checksum"]:
@@ -950,6 +957,11 @@ class SQLiteLedger:
                 raise LedgerInvariantError("시장 이벤트 아카이브 저장소가 없습니다.")
             try:
                 for archive in archive_rows:
+                    if limit is not None and len(result) >= limit:
+                        result.sort(key=event_sort_key)
+                        cutoff_ts_ms = int(str(result[limit - 1]["venue_ts_ms"]))
+                        if int(str(archive["first_ts_ms"])) > cutoff_ts_ms:
+                            break
                     archived_symbols = json.loads(str(archive["symbols_json"]))
                     archived_event_types = json.loads(str(archive["event_types_json"]))
                     if symbol is not None and symbol not in archived_symbols:
@@ -992,19 +1004,11 @@ class SQLiteLedger:
                         result.append(decoded)
                     if cooperative_yield is not None:
                         cooperative_yield()
-                    if limit is not None and not rows and len(result) >= limit:
-                        break
             except (OSError, ValueError) as error:
                 raise LedgerInvariantError(
                     f"시장 이벤트 아카이브 검증 실패: {error}"
                 ) from error
-        result.sort(
-            key=lambda event: (
-                int(str(event["venue_ts_ms"])),
-                int(str(event["receive_monotonic_ns"])),
-                str(event["event_id"]),
-            )
-        )
+        result.sort(key=event_sort_key)
         if cooperative_yield is not None:
             cooperative_yield()
         return result[:limit] if limit is not None else result
@@ -1127,16 +1131,23 @@ class SQLiteLedger:
         *,
         symbol: str,
         interval_seconds: int,
+        start_ts_ms: int | None = None,
+        end_ts_ms: int | None = None,
     ) -> list[dict[str, Any]]:
+        query = """
+            SELECT payload_json, checksum FROM candles
+            WHERE run_id = ? AND symbol = ? AND interval_seconds = ?
+        """
+        parameters: list[object] = [run_id, symbol, interval_seconds]
+        if start_ts_ms is not None:
+            query += " AND open_ts_ms >= ?"
+            parameters.append(start_ts_ms)
+        if end_ts_ms is not None:
+            query += " AND open_ts_ms <= ?"
+            parameters.append(end_ts_ms)
+        query += " ORDER BY open_ts_ms"
         with self._lock:
-            rows = self._connection.execute(
-                """
-                SELECT payload_json, checksum FROM candles
-                WHERE run_id = ? AND symbol = ? AND interval_seconds = ?
-                ORDER BY open_ts_ms
-                """,
-                (run_id, symbol, interval_seconds),
-            ).fetchall()
+            rows = self._connection.execute(query, tuple(parameters)).fetchall()
         return self._verified_payload_rows(rows, "캔들")
 
     def list_recent_candles(

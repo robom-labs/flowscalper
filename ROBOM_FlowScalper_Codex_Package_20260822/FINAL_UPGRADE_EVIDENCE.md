@@ -1582,3 +1582,44 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | GitHub main / Actions | PASS | 1차 구현 `f06448632be74795abab9d0262bd89361cbd7630`의 [Actions 32909772325](https://github.com/robom-labs/flowscalper/actions/runs/32909772325), checkpoint 경합 후속 구현 `ba9723135a686c40bea54980f669ac054cbc8a03`의 [Actions 32910918615](https://github.com/robom-labs/flowscalper/actions/runs/32910918615), 최종 거래 수 교정 `1a088acb63e2ef41c592d7a69421e6edd4cbbb64`의 [Actions 32912271959](https://github.com/robom-labs/flowscalper/actions/runs/32912271959), 증거 commit `40ea7ec28907882ae04c6252ed6533310eaf4b7f`의 [Actions 32912523249](https://github.com/robom-labs/flowscalper/actions/runs/32912523249)이 모두 PASS다. 구현 Actions는 validate 1분5초·browser 1분21초, 증거 Actions는 validate 1분9초·browser 1분12초였고 모두 Chromium desktop·tablet·mobile E2E와 브라우저 증거 업로드를 통과했다. |
 
 기계판독 증거는 `evidence/WAVE36_HISTORY_REPLAY_VISIBILITY_QA.json`, 결정 근거는 ADR-042다. GitHub main은 최종 구현 `1a088acb63e2ef41c592d7a69421e6edd4cbbb64`을 포함하며 구현 commit과 후속 증거 commit의 독립 Actions가 모두 PASS했다. 이번 PASS는 표시·조회·replay 분리·회귀·짧은 실제 서비스 범위이며, 전략 수익성·현재 대형 Run 전체 전략 재검증·6시간·24시간·Release ZIP은 각각 `NOT_PROVEN`, `IN_PROGRESS_AT_CUTOFF` 또는 `NOT_RUN`으로 유지한다.
+
+## 42. 거래기록·저장 replay 관찰성과 취소
+
+### 재현과 원인
+
+초기 실제 API에는 현재 전략 버전 거래 33건이 있었지만 화면의 범위와 전략 버전 hash 문구 때문에 거래가 없는 것처럼 보였다. 전략 재검증은 동기 HTTP 요청이어서 진행 상태·경과시간·취소가 없었다. 현재 ZECUSDT의 약 13만건 전체 검증은 25분 이상 계속되며 실행경로 p95를 2.68초까지 올리고 신규 진입 안전잠금을 작동시켰다. 포지션·pending이 0인 것을 확인한 뒤 서비스를 안전 재시작해 해당 작업을 종료했다.
+
+정밀 timeline은 2,000건을 요청해도 활성 SQLite 이벤트와 종목의 전체 1초 candle 23,000개 이상을 읽었다. 실측 2,000건은 27.609초·5,038,206 bytes, 250건은 35.805초·3,805,542 bytes였다. 이벤트 구간 candle만 읽도록 고친 후 250건은 11.632초·184,527 bytes로 줄었고, 최종 화면용 100건은 0.628초·75,334 bytes·candle 17개였다. 전체 전략 검증은 화면 100건 상한과 무관하게 저장 이벤트 전체를 사용한다.
+
+### 수정과 실제 버튼 검증
+
+- `ReplayOperationManager`는 요청·준비·처리·완료·재시도 가능 실패·차단 실패·취소 중·취소 상태와 4시간 timeout을 관리한다. 동일 범위 중복은 멱등적이고 다른 범위는 `REPLAY_BUSY`다.
+- 과거 재생 화면은 Run 목록과 최근 candle를 먼저 띄우고 전략 결과 전체 목록은 백그라운드에서 읽는다. 활성 replay는 새로고침 후에도 다시 표시한다.
+- 실제 데스크톱에서 `기록`을 눌렀을 때 37건·공동 1건·전략별 36건, 전부 `LIVE_PUBLIC`, 최단 14.044초·3초 미만 0건을 확인했다. 테스트를 마친 뒤 2026-08-26T00:59:49Z 최종 API 재조회에서는 자연 거래가 더 종료되어 39건·공동 1건·전략별 38건으로 전진했다. 내부 버전 hash는 `현재 전략 버전`으로 간소화됐다.
+- 실제 소형 Run `run-c74c67ff5976`의 ETHUSDT 125건 전체를 2.443초에 처리했다. `replay-a0a95fa1bf62475a`, checksum `636bf7f3162147d3db559a0080660d44db9e9551d6df330378899dadd243bf1a`, 전략평가 288회, 적격·후보·main·shadow 거래 0, 실제 주문·인증 0이다.
+- 실제 모바일 390×844에서 대형 현재 Run 전략검증 패널이 354ms 만에 떴고, `전략 검증 취소`를 누르면 `REQUESTED`→`PREPARING`→`PROCESSING`→`CANCELLING`→`CANCELLED`로 종료됐다. 태블릿 820×1180과 원래 데스크톱에서도 화면과 버튼을 확인했고 console error·warning은 0건이다.
+
+### 현재 거래와 전략 판정
+
+2026-08-26T00:59:49Z 최종 현재 Run 버전 행은 39건이고 전략리그 자연 후보는 BASE 19건과 동일 후보의 STRESS 19건, 공동계좌 1건이다. 전략별 BASE 표본은 0~5건이며 모두 `표본 부족`이다. 39건은 모두 비용후 손실이었고 총손익 1.54016000, 수수료 38.563222662, 슬리피지 1.92339004, 순손익 -38.946452702 USDT다. 종료는 EDGE_DECAY 37, STOP 1, PROFIT_PROTECTION 1건이다.
+
+이 수치는 수익성을 입증하지 못하며 오히려 비용 부담을 명확히 보여 준다. 전략 기준·비용·손익비·TP/SL·Governor를 임의로 낮추지 않았다. 현재 B만 공동계좌 `ACTIVE`이고 나머지 9개는 독립 `SHADOW`이며, 10개 전부 LONG·SHORT 평가가 켜져 있다. 현재 수익성은 `NOT_PROVEN`이고 30건 미만 전략 순위는 매기지 않는다.
+
+### 전체 회귀와 남은 한계
+
+| 검증 | 상태 | 이번 실행의 결과 |
+|---|---|---|
+| backend pytest | PASS | 366 passed, 31.94초 |
+| frontend Vitest | PASS | 13 files·54 tests |
+| Ruff / mypy | PASS | 오류 0 / 92 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | Vite 48 modules·PAPER 불변조건 PASS. 단일 JS chunk 507.74kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 15 passed, Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 125 source·violation/secret-like/실제주문 path 0 / 위반 0 |
+| 실제 서비스 | PASS | RUNNING·LIVE·PAPER, 실행 p50/p95 19.114/29.847ms, queue·비계획 reconnect·gap·resync·drop·fault·buffer drop 0, entry lock false, 실제주문·인증 false다. |
+| 활성 원장 full quick_check | NOT_RERUN | 활성 2.55GB writer와 동시 전수검사를 강행하지 않았다. Wave34의 같은 원장 전수 PASS를 이번 PASS로 쓰지 않는다. |
+| 6시간 / 24시간 soak | NOT_RUN | 수정 후 실제 시간을 채우지 않았다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
+| GitHub main / Actions | PENDING | 로컬 구현·회귀·실제 화면 검증 후 정확한 commit과 Actions를 기록한다. |
+
+기계판독 증거는 `evidence/WAVE37_OBSERVABLE_REPLAY_QA.json`, 결정 근거는 ADR-043이다. 이 Wave는 기록·재생 표시와 취소·응답성을 검증한 것이며 전략 수익성·장시간 안정성을 입증한 것은 아니다.

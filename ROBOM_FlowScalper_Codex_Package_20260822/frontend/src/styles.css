@@ -226,6 +226,11 @@ h3 { font-size: 14px; color: #d5e4ec; }
 
 .replay-runbar { display: grid; grid-template-columns: minmax(240px, 1.3fr) minmax(170px, .7fr) auto auto; gap: 8px; align-items: end; margin-bottom: 8px; }
 .replay-runbar select { width: 100%; }
+.replay-operation { display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; border-color: #2f776e; background: #0b201f; }
+.replay-operation > div { min-width: 0; }
+.replay-operation b { color: #d9fff7; font-size: 12px; }
+.replay-operation p, .replay-operation small { display: block; margin: 5px 0 0; color: #9bb1bd; font-size: 10px; }
+.replay-operation .operation-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 4px #65d6c31f; animation: operation-pulse 1.4s ease-in-out infinite; }
 .history-result-summary, .replay-preview-note, .replay-load-status { margin: 0 0 8px; color: #9bb1bd; font-size: 11px; }
 .history-result-summary, .replay-preview-note { padding: 9px 12px; border: 1px solid #1e3b49; border-radius: 8px; background: #0b1b23; }
 .replay-load-status { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; }
@@ -352,6 +357,8 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .replay-runbar { grid-template-columns: 1fr; }
   .replay-runbar button { grid-column: 1; }
   .replay-runbar select { min-width: 0; }
+  .replay-operation { align-items: stretch; flex-direction: column; }
+  .replay-operation button { width: 100%; }
   .table-actions { flex-direction: column; }
   .chart-title-actions, .home-shortcuts { align-items: stretch; flex-direction: column; }
   .indicator-group { width: 100%; }

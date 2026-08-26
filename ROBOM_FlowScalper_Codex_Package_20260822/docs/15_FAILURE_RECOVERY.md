@@ -80,6 +80,15 @@ because the outer shutdown coroutine was cancelled.
 
 Because there are no real orders, recovery concerns the internal paper state only. Still test all lifecycle states.
 
+### Long or abandoned replay operation
+
+- A full stored replay is not an HTTP request lifecycle. Return its operation ID immediately and let the browser poll the explicit state.
+- A repeated request for the same Run and symbol returns the same active operation. A different scope receives `REPLAY_BUSY` instead of waiting behind it.
+- User cancellation first records `CANCELLING`, cancels the isolated process call and then records `CANCELLED`. A pre-start cancellation must also reach the terminal state.
+- ASGI shutdown cancels the replay manager before the ledger closes. A browser disconnect does not stop LIVE PAPER observation and must not turn a cancelled replay into a completed result.
+- A retryable replay failure retains its error code, Korean explanation and history. It never changes strategy thresholds or opens a PAPER position.
+- See ADR-043.
+
 ## 15.4 Data gap with open paper position
 
 - preserve planned TP/SL;

@@ -13,12 +13,29 @@ import type {
   ReplayFocusFrame,
   ReplayFocusSession,
   ReplayMarketEvent,
+  ReplayOperation,
   ReplayResult,
   ReplayRun,
   ReplayTimeline,
 } from '../types'
 
 type Props = { trade?: HistoryRow }
+
+const ACTIVE_REPLAY_STATES = new Set<ReplayOperation['state']>([
+  'REQUESTED', 'PREPARING', 'PROCESSING', 'CANCELLING',
+])
+const INTERACTIVE_TIMELINE_LIMIT = 100
+
+function replayOperationActive(operation: ReplayOperation | null) {
+  return operation !== null && ACTIVE_REPLAY_STATES.has(operation.state)
+}
+
+function elapsedLabel(startedTsMs: number, nowTsMs: number) {
+  const seconds = Math.max(0, Math.floor((nowTsMs - startedTsMs) / 1_000))
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return minutes > 0 ? `${minutes}분 ${remainder}초` : `${remainder}초`
+}
 
 function numeric(value: unknown) {
   const parsed = Number(value)
@@ -64,6 +81,8 @@ export function ReplayPage({ trade }: Props) {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [timelineLoading, setTimelineLoading] = useState(false)
   const [running, setRunning] = useState(false)
+  const [operation, setOperation] = useState<ReplayOperation | null>(null)
+  const [operationNow, setOperationNow] = useState(0)
   const [error, setError] = useState('')
   const [playing, setPlaying] = useState(false)
   const [cursor, setCursor] = useState(0)
@@ -94,7 +113,9 @@ export function ReplayPage({ trade }: Props) {
     if (!runId) return
     setTimelineLoading(true)
     try {
-      const query = symbol ? `?symbol=${encodeURIComponent(symbol)}&limit=2000` : '?limit=2000'
+      const query = symbol
+        ? `?symbol=${encodeURIComponent(symbol)}&limit=${INTERACTIVE_TIMELINE_LIMIT}`
+        : `?limit=${INTERACTIVE_TIMELINE_LIMIT}`
       const response = await fetch(`/api/replay/${encodeURIComponent(runId)}/timeline${query}`)
       if (!response.ok) throw new Error(await replayErrorMessage(response, '저장 이벤트 타임라인을 불러오지 못했습니다.'))
       const next = (await response.json()) as ReplayTimeline
@@ -109,22 +130,33 @@ export function ReplayPage({ trade }: Props) {
 
   useEffect(() => {
     let cancelled = false
+    const resultRowsPromise = fetch('/api/replay/results')
+      .then((response) => response.json() as Promise<ReplayResult[]>)
     Promise.all([
       fetch('/api/replay/runs').then((response) => response.json() as Promise<ReplayRun[]>),
-      fetch('/api/replay/results').then((response) => response.json() as Promise<ReplayResult[]>),
+      fetch('/api/replay/operations/current').then((response) => response.json() as Promise<ReplayOperation | null>),
     ])
-      .then(async ([runRows, resultRows]) => {
+      .then(async ([runRows, currentOperation]) => {
         if (cancelled) return
         setRuns(runRows)
-        setResults(resultRows)
+        if (replayOperationActive(currentOperation)) {
+          setOperation(currentOperation)
+          setRunning(true)
+          setOperationNow(Date.now())
+        }
         const requestedRun = trade?.run_id ?? ''
         const runId = runRows.some((run) => run.run_id === requestedRun)
           ? requestedRun
           : runRows[0]?.run_id ?? ''
         setSelectedRun(runId)
-        const latest = [...resultRows].reverse().find((item) => item.source_run_id === runId) ?? null
-        setResult(latest)
         if (runId && !trade) await loadPreview(runId)
+        void resultRowsPromise.then((resultRows) => {
+          if (cancelled) return
+          setResults(resultRows)
+          setResult([...resultRows].reverse().find((item) => item.source_run_id === runId) ?? null)
+        }).catch(() => {
+          if (!cancelled) setError('과거 전략 검증 결과는 늦게 불러오는 중입니다. 저장 Run 미리보기는 계속 사용할 수 있습니다.')
+        })
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(errorMessage(reason, '저장 Run 목록을 불러오지 못했습니다. 연결을 확인하세요.'))
@@ -134,6 +166,52 @@ export function ReplayPage({ trade }: Props) {
       })
     return () => { cancelled = true }
   }, [loadPreview, trade])
+
+  useEffect(() => {
+    if (!replayOperationActive(operation)) return
+    const timer = window.setInterval(() => setOperationNow(Date.now()), 1_000)
+    return () => window.clearInterval(timer)
+  }, [operation])
+
+  const operationId = operation?.operation_id
+  const operationState = operation?.state
+
+  useEffect(() => {
+    if (!operationId || !operationState || !ACTIVE_REPLAY_STATES.has(operationState)) return
+    const controller = new AbortController()
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/replay/operations/${encodeURIComponent(operationId)}`,
+          { signal: controller.signal },
+        )
+        if (!response.ok) throw new Error(await replayErrorMessage(response, '저장 Run 검증 상태를 확인하지 못했습니다.'))
+        const next = await response.json() as ReplayOperation
+        setOperation(next)
+        const active = replayOperationActive(next)
+        setRunning(active)
+        if (next.state === 'COMPLETED' && next.result) {
+          setResult(next.result)
+          setResults((items) => items.some((item) => item.replay_id === next.result?.replay_id)
+            ? items
+            : [...items, next.result as ReplayResult])
+        } else if (next.state === 'FAILED_RETRYABLE' || next.state === 'FAILED_BLOCKED') {
+          setError(next.error_message_ko || '저장 Run 전략 검증을 완료하지 못했습니다.')
+        }
+      } catch (reason: unknown) {
+        if (!(reason instanceof DOMException && reason.name === 'AbortError')) {
+          setRunning(false)
+          setError(errorMessage(reason, '저장 Run 검증 상태를 확인하지 못했습니다.'))
+        }
+      }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 1_000)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+    }
+  }, [operationId, operationState])
 
   useEffect(() => {
     if (!trade) return
@@ -230,14 +308,27 @@ export function ReplayPage({ trade }: Props) {
         body: JSON.stringify({ symbol: selectedSymbol || null }),
       })
       if (!response.ok) throw new Error(await replayErrorMessage(response, '백엔드 리플레이가 실패했습니다. 원장 무결성과 저장 이벤트를 확인하세요.'))
-      const completed = (await response.json()) as ReplayResult
-      setResult(completed)
-      setResults((items) => [...items, completed])
-      await loadTimeline(selectedRun, selectedSymbol)
+      const requested = (await response.json()) as ReplayOperation
+      setOperation(requested)
+      setOperationNow(Date.now())
     } catch (reason: unknown) {
-      setError(errorMessage(reason, '백엔드 리플레이가 실패했습니다. 원장 무결성과 저장 이벤트를 확인하세요.'))
-    } finally {
       setRunning(false)
+      setError(errorMessage(reason, '백엔드 리플레이가 실패했습니다. 원장 무결성과 저장 이벤트를 확인하세요.'))
+    }
+  }
+
+  const cancelReplay = async () => {
+    if (!operation || !replayOperationActive(operation)) return
+    setError('')
+    try {
+      const response = await fetch(
+        `/api/replay/operations/${encodeURIComponent(operation.operation_id)}`,
+        { method: 'DELETE' },
+      )
+      if (!response.ok) throw new Error(await replayErrorMessage(response, '저장 Run 검증을 취소하지 못했습니다.'))
+      setOperation(await response.json() as ReplayOperation)
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, '저장 Run 검증을 취소하지 못했습니다.'))
     }
   }
 
@@ -347,7 +438,7 @@ export function ReplayPage({ trade }: Props) {
     <section aria-labelledby="replay-heading">
       <div className="page-heading">
         <div><p className="section-kicker">PAST PLAYBACK</p><h2 id="replay-heading">과거 데이터 다시 보기</h2><p className="heading-help">저장한 시장 데이터를 같은 조건으로 다시 돌려 판단 과정을 확인합니다.</p></div>
-        <span className="page-note">{result ? `검증 완료 · ${result.replay_id}` : timeline ? '저장 데이터 확인됨' : '저장 데이터 확인 전'}</span>
+        <span className="page-note">{running ? '전략 검증 작동 중' : result ? `검증 완료 · ${result.replay_id}` : timeline ? '저장 데이터 확인됨' : '저장 데이터 확인 전'}</span>
       </div>
       {error ? <p className="control-error" role="alert">{error}</p> : null}
       <section className="panel replay-runbar">
@@ -356,6 +447,7 @@ export function ReplayPage({ trade }: Props) {
         <button type="button" className="primary-button" disabled={!selectedRun || !selectedSymbol || timelineLoading || running} onClick={() => void loadSelectedTimeline()}>{timelineLoading ? '정밀 이벤트 불러오는 중' : timeline?.preview_only ? '정밀 이벤트 불러오기' : '정밀 이벤트 다시 불러오기'}</button>
         <button type="button" className="secondary-button" disabled={!selectedRun || !timeline || timeline.preview_only || running || timelineLoading} onClick={() => void runReplay()}>{running ? '전략 검증 중' : '같은 조건으로 전략 검증'}</button>
       </section>
+      {operation && replayOperationActive(operation) ? <section className="panel replay-operation" role="status" aria-live="polite"><div><span className="operation-dot" aria-hidden="true" /><b>{operation.stage_ko}</b><p>{operation.source_run_id} · {operation.symbol ?? '전체 종목'} · {operation.total_events === null ? '이벤트 수 확인 중' : `약 ${operation.total_events.toLocaleString()}건`} · 경과 {elapsedLabel(operation.started_ts_ms, operationNow)}</p><small>공개시장 PAPER 관찰은 계속되며 실제 주문과 인증 경로는 0입니다.</small></div><button type="button" className="operation-secondary" disabled={operation.state === 'CANCELLING'} onClick={() => void cancelReplay()}>{operation.state === 'CANCELLING' ? '취소 중' : '전략 검증 취소'}</button></section> : null}
       {loading ? <div className="panel empty-state"><b>저장 Run 목록을 확인하는 중입니다</b></div> : null}
       {!loading && previewLoading ? <div className="panel replay-load-status" role="status"><b>저장된 최근 캔들을 불러오는 중입니다.</b><span>공개시장 관찰과 PAPER 관리는 계속 작동합니다.</span></div> : null}
       {!loading && timelineLoading ? <div className="panel replay-load-status" role="status"><b>검증된 정밀 이벤트를 불러오는 중입니다.</b><span>대용량 저장 기록은 시간이 걸릴 수 있으며 완료 전까지 전략 검증 버튼이 잠깁니다.</span></div> : null}
@@ -364,7 +456,7 @@ export function ReplayPage({ trade }: Props) {
         <p className="replay-preview-note" role="status">{timeline.preview_only ? `빠른 미리보기 · ${timeline.symbol ?? '종목 없음'} 최근 캔들 ${timeline.candles.length.toLocaleString()}개 · 정밀 이벤트는 버튼을 눌러 불러옵니다.` : `정밀 이벤트 ${timeline.events.length.toLocaleString()}개를 불러왔습니다. 재생하거나 같은 조건으로 전략을 검증할 수 있습니다.`}</p>
         <div className="replay-layout">
           <PriceChart chart={replayChart} history={trade ? [trade] : []} replay />
-          <aside className="panel replay-controls"><h3>동기 재생 제어</h3><div className="control-row"><button type="button" className="primary-button" onClick={() => setPlaying((value) => !value)} disabled={timeline.events.length === 0}>{playing ? '일시정지' : '재생'}</button><button type="button" className="secondary-button" onClick={() => setCursor((value) => Math.min(value + 1, timeline.events.length - 1))} disabled={cursor >= timeline.events.length - 1}>다음 이벤트</button></div><label>속도<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[0.5, 1, 2, 5, 10, 20, 40, 80].map((value) => <option value={value} key={value}>{value}×</option>)}</select></label><label>이벤트 위치<input type="range" min="0" max={Math.max(0, timeline.events.length - 1)} value={cursor} onChange={(event) => { setCursor(Number(event.target.value)); setPlaying(false) }} /></label><dl><div><dt>현재 이벤트</dt><dd>{timeline.events.length === 0 ? '없음' : `${cursor + 1} / ${timeline.events.length}`}</dd></div><div><dt>저장 전체</dt><dd>{timeline.total_events === null ? '2,000건 이상 저장됨' : `${timeline.total_events.toLocaleString()}건`}{timeline.truncated ? ' · 화면 2,000건 제한' : ''}</dd></div><div><dt>종류 / 시각</dt><dd>{currentEvent?.event_type ?? '대기'}<br />{currentEvent ? `${formatKstTime(currentEvent.venue_ts_ms)} KST` : '—'}</dd></div><div><dt>bid / ask</dt><dd>{currentQuote ? `${currentQuote.bid} / ${currentQuote.ask}` : '호가 프레임 대기'}</dd></div><div><dt>스프레드</dt><dd>{spreadBps === null ? '—' : `${spreadBps.toFixed(3)} bp`}</dd></div><div><dt>전략 평가</dt><dd>{result ? `${result.strategy_evaluation_count}회` : '실행 전'}</dd></div></dl></aside>
+          <aside className="panel replay-controls"><h3>동기 재생 제어</h3><div className="control-row"><button type="button" className="primary-button" onClick={() => setPlaying((value) => !value)} disabled={timeline.events.length === 0}>{playing ? '일시정지' : '재생'}</button><button type="button" className="secondary-button" onClick={() => setCursor((value) => Math.min(value + 1, timeline.events.length - 1))} disabled={cursor >= timeline.events.length - 1}>다음 이벤트</button></div><label>속도<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[0.5, 1, 2, 5, 10, 20, 40, 80].map((value) => <option value={value} key={value}>{value}×</option>)}</select></label><label>이벤트 위치<input type="range" min="0" max={Math.max(0, timeline.events.length - 1)} value={cursor} onChange={(event) => { setCursor(Number(event.target.value)); setPlaying(false) }} /></label><dl><div><dt>현재 이벤트</dt><dd>{timeline.events.length === 0 ? '없음' : `${cursor + 1} / ${timeline.events.length}`}</dd></div><div><dt>저장 전체</dt><dd>{timeline.total_events === null ? '전체 건수 집계 중' : `${timeline.total_events.toLocaleString()}건`}{timeline.truncated ? ` · 화면 ${timeline.events.length.toLocaleString()}건 우선` : ''}</dd></div><div><dt>종류 / 시각</dt><dd>{currentEvent?.event_type ?? '대기'}<br />{currentEvent ? `${formatKstTime(currentEvent.venue_ts_ms)} KST` : '—'}</dd></div><div><dt>bid / ask</dt><dd>{currentQuote ? `${currentQuote.bid} / ${currentQuote.ask}` : '호가 프레임 대기'}</dd></div><div><dt>스프레드</dt><dd>{spreadBps === null ? '—' : `${spreadBps.toFixed(3)} bp`}</dd></div><div><dt>전략 평가</dt><dd>{result ? `${result.strategy_evaluation_count}회` : '실행 전'}</dd></div></dl></aside>
         </div>
         <section className="replay-proof-grid">
           <article className="panel"><span>입력 Checksum</span><b className="checksum">{result?.checksum ?? '백엔드 리플레이를 실행하면 표시됩니다.'}</b></article>

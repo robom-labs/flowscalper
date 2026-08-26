@@ -7,6 +7,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import time
 from decimal import Decimal
 from pathlib import Path
 
@@ -80,12 +81,17 @@ def market_event(
     )
 
 
-def candle_row(run_id: str, *, close: str = "100.1") -> dict[str, object]:
+def candle_row(
+    run_id: str,
+    *,
+    close: str = "100.1",
+    open_ts_ms: int = 1_000,
+) -> dict[str, object]:
     return {
         "run_id": run_id,
         "symbol": "BTCUSDT",
         "interval_seconds": 1,
-        "open_ts_ms": 1_000,
+        "open_ts_ms": open_ts_ms,
         "open": "100",
         "high": "100.2",
         "low": "99.9",
@@ -745,6 +751,36 @@ def test_passive_checkpoint_runs_outside_commit_connection(tmp_path: Path) -> No
     ledger.close()
 
 
+def test_candle_timeline_range_reads_only_requested_event_window(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "bounded-candle-timeline.sqlite3")
+    run_id = "run-bounded-candle-timeline"
+    ledger.start_run(
+        run_id,
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    assert ledger.record_candles(
+        [
+            candle_row(run_id, open_ts_ms=1_000),
+            candle_row(run_id, open_ts_ms=2_000),
+            candle_row(run_id, open_ts_ms=3_000),
+        ]
+    ) == 3
+
+    bounded = ledger.list_candles(
+        run_id,
+        symbol="BTCUSDT",
+        interval_seconds=1,
+        start_ts_ms=2_000,
+        end_ts_ms=2_000,
+    )
+
+    assert [row["open_ts_ms"] for row in bounded] == [2_000]
+    ledger.close()
+
+
 def test_archive_and_full_commit_use_independent_connection(tmp_path: Path) -> None:
     archive = ParquetEventStore(
         tmp_path / "market-parquet-process",
@@ -879,6 +915,41 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
     events = ledger.list_market_events("run-limited", symbol="BTCUSDT", limit=1)
 
     assert [event["event_id"] for event in events] == ["limited-0"]
+    assert len(read_paths) == 1
+
+    late_sqlite_event = market_event(
+        "run-limited",
+        event_id="limited-late-sqlite",
+        ts_ms=9_000,
+    ).model_dump(mode="json")
+    assert ledger.record_market_events([late_sqlite_event]) == 1
+    read_paths.clear()
+    mixed_events = ledger.list_market_events(
+        "run-limited",
+        symbol="BTCUSDT",
+        limit=1,
+    )
+
+    assert [event["event_id"] for event in mixed_events] == ["limited-0"]
+    assert len(read_paths) == 1
+
+    early_sqlite_event = market_event(
+        "run-limited",
+        event_id="limited-early-sqlite",
+        ts_ms=500,
+    ).model_dump(mode="json")
+    assert ledger.record_market_events([early_sqlite_event]) == 1
+    read_paths.clear()
+    merged_events = ledger.list_market_events(
+        "run-limited",
+        symbol="BTCUSDT",
+        limit=2,
+    )
+
+    assert [event["event_id"] for event in merged_events] == [
+        "limited-early-sqlite",
+        "limited-0",
+    ]
     assert len(read_paths) == 1
     ledger.close()
 
@@ -1138,45 +1209,53 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     runtime.ingest_live_event(
         market_event(runtime.run_id, event_id="api-depth", ts_ms=1_000)
     )
-    client = TestClient(create_app(runtime))
-
-    runs = client.get("/api/replay/runs")
-    assert runs.status_code == 200
-    assert runs.json()[0]["run_id"] == runtime.run_id
-    replay = client.post(f"/api/replay/{runtime.run_id}", json={})
-    assert replay.status_code == 200
-    assert replay.json()["event_count"] == 1
-    timeline = client.get(f"/api/replay/{runtime.run_id}/timeline")
-    assert timeline.status_code == 200
-    assert timeline.json()["symbol"] == "BTCUSDT"
-    assert timeline.json()["total_events"] == 1
-    assert timeline.json()["events"][0]["event_id"] == "api-depth"
-    assert timeline.json()["available_symbols"] == [
-        {"symbol": "BTCUSDT", "event_count": 1}
-    ]
-    preview = client.get(f"/api/replay/{runtime.run_id}/preview")
-    assert preview.status_code == 200
-    assert preview.json()["symbol"] == "BTCUSDT"
-    assert preview.json()["events"] == []
-    assert preview.json()["preview_only"] is True
-    missing_timeline = client.get("/api/replay/unknown/timeline")
-    assert missing_timeline.status_code == 404
-    missing_preview = client.get("/api/replay/unknown/preview")
-    assert missing_preview.status_code == 404
-    results = client.get("/api/replay/results")
-    assert results.status_code == 200
-    assert results.json()[0]["checksum"] == replay.json()["checksum"]
-    analytics = client.get("/api/analytics/strategies")
-    assert analytics.status_code == 200
-    assert len(analytics.json()) == 20
-    assert all(
-        report["analysis_scope"] == "CURRENT_STRATEGY_VERSION" for report in analytics.json()
-    )
-    symbols = client.get("/api/analytics/strategy-symbols")
-    assert symbols.status_code == 200
-    assert symbols.json()["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
-    assert symbols.json()["strategy_version"] == STRATEGY_VERSION
-    assert symbols.json()["excluded_prior_version_samples"] == 0
+    with TestClient(create_app(runtime)) as client:
+        runs = client.get("/api/replay/runs")
+        assert runs.status_code == 200
+        assert runs.json()[0]["run_id"] == runtime.run_id
+        replay = client.post(f"/api/replay/{runtime.run_id}", json={})
+        assert replay.status_code == 202
+        operation_id = replay.json()["operation_id"]
+        for _ in range(100):
+            operation = client.get(f"/api/replay/operations/{operation_id}")
+            if operation.json()["state"] == "COMPLETED":
+                break
+            time.sleep(0.01)
+        assert operation.json()["state"] == "COMPLETED"
+        result = operation.json()["result"]
+        assert result["event_count"] == 1
+        timeline = client.get(f"/api/replay/{runtime.run_id}/timeline")
+        assert timeline.status_code == 200
+        assert timeline.json()["symbol"] == "BTCUSDT"
+        assert timeline.json()["total_events"] == 1
+        assert timeline.json()["events"][0]["event_id"] == "api-depth"
+        assert timeline.json()["available_symbols"] == [
+            {"symbol": "BTCUSDT", "event_count": 1}
+        ]
+        preview = client.get(f"/api/replay/{runtime.run_id}/preview")
+        assert preview.status_code == 200
+        assert preview.json()["symbol"] == "BTCUSDT"
+        assert preview.json()["events"] == []
+        assert preview.json()["preview_only"] is True
+        missing_timeline = client.get("/api/replay/unknown/timeline")
+        assert missing_timeline.status_code == 404
+        missing_preview = client.get("/api/replay/unknown/preview")
+        assert missing_preview.status_code == 404
+        results = client.get("/api/replay/results")
+        assert results.status_code == 200
+        assert results.json()[0]["checksum"] == result["checksum"]
+        analytics = client.get("/api/analytics/strategies")
+        assert analytics.status_code == 200
+        assert len(analytics.json()) == 20
+        assert all(
+            report["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
+            for report in analytics.json()
+        )
+        symbols = client.get("/api/analytics/strategy-symbols")
+        assert symbols.status_code == 200
+        assert symbols.json()["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
+        assert symbols.json()["strategy_version"] == STRATEGY_VERSION
+        assert symbols.json()["excluded_prior_version_samples"] == 0
     ledger.close()
 
 
@@ -1197,21 +1276,25 @@ def test_live_http_replay_uses_isolated_process_path(
     )
     calls: list[tuple[object, ...]] = []
 
-    async def run_sync(function, *arguments):
+    async def run_sync(function, *arguments, **_options):
         calls.append(arguments)
         return function(*arguments)
 
     monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
-    response = TestClient(create_app(runtime)).post(
-        f"/api/replay/{runtime.run_id}",
-        json={},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["event_count"] == 1
-    assert response.json()["real_orders_enabled"] is False
-    assert len(calls) == 1
-    assert calls[0][0] == str(ledger.path)
+    with TestClient(create_app(runtime)) as client:
+        response = client.post(f"/api/replay/{runtime.run_id}", json={})
+        assert response.status_code == 202
+        operation_id = response.json()["operation_id"]
+        for _ in range(100):
+            operation = client.get(f"/api/replay/operations/{operation_id}")
+            if operation.json()["state"] == "COMPLETED":
+                break
+            time.sleep(0.01)
+        assert operation.json()["state"] == "COMPLETED"
+        assert operation.json()["result"]["event_count"] >= 1
+        assert operation.json()["result"]["real_orders_enabled"] is False
+        assert len(calls) == 1
+        assert calls[0][0] == str(ledger.path)
     ledger.close()
 
 

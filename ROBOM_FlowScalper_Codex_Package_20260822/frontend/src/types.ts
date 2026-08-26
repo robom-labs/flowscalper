@@ -604,6 +604,26 @@ export type ReplayResult = {
   auth_required: false
 }
 
+export type ReplayOperation = {
+  operation_id: string
+  source_run_id: string
+  symbol: string | null
+  total_events: number | null
+  state: 'REQUESTED' | 'PREPARING' | 'PROCESSING' | 'COMPLETED' | 'FAILED_RETRYABLE' | 'FAILED_BLOCKED' | 'CANCELLING' | 'CANCELLED'
+  stage_ko: string
+  started_ts_ms: number
+  updated_ts_ms: number
+  finished_ts_ms: number | null
+  retryable: boolean
+  error_code: string | null
+  error_message_ko: string | null
+  result: ReplayResult | null
+  revision: number
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
+}
+
 export type ReplayMarketEvent = {
   event_id: string
   symbol: string
