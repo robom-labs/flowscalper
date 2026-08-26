@@ -415,3 +415,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Flatten the latest PAPER lifecycle transition into runtime diagnostics. Add a beginner-readable Korean summary card while retaining the raw contract in collapsible advanced diagnostics.
 9. Re-run candidate lifecycle, fixture, recovery and replay tests, complete backend and frontend suites, lint, typecheck, production build, PAPER safety, security, repository hygiene and desktop, tablet and mobile Playwright without overwriting baseline screenshots.
 10. Do not change strategy thresholds, costs, TP, SL, fill pricing, Governor, risk budgets, account topology or actual-order safety. Keep installed-service deployment, actual new lifecycle rows, actual 8870 verification, GitHub main and Actions `NOT_RUN` until the baseline long observers finish and every PAPER account is flat.
+
+## Runtime strategy research-contract implementation Wave
+
+1. Read the approved objective, current Registry descriptors, strategy API shape, Korean detail drawer, strategy catalog and source catalog before editing.
+2. Add a frozen per-strategy research contract instead of duplicating untyped strings across API and frontend code.
+3. Include strategy version, required public-market inputs, minimum warmup, entry hypothesis, falsification conditions, edge-decay policy, shared and independent PAPER risk budget, target universe, point-in-time leakage guards and primary Source IDs.
+4. Reference one contract explicitly from every runtime descriptor and flatten those fields into the existing API row. Keep current lifecycle and change reason from the mutable revisioned strategy setting.
+5. Verify each Source ID against `docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md`. Do not convert a cited source or test result into a profitability claim.
+6. Add the fields to the frontend contract and fixtures, display them in the existing beginner-readable Korean detail drawer and verify the label and value separately.
+7. Correct stale current-state text in the strategy catalog from the actual Registry. Do not delete or rewrite historical evidence, accounts or immutable trades.
+8. Write a failing backend descriptor test and a failing frontend detail test before the fix, then run targeted, related and full suites after the fix.
+9. Run backend pytest, frontend Vitest, Ruff, project mypy, ESLint, TypeScript, production build, fixture, PAPER safety, security, repository hygiene and desktop, tablet and mobile Playwright. Preserve intermediate selector failures and require the final source to pass.
+10. Do not deploy or restart the installed service while baseline six-hour and 24-hour observers are running. After they finish and all PAPER accounts are flat, deploy once and verify the actual 8870 API and browser before GitHub synchronization.

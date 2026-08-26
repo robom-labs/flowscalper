@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 11개 PAPER 전략 각각에 필요한 공개시장 데이터, 최소 준비, 진입 가설·반증 조건, 종료·비용·위험예산, 대상 종목, 미래정보 방지와 1차 연구 Source ID를 런타임 계약으로 추가했다. 전략 상세 화면은 이 계약과 현재 lifecycle·변경 이유를 함께 보여 주며, 현재 실행 기본값을 공동계좌 ACTIVE 0·SHADOW 6·RETIRED 5로 문서와 일치시켰다.
 - PAPER 후보·진입·보호·청산 상태전환을 계좌·종목별 연속 revision과 결정적 ID로 감사하고 recovery snapshot schema v4에 cursor를 보존한다. 설정 화면에는 초보자용 `마지막 PAPER 상태`와 접히는 원본 감사정보를 분리했다.
 - 시작 복구의 성공·지연·실패·DEMO fixture를 다른 상태·원인으로 기록하고, checksum 실패도 불변 복구 incident로 남기게 했다. 설정 화면에는 초보자용 `마지막 시작 복구`와 접히는 원본 감사정보를 분리했다.
 - 정책 퇴역 전략을 과거 SHADOW revision으로 rollback해 재활성화할 수 있던 backend 우회를 차단했다. 일반 사용자 OFF는 정책 잠금과 분리해 다시 켤 수 있으며, 전략 설정·Governor·rollback·migration 이력은 이전·새 상태와 actor·원인·revision을 UI·API·원장에 함께 남긴다.

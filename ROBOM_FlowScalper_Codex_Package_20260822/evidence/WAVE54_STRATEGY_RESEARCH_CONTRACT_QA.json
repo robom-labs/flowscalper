@@ -1,0 +1,184 @@
+{
+  "schema": "flowscalper.wave54.strategy_research_contract_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "7d0bf16f4b65663595472dcb5dd2b562c178b382",
+  "reproduction": {
+    "status": "FAIL_AS_EXPECTED",
+    "backend_tests": 1,
+    "frontend_tests": 1,
+    "failures": [
+      "runtime descriptor lacked required market data, warmup, hypothesis, falsification, risk, leakage and research-source fields",
+      "strategy detail drawer lacked the required-data research contract"
+    ],
+    "stale_document_mismatch": {
+      "status": "CONFIRMED",
+      "documented_before_fix": "B ACTIVE; C/F/G/I/J/K SHADOW; A/D/E/H RETIRED",
+      "runtime_registry": "ACTIVE 0; B/C/F/G/I/J SHADOW; A/D/E/H/K RETIRED_OFF",
+      "historical_rows_rewritten": false
+    },
+    "setup_mistakes_not_counted_as_product_failures": [
+      "one initial frontend command used the wrong test path and found no files",
+      "one initial backend command used an incorrect pytest node id and collected zero tests",
+      "one noncanonical mypy backend scripts scope produced duplicate-module names; the project gate uv run mypy passed"
+    ]
+  },
+  "implementation": {
+    "status": "PASS",
+    "registered_strategies": 11,
+    "contract_per_strategy": true,
+    "fields": [
+      "strategy_version",
+      "required_market_data",
+      "minimum_warmup_ko",
+      "entry_hypothesis_ko",
+      "falsification_conditions_ko",
+      "edge_decay_policy_ko",
+      "risk_budget_rule_ko",
+      "target_universe_ko",
+      "data_leakage_guards_ko",
+      "research_source_ids"
+    ],
+    "source_catalog_cross_checked": "docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md",
+    "all_source_ids_present": true,
+    "common_micro_warmup": "healthy symbol-local public market 10 seconds plus prior prefix statistics",
+    "strategy_j_prefix_book_slope_samples": 32,
+    "strategy_k_completed_hourly_candles": 200,
+    "edge_decay_policy": "10 second grace plus two adverse signals persisting 3 seconds",
+    "paper_risk_budget_display": "shared 0.10 percent and independent 0.50 percent of account equity",
+    "beginner_detail_drawer": true,
+    "current_lifecycle_and_change_reason_dynamic": true,
+    "strategy_thresholds_changed": false,
+    "evaluators_changed": false,
+    "strategy_modes_changed": false,
+    "paper_execution_changed": false,
+    "historical_rows_rewritten": false
+  },
+  "validation": {
+    "targeted_backend_final_source": {
+      "status": "PASS",
+      "tests": 2,
+      "seconds": 0.97
+    },
+    "related_backend_group": {
+      "status": "PASS",
+      "tests": 109,
+      "seconds": 1.95
+    },
+    "backend_pytest_final_source": {
+      "status": "PASS",
+      "tests": 437,
+      "seconds": 25.94
+    },
+    "frontend_targeted_final_source": {
+      "status": "PASS",
+      "tests": 1
+    },
+    "frontend_vitest_final_source": {
+      "status": "PASS",
+      "files": 13,
+      "tests": 60,
+      "seconds": 4.08
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95,
+      "command": "uv run mypy"
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 519.21,
+      "gzip_kb": 159.81,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "fixture": {
+      "status": "PASS",
+      "tests": 18,
+      "seconds": 0.71
+    },
+    "playwright_intermediate": {
+      "status": "FAIL_TEST_SELECTOR",
+      "projects_failed": 3,
+      "cause": "non-strict risk-budget label locator also matched its value",
+      "product_failure": false
+    },
+    "playwright_final_source": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 14.4,
+      "baseline_screenshots_overwritten": false
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 128,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    },
+    "git_diff_check": "PASS"
+  },
+  "running_service": {
+    "status": "PASS_BASELINE_ONLY",
+    "loaded_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_state": "LIVE",
+    "execution_state": "PAPER",
+    "event_count_at_check": 780997,
+    "strategy_evaluation_count_at_check": 2496816,
+    "qualified_signal_count_at_check": 1,
+    "queue_depth_at_check": 0,
+    "lag_p95_ms_at_check": 59.603,
+    "trade_lag_p95_ms_at_check": 118.327,
+    "wide_lag_p95_ms_at_check": 1804.216,
+    "wide_lag_role": "observational scanner, not executable entry latency",
+    "planned_rotations": 10,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "drops": 0,
+    "persistence_faults": 0,
+    "buffer_drops": 0,
+    "critical_incidents": 0,
+    "entry_locked": false,
+    "positions": 0,
+    "main_trade_count": 1,
+    "process_memory_mb": 241.438,
+    "clock_sync_status": "SYNCED",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "new_strategy_contract_api_and_ui": "NOT_RUN"
+  },
+  "independent_gates": {
+    "local_deployment": "NOT_RUN",
+    "actual_post_deploy_strategy_contract_api": "NOT_RUN",
+    "actual_post_deploy_browser": "NOT_RUN",
+    "six_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "twenty_four_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

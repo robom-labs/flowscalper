@@ -2122,3 +2122,44 @@ Playwright 중간에는 카드와 고급진단을 동시에 잡는 부분 select
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 구현 commit은 `9d9823ac4a2cc631ab91cc6010b48fc95656fb10`, 기계판독 증거는 `evidence/WAVE53_PAPER_LIFECYCLE_TRANSITION_AUDIT_QA.json`, 판단 근거는 ADR-054다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스 신규 lifecycle 행·실제 8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
+
+## 53. Wave 54 런타임 전략 연구 계약 공개
+
+### 수정 전 재현과 문서 불일치
+
+승인된 전면점검 목표는 모든 전략이 ID·version, horizon, 필수 데이터·timeframe, 최소 warmup, 진입 가설·반증 조건, exit·max hold·edge decay, 비용, 위험예산, 대상 종목·레짐, 미래정보 방지, 연구 근거와 현재 상태 이유를 선언하도록 요구한다. 수정 전 Registry descriptor는 horizon·보유시간·반감기·timeframe·exit·TP·최대보유·비용만 제공했고 나머지 계약은 API와 한국어 상세 화면에서 확인할 수 없었다. 표적 backend 1건과 frontend 1건이 각각 예상대로 실패했다.
+
+`STRATEGY_CATALOG_KO.md`도 B `ACTIVE`와 K `SHADOW`를 현재 상태로 설명했지만 실행 Registry는 공동계좌 `ACTIVE` 0개, B/C/F/G/I/J `SHADOW`, A/D/E/H/K `RETIRED·OFF`였다. 문서만 현재 코드에 맞게 교정했으며 과거 거래·연구 결과·계좌·불변 원장은 수정하지 않았다.
+
+초기 frontend 명령의 잘못된 test path, backend의 잘못된 node ID와 비표준 광범위 mypy 대상에서 발생한 duplicate-module 오류는 올바른 프로젝트 명령으로 다시 실행했다. 이 세 건은 제품 실패로 계산하지 않았다.
+
+### 구현과 안전 경계
+
+- 각 runtime descriptor가 strategy version, 필수 공개시장 데이터, 최소 warmup, 진입 가설, 반증 조건, edge-decay, 공동·독립 PAPER 위험예산, 대상 종목, 미래정보 방지와 1차 연구 Source ID를 가진 불변 계약을 명시한다.
+- J는 동일 종목 prefix 호가기울기 32표본, K는 완성 공개 1시간봉 200개를 최소 준비로 직접 공개한다.
+- 모든 Source ID를 `docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md`의 catalog와 backend 테스트에서 대조한다. 이 근거는 가설 출처이며 수익성 증거가 아니다.
+- 기존 전략 API 행과 한국어 상세 drawer에 계약을 연결하고, 현재 lifecycle·변경 이유는 기존 revisioned 설정값을 그대로 사용한다.
+- 전략 임계값·evaluator·모드·비용·TP·SL·최대보유·Governor·위험예산 상수·체결·실제주문 0 경계는 변경하지 않았다.
+
+### 회귀·화면 검증
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 수정 전 표적 재현 | FAIL_AS_EXPECTED | backend 1 failed, frontend 1 failed. descriptor와 상세 화면의 연구 계약 누락을 재현했다. |
+| 수정 후 표적·관련 backend | PASS | 표적 2 passed, 0.97초. 관련 Registry·신호·시간봉·fixture 109 passed, 1.95초다. |
+| backend pytest | PASS | 최종 소스 437 passed, 25.94초다. |
+| frontend Vitest | PASS | 표적 1 passed. 최종 소스 13 files·60 tests, 4.08초다. |
+| Ruff / project mypy | PASS | 오류 0 / `uv run mypy` 95 source files 오류 0이다. |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0이다. |
+| production build / PAPER safety | PASS_WITH_WARNING | PAPER 불변조건은 PASS했다. 단일 JS 519.21kB·gzip 159.81kB의 기존 500kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 18 passed, 0.71초. 최종 Chromium desktop·tablet·mobile 3 passed, 14.4초다. 기준 screenshot은 덮어쓰지 않았다. |
+| Playwright 중간 실행 | FIXED_TEST_FAILURE | 비엄격 `위험예산` locator가 label과 value를 동시에 찾아 3개 viewport가 실패했다. label exact selector로 고친 뒤 최종 3/3을 PASS했으며 중간 실패를 삭제하지 않았다. |
+| security / repository hygiene | PASS | 128 source·위반·secret-like·실제주문 path 0 / 위반 0이다. |
+| 설치 서비스 기준선 | PASS_BASELINE_ONLY | 기준 commit `c57b988353718e03b26b93ac3208e64c5221396e`의 같은 Run은 event 780,997·전략평가 2,496,816까지 전진했다. queue·비계획 reconnect·gap·resync·drop·fault·buffer drop·critical·lock·position·실제주문·인증은 0이고 시각은 SYNCED였다. 이 값은 미배포 변경의 실행 증거가 아니다. |
+| 로컬 배포 / 실제 계약 API / 실제 8870 | NOT_RUN | 기준 6시간·24시간 observer를 중단하지 않기 위해 아직 설치 서비스를 교체하지 않았다. |
+| GitHub main / Actions | NOT_RUN | 실제 배포·API·브라우저 검증 전에는 push하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 비침습 observer는 기준 commit의 같은 설치 서비스를 각각 6시간·24시간 목표로 계속 관찰 중이다. |
+| 전략 수익성 | NOT_PROVEN | 이번 변경은 전략 조건을 바꾸지 않았고 현재 자연표본은 승격 gate보다 부족하다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+구현 commit은 `7d0bf16f4b65663595472dcb5dd2b562c178b382`, 기계판독 증거는 `evidence/WAVE54_STRATEGY_RESEARCH_CONTRACT_QA.json`, 판단 근거는 ADR-055다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스의 실제 계약 API·8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
