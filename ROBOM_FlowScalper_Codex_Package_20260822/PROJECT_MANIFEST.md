@@ -79,6 +79,7 @@ Detailed specifications:
 - `docs/adr/ADR-051-normalized-operation-transition-audit.md`
 - `docs/adr/ADR-052-policy-retirement-lock-and-strategy-transition-audit.md`
 - `docs/adr/ADR-053-normalized-startup-recovery-transition-audit.md`
+- `docs/adr/ADR-054-normalized-paper-lifecycle-transition-audit.md`
 
 ## Supporting contracts
 
@@ -141,6 +142,7 @@ Detailed specifications:
 - `evidence/WAVE50_OPERATION_TRANSITION_AUDIT_QA.json`
 - `evidence/WAVE51_STRATEGY_POLICY_LOCK_AND_AUDIT_QA.json`
 - `evidence/WAVE52_STARTUP_RECOVERY_AUDIT_QA.json`
+- `evidence/WAVE53_PAPER_LIFECYCLE_TRANSITION_AUDIT_QA.json`
 - `evidence/screenshots/wave49-actual-system-mobile-415x734.png`
 - `evidence/screenshots/wave49-actual-trade-replay-mobile-415x734.png`
 - `scripts/observe_running_service.py`

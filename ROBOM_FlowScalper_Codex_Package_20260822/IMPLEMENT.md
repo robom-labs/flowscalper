@@ -402,3 +402,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Re-run targeted recovery paths, related recovery, storage, control and replay tests, complete backend and frontend suites, lint, typecheck, production build, PAPER safety, security, repository hygiene and desktop, tablet and mobile Playwright.
 9. Preserve intermediate browser failures as fixed test evidence. Do not overwrite baseline screenshots when the Wave only verifies behavior.
 10. Keep deployment, an actual post-deploy recovery row, actual 8870 browser verification, GitHub main and Actions `NOT_RUN` until the baseline six-hour observer can finish without a process restart.
+
+## Normalized PAPER lifecycle-transition audit Wave
+
+1. Query only current-Run `execution_audit` event counts and fixture `transitions` needed to establish the lifecycle audit gap. Do not run a full integrity check against the active multi-gigabyte writer.
+2. Normalize only state-changing PAPER candidate, entry, protection and exit events. Keep risk rejection, duplicate-symbol rejection and user-entry-pause rows as diagnostics rather than manufacturing state changes.
+3. Scope the transition cursor by account and symbol so League multi-position accounts retain independent order. Generate deterministic IDs from Run, account, symbol and response revision.
+4. Record automatic PAPER lifecycle activity as `AUTO_SAFETY` and a user-requested main exit as `USER_UI`. Mark immutable entry and exit fills non-reversible.
+5. Persist revision cursors, current states and the last transition in recovery snapshot schema v4. For schema v1 through v3, derive only pending or protected state from recovered accounts and begin a new cursor without inventing historical revisions.
+6. Reject a schema v4 snapshot when account, symbol, revision, state or last-transition evidence disagrees. Do not partially restore a corrupt cursor.
+7. Give new offline fixture rows the same normalized lifecycle contract and remember the final CLOSED transition before saving the fixture snapshot. Do not rewrite existing ledger rows.
+8. Flatten the latest PAPER lifecycle transition into runtime diagnostics. Add a beginner-readable Korean summary card while retaining the raw contract in collapsible advanced diagnostics.
+9. Re-run candidate lifecycle, fixture, recovery and replay tests, complete backend and frontend suites, lint, typecheck, production build, PAPER safety, security, repository hygiene and desktop, tablet and mobile Playwright without overwriting baseline screenshots.
+10. Do not change strategy thresholds, costs, TP, SL, fill pricing, Governor, risk budgets, account topology or actual-order safety. Keep installed-service deployment, actual new lifecycle rows, actual 8870 verification, GitHub main and Actions `NOT_RUN` until the baseline long observers finish and every PAPER account is flat.

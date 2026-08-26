@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- PAPER 후보·진입·보호·청산 상태전환을 계좌·종목별 연속 revision과 결정적 ID로 감사하고 recovery snapshot schema v4에 cursor를 보존한다. 설정 화면에는 초보자용 `마지막 PAPER 상태`와 접히는 원본 감사정보를 분리했다.
 - 시작 복구의 성공·지연·실패·DEMO fixture를 다른 상태·원인으로 기록하고, checksum 실패도 불변 복구 incident로 남기게 했다. 설정 화면에는 초보자용 `마지막 시작 복구`와 접히는 원본 감사정보를 분리했다.
 - 정책 퇴역 전략을 과거 SHADOW revision으로 rollback해 재활성화할 수 있던 backend 우회를 차단했다. 일반 사용자 OFF는 정책 잠금과 분리해 다시 켤 수 있으며, 전략 설정·Governor·rollback·migration 이력은 이전·새 상태와 actor·원인·revision을 UI·API·원장에 함께 남긴다.
 - control·replay 작업의 신규 불변 incident에 이전·새 상태, 원인, 한국어 설명, actor, Run·종목, 요청·응답 revision과 terminal reversibility를 직접 기록한다. 기존 operation snapshot·history와 과거 행은 보존하며 PAPER 전략·체결·손익·Governor와 실제주문 0 경계는 바꾸지 않는다.

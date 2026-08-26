@@ -1,0 +1,205 @@
+{
+  "schema": "flowscalper.wave53.paper_lifecycle_transition_audit_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "9d9823ac4a2cc631ab91cc6010b48fc95656fb10",
+  "reproduction": {
+    "status": "PASS",
+    "active_ledger_targeted_read_only_query": {
+      "run_id": "run-2b7135a972dd",
+      "execution_audit_rows_queried": 2131,
+      "lifecycle_rows_in_scope": 300,
+      "rows_missing_normalized_fields": 2131,
+      "event_counts": {
+        "ENTRY_EXPIRED": 2,
+        "ENTRY_FILLED": 73,
+        "ENTRY_UNFILLED": 2,
+        "EXIT_FILL": 73,
+        "LEAGUE_CANDIDATE_ARMED": 76,
+        "LEAGUE_DUPLICATE_SYMBOL_REJECTED": 11,
+        "LEAGUE_RISK_REJECTED": 1677,
+        "MAIN_CANDIDATE_SELECTED": 1,
+        "MAIN_RISK_REJECTED": 4,
+        "MANAGEMENT_EXIT_ARMED": 70,
+        "STOP_EXIT_PENDING": 3,
+        "SYSTEM_ENTRY_PAUSED": 139
+      },
+      "missing_fields": [
+        "transition_id",
+        "previous_state",
+        "new_state",
+        "actor",
+        "cause_code",
+        "request_revision",
+        "response_revision",
+        "reversible"
+      ],
+      "full_integrity_check_run": false,
+      "active_service_mutated": false
+    },
+    "fixture_transitions_targeted_read_only_query": {
+      "rows": 50,
+      "rows_missing_normalized_fields": 50
+    },
+    "isolated_regression_before_fix": {
+      "status": "FAIL_AS_EXPECTED",
+      "backend_tests": 2,
+      "frontend_tests": 1,
+      "failures": [
+        "candidate PAPER lifecycle audit lacked previous_state",
+        "fixture transition lacked request_revision",
+        "system page lacked a beginner-readable last PAPER state"
+      ],
+      "setup_mistake_not_counted_as_product_failure": "one initial pytest node id was incorrect and collected zero tests; the corrected command reproduced both backend failures"
+    }
+  },
+  "implementation": {
+    "status": "PASS",
+    "normalized_fields": [
+      "transition_id",
+      "previous_state",
+      "new_state",
+      "occurred_ts_ms",
+      "cause",
+      "cause_code",
+      "description_ko",
+      "actor",
+      "run_id",
+      "strategy_id",
+      "account_id",
+      "symbol",
+      "request_revision",
+      "response_revision",
+      "reversible"
+    ],
+    "scope": "account_id_plus_symbol",
+    "transition_ids_deterministic": true,
+    "lifecycle_events_only": true,
+    "non_transition_diagnostic_rows_unchanged": true,
+    "entry_and_exit_fills_reversible": false,
+    "partial_exit_returns_to_protected": true,
+    "automatic_actor": "AUTO_SAFETY",
+    "manual_main_exit_actor": "USER_UI",
+    "recovery_snapshot_schema": 4,
+    "recovery_schema_v1_v3_compatibility": "derive actual pending and position state, then begin a new cursor without inventing old revisions",
+    "corrupt_schema_v4_cursor": "FAIL_CLOSED",
+    "fixture_contract_normalized": true,
+    "historical_rows_rewritten": false,
+    "runtime_diagnostics_flattened": true,
+    "beginner_and_advanced_ui_separated": true,
+    "strategy_thresholds_changed": false,
+    "paper_fill_math_changed": false,
+    "paper_safety_changed": false
+  },
+  "validation": {
+    "related_backend_group": {
+      "status": "PASS",
+      "tests": 170,
+      "seconds": 12.01,
+      "note": "run before the deterministic ID refinement; the complete backend suite below validates the final source"
+    },
+    "backend_pytest_final_source": {
+      "status": "PASS",
+      "tests": 437,
+      "seconds": 13.15
+    },
+    "frontend_vitest_final_source": {
+      "status": "PASS",
+      "files": 13,
+      "tests": 60,
+      "seconds": 4.47
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 517.74,
+      "gzip_kb": 159.55,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "fixture": {
+      "status": "PASS",
+      "tests": 18,
+      "seconds": 1.73
+    },
+    "playwright_final_source": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 14.5,
+      "baseline_screenshots_overwritten": false
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 128,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    },
+    "git_diff_check": "PASS"
+  },
+  "running_service": {
+    "status": "PASS_BASELINE_ONLY",
+    "loaded_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_state": "LIVE",
+    "execution_state": "PAPER",
+    "event_count_at_check": 703378,
+    "strategy_evaluation_count_at_check": 2236356,
+    "qualified_signal_count_at_check": 1,
+    "queue_depth_at_check": 0,
+    "lag_p95_ms_at_check": 68.482,
+    "trade_lag_p95_ms_at_check": 151.103,
+    "wide_lag_p95_ms_at_check": 1560.107,
+    "wide_lag_role": "observational scanner, not executable entry latency",
+    "planned_rotations": 9,
+    "unplanned_reconnects": 0,
+    "gaps": 0,
+    "resyncs": 0,
+    "drops": 0,
+    "persistence_faults": 0,
+    "buffer_drops": 0,
+    "critical_incidents": 0,
+    "entry_locked": false,
+    "positions": 0,
+    "main_trade_count": 1,
+    "process_memory_mb": 300.391,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "new_lifecycle_transition_row": "NOT_RUN"
+  },
+  "independent_gates": {
+    "local_deployment": "NOT_RUN",
+    "actual_post_deploy_lifecycle_transition_row": "NOT_RUN",
+    "actual_post_deploy_browser": "NOT_RUN",
+    "six_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "twenty_four_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

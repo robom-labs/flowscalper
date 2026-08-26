@@ -100,7 +100,8 @@
 
 ## 8. Recovery와 출력
 
-- recovery schema v3는 Registry, snapshot timestamp, 계좌별 risk, pending map, position map, order·trade와 계획별 최대보유시간을 보존한다.
+- recovery schema v4는 Registry, snapshot timestamp, 계좌별 risk, pending map, position map, order·trade, 계획별 최대보유시간과 계좌·종목별 PAPER 생명주기 revision cursor를 보존한다.
+- schema v1~v3는 복구한 pending·position의 실제 상태에서 새 revision cursor를 시작하며, 과거 snapshot에 없던 revision을 추정하지 않는다. schema v4의 cursor·상태·마지막 전환이 불일치하면 fail-closed한다.
 - schema v1의 `pending_entry`, `position`, `SHADOW:` account ID를 새 map과 account ID로 변환한다.
 - 과거 snapshot에 전혀 없던 신규 K의 BASE·STRESS 두 계좌는 Registry의 additive extension으로 1,000 USDT 빈 계좌를 생성한다. 기존 전략의 한 profile만 누락된 불완전 snapshot은 계속 fail-closed한다.
 - 복구한 모든 open·pending symbol은 fresh public book 재검증 전까지 신규 진입을 잠근다.

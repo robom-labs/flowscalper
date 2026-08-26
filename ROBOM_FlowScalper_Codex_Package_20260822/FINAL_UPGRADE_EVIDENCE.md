@@ -2082,3 +2082,43 @@ PAPER 전략 임계값, entry·TP1·TP2·SL, bid·ask 체결, 비용, 위험예�
 Playwright 중간에는 카드와 고급진단을 동시에 잡는 부분 selector, 재사용 fixture 원장의 실제 복구 상태가 드러난 문구 불일치, fixture 상태와 더 긴 원인 코드를 함께 잡는 regex로 각 3건이 실패했다. 선택자를 정확히 제한하고 DEMO·LIVE 문구를 분리한 뒤 최종 3/3을 PASS했다. 중간 실패를 삭제하거나 최종 PASS로 소급 변환하지 않았다.
 
 구현 commit은 `eafbc601613f08b712a57d9743f50ba09deb6533`, 기계판독 증거는 `evidence/WAVE52_STARTUP_RECOVERY_AUDIT_QA.json`, 판단 근거는 ADR-053이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스 신규 복구행·실제 8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
+
+## 52. Wave 53 PAPER 실행 생명주기 상태 전환 감사 정규화
+
+### 활성 원장 표적 재현
+
+작동 중인 대형 원장에 full integrity check를 실행하지 않고 현재 Run의 `execution_audit` event별 개수와 fixture `transitions`만 read-only로 조회했다. 실행 감사 2,131행과 fixture 전환 50행은 기존 event·시각·전략·계좌·종목을 보존했지만 transition ID, 이전·신규 상태, actor, 원인 코드, 요청·응답 revision과 reversibility가 없었다. 이 조회는 활성 서비스·Run·원장을 변경하지 않았다.
+
+생명주기 범위는 후보 선택·League 무장, 진입 만료·미체결·체결, 관리·손절 청산 대기와 청산 체결 300행으로 제한했다. 위험 거절, 중복 종목 거절과 사용자 진입 일시정지는 상태를 바꾸는 행이 아니므로 기존 진단 의미를 유지한다. 수정 전 격리 회귀는 backend 2건과 frontend 1건이 예상대로 실패했다. 최초 backend 명령의 잘못된 node ID로 0건이 수집된 실행은 제품 실패로 계산하지 않았고, 올바른 명령으로 두 누락을 다시 재현했다.
+
+### 구현과 호환성
+
+- 실제 PAPER lifecycle 신규 행에 transition ID, 이전·신규 상태, 발생시각, 원인·코드, 한국어 설명, actor, Run·전략·계좌·종목, 요청·응답 revision과 reversibility를 추가했다.
+- 전환 cursor를 계좌·종목별로 분리하고 Run·계좌·종목·응답 revision으로 결정적 ID를 생성한다.
+- 자동 실행은 `AUTO_SAFETY`, 사용자가 누른 공동계좌 수동 종료는 `USER_UI`로 기록한다. 진입·청산 체결은 불변 결과라 되돌릴 수 없음으로 기록한다.
+- recovery snapshot schema v4는 revision cursor, 현재 상태와 마지막 전환을 보존한다. schema v1~v3는 실제 pending·position 상태에서 새 cursor를 시작하고 존재하지 않았던 과거 revision은 추정하지 않는다.
+- schema v4 cursor와 마지막 전환이 불일치하면 fail-closed하며 fixture도 `NONE→OBSERVING→ARMED→ENTRY_PENDING→PROTECTED→CLOSED`의 같은 계약을 사용한다.
+- runtime 진단과 설정 화면의 초보자용 `마지막 PAPER 상태` 카드를 연결하고 원본은 접히는 고급진단에 유지했다.
+- 과거 원장 행은 재작성하지 않았고 전략 임계값·신호·비용·TP·SL·체결가격·Governor·위험예산·계좌·실제주문 0 경계는 변경하지 않았다.
+
+### 회귀·화면 검증
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 수정 전 표적 재현 | FAIL_AS_EXPECTED | backend 2 failed, frontend 1 failed. lifecycle·fixture 정규 필드와 초보자 UI 누락을 재현했다. |
+| 관련 backend | PASS | 170 passed, 12.01초다. 이후 결정적 ID 수정은 아래 최종 전체 backend가 다시 검증했다. |
+| backend pytest | PASS | 최종 소스 437 passed, 13.15초다. |
+| frontend Vitest | PASS | 최종 소스 13 files·60 tests, 4.47초다. |
+| Ruff / mypy | PASS | 오류 0 / 95 source files 오류 0이다. |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0이다. |
+| production build / PAPER safety | PASS_WITH_WARNING | PAPER 불변조건은 PASS했다. 단일 JS 517.74kB·gzip 159.55kB의 기존 500kB 경고는 남아 있다. |
+| fixture / Playwright | PASS | fixture 18 passed, 1.73초. Chromium desktop·tablet·mobile 3 passed, 14.5초다. 기준 screenshot은 덮어쓰지 않았다. |
+| security / repository hygiene | PASS | 128 source·위반·secret-like·실제주문 path 0 / 위반 0이다. |
+| 설치 서비스 기준선 | PASS_BASELINE_ONLY | 기준 commit `c57b988353718e03b26b93ac3208e64c5221396e`의 같은 Run은 event 703,378·전략평가 2,236,356까지 전진했다. queue·비계획 reconnect·gap·resync·drop·fault·buffer drop·critical·lock·position·실제주문·인증은 0이었다. 이는 미배포 변경의 실행 증거가 아니다. |
+| 로컬 배포 / 실제 신규 lifecycle 행 / 실제 8870 | NOT_RUN | 기준 6시간·24시간 observer를 중단하지 않기 위해 아직 설치 서비스를 교체하지 않았다. |
+| GitHub main / Actions | NOT_RUN | 실제 배포·원장·브라우저 검증과 최종 증거 전에는 push하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 비침습 observer는 기준 commit의 같은 설치 서비스를 각각 6시간·24시간 목표로 계속 관찰 중이다. |
+| 전략 수익성 | NOT_PROVEN | 이 Wave는 전략·비용 기준을 바꾸지 않았고 자연표본은 수익성 gate보다 부족하다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+구현 commit은 `9d9823ac4a2cc631ab91cc6010b48fc95656fb10`, 기계판독 증거는 `evidence/WAVE53_PAPER_LIFECYCLE_TRANSITION_AUDIT_QA.json`, 판단 근거는 ADR-054다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀는 PASS지만 설치 서비스 신규 lifecycle 행·실제 8870 화면·GitHub main·Actions는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
