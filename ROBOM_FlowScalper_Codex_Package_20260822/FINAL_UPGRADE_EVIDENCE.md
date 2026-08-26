@@ -1965,6 +1965,6 @@ SQLite Online Backup API는 단계 사이 source lock을 풀지만 외부 connec
 | 전략 수익성 | NOT_PROVEN | 현재버전 BASE/STRESS 각 5건이며 모두 합산 비용후 손실이다. 새 자연표본 0이고 임계값은 변경하지 않았다. |
 | 6시간 / 24시간 설치 서비스 soak | NOT_RUN | 이번 구현으로 각각의 실제 시간을 채우지 않았다. 30분 PASS를 더 긴 시간으로 일반화하지 않는다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
-| GitHub main / Actions | PENDING | 로컬 구현·증거 검토 뒤 push와 Actions를 별도로 확인한다. |
+| GitHub main / Actions | PASS | 구현·증거 commit `61a15ce220d374908f04ecab7efe281008ebf385`을 main에 push했다. [Actions 32983734662](https://github.com/robom-labs/flowscalper/actions/runs/32983734662)의 validate 1분14초, browser 1분40초, Chromium desktop·tablet·mobile E2E와 브라우저 증거 upload가 모두 PASS했다. |
 
-원본 관찰은 `evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`, 종합 기계판독 증거는 `evidence/WAVE49_RUNNING_SERVICE_AND_UI_QA.json`, 공개시장 입력은 `evidence/WAVE49_PUBLIC_MARKET_SMOKE.json`, 결정 근거는 ADR-050이다. Wave 49의 현재 수용상태는 `COMPLETE_WITH_LIMITS`다. 실제 30분 설치 서비스·회귀·브라우저 범위는 PASS지만 6시간·24시간·전략 수익성·Release ZIP은 각각 `NOT_RUN`·`NOT_RUN`·`NOT_PROVEN`·`NOT_RUN`이다.
+원본 관찰은 `evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`, 종합 기계판독 증거는 `evidence/WAVE49_RUNNING_SERVICE_AND_UI_QA.json`, 공개시장 입력은 `evidence/WAVE49_PUBLIC_MARKET_SMOKE.json`, 결정 근거는 ADR-050이다. 구현·증거 기준 commit은 `61a15ce220d374908f04ecab7efe281008ebf385`이다. Wave 49의 현재 수용상태는 `COMPLETE_WITH_LIMITS`다. 실제 30분 설치 서비스·회귀·브라우저·GitHub main 범위는 PASS지만 6시간·24시간·전략 수익성·Release ZIP은 각각 `NOT_RUN`·`NOT_RUN`·`NOT_PROVEN`·`NOT_RUN`이다.
