@@ -1968,3 +1968,36 @@ SQLite Online Backup API는 단계 사이 source lock을 풀지만 외부 connec
 | GitHub main / Actions | PASS | 구현·증거 commit `61a15ce220d374908f04ecab7efe281008ebf385`을 main에 push했다. [Actions 32983734662](https://github.com/robom-labs/flowscalper/actions/runs/32983734662)의 validate 1분14초, browser 1분40초, Chromium desktop·tablet·mobile E2E와 브라우저 증거 upload가 모두 PASS했다. |
 
 원본 관찰은 `evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`, 종합 기계판독 증거는 `evidence/WAVE49_RUNNING_SERVICE_AND_UI_QA.json`, 공개시장 입력은 `evidence/WAVE49_PUBLIC_MARKET_SMOKE.json`, 결정 근거는 ADR-050이다. 구현·증거 기준 commit은 `61a15ce220d374908f04ecab7efe281008ebf385`이다. Wave 49의 현재 수용상태는 `COMPLETE_WITH_LIMITS`다. 실제 30분 설치 서비스·회귀·브라우저·GitHub main 범위는 PASS지만 6시간·24시간·전략 수익성·Release ZIP은 각각 `NOT_RUN`·`NOT_RUN`·`NOT_PROVEN`·`NOT_RUN`이다.
+
+## 49. Wave 50 실행·replay 상태 전환 감사 정규화
+
+### 실제 재현
+
+활성 2.894GB 원장에 전수 무결성 검사를 실행하지 않고 `incidents`의 세 category만 read-only로 조회했다. `PAPER_ENTRY_INTENT_TRANSITION` 4행은 이전·새 상태를 모두 직접 기록했지만 `CONTROL_STATE_TRANSITION` 4행과 `REPLAY_STATE_TRANSITION` 17행은 두 필드가 전부 없었다. control·replay는 전체 operation snapshot과 history를 보존하고 있었으므로 데이터 유실은 아니지만, 한 전환 행에서 actor·원인·요청·응답 revision·terminal 여부를 직접 감사할 수 없는 계약 차이였다.
+
+### 구현과 호환성
+
+신규 control·replay incident에 `transition_id`, 이전·새 상태, 발생시각, 원인, 한국어 설명, actor, Run·전략·계좌·종목, 요청·응답 revision과 `reversible`을 추가했다. 최초 전환은 `NONE`·revision 0에서 시작하고 terminal 상태는 되돌릴 수 없음으로 기록한다. 기존 incident ID·category·전체 snapshot·history를 그대로 유지하며 과거 행 재작성과 schema migration은 하지 않는다.
+
+PAPER 전략 임계값, entry·TP1·TP2·SL, bid·ask 체결, 비용, 위험예산, Registry·Governor, 계좌, 거래 원장과 실제주문 0 경계는 변경하지 않았다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 실제 원장 표적 재현 | PASS | PAPER 진입 의도 4/4행 정규 필드 존재, control 0/4행·replay 0/17행 부재를 read-only query로 재현했다. full integrity check는 실행하지 않았다. |
+| targeted transition | PASS | 2 passed, 4.58초 |
+| control·replay·recovery·storage | PASS | 67 passed, 39.33초 |
+| backend pytest | PASS | 432 passed, 19.21초 |
+| frontend Vitest | PASS | 13 files·57 tests, 4.40초 |
+| Ruff / mypy | PASS | 오류 0 / 95 source files 오류 0 |
+| ESLint / TypeScript | PASS | 오류 0 / 오류 0 |
+| production build / PAPER safety | PASS_WITH_WARNING | build와 PAPER 불변조건 PASS. 단일 JS chunk 514.80kB 경고가 남아 있다. |
+| fixture / Playwright | PASS | fixture 17 passed, Chromium desktop·tablet·mobile 3 passed |
+| security / repository hygiene | PASS | 128 source·위반·secret-like·실제주문 path 0 / 위반 0 |
+| 설치 서비스 기준선 | PASS_BASELINE_ONLY | 기준 commit `c57b988353718e03b26b93ac3208e64c5221396e`의 같은 Run은 RUNNING·LIVE·PAPER, 포지션·실제주문·인증 0이다. 이 값은 미배포 변경의 실행 증거가 아니다. |
+| 로컬 배포 / 실제 신규 정규 행 | NOT_RUN | 기존 기준 commit의 6시간·24시간 observer를 중단하지 않기 위해 아직 서비스를 교체하지 않았다. |
+| GitHub main / Actions | NOT_RUN | 배포·실제 원장 검증과 최종 증거가 끝나기 전에는 push하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 두 비침습 observer가 기준 commit의 같은 설치 서비스를 관찰 중이다. 완료 전 PASS로 표시하지 않는다. |
+| 전략 수익성 | NOT_PROVEN | 이 Wave는 전략을 변경하지 않았고 현재 자연표본도 수익성 gate보다 부족하다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+구현 commit은 `482f334a6bd7d8716b50c2a28eb249b324324079`, 기계판독 증거는 `evidence/WAVE50_OPERATION_TRANSITION_AUDIT_QA.json`, 판단 근거는 ADR-051이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 코드·회귀 검증은 PASS지만 실제 설치 서비스의 신규 정규 행, GitHub main·Actions, 6시간·24시간과 수익성은 각각 `NOT_RUN`, `NOT_RUN`, `IN_PROGRESS`, `NOT_PROVEN`이다.

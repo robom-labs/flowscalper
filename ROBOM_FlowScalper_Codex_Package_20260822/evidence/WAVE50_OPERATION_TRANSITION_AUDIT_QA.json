@@ -1,0 +1,150 @@
+{
+  "schema": "flowscalper.wave50.operation_transition_audit_qa.v1",
+  "status": "IMPLEMENTED_NOT_DEPLOYED",
+  "date": "2026-08-27",
+  "baseline_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+  "implementation_commit": "482f334a6bd7d8716b50c2a28eb249b324324079",
+  "reproduction": {
+    "status": "PASS",
+    "source": "active ledger targeted read-only incidents query",
+    "full_ledger_integrity_check_run": false,
+    "categories": {
+      "PAPER_ENTRY_INTENT_TRANSITION": {
+        "rows": 4,
+        "rows_with_previous_state": 4,
+        "rows_with_new_state": 4
+      },
+      "CONTROL_STATE_TRANSITION": {
+        "rows": 4,
+        "rows_with_previous_state": 0,
+        "rows_with_new_state": 0
+      },
+      "REPLAY_STATE_TRANSITION": {
+        "rows": 17,
+        "rows_with_previous_state": 0,
+        "rows_with_new_state": 0
+      }
+    },
+    "diagnosis": "control and replay persisted whole operation snapshots but lacked direct normalized transition fields"
+  },
+  "implementation": {
+    "status": "PASS",
+    "files": [
+      "backend/app/main.py",
+      "backend/tests/test_control_operations.py",
+      "backend/tests/test_v02_storage_market_replay.py"
+    ],
+    "normalized_fields": [
+      "transition_id",
+      "previous_state",
+      "new_state",
+      "occurred_ts_ms",
+      "cause",
+      "cause_code",
+      "description_ko",
+      "actor",
+      "run_id",
+      "strategy_id",
+      "account_id",
+      "symbol",
+      "request_revision",
+      "response_revision",
+      "reversible"
+    ],
+    "existing_snapshot_and_history_preserved": true,
+    "schema_migration": false,
+    "historical_rows_rewritten": false,
+    "paper_strategy_or_execution_change": false
+  },
+  "validation": {
+    "targeted_reproduction": {
+      "status": "PASS",
+      "tests": 2,
+      "seconds": 4.58
+    },
+    "control_replay_recovery_storage": {
+      "status": "PASS",
+      "tests": 67,
+      "seconds": 39.33
+    },
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 432,
+      "seconds": 19.21
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 95
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 13,
+      "tests": 57,
+      "seconds": 4.4
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS_WITH_WARNING",
+      "javascript_kb": 514.8,
+      "warning": "single chunk exceeds 500kB"
+    },
+    "fixture": {
+      "status": "PASS",
+      "tests": 17,
+      "seconds": 4.46
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 18.9
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 128,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS",
+      "violations": 0
+    }
+  },
+  "running_service": {
+    "status": "PASS_BASELINE_ONLY",
+    "loaded_commit": "c57b988353718e03b26b93ac3208e64c5221396e",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_state": "LIVE",
+    "execution_state": "PAPER",
+    "positions": 0,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "new_normalized_control_or_replay_row": "NOT_RUN"
+  },
+  "independent_gates": {
+    "local_deployment": "NOT_RUN",
+    "actual_post_deploy_transition_row": "NOT_RUN",
+    "six_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "twenty_four_hour_installed_service_soak": "IN_PROGRESS_BASELINE_COMMIT",
+    "strategy_profitability": "NOT_PROVEN",
+    "release_zip": "NOT_RUN",
+    "github_main_and_actions": "NOT_RUN"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  }
+}

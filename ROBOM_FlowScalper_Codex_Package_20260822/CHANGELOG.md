@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- control·replay 작업의 신규 불변 incident에 이전·새 상태, 원인, 한국어 설명, actor, Run·종목, 요청·응답 revision과 terminal reversibility를 직접 기록한다. 기존 operation snapshot·history와 과거 행은 보존하며 PAPER 전략·체결·손익·Governor와 실제주문 0 경계는 바꾸지 않는다.
 - 이미 실행 중인 PAPER 서비스만 읽는 비침습 장시간 관찰기를 추가했다. 별도 공개시장 연결·Run·runtime·replay·SQLite writer 없이 이벤트·전략평가 전진, 동적 전략별 BASE/STRESS 계좌, 포지션 보호, 실행 지연, queue, 재연결, 저장 flush·WAL, 현재 RSS와 실제주문·인증 0을 30분·6시간·24시간 명령으로 각각 검증한다.
 - 고급진단에 누적 전략 평가·적격신호 수를 추가해 거래가 없을 때도 전략 경로가 실제로 전진하는지 확인할 수 있게 했다. 태블릿·모바일의 요약·주요 메뉴·하위 메뉴 버튼은 48×48px 이상으로 맞추고 root 가로 넘침을 막았다.
 - 활성 2.8GB SQLite에 전수 `quick_check`를 직접 병행하여 queue·drop을 만들던 검증 경로를 제거했다. 평평한 PAPER Run을 유지관리로 잠시 닫고 WAL 0·APFS clone을 고정한 뒤 동일 Run을 먼저 재기동하며, 다른 device의 SHA-256 일치 사본에서만 full `quick_check`·외래키 검사를 실행한다. 온라인 backup은 시간·무진행 상한을 두고 런타임 감시가 안전상한을 넘으면 부분 사본을 제거한다.

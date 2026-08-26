@@ -76,6 +76,7 @@ Detailed specifications:
 - `docs/adr/ADR-048-current-and-peak-process-memory.md`
 - `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`
 - `docs/adr/ADR-050-noninvasive-running-service-soak.md`
+- `docs/adr/ADR-051-normalized-operation-transition-audit.md`
 
 ## Supporting contracts
 
@@ -135,6 +136,7 @@ Detailed specifications:
 - `evidence/WAVE49_PUBLIC_MARKET_SMOKE.json`
 - `evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json`
 - `evidence/WAVE49_RUNNING_SERVICE_AND_UI_QA.json`
+- `evidence/WAVE50_OPERATION_TRANSITION_AUDIT_QA.json`
 - `evidence/screenshots/wave49-actual-system-mobile-415x734.png`
 - `evidence/screenshots/wave49-actual-trade-replay-mobile-415x734.png`
 - `scripts/observe_running_service.py`

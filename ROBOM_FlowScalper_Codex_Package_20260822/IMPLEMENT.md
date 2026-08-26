@@ -365,3 +365,14 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Provide exact wall-clock 30-minute, 6-hour and 24-hour targets. Never use an independent `PaperRuntime` soak or a shorter observation as proof of the installed service duration.
 9. Keep tablet and mobile summary, primary navigation and secondary navigation controls at least 48×48px and verify root horizontal overflow is zero in the actual browser and Playwright.
 10. Run backend, frontend, fixture, lint, typecheck, production build, PAPER safety, security, repository hygiene, network smoke and actual browser checks. Preserve profitability as `NOT_PROVEN` and 6-hour·24-hour as `NOT_RUN` until their independent gates are genuinely met.
+
+## Normalized operation-transition audit Wave
+
+1. Query only the incident table needed for reproduction. Do not run a full integrity check against the active multi-gigabyte writer.
+2. Compare PAPER entry-intent, control-operation and replay-operation incident payloads for direct previous/new state, actor, cause, revision and reversibility fields.
+3. Preserve each existing incident ID, category, full operation snapshot and history while adding a normalized append-only transition contract to new control and replay rows.
+4. Record the first transition as `NONE` to revision 1 and every later transition from the exact previous revision. Mark terminal states as not reversible.
+5. Keep irrelevant strategy and account fields explicitly null, attach the current Run only when it exists and attach replay source Run and symbol when applicable.
+6. Do not migrate or rewrite historical incident rows. Do not change PAPER strategy thresholds, entry, exit, cost, account, ledger trade or Governor behavior.
+7. Re-run targeted transition, control, replay, recovery and storage tests plus the complete backend, frontend, static, build, PAPER safety, security, repository hygiene and three-viewport browser suite.
+8. Do not call the Wave deployed until the installed service loads the implementation and an actual new transition row satisfies the normalized contract. Keep the already-running 6-hour and 24-hour observations scoped to their baseline commit.
