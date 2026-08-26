@@ -525,3 +525,14 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Commit and stage a clean immutable release. Run the maintenance handoff alone, with no browser, replay, tests, build, source scan or other local I/O until it completes.
 9. After clean integrity and same-Run recovery, reload the actual 8870 browser, click pause and resume, verify the immediate labels, navigate every primary page and replay an uncached completed PAPER trade while measuring latency and LIVE safety.
 10. Continue with a clean 5-minute comparison, 30-minute soak, fixed 485,283-event replay and only then new six-hour and 24-hour observers. Keep every unfilled duration `NOT_RUN` and profitability `NOT_PROVEN`.
+
+## Planned-rotation safety-waiting grace Wave
+
+1. Preserve the uncontaminated actual maintenance failure and classify transfer, hash and same-Run recovery separately from the incomplete quick-check.
+2. Reproduce `planned_rotations +1`, `SAFETY_WAITING` and `entry_locked=true` inside the existing 15-second transition grace.
+3. Allow that exact state only when the existing planned/reconnect count contract already allows the transition. Do not create a broader operation-state exemption.
+4. Keep `MANUALLY_PAUSED` and every other non-RUNNING state fail-closed even if planned rotation counters change.
+5. Keep the existing grace duration, queue, lag, critical incident, reconnect, gap, resync, drop, persistence, Run, process, position, actual-order and auth checks unchanged.
+6. Add direct guard and threaded monitor regressions, then run ledger and service targets, complete backend, Ruff, mypy, PAPER build safety, security and repository hygiene.
+7. Commit and stage the fixed immutable release, then rerun the same full maintenance command without browser actions, replay, tests, build or source scans.
+8. Keep integrity `NOT_RUN` until the real quick-check and foreign-key results are returned. Do not infer database corruption from a monitor-contract abort.

@@ -2661,3 +2661,31 @@ LIVE process 공유는 제거해야 할 코드 경계였다.
 아직 `NOT_RUN`이다. 판단 근거는 ADR-066, 기계판독 증거는
 `evidence/WAVE66_CONTROL_AND_FOCUS_REPLAY_QA.json`이다. 현재 수용상태는
 `IMPLEMENTED_FULL_REGRESSION_PASS_PENDING_IMMUTABLE_DEPLOY`다.
+
+## 66. Wave 67 계획 회전 안전대기 감시 수정
+
+commit `715692c0139dde2335469a69b9d4ef5e00851285` 불변 릴리스를 준비하고 다른 작업을 전혀
+겹치지 않은 실제 유지관리를 실행했다. 서비스를 강제종료 없이 5.104초에 닫고 WAL frame·byte 0,
+3,023,081,472 byte clone을 만들었다. 다른 device 전송은 884.901초가 걸렸고 양쪽 SHA-256
+`2ca05ef33eb48ee0ff837502a2b481cfb2d08a893b5a94ff64a736dc8460f5d8`이 일치했다. 새 릴리스는
+같은 Run `run-2b7135a972dd`를 복구했으며 첫 표본은 queue 0, p95 232.333ms, 비계획 reconnect·
+gap·resync·drop·저장결함·critical lag·포지션·실주문·인증 0이었다.
+
+전수검사 감시는 764표본·event +68,229·최대 queue 22·최대 p95 232.333ms까지 정상 전진했다.
+약 15분 뒤 첫 planned rotation이 시작되자 런타임은 `SAFETY_WAITING`, entry lock true로 전환했다.
+감시기는 planned rotation의 entry lock과 reconnect 차이를 기존 15초 유예로 허용하면서 같은
+상태의 `OPERATION_NOT_RUNNING`만 즉시 위반으로 남겨 검사를 중단했다. 임시 source clone과 새
+verification copy는 모두 제거됐다. 이 결과는 오염 없는 실제 monitor-contract 결함이며 원장
+손상 증거가 아니다. quick-check·foreign key 결과는 계속 `NOT_RUN`이다.
+
+계획 회전 유예 안에서 새 planned count, reconnect count 관계, `SAFETY_WAITING`과 entry lock이
+모두 맞는 조합만 허용하도록 수정했다. `MANUALLY_PAUSED`는 같은 counter 조건에서도 계속
+`OPERATION_NOT_RUNNING`이고 다른 안전기준과 15초 유예는 바꾸지 않았다. 계획 회전 실제 상태와
+수동 pause 회귀를 포함한 원장·서비스 표적 30 passed·13.99초, 전체 backend 464 passed·43.57초,
+Ruff, mypy 96 source, PAPER build safety, security 131 source·위반 0·실주문 경로 false와 repository
+hygiene가 PASS다.
+
+원본 실패 증거는 `evidence/WAVE66_CLEAN_MAINTENANCE_HANDOFF.json`, 판단 근거는 ADR-067,
+수정 증거는 `evidence/WAVE67_PLANNED_ROTATION_MONITOR_QA.json`이다. 수정 릴리스의 실제 전수검사,
+브라우저, 30분·6시간·24시간과 수익성은 아직 각각 `NOT_RUN`·`NOT_PROVEN`이다. 현재 상태는
+`FIXED_FULL_BACKEND_PASS_PENDING_ACTUAL_CLEAN_RETRY`다.

@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 원장 전수검사 안전감시가 정상 planned rotation의 `SAFETY_WAITING`을 장애로 오인하던 모순을 수정했다. 새 계획 회전, 진입잠금, planned/reconnect count와 기존 15초 유예가 모두 맞을 때만 허용하며 수동 일시정지와 다른 비RUNNING 상태는 계속 실패한다.
 - 새 진입 일시정지·재개 버튼은 서버 응답 전부터 `멈추는 중`·`다시 시작하는 중`으로 바뀌고 중복 클릭을 막는다. 거래 집중 재생은 LIVE process와 분리하고 정확한 거래 한 건과 같은 전략·종목·방향의 BASE·STRESS 비교 행만 읽어 대형 활성 원장 전체 역직렬화를 제거했다.
 - 닫힌 3,009,531,904 byte 원장의 실제 재시도에서 cross-device 전송과 양쪽 SHA-256 일치는 PASS했고 같은 Run 불변 복구도 PASS했다. 다만 전수검사 중 실제 브라우저 pause·replay와 로컬 회귀를 겹쳐 `OPERATION_NOT_RUNNING`으로 안전중단했으므로 integrity는 PASS가 아니라 `NOT_RUN`으로 유지하고 깨끗한 단독 재시도를 요구한다.
 - 닫힌 APFS clone을 다른 device로 복사하면서 새 LIVE 서비스가 같은 source device에 FULL commit을 수행해 안전잠금이 발생하던 유지관리 순서를 수정했다. cross-device 전송과 SHA-256을 서비스 재시작 전에 끝내고, 재시작 뒤에는 다른 device의 immutable copy quick-check만 LIVE 감시와 병행한다.

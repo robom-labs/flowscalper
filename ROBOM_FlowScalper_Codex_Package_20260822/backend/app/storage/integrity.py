@@ -258,7 +258,12 @@ def runtime_safety_violations(
         violations.append("RUN_CHANGED")
     if sample.process_uptime_seconds < baseline.process_uptime_seconds:
         violations.append("PROCESS_RESTARTED")
-    if sample.operation_state != "RUNNING":
+    planned_rotation_waiting = bool(
+        allow_planned_rotation_transition
+        and sample.operation_state == "SAFETY_WAITING"
+        and sample.entry_locked
+    )
+    if sample.operation_state != "RUNNING" and not planned_rotation_waiting:
         violations.append("OPERATION_NOT_RUNNING")
     if sample.market_data_state != "LIVE":
         violations.append("MARKET_NOT_LIVE")

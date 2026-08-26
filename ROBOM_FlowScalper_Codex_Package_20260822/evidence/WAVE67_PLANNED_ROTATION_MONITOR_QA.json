@@ -1,0 +1,112 @@
+{
+  "schema": "flowscalper.wave67.planned_rotation_monitor_qa.v1",
+  "status": "FIXED_FULL_BACKEND_PASS_PENDING_ACTUAL_CLEAN_RETRY",
+  "date": "2026-08-27",
+  "actual_failure": {
+    "evidence": "evidence/WAVE66_CLEAN_MAINTENANCE_HANDOFF.json",
+    "status": "ABORTED_RUNTIME_SAFETY",
+    "started_at": "2026-08-26T22:26:35.951743+00:00",
+    "completed_at": "2026-08-26T22:58:01.538834+00:00",
+    "duration_seconds": 1885.587,
+    "concurrent_local_qa": false,
+    "closed_wal": {
+      "busy": 0,
+      "log_frames": 0,
+      "checkpointed_frames": 0,
+      "wal_bytes": 0,
+      "page_count": 738057
+    },
+    "cross_device_transfer": {
+      "status": "PASS",
+      "bytes": 3023081472,
+      "source_sha256": "2ca05ef33eb48ee0ff837502a2b481cfb2d08a893b5a94ff64a736dc8460f5d8",
+      "verification_sha256": "2ca05ef33eb48ee0ff837502a2b481cfb2d08a893b5a94ff64a736dc8460f5d8",
+      "duration_seconds": 884.901
+    },
+    "same_run_recovery": {
+      "status": "PASS",
+      "run_id": "run-2b7135a972dd",
+      "release_commit": "715692c0139dde2335469a69b9d4ef5e00851285",
+      "downtime_seconds": 939.347,
+      "positions": 0,
+      "actual_orders": 0,
+      "auth": false
+    },
+    "runtime_monitor": {
+      "sample_count": 764,
+      "event_delta": 68229,
+      "maximum_queue_depth": 22,
+      "maximum_lag_p95_ms": 232.33251953125,
+      "latest_operation_state": "SAFETY_WAITING",
+      "latest_entry_locked": true,
+      "planned_rotations": 1,
+      "unplanned_reconnects": 0,
+      "gaps": 0,
+      "resyncs": 0,
+      "drops": 0,
+      "persistence_faults": 0,
+      "persistence_buffer_dropped": 0,
+      "critical_lag_incidents": 0,
+      "violations": ["OPERATION_NOT_RUNNING"]
+    },
+    "integrity": {
+      "status": "NOT_RUN",
+      "quick_check": null,
+      "foreign_key_violations": null
+    },
+    "cleanup": {
+      "source_clone_removed": true,
+      "verification_copy_removed": true
+    }
+  },
+  "root_cause": {
+    "classification": "PLANNED_ROTATION_STATE_CONTRACT_MISMATCH",
+    "detail": "The monitor allowed ENTRY_LOCKED and reconnect count transitions during the 15-second planned rotation grace but still rejected the corresponding beginner operation state SAFETY_WAITING.",
+    "thresholds_lowered": false
+  },
+  "implementation": {
+    "allow_state": "SAFETY_WAITING",
+    "requires_entry_locked": true,
+    "requires_existing_planned_rotation_transition": true,
+    "uses_existing_grace_seconds": 15,
+    "manual_pause_still_rejected": true,
+    "other_non_running_states_still_rejected": true
+  },
+  "validation": {
+    "targeted_ledger_and_service": {"status": "PASS", "tests": 30, "seconds": 13.99},
+    "full_backend": {"status": "PASS", "tests": 464, "seconds": 43.57},
+    "ruff": "PASS",
+    "mypy": {"status": "PASS", "source_files": 96},
+    "paper_build_safety": "PASS",
+    "security": {
+      "status": "PASS",
+      "source_files": 131,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  },
+  "strategy_changes": false,
+  "profitability": "NOT_PROVEN",
+  "remaining": {
+    "fixed_release_commit": "NOT_CREATED",
+    "immutable_release_stage": "NOT_RUN",
+    "actual_clean_integrity_retry": "NOT_RUN",
+    "actual_browser": "NOT_RUN_ON_FIXED_RELEASE",
+    "clean_30m_soak": "NOT_RUN",
+    "fixed_485283_event_replay": "NOT_RUN",
+    "post_deploy_6h": "NOT_RUN",
+    "post_deploy_24h": "NOT_RUN",
+    "github_main_actions_release": "NOT_RUN"
+  }
+}

@@ -245,6 +245,7 @@ def test_runtime_guard_rejects_new_queue_drop_lag_position_and_unplanned_reconne
 def test_runtime_guard_allows_only_explicit_planned_rotation_lock_grace() -> None:
     baseline = _sample()
     planned_lock = _sample(
+        operation_state="SAFETY_WAITING",
         event_count=150,
         reconnects=3,
         planned_rotations=3,
@@ -256,7 +257,7 @@ def test_runtime_guard_allows_only_explicit_planned_rotation_lock_grace() -> Non
         baseline,
         planned_lock,
         RuntimeSafetyThresholds(),
-    ) == ("ENTRY_LOCKED",)
+    ) == ("OPERATION_NOT_RUNNING", "ENTRY_LOCKED")
     assert runtime_safety_violations(
         baseline,
         planned_lock,
@@ -268,6 +269,7 @@ def test_runtime_guard_allows_only_explicit_planned_rotation_lock_grace() -> Non
 def test_runtime_guard_allows_planned_rotation_before_reconnect_within_grace() -> None:
     baseline = _sample()
     rotation_start = _sample(
+        operation_state="SAFETY_WAITING",
         event_count=140,
         reconnects=2,
         planned_rotations=3,
@@ -279,13 +281,79 @@ def test_runtime_guard_allows_planned_rotation_before_reconnect_within_grace() -
         baseline,
         rotation_start,
         RuntimeSafetyThresholds(),
-    ) == ("ENTRY_LOCKED", "RECONNECT_NOT_PLANNED_ROTATION")
+    ) == (
+        "OPERATION_NOT_RUNNING",
+        "ENTRY_LOCKED",
+        "RECONNECT_NOT_PLANNED_ROTATION",
+    )
     assert runtime_safety_violations(
         baseline,
         rotation_start,
         RuntimeSafetyThresholds(),
         allow_planned_rotation_transition=True,
     ) == ()
+
+
+def test_runtime_guard_never_treats_manual_pause_as_planned_rotation() -> None:
+    baseline = _sample()
+    manual_pause = _sample(
+        operation_state="MANUALLY_PAUSED",
+        event_count=150,
+        reconnects=3,
+        planned_rotations=3,
+        entry_locked=True,
+        process_uptime_seconds=105.0,
+    )
+
+    assert runtime_safety_violations(
+        baseline,
+        manual_pause,
+        RuntimeSafetyThresholds(),
+        allow_planned_rotation_transition=True,
+    ) == ("OPERATION_NOT_RUNNING",)
+
+
+def test_runtime_monitor_allows_safety_waiting_during_planned_rotation() -> None:
+    calls = 0
+    baseline = _sample()
+    rotation_wait = _sample(
+        operation_state="SAFETY_WAITING",
+        event_count=150,
+        reconnects=2,
+        planned_rotations=3,
+        entry_locked=True,
+        process_uptime_seconds=105.0,
+    )
+    recovered = _sample(
+        event_count=170,
+        reconnects=3,
+        planned_rotations=3,
+        process_uptime_seconds=106.0,
+    )
+
+    def probe() -> RuntimeSafetySample:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return baseline
+        if calls == 2:
+            return rotation_wait
+        return recovered
+
+    monitor = RuntimeSafetyMonitor(
+        probe,
+        thresholds=RuntimeSafetyThresholds(
+            poll_seconds=0.005,
+            max_event_stall_seconds=1.0,
+        ),
+    )
+    monitor.start()
+    deadline = time.monotonic() + 1.0
+    while calls < 3 and time.monotonic() < deadline:
+        time.sleep(0.005)
+    monitor.stop()
+
+    assert monitor.report()["violations"] == []
 
 
 def test_runtime_monitor_tolerates_two_transient_probe_timeouts() -> None:
