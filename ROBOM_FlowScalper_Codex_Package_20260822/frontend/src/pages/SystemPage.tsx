@@ -37,6 +37,8 @@ const diagnosticLabels: Record<string, string> = {
   trade_windows_retained: '거래 구간 보존',
   disk_pressure_entry_lock: '디스크 압박 잠금',
   app_version: '앱 버전',
+  release_commit: '실행 릴리스',
+  release_isolated: '개발 폴더와 실행본 분리',
   runtime_ready: '시작 대기 상태',
   process_cpu_percent: '프로세스 CPU %',
   process_memory_mb: '현재 프로세스 메모리 RSS MB',
@@ -138,6 +140,13 @@ function readable(value: string | number | boolean) {
   return String(value)
 }
 
+function readableDiagnostic(name: string, value: string | number | boolean) {
+  if (name === 'release_commit' && typeof value === 'string' && value.length === 40) {
+    return value.slice(0, 12)
+  }
+  return readable(value)
+}
+
 export function SystemPage({ data, connected, lastUpdateMs }: Props) {
   const healthy = data.status.market_data_state === 'LIVE' || data.status.market_data_state === 'FIXTURE'
   const reconnects = Number(data.system.unplanned_reconnects ?? data.system.reconnects ?? 0)
@@ -198,7 +207,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
         <article className="panel"><span>실제 주문 경로</span><b className="positive">0</b><small>private API · 인증 · 주문 전송 없음</small></article>
       </section>
       <section className="panel endpoint-panel"><h3>연결 진실성</h3><p>오프라인 DEMO는 LIVE로 표시하지 않습니다. LIVE 표시는 공개 REST 메타데이터와 첫 sequence-valid WebSocket 이벤트가 모두 확인된 뒤에만 가능합니다.</p><div className="health-row"><span>시장데이터 {healthy ? '검증됨' : '미검증'}</span><span>실행 PAPER 전용</span><span>실제 주문 DISABLED</span><span>로그인·API 키 불필요</span></div></section>
-      <details className="panel advanced-details system-diagnostics"><summary>고급 진단 보기</summary><div className="diagnostic-grid">{Object.entries(data.system).map(([name, value]) => <div key={name}><span>{diagnosticLabels[name] ?? name.replaceAll('_', ' ')}</span><b>{readable(value)}</b></div>)}</div></details>
+      <details className="panel advanced-details system-diagnostics"><summary>고급 진단 보기</summary><div className="diagnostic-grid">{Object.entries(data.system).map(([name, value]) => <div key={name}><span>{diagnosticLabels[name] ?? name.replaceAll('_', ' ')}</span><b title={name === 'release_commit' ? String(value) : undefined}>{readableDiagnostic(name, value)}</b></div>)}</div></details>
     </section>
   )
 }

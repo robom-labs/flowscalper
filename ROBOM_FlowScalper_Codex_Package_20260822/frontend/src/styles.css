@@ -279,18 +279,19 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .lock-list span { padding: 8px; border: 1px solid #2f7867; border-radius: 7px; color: #94e7d1; font-size: 10px; }
 .risk-actions { display: flex; flex-direction: column; gap: 10px; }
 .risk-actions p, .endpoint-panel p { color: #839ca9; font-size: 11px; line-height: 1.7; }
-.system-summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.system-summary-grid { position: relative; z-index: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
 .system-summary-grid article { min-height: 118px; }
 .system-summary-grid b { display: block; margin: 10px 0 5px; font-size: 16px; overflow-wrap: anywhere; }
 .system-summary-grid small { color: #7893a2; font-size: 9px; line-height: 1.45; }
 .endpoint-panel { margin-top: 8px; }
 .health-row { flex-wrap: wrap; gap: 8px; }
 .health-row span { border: 1px solid #294958; border-radius: 7px; padding: 9px; font-size: 10px; }
-.system-diagnostics { padding-inline: 13px; }
+.system-diagnostics { position: relative; z-index: 2; isolation: isolate; padding-inline: 13px; }
+.system-diagnostics summary { position: relative; z-index: 1; }
 .diagnostic-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .diagnostic-grid > div { min-height: 72px; padding: 9px; border: 1px solid #19313c; border-radius: 8px; background: #08151b; }
 .diagnostic-grid span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 9px; }
-.diagnostic-grid b { font-size: 10px; overflow-wrap: anywhere; }
+.diagnostic-grid b { display: block; min-width: 0; font-size: 10px; overflow-wrap: anywhere; word-break: break-word; }
 .control-error { border: 1px solid #82434b; border-radius: 8px; padding: 10px; color: #ffc2c7; background: #2c171b; }
 .connection-error { border: 1px solid #74622f; border-radius: 8px; padding: 10px; color: #f3d989; background: #2b2414; font-size: 10px; }
 .operation-card { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; margin-bottom: 8px; }

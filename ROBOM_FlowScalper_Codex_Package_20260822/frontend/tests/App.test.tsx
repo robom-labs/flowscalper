@@ -47,6 +47,35 @@ test('fails closed when immutable frontend and backend release commits differ', 
   expect(screen.queryByRole('button', { name: '전략' })).not.toBeInTheDocument()
 })
 
+test('shows a compact matching immutable release in advanced diagnostics', async () => {
+  const releaseCommit = 'a'.repeat(40)
+  const releaseMeta = document.createElement('meta')
+  releaseMeta.name = 'robom-release-commit'
+  releaseMeta.content = releaseCommit
+  document.head.append(releaseMeta)
+  const releaseDashboard = {
+    ...initialDashboard,
+    system: {
+      ...initialDashboard.system,
+      release_commit: releaseCommit,
+      release_isolated: true,
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => releaseDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: '설정' }))
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+
+  expect(await screen.findByText('실행 릴리스')).toBeInTheDocument()
+  expect(screen.getByTitle(releaseCommit)).toHaveTextContent('aaaaaaaaaaaa')
+  expect(screen.getByText('개발 폴더와 실행본 분리')).toBeInTheDocument()
+})
+
 test('renders permanent paper-only ready status and market controls', async () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
   vi.stubGlobal('WebSocket', FakeWebSocket)
