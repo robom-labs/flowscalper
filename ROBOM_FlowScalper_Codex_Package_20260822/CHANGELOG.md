@@ -6,6 +6,8 @@
 
 ## 아직 배포하지 않음
 
+- 예기치 않은 React 화면 예외가 전체 빈 페이지가 되지 않도록 최상위 PAPER 안전 복구 화면을 추가했다. 오류 화면은 메뉴·PAPER 제어를 숨기고 실제 주문 0을 명시하며 전체 화면 재로딩만 제공한다.
+- macOS 불변 릴리스 launcher가 editable 가상환경의 개발 worktree backend를 가져올 수 있던 경계를 차단했다. release root를 유일한 애플리케이션 `PYTHONPATH`로 고정하고 `backend.__file__`이 물리 release 밖이면 시작 전에 exit 75로 중단한다.
 - macOS 자동 서비스가 개발 폴더를 직접 제공해 구형 backend와 신형 frontend가 섞이던 문제를 불변 commit 릴리스와 원자적 `current` 전환으로 수정했다. 화면·서버 commit이 다르면 메뉴와 PAPER 제어 대신 버전 불일치 안전 화면만 표시하고, 배포 commit·파일 hash·rollback point를 `CODEX_DEPLOY` 기록으로 남긴다.
 - 디스크 압박 사유처럼 긴 시스템 문구가 화면 폭을 늘려 모바일 고급진단 클릭을 막던 문제를 카드 내부 줄바꿈으로 수정했다. 실행 commit은 12자로 읽기 쉽게 표시하고 전체 값은 진단 title에 보존한다.
 - 11개 PAPER 전략 각각에 필요한 공개시장 데이터, 최소 준비, 진입 가설·반증 조건, 종료·비용·위험예산, 대상 종목, 미래정보 방지와 1차 연구 Source ID를 런타임 계약으로 추가했다. 전략 상세 화면은 이 계약과 현재 lifecycle·변경 이유를 함께 보여 주며, 현재 실행 기본값을 공동계좌 ACTIVE 0·SHADOW 6·RETIRED 5로 문서와 일치시켰다.

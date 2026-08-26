@@ -2204,3 +2204,43 @@ Playwright 중간에는 카드와 고급진단을 동시에 잡는 부분 select
 | Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
 
 구현 commit은 `c9285927e31c4beac01a62c2bab815d91d195ee7`, `d41c81047f321e04eaeeb00ea200429b88361928`, `1bfbd21fab905008314712582b0d1c8b082c8a68`이다. 기계판독 증거는 `evidence/WAVE55_IMMUTABLE_ATOMIC_RELEASE_QA.json`, 판단 근거는 ADR-056이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 실제 설치 서비스 배포·8870·원장·GitHub는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
+
+## 55. Wave 56 PAPER 안전 화면과 backend import 격리
+
+### 기준 8870 화면 무중단 복구
+
+실제 기준 backend는 그대로 실행하고 있었지만 worktree의 새 frontend bundle을 제공해 `전략 → 자세히` 뒤 React DOM이 비었다. 기준 commit `c57b988353718e03b26b93ac3208e64c5221396e`의 frontend를 별도 경로에서 빌드하고 정적 디렉터리만 같은 filesystem rename으로 교체했다. 교체 전 mixed bundle은 runtime 임시 복구본으로 보존했다. Python process, Run, 6시간·24시간 observer는 재시작하거나 중단하지 않았다.
+
+복구 뒤 실제 브라우저 `http://127.0.0.1:8870/?recovery=c57b9883`은 작동 중·PAPER 실제 주문 0을 표시했다. 전략 화면에는 `자세히` 11개가 있었고 첫 전략 상세 dialog 1개를 실제로 열었다. 상세 뒤 DOM snapshot은 18,648자, empty root false, alert 0이었다. console error는 이번 브라우저 API 확인에서 수집하지 않아 `NOT_CAPTURED`다. 이는 기준 commit 정합성 복구이며 새 구현 배포 증거가 아니다.
+
+### 빈 화면과 backend source 혼합 차단
+
+- `AppErrorBoundary`를 React root 최상단에 두어 예상하지 못한 render·lifecycle 예외를 메뉴·PAPER 제어가 없는 한국어 안전 화면으로 전환한다.
+- 안전 화면은 PAPER 계산과 실제 주문 0을 명시하고 전체 화면 재로딩만 제공한다. 오류와 component stack은 브라우저 console에 남긴다.
+- macOS launcher는 `PYTHONNOUSERSITE=1`, `PYTHONPATH=<physical-release-root>`로 애플리케이션 import를 release에 고정한다.
+- `backend.__file__`의 물리 경로가 `<physical-release-root>/backend`와 다르면 시작 전에 exit 75로 fail-closed한다.
+- 전략·체결·비용·TP·SL·Governor·계좌·원장·실제주문 0 경계는 변경하지 않았다.
+
+### 실패 재현과 최종 검증
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 오류 경계 수정 전 표적 테스트 | FAIL_AS_EXPECTED | 새 component가 없어 1 suite가 import 단계에서 실패했다. |
+| 오류 경계 수정 후 표적 테스트 | PASS | 1 passed. 빈 화면 대신 PAPER 안전 문구·메뉴 없음·재로딩 호출을 검증했다. |
+| 불변 launcher import 계약 수정 전 | FAIL_AS_EXPECTED | `PYTHONPATH` 고정·backend root preflight가 없어 정적 계약 1건이 실패했다. |
+| macOS service 계약 | PASS | 총 7 passed. fake editable 환경에서도 실제 실행 env의 Python path가 물리 release이고 commit·isolated·실제주문 0임을 검증했다. |
+| backend pytest | PASS | 최종 commit에서 442 passed, 28.21초다. |
+| frontend Vitest | PASS | 최종 14 files·63 tests다. |
+| Ruff / mypy / ESLint / TypeScript | PASS | Python 오류 0·mypy 95 source files 오류 0·frontend 오류 0이다. |
+| 불변 release build | PASS_WITH_WARNING | commit `d8e5bae154ef693c37b88af980d1c5d0031ca806`, JS 522.00kB·gzip 160.69kB다. 기존 500kB 경고가 남아 있다. |
+| PAPER safety / security / repository hygiene | PASS | PAPER 불변조건 PASS. security 130 source·위반·secret-like·실제주문 path 0. 저장소 위반 0이다. |
+| 첫 snapshot E2E | INVALID_TEST_ENVIRONMENT | editable Python이 release가 아닌 worktree backend와 `FRONTEND_DIST`를 사용해 desktop·tablet·mobile 3건이 구형 전략 상세에서 실패했다. 3건 자체는 UI 제품 회귀 판정에 쓰지 않았지만 실제 launcher import 경계 결함의 재현 근거로 사용했다. |
+| 최종 release snapshot E2E | PASS | release root를 Python import 최우선으로 고정한 같은 최종 commit에서 desktop·tablet·mobile 3 passed, 18.2초다. 기준 screenshot은 덮어쓰지 않았다. |
+| 기준 설치 서비스 재확인 | PASS_BASELINE_ONLY | event 1,015,194·전략평가 3,278,088·적격신호 3까지 전진했다. 11전략·22계좌, queue·비계획 reconnect·gap·resync·drop·persistence fault·buffer drop·position·실제주문·인증 0, 시각 SYNCED, 신규진입 잠금 false다. |
+| 실제 LaunchAgent 새 release / 8870 import·hash / 원장 복구 / screenshot | NOT_RUN | 기준 observer를 보존해 새 commit으로 전환하지 않았다. |
+| GitHub main / Actions | NOT_RUN | 실제 배포·원장·8870 검증 전에는 push하지 않았다. |
+| 6시간 / 24시간 설치 서비스 soak | IN_PROGRESS_BASELINE_COMMIT | 같은 기준 서비스의 두 비침습 observer가 계속 실행 중이다. |
+| 전략 수익성 | NOT_PROVEN | 전략 기준과 cost model을 바꾸지 않았고 현재 자연표본도 승격 gate보다 부족하다. |
+| Release ZIP | NOT_RUN | 이번 Wave에서 만들지 않았다. |
+
+구현 commit은 `503f84efb4e529e6e4918e763946462c1639702f`, `d8e5bae154ef693c37b88af980d1c5d0031ca806`이다. 기계판독 증거는 `evidence/WAVE56_PAPER_SAFE_RENDER_AND_IMPORT_ISOLATION_QA.json`, 판단 근거는 ADR-057이다. 현재 수용상태는 `IMPLEMENTED_NOT_DEPLOYED`다. 기준 8870 화면만 현재 backend와 같은 기준 commit으로 회복됐고, 새 구현의 실제 설치 서비스·원장·screenshot·GitHub는 `NOT_RUN`, 장시간 기준선은 `IN_PROGRESS`, 수익성은 `NOT_PROVEN`이다.
