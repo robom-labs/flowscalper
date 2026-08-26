@@ -377,6 +377,87 @@ def test_stop_trade_records_entry_to_stop_duration_without_inventing_targets() -
     assert trade.holding_ms == 1_000
 
 
+def test_paper_lifecycle_audit_is_normalized_and_revision_survives_recovery() -> None:
+    plan = candidate_plan()
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+
+    engine.offer((plan,), entries_paused=False)
+    selected = next(
+        row
+        for row in engine.audit_events
+        if row["event"] == "MAIN_CANDIDATE_SELECTED"
+    )
+    assert selected["previous_state"] == "SCANNING"
+    assert selected["new_state"] == "ENTRY_PENDING"
+    assert selected["occurred_ts_ms"] == plan.signal_time_ms
+    assert selected["cause_code"] == "MAIN_CANDIDATE_SELECTED"
+    assert selected["actor"] == "AUTO_SAFETY"
+    assert selected["run_id"] == plan.run_id
+    assert selected["strategy_id"] == plan.strategy_id
+    assert selected["account_id"] == engine.main.account_id
+    assert selected["symbol"] == plan.symbol
+    assert selected["request_revision"] == 0
+    assert selected["response_revision"] == 1
+    assert selected["reversible"] is True
+    assert selected["transition_id"] == (
+        f"paper-execution-{plan.run_id}-{engine.main.account_id}-{plan.symbol}-rev-1"
+    )
+    assert selected["description_ko"]
+
+    engine.on_book(book(1_250))
+    filled = next(
+        row
+        for row in engine.audit_events
+        if row["event"] == "ENTRY_FILLED"
+        and row["account_id"] == engine.main.account_id
+    )
+    assert filled["previous_state"] == "ENTRY_PENDING"
+    assert filled["new_state"] == "PROTECTED"
+    assert filled["occurred_ts_ms"] == 1_250
+    assert filled["request_revision"] == 1
+    assert filled["response_revision"] == 2
+    assert filled["reversible"] is False
+    assert filled["transition_id"] != selected["transition_id"]
+
+    recovered_payload = json.loads(json.dumps(engine.recovery_state()))
+    assert recovered_payload["schema_version"] == 4
+    restored = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    restored.restore_state(recovered_payload)
+
+    tp1 = plan.take_profit_targets[0].price
+    restored.on_book(
+        book(2_000, bids=((str(tp1 + Decimal("0.1")), "100"),), asks=(("107", "100"),))
+    )
+    exit_pending = next(
+        row
+        for row in restored.audit_events
+        if row["event"] == "TAKE_PROFIT_EXIT_PENDING"
+        and row["account_id"] == restored.main.account_id
+    )
+    assert exit_pending["previous_state"] == "PROTECTED"
+    assert exit_pending["new_state"] == "EXIT_PENDING"
+    assert exit_pending["request_revision"] == 2
+    assert exit_pending["response_revision"] == 3
+    assert exit_pending["reversible"] is True
+
+    corrupted_payload = json.loads(json.dumps(restored.recovery_state()))
+    corrupted_payload["last_execution_transition"]["response_revision"] = 99
+    with pytest.raises(ValueError, match="마지막 상태전환"):
+        PaperPortfolioEngine(
+            run_id=plan.run_id,
+            strategy_ids=(plan.strategy_id,),
+            shadow_ledger=ShadowLedger((plan.strategy_id,)),
+        ).restore_state(corrupted_payload)
+
+
 def test_pending_protected_and_exit_pending_accounts_roundtrip_for_restart() -> None:
     plan = candidate_plan()
     shadows = ShadowLedger((plan.strategy_id,))

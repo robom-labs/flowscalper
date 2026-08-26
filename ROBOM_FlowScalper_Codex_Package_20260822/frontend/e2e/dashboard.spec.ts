@@ -240,9 +240,13 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   const recoveryCard = page.locator('.system-summary-grid article').filter({ hasText: '마지막 시작 복구' })
   await expect(recoveryCard).toBeVisible()
   await expect(recoveryCard).toContainText(/신규 시작|샘플 상태 복구됨|상태 복구됨|복구 대기|안전 잠금/)
+  const paperTransitionCard = page.locator('.system-summary-grid article').filter({ hasText: '마지막 PAPER 상태' })
+  await expect(paperTransitionCard).toBeVisible()
+  await expect(paperTransitionCard).toContainText(/아직 전환 없음|진입 대기|포지션 보호 중|청산 대기|거래 종료|대기 중/)
   await page.getByText('고급 진단 보기').click()
   await expect(page.getByText('시작 복구 결과')).toBeVisible()
   await expect(page.getByText(/^(NO_RECOVERY_NEEDED|FIXTURE_STATE_RECOVERED|RECOVERY_REVALIDATION_LOCKED|RECOVERY_DEFERRED|RECOVERY_FAIL_CLOSED)$/)).toBeVisible()
+  await expect(page.getByText('마지막 PAPER 전환 결과')).toBeVisible()
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   expect(errors).toEqual([])

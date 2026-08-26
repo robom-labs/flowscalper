@@ -658,6 +658,7 @@ class PaperRuntime:
     def _operational_diagnostics(self) -> dict[str, object]:
         self._refresh_storage_safety()
         recovery_audit = self.startup_recovery_audit
+        paper_transition = self.paper_portfolio.latest_execution_transition
         return {
             "server_time_ms": self.clock.utc_ms(),
             "display_timezone": "Asia/Seoul",
@@ -739,6 +740,33 @@ class PaperRuntime:
             ),
             "startup_recovery_reversible": bool(
                 recovery_audit.get("reversible", True)
+            ),
+            "last_paper_transition_id": str(
+                paper_transition.get("transition_id", "NONE")
+            ),
+            "last_paper_transition_previous_state": str(
+                paper_transition.get("previous_state", "NO_PAPER_TRANSITION")
+            ),
+            "last_paper_transition_state": str(
+                paper_transition.get("new_state", "NO_PAPER_TRANSITION")
+            ),
+            "last_paper_transition_cause_code": str(
+                paper_transition.get("cause_code", "NO_PAPER_TRANSITION")
+            ),
+            "last_paper_transition_actor": str(
+                paper_transition.get("actor", "AUTO_SAFETY")
+            ),
+            "last_paper_transition_account_id": str(
+                paper_transition.get("account_id", "NONE")
+            ),
+            "last_paper_transition_symbol": str(
+                paper_transition.get("symbol", "NONE")
+            ),
+            "last_paper_transition_occurred_ts_ms": int(
+                str(paper_transition.get("occurred_ts_ms", 0))
+            ),
+            "last_paper_transition_reversible": bool(
+                paper_transition.get("reversible", True)
             ),
             "startup_total_ms": round(self.startup_total_ms, 3),
             "startup_portfolio_init_ms": round(self.startup_portfolio_init_ms, 3),
@@ -3863,7 +3891,15 @@ class PaperRuntime:
             ("PROTECTED", "FULL_FILL_WITH_PROTECTION", 184_000),
             ("CLOSED", "TAKE_PROFIT", 0),
         )
-        for state, reason_code, age_ms in fixture_path:
+        previous_state = "NONE"
+        fixture_descriptions = {
+            "OBSERVING": "오프라인 DEMO 호가 관찰을 시작했습니다.",
+            "ARMED": "오프라인 DEMO 진입 계획을 확정했습니다.",
+            "ENTRY_PENDING": "오프라인 DEMO 진입 체결을 대기합니다.",
+            "PROTECTED": "오프라인 DEMO 진입을 체결하고 보호관리를 시작했습니다.",
+            "CLOSED": "오프라인 DEMO 거래를 종료했습니다.",
+        }
+        for revision, (state, reason_code, age_ms) in enumerate(fixture_path, start=1):
             evidence: dict[str, object] = {}
             if state == "ARMED":
                 evidence = {
@@ -3875,17 +3911,35 @@ class PaperRuntime:
                 evidence = {"actual_entry": "100.10", "protected_quantity": "1"}
             elif state == "CLOSED":
                 evidence = {"actual_exit": "101.90", "remaining_quantity": "0"}
+            transition = {
+                "transition_id": f"fixture-transition-{self.run_id}-rev-{revision}",
+                "previous_state": previous_state,
+                "new_state": state,
+                "occurred_ts_ms": timestamp - age_ms,
+                "cause": reason_code,
+                "cause_code": reason_code,
+                "description_ko": fixture_descriptions[state],
+                "actor": "AUTO_SAFETY",
+                "run_id": self.run_id,
+                "strategy_id": "LSA_REVERSAL_V1",
+                "account_id": self.paper_portfolio.MAIN_ACCOUNT_ID,
+                "symbol": "BTCUSDT",
+                "request_revision": revision - 1,
+                "response_revision": revision,
+                "reversible": state not in {"PROTECTED", "CLOSED"},
+                "trade_id": f"{self.run_id}-fixture-trade-001",
+                "reason_code": reason_code,
+                "sample_type": "OFFLINE_FIXTURE",
+                **evidence,
+            }
             self.ledger.append_transition(
                 self.run_id,
                 state=state,
                 ts_ms=timestamp - age_ms,
-                payload={
-                    "trade_id": f"{self.run_id}-fixture-trade-001",
-                    "reason_code": reason_code,
-                    "sample_type": "OFFLINE_FIXTURE",
-                    **evidence,
-                },
+                payload=transition,
             )
+            self.paper_portfolio.remember_transition_audit(transition)
+            previous_state = state
         self.ledger.save_snapshot(
             self.run_id,
             lifecycle_state="CLOSED",

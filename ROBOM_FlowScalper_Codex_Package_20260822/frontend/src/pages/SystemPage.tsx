@@ -111,6 +111,15 @@ const diagnosticLabels: Record<string, string> = {
   startup_recovery_run_id: '시작 복구 Run',
   startup_recovery_occurred_ts_ms: '시작 복구 발생시각 ms',
   startup_recovery_reversible: '시작 복구 후속 복구 가능',
+  last_paper_transition_id: '마지막 PAPER 전환 ID',
+  last_paper_transition_previous_state: 'PAPER 이전 상태',
+  last_paper_transition_state: '마지막 PAPER 전환 결과',
+  last_paper_transition_cause_code: 'PAPER 전환 원인 코드',
+  last_paper_transition_actor: 'PAPER 전환 주체',
+  last_paper_transition_account_id: 'PAPER 전환 계좌',
+  last_paper_transition_symbol: 'PAPER 전환 종목',
+  last_paper_transition_occurred_ts_ms: 'PAPER 전환 발생시각 ms',
+  last_paper_transition_reversible: 'PAPER 전환 되돌림 가능',
   startup_total_ms: '부팅 전체 준비 ms',
   startup_portfolio_init_ms: '부팅 PAPER 계좌 준비 ms',
   startup_trade_cache_ms: '부팅 과거 거래통계 준비 ms',
@@ -158,6 +167,22 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
   } else if (startupRecoveryState === 'RECOVERY_DEFERRED') {
     startupRecovery = { title: '복구 대기', detail: '기존 Run 상태는 변경하지 않음', healthy: true }
   }
+  const paperTransitionState = String(data.system.last_paper_transition_state ?? 'NO_PAPER_TRANSITION')
+  const paperTransitionSymbol = String(data.system.last_paper_transition_symbol ?? 'NONE')
+  const paperTransitionAccount = String(data.system.last_paper_transition_account_id ?? 'NONE')
+  const paperTransitionTitles: Record<string, string> = {
+    OBSERVING: '대기 중',
+    SCANNING: '대기 중',
+    ARMED: '진입 준비',
+    ENTRY_PENDING: '진입 대기',
+    PROTECTED: '포지션 보호 중',
+    EXIT_PENDING: '청산 대기',
+    CLOSED: '거래 종료',
+  }
+  const paperTransitionTitle = paperTransitionTitles[paperTransitionState] ?? '아직 전환 없음'
+  const paperTransitionDetail = paperTransitionState === 'NO_PAPER_TRANSITION'
+    ? '자연 PAPER 진입·청산 전 상태'
+    : `${paperTransitionSymbol} · ${paperTransitionAccount === 'MAIN:BASE' ? '공동 PAPER 계좌' : paperTransitionAccount}`
   return (
     <section aria-labelledby="system-heading">
       <div className="page-heading"><div><p className="section-kicker">SYSTEM STATUS</p><h2 id="system-heading">시스템 상태</h2><p className="heading-help">시장 연결, 시간, 저장공간, 자동 재연결 상태를 확인합니다.</p></div><span className="page-note">로그인 정보 전송 {data.system.auth_headers ? '감지됨' : '0건'}</span></div>
@@ -169,6 +194,7 @@ export function SystemPage({ data, connected, lastUpdateMs }: Props) {
         <article className="panel"><span>비정상 재연결 / 누락</span><b>{reconnects} / {gaps}건</b><small>정상 연결 교체 {plannedRotations}회 · 누락 시 신규 PAPER 진입 잠금</small></article>
         <article className="panel"><span>저장소</span><b className={storageAllowed ? '' : 'warning'}>{storageAllowed ? storage.includes('SQLite') ? '정상 연결' : storage : '신규 진입 잠금'}</b><small>{storageAllowed ? `${Number(data.system.disk_free_mb ?? 0).toFixed(0)}MB 여유 · 불변 원장` : String(data.system.storage_lock_reason ?? '디스크 압박')}</small></article>
         <article className="panel"><span>마지막 시작 복구</span><b className={startupRecovery.healthy ? 'positive' : 'warning'}>{startupRecovery.title}</b><small>{startupRecovery.detail}</small></article>
+        <article className="panel"><span>마지막 PAPER 상태</span><b>{paperTransitionTitle}</b><small>{paperTransitionDetail}</small></article>
         <article className="panel"><span>실제 주문 경로</span><b className="positive">0</b><small>private API · 인증 · 주문 전송 없음</small></article>
       </section>
       <section className="panel endpoint-panel"><h3>연결 진실성</h3><p>오프라인 DEMO는 LIVE로 표시하지 않습니다. LIVE 표시는 공개 REST 메타데이터와 첫 sequence-valid WebSocket 이벤트가 모두 확인된 뒤에만 가능합니다.</p><div className="health-row"><span>시장데이터 {healthy ? '검증됨' : '미검증'}</span><span>실행 PAPER 전용</span><span>실제 주문 DISABLED</span><span>로그인·API 키 불필요</span></div></section>

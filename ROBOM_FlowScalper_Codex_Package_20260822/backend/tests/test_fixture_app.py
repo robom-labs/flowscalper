@@ -542,6 +542,35 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
         assert transition_times[2] == orders[0]["created_ts_ms"]
         assert transition_times[3] == fills[0]["ts_ms"]
         assert transition_times[-1] == fills[-1]["ts_ms"]
+        fixture_transitions = ledger.list_transitions("run-persisted")
+        assert [row["payload"]["request_revision"] for row in fixture_transitions] == [
+            0,
+            1,
+            2,
+            3,
+            4,
+        ]
+        assert [row["payload"]["response_revision"] for row in fixture_transitions] == [
+            1,
+            2,
+            3,
+            4,
+            5,
+        ]
+        assert fixture_transitions[0]["payload"]["previous_state"] == "NONE"
+        assert fixture_transitions[-1]["payload"]["new_state"] == "CLOSED"
+        assert fixture_transitions[-1]["payload"]["reversible"] is False
+        assert all(
+            row["payload"]["transition_id"].startswith(
+                "fixture-transition-run-persisted-rev-"
+            )
+            for row in fixture_transitions
+        )
+        assert all(row["payload"]["actor"] == "AUTO_SAFETY" for row in fixture_transitions)
+        assert all(
+            row["payload"]["account_id"] == "MAIN:BASE"
+            for row in fixture_transitions
+        )
 
 
 async def test_fresh_live_run_starts_zero_and_excludes_demo_performance(tmp_path: Path) -> None:

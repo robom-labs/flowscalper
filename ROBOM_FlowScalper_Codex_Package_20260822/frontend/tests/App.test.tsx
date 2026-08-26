@@ -113,6 +113,40 @@ test('shows the last startup recovery result in beginner and advanced views', as
   expect(screen.getByText('PAPER_STATE_RECOVERED')).toBeInTheDocument()
 })
 
+test('shows the latest paper lifecycle transition without calling a fill a real order', async () => {
+  const transitionedDashboard = {
+    ...initialDashboard,
+    system: {
+      ...initialDashboard.system,
+      last_paper_transition_id: 'paper-execution-001',
+      last_paper_transition_previous_state: 'ENTRY_PENDING',
+      last_paper_transition_state: 'PROTECTED',
+      last_paper_transition_cause_code: 'ENTRY_FILLED',
+      last_paper_transition_actor: 'AUTO_SAFETY',
+      last_paper_transition_account_id: 'MAIN:BASE',
+      last_paper_transition_symbol: 'BTCUSDT',
+      last_paper_transition_occurred_ts_ms: 1_759_888_000_000,
+      last_paper_transition_reversible: false,
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => transitionedDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+  fireEvent.click(screen.getByRole('button', { name: '설정' }))
+
+  expect(await screen.findByText('마지막 PAPER 상태')).toBeInTheDocument()
+  expect(screen.getByText('포지션 보호 중')).toBeInTheDocument()
+  expect(screen.getByText('BTCUSDT · 공동 PAPER 계좌')).toBeInTheDocument()
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+  expect(screen.getByText('마지막 PAPER 전환 결과')).toBeInTheDocument()
+  expect(screen.getByText('ENTRY_FILLED')).toBeInTheDocument()
+  expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
+})
+
 test('shows an explicit initial backend failure instead of pretending LIVE', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
   vi.stubGlobal('WebSocket', FakeWebSocket)

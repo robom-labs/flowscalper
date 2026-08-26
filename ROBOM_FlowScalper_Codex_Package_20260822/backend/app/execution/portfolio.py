@@ -37,6 +37,51 @@ from backend.app.risk import (
 from backend.app.strategies.registry import ExitStyle
 from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 
+_PAPER_LIFECYCLE_TARGETS = {
+    "MAIN_CANDIDATE_SELECTED": "ENTRY_PENDING",
+    "LEAGUE_CANDIDATE_ARMED": "ENTRY_PENDING",
+    "ENTRY_EXPIRED": "SCANNING",
+    "ENTRY_REJECTED": "SCANNING",
+    "ENTRY_UNFILLED": "SCANNING",
+    "ENTRY_FILLED": "PROTECTED",
+    "MAIN_MANUAL_EXIT_PENDING": "EXIT_PENDING",
+    "TREND_EDGE_DECAY_EXIT_ARMED": "EXIT_PENDING",
+    "MANAGEMENT_EXIT_ARMED": "EXIT_PENDING",
+    "FORCED_EXIT_PENDING": "EXIT_PENDING",
+    "STOP_EXIT_PENDING": "EXIT_PENDING",
+    "TAKE_PROFIT_EXIT_PENDING": "EXIT_PENDING",
+    "EXIT_REJECTED": "PROTECTED",
+    "EXIT_UNFILLED": "PROTECTED",
+}
+_PAPER_LIFECYCLE_STATES = frozenset(
+    {
+        "OBSERVING",
+        "SCANNING",
+        "ARMED",
+        "ENTRY_PENDING",
+        "PROTECTED",
+        "EXIT_PENDING",
+        "CLOSED",
+    }
+)
+_PAPER_LIFECYCLE_DESCRIPTIONS_KO = {
+    "MAIN_CANDIDATE_SELECTED": "공동 PAPER 계좌가 진입 체결 대기를 시작했습니다.",
+    "LEAGUE_CANDIDATE_ARMED": "전략별 PAPER 계좌가 진입 체결 대기를 시작했습니다.",
+    "ENTRY_EXPIRED": "진입 계획의 유효시간이 지나 대기 상태로 돌아갔습니다.",
+    "ENTRY_REJECTED": "보수적 PAPER 체결 조건을 통과하지 못해 진입을 취소했습니다.",
+    "ENTRY_UNFILLED": "실행 가능한 호가에서 PAPER 진입이 체결되지 않았습니다.",
+    "ENTRY_FILLED": "실행 가능한 호가로 PAPER 진입을 체결하고 보호관리를 시작했습니다.",
+    "MAIN_MANUAL_EXIT_PENDING": "사용자가 공동 PAPER 포지션 종료를 요청했습니다.",
+    "TREND_EDGE_DECAY_EXIT_ARMED": "추세 근거 약화를 확인해 PAPER 종료 체결을 대기합니다.",
+    "MANAGEMENT_EXIT_ARMED": "포지션 관리 규칙이 PAPER 종료 체결을 요청했습니다.",
+    "FORCED_EXIT_PENDING": "안전 종료 사유가 발생해 PAPER 종료 체결을 대기합니다.",
+    "STOP_EXIT_PENDING": "손절 가격에 도달해 PAPER 종료 체결을 대기합니다.",
+    "TAKE_PROFIT_EXIT_PENDING": "목표 가격에 도달해 PAPER 청산 체결을 대기합니다.",
+    "EXIT_REJECTED": "종료 체결 요청이 거부되어 포지션 보호관리를 계속합니다.",
+    "EXIT_UNFILLED": "종료 호가가 체결되지 않아 포지션 보호관리를 계속합니다.",
+    "EXIT_FILL": "PAPER 청산 호가가 체결되었습니다.",
+}
+
 
 @dataclass(frozen=True, slots=True)
 class PendingEntry:
@@ -152,6 +197,9 @@ class PaperPortfolioEngine:
         }
         self.audit_events: list[dict[str, Any]] = []
         self._new_main_trades: list[PaperTrade] = []
+        self._transition_revisions: dict[str, int] = {}
+        self._transition_states: dict[str, str] = {}
+        self._last_execution_transition: dict[str, object] = {}
 
     @property
     def accounts(self) -> tuple[ExecutionAccount, ...]:
@@ -580,10 +628,15 @@ class PaperPortfolioEngine:
         """main·shadow 실행계좌와 shadow 회계를 checksum 가능한 JSON 값으로 만든다."""
 
         return {
-            "schema_version": 3,
+            "schema_version": 4,
             "run_id": self.run_id,
             "venue": self.venue.value if self.venue is not None else None,
             "snapshot_ts_ms": snapshot_ts_ms,
+            "execution_transition_revisions": dict(
+                sorted(self._transition_revisions.items())
+            ),
+            "execution_transition_states": dict(sorted(self._transition_states.items())),
+            "last_execution_transition": dict(self._last_execution_transition),
             "strategy_registry": [dict(row) for row in registry_settings],
             "accounts": [
                 _execution_account_payload(account)
@@ -596,7 +649,7 @@ class PaperPortfolioEngine:
         """기존 계좌는 엄격히 검증하고 신규 Registry 계좌만 빈 상태로 추가한다."""
 
         schema_version = int(str(payload.get("schema_version", 0)))
-        if schema_version not in {1, 2, 3}:
+        if schema_version not in {1, 2, 3, 4}:
             raise ValueError("지원하지 않는 PAPER 복구 snapshot 버전입니다.")
         if str(payload.get("run_id")) != self.run_id:
             raise ValueError("다른 Run의 PAPER 상태를 복구할 수 없습니다.")
@@ -665,8 +718,116 @@ class PaperPortfolioEngine:
             shadow_payload,
             allow_missing=schema_version == 1 or additive_registry_extension,
         )
+        if schema_version >= 4:
+            self._restore_transition_tracking(payload, expected_account_ids=set(expected))
+        else:
+            self._derive_transition_tracking_from_accounts()
         self.audit_events = []
         self._new_main_trades = []
+
+    @property
+    def latest_execution_transition(self) -> dict[str, object]:
+        """초보자 화면과 진단이 같은 마지막 PAPER 상태전환을 사용한다."""
+
+        return dict(self._last_execution_transition)
+
+    def remember_transition_audit(self, audit: Mapping[str, object]) -> None:
+        """fixture를 포함한 외부 lifecycle 행도 동일한 revision cursor에 반영한다."""
+
+        account_id = str(audit.get("account_id", ""))
+        symbol = str(audit.get("symbol", ""))
+        previous_state = str(audit.get("previous_state", ""))
+        new_state = str(audit.get("new_state", ""))
+        request_revision = int(str(audit.get("request_revision", -1)))
+        response_revision = int(str(audit.get("response_revision", -1)))
+        if not account_id or not symbol:
+            raise ValueError("PAPER 상태전환에는 계좌와 종목이 필요합니다.")
+        if previous_state not in _PAPER_LIFECYCLE_STATES | {"NONE"}:
+            raise ValueError(f"알 수 없는 PAPER 이전 상태입니다: {previous_state}")
+        if new_state not in _PAPER_LIFECYCLE_STATES:
+            raise ValueError(f"알 수 없는 PAPER 신규 상태입니다: {new_state}")
+        key = self._transition_scope_key(account_id, symbol)
+        current_revision = self._transition_revisions.get(key, 0)
+        if request_revision != current_revision or response_revision != current_revision + 1:
+            raise ValueError("PAPER 상태전환 revision이 현재 cursor와 연속되지 않습니다.")
+        self._transition_revisions[key] = response_revision
+        self._transition_states[key] = new_state
+        self._last_execution_transition = dict(audit)
+
+    def _restore_transition_tracking(
+        self,
+        payload: Mapping[str, object],
+        *,
+        expected_account_ids: set[str],
+    ) -> None:
+        raw_revisions = payload.get("execution_transition_revisions")
+        raw_states = payload.get("execution_transition_states")
+        raw_last = payload.get("last_execution_transition")
+        if not isinstance(raw_revisions, Mapping) or not isinstance(raw_states, Mapping):
+            raise ValueError("PAPER 복구 snapshot에 상태전환 cursor가 없습니다.")
+        if set(map(str, raw_revisions)) != set(map(str, raw_states)):
+            raise ValueError("PAPER 상태전환 revision과 상태 범위가 다릅니다.")
+        revisions: dict[str, int] = {}
+        states: dict[str, str] = {}
+        for raw_key, raw_revision in raw_revisions.items():
+            key = str(raw_key)
+            account_id, separator, symbol = key.partition("|")
+            revision = int(str(raw_revision))
+            state = str(raw_states[raw_key])
+            if (
+                separator != "|"
+                or account_id not in expected_account_ids
+                or not symbol
+                or revision < 0
+                or state not in _PAPER_LIFECYCLE_STATES
+            ):
+                raise ValueError(f"PAPER 상태전환 cursor가 잘못됐습니다: {key}")
+            revisions[key] = revision
+            states[key] = state
+        if not isinstance(raw_last, Mapping):
+            raise ValueError("PAPER 복구 snapshot의 마지막 상태전환 형식이 잘못됐습니다.")
+        if raw_last:
+            last_account_id = str(raw_last.get("account_id", ""))
+            last_symbol = str(raw_last.get("symbol", ""))
+            last_key = self._transition_scope_key(last_account_id, last_symbol)
+            last_response_revision = int(
+                str(raw_last.get("response_revision", -1))
+            )
+            if (
+                not str(raw_last.get("transition_id", ""))
+                or str(raw_last.get("run_id", "")) != self.run_id
+                or last_account_id not in expected_account_ids
+                or not last_symbol
+                or last_key not in revisions
+                or last_response_revision != revisions[last_key]
+                or int(str(raw_last.get("request_revision", -1)))
+                != last_response_revision - 1
+                or str(raw_last.get("new_state", "")) != states[last_key]
+            ):
+                raise ValueError("PAPER 복구 snapshot의 마지막 상태전환이 cursor와 다릅니다.")
+        self._transition_revisions = revisions
+        self._transition_states = states
+        self._last_execution_transition = dict(raw_last)
+
+    def _derive_transition_tracking_from_accounts(self) -> None:
+        """schema 1~3은 실제 pending·position 상태에서 안전한 cursor를 새로 시작한다."""
+
+        self._transition_revisions = {}
+        self._transition_states = {}
+        self._last_execution_transition = {}
+        for account in self.accounts:
+            for symbol in account.pending_entries:
+                self._transition_states[
+                    self._transition_scope_key(account.account_id, symbol)
+                ] = "ENTRY_PENDING"
+            for symbol, managed in account.positions.items():
+                self._transition_states[
+                    self._transition_scope_key(account.account_id, symbol)
+                ] = "EXIT_PENDING" if managed.pending_exit is not None else "PROTECTED"
+
+    @staticmethod
+    def _transition_scope_key(account_id: str, symbol: str) -> str:
+        return f"{account_id}|{symbol}"
 
     def reconcile_persisted_main_trades(
         self, rows: Sequence[Mapping[str, object]]
@@ -1487,18 +1648,63 @@ class PaperPortfolioEngine:
         audit_ts_ms: int | None = None,
         **payload: object,
     ) -> None:
-        self.audit_events.append(
-            {
-                "event": event,
-                "candidate_id": plan.candidate_id,
-                "run_id": plan.run_id,
-                "symbol": plan.symbol,
-                "strategy_id": plan.strategy_id,
-                "side": plan.direction.value,
-                "ts_ms": plan.signal_time_ms if audit_ts_ms is None else audit_ts_ms,
-                **payload,
-            }
-        )
+        timestamp = plan.signal_time_ms if audit_ts_ms is None else audit_ts_ms
+        row: dict[str, object] = {
+            "event": event,
+            "candidate_id": plan.candidate_id,
+            "run_id": plan.run_id,
+            "symbol": plan.symbol,
+            "strategy_id": plan.strategy_id,
+            "side": plan.direction.value,
+            "ts_ms": timestamp,
+            **payload,
+        }
+        if event in _PAPER_LIFECYCLE_TARGETS or event == "EXIT_FILL":
+            account_id = str(payload.get("account_id", self.MAIN_ACCOUNT_ID))
+            key = self._transition_scope_key(account_id, plan.symbol)
+            request_revision = self._transition_revisions.get(key, 0)
+            previous_state = self._transition_states.get(key, "SCANNING")
+            new_state = (
+                "CLOSED"
+                if event == "EXIT_FILL"
+                and Decimal(str(payload.get("remaining_quantity", "0"))) <= 0
+                else "PROTECTED"
+                if event == "EXIT_FILL"
+                else _PAPER_LIFECYCLE_TARGETS[event]
+            )
+            cause_code = str(
+                payload.get("reason")
+                or payload.get("action")
+                or payload.get("label")
+                or event
+            )
+            row.update(
+                {
+                    "transition_id": (
+                        f"paper-execution-{plan.run_id}-{account_id}-{plan.symbol}-"
+                        f"rev-{request_revision + 1}"
+                    ),
+                    "previous_state": previous_state,
+                    "new_state": new_state,
+                    "occurred_ts_ms": timestamp,
+                    "cause": cause_code,
+                    "cause_code": cause_code,
+                    "description_ko": _PAPER_LIFECYCLE_DESCRIPTIONS_KO[event],
+                    "actor": "USER_UI"
+                    if event == "MAIN_MANUAL_EXIT_PENDING"
+                    else "AUTO_SAFETY",
+                    "run_id": plan.run_id,
+                    "strategy_id": plan.strategy_id,
+                    "account_id": account_id,
+                    "symbol": plan.symbol,
+                    "request_revision": request_revision,
+                    "response_revision": request_revision + 1,
+                    "reversible": event not in {"ENTRY_FILLED", "EXIT_FILL"}
+                    and new_state != "CLOSED",
+                }
+            )
+            self.remember_transition_audit(row)
+        self.audit_events.append(row)
 
 
 def _execution_account_payload(account: ExecutionAccount) -> dict[str, object]:

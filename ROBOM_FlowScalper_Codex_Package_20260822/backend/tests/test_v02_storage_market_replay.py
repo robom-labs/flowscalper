@@ -1121,6 +1121,30 @@ def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(
     assert ("EXIT_FILL", 2_250) in persisted_main_audit_times
     assert ("TAKE_PROFIT_EXIT_PENDING", 3_000) in persisted_main_audit_times
     assert ("EXIT_FILL", 3_250) in persisted_main_audit_times
+    persisted_main_transitions = [
+        row
+        for row in ledger.list_execution_audits(runtime.run_id)
+        if row.get("account_id") == runtime.paper_portfolio.main.account_id
+        and row.get("transition_id") is not None
+    ]
+    assert persisted_main_transitions
+    assert [
+        int(str(row["response_revision"])) for row in persisted_main_transitions
+    ] == list(range(1, len(persisted_main_transitions) + 1))
+    assert all(
+        int(str(row["occurred_ts_ms"])) == int(str(row["ts_ms"]))
+        for row in persisted_main_transitions
+    )
+    diagnostics = runtime._operational_diagnostics()
+    latest_transition = runtime.paper_portfolio.latest_execution_transition
+    assert diagnostics["last_paper_transition_id"] == latest_transition["transition_id"]
+    assert diagnostics["last_paper_transition_state"] == "CLOSED"
+    assert diagnostics["last_paper_transition_account_id"] in {
+        "MAIN:BASE",
+        f"{plan.strategy_id}:BASE",
+        f"{plan.strategy_id}:STRESS",
+    }
+    assert diagnostics["last_paper_transition_symbol"] == plan.symbol
     trade = ledger.list_trades(runtime.run_id)[0]
     run = ledger.get_run(runtime.run_id)
     assert run is not None
