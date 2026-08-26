@@ -13,6 +13,7 @@ import { RiskPage } from './pages/RiskPage'
 import { StrategiesPage } from './pages/StrategiesPage'
 import { StrategySymbolPage } from './pages/StrategySymbolPage'
 import { SystemPage } from './pages/SystemPage'
+import { compareReleaseCommits, readFrontendReleaseCommit } from './releaseCompatibility'
 import type { HistoryRow, PageId } from './types'
 
 export default function App() {
@@ -36,6 +37,28 @@ export default function App() {
     rollbackStrategy,
     clearError,
   } = useDashboard()
+  const releaseCompatibility = compareReleaseCommits(
+    readFrontendReleaseCommit(),
+    data.system.release_commit,
+  )
+
+  if (!releaseCompatibility.compatible) {
+    return (
+      <main className="release-mismatch-shell">
+        <section className="release-mismatch-card" role="alert" aria-labelledby="release-mismatch-title">
+          <p className="eyebrow">PAPER SAFETY LOCK</p>
+          <h1 id="release-mismatch-title">프로그램 버전이 서로 맞지 않습니다.</h1>
+          <p>화면과 서버가 서로 다른 버전이라 새 PAPER 작업과 화면 이동을 안전하게 막았습니다.</p>
+          <dl>
+            <div><dt>화면 버전</dt><dd>{releaseCompatibility.frontendCommit.slice(0, 12)}</dd></div>
+            <div><dt>서버 버전</dt><dd>{releaseCompatibility.backendCommit.slice(0, 12)}</dd></div>
+          </dl>
+          <p className="release-mismatch-help">서비스 업데이트가 끝난 뒤 새로고침하세요. 실제 주문은 계속 0입니다.</p>
+          <button type="button" onClick={() => window.location.reload()}>새로고침</button>
+        </section>
+      </main>
+    )
+  }
 
   const runControl = async (action: 'pause' | 'resume' | 'emergency-close' | 'new-run' | 'start-live' | 'start-demo') => {
     try {

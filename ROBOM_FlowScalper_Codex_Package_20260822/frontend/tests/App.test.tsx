@@ -17,7 +17,34 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  document.querySelectorAll('meta[name="robom-release-commit"]').forEach((element) => element.remove())
   vi.unstubAllGlobals()
+})
+
+test('fails closed when immutable frontend and backend release commits differ', async () => {
+  const frontendCommit = '1'.repeat(40)
+  const backendCommit = '2'.repeat(40)
+  const releaseMeta = document.createElement('meta')
+  releaseMeta.name = 'robom-release-commit'
+  releaseMeta.content = frontendCommit
+  document.head.append(releaseMeta)
+  const mismatchedDashboard = {
+    ...initialDashboard,
+    system: { ...initialDashboard.system, release_commit: backendCommit },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => mismatchedDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('프로그램 버전이 서로 맞지 않습니다.')
+  expect(screen.getByText('111111111111')).toBeInTheDocument()
+  expect(screen.getByText('222222222222')).toBeInTheDocument()
+  expect(screen.getByText(/실제 주문은 계속 0/)).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '전략' })).not.toBeInTheDocument()
 })
 
 test('renders permanent paper-only ready status and market controls', async () => {

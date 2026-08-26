@@ -370,6 +370,17 @@ h3 { font-size: 14px; color: #d5e4ec; }
 
 /* 최종 통합 시장 작업공간은 창 높이를 고정하고 차트 폭을 종목 행 변화와 분리한다. */
 .app-shell { position: relative; width: 100%; max-width: none; min-height: 100vh; padding: 0; }
+.release-mismatch-shell { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: #061018; }
+.release-mismatch-card { width: min(560px, 100%); border: 1px solid #7b6032; border-radius: 12px; padding: 28px; color: #dce8ed; background: #101b21; box-shadow: 0 20px 60px #0008; }
+.release-mismatch-card .eyebrow { margin: 0 0 8px; color: #f1c96d; font-size: 11px; font-weight: 800; letter-spacing: .12em; }
+.release-mismatch-card h1 { margin: 0 0 12px; font-size: clamp(22px, 4vw, 32px); }
+.release-mismatch-card > p { color: #a9bec8; line-height: 1.7; }
+.release-mismatch-card dl { margin: 20px 0; border-block: 1px solid #29404b; }
+.release-mismatch-card dl div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; }
+.release-mismatch-card dt { color: #829aa6; }
+.release-mismatch-card dd { margin: 0; color: #f1c96d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.release-mismatch-card button { min-height: 44px; border: 1px solid #54d8bd; border-radius: 7px; padding: 0 18px; color: #061018; background: #68dbc2; font-weight: 800; cursor: pointer; }
+.release-mismatch-help { font-size: 12px; }
 .app-shell > section:not(.market-workspace) { margin: 0 12px 12px; }
 .topbar { position: relative; z-index: 30; height: 48px; padding: 0 12px; border-bottom: 1px solid #203743; background: #071219; }
 .brand-lockup { display: flex; width: 190px; align-items: baseline; gap: 8px; }

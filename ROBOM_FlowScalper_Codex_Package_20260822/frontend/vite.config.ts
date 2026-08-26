@@ -2,6 +2,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+process.env.VITE_ROBOM_RELEASE_COMMIT ??= 'development'
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -13,4 +15,3 @@ export default defineConfig({
     },
   },
 })
-

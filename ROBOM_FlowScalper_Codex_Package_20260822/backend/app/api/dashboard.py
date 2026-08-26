@@ -2,12 +2,29 @@
 
 from __future__ import annotations
 
+import os
+import re
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any, cast
 
 from backend.app.domain.models import MarketEvent, SystemStatus
 from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
+
+_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+
+
+def release_identity() -> tuple[str, bool]:
+    """실행환경이 선언한 불변 릴리스 commit과 격리 여부만 공개한다."""
+
+    candidate = os.environ.get("ROBOM_RELEASE_COMMIT", "").strip().lower()
+    commit = candidate if _COMMIT_PATTERN.fullmatch(candidate) else "development"
+    isolated = (
+        commit != "development"
+        and os.environ.get("ROBOM_RELEASE_ISOLATED", "false").lower()
+        in {"1", "true", "yes"}
+    )
+    return commit, isolated
 
 
 def build_dashboard_snapshot(
@@ -174,6 +191,7 @@ def build_dashboard_snapshot(
         for event in events[-6:]
     ]
     diagnostics = dict(runtime_diagnostics or {})
+    release_commit, release_isolated = release_identity()
     return {
         "status": status.model_dump(mode="json"),
         "paused": paused,
@@ -218,6 +236,8 @@ def build_dashboard_snapshot(
             "trade_windows_retained": True,
             "disk_pressure_entry_lock": True,
             "app_version": "0.2.0-paper",
+            "release_commit": release_commit,
+            "release_isolated": release_isolated,
             "runtime_ready": ready_mode,
             **diagnostics,
         },
