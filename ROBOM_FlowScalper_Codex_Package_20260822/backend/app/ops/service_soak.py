@@ -275,7 +275,10 @@ def parse_running_service_sample(
         ),
         strategy_count=len(strategy_states),
         league_account_count=len(league_accounts),
-        independent_account_shape_valid=profile_pairs == expected_pairs,
+        independent_account_shape_valid=(
+            profile_pairs == expected_pairs
+            and len(league_accounts) == len(expected_pairs)
+        ),
         current_version_base_samples=base_samples,
         current_version_stress_samples=stress_samples,
         current_version_base_net_pnl=base_net,
@@ -401,7 +404,9 @@ def summarize_running_service_soak(
             for sample in samples
         ),
         "independent_accounts_complete": all(
-            sample.independent_account_shape_valid for sample in samples
+            sample.independent_account_shape_valid
+            and sample.league_account_count == sample.strategy_count * 2
+            for sample in samples
         ),
         "strategy_transitions_audited": all(
             transition["revision_advanced"]

@@ -75,6 +75,7 @@ Detailed specifications:
 - `docs/adr/ADR-047-strategy-survival-governor-and-outcome-timing.md`
 - `docs/adr/ADR-048-current-and-peak-process-memory.md`
 - `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`
+- `docs/adr/ADR-050-noninvasive-running-service-soak.md`
 
 ## Supporting contracts
 

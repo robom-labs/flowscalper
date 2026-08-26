@@ -94,6 +94,15 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(page.getByRole('navigation', { name: '주요 화면' }).getByRole('button')).toHaveCount(5)
   await expect(page.getByText('전략 리그')).toHaveCount(0)
   await expect(page.getByText('고급 터미널')).toHaveCount(0)
+  if (testInfo.project.name !== 'desktop') {
+    const summaryButton = await page.getByRole('button', { name: '요약' }).boundingBox()
+    expect(summaryButton?.width).toBeGreaterThanOrEqual(48)
+    expect(summaryButton?.height).toBeGreaterThanOrEqual(48)
+    for (const button of await page.getByRole('navigation', { name: '주요 화면' }).getByRole('button').all()) {
+      const box = await button.boundingBox()
+      expect(box?.height).toBeGreaterThanOrEqual(48)
+    }
+  }
   if (testInfo.project.name === 'desktop') {
     await expect(page.locator('.market-rail')).toBeVisible()
   } else {
@@ -160,6 +169,13 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
 
   await page.getByRole('button', { name: '전략', exact: true }).click()
   await expect(page.getByRole('heading', { name: '전략 설정' })).toBeVisible()
+  if (testInfo.project.name !== 'desktop') {
+    for (const button of await page.getByRole('navigation', { name: '하위 화면' }).getByRole('button').all()) {
+      const box = await button.boundingBox()
+      expect(box?.width).toBeGreaterThanOrEqual(48)
+      expect(box?.height).toBeGreaterThanOrEqual(48)
+    }
+  }
   await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(11)
   await expect(page.getByText('6개 감시 · 검증 중지 5개 · 문제 0개 · 실제 주문 0')).toBeVisible()
   await expect(page.getByText('준비 중')).toHaveCount(6)

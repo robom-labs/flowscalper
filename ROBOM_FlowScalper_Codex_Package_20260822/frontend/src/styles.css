@@ -530,10 +530,12 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .brand-lockup span, .header-status > span:not(.paper-lock) { display: none; }
   .header-status { margin-left: auto; }
   .navigation-shell { position: relative; top: auto; left: auto; width: 100%; height: 48px; border-bottom: 1px solid var(--line); background: #071219; }
-  .navigation-shell.has-secondary { height: 88px; }
+  .navigation-shell.has-secondary { height: 104px; }
   .navigation { justify-content: center; }
-  .nav-button { min-width: 62px; flex: 1; }
+  .nav-button { min-width: 62px; min-height: 48px; flex: 1; }
   .secondary-navigation { left: 8px; }
+  .secondary-navigation button { min-width: 48px; min-height: 48px; }
+  .summary-link { min-width: 48px; min-height: 48px; }
   .market-workspace { height: calc(100vh - 96px); padding: 6px 8px 8px; }
   .market-notice { position: static; width: 100%; max-width: none; flex: 0 0 auto; justify-content: space-between; }
   .open-position-strip > strong { display: none; }
@@ -555,18 +557,18 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .operation-facts { grid-column: 1 / -1; grid-row: 2; }
   .operation-actions { grid-column: 2; grid-row: 1; min-width: 0; }
   .focus-replay-controls { right: 12px; left: 12px; }
-  .replay-focus-page { height: calc(100dvh - 148px); }
+  .replay-focus-page { height: calc(100dvh - 152px); }
 }
 
 @media (max-width: 560px) {
   .brand-lockup h1 { font-size: 16px; }
   .header-status { gap: 6px; font-size: 8px; }
-  .navigation-shell, .navigation { height: 44px; }
-  .navigation-shell.has-secondary { height: 84px; }
-  .secondary-navigation { top: 44px; }
-  .nav-button { min-height: 44px; min-width: 0; padding: 0 5px; font-size: 10px; }
-  .summary-link { min-height: 40px; }
-  .market-workspace { height: calc(100vh - 92px); }
+  .navigation-shell, .navigation { height: 48px; }
+  .navigation-shell.has-secondary { height: 104px; }
+  .secondary-navigation { top: 48px; }
+  .nav-button { min-height: 48px; min-width: 0; padding: 0 5px; font-size: 10px; }
+  .summary-link { min-width: 48px; min-height: 48px; }
+  .market-workspace { height: calc(100vh - 96px); }
   .mode-truth-banner { min-height: 36px; flex-basis: 36px; font-size: 10px; }
   .market-toolbar.ready-mode { height: 98px; flex-basis: 98px; flex-wrap: wrap; }
   .market-toolbar.ready-mode { height: 46px; flex-basis: 46px; flex-wrap: nowrap; }
@@ -589,5 +591,5 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .open-position-strip small { display: none; }
   .compact-chart .chart-stats { width: calc(100% - 32px); }
   .compact-chart .chart-legend span:nth-child(n+5) { display: none; }
-  .replay-focus-page { height: calc(100dvh - 140px); }
+  .replay-focus-page { height: calc(100dvh - 152px); }
 }

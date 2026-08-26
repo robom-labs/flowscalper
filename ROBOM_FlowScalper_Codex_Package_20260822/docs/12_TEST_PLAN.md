@@ -282,3 +282,15 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 - Permit only the bounded planned-rotation transition in which the planned counter leads reconnect by at most one. Record an isolated probe failure, but fail closed after three consecutive failures.
 - Preserve every aborted actual attempt as `ABORTED_RUNTIME_SAFETY` or `ABORTED_OPERATOR`; never relabel it PASS. Remove successful temporary copies and verify both temporary directories are empty.
 - Six-hour and 24-hour runtime stability, strategy profitability and Release packaging remain separate evidence and are not implied by an integrity PASS.
+
+## 12.23 Non-invasive running-service soak regression
+
+- Unit-test strict dashboard parsing, exact duration, same-Run and nondecreasing process uptime, event and strategy-evaluation progress, and counter-regression failure.
+- Derive required BASE/STRESS pairs from every Registry strategy ID. A missing, duplicate or replaced pair must fail without a fixed strategy-count constant.
+- Require every open PAPER position to expose initial/current stop, TP1, maximum planned loss and PAPER-only safety fields.
+- Permit RUNNING and fail-closed RECONNECTING/SAFETY_WAITING samples only. A critical-lag sample with entries enabled must fail.
+- Require bounded queue, executable/trade p95, current-RSS growth, persistence flush and WAL checkpoint progress while tracking wide lag only as observational evidence.
+- Reject an unaudited strategy mode or lifecycle transition unless revision advances and actor plus reason are present.
+- Run the observer against the installed 8870 service without another venue connection, Run, replay or writer. Require the exact wall-clock duration and preserve all samples in JSON.
+- At tablet and mobile widths require summary, primary navigation and secondary navigation controls to be at least 48×48px with zero root horizontal overflow.
+- A 30-minute PASS does not prove 6-hour or 24-hour stability, strategy profitability or Release packaging.

@@ -125,12 +125,18 @@ make typecheck
 make build
 make e2e
 make network-smoke
+make service-soak-30m
+# 정확히 6시간·24시간을 채울 때만 실행
+make service-soak-6h
+make service-soak-24h
 make security-scan
 make repo-hygiene
 make package-release
 ```
 
 `make network-smoke`는 오프라인 CI와 분리된 선택적 공개 네트워크 검사이며 `PASS`, `FAIL`, `NOT_RUN`을 숨기지 않고 기록합니다.
+
+`make soak-30m`는 독립 공개시장 연결을 만드는 자원 진단입니다. 실행 중인 8870 서비스를 증명할 때는 별도 연결·Run·writer를 만들지 않는 `make service-soak-30m`을 사용합니다. 각 결과는 실제로 채운 벽시계 시간만 PASS로 판정합니다.
 
 ## 문제 해결
 
@@ -145,7 +151,7 @@ make package-release
 ## 알려진 제한
 
 - 연구용 PAPER 시스템이며 수익성을 보장하지 않습니다.
-- 30분 공개시장 soak는 자동 수용 smoke이며 6시간·24시간 연속 운영은 실제 실행 전까지 `NOT_RUN`입니다.
+- 독립 공개시장 soak와 실행 서비스 soak는 별도 증거입니다. 6시간·24시간 연속 운영은 정확한 실제 시간을 채우기 전까지 `NOT_RUN`입니다.
 - 거래소 공개 API의 지역 제한, 유지보수, protocol 변경은 로컬 코드로 제거할 수 없으며 이 경우 LIVE 대신 fail-closed 상태를 표시합니다.
 - 표본 30건 미만은 `CALIBRATING`으로 표시하며 승률·확률로 성과를 과장하지 않습니다.
 - 자동 배포, 원격 접속, 클라우드 동기화, 실제 거래는 포함하지 않습니다.

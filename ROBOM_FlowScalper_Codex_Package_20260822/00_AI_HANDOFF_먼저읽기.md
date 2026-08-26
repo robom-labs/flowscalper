@@ -106,6 +106,7 @@ flowchart LR
 | LIVE PAPER 런타임 | `backend/app/runtime.py` | `IMPLEMENT.md`, `RUNBOOK_LIVE_SHADOW_PAPER.md` | `backend/tests/test_v02_runtime_recovery.py` |
 | Binance·Bybit 공개시장 | `backend/app/adapters/`, `backend/app/live_public.py` | `docs/03_MARKET_DATA_AND_VENUES.md` | `backend/tests/test_market_adapters.py` |
 | 장시간 supervisor | `backend/app/market_data/supervisor.py` | `docs/15_FAILURE_RECOVERY.md` | `backend/tests/test_persistent_supervisor.py` |
+| 실행 서비스 장시간 관찰 | `backend/app/ops/service_soak.py`, `scripts/observe_running_service.py` | `docs/adr/ADR-050-noninvasive-running-service-soak.md` | `backend/tests/test_running_service_soak.py`, 실제 30분·6시간·24시간 증거 |
 | 호가·캔들 | `backend/app/orderbook/`, `backend/app/market_data/candles.py` | `docs/03_MARKET_DATA_AND_VENUES.md` | `backend/tests/test_orderbook.py` |
 | 피처·레짐 | `backend/app/features/engine.py`, `backend/app/regime/` | `docs/05_STRATEGY_SPEC.md` | `backend/tests/test_features_and_regime.py` |
 | A~J 전략·Strategy League | `backend/app/strategies/`, `backend/app/paper/league.py` | `STRATEGY_CATALOG_KO.md`, `docs/19_STRATEGY_LEAGUE_SPEC_KO.md` | `backend/tests/test_strategy_registry_shadow.py`, `backend/tests/test_strategy_league_signals.py` |

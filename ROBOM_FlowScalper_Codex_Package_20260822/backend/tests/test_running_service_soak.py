@@ -238,6 +238,21 @@ def test_running_service_soak_rejects_missing_base_stress_account_pair() -> None
     assert "independent_accounts_complete" in result["failures"]
 
 
+def test_running_service_soak_rejects_duplicate_base_stress_account_pair() -> None:
+    invalid = _advanced_payload()
+    accounts = invalid["league_accounts"]
+    assert isinstance(accounts, list)
+    accounts.append(deepcopy(accounts[0]))
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(invalid, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "FAIL"
+    assert "independent_accounts_complete" in result["failures"]
+
+
 def test_running_service_soak_requires_audited_revision_for_strategy_transition() -> None:
     changed = _advanced_payload()
     strategies = changed["strategies"]

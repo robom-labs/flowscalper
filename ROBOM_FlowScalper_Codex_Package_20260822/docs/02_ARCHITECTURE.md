@@ -217,3 +217,12 @@ No real order, credential, transfer or withdrawal endpoint may exist.
 - `process_memory_mb` and soak `memory_growth_mb` mean current RSS. `process_memory_peak_mb` and `peak_memory_growth_mb` are diagnostic high-water marks.
 - The advanced Korean system view names both meanings explicitly. A smaller current RSS after garbage collection or buffer release is valid even while the lifetime peak remains unchanged.
 - This telemetry change does not alter strategy thresholds, PAPER plans, fills, positions, safety locks, Registry state or ledger records. See ADR-048.
+
+## 2.15 Running-service soak boundary
+
+- `scripts/observe_running_service.py` reads the existing localhost dashboard only. It does not start another venue connection, runtime, Run, replay worker or SQLite writer.
+- `scripts/soak_live.py` remains an isolated public-market resource probe. Its result must not be reported as the installed service process's long-run evidence.
+- The running-service observer requires the same Run and a monotonically increasing process uptime, event count and strategy-evaluation count. It separately checks queue, executable/trade lag, reconnect classes, gaps, drops, persistence, WAL, current RSS and PAPER safety.
+- Registry strategy IDs determine the required independent BASE/STRESS account pairs. No fixed strategy or account count is accepted.
+- A planned reconnect or temporary lag state is acceptable only while entries fail closed and the final state returns to RUNNING·LIVE·PAPER. Wide-scanner lag remains observational and does not replace executable-book lag.
+- Actual 30-minute, 6-hour and 24-hour evidence requires the full wall-clock duration. See ADR-050.
