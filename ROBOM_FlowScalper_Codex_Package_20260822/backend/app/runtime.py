@@ -698,6 +698,8 @@ class PaperRuntime:
             "candle_persistence_buffer": len(self._candle_buffer),
             "stale_trade_symbols": len(self._stale_trade_symbols),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
+            "strategy_evaluation_count": self.strategy_evaluation_count,
+            "qualified_signal_count": self.qualified_signal_count,
             "manual_pause_requested": self._manual_pause_requested,
             "paper_entry_intent_revision": self._paper_entry_intent_revision,
             "automatic_recovery_enabled": True,

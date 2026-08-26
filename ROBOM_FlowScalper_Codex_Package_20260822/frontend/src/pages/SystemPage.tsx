@@ -23,6 +23,8 @@ const diagnosticLabels: Record<string, string> = {
   wide_lag_p95_ms: '종목 스캐너 갱신 지연 p95 · 진입판정 아님',
   stale_trade_events: '늦어서 전략에서 제외한 체결',
   stale_trade_symbols: '체결 흐름 복구 대기 종목',
+  strategy_evaluation_count: '누적 전략 판정 경로',
+  qualified_signal_count: '누적 적격 신호',
   venue_clock_offset_ms: '거래소 시각 보정 ms',
   venue_clock_rtt_ms: '시각 확인 왕복 ms',
   clock_sync_status: '거래소 시각 동기화',

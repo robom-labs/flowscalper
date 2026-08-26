@@ -566,6 +566,9 @@ def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execu
     runtime.ingest_live_event(fourth)
     assert runtime.strategy_evaluation_count > first_count
     assert runtime.latest_books["BTCUSDT"].ts_ms == 1_500
+    diagnostics = runtime.dashboard()["system"]
+    assert diagnostics["strategy_evaluation_count"] == runtime.strategy_evaluation_count
+    assert diagnostics["qualified_signal_count"] == runtime.qualified_signal_count
 
 
 def test_recovered_position_symbol_is_pinned_into_wide_and_deep_selection() -> None:

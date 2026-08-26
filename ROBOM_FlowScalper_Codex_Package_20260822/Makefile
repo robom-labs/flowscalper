@@ -3,7 +3,10 @@ PYTHON := .venv/bin/python
 UV := uv
 PNPM := pnpm
 
-.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke security-scan repo-hygiene soak-30m soak-6h soak-24h ledger-verify-snapshot ledger-verify-maintenance package-release clean-data-safe
+.PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke
+.PHONY: security-scan repo-hygiene soak-30m soak-6h soak-24h
+.PHONY: service-soak-30m service-soak-6h service-soak-24h
+.PHONY: ledger-verify-snapshot ledger-verify-maintenance package-release clean-data-safe
 
 setup:
 	$(UV) sync --all-groups
@@ -55,6 +58,21 @@ soak-6h:
 
 soak-24h:
 	./scripts/soak_24h.command
+
+service-soak-30m:
+	$(UV) run python scripts/observe_running_service.py \
+		--duration-seconds 1800 --sample-seconds 10 \
+		--output evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json
+
+service-soak-6h:
+	$(UV) run python scripts/observe_running_service.py \
+		--duration-seconds 21600 --sample-seconds 30 \
+		--output evidence/WAVE49_RUNNING_SERVICE_SOAK_6H.json
+
+service-soak-24h:
+	$(UV) run python scripts/observe_running_service.py \
+		--duration-seconds 86400 --sample-seconds 60 \
+		--output evidence/WAVE49_RUNNING_SERVICE_SOAK_24H.json
 
 ledger-verify-snapshot:
 	@test -n "$${ROBOM_DB_PATH}" || (echo "ROBOM_DB_PATH가 필요합니다." >&2; exit 2)
