@@ -1683,6 +1683,6 @@ LIVE 거래기록을 시작 때 checksum 검증한 전체 main·전략리그 cac
 | 전략 수익성 | NOT_PROVEN | 자연 BASE 표본 0~6건, 전체 43행 승리 0·순손익 -45.28840655 USDT다. |
 | 6시간 / 24시간 soak | NOT_RUN | 수정 후 실제 시간을 채우지 않았다. |
 | Release ZIP | NOT_RUN | 이번 Wave에서 새 ZIP을 만들지 않았다. |
-| GitHub main / Actions | PENDING | 구현과 로컬 증거를 먼저 확정한 뒤 별도 확인한다. |
+| GitHub main / Actions | PASS | 구현 commit `1b934140258d06ad86f551232f877488815bdb58`을 main에 반영했고 [Actions 32922393330](https://github.com/robom-labs/flowscalper/actions/runs/32922393330)의 validate 58초·browser 1분11초·브라우저 증거 upload가 모두 PASS했다. |
 
-기계판독 증거는 `evidence/WAVE38_ENTRY_INTENT_HISTORY_REPLAY_QA.json`, 결정 근거는 ADR-044다. 이번 PASS는 사용자 의도 감사·서비스 시작·기록·replay 기본 조회·짧은 LIVE·실제 브라우저 범위이며 전략 수익성·활성 원장 전수검사·6시간·24시간 안정성을 뜻하지 않는다.
+기계판독 증거는 `evidence/WAVE38_ENTRY_INTENT_HISTORY_REPLAY_QA.json`, 결정 근거는 ADR-044다. GitHub main의 최종 구현 기준은 `1b934140258d06ad86f551232f877488815bdb58`이고 구현 Actions도 PASS했다. 이번 PASS는 사용자 의도 감사·서비스 시작·기록·replay 기본 조회·짧은 LIVE·실제 브라우저 범위이며 전략 수익성·활성 원장 전수검사·6시간·24시간 안정성을 뜻하지 않는다.
