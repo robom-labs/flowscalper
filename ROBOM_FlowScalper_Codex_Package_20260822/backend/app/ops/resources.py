@@ -26,6 +26,18 @@ class ProcessResourceSampler:
         self._last_monotonic = self._started_monotonic
         self._last_process_seconds = time.process_time()
         self._last_cpu_percent = 0.0
+        self._disk_total_bytes = 0
+        self._disk_used_bytes = 0
+        self._disk_free_bytes = 0
+        self.refresh_storage_usage()
+
+    def refresh_storage_usage(self) -> None:
+        """느릴 수 있는 파일시스템 조회를 호출자가 선택한 worker에서 갱신한다."""
+
+        usage = shutil.disk_usage(self.storage_path)
+        self._disk_total_bytes = usage.total
+        self._disk_used_bytes = usage.used
+        self._disk_free_bytes = usage.free
 
     def sample(self) -> dict[str, object]:
         now = time.monotonic()
@@ -38,7 +50,6 @@ class ProcessResourceSampler:
             )
         self._last_monotonic = now
         self._last_process_seconds = process_seconds
-        usage = shutil.disk_usage(self.storage_path)
         memory_bytes, memory_source = _process_memory_bytes()
         peak_memory_bytes, peak_memory_source = _peak_process_memory_bytes()
         return {
@@ -49,10 +60,14 @@ class ProcessResourceSampler:
             "process_memory_peak_source": peak_memory_source,
             "process_threads": threading.active_count(),
             "process_uptime_seconds": round(now - self._started_monotonic, 3),
-            "disk_total_mb": round(usage.total / 1024**2, 3),
-            "disk_used_mb": round(usage.used / 1024**2, 3),
-            "disk_free_mb": round(usage.free / 1024**2, 3),
-            "disk_free_ratio": round(usage.free / usage.total, 6) if usage.total else 0.0,
+            "disk_total_mb": round(self._disk_total_bytes / 1024**2, 3),
+            "disk_used_mb": round(self._disk_used_bytes / 1024**2, 3),
+            "disk_free_mb": round(self._disk_free_bytes / 1024**2, 3),
+            "disk_free_ratio": (
+                round(self._disk_free_bytes / self._disk_total_bytes, 6)
+                if self._disk_total_bytes
+                else 0.0
+            ),
         }
 
 

@@ -56,6 +56,7 @@ from backend.app.regime import Regime, RegimeClassifier
 from backend.app.storage.parquet import (
     ArchivedEventBatch,
     ParquetEventStore,
+    StorageHealth,
     warm_market_event_worker_process,
 )
 from backend.app.storage.sqlite import (
@@ -81,6 +82,8 @@ if TYPE_CHECKING:
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 1_000
 _MARKET_PERSISTENCE_BATCH_SIZE = 1_000
 _SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
+_STORAGE_HEALTH_REFRESH_SECONDS = 1.0
+_STORAGE_HEALTH_STALE_NS = 5_000_000_000
 
 
 class PaperEntryIntentConflict(RuntimeError):
@@ -264,6 +267,10 @@ class PaperRuntime:
     _last_storage_check_ns: int | None = None
     _storage_entry_allowed: bool = True
     _storage_health_snapshot: dict[str, object] = field(default_factory=dict)
+    _storage_health_refresh_count: int = 0
+    _storage_health_refresh_last_ms: float = 0.0
+    _storage_health_refresh_max_ms: float = 0.0
+    _storage_health_refresh_completed_ts_ms: int | None = None
     _recovery_revalidation_symbols: set[str] = field(default_factory=set)
     _manual_pause_requested: bool = False
     _paper_entry_intent_revision: int = 0
@@ -657,7 +664,37 @@ class PaperRuntime:
         self.runtime_health_flags = ["RECOVERY_FAIL_CLOSED", reason]
         self._log("RECOVERY", f"복구 무결성 실패 · 신규 PAPER 진입 차단 · {reason}")
 
-    def _refresh_storage_safety(self, *, force: bool = False) -> bool:
+    def _measure_storage_safety(
+        self,
+    ) -> tuple[StorageHealth | None, StorageHealth | None]:
+        """파일시스템 호출을 한 worker 실행 단위로 모은다."""
+
+        self.resource_sampler.refresh_storage_usage()
+        if self.storage_guard is None:
+            return None, None
+        archive_health = self.storage_guard.health()
+        ledger_health = (
+            self.storage_guard.health(self.ledger.path.parent)
+            if self.ledger is not None
+            else None
+        )
+        return archive_health, ledger_health
+
+    def _apply_storage_safety(
+        self,
+        archive_health: StorageHealth | None,
+        ledger_health: StorageHealth | None,
+        *,
+        error: OSError | None = None,
+    ) -> None:
+        """worker 결과만 이벤트 루프 상태에 적용하고 신규 진입을 fail-close한다."""
+
+        self._last_storage_check_ns = self.clock.monotonic_ns()
+        self.runtime_health_flags = [
+            flag
+            for flag in self.runtime_health_flags
+            if flag != "ENTRY_LOCK_STORAGE_HEALTH_STALE"
+        ]
         if self.storage_guard is None:
             self._storage_entry_allowed = True
             self._storage_health_snapshot = {
@@ -665,22 +702,7 @@ class PaperRuntime:
                 "disk_pressure_entry_lock": False,
                 "storage_guard_enabled": False,
             }
-            return True
-        now_ns = self.clock.monotonic_ns()
-        if (
-            not force
-            and self._last_storage_check_ns is not None
-            and now_ns - self._last_storage_check_ns < 1_000_000_000
-        ):
-            return self._storage_entry_allowed
-        self._last_storage_check_ns = now_ns
-        try:
-            archive_health = self.storage_guard.health()
-            ledger_health = (
-                self.storage_guard.health(self.ledger.path.parent)
-                if self.ledger is not None
-                else None
-            )
+        elif error is None and archive_health is not None:
             health_rows = [archive_health]
             if ledger_health is not None:
                 health_rows.append(ledger_health)
@@ -707,13 +729,17 @@ class PaperRuntime:
                 ),
                 "storage_lock_reason": "+".join(lock_reasons) or "NONE",
             }
-        except OSError as error:
+        else:
             self._storage_entry_allowed = False
             self._storage_health_snapshot = {
                 "storage_entry_allowed": False,
                 "disk_pressure_entry_lock": True,
                 "storage_guard_enabled": True,
-                "storage_lock_reason": f"STORAGE_HEALTH_ERROR:{type(error).__name__}",
+                "storage_lock_reason": (
+                    f"STORAGE_HEALTH_ERROR:{type(error).__name__}"
+                    if error is not None
+                    else "STORAGE_HEALTH_ERROR:UNKNOWN"
+                ),
             }
         if not self._storage_entry_allowed and self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
             self.paused = True
@@ -723,7 +749,76 @@ class PaperRuntime:
             self.runtime_health_flags = [
                 flag for flag in self.runtime_health_flags if flag != "STORAGE_PRESSURE_ENTRY_LOCK"
             ]
+
+    def _record_storage_health_refresh(self, elapsed_ms: float) -> None:
+        self._storage_health_refresh_count += 1
+        self._storage_health_refresh_last_ms = elapsed_ms
+        self._storage_health_refresh_max_ms = max(
+            self._storage_health_refresh_max_ms,
+            elapsed_ms,
+        )
+        self._storage_health_refresh_completed_ts_ms = self.clock.utc_ms()
+
+    def _refresh_storage_safety(self, *, force: bool = False) -> bool:
+        """평상시에는 캐시만 읽고 명시적 동기 호출에서만 파일시스템을 검사한다."""
+
+        if force:
+            started = time.monotonic()
+            try:
+                archive_health, ledger_health = self._measure_storage_safety()
+                self._apply_storage_safety(archive_health, ledger_health)
+            except OSError as error:
+                self._apply_storage_safety(None, None, error=error)
+            self._record_storage_health_refresh((time.monotonic() - started) * 1_000)
+        elif (
+            self.storage_guard is not None
+            and self._last_storage_check_ns is not None
+            and self.clock.monotonic_ns() - self._last_storage_check_ns
+            > _STORAGE_HEALTH_STALE_NS
+        ):
+            self._storage_entry_allowed = False
+            self._storage_health_snapshot = {
+                **self._storage_health_snapshot,
+                "storage_entry_allowed": False,
+                "disk_pressure_entry_lock": True,
+                "storage_guard_enabled": True,
+                "storage_lock_reason": "STORAGE_HEALTH_STALE",
+            }
+            if "ENTRY_LOCK_STORAGE_HEALTH_STALE" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("ENTRY_LOCK_STORAGE_HEALTH_STALE")
+            if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+                self.paused = True
         return self._storage_entry_allowed
+
+    async def refresh_storage_safety_async(self) -> bool:
+        """디스크·볼륨 상태를 이벤트 루프 밖에서 갱신한다."""
+
+        started = asyncio.get_running_loop().time()
+        try:
+            archive_health, ledger_health = await to_thread.run_sync(
+                self._measure_storage_safety
+            )
+            self._apply_storage_safety(archive_health, ledger_health)
+        except OSError as error:
+            self._apply_storage_safety(None, None, error=error)
+        self._record_storage_health_refresh(
+            (asyncio.get_running_loop().time() - started) * 1_000
+        )
+        self._refresh_supervisor_entry_safety()
+        return self._storage_entry_allowed
+
+    async def run_storage_health_worker(self, stop: asyncio.Event) -> None:
+        """저장소 상태를 주기적으로 갱신하되 시장 이벤트 루프를 막지 않는다."""
+
+        while not stop.is_set():
+            await self.refresh_storage_safety_async()
+            try:
+                await asyncio.wait_for(
+                    stop.wait(),
+                    timeout=_STORAGE_HEALTH_REFRESH_SECONDS,
+                )
+            except TimeoutError:
+                continue
 
     def _operational_diagnostics(self) -> dict[str, object]:
         self._refresh_storage_safety()
@@ -734,6 +829,18 @@ class PaperRuntime:
             "display_timezone": "Asia/Seoul",
             **self.resource_sampler.sample(),
             **self._storage_health_snapshot,
+            "storage_health_refresh_count": self._storage_health_refresh_count,
+            "storage_health_refresh_last_ms": round(
+                self._storage_health_refresh_last_ms,
+                3,
+            ),
+            "storage_health_refresh_max_ms": round(
+                self._storage_health_refresh_max_ms,
+                3,
+            ),
+            "storage_health_refresh_completed_ts_ms": (
+                self._storage_health_refresh_completed_ts_ms
+            ),
             "persistence_fault_count": self._persistence_fault_count,
             "persistence_buffer_dropped": self._persistence_buffer_dropped,
             "persistence_backlog_peak": self._persistence_backlog_peak,
@@ -1017,7 +1124,7 @@ class PaperRuntime:
                 self.runtime_health_flags.append("RECOVERY_FAIL_CLOSED")
             if self._recovery_revalidation_symbols:
                 self.runtime_health_flags.append("ENTRY_LOCK_RECOVERY_REVALIDATION")
-            if not self._refresh_storage_safety(force=True):
+            if not await self.refresh_storage_safety_async():
                 self.paused = True
             self._log(
                 "MARKET_DATA",
@@ -1294,7 +1401,7 @@ class PaperRuntime:
                     self._manual_pause_requested
                     or self.paper_portfolio.main.risk_state.faulted
                     or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
-                    or not self._refresh_storage_safety(force=True)
+                    or not self._refresh_storage_safety()
                 )
             self._log(
                 "RECOVERY",

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import threading
+import time
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -45,6 +47,30 @@ def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: P
     assert float(str(second["disk_total_mb"])) > 0
     assert float(str(second["disk_free_mb"])) > 0
     assert 0 <= float(str(second["disk_free_ratio"])) <= 1
+
+
+def test_process_resource_sampler_reuses_cached_disk_usage(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[Path] = []
+
+    def disk_usage(path: Path) -> DiskUsage:
+        calls.append(path)
+        return DiskUsage(total=1_000, used=250, free=750)
+
+    monkeypatch.setattr(resources_module.shutil, "disk_usage", disk_usage)
+    sampler = ProcessResourceSampler(tmp_path)
+
+    first = sampler.sample()
+    second = sampler.sample()
+
+    assert calls == [tmp_path]
+    assert first["disk_free_ratio"] == 0.75
+    assert second["disk_free_ratio"] == 0.75
+
+    sampler.refresh_storage_usage()
+    assert calls == [tmp_path, tmp_path]
 
 
 def test_current_memory_does_not_relabel_peak_rss_as_current(monkeypatch) -> None:
@@ -594,6 +620,76 @@ def test_runtime_checks_active_ledger_volume_as_well_as_archive(
     assert dashboard["system"]["ledger_storage_free_bytes"] == 40
     assert runtime.paused is True
     ledger.close()
+
+
+async def test_storage_health_refresh_runs_outside_event_loop(tmp_path: Path) -> None:
+    calling_thread = threading.get_ident()
+    health_threads: list[int] = []
+
+    def slow_disk_usage(_: Path) -> DiskUsage:
+        health_threads.append(threading.get_ident())
+        time.sleep(0.05)
+        return DiskUsage(total=1_000, used=100, free=900)
+
+    guard = ParquetEventStore(
+        tmp_path / "offloop-archive",
+        minimum_free_bytes=100,
+        minimum_free_ratio=0.10,
+        disk_usage=slow_disk_usage,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-offloop-storage-health",
+        venue=Venue.BINANCE_USDM,
+        storage_guard=guard,
+    )
+
+    refresh = asyncio.create_task(runtime.refresh_storage_safety_async())
+    heartbeat_ticks = 0
+    while not refresh.done():
+        heartbeat_ticks += 1
+        await asyncio.sleep(0.005)
+
+    assert await refresh is True
+    assert heartbeat_ticks >= 5
+    assert health_threads
+    assert all(thread_id != calling_thread for thread_id in health_threads)
+    dashboard = runtime.dashboard()
+    assert dashboard["system"]["storage_health_refresh_count"] == 1
+    assert float(str(dashboard["system"]["storage_health_refresh_last_ms"])) >= 50
+    assert dashboard["system"]["storage_entry_allowed"] is True
+
+
+async def test_stale_storage_health_fails_closed_until_worker_refresh(
+    tmp_path: Path,
+) -> None:
+    clock = DeterministicClock()
+    guard = ParquetEventStore(
+        tmp_path / "stale-archive",
+        minimum_free_bytes=100,
+        minimum_free_ratio=0.10,
+        disk_usage=lambda _: DiskUsage(total=1_000, used=100, free=900),
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-stale-storage-health",
+        venue=Venue.BINANCE_USDM,
+        clock=clock,
+        storage_guard=guard,
+    )
+
+    assert runtime._refresh_storage_safety(force=True) is True
+    runtime.paused = False
+    clock.advance_ms(5_001)
+
+    assert runtime._refresh_storage_safety() is False
+    assert runtime.paused is True
+    assert "ENTRY_LOCK_STORAGE_HEALTH_STALE" in runtime.runtime_health_flags
+    assert runtime.dashboard()["system"]["storage_lock_reason"] == "STORAGE_HEALTH_STALE"
+
+    assert await runtime.refresh_storage_safety_async() is True
+    assert "ENTRY_LOCK_STORAGE_HEALTH_STALE" not in runtime.runtime_health_flags
+    assert runtime.dashboard()["system"]["storage_lock_reason"] == "NONE"
 
 
 def test_runtime_persists_only_canonical_one_second_and_replay_candles(

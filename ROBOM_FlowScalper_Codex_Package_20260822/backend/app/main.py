@@ -599,6 +599,8 @@ def create_app(
         broadcaster: asyncio.Task[None] | None = None
         persistence_stop = asyncio.Event()
         persistence_worker: asyncio.Task[None] | None = None
+        storage_health_stop = asyncio.Event()
+        storage_health_worker: asyncio.Task[None] | None = None
         trade_cache_task: asyncio.Task[None] | None = None
         hourly_history_task: asyncio.Task[None] | None = None
         governance_task: asyncio.Task[None] | None = None
@@ -623,6 +625,10 @@ def create_app(
                 active_runtime.run_persistence_worker(persistence_stop),
                 name="persistence-worker",
             )
+            storage_health_worker = asyncio.create_task(
+                active_runtime.run_storage_health_worker(storage_health_stop),
+                name="storage-health-worker",
+            )
             broadcaster = asyncio.create_task(broadcast_dashboard(), name="dashboard-broadcaster")
             yield
         finally:
@@ -634,6 +640,9 @@ def create_app(
             persistence_stop.set()
             if persistence_worker is not None:
                 await _await_shutdown_task(persistence_worker)
+            storage_health_stop.set()
+            if storage_health_worker is not None:
+                await _await_shutdown_task(storage_health_worker)
             if trade_cache_task is not None:
                 await asyncio.gather(trade_cache_task, return_exceptions=True)
             if hourly_history_task is not None:
@@ -750,14 +759,15 @@ def create_app(
             "real_orders_enabled": False,
         }
 
-    def change_paper_entry_intent(
+    async def change_paper_entry_intent(
         paused: bool,
         *,
         request: PaperEntryIntentRequest | None,
         idempotency_key: str | None,
     ) -> dict[str, object]:
         try:
-            active_runtime.set_paused(
+            await asyncio.to_thread(
+                active_runtime.set_paused,
                 paused,
                 expected_revision=(request.expected_revision if request is not None else None),
                 idempotency_key=idempotency_key,
@@ -794,7 +804,7 @@ def create_app(
         request: PaperEntryIntentRequest | None = None,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> dict[str, object]:
-        return change_paper_entry_intent(
+        return await change_paper_entry_intent(
             True,
             request=request,
             idempotency_key=idempotency_key,
@@ -805,7 +815,7 @@ def create_app(
         request: PaperEntryIntentRequest | None = None,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     ) -> dict[str, object]:
-        return change_paper_entry_intent(
+        return await change_paper_entry_intent(
             False,
             request=request,
             idempotency_key=idempotency_key,
