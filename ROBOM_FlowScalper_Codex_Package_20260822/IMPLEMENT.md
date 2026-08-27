@@ -575,3 +575,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Deploy only while every PAPER account is flat, preserve the current Run and ledger, then verify the exact release commit, LIVE public data, PAPER execution, zero real orders and zero authentication.
 9. Start a new six-hour observer only after deployment. Keep its status `IN_PROGRESS` until all wall-clock time and samples have actually completed, and keep 24 hours `NOT_RUN` until separately executed.
 10. Do not overlap the long observer with replay, full tests, builds or ledger maintenance. Preserve any threshold violation as FAIL rather than restarting or weakening the gate.
+
+## Persistence backlog containment and truthful release-loading Wave
+
+1. Preserve the interrupted Wave 94 observer as `ABORTED_OPERATOR` with every failed latency and duration gate. Never overwrite it with the later short PASS.
+2. Measure event-loop delay independently from exchange timestamps. Keep processing, trade and wide-scanner latency as separate fields and fail closed on critical local delay.
+3. Keep 1,000-event `synchronous=FULL` persistence batches and do not drop public-market input to hide storage pressure.
+4. When backlog is at least 2,000 events and WAL is below 16MiB, defer a due PASSIVE checkpoint by one successful flush. At 16MiB or the existing 64MiB hard boundary, run the registered checkpoint safety path.
+5. At 10,000 queued persistence events, pause only new PAPER entries with `PERSISTENCE_BACKLOG_ENTRY_LOCK`. Continue observation, archive recovery, position protection and exit handling, and release the lock only after backlog is at most 2,000.
+6. Expose event-loop maximum delay, persistence backlog peak, backlog lock count and deferred checkpoint count in the Korean advanced diagnostics.
+7. Validate every open PAPER position with planned and actual entry, quantity, initial and current stop, TP1, TP2, maximum planned loss, entry and estimated exit fee, slippage, `paper_only=true`, `real_orders=false` and `auth=false`.
+8. Do not show a release mismatch before the first real dashboard response. Keep the loading state until the frontend and server commits can actually be compared, then fail closed only on a confirmed mismatch.
+9. Exercise history, precise saved-event loading, next-event, play and pause, strategy analysis and advanced diagnostics in the actual browser. Keep this browser proof separate from fixture screenshots.
+10. Run a clean five-minute observer after deployment without replay, builds, tests or ledger inspection. A short PASS is only a regression baseline; start a new six-hour observer afterward and keep 24 hours `NOT_RUN` until separately completed.

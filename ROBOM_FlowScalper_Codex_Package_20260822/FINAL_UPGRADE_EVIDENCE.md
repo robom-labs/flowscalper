@@ -2827,9 +2827,40 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | macOS 불변 릴리스 | PASS | commit `b1a89276a86a1547336960fd540c04e363541619`, 같은 Run 복구, LIVE·PAPER·RUNNING, 11전략·22계좌, 열린 포지션 0, 실제 주문 false, 인증 false |
 | 실제 브라우저 현재 거래 | PASS | 현재버전·전략계좌·공개시장 24건, 첫 거래 TP1 79,162.28·TP2 79,528.75·초기손절 78,559.36·실제종료 78,821.4를 분리 표시 |
 | GitHub main·Actions | PASS | main `10d56d2a76a178f16771617eab4060643dc5fcb7`, Actions `33051706575`. validate 1분 4초, browser 1분 20초와 브라우저 증거 업로드 PASS |
-| 6시간 무간섭 관찰 | IN_PROGRESS | 2026-08-27 16:51 KST 시작. 초기 event 8,643→8,875, 처리/체결 p95 50.675/61.290ms, queue·비계획 reconnect·gap·resync·drop·저장결함 0. 출력 예정 `evidence/WAVE94_POST_TP_DETAIL_RELEASE_CLEAN_6H.json` |
+| 6시간 무간섭 관찰 | ABORTED_OPERATOR | 2,464.693초·83표본에서 저장 적체가 계속 증가해 안전상 중단했다. event +220,200·평가 +670,116은 전진했지만 처리/체결 p95 최대 1,080.879/3,334.171ms, 저장 대기 최대 24,735건, flush/checkpoint 최대 41.236/57.324초, checkpoint busy +4, critical incident +2였다. 요청시간 미완료와 네 지연 gate 실패를 `evidence/WAVE94_POST_TP_DETAIL_RELEASE_CLEAN_6H.json`에 보존했다. |
 | 24시간 관찰 | NOT_RUN | 실제 시간을 채우지 않음 |
 | 고정 485,283-event replay | NOT_RUN | 이번 릴리스 장시간 관찰과 겹치지 않음 |
 | 전략 수익성 | NOT_PROVEN | 현재버전 BASE/STRESS 각 12건, 전부 비용후 음수, TP1·TP2·STOP 도달 0 |
 
 기계판독 중간 근거는 `evidence/WAVE94_STRATEGY_TRADE_AND_TP_DETAIL_AUDIT.json`이다. 6시간 관찰이 끝나기 전에는 초기 정상값을 장시간 PASS로 확대 해석하지 않는다.
+
+## 70. Wave 95 저장 적체 안전제어와 실제 화면 재검증
+
+### 재현과 구현
+
+- Wave 94 관찰은 정상 구간만 발췌하지 않고 2,464.693초 전체를 `ABORTED_OPERATOR`로 보존했다. 공개시장 event와 전략평가는 전진했지만 저장 buffer가 535건에서 24,735건까지 증가했고 처리·체결·flush·checkpoint가 등록 상한을 넘었다.
+- 100ms event-loop watchdog을 추가해 거래소 시각 지연과 로컬 처리 정지를 분리했다. observer는 500ms 상한, 임계지연 복구, event gap과 포지션 보호계약을 함께 검사한다.
+- 1,000-event `synchronous=FULL` batch는 유지했다. backlog 2,000건 이상이고 WAL 16MiB 미만이면 due checkpoint를 한 flush 연기하며, WAL 16MiB 이상은 checkpoint를 실행한다. 기존 64MiB hard safety boundary도 유지한다.
+- backlog 10,000건 이상이면 `PERSISTENCE_BACKLOG_ENTRY_LOCK`으로 신규 PAPER 진입만 잠그고 2,000건 이하에서 해제한다. 시장 입력은 버리지 않고 진행 포지션 보호와 청산은 계속한다.
+- 고급진단에 로컬 처리루프 최대 지연, 시장 저장 대기 최대 건수, 저장 적체 안전대기 횟수와 적체 중 checkpoint 연기 횟수를 추가했다.
+- 첫 dashboard 응답 전에 임시 server release를 실제 frontend commit과 비교하던 거짓 버전잠금을 제거했다. `bootstrapState === READY`인 실제 응답 뒤에만 release mismatch를 판정한다.
+
+### 검증 결과
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| backend 전체 | PASS | 484 passed·26.17초, event-loop·observer·backlog lock·checkpoint 경계 회귀 포함 |
+| frontend 전체 | PASS | 14 files·71 tests, 첫 dashboard 전 거짓 release mismatch 회귀 포함 |
+| fixture backend | PASS | 18 passed |
+| 정적·build | PASS_WITH_WARNING | Ruff·mypy 97 source·ESLint·TypeScript·Vite 50 modules PASS. JS 526.86kB·gzip 161.96kB의 기존 500kB 경고는 남아 있다. |
+| PAPER safety·security·hygiene | PASS | PAPER 불변조건 PASS, security 132 source·위반·secret-like·실주문 path 0, 저장소 위반 0 |
+| OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed, 여섯 화면 증거를 갱신했다. |
+| 불변 릴리스 | PASS | 저장 적체 수정 `55d59a1dc41cbb776f09da3a590da2e9669a390d`, release-loading 수정 `ddcd09831c00ce31abc115d7811a9f5a8d0a542d`, 같은 `run-2b7135a972dd` 복구 |
+| 실제 브라우저 | PASS | 확인된 버전 불일치 0, `작동 중`, `PAPER · 실제 주문 0`. 기록 87행과 상세·재생, 저장 Run 목록, 정밀 이벤트 로딩 완료, 다음 이벤트 2/100, 재생 뒤 일시정지, 11전략·22계좌 분석, 새 고급진단 네 항목을 실제로 눌러 확인했다. |
+| 깨끗한 5분 관찰 | PASS | 300.044초·61표본·event +25,596·평가 +81,828·consumer +25,596·queue 최대 1·처리/체결 p95 최대 71.449/139.369ms·로컬 loop 최대 481ms·저장 대기 최대 2,567건·flush/checkpoint 최대 19.844/15.846초·메모리 증가 14.625MB. 비계획 reconnect·sequence gap·resync·drop·저장 fault·buffer drop·backlog entry lock·critical incident 0 |
+| 새 6시간·24시간 | NOT_RUN | 수정 릴리스에서 실제 시간을 채우지 않았다. 최종 문서 릴리스 뒤 6시간을 새로 시작한다. |
+| 485,283-event replay | NOT_RUN | 장시간 관찰과 I/O를 겹치지 않기 위해 이번 Wave에서 실행하지 않았다. |
+| 전략 수익성 | NOT_PROVEN | 5분 중 적격신호·main 거래·League 거래 증가 0. 현재버전 BASE/STRESS 각 12건, net -8.221104992/-14.657179544 USDT로 30건·비용후·OOS·강건성 gate를 충족하지 못했다. |
+| GitHub main·Actions | PENDING | 문서와 `evidence/WAVE95_BACKLOG_AWARE_RELEASE_CLEAN_5M.json`을 동기화한 뒤 별도로 확인한다. |
+
+원본 5분 표본은 `evidence/WAVE95_BACKLOG_AWARE_RELEASE_CLEAN_5M.json`, 중단한 장시간 표본은 `evidence/WAVE94_POST_TP_DETAIL_RELEASE_CLEAN_6H.json`, 결정 근거는 `docs/adr/ADR-071-backlog-aware-wal-checkpoint.md`다. 전략 임계값, 진입 기준, TP1·TP2·SL, 수수료·슬리피지, 위험예산, BASE/STRESS 계좌와 Governor 승격 gate는 변경하지 않았다. 실제 주문·private API·API key·secret·wallet·런타임 AI 주문판단은 계속 0이다. 현재 수용상태는 `ACTUAL_BROWSER_AND_CLEAN_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
