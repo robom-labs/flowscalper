@@ -119,6 +119,8 @@ class SupervisorTelemetry:
     started_monotonic_ns: int | None = None
     last_event_monotonic_ns: int | None = None
     last_error: str | None = None
+    last_reconnect_error: str | None = None
+    last_reconnect_error_ts_ms: int | None = None
     planned_rotation_count: int = 0
     trade_source_event_count: int = 0
     trade_output_event_count: int = 0
@@ -312,6 +314,8 @@ class SupervisorTelemetry:
             "lag_percentile_refresh_count": self.lag_percentile_refresh_count,
             "critical_lag_active": self.critical_lag_active,
             "last_error": self.last_error,
+            "last_reconnect_error": self.last_reconnect_error,
+            "last_reconnect_error_ts_ms": self.last_reconnect_error_ts_ms,
             "venue_clock_offset_ms": self.venue_clock_offset_ms,
             "venue_clock_rtt_ms": self.venue_clock_rtt_ms,
             "clock_sync_status": self.clock_sync_status,
@@ -470,7 +474,10 @@ class PersistentPublicSupervisor:
                 httpx.HTTPError,
                 WebSocketException,
             ) as error:
-                self.telemetry.last_error = f"{type(error).__name__}: {error}"
+                reconnect_error = f"{type(error).__name__}: {error}"
+                self.telemetry.last_error = reconnect_error
+                self.telemetry.last_reconnect_error = reconnect_error
+                self.telemetry.last_reconnect_error_ts_ms = self.clock.utc_ms()
                 self.telemetry.reconnect_count += 1
                 self.telemetry.state = ConnectionState.RECONNECTING
                 self.telemetry.entry_locked = True

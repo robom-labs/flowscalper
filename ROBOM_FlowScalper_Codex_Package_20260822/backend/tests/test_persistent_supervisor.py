@@ -332,6 +332,13 @@ async def test_supervisor_reconnects_and_bounds_overload_queue() -> None:
     assert supervisor.telemetry.dropped_event_count > 0
     assert supervisor.telemetry.queue_depth <= 4
     assert supervisor.telemetry.entry_locked
+    assert supervisor.telemetry.last_reconnect_error is not None
+    assert "recorded prepare failure" in supervisor.telemetry.last_reconnect_error
+    assert supervisor.telemetry.last_reconnect_error_ts_ms is not None
+    assert (
+        supervisor.telemetry.as_dict()["last_reconnect_error"]
+        == supervisor.telemetry.last_reconnect_error
+    )
     assert supervisor.telemetry.last_error == "QueueOverload: depth=4; capacity=4"
     assert supervisor.telemetry.queue_overload_active is True
 

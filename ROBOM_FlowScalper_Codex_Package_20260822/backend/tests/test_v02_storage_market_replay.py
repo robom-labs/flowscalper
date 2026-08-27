@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.app.main as main_module
+import backend.app.replay.process as replay_process_module
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
@@ -218,6 +219,19 @@ def test_replay_cpu_budget_yields_without_carrying_unbounded_sleep_debt() -> Non
     budget.checkpoint()
 
     assert sleeps == [0.50]
+
+
+def test_replay_process_applies_background_io_policy_before_work(monkeypatch) -> None:
+    applied: list[str] = []
+    monkeypatch.setattr(
+        replay_process_module,
+        "_apply_replay_background_io_policy",
+        lambda: applied.append("background"),
+    )
+
+    replay_process_module._prepare_cpu_budget()
+
+    assert applied == ["background"]
 
 
 def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(

@@ -10,6 +10,9 @@ from pathlib import Path
 from backend.app.replay.market import StoredMarketReplay
 from backend.app.replay.timeline import build_replay_timeline
 from backend.app.storage.parquet import ParquetEventStore
+from backend.app.storage.parquet import (
+    _apply_background_io_policy as _apply_replay_background_io_policy,
+)
 from backend.app.storage.sqlite import SQLiteLedger
 
 _LOW_PRIORITY_APPLIED = False
@@ -106,9 +109,10 @@ def replay_timeline_from_paths(
 
 
 def _prepare_cpu_budget() -> _ReplayCpuBudget:
-    """worker 프로세스 우선순위와 누적 CPU 예산을 적용한다."""
+    """worker 프로세스의 CPU와 I/O를 모두 LIVE보다 낮은 우선순위로 둔다."""
 
     global _LOW_PRIORITY_APPLIED
+    _apply_replay_background_io_policy()
     nice = getattr(os, "nice", None)
     if callable(nice) and not _LOW_PRIORITY_APPLIED:
         try:
