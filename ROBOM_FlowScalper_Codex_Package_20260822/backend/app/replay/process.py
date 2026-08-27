@@ -17,6 +17,7 @@ from backend.app.storage.sqlite import SQLiteLedger
 
 _LOW_PRIORITY_APPLIED = False
 _REPLAY_TARGET_CPU_RATIO = 0.05
+_REPLAY_TARGET_ARCHIVE_READ_BYTES_PER_SECOND = 256 * 1024
 
 
 class _ReplayCpuBudget:
@@ -26,6 +27,9 @@ class _ReplayCpuBudget:
         self,
         *,
         target_cpu_ratio: float = _REPLAY_TARGET_CPU_RATIO,
+        target_archive_read_bytes_per_second: float = (
+            _REPLAY_TARGET_ARCHIVE_READ_BYTES_PER_SECOND
+        ),
         max_sleep_seconds: float = 0.50,
         monotonic: Callable[[], float] = time.monotonic,
         process_time: Callable[[], float] = time.process_time,
@@ -35,7 +39,12 @@ class _ReplayCpuBudget:
             raise ValueError("target_cpu_ratio는 0 초과 1 이하여야 합니다.")
         if max_sleep_seconds <= 0:
             raise ValueError("max_sleep_seconds는 양수여야 합니다.")
+        if target_archive_read_bytes_per_second <= 0:
+            raise ValueError("archive read 대역폭은 양수여야 합니다.")
         self._target_cpu_ratio = target_cpu_ratio
+        self._target_archive_read_bytes_per_second = (
+            target_archive_read_bytes_per_second
+        )
         self._max_sleep_seconds = max_sleep_seconds
         self._monotonic = monotonic
         self._process_time = process_time
@@ -58,6 +67,15 @@ class _ReplayCpuBudget:
         self._interval_wall += elapsed_wall + sleep_seconds
         self._interval_cpu += elapsed_cpu
 
+    def archive_checkpoint(self, bytes_read: int) -> None:
+        """archive 파일 사이에 명시적으로 쉬어 LIVE 영속화 I/O를 우선한다."""
+
+        if bytes_read < 0:
+            raise ValueError("archive read bytes는 0 이상이어야 합니다.")
+        self.checkpoint()
+        if bytes_read:
+            self._sleeper(bytes_read / self._target_archive_read_bytes_per_second)
+
 
 def replay_stored_run_from_paths(
     database_path: str,
@@ -79,6 +97,7 @@ def replay_stored_run_from_paths(
             symbol=symbol.strip().upper() if symbol else None,
             event_limit=event_limit,
             cooperative_yield=cpu_budget.checkpoint,
+            archive_batch_yield=cpu_budget.archive_checkpoint,
             persist_result=False,
         ).as_dict()
     finally:

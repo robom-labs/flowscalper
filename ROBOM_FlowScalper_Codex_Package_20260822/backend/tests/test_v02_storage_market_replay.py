@@ -32,7 +32,11 @@ from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
 from backend.app.replay.engine import ReplayEngine
 from backend.app.replay.market import StoredMarketReplay, _candidate_plan_count
-from backend.app.replay.process import _REPLAY_TARGET_CPU_RATIO, _ReplayCpuBudget
+from backend.app.replay.process import (
+    _REPLAY_TARGET_ARCHIVE_READ_BYTES_PER_SECOND,
+    _REPLAY_TARGET_CPU_RATIO,
+    _ReplayCpuBudget,
+)
 from backend.app.replay.safety import (
     ReplayLiveSafetyThresholds,
     run_with_live_safety,
@@ -219,6 +223,24 @@ def test_replay_cpu_budget_yields_without_carrying_unbounded_sleep_debt() -> Non
     budget.checkpoint()
 
     assert sleeps == [0.50]
+
+
+def test_replay_archive_budget_throttles_bytes_independently_from_cpu() -> None:
+    assert _REPLAY_TARGET_ARCHIVE_READ_BYTES_PER_SECOND == 256 * 1024
+    wall_values = iter((0.0, 1.0))
+    cpu_values = iter((0.0, 0.0))
+    sleeps: list[float] = []
+    budget = _ReplayCpuBudget(
+        target_cpu_ratio=0.25,
+        target_archive_read_bytes_per_second=1_000,
+        monotonic=lambda: next(wall_values),
+        process_time=lambda: next(cpu_values),
+        sleeper=sleeps.append,
+    )
+
+    budget.archive_checkpoint(250)
+
+    assert sleeps == [0.25]
 
 
 def test_replay_process_applies_background_io_policy_before_work(monkeypatch) -> None:
@@ -1029,10 +1051,17 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
         )
 
     monkeypatch.setattr(archive, "read_market_event_batch_filtered", counted_read)
-    events = ledger.list_market_events("run-limited", symbol="BTCUSDT", limit=1)
+    yielded_archive_bytes: list[int] = []
+    events = ledger.list_market_events(
+        "run-limited",
+        symbol="BTCUSDT",
+        limit=1,
+        archive_batch_yield=yielded_archive_bytes.append,
+    )
 
     assert [event["event_id"] for event in events] == ["limited-0"]
     assert len(read_paths) == 1
+    assert yielded_archive_bytes == [read_paths[0].stat().st_size]
 
     late_sqlite_event = market_event(
         "run-limited",

@@ -78,6 +78,7 @@ class StoredMarketReplay:
         symbol: str | None = None,
         event_limit: int | None = None,
         cooperative_yield: Callable[[], None] | None = None,
+        archive_batch_yield: Callable[[int], None] | None = None,
         persist_result: bool = True,
     ) -> StoredMarketReplayResult:
         run = ledger.get_run(source_run_id)
@@ -91,6 +92,7 @@ class StoredMarketReplay:
             symbol=scope_symbol,
             limit=event_limit,
             cooperative_yield=cooperative_yield,
+            archive_batch_yield=archive_batch_yield,
         )
         if event_limit is not None and len(events) != event_limit:
             raise LedgerInvariantError(

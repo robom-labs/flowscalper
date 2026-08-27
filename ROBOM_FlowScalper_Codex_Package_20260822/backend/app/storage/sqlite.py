@@ -911,6 +911,7 @@ class SQLiteLedger:
         start_ts_ms: int | None = None,
         end_ts_ms: int | None = None,
         cooperative_yield: Callable[[], None] | None = None,
+        archive_batch_yield: Callable[[int], None] | None = None,
     ) -> list[dict[str, Any]]:
         query = "SELECT payload_json, checksum FROM market_events WHERE run_id = ?"
         parameters: list[object] = [run_id]
@@ -1021,6 +1022,10 @@ class SQLiteLedger:
                         if end_ts_ms is not None and venue_ts_ms > end_ts_ms:
                             continue
                         result.append(decoded)
+                    if archive_batch_yield is not None:
+                        archive_batch_yield(
+                            Path(str(archive["path"])).stat().st_size
+                        )
                     if cooperative_yield is not None:
                         cooperative_yield()
             except (OSError, ValueError) as error:
