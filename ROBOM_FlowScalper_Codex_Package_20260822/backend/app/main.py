@@ -1309,7 +1309,11 @@ def create_app(
                 if selected is not None and selected.get("event_count") is not None:
                     total_events = int(str(selected["event_count"]))
             if total_events is None:
-                replayable = await asyncio.to_thread(active_runtime.replayable_runs)
+                replayable = await asyncio.to_thread(
+                    active_runtime.ledger.list_replayable_run_summaries
+                    if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                    else active_runtime.replayable_runs
+                )
                 selected_run = next(
                     (row for row in replayable if str(row["run_id"]) == run_id),
                     None,
@@ -1353,13 +1357,12 @@ def create_app(
                     active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
                     and ledger is not None
                 ):
-                    await asyncio.to_thread(active_runtime.flush_storage)
                     archive = ledger.market_event_archive
                     await progress(
                         "PROCESSING",
                         (
-                            "LIVE 안전상태를 감시하며 저우선순위 프로세스에서 "
-                            "같은 전략 조건으로 검증하고 있습니다"
+                            "LIVE 저장을 강제하지 않고 이미 확정된 고정 범위를 "
+                            "저우선순위 프로세스에서 검증하고 있습니다"
                         ),
                     )
                     async with replay_process_lock:

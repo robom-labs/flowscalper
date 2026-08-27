@@ -1481,6 +1481,10 @@ def test_live_http_replay_uses_isolated_process_path(
     runtime.ingest_live_event(
         market_event(runtime.run_id, event_id="isolated-depth", ts_ms=1_000)
     )
+    runtime.flush_storage()
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="isolated-buffered-depth", ts_ms=2_000)
+    )
     calls: list[tuple[object, ...]] = []
 
     async def start_persistent_live_without_network(
@@ -1500,6 +1504,13 @@ def test_live_http_replay_uses_isolated_process_path(
         "start_persistent_live",
         start_persistent_live_without_network,
     )
+    monkeypatch.setattr(
+        PaperRuntime,
+        "flush_storage",
+        lambda _runtime: pytest.fail(
+            "LIVE replay 요청이 강제 저장 flush를 호출했습니다."
+        ),
+    )
     monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
     with TestClient(create_app(runtime)) as client:
         response = client.post(f"/api/replay/{runtime.run_id}", json={})
@@ -1511,7 +1522,8 @@ def test_live_http_replay_uses_isolated_process_path(
                 break
             time.sleep(0.01)
         assert operation.json()["state"] == "COMPLETED"
-        assert operation.json()["result"]["event_count"] >= 1
+        assert operation.json()["total_events"] == 1
+        assert operation.json()["result"]["event_count"] == 1
         assert operation.json()["result"]["real_orders_enabled"] is False
         assert len(calls) == 1
         assert calls[0][0] == str(ledger.path)
