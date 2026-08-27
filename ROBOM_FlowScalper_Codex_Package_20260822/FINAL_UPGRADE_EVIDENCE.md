@@ -2765,3 +2765,37 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 `evidence/WAVE68_POST_DEPLOY_CLEAN_5M.json`이다. 전략 임계값, 진입조건, TP, SL, 체결, 비용률, Governor, 위험예산과
 계좌 구성은 변경하지 않았다. 실제 주문·private API·API key·secret·wallet·런타임 AI 주문판단은
 0이다. 현재 수용상태는 `ACTUAL_BROWSER_AND_CLEAN_5M_PASS_PENDING_30M_REPLAY_LONG_SOAK`다.
+
+## 68. Wave 69~93 replay I/O와 LIVE 저장 안정화
+
+### 발견과 수정
+
+- `evidence/WAVE69_POST_DEPLOY_CLEAN_30M.json`의 무오염 기준선은 1,800.037초·event +132,983, queue 최대 26, 처리/체결 p95 최대 461.972/661.730ms로 PASS했다.
+- 고정 485,283-event replay를 LIVE와 병행한 Wave 69~84 원본은 일부 `FAIL`, 일부 `ABORTED_OPERATOR`다. archive 읽기·checksum·Python worker와 활성 원장의 `synchronous=FULL` 쓰기가 같은 I/O를 경쟁했으며, 끝나지 않은 replay는 checksum 완료 또는 성능 PASS로 간주하지 않는다.
+- replay worker thread·chunk·durable prefix·I/O 우선순위를 제한하고 LIVE 저장 worker를 순차 조정했다. `e83b9cf`는 현재 전략버전 cache가 준비되기 전 성과 숫자를 숨기고, `4a637c6`은 ledger worker niceness를 10으로 조정하며, `f94e7e7`은 WAL checkpoint 간격을 4 flush로, `667ad7b`는 시장 저장 burst를 1,000 events로 줄인다.
+- Wave 87~91은 각각 처리지연·flush·WAL·queue 또는 부팅 중 cache 작업과 겹친 실패를 그대로 보존했다. 최종 `evidence/WAVE92_POST_SMALL_BATCH_STABLE_CLEAN_5M.json`만 새 조합의 안정성 PASS 근거로 사용한다.
+
+### 최신 릴리스 검증
+
+| 항목 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| backend 전체 | PASS | 476 passed·147.44초 |
+| frontend 전체 | PASS | 68 passed |
+| 정적·build | PASS_WITH_WARNING | Ruff·mypy 97 source·ESLint·TypeScript·Vite build PASS. 기존 JS 525.71kB 경고는 P1로 남김 |
+| PAPER safety·security | PASS | 실제 주문 false·인증 false·private/secret/wallet 경로 0 |
+| macOS 불변 릴리스 | PASS | commit `667ad7b61587cf9e0a58d57150fe53f677d92d5d`, 같은 `run-2b7135a972dd` 복구 |
+| 최종 5분 무오염 관찰 | PASS | 300.031초·61표본·event +21,706·평가 +79,224·queue 최대 1·처리/체결 p95 최대 55.290/90.192ms·flush 최대 14.831초·WAL 최대 8.274초·비계획 reconnect/gap/resync/drop/fault 0 |
+| 실제 브라우저 6개 주요 화면 | PASS | 시장·전략·기록·과거 재생·분석·설정을 실제 클릭. 11전략·22계좌, 기록 87건, PAPER·실제주문 0을 확인 |
+| 작은 저장 Run replay | PASS | `run-c74c67ff5976` ETHUSDT 125 events, 14.635초, input checksum `f838cb90…80c7`, 평가 288·적격/후보/main/shadow 0, 실제 주문/인증 0. 다음 이벤트 1/100→2/100 |
+| 고정 485,283-event replay | NOT_RUN | 여러 중간 시도는 FAIL 또는 ABORTED_OPERATOR이며 완료 checksum 없음 |
+| 변경 후 6시간·24시간 | NOT_RUN | 실제 시간을 채우지 않음 |
+| 전략 수익성 | NOT_PROVEN | 현재버전 BASE 12건·-8.2211 USDT, STRESS 12건·-14.6572 USDT. 전부 30건 미만이고 비용후 음수 |
+
+### 전략·보유시간 판정
+
+- 현재 기본 상태는 ACTIVE 0, SHADOW 6, RETIRED/OFF 5다. 모든 전략의 코드·과거 원장·BASE/STRESS 독립계좌는 보존한다.
+- 현재 전략버전 종료 24행의 보유시간은 최소 14.010초, 중앙 28.080초, p90 44.868초, 최대 46.368초다. 10초 미만과 13초 미만은 모두 0이므로 이번 릴리스에서 1~3초 ordinary `EDGE_DECAY`는 재현되지 않았다.
+- 현재 표본의 종료사유는 모두 `EDGE_DECAY`이고 TP1·TP2·STOP 도달 표본은 0이다. 이는 exit 경로가 없다는 뜻이 아니라 이 작은 자연표본이 아직 목표 가격에 도달하지 않았다는 뜻이다.
+- BASE 현재버전은 CBR 1건, VWAP 7건, AGGRESSOR 4건이며 모두 승률 0·비용후 음수다. STRESS도 같은 12건이 모두 비용후 음수다. 높은 승률 전략이 입증됐다고 말할 수 없고, 30건·시간순 OOS·STRESS·강건성 gate 전에는 순위를 만들거나 ACTIVE로 승격하지 않는다.
+
+기계판독 브라우저·replay 요약은 `evidence/WAVE93_ACTUAL_BROWSER_SMALL_REPLAY_AND_STRATEGY_TRUTH.json`, 원본 장시간·중간 실패·최종 관찰은 `evidence/WAVE69_*.json`부터 `evidence/WAVE92_*.json`까지 보존한다. 전략 임계값, TP1·TP2·SL, 비용률, 체결, 위험예산과 계좌는 이번 안정화에서 변경하지 않았다. 최종 상태는 `LATEST_5M_AND_SMALL_REPLAY_PASS_LARGE_REPLAY_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.

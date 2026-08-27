@@ -549,3 +549,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 6. Add direct guard and threaded monitor regressions, then run ledger and service targets, complete backend, Ruff, mypy, PAPER build safety, security and repository hygiene.
 7. Commit and stage the fixed immutable release, then rerun the same full maintenance command without browser actions, replay, tests, build or source scans.
 8. Keep integrity `NOT_RUN` until the real quick-check and foreign-key results are returned. Do not infer database corruption from a monitor-contract abort.
+
+## Replay I/O and live persistence stabilization Wave
+
+1. Preserve every large fixed replay attempt as `PASS`, `FAIL` or `ABORTED_OPERATOR`; never turn an unfinished 485,283-event run into replay proof.
+2. Freeze replay to the durable event prefix captured at request time. Limit Parquet worker threads, bound row batches and yield between checksum and evaluation chunks.
+3. Keep full Run replay in the isolated low-priority process, but do not place short SQLite `synchronous=FULL` ledger commits at Darwin background priority. Use worker niceness 10 for bounded ledger progress and restore archive compression to background priority around the commit.
+4. Persist live market events in 1,000-event bursts and request a PASSIVE WAL checkpoint every 4 successful flushes. Restore buffers and lock new PAPER entry on any worker or checkpoint fault.
+5. Keep the public-market consumer and strategy evaluator authoritative. A replay is automatically unsuccessful if event progress, consumer delivery, queue, processing/trade lag, reconnect, gap, drop, persistence, WAL or PAPER safety crosses the registered observer gate.
+6. Hide current-version strategy statistics until the validated cache is ready. Do not flash zero, prior-version or partially merged values as a current win rate.
+7. Verify the user path separately with a small saved public Run. Load precise events, start the same-condition replay, wait for terminal state, compare the input checksum and click the next-event control in the actual browser.
+8. Evaluate all 11 strategies against the same public input with 22 independent BASE/STRESS accounts. Retain six unproven candidates in SHADOW and five failed candidates as immutable RETIRED/OFF evidence; deletion is not an acceptable shortcut.
+9. Do not rank or promote before 30 current-version `LIVE_PUBLIC` trades and cost-adjusted expectancy, Profit Factor, drawdown, BASE/STRESS, chronological OOS and robustness gates. Keep profitability `NOT_PROVEN` until those gates pass.
+10. Keep natural signal thresholds, TP1, TP2, SL, fills, fees, slippage, Governor, account topology and risk budgets unchanged. Actual orders, private APIs, credentials, wallets and runtime AI order decisions remain zero.
