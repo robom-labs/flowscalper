@@ -165,6 +165,10 @@ class SQLiteLedger:
                 );
                 CREATE INDEX IF NOT EXISTS trades_focus_compare
                 ON trades(run_id, strategy_id, symbol, exit_ts_ms, trade_id);
+                CREATE INDEX IF NOT EXISTS trades_history_all_order
+                ON trades(exit_ts_ms, trade_id);
+                CREATE INDEX IF NOT EXISTS trades_history_run_order
+                ON trades(run_id, exit_ts_ms, trade_id);
                 CREATE TABLE IF NOT EXISTS incidents (
                     incident_id TEXT PRIMARY KEY,
                     run_id TEXT REFERENCES runs(run_id),
@@ -260,6 +264,10 @@ class SQLiteLedger:
                 ON shadow_trades(
                     run_id, strategy_id, closed_ts_ms, shadow_trade_id
                 );
+                CREATE INDEX IF NOT EXISTS shadow_trades_history_all_order
+                ON shadow_trades(closed_ts_ms, shadow_trade_id);
+                CREATE INDEX IF NOT EXISTS shadow_trades_history_run_order
+                ON shadow_trades(run_id, closed_ts_ms, shadow_trade_id);
                 CREATE TABLE IF NOT EXISTS execution_audit (
                     audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_id TEXT NOT NULL REFERENCES runs(run_id),

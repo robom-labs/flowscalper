@@ -279,6 +279,43 @@ def test_focus_profile_comparison_filters_shadow_rows_with_index(tmp_path: Path)
     ledger.close()
 
 
+def test_history_reads_use_purpose_built_order_indexes(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "history-order-index.sqlite3")
+    shadow_all = ledger._read_connection.execute(  # noqa: SLF001 - 인덱스 회귀 계약
+        """
+        EXPLAIN QUERY PLAN
+        SELECT s.payload_json, s.checksum, r.config_hash, r.config_json
+        FROM shadow_trades s JOIN runs r ON r.run_id = s.run_id
+        ORDER BY s.closed_ts_ms, s.shadow_trade_id
+        """
+    ).fetchall()
+    shadow_run = ledger._read_connection.execute(  # noqa: SLF001 - 인덱스 회귀 계약
+        """
+        EXPLAIN QUERY PLAN
+        SELECT s.payload_json, s.checksum, r.config_hash, r.config_json
+        FROM shadow_trades s JOIN runs r ON r.run_id = s.run_id
+        WHERE s.run_id = ?
+        ORDER BY s.closed_ts_ms, s.shadow_trade_id
+        """,
+        ("run-history",),
+    ).fetchall()
+    main_all = ledger._read_connection.execute(  # noqa: SLF001 - 인덱스 회귀 계약
+        """
+        EXPLAIN QUERY PLAN
+        SELECT payload_json FROM trades ORDER BY exit_ts_ms, trade_id
+        """
+    ).fetchall()
+
+    assert any("shadow_trades_history_all_order" in str(row["detail"]) for row in shadow_all)
+    assert any("shadow_trades_history_run_order" in str(row["detail"]) for row in shadow_run)
+    assert any("trades_history_all_order" in str(row["detail"]) for row in main_all)
+    assert all(
+        "TEMP B-TREE" not in str(row["detail"])
+        for row in [*shadow_all, *shadow_run, *main_all]
+    )
+    ledger.close()
+
+
 def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     tmp_path: Path,
     monkeypatch,
