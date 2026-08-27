@@ -189,6 +189,7 @@ class PaperRuntime:
     _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
     _market_event_buffer: list[dict[str, object]] = field(default_factory=list)
     _candle_buffer: list[dict[str, object]] = field(default_factory=list)
+    _universe_snapshot_buffer: list[dict[str, object]] = field(default_factory=list)
     _persisted_main_order_ids: set[str] = field(default_factory=set)
     _persisted_main_trade_ids: set[str] = field(default_factory=set)
     _persisted_shadow_trade_ids: set[str] = field(default_factory=set)
@@ -225,6 +226,9 @@ class PaperRuntime:
     _wal_checkpoint_last_wal_bytes: int = 0
     _persistence_worker_warmed: bool = False
     _persistence_worker_warm_ms: float = 0.0
+    _universe_snapshot_persisted_count: int = 0
+    _universe_snapshot_persistence_last_ms: float = 0.0
+    _universe_snapshot_persistence_max_ms: float = 0.0
     _historical_live_trades: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
@@ -788,6 +792,20 @@ class PaperRuntime:
             "event_memory_limit": 10_000,
             "market_persistence_buffer": len(self._market_event_buffer),
             "candle_persistence_buffer": len(self._candle_buffer),
+            "universe_snapshot_persistence_buffer": len(
+                self._universe_snapshot_buffer
+            ),
+            "universe_snapshot_persisted_count": (
+                self._universe_snapshot_persisted_count
+            ),
+            "universe_snapshot_persistence_last_ms": round(
+                self._universe_snapshot_persistence_last_ms,
+                3,
+            ),
+            "universe_snapshot_persistence_max_ms": round(
+                self._universe_snapshot_persistence_max_ms,
+                3,
+            ),
             "entry_locked": self.paused,
             "stale_trade_symbols": len(self._stale_trade_symbols),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
@@ -1208,24 +1226,26 @@ class PaperRuntime:
         *,
         reason: str,
     ) -> None:
+        """회전 감사행을 이벤트 루프 밖에서 저장하도록 유실 없는 큐에 넣는다."""
+
         if self.ledger is None or self.mode is RuntimeMode.READY:
             return
         timestamp = self.clock.utc_ms()
-        self.ledger.record_universe_snapshot(
-            {
-                "snapshot_id": f"universe-{self.run_id}-{timestamp}-{uuid4().hex[:6]}",
-                "run_id": self.run_id,
-                "ts_ms": timestamp,
-                "venue": selection.venue.value,
-                "wide_symbols": list(selection.wide_symbols),
-                "deep_symbols": list(selection.deep_symbols),
-                "reason": reason,
-                "rotation_interval_seconds": 900,
-                "minimum_residency_seconds": 1800,
-                "maximum_replacements": 4,
-                "protected_symbols": list(self._protected_deep_symbols()),
-            }
-        )
+        snapshot: dict[str, object] = {
+            "snapshot_id": f"universe-{self.run_id}-{timestamp}-{uuid4().hex[:6]}",
+            "run_id": self.run_id,
+            "ts_ms": timestamp,
+            "venue": selection.venue.value,
+            "wide_symbols": list(selection.wide_symbols),
+            "deep_symbols": list(selection.deep_symbols),
+            "reason": reason,
+            "rotation_interval_seconds": 900,
+            "minimum_residency_seconds": 1800,
+            "maximum_replacements": 4,
+            "protected_symbols": list(self._protected_deep_symbols()),
+        }
+        with self._persistence_lock:
+            self._universe_snapshot_buffer.append(snapshot)
 
     def _evaluate_book_event(
         self,
@@ -3801,6 +3821,33 @@ class PaperRuntime:
     async def run_persistence_worker(self, stop: asyncio.Event) -> None:
         """시장 직렬화·fsync를 시장데이터 이벤트 루프 밖에서 실행한다."""
 
+        async def flush_universe_snapshots() -> None:
+            if self.ledger is None:
+                return
+            with self._persistence_lock:
+                snapshots = self._universe_snapshot_buffer
+                self._universe_snapshot_buffer = []
+            if not snapshots:
+                return
+            started = asyncio.get_running_loop().time()
+            try:
+                await asyncio.to_thread(self._persist_universe_snapshot_batch, snapshots)
+            except Exception as error:
+                with self._persistence_lock:
+                    self._universe_snapshot_buffer = [
+                        *snapshots,
+                        *self._universe_snapshot_buffer,
+                    ]
+                self._handle_persistence_fault(error)
+                return
+            elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+            self._universe_snapshot_persisted_count += len(snapshots)
+            self._universe_snapshot_persistence_last_ms = elapsed_ms
+            self._universe_snapshot_persistence_max_ms = max(
+                self._universe_snapshot_persistence_max_ms,
+                elapsed_ms,
+            )
+
         async def checkpoint_wal_if_due() -> None:
             if self.ledger is None:
                 return
@@ -3897,6 +3944,11 @@ class PaperRuntime:
                     len(self._market_event_buffer) >= _MARKET_PERSISTENCE_FLUSH_THRESHOLD
                     and self._persistence_fault_count == 0
                 )
+                should_flush_universe = bool(self._universe_snapshot_buffer) and (
+                    self._persistence_fault_count == 0
+                )
+            if should_flush_universe:
+                await flush_universe_snapshots()
             if should_flush:
                 await flush(_MARKET_PERSISTENCE_BATCH_SIZE)
             try:
@@ -3905,8 +3957,22 @@ class PaperRuntime:
                 continue
         with self._persistence_lock:
             has_pending = bool(self._market_event_buffer or self._candle_buffer)
+            has_pending_universe = bool(self._universe_snapshot_buffer)
+        if has_pending_universe and self._persistence_fault_count == 0:
+            await flush_universe_snapshots()
         if has_pending and self._persistence_fault_count == 0:
             await flush(None)
+
+    def _persist_universe_snapshot_batch(
+        self,
+        snapshots: Sequence[Mapping[str, object]],
+    ) -> None:
+        """한 worker thread에서 회전 감사행을 순서대로 확정한다."""
+
+        if self.ledger is None:
+            return
+        for snapshot in snapshots:
+            self.ledger.record_universe_snapshot(snapshot)
 
     def _start_ledger_run(self) -> None:
         if self.ledger is None:

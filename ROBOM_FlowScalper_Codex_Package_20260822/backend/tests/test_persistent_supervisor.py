@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+import threading
+from collections.abc import AsyncIterator, Mapping
 
 import backend.app.market_data.supervisor as supervisor_module
 from backend.app.adapters.base import BackoffPolicy, ConnectionState
@@ -91,6 +92,19 @@ class RecordedProvider:
         await self.release.wait()
 
 
+class UniverseSnapshotLedgerProbe:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.rows: list[dict[str, object]] = []
+        self.thread_ids: list[int] = []
+
+    def record_universe_snapshot(self, snapshot: Mapping[str, object]) -> None:
+        self.thread_ids.append(threading.get_ident())
+        if self.fail:
+            raise OSError("recorded universe persistence failure")
+        self.rows.append(dict(snapshot))
+
+
 def _event(
     run_id: str,
     symbol: str,
@@ -175,6 +189,73 @@ async def test_supervisor_exposes_verified_venue_clock_correction() -> None:
     assert diagnostics["clock_sync_status"] == "SYNCED"
 
     await supervisor.stop()
+
+
+async def test_rotation_universe_snapshot_is_persisted_outside_event_loop() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-rotation-persistence",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    provider = RecordedProvider()
+    supervisor = PersistentPublicSupervisor(
+        provider,
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    previous = await provider.prepare(run_id=runtime.run_id, clock=clock)
+    rotated = await provider.prepare(run_id=runtime.run_id, clock=clock)
+    runtime.live_selection = previous
+    runtime._supervisor = supervisor
+    supervisor.selection = rotated
+    supervisor.telemetry.consumer_running = True
+    supervisor.running = lambda: True  # type: ignore[method-assign]
+    probe = UniverseSnapshotLedgerProbe()
+    runtime.ledger = probe  # type: ignore[assignment]
+    event_loop_thread_id = threading.get_ident()
+
+    runtime._refresh_supervisor_entry_safety()
+    runtime._refresh_supervisor_entry_safety()
+
+    assert probe.rows == []
+    assert len(runtime._universe_snapshot_buffer) == 1
+    stop = asyncio.Event()
+    stop.set()
+    await runtime.run_persistence_worker(stop)
+
+    assert len(probe.rows) == 1
+    assert probe.rows[0]["reason"] == "SAFE_DEEP_ROTATION"
+    assert probe.thread_ids != [event_loop_thread_id]
+    assert runtime._universe_snapshot_buffer == []
+    assert runtime._universe_snapshot_persisted_count == 1
+    assert runtime._persistence_fault_count == 0
+
+
+async def test_rotation_universe_snapshot_failure_is_restored_and_locks_entry() -> None:
+    clock = DeterministicClock(current_utc_ms=1_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-rotation-persistence-failure",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    probe = UniverseSnapshotLedgerProbe(fail=True)
+    runtime.ledger = probe  # type: ignore[assignment]
+    selection = await RecordedProvider().prepare(run_id=runtime.run_id, clock=clock)
+    runtime._record_universe_selection(selection, reason="SAFE_DEEP_ROTATION")
+    stop = asyncio.Event()
+    stop.set()
+
+    await runtime.run_persistence_worker(stop)
+
+    assert len(runtime._universe_snapshot_buffer) == 1
+    assert runtime._persistence_fault_count == 1
+    assert runtime.paused is True
+    assert runtime.paper_portfolio.main.risk_state.faulted is True
+    assert "PERSISTENCE_FAULT_ENTRY_LOCK" in runtime.runtime_health_flags
 
 
 async def test_planned_rotation_locks_before_provider_prepare() -> None:
