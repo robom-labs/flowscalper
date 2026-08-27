@@ -73,6 +73,7 @@ class RunningServiceSample:
     consumer_delivery_failure_count: int
     consumer_delivery_drop_count: int
     consumer_recovery_count: int
+    consumer_cooperative_yield_count: int
     consumer_fault_active: bool
     queue_overload_active: bool
     queue_overload_incident_count: int
@@ -94,6 +95,10 @@ class RunningServiceSample:
     persistence_flush_count: int
     persistence_flush_last_ms: float
     persistence_flush_slow_count: int
+    execution_persistence_count: int
+    execution_persistence_last_ms: float
+    execution_persistence_max_ms: float
+    execution_persistence_last_items: int
     wal_checkpoint_count: int
     wal_checkpoint_last_ms: float
     wal_checkpoint_busy_count: int
@@ -116,6 +121,9 @@ class RunningServiceSample:
     critical_lag_active: bool
     entry_locked: bool
     storage_entry_allowed: bool
+    storage_health_refresh_count: int
+    storage_health_refresh_last_ms: float
+    storage_health_refresh_max_ms: float
     process_cpu_percent: float
     process_memory_mb: float
     process_memory_peak_mb: float
@@ -231,6 +239,10 @@ def parse_running_service_sample(
         consumer_recovery_count=_integer(
             system.get("consumer_recovery_count"), "system.consumer_recovery_count"
         ),
+        consumer_cooperative_yield_count=_integer(
+            system.get("consumer_cooperative_yield_count") or 0,
+            "system.consumer_cooperative_yield_count",
+        ),
         consumer_fault_active=_boolean(
             system.get("consumer_fault_active"), "system.consumer_fault_active"
         ),
@@ -290,6 +302,22 @@ def parse_running_service_sample(
         persistence_flush_slow_count=_integer(
             system.get("persistence_flush_slow_count"),
             "system.persistence_flush_slow_count",
+        ),
+        execution_persistence_count=_integer(
+            system.get("execution_persistence_count") or 0,
+            "system.execution_persistence_count",
+        ),
+        execution_persistence_last_ms=_number(
+            system.get("execution_persistence_last_ms") or 0.0,
+            "system.execution_persistence_last_ms",
+        ),
+        execution_persistence_max_ms=_number(
+            system.get("execution_persistence_max_ms") or 0.0,
+            "system.execution_persistence_max_ms",
+        ),
+        execution_persistence_last_items=_integer(
+            system.get("execution_persistence_last_items") or 0,
+            "system.execution_persistence_last_items",
         ),
         wal_checkpoint_count=_integer(
             system.get("wal_checkpoint_count"), "system.wal_checkpoint_count"
@@ -369,6 +397,18 @@ def parse_running_service_sample(
         entry_locked=_boolean(system.get("entry_locked"), "system.entry_locked"),
         storage_entry_allowed=_boolean(
             system.get("storage_entry_allowed"), "system.storage_entry_allowed"
+        ),
+        storage_health_refresh_count=_integer(
+            system.get("storage_health_refresh_count") or 0,
+            "system.storage_health_refresh_count",
+        ),
+        storage_health_refresh_last_ms=_number(
+            system.get("storage_health_refresh_last_ms") or 0.0,
+            "system.storage_health_refresh_last_ms",
+        ),
+        storage_health_refresh_max_ms=_number(
+            system.get("storage_health_refresh_max_ms") or 0.0,
+            "system.storage_health_refresh_max_ms",
         ),
         process_cpu_percent=_number(
             system.get("process_cpu_percent"), "system.process_cpu_percent"
@@ -564,6 +604,11 @@ def summarize_running_service_soak(
             current.consumer_delivery_count >= previous.consumer_delivery_count
             for previous, current in adjacent_samples
         ),
+        "consumer_cooperative_yield_count_monotonic": all(
+            current.consumer_cooperative_yield_count
+            >= previous.consumer_cooperative_yield_count
+            for previous, current in adjacent_samples
+        ),
         "consumer_fault_never_active": all(
             not sample.consumer_fault_active for sample in samples
         ),
@@ -631,6 +676,16 @@ def summarize_running_service_soak(
         ),
         "persistence_flush_count_monotonic": all(
             current.persistence_flush_count >= previous.persistence_flush_count
+            for previous, current in adjacent_samples
+        ),
+        "execution_persistence_count_monotonic": all(
+            current.execution_persistence_count
+            >= previous.execution_persistence_count
+            for previous, current in adjacent_samples
+        ),
+        "storage_health_refresh_count_monotonic": all(
+            current.storage_health_refresh_count
+            >= previous.storage_health_refresh_count
             for previous, current in adjacent_samples
         ),
         "persistence_flush_latency_bounded": max(
@@ -727,6 +782,10 @@ def summarize_running_service_soak(
         "consumer_recovery_delta": (
             final.consumer_recovery_count - baseline.consumer_recovery_count
         ),
+        "consumer_cooperative_yield_delta": (
+            final.consumer_cooperative_yield_count
+            - baseline.consumer_cooperative_yield_count
+        ),
         "queue_overload_incident_delta": (
             final.queue_overload_incident_count - baseline.queue_overload_incident_count
         ),
@@ -778,6 +837,28 @@ def summarize_running_service_soak(
         ),
         "maximum_persistence_flush_last_ms": max(
             sample.persistence_flush_last_ms for sample in samples
+        ),
+        "execution_persistence_delta": (
+            final.execution_persistence_count
+            - baseline.execution_persistence_count
+        ),
+        "maximum_execution_persistence_last_ms": max(
+            sample.execution_persistence_last_ms for sample in samples
+        ),
+        "maximum_execution_persistence_max_ms": max(
+            sample.execution_persistence_max_ms for sample in samples
+        ),
+        "maximum_execution_persistence_last_items": max(
+            sample.execution_persistence_last_items for sample in samples
+        ),
+        "storage_health_refresh_delta": (
+            final.storage_health_refresh_count - baseline.storage_health_refresh_count
+        ),
+        "maximum_storage_health_refresh_last_ms": max(
+            sample.storage_health_refresh_last_ms for sample in samples
+        ),
+        "maximum_storage_health_refresh_max_ms": max(
+            sample.storage_health_refresh_max_ms for sample in samples
         ),
         "maximum_wal_checkpoint_last_ms": max(
             sample.wal_checkpoint_last_ms for sample in samples

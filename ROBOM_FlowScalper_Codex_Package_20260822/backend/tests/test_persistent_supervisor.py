@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from collections.abc import AsyncIterator, Mapping
 
 import backend.app.market_data.supervisor as supervisor_module
@@ -145,7 +146,10 @@ async def test_supervisor_remains_running_after_first_verified_event() -> None:
     )
 
     selection = await supervisor.start()
-    await asyncio.sleep(0)
+    for _ in range(100):
+        if supervisor.telemetry.event_count >= 2 and len(delivered) >= 2:
+            break
+        await asyncio.sleep(0)
 
     assert len(selection.wide_symbols) == 50
     assert len(selection.deep_symbols) == 10
@@ -165,6 +169,41 @@ async def test_supervisor_remains_running_after_first_verified_event() -> None:
 
     await supervisor.stop()
     assert supervisor.telemetry.state is ConnectionState.DISCONNECTED
+
+
+async def test_consumer_cooperatively_yields_while_draining_ready_queue() -> None:
+    clock = DeterministicClock()
+    delivered: list[MarketEvent] = []
+
+    def synchronous_sink(event: MarketEvent) -> None:
+        time.sleep(0.002)
+        delivered.append(event)
+
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id="run-cooperative-consumer",
+        clock=clock,
+        sink=synchronous_sink,
+        queue_capacity=256,
+    )
+    for index in range(100):
+        supervisor._queue.put_nowait(_event("run-cooperative-consumer", "BTCUSDT", clock, index))
+
+    consumer = asyncio.create_task(supervisor._consume())
+    await asyncio.sleep(0)
+    delivered_at_first_scheduler_turn = len(delivered)
+    await supervisor._queue.join()
+    supervisor._stopping.set()
+    consumer.cancel()
+    await asyncio.gather(consumer, return_exceptions=True)
+
+    assert 0 < delivered_at_first_scheduler_turn < 100
+    assert len(delivered) == 100
+    assert supervisor.telemetry.consumer_cooperative_yield_count > 0
+    assert (
+        supervisor.telemetry.as_dict()["consumer_cooperative_yield_count"]
+        == supervisor.telemetry.consumer_cooperative_yield_count
+    )
 
 
 async def test_supervisor_exposes_verified_venue_clock_correction() -> None:

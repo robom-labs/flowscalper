@@ -214,6 +214,12 @@ class PaperRuntime:
     _persistence_flush_slowest_market_events: int = 0
     _persistence_flush_slowest_candles: int = 0
     _persistence_flush_slowest_archive_batches: int = 0
+    _execution_persistence_count: int = 0
+    _execution_persistence_last_ms: float = 0.0
+    _execution_persistence_max_ms: float = 0.0
+    _execution_persistence_last_completed_ts_ms: int | None = None
+    _execution_persistence_max_ts_ms: int | None = None
+    _execution_persistence_last_items: int = 0
     _wal_checkpoint_next_flush: int = _WAL_CHECKPOINT_FLUSH_INTERVAL
     _wal_checkpoint_count: int = 0
     _wal_checkpoint_last_ms: float = 0.0
@@ -878,6 +884,20 @@ class PaperRuntime:
             "persistence_flush_slowest_archive_batches": (
                 self._persistence_flush_slowest_archive_batches
             ),
+            "execution_persistence_count": self._execution_persistence_count,
+            "execution_persistence_last_ms": round(
+                self._execution_persistence_last_ms,
+                3,
+            ),
+            "execution_persistence_max_ms": round(
+                self._execution_persistence_max_ms,
+                3,
+            ),
+            "execution_persistence_last_completed_ts_ms": (
+                self._execution_persistence_last_completed_ts_ms
+            ),
+            "execution_persistence_max_ts_ms": self._execution_persistence_max_ts_ms,
+            "execution_persistence_last_items": self._execution_persistence_last_items,
             "wal_autocheckpoint_pages": 0,
             "wal_checkpoint_flush_interval": _WAL_CHECKPOINT_FLUSH_INTERVAL,
             "wal_checkpoint_count": self._wal_checkpoint_count,
@@ -3604,11 +3624,23 @@ class PaperRuntime:
     def _persist_execution_state_safely(self, ts_ms: int) -> bool:
         if not self._has_unpersisted_execution_state():
             return True
+        started = time.monotonic()
+        item_count = 0
         try:
-            self._persist_execution_state(ts_ms)
+            item_count = self._persist_execution_state(ts_ms)
         except Exception as error:
             self._handle_persistence_fault(error)
             return False
+        finally:
+            elapsed_ms = (time.monotonic() - started) * 1_000
+            completed_ts_ms = self.clock.utc_ms()
+            self._execution_persistence_count += 1
+            self._execution_persistence_last_ms = elapsed_ms
+            self._execution_persistence_last_completed_ts_ms = completed_ts_ms
+            self._execution_persistence_last_items = item_count
+            if elapsed_ms > self._execution_persistence_max_ms:
+                self._execution_persistence_max_ms = elapsed_ms
+                self._execution_persistence_max_ts_ms = completed_ts_ms
         return True
 
     def _has_unpersisted_execution_state(self) -> bool:
@@ -3633,71 +3665,82 @@ class PaperRuntime:
             for trade in account.completed_trades
         )
 
-    def _persist_execution_state(self, ts_ms: int) -> None:
+    def _persist_execution_state(self, ts_ms: int) -> int:
         if self.ledger is None or self.mode is RuntimeMode.READY:
-            return
+            return 0
         main_orders = (
             *self.paper_portfolio.main.entry_orders,
             *self.paper_portfolio.main.exit_orders,
         )
-        for order in main_orders:
-            if order.order_id in self._persisted_main_order_ids:
-                continue
-            row = self._paper_order_row(order, ts_ms)
-            self.ledger.record_order(row)
-            if order.fill is not None:
-                self.ledger.record_fill(
-                    {
-                        "fill_id": f"fill-{order.order_id}",
-                        "run_id": order.run_id,
-                        "order_id": order.order_id,
-                        "side": order.side,
-                        "planned_price": str(
-                            order.price_cap or order.trigger_price or order.fill.average_price
-                        ),
-                        "price": str(order.fill.average_price),
-                        "quantity": str(order.fill.quantity),
-                        "fee_usdt": str(order.fill.fee_usdt),
-                        "slippage_usdt": str(order.fill.slippage_usdt),
-                        "ts_ms": order.fill.book_ts_ms,
-                    }
-                )
-            self._persisted_main_order_ids.add(order.order_id)
-        for trade in self.paper_portfolio.main.completed_trades:
-            if trade.trade_id in self._persisted_main_trade_ids:
-                continue
-            row = self._paper_trade_row(trade)
+        new_orders = [
+            order
+            for order in main_orders
+            if order.order_id not in self._persisted_main_order_ids
+        ]
+        new_main_trades = [
+            trade
+            for trade in self.paper_portfolio.main.completed_trades
+            if trade.trade_id not in self._persisted_main_trade_ids
+        ]
+        new_shadow_trades = [
+            trade
+            for account in self.paper_portfolio.shadows.values()
+            for trade in account.completed_trades
+            if trade.trade_id not in self._persisted_shadow_trade_ids
+        ]
+        new_audits = list(
+            self.paper_portfolio.audit_events[self._persisted_audit_count :]
+        )
+
+        order_rows = [self._paper_order_row(order, ts_ms) for order in new_orders]
+        fill_rows = [
+            {
+                "fill_id": f"fill-{order.order_id}",
+                "run_id": order.run_id,
+                "order_id": order.order_id,
+                "side": order.side,
+                "planned_price": str(
+                    order.price_cap or order.trigger_price or order.fill.average_price
+                ),
+                "price": str(order.fill.average_price),
+                "quantity": str(order.fill.quantity),
+                "fee_usdt": str(order.fill.fee_usdt),
+                "slippage_usdt": str(order.fill.slippage_usdt),
+                "ts_ms": order.fill.book_ts_ms,
+            }
+            for order in new_orders
+            if order.fill is not None
+        ]
+
+        run = None
+        if new_main_trades or new_shadow_trades:
             run = self.ledger.get_run(self.run_id)
             if run is None:
                 raise RuntimeError("완료 PAPER 거래가 참조할 Run이 없습니다.")
+        main_trade_rows: list[dict[str, object]] = []
+        for trade in new_main_trades:
+            row = self._paper_trade_row(trade)
+            assert run is not None
             row["config_hash"] = str(run["config_hash"])
             row["strategy_version"] = STRATEGY_VERSION
-            self.ledger.record_trade(row)
-            self._persisted_main_trade_ids.add(trade.trade_id)
-        for account in self.paper_portfolio.shadows.values():
-            for trade in account.completed_trades:
-                if trade.trade_id in self._persisted_shadow_trade_ids:
-                    continue
-                row = self._paper_trade_row(trade)
-                row["shadow_trade_id"] = trade.trade_id
-                row["closed_ts_ms"] = trade.closed_ts_ms
-                run = self.ledger.get_run(self.run_id)
-                if run is None:
-                    raise RuntimeError("shadow PAPER 거래가 참조할 Run이 없습니다.")
-                row["config_hash"] = str(run["config_hash"])
-                self.ledger.record_shadow_trade(row)
-                self._persisted_shadow_trade_ids.add(trade.trade_id)
-        new_audits = self.paper_portfolio.audit_events[self._persisted_audit_count :]
-        if new_audits:
-            self.ledger.record_execution_audits(new_audits)
-            self._persisted_audit_count = len(self.paper_portfolio.audit_events)
-            state_audits = [
-                audit
-                for audit in new_audits
-                if str(audit.get("event", "")) in _RECOVERY_STATE_AUDIT_EVENTS
-            ]
-            if not state_audits:
-                return
+            main_trade_rows.append(row)
+        shadow_trade_rows: list[dict[str, object]] = []
+        for trade in new_shadow_trades:
+            row = self._paper_trade_row(trade)
+            row["shadow_trade_id"] = trade.trade_id
+            row["closed_ts_ms"] = trade.closed_ts_ms
+            assert run is not None
+            row["config_hash"] = str(run["config_hash"])
+            shadow_trade_rows.append(row)
+
+        account_snapshots: list[dict[str, object]] = []
+        recovery_snapshot: dict[str, object] | None = None
+        state_audits = [
+            audit
+            for audit in new_audits
+            if str(audit.get("event", "")) in _RECOVERY_STATE_AUDIT_EVENTS
+        ]
+        if state_audits:
             changed_account_ids = {
                 str(audit["account_id"])
                 for audit in state_audits
@@ -3707,7 +3750,7 @@ class PaperRuntime:
             for account_row in self.paper_portfolio.league_account_rows():
                 if str(account_row["account_id"]) not in changed_account_ids:
                     continue
-                self.ledger.record_strategy_account_snapshot(
+                account_snapshots.append(
                     {
                         "run_id": self.run_id,
                         "strategy_id": account_row["strategy_id"],
@@ -3717,11 +3760,11 @@ class PaperRuntime:
                     }
                 )
             position = self.paper_portfolio.main_position_snapshot(self._current_main_book())
-            self.ledger.save_snapshot(
-                self.run_id,
-                lifecycle_state=self.paper_portfolio.lifecycle_state(),
-                ts_ms=ts_ms,
-                payload={
+            recovery_snapshot = {
+                "run_id": self.run_id,
+                "lifecycle_state": self.paper_portfolio.lifecycle_state(),
+                "ts_ms": ts_ms,
+                "payload": {
                     "snapshot_ts_ms": ts_ms,
                     "open_position": position,
                     "portfolio": self.paper_portfolio.recovery_state(
@@ -3729,7 +3772,36 @@ class PaperRuntime:
                         snapshot_ts_ms=ts_ms,
                     ),
                 },
-            )
+            }
+
+        # 식별자 cache는 원자적 커밋이 성공한 뒤에만 전진시킨다.
+        self.ledger.record_execution_state_batch(
+            run_id=self.run_id,
+            orders=order_rows,
+            fills=fill_rows,
+            trades=main_trade_rows,
+            shadow_trades=shadow_trade_rows,
+            audits=new_audits,
+            account_snapshots=account_snapshots,
+            recovery_snapshot=recovery_snapshot,
+        )
+        self._persisted_main_order_ids.update(order.order_id for order in new_orders)
+        self._persisted_main_trade_ids.update(
+            trade.trade_id for trade in new_main_trades
+        )
+        self._persisted_shadow_trade_ids.update(
+            trade.trade_id for trade in new_shadow_trades
+        )
+        self._persisted_audit_count = len(self.paper_portfolio.audit_events)
+        return (
+            len(order_rows)
+            + len(fill_rows)
+            + len(main_trade_rows)
+            + len(shadow_trade_rows)
+            + len(new_audits)
+            + len(account_snapshots)
+            + (1 if recovery_snapshot is not None else 0)
+        )
 
     @staticmethod
     def _paper_order_row(order: PaperOrder, fallback_ts_ms: int) -> dict[str, object]:

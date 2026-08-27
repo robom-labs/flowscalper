@@ -94,6 +94,116 @@ def test_completed_trade_accounting_and_finalized_run_are_immutable(tmp_path: Pa
     ledger.close()
 
 
+def test_execution_state_batch_commits_all_recovery_rows_together(tmp_path: Path) -> None:
+    ledger = _open_run(tmp_path)
+    trade = _sample_trade()
+    shadow_trade = {
+        **_sample_trade("shadow-001"),
+        "shadow_trade_id": "shadow-001",
+        "closed_ts_ms": 2_100,
+        "profile": "STRESS",
+    }
+    traced_sql: list[str] = []
+    ledger._connection.set_trace_callback(traced_sql.append)
+    ledger.record_execution_state_batch(
+        run_id="run-001",
+        orders=(
+            {
+                "order_id": "order-batch",
+                "run_id": "run-001",
+                "trade_id": "trade-001",
+                "status": "FILLED",
+                "created_ts_ms": 1_100,
+            },
+        ),
+        fills=(
+            {
+                "fill_id": "fill-batch",
+                "run_id": "run-001",
+                "order_id": "order-batch",
+                "price": "100.10",
+                "quantity": "1",
+                "ts_ms": 1_200,
+            },
+        ),
+        trades=(trade,),
+        shadow_trades=(shadow_trade,),
+        audits=(
+            {
+                "run_id": "run-001",
+                "ts_ms": 2_100,
+                "event": "POSITION_CLOSED",
+                "account_id": "LSA_REVERSAL_V1:STRESS",
+            },
+        ),
+        account_snapshots=(
+            {
+                "run_id": "run-001",
+                "strategy_id": "LSA_REVERSAL_V1",
+                "profile": "STRESS",
+                "ts_ms": 2_100,
+                "equity_usdt": "999.5",
+            },
+        ),
+        recovery_snapshot={
+            "run_id": "run-001",
+            "lifecycle_state": "OBSERVING",
+            "ts_ms": 2_100,
+            "payload": {"open_position": None, "portfolio": {"positions": []}},
+        },
+    )
+    ledger._connection.set_trace_callback(None)
+
+    assert sum(statement == "BEGIN IMMEDIATE" for statement in traced_sql) == 1
+    assert sum(statement == "COMMIT" for statement in traced_sql) == 1
+    assert ledger.count("paper_orders") == 1
+    assert ledger.count("fills") == 1
+    assert ledger.list_trades("run-001") == [trade]
+    assert ledger.list_shadow_trades("run-001") == [shadow_trade]
+    assert ledger.count("execution_audit") == 1
+    assert ledger.count("strategy_account_snapshots") == 1
+    recovered = ledger.recover_latest(recovered_ts_ms=2_200)
+    assert recovered is not None
+    assert recovered.lifecycle_state == "OBSERVING"
+    assert recovered.payload["open_position"] is None
+    ledger.close()
+
+
+def test_execution_state_batch_rolls_back_every_row_on_failure(tmp_path: Path) -> None:
+    ledger = _open_run(tmp_path)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        ledger.record_execution_state_batch(
+            run_id="run-001",
+            orders=(
+                {
+                    "order_id": "order-rolled-back",
+                    "run_id": "run-001",
+                    "trade_id": "trade-001",
+                    "status": "FILLED",
+                    "created_ts_ms": 1_100,
+                },
+            ),
+            fills=(
+                {
+                    "fill_id": "fill-invalid-parent",
+                    "run_id": "run-001",
+                    "order_id": "missing-order",
+                    "ts_ms": 1_200,
+                },
+            ),
+            trades=(),
+            shadow_trades=(),
+            audits=(),
+            account_snapshots=(),
+            recovery_snapshot=None,
+        )
+
+    assert ledger.count("paper_orders") == 0
+    assert ledger.count("fills") == 0
+    ledger.close()
+
+
 def test_strategy_metrics_include_nonannualized_risk_turnover_and_regime_attribution() -> None:
     win = {
         **_sample_trade("metric-win"),

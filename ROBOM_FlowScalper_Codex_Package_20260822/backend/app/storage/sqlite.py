@@ -1385,6 +1385,212 @@ class SQLiteLedger:
                 rows,
             )
 
+    def record_execution_state_batch(
+        self,
+        *,
+        run_id: str,
+        orders: Sequence[Mapping[str, object]],
+        fills: Sequence[Mapping[str, object]],
+        trades: Sequence[Mapping[str, object]],
+        shadow_trades: Sequence[Mapping[str, object]],
+        audits: Sequence[Mapping[str, object]],
+        account_snapshots: Sequence[Mapping[str, object]],
+        recovery_snapshot: Mapping[str, object] | None,
+    ) -> None:
+        """한 이벤트에서 바뀐 PAPER 실행상태를 단일 FULL 커밋으로 보존한다."""
+
+        groups = (
+            ("주문", orders),
+            ("체결", fills),
+            ("main 거래", trades),
+            ("shadow 거래", shadow_trades),
+            ("실행 감사", audits),
+            ("전략 계좌", account_snapshots),
+        )
+        if not any(rows for _, rows in groups) and recovery_snapshot is None:
+            return
+        for label, rows in groups:
+            mixed_run_ids = {
+                str(row.get("run_id", ""))
+                for row in rows
+                if str(row.get("run_id", "")) != run_id
+            }
+            if mixed_run_ids:
+                raise LedgerInvariantError(
+                    f"{label} 실행상태 배치에 다른 Run을 섞을 수 없습니다: "
+                    f"{sorted(mixed_run_ids)}"
+                )
+        if (
+            recovery_snapshot is not None
+            and str(recovery_snapshot.get("run_id", "")) != run_id
+        ):
+            raise LedgerInvariantError("복구 snapshot에 다른 Run을 섞을 수 없습니다.")
+
+        # 손익 불변조건과 JSON 직렬화를 BEGIN 전에 끝내 잠금 보유 시간을 줄인다.
+        order_rows = [
+            (
+                str(order["order_id"]),
+                run_id,
+                str(order["trade_id"]),
+                str(order["status"]),
+                _canonical_json(order),
+                int(str(order["created_ts_ms"])),
+            )
+            for order in orders
+        ]
+        fill_rows = [
+            (
+                str(fill["fill_id"]),
+                run_id,
+                str(fill["order_id"]),
+                _canonical_json(fill),
+                int(str(fill["ts_ms"])),
+            )
+            for fill in fills
+        ]
+        trade_rows: list[tuple[object, ...]] = []
+        for trade in trades:
+            gross = _decimal(trade["gross_pnl_usdt"])
+            fees = _decimal(trade["fees_usdt"])
+            slippage = _decimal(trade["slippage_usdt"])
+            net = _decimal(trade["net_pnl_usdt"])
+            if gross - fees - slippage != net:
+                raise LedgerInvariantError(
+                    f"순손익 불일치: {gross} - {fees} - {slippage} != {net}"
+                )
+            trade_rows.append(
+                (
+                    str(trade["trade_id"]),
+                    run_id,
+                    str(trade["venue"]),
+                    str(trade["symbol"]),
+                    str(trade["strategy_id"]),
+                    str(trade.get("regime", "UNKNOWN")),
+                    str(trade.get("profile", "BASE")),
+                    str(gross),
+                    str(fees),
+                    str(slippage),
+                    str(net),
+                    _optional_float(trade.get("mae_r")),
+                    _optional_float(trade.get("mfe_r")),
+                    int(str(trade["exit_ts_ms"])),
+                    _canonical_json(trade),
+                )
+            )
+
+        shadow_rows: list[tuple[object, ...]] = []
+        for trade in shadow_trades:
+            payload_json = _canonical_json(trade)
+            shadow_rows.append(
+                (
+                    str(trade["shadow_trade_id"]),
+                    run_id,
+                    str(trade["strategy_id"]),
+                    str(trade["profile"]),
+                    int(str(trade["closed_ts_ms"])),
+                    payload_json,
+                    hashlib.sha256(payload_json.encode()).hexdigest(),
+                )
+            )
+        audit_rows: list[tuple[object, ...]] = []
+        for audit in audits:
+            payload_json = _canonical_json(audit)
+            audit_rows.append(
+                (
+                    run_id,
+                    int(str(audit["ts_ms"])),
+                    str(audit["event"]),
+                    payload_json,
+                    hashlib.sha256(payload_json.encode()).hexdigest(),
+                )
+            )
+        account_rows: list[tuple[object, ...]] = []
+        for snapshot in account_snapshots:
+            payload_json = _canonical_json(snapshot)
+            account_rows.append(
+                (
+                    run_id,
+                    str(snapshot["strategy_id"]),
+                    str(snapshot["profile"]),
+                    int(str(snapshot["ts_ms"])),
+                    payload_json,
+                    hashlib.sha256(payload_json.encode()).hexdigest(),
+                )
+            )
+        recovery_row: tuple[object, ...] | None = None
+        if recovery_snapshot is not None:
+            payload = recovery_snapshot["payload"]
+            payload_json = _canonical_json(payload)
+            recovery_row = (
+                run_id,
+                str(recovery_snapshot["lifecycle_state"]),
+                int(str(recovery_snapshot["ts_ms"])),
+                payload_json,
+                hashlib.sha256(payload_json.encode()).hexdigest(),
+            )
+
+        with self._transaction() as connection:
+            self._assert_open_run(connection, run_id)
+            connection.executemany(
+                """
+                INSERT INTO paper_orders (
+                    order_id, run_id, trade_id, status, payload_json, created_ts_ms
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                order_rows,
+            )
+            connection.executemany(
+                """
+                INSERT INTO fills (fill_id, run_id, order_id, payload_json, ts_ms)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                fill_rows,
+            )
+            connection.executemany(
+                """
+                INSERT INTO trades (
+                    trade_id, run_id, venue, symbol, strategy_id, regime, profile,
+                    gross_pnl, fees, slippage, net_pnl, mae_r, mfe_r, exit_ts_ms,
+                    payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                trade_rows,
+            )
+            connection.executemany(
+                """
+                INSERT OR IGNORE INTO shadow_trades (
+                    shadow_trade_id, run_id, strategy_id, profile, closed_ts_ms,
+                    payload_json, checksum
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                shadow_rows,
+            )
+            connection.executemany(
+                """
+                INSERT INTO execution_audit (
+                    run_id, ts_ms, event_type, payload_json, checksum
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                audit_rows,
+            )
+            connection.executemany(
+                """
+                INSERT INTO strategy_account_snapshots (
+                    run_id, strategy_id, profile, ts_ms, payload_json, checksum
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                account_rows,
+            )
+            if recovery_row is not None:
+                connection.execute(
+                    """
+                    INSERT INTO snapshots (
+                        run_id, lifecycle_state, ts_ms, payload_json, checksum
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    recovery_row,
+                )
+
     def list_execution_audits(self, run_id: str) -> list[dict[str, Any]]:
         return self._verified_table_payloads(
             "execution_audit", run_id, "ts_ms, audit_id"

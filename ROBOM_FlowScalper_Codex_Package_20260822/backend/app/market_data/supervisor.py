@@ -40,6 +40,7 @@ _ROTATION_WARMUP_DEPTH_LAG_MAX_MS = 1_500.0
 _EVENT_LOOP_WATCHDOG_INTERVAL_SECONDS = 0.1
 _EVENT_LOOP_LAG_OBSERVATION_MS = 100.0
 _EVENT_LOOP_SOAK_LAG_THRESHOLD_MS = 500.0
+_CONSUMER_COOPERATIVE_YIELD_SECONDS = 0.01
 
 
 def _rotation_depth_output_ready(
@@ -170,6 +171,7 @@ class SupervisorTelemetry:
     consumer_delivery_failure_count: int = 0
     consumer_delivery_drop_count: int = 0
     consumer_recovery_count: int = 0
+    consumer_cooperative_yield_count: int = 0
     consumer_fault_active: bool = False
     consumer_last_delivery_ts_ms: int | None = None
     consumer_last_failure_ts_ms: int | None = None
@@ -363,6 +365,9 @@ class SupervisorTelemetry:
             "consumer_delivery_failure_count": self.consumer_delivery_failure_count,
             "consumer_delivery_drop_count": self.consumer_delivery_drop_count,
             "consumer_recovery_count": self.consumer_recovery_count,
+            "consumer_cooperative_yield_count": (
+                self.consumer_cooperative_yield_count
+            ),
             "consumer_fault_active": self.consumer_fault_active,
             "consumer_last_delivery_ts_ms": self.consumer_last_delivery_ts_ms,
             "consumer_last_failure_ts_ms": self.consumer_last_failure_ts_ms,
@@ -677,6 +682,8 @@ class PersistentPublicSupervisor:
 
     async def _consume(self) -> None:
         self.telemetry.consumer_running = True
+        loop = asyncio.get_running_loop()
+        last_cooperative_yield = loop.time()
         try:
             while not self._stopping.is_set():
                 try:
@@ -694,6 +701,14 @@ class PersistentPublicSupervisor:
                 finally:
                     self._queue.task_done()
                     self.telemetry.queue_depth = self._queue.qsize()
+                # 동기식 판단이 연속 완료돼도 UI·watchdog에 10ms마다 실행권을 돌려준다.
+                if (
+                    loop.time() - last_cooperative_yield
+                    >= _CONSUMER_COOPERATIVE_YIELD_SECONDS
+                ):
+                    self.telemetry.consumer_cooperative_yield_count += 1
+                    await asyncio.sleep(0)
+                    last_cooperative_yield = loop.time()
         finally:
             self.telemetry.consumer_running = False
             if not self._stopping.is_set():
