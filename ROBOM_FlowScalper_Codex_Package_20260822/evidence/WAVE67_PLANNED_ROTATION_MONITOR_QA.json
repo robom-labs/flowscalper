@@ -1,6 +1,6 @@
 {
   "schema": "flowscalper.wave67.planned_rotation_monitor_qa.v1",
-  "status": "FIXED_FULL_BACKEND_PASS_PENDING_ACTUAL_CLEAN_RETRY",
+  "status": "ACTUAL_FULL_INTEGRITY_PASS",
   "date": "2026-08-27",
   "actual_failure": {
     "evidence": "evidence/WAVE66_CLEAN_MAINTENANCE_HANDOFF.json",
@@ -59,6 +59,68 @@
       "verification_copy_removed": true
     }
   },
+  "actual_clean_retry": {
+    "evidence": "evidence/WAVE67_CLEAN_MAINTENANCE_HANDOFF_RETRY.json",
+    "status": "PASS",
+    "started_at": "2026-08-26T23:04:29.094207+00:00",
+    "completed_at": "2026-08-27T00:41:24.989517+00:00",
+    "duration_seconds": 5815.895,
+    "closed_wal": {
+      "busy": 0,
+      "log_frames": 0,
+      "checkpointed_frames": 0,
+      "wal_bytes": 0,
+      "page_count": 740150
+    },
+    "cross_device_transfer": {
+      "status": "PASS",
+      "bytes": 3031654400,
+      "source_sha256": "00a85751fa744b53567e60784645a88da8933a4dcae0a083f2ea7cc30801a50e",
+      "verification_sha256": "00a85751fa744b53567e60784645a88da8933a4dcae0a083f2ea7cc30801a50e",
+      "duration_seconds": 662.369
+    },
+    "same_run_recovery": {
+      "status": "PASS",
+      "run_id": "run-2b7135a972dd",
+      "release_commit": "50d97075fc99fe79d9c426506d59521582eeccc6",
+      "downtime_seconds": 728.034,
+      "positions": 0,
+      "actual_orders": 0,
+      "auth": false
+    },
+    "runtime_monitor": {
+      "sample_count": 4168,
+      "event_delta": 398603,
+      "maximum_queue_depth": 26,
+      "maximum_lag_p95_ms": 243.380859375,
+      "planned_rotations": 5,
+      "unplanned_reconnects": 0,
+      "gaps": 0,
+      "resyncs": 0,
+      "drops": 0,
+      "persistence_faults": 0,
+      "persistence_buffer_dropped": 0,
+      "critical_lag_incidents": 0,
+      "maximum_consecutive_probe_errors": 1,
+      "violations": []
+    },
+    "integrity": {
+      "status": "PASS",
+      "quick_check": "ok",
+      "foreign_key_violations": 0,
+      "page_count": 740150,
+      "freelist_count": 0,
+      "user_version": 7,
+      "table_count": 23,
+      "duration_seconds": 5087.426
+    },
+    "cleanup": {
+      "source_clone_removed": true,
+      "verification_copy_removed": true,
+      "older_failed_verification_copy_removed_after_pass": true,
+      "older_failed_verification_copy_recoverable": false
+    }
+  },
   "root_cause": {
     "classification": "PLANNED_ROTATION_STATE_CONTRACT_MISMATCH",
     "detail": "The monitor allowed ENTRY_LOCKED and reconnect count transitions during the 15-second planned rotation grace but still rejected the corresponding beginner operation state SAFETY_WAITING.",
@@ -99,10 +161,10 @@
   "strategy_changes": false,
   "profitability": "NOT_PROVEN",
   "remaining": {
-    "fixed_release_commit": "NOT_CREATED",
-    "immutable_release_stage": "NOT_RUN",
-    "actual_clean_integrity_retry": "NOT_RUN",
-    "actual_browser": "NOT_RUN_ON_FIXED_RELEASE",
+    "fixed_release_commit": "50d97075fc99fe79d9c426506d59521582eeccc6",
+    "immutable_release_stage": "PASS",
+    "actual_clean_integrity_retry": "PASS",
+    "actual_browser": "PASS_WITH_FOLLOWUP_DEFECT_WAVE68",
     "clean_30m_soak": "NOT_RUN",
     "fixed_485283_event_replay": "NOT_RUN",
     "post_deploy_6h": "NOT_RUN",

@@ -8,11 +8,12 @@ import math
 import re
 import sqlite3
 from collections.abc import Callable, Mapping
+from decimal import Decimal
 from typing import Any
 
 from backend.app.storage.sqlite import SQLiteLedger
 
-_FOCUS_SESSION_VERSION = 6
+_FOCUS_SESSION_VERSION = 7
 _CANDIDATE_ID_PATTERN = re.compile(r"^paper-(candidate-[0-9a-f]+)-")
 _EXIT_REASON_LABELS = {
     "TAKE_PROFIT": "익절",
@@ -49,6 +50,7 @@ class ReplayFocusSessionBuilder:
         pre_roll_ms: int = 20 * 60 * 1_000,
         post_roll_ms: int = 5 * 60 * 1_000,
         cooperative_yield: Callable[[], None] | None = None,
+        persist_cache: bool = True,
     ) -> dict[str, object]:
         cached = ledger.get_replay_focus_session(
             run_id,
@@ -106,7 +108,7 @@ class ReplayFocusSessionBuilder:
             entry_ts_ms=entry_ts,
             exit_ts_ms=exit_ts,
         )
-        trade_fills = self._trade_transitions(trade)
+        trade_fills = self._trade_transitions(trade, candidate)
         milestones = self._milestones(window, trade, levels)
         frames: list[dict[str, object]] = []
         for index, event in enumerate(window, start=1):
@@ -209,14 +211,15 @@ class ReplayFocusSessionBuilder:
         }
         canonical = json.dumps(session, sort_keys=True, separators=(",", ":"), default=str)
         session["checksum"] = hashlib.sha256(canonical.encode()).hexdigest()
-        try:
-            ledger.record_replay_focus_session(session, created_ts_ms=created_ts_ms)
-        except sqlite3.OperationalError as error:
-            # 집중 차트는 원장 읽기 결과가 본체이고 캐시는 선택적 가속 계층이다.
-            # 분리 영속화 프로세스가 쓰기 잠금을 가진 짧은 구간에도 차트 응답은
-            # 성공시켜 다음 클릭에서 다시 캐시할 수 있게 한다.
-            if "locked" not in str(error).lower() and "busy" not in str(error).lower():
-                raise
+        if persist_cache:
+            try:
+                ledger.record_replay_focus_session(session, created_ts_ms=created_ts_ms)
+            except sqlite3.OperationalError as error:
+                # 집중 차트는 원장 읽기 결과가 본체이고 캐시는 선택적 가속 계층이다.
+                # 분리 영속화 프로세스가 쓰기 잠금을 가진 짧은 구간에도 차트 응답은
+                # 성공시켜 다음 클릭에서 다시 캐시할 수 있게 한다.
+                if "locked" not in str(error).lower() and "busy" not in str(error).lower():
+                    raise
         return session
 
     @staticmethod
@@ -259,25 +262,62 @@ class ReplayFocusSessionBuilder:
         }
 
     @staticmethod
-    def _trade_transitions(trade: Mapping[str, object]) -> list[dict[str, object]]:
+    def _trade_transitions(
+        trade: Mapping[str, object],
+        candidate: Mapping[str, object] | None,
+    ) -> list[dict[str, object]]:
         """집중 차트는 완결된 거래 원장의 실제 진입·종료 체결만 사용한다."""
 
         identity = str(trade.get("trade_id", trade.get("shadow_trade_id", "trade")))
+        quantity = Decimal(str(trade["quantity"]))
+        entry_price = Decimal(str(trade["entry_price"]))
+        exit_price = Decimal(str(trade["exit_price"]))
+        total_fees = max(Decimal(0), Decimal(str(trade.get("fees_usdt", 0))))
+        total_slippage = max(
+            Decimal(0), Decimal(str(trade.get("slippage_usdt", 0)))
+        )
+        entry_notional = abs(entry_price * quantity)
+        exit_notional = abs(exit_price * quantity)
+        combined_notional = entry_notional + exit_notional
+        entry_fee = (
+            total_fees * entry_notional / combined_notional
+            if combined_notional > 0
+            else total_fees / Decimal(2)
+        )
+        exit_fee = total_fees - entry_fee
+        planned_entry = entry_price
+        if candidate is not None and candidate.get("planned_entry") is not None:
+            planned_entry = Decimal(str(candidate["planned_entry"]))
+        direction = Decimal(1) if str(trade["side"]) == "LONG" else Decimal(-1)
+        entry_slippage = max(
+            Decimal(0),
+            min(
+                total_slippage,
+                (entry_price - planned_entry) * quantity * direction,
+            ),
+        )
+        exit_slippage = total_slippage - entry_slippage
         return [
             {
                 "fill_id": f"{identity}:ENTRY",
                 "trade_id": identity,
                 "intent": "ENTRY",
-                "price": str(trade["entry_price"]),
-                "quantity": str(trade["quantity"]),
+                "price": str(entry_price),
+                "quantity": str(quantity),
+                "fee_usdt": str(entry_fee),
+                "slippage_usdt": str(entry_slippage),
+                "cost_allocation": "LEDGER_TOTAL_SPLIT_BY_EXECUTED_NOTIONAL",
                 "ts_ms": int(str(trade["entry_ts_ms"])),
             },
             {
                 "fill_id": f"{identity}:EXIT",
                 "trade_id": identity,
                 "intent": "EXIT",
-                "price": str(trade["exit_price"]),
-                "quantity": str(trade["quantity"]),
+                "price": str(exit_price),
+                "quantity": str(quantity),
+                "fee_usdt": str(exit_fee),
+                "slippage_usdt": str(exit_slippage),
+                "cost_allocation": "LEDGER_TOTAL_SPLIT_BY_EXECUTED_NOTIONAL",
                 "ts_ms": int(str(trade["exit_ts_ms"])),
                 "exit_reason": str(trade["exit_reason"]),
             },

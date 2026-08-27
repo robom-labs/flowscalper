@@ -713,7 +713,7 @@ export type ReplayFocusFrame = {
 }
 
 export type ReplayFocusSession = {
-  session_version: 5
+  session_version: number
   run_id: string
   trade_id: string
   profile: 'BASE' | 'STRESS'
@@ -738,7 +738,18 @@ export type ReplayFocusSession = {
   candles: ChartData['candles']
   keyframes: { frame_index: number; ts_ms: number }[]
   trade: Record<string, unknown>
-  fills: Record<string, unknown>[]
+  fills: {
+    fill_id: string
+    trade_id: string
+    intent: 'ENTRY' | 'EXIT'
+    price: string
+    quantity: string
+    fee_usdt?: string
+    slippage_usdt?: string
+    ts_ms: number
+    exit_reason?: string
+    cost_allocation?: string
+  }[]
   profile_comparison: { profile: string; trade_id: string; fees: string; slippage: string; net_pnl: string }[]
   reconciliation: {
     applicable: boolean

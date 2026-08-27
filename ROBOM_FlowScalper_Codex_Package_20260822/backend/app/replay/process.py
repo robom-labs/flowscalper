@@ -126,6 +126,9 @@ def replay_focus_session_from_paths(
             profile=profile,
             created_ts_ms=created_ts_ms,
             cooperative_yield=cpu_budget.checkpoint,
+            # LIVE 영속화가 쓰기 잠금을 가진 동안 선택적 UI 캐시 때문에
+            # busy_timeout까지 기다리지 않고 읽기 결과를 바로 반환한다.
+            persist_cache=False,
         )
     finally:
         ledger.close()

@@ -2689,3 +2689,62 @@ hygiene가 PASS다.
 수정 증거는 `evidence/WAVE67_PLANNED_ROTATION_MONITOR_QA.json`이다. 수정 릴리스의 실제 전수검사,
 브라우저, 30분·6시간·24시간과 수익성은 아직 각각 `NOT_RUN`·`NOT_PROVEN`이다. 현재 상태는
 `FIXED_FULL_BACKEND_PASS_PENDING_ACTUAL_CLEAN_RETRY`다.
+
+### Wave 67 실제 깨끗한 전수검사 재시도 결과
+
+위 `NOT_RUN`은 후속 실제 재시도로 해소됐다. commit
+`50d97075fc99fe79d9c426506d59521582eeccc6` 릴리스에서 다른 테스트·브라우저·replay를 겹치지 않고
+유지관리를 다시 실행했다. 3,031,654,400 byte 닫힌 원장을 APFS clone한 뒤 다른 device로
+662.369초에 전송했고 원본·검증본 SHA-256
+`00a85751fa744b53567e60784645a88da8933a4dcae0a083f2ea7cc30801a50e`이 일치했다. 강제 kill 없이
+8.413초에 닫았고 닫힌 WAL의 busy·log frame·checkpoint frame·byte는 모두 0이었다.
+
+같은 Run `run-2b7135a972dd`를 728.034초 downtime 뒤 복구했다. 5,815.895초 동안 4,168표본,
+event +398,603, 최대 queue 26, 최대 처리 p95 243.381ms였고 planned rotation 5회는 모두 정상
+통과했다. 비계획 reconnect·gap·resync·drop·저장결함·buffer drop·critical lag incident·포지션·
+실주문·인증과 monitor violation은 0이었다. 단발 API timeout 1회는 연속 1회로 복구됐고 허용
+상한 3회를 넘지 않았다.
+
+다른 device 검증본의 `PRAGMA quick_check`는 `ok`, foreign key 위반 0, page 740,150,
+freelist 0, user_version 7, table 23이었다. 전수검사는 5,087.426초에 끝났고 임시 clone과 검증본은
+제거했다. 이전 실패 감사용 3,009,531,904 byte 중복 검증본도 더 새로운 PASS 뒤 열린 process가
+없음을 확인하고 제거했으며 복구할 수 없다. 원본 증거는
+`evidence/WAVE67_CLEAN_MAINTENANCE_HANDOFF_RETRY.json`, 요약은
+`evidence/WAVE67_PLANNED_ROTATION_MONITOR_QA.json`이다. Wave 67 상태는
+`ACTUAL_FULL_INTEGRITY_PASS`다.
+
+## 67. Wave 68 LIVE 거래 재생 응답과 비용 분류 수정
+
+commit `50d97075fc99fe79d9c426506d59521582eeccc6` 실제 8870 화면에서 pause·resume을 눌러 요청 직후
+각각 `잠시 멈추는 중…`과 `다시 시작하는 중…`이 약 0.3초 안에 표시됨을 확인했다. 사용자 정지,
+재시작 뒤 fail-closed 안전대기, 자동 `RUNNING` 복귀와 같은 Run 유지가 실제로 동작했다. 시장·전략·
+기록·분석·설정도 모두 열렸고 거래 기록 기본 범위는 79건, 공동계좌 1건, 전략별 계좌 78건,
+보존된 과거 버전 63건을 표시했다.
+
+미캐시 BNBUSDT focus는 약 29초, 미캐시 DOGEUSDT focus는 36초를 넘겨 준비 상태가 이어졌다.
+같은 cache 적중 API는 0.540초, cache 쓰기를 생략한 대상 builder는 0.077초였다. LIVE 외부
+영속화의 최대 60초 쓰기 잠금과 선택적 focus cache 쓰기가 겹치는 원인이므로 LIVE process 경로는
+cache를 읽되 새로 쓰지 않고 결과를 바로 반환하게 했다. DEMO·직접 runtime cache는 유지한다.
+
+또 완료 거래 총 수수료 0.61961874 USDT가 재생 종료 화면에서 전부 `진입 수수료`로 표시되는
+오분류를 확인했다. 진입·종료 실제 명목금액 비율로 수수료를 배분하고 합계가 원장 총액과 정확히
+같은지 검증한다. 재생 진입 중에는 진입 수수료와 예상 종료비, 종료 뒤에는 진입 수수료와 실현
+종료 수수료를 분리한다. focus cache schema는 7이다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 변경 표적 backend | PASS | focus·process 2 passed, 전체 관련 41 passed |
+| 전체 backend | PASS | 최종 process cache 회귀 포함 465 passed·42.55초 |
+| frontend | PASS | 14 files·67 tests·6.27초 |
+| 정적·build | PASS | Ruff, mypy 96 source, ESLint, TypeScript, Vite 50 modules. JS 524.49kB·gzip 161.44kB의 기존 500kB 경고는 남아 있다 |
+| PAPER safety·security·hygiene | PASS | PAPER 불변조건, security 131 source·위반·secret-like·실주문 path 0, 저장소 위반 0 |
+| OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed·31.3초 |
+| 새 불변 릴리스 실제 브라우저 재측정 | NOT_RUN | 현재 수정 source는 아직 설치 전 |
+| 5분·30분 무오염 관찰 | NOT_RUN | 실제 브라우저 재측정 뒤 실행 |
+| 485,283-event 고정 replay | NOT_RUN | LIVE 안전감시와 병행 예정 |
+| 새 6시간·24시간 | NOT_RUN | 실제 시간을 채우지 않음 |
+| 수익성 | NOT_PROVEN | 전략 또는 기준을 변경하지 않았고 현재 표본으로 입증하지 않음 |
+
+판단 근거는 ADR-068이다. 전략 임계값, 진입조건, TP, SL, 체결, 비용률, Governor, 위험예산과
+계좌 구성은 변경하지 않았다. 실제 주문·private API·API key·secret·wallet·런타임 AI 주문판단은
+0이다. 현재 수용상태는 `IMPLEMENTED_REGRESSION_PASS_PENDING_IMMUTABLE_DEPLOY`다.

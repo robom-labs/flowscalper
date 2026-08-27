@@ -151,6 +151,66 @@ test('shows a visible retry action when a focused trade chart request fails', as
   await waitFor(() => expect(attempts).toBe(2))
 })
 
+test('shows allocated entry and exit fees at the matching replay stage', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url === '/api/replay/runs' || url === '/api/replay/results') {
+      return new Response('[]', { status: 200 })
+    }
+    if (url === '/api/replay/operations/current') {
+      return new Response('null', { status: 200 })
+    }
+    if (url.includes('/focus?')) {
+      return new Response(JSON.stringify({
+        session_version: 7,
+        run_id: 'run-costs', trade_id: 'trade-costs', profile: 'BASE',
+        symbol: 'BTCUSDT', side: 'LONG', strategy_id: 'LSA_REVERSAL_V1',
+        levels: { signal_ts_ms: 1_000, entry: '100', initial_stop: '98', take_profit_1: '102', take_profit_2: '104' },
+        milestones: [
+          { kind: 'SIGNAL', ts_ms: 1_000, price: '100' },
+          { kind: 'ENTRY', ts_ms: 2_000, price: '100' },
+          { kind: 'EXIT', ts_ms: 3_000, price: '101' },
+        ],
+        start_ts_ms: 1_000, entry_ts_ms: 2_000, exit_ts_ms: 3_000, end_ts_ms: 3_000,
+        default_speed: 5, speeds: [1, 5],
+        frames: [
+          { ts_ms: 1_000, event_id: 'signal', event_type: 'BOOK', data: { mid: '100' }, phase: 'PRE_ENTRY', markers: [{ kind: 'SIGNAL', ts_ms: 1_000, price: '100' }], fills: [] },
+          { ts_ms: 2_000, event_id: 'entry', event_type: 'PAPER_LEDGER_TRANSITION', data: { mid: '100' }, phase: 'OPEN', markers: [{ kind: 'SIGNAL', ts_ms: 1_000, price: '100' }, { kind: 'ENTRY', ts_ms: 2_000, price: '100' }], fills: [] },
+          { ts_ms: 3_000, event_id: 'exit', event_type: 'PAPER_LEDGER_TRANSITION', data: { mid: '101' }, phase: 'CLOSED', markers: [{ kind: 'SIGNAL', ts_ms: 1_000, price: '100' }, { kind: 'ENTRY', ts_ms: 2_000, price: '100' }, { kind: 'EXIT', ts_ms: 3_000, price: '101' }], fills: [] },
+        ],
+        candles: [], keyframes: [{ frame_index: 0, ts_ms: 1_000 }, { frame_index: 1, ts_ms: 2_000 }, { frame_index: 2, ts_ms: 3_000 }],
+        trade: {},
+        fills: [
+          { fill_id: 'entry', trade_id: 'trade-costs', intent: 'ENTRY', price: '100', quantity: '1', fee_usdt: '0.3', slippage_usdt: '0.02', ts_ms: 2_000 },
+          { fill_id: 'exit', trade_id: 'trade-costs', intent: 'EXIT', price: '101', quantity: '1', fee_usdt: '0.2', slippage_usdt: '0.08', ts_ms: 3_000 },
+        ],
+        profile_comparison: [], reconciliation: { applicable: false, sample_type: 'OFFLINE_FIXTURE', matched: null, reason: 'OFFLINE_FIXTURE_UI_ONLY', replay_checksum: '', replay_final_state: 'NOT_RUN' },
+        checksum: 'a'.repeat(64), paper_only: true, real_orders_enabled: false, auth_required: false,
+      }), { status: 200 })
+    }
+    throw new Error(`unexpected request: ${url}`)
+  }))
+  const trade = {
+    run_id: 'run-costs', trade_id: 'trade-costs', profile: 'BASE', symbol: 'BTCUSDT',
+    strategy: 'LSA_REVERSAL_V1', side: 'LONG', entry: '100', exit: '101', quantity: '1',
+    entry_ts_ms: 2_000, exit_ts_ms: 3_000, initial_stop: '98', take_profit: '104',
+    exit_reason: 'EDGE_DECAY', gross_pnl: '1', fees: '0.5', slippage: '0.1',
+    net_pnl: '0.4', holding_ms: 1_000, holding_seconds: 1, sample_type: 'LIVE_PUBLIC',
+  } as unknown as HistoryRow
+
+  render(<ReplayPage trade={trade} />)
+  expect(await screen.findByRole('heading', { name: 'BTCUSDT 거래 집중 재생' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '진입' }))
+  expect(screen.getByText('진입 수수료').parentElement).toHaveTextContent('0.3 USDT')
+  expect(screen.getByText('종료 수수료').parentElement).toHaveTextContent('0.00 USDT')
+  expect(screen.getByText('예상 종료비').parentElement).toHaveTextContent('0.2 USDT')
+
+  fireEvent.click(screen.getByRole('button', { name: '실제 종료' }))
+  expect(screen.getByText('진입 수수료').parentElement).toHaveTextContent('0.3 USDT')
+  expect(screen.getByText('종료 수수료').parentElement).toHaveTextContent('0.2 USDT')
+  expect(screen.getByText('예상 종료비').parentElement).toHaveTextContent('0.00 USDT')
+})
+
 test('shows a replay result only for the selected run and symbol scope', async () => {
   const checksum = 'a'.repeat(64)
   const inputChecksum = 'b'.repeat(64)

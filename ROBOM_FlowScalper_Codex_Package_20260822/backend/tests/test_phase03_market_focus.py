@@ -259,7 +259,7 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     session = first.json()
     assert session == second.json()
     assert ledger.count("replay_focus_cache") == 1
-    assert session["session_version"] == 6
+    assert session["session_version"] == 7
     assert session["default_speed"] == 5
     assert session["speeds"] == [0.5, 1, 2, 5, 10, 20, 40, 80]
     assert session["paper_only"] is True
@@ -290,6 +290,13 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
         "take_profit_1": trade["take_profit"],
         "take_profit_2": None,
     }
+    assert sum(Decimal(fill["fee_usdt"]) for fill in session["fills"]) == Decimal(
+        trade["fees_usdt"]
+    )
+    assert sum(
+        Decimal(fill["slippage_usdt"]) for fill in session["fills"]
+    ) == Decimal(trade["slippage_usdt"])
+    assert [fill["intent"] for fill in session["fills"]] == ["ENTRY", "EXIT"]
     assert session["reconciliation"]["replay_final_state"] == "NOT_RUN"
 
 

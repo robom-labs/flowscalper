@@ -403,9 +403,28 @@ export function ReplayPage({ trade }: Props) {
     const entry = Number(trade.entry)
     const quantity = Number(trade.quantity)
     const entered = focusFrame?.phase !== 'PRE_ENTRY'
+    const closed = focusFrame?.phase === 'CLOSED'
     const gross = entered ? focusSession.side === 'LONG' ? (current - entry) * quantity : (entry - current) * quantity : 0
-    const fees = entered ? Number(trade.fees) : 0
-    const slippage = entered ? Number(trade.slippage) : 0
+    const recordedFees = entered ? Number(trade.fees) : 0
+    const entryFill = focusSession.fills.find((fill) => fill.intent === 'ENTRY')
+    const exitFill = focusSession.fills.find((fill) => fill.intent === 'EXIT')
+    const allocatedEntryFee = numeric(entryFill?.fee_usdt)
+    const allocatedExitFee = numeric(exitFill?.fee_usdt)
+    const hasAllocatedFees = allocatedEntryFee !== null && allocatedExitFee !== null
+    const entryFee = entered
+      ? hasAllocatedFees ? allocatedEntryFee ?? 0 : recordedFees
+      : 0
+    const realizedExitFee = closed && hasAllocatedFees ? allocatedExitFee ?? 0 : 0
+    const estimatedExitFee = entered && !closed && hasAllocatedFees ? allocatedExitFee ?? 0 : 0
+    const entrySlippage = numeric(entryFill?.slippage_usdt)
+    const exitSlippage = numeric(exitFill?.slippage_usdt)
+    const hasAllocatedSlippage = entrySlippage !== null && exitSlippage !== null
+    const slippage = entered
+      ? hasAllocatedSlippage
+        ? (entrySlippage ?? 0) + (closed ? exitSlippage ?? 0 : 0)
+        : Number(trade.slippage)
+      : 0
+    const fees = entryFee + realizedExitFee + estimatedExitFee
     const elapsed = Math.max(0, Math.floor(((focusFrame?.ts_ms ?? focusSession.start_ts_ms) - focusSession.entry_ts_ms) / 1000))
     const stage = focusFrame?.phase ?? 'PRE_ENTRY'
     const stageKo = stage === 'PRE_ENTRY' ? '진입 전 흐름' : stage === 'OPEN' ? '익절·손절 보호 중' : '거래 종료'
@@ -418,7 +437,7 @@ export function ReplayPage({ trade }: Props) {
       planned_entry: levels.entry, actual_entry: entered ? levels.entry : '아직 체결 전', current_mark: String(current), initial_stop: levels.initial_stop, current_stop: levels.initial_stop,
       take_profit: levels.take_profit_1, take_profit_1: levels.take_profit_1, take_profit_2: levels.take_profit_2, quantity: trade.quantity, original_quantity: trade.quantity, remaining_quantity: stage === 'CLOSED' ? '0' : trade.quantity, notional: String(notional), notional_usdt: String(notional),
       margin_usdt: String(notional), margin_used_usdt: String(notional), risk_budget: String(maximumLoss), risk_budget_usdt: String(maximumLoss), maximum_planned_loss: String(maximumLoss), maximum_planned_loss_usdt: String(maximumLoss), remaining_planned_loss_usdt: stage === 'CLOSED' ? '0' : String(maximumLoss), effective_leverage: '1',
-      gross_pnl: gross.toFixed(4), gross_pnl_usdt: gross.toFixed(4), fees: String(fees), entry_fee_usdt: String(fees), realized_exit_fees_usdt: '0', estimated_exit_fee_usdt: '0', slippage: String(slippage), slippage_usdt: String(slippage), net_pnl: net.toFixed(4), net_pnl_usdt: net.toFixed(4), return_on_margin_pct: notional > 0 ? String(net / notional * 100) : '0', account_starting_equity_usdt: '1000', account_current_equity_usdt: String(1000 + net), elapsed_seconds: elapsed,
+      gross_pnl: gross.toFixed(4), gross_pnl_usdt: gross.toFixed(4), fees: String(fees), entry_fee_usdt: String(entryFee), realized_exit_fees_usdt: String(realizedExitFee), estimated_exit_fee_usdt: String(estimatedExitFee), slippage: String(slippage), slippage_usdt: String(slippage), net_pnl: net.toFixed(4), net_pnl_usdt: net.toFixed(4), return_on_margin_pct: notional > 0 ? String(net / notional * 100) : '0', account_starting_equity_usdt: '1000', account_current_equity_usdt: String(1000 + net), elapsed_seconds: elapsed,
       management_reason: focusFrame?.phase === 'PRE_ENTRY' ? '진입 전 공개시장 흐름 확인' : focusFrame?.phase === 'OPEN' ? '저장된 PAPER 포지션 진행 중' : `종료 사유 · ${trade.exit_reason}`,
       management_reason_ko: focusFrame?.phase === 'PRE_ENTRY' ? '진입 전 공개시장 흐름 확인' : focusFrame?.phase === 'OPEN' ? '저장된 PAPER 포지션 진행 중' : `종료 사유 · ${trade.exit_reason}`,
       stage, stage_ko: stageKo, data_health: '저장 이벤트 정상', recovered: false, auto_focus_eligible: false, paper_only: true, real_orders_enabled: false, auth_required: false,

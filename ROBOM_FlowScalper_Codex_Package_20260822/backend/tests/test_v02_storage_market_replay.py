@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.app.main as main_module
+import backend.app.replay.process as replay_process_module
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
@@ -218,6 +219,51 @@ def test_replay_cpu_budget_yields_without_carrying_unbounded_sleep_debt() -> Non
     budget.checkpoint()
 
     assert sleeps == [0.50]
+
+
+def test_live_focus_process_returns_without_optional_cache_write(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class LedgerStub:
+        def close(self) -> None:
+            captured["closed"] = True
+
+    class BudgetStub:
+        def checkpoint(self) -> None:
+            return None
+
+    ledger = LedgerStub()
+    monkeypatch.setattr(replay_process_module, "_open_ledger", lambda *_args: ledger)
+    monkeypatch.setattr(
+        replay_process_module,
+        "_prepare_cpu_budget",
+        lambda: BudgetStub(),
+    )
+
+    def build_stub(_self, opened_ledger, **kwargs):
+        captured.update(kwargs)
+        captured["ledger"] = opened_ledger
+        return {"trade_id": kwargs["trade_id"]}
+
+    monkeypatch.setattr(
+        replay_process_module.ReplayFocusSessionBuilder,
+        "build",
+        build_stub,
+    )
+
+    result = replay_process_module.replay_focus_session_from_paths(
+        "ledger.sqlite3",
+        None,
+        "run-live",
+        "trade-live",
+        "BASE",
+        1_000,
+    )
+
+    assert result == {"trade_id": "trade-live"}
+    assert captured["persist_cache"] is False
+    assert captured["ledger"] is ledger
+    assert captured["closed"] is True
 
 
 def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(

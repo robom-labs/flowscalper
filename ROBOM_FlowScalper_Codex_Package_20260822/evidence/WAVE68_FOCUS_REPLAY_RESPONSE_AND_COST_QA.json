@@ -1,0 +1,131 @@
+{
+  "schema": "flowscalper.wave68.focus_replay_response_and_cost_qa.v1",
+  "status": "IMPLEMENTED_REGRESSION_PASS_PENDING_IMMUTABLE_DEPLOY",
+  "date": "2026-08-27",
+  "baseline_release_commit": "50d97075fc99fe79d9c426506d59521582eeccc6",
+  "actual_browser_baseline": {
+    "url": "http://127.0.0.1:8870/",
+    "run_id": "run-2b7135a972dd",
+    "pause_immediate_feedback_ms": 272,
+    "pause_pending_label": "잠시 멈추는 중…",
+    "resume_immediate_feedback_ms": 271,
+    "resume_pending_label": "다시 시작하는 중…",
+    "automatic_safety_wait_recovered": true,
+    "pages_opened": [
+      "시장",
+      "전략",
+      "기록",
+      "분석",
+      "설정"
+    ],
+    "history": {
+      "visible_rows": 79,
+      "shared_rows": 1,
+      "league_rows": 78,
+      "preserved_prior_version_rows": 63
+    },
+    "focus_replay": {
+      "first_uncached_symbol": "BNBUSDT",
+      "first_uncached_ready_ms": 28851,
+      "second_uncached_symbol": "DOGEUSDT",
+      "second_uncached_ready_ms_lower_bound": 36397,
+      "cached_api_seconds": 0.540014,
+      "builder_without_cache_write_seconds": 0.076498,
+      "entry_tp1_tp2_sl_actual_exit_visible": true,
+      "holding_seconds_visible": 14,
+      "exit_reason_visible": "EDGE_DECAY"
+    }
+  },
+  "defects": [
+    {
+      "id": "LIVE_FOCUS_OPTIONAL_CACHE_WRITE_WAIT",
+      "root_cause": "The LIVE process-isolated focus request attempted an optional write to replay_focus_cache while the persistence connection could hold BEGIN IMMEDIATE with a 60-second busy timeout.",
+      "fix": "The LIVE process path reads an existing cache but builds an uncached response with persist_cache=false and returns it without an SQLite write.",
+      "strategy_thresholds_lowered": false
+    },
+    {
+      "id": "FOCUS_TOTAL_FEE_SHOWN_AS_ENTRY_FEE",
+      "root_cause": "ReplayPage assigned the completed trade total fee to entry_fee_usdt and always reported zero realized exit fee.",
+      "fix": "Focus session v7 allocates the immutable total fee by executed entry and exit notional and preserves the exact ledger total. The UI shows entry plus estimated exit fee while open and entry plus realized exit fee when closed.",
+      "strategy_thresholds_lowered": false
+    }
+  ],
+  "validation": {
+    "backend_related": {
+      "status": "PASS",
+      "tests": 41,
+      "seconds": 59.43
+    },
+    "backend_full": {
+      "status": "PASS",
+      "tests": 465,
+      "seconds": 42.55
+    },
+    "focus_process_regressions": {
+      "status": "PASS",
+      "tests": 2,
+      "seconds": 7.93
+    },
+    "frontend": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 67,
+      "seconds": 6.27
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 96
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": {
+      "status": "PASS",
+      "modules": 50,
+      "javascript_bytes": 524490,
+      "javascript_gzip_bytes": 161440,
+      "existing_chunk_warning": true
+    },
+    "paper_build_safety": "PASS",
+    "security": {
+      "status": "PASS",
+      "source_files": 131,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "playwright_fixture": {
+      "status": "PASS",
+      "viewports": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "seconds": 31.3
+    }
+  },
+  "paper_safety": {
+    "actual_orders": 0,
+    "private_api": 0,
+    "api_keys": 0,
+    "secrets": 0,
+    "wallet_paths": 0,
+    "runtime_ai_order_decision": 0
+  },
+  "strategy_changes": false,
+  "profitability": "NOT_PROVEN",
+  "remaining": {
+    "final_backend_full_after_added_regression": "PASS",
+    "fixed_release_commit": "NOT_CREATED",
+    "immutable_release_stage": "NOT_RUN",
+    "actual_browser_on_fixed_release": "NOT_RUN",
+    "clean_5m_soak": "NOT_RUN",
+    "clean_30m_soak": "NOT_RUN",
+    "fixed_485283_event_replay": "NOT_RUN",
+    "post_deploy_6h": "NOT_RUN",
+    "post_deploy_24h": "NOT_RUN",
+    "github_main_actions_release": "NOT_RUN"
+  }
+}
