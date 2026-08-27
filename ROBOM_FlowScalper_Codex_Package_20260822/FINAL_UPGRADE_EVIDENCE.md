@@ -2864,3 +2864,38 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | GitHub main·Actions | PASS | main `3c5e4a9fc8cdeb8e7ae1ca9c265fa29ffe18449d`, Actions `33056662395`. validate 1분 4초, browser 1분 17초, desktop·tablet·mobile E2E와 브라우저 증거 업로드가 모두 PASS했다. |
 
 원본 5분 표본은 `evidence/WAVE95_BACKLOG_AWARE_RELEASE_CLEAN_5M.json`, 중단한 장시간 표본은 `evidence/WAVE94_POST_TP_DETAIL_RELEASE_CLEAN_6H.json`, 결정 근거는 `docs/adr/ADR-071-backlog-aware-wal-checkpoint.md`다. 전략 임계값, 진입 기준, TP1·TP2·SL, 수수료·슬리피지, 위험예산, BASE/STRESS 계좌와 Governor 승격 gate는 변경하지 않았다. 실제 주문·private API·API key·secret·wallet·런타임 AI 주문판단은 계속 0이다. 현재 수용상태는 `ACTUAL_BROWSER_AND_CLEAN_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
+
+## 71. Wave 96 관찰구간 event-loop 판정과 자연 거래 재감사
+
+### 관찰기 결함과 수술식 수정
+
+- 최종 장시간 관찰을 유효한 baseline 확인 전에 시작해 210.311초에서 중단했다. 시작 queue가 이미 148이었고 프로세스 시작 이후 누적된 event-loop 최대 1,031ms를 새 관찰구간의 값처럼 판정했으므로 `ABORTED_OPERATOR`로 보존했다. event +18,361·평가 +58,080은 전진했고 비계획 reconnect·gap·resync·drop·실제 주문·인증은 0이었지만 6시간 증거가 아니다.
+- supervisor에 `event_loop_lag_over_500ms_count`, 최근 초과시각과 최근 초과값을 추가했다. 기본 500ms observer gate는 종료 횟수에서 baseline 횟수를 뺀 관찰구간 delta가 0인지 판정한다. 기존 누적 최대값은 진단용으로 남기고 사용자가 다른 임계값을 지정한 경우에는 기존 최대값 계약을 유지한다.
+- 실제 실행경로 치명지연은 별도 gate다. 수정 릴리스의 첫 300.047초 관찰은 local loop 500ms 초과 delta 0이었지만 처리 p95 579.710ms와 4,091.954ms critical incident 1회가 발생해 `FAIL`로 보존했다. 이 실패를 숨기거나 gate를 낮추지 않았다.
+- 재시작하지 않고 다른 부하를 겹치지 않은 다음 300.041초는 신규 critical event·incident 0, local loop 500ms 초과 0으로 PASS했다. 이는 회복 뒤 깨끗한 5분 회귀표본일 뿐 6시간·24시간 안정성 증명이 아니다.
+
+### 구현·회귀·실제 릴리스 검증
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| backend 전체 | PASS | 485 passed·36.69초. supervisor counter와 관찰구간 delta 회귀 포함 |
+| frontend 전체 | PASS | 14 files·71 tests. 500ms 초과 횟수·시각·값 한국어 진단 포함 |
+| fixture backend | PASS | 18 passed |
+| 정적·build | PASS_WITH_WARNING | Ruff·mypy 97 source·ESLint·TypeScript·Vite 50 modules PASS. JS 527.10kB·gzip 161.99kB의 기존 500kB 경고는 남음 |
+| PAPER safety·security·hygiene | PASS | 실제 주문 false·인증 false, security 132 source·위반·secret-like·실주문 path 0, 저장소 위반 0 |
+| OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed, 여섯 화면 증거 갱신 |
+| 불변 릴리스 | PASS | commit `8da4fa68a49ed0c66cbaabda1d8b7032a28741a4`, 같은 `run-2b7135a972dd` 복구, 포지션 0, LIVE 공개시장·PAPER·RUNNING, 실제 주문 false·인증 false |
+| 실제 브라우저 | PASS | 확인된 버전 불일치 0, `작동 중`, `PAPER · 실제 주문 0`, 새 500ms 초과 횟수·시각·값 문구를 실제 설정 고급진단에서 확인 |
+| 첫 깨끗한 5분 | FAIL | 300.047초·61표본·event +27,788·평가 +82,548. queue 최대 1이었지만 처리 p95 579.710ms·critical incident +1·4,091.954ms라 세 gate 실패. 비계획 reconnect·gap·resync·drop·저장 fault·실주문·인증 0 |
+| 재시도 5분 | PASS | 300.041초·61표본·event +28,629·평가 +82,920·queue 최대 12·처리/체결 p95 최대 147.376/272.032ms·저장 대기 최대 1,562건·flush/WAL 최대 7.197/19.327초. 신규 critical·비계획 reconnect·gap·resync·drop·저장 fault·실주문·인증 0 |
+| 새 6시간·24시간 | NOT_RUN | 최종 문서 릴리스에서 실제 시간을 채우지 않음 |
+| 고정 485,283-event replay | NOT_RUN | 깨끗한 관찰과 I/O를 겹치지 않기 위해 실행하지 않음 |
+
+### 새 CBR 자연 표본과 수익성 판정
+
+- 범위는 현재 Run, Strategy League, 현재 전략 버전, `LIVE_PUBLIC`으로 고정했다. BTCUSDT LONG CBR 후보 한 건이 BASE·STRESS에 각각 추가되어 현재 26행, profile별 13건이다.
+- 계획 진입 79,753.20, 실제 종료 79,782.10, 초기손절 79,511.098950, TP1 80,121.3141350, TP2 80,492.2282700, 수량 0.006을 진입 전에 고정했고 34.298초 뒤 `EDGE_DECAY`로 종료됐다. TP1·TP2·손절 도달은 없었고 1~3초 종료도 아니다.
+- 방향상 총손익은 각 +0.17340 USDT였지만 BASE 비용 0.59142708 뒤 net -0.41802708, STRESS 비용 1.18285416 뒤 net -1.00945416 USDT다. 비용후 양수가 아니므로 승리로 계산하지 않는다.
+- 현재버전 누적은 BASE 13건·-8.639132072 USDT, STRESS 13건·-15.666633704 USDT다. 모두 최소 30건 미만이고 비용후 음수라 순위·CHALLENGER·ACTIVE 승격은 금지하며 수익성은 `NOT_PROVEN`이다.
+
+원본 관찰은 `evidence/WAVE95_FINAL_RELEASE_CLEAN_6H.json`, `evidence/WAVE96_OBSERVATION_WINDOW_CLEAN_5M.json`, `evidence/WAVE96_OBSERVATION_WINDOW_CLEAN_RETRY_5M.json`에 모두 보존했다. 통합 기계판독 근거는 `evidence/WAVE96_EVENT_LOOP_WINDOW_AND_CBR_AUDIT.json`, 결정 근거는 `docs/adr/ADR-072-observation-window-event-loop-lag.md`다. 전략 임계값, TP1·TP2·SL, 비용, 위험예산, BASE/STRESS 계좌와 Governor gate는 변경하지 않았다. 현재 수용상태는 `ONE_REAL_5M_FAIL_THEN_RECOVERY_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.

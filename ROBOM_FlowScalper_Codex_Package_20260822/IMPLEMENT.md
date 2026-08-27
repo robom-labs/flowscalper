@@ -588,3 +588,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Do not show a release mismatch before the first real dashboard response. Keep the loading state until the frontend and server commits can actually be compared, then fail closed only on a confirmed mismatch.
 9. Exercise history, precise saved-event loading, next-event, play and pause, strategy analysis and advanced diagnostics in the actual browser. Keep this browser proof separate from fixture screenshots.
 10. Run a clean five-minute observer after deployment without replay, builds, tests or ledger inspection. A short PASS is only a regression baseline; start a new six-hour observer afterward and keep 24 hours `NOT_RUN` until separately completed.
+
+## Observation-window event-loop truth Wave
+
+1. Preserve the prematurely started 210.311-second long observer as `ABORTED_OPERATOR`; its baseline queue already exceeded the registered gate and its event-loop result used a process-lifetime maximum.
+2. Count local event-loop delays above the default 500ms soak threshold and expose the count, last timestamp and last value in diagnostics.
+3. For the default 500ms contract, fail only when that counter advances inside the observation window. Keep the process-lifetime maximum visible for diagnostics and keep custom thresholds on the prior maximum rule.
+4. Preserve a real critical executable-path lag as `FAIL` even when the new local event-loop counter does not advance. Never weaken the processing or critical-lag gate to make a retry pass.
+5. Run the retry without restart, replay, build, tests or ledger inspection. Treat a later PASS only as a clean five-minute recovery window and keep the earlier FAIL visible.
+6. Audit each new current-version `LIVE_PUBLIC` BASE/STRESS pair for holding time, initial stop, TP1, TP2, exit reason, gross PnL, fees, slippage and net PnL.
+7. Do not classify a gross-positive but net-negative trade as a win. Keep fewer than 30 samples per cost profile unranked and profitability `NOT_PROVEN`.
+8. Run the complete backend, frontend, fixture, lint, typecheck, build, PAPER safety, security, repository hygiene and desktop/tablet/mobile browser regression before GitHub synchronization.
+9. Install the exact immutable source release, verify the actual browser and preserve the same Run, public-market LIVE input, PAPER execution, zero real orders and zero authentication.
+10. Start a fresh six-hour observer only from a valid bounded baseline after the final documented release. Keep 24 hours and the fixed 485,283-event replay `NOT_RUN` until actually executed.

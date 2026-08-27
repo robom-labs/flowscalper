@@ -1,0 +1,128 @@
+{
+  "schema": "flowscalper.wave96.event_loop_window_and_cbr_audit.v1",
+  "recorded_at": "2026-08-27T18:35:42+09:00",
+  "run_id": "run-2b7135a972dd",
+  "source_commit": "8da4fa68a49ed0c66cbaabda1d8b7032a28741a4",
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_requested": false,
+    "api_key_requested": false,
+    "wallet_requested": false
+  },
+  "observation_window_contract": {
+    "threshold_ms": 500,
+    "decision_counter": "event_loop_lag_over_500ms_count",
+    "decision_rule": "final_count_minus_baseline_count_equals_zero",
+    "process_lifetime_max_is_diagnostic_only": true,
+    "custom_threshold_retains_cumulative_max_rule": true
+  },
+  "observations": [
+    {
+      "evidence": "WAVE95_FINAL_RELEASE_CLEAN_6H.json",
+      "status": "ABORTED_OPERATOR",
+      "observed_duration_seconds": 210.311,
+      "sample_count": 8,
+      "event_delta": 18361,
+      "strategy_evaluation_delta": 58080,
+      "failures": [
+        "requested_duration_completed",
+        "queue_bounded",
+        "event_loop_lag_bounded"
+      ],
+      "classification": "INVALID_LONG_SOAK_BASELINE_AND_PROCESS_LIFETIME_MAX_FALSE_FAILURE",
+      "maximum_queue_depth": 148,
+      "maximum_processing_lag_p95_ms": 61.220458984375,
+      "maximum_trade_lag_p95_ms": 86.2431640625,
+      "process_lifetime_event_loop_max_ms": 1031.0
+    },
+    {
+      "evidence": "WAVE96_OBSERVATION_WINDOW_CLEAN_5M.json",
+      "status": "FAIL",
+      "observed_duration_seconds": 300.047,
+      "sample_count": 61,
+      "event_delta": 27788,
+      "strategy_evaluation_delta": 82548,
+      "failures": [
+        "processing_lag_bounded",
+        "no_critical_lag_events",
+        "no_critical_lag_incidents"
+      ],
+      "classification": "REAL_RECOVERED_EXECUTABLE_PATH_CRITICAL_LAG",
+      "critical_lag_event_delta": 1,
+      "critical_lag_incident_delta": 1,
+      "critical_lag_duration_ms": 4091.954,
+      "event_loop_over_500ms_delta": 0,
+      "maximum_processing_lag_p95_ms": 579.710205078125,
+      "maximum_trade_lag_p95_ms": 338.984130859375,
+      "maximum_queue_depth": 1
+    },
+    {
+      "evidence": "WAVE96_OBSERVATION_WINDOW_CLEAN_RETRY_5M.json",
+      "status": "PASS",
+      "observed_duration_seconds": 300.041,
+      "sample_count": 61,
+      "event_delta": 28629,
+      "strategy_evaluation_delta": 82920,
+      "critical_lag_event_delta": 0,
+      "critical_lag_incident_delta": 0,
+      "event_loop_over_500ms_delta": 0,
+      "maximum_processing_lag_p95_ms": 147.376220703125,
+      "maximum_trade_lag_p95_ms": 272.03173828125,
+      "maximum_queue_depth": 12,
+      "maximum_market_persistence_buffer": 1562,
+      "maximum_persistence_flush_last_ms": 7197.0,
+      "maximum_wal_checkpoint_last_ms": 19327.0,
+      "unplanned_reconnect_delta": 0,
+      "sequence_gap_delta": 0,
+      "resync_delta": 0,
+      "dropped_event_delta": 0
+    }
+  ],
+  "new_natural_trade_pair": {
+    "candidate_id": "paper-candidate-94cd0b7a915a41b5",
+    "strategy_id": "CBR_CONTINUATION_V1",
+    "symbol": "BTCUSDT",
+    "side": "LONG",
+    "sample_type": "LIVE_PUBLIC",
+    "entry": "79753.20",
+    "exit": "79782.10",
+    "initial_stop": "79511.098950",
+    "take_profit_1": "80121.3141350",
+    "take_profit_2": "80492.2282700",
+    "quantity": "0.006",
+    "holding_ms": 34298,
+    "exit_reason": "EDGE_DECAY",
+    "tp1_hit": false,
+    "tp2_hit": false,
+    "stop_hit": false,
+    "gross_pnl_each": "0.17340",
+    "base": {
+      "fees": "0.57432708",
+      "slippage": "0.01710",
+      "net_pnl": "-0.41802708"
+    },
+    "stress": {
+      "fees": "1.14865416",
+      "slippage": "0.03420",
+      "net_pnl": "-1.00945416"
+    },
+    "classification": "GROSS_POSITIVE_NET_NEGATIVE_NOT_A_WIN"
+  },
+  "current_version_live_public": {
+    "base_samples": 13,
+    "stress_samples": 13,
+    "base_net_pnl_usdt": "-8.63913207200000000000000000",
+    "stress_net_pnl_usdt": "-15.66663370400000000000000000",
+    "minimum_required_samples_per_profile": 30,
+    "profitability_status": "NOT_PROVEN",
+    "ranking_allowed": false,
+    "active_promotion_allowed": false
+  },
+  "remaining": {
+    "clean_six_hour_observation": "NOT_RUN",
+    "clean_twenty_four_hour_observation": "NOT_RUN",
+    "fixed_485283_event_replay": "NOT_RUN"
+  }
+}
