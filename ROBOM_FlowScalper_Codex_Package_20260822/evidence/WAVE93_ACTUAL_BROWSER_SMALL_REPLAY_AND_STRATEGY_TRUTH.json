@@ -3,6 +3,7 @@
   "observed_at_kst": "2026-08-27T16:16:31+09:00",
   "status": "PASS_WITH_LIMITS",
   "release_commit": "667ad7b61587cf9e0a58d57150fe53f677d92d5d",
+  "source_head_commit": "a08a14f142a5931c8792367e0c4469e9b0458b57",
   "runtime_url": "http://127.0.0.1:8870/",
   "run_id": "run-2b7135a972dd",
   "actual_browser": {
@@ -93,6 +94,20 @@
     "post_change_24_hour_soak": "NOT_RUN",
     "strategy_profitability": "NOT_PROVEN",
     "vite_bundle_warning": "525.71 kB exceeds the configured 500 kB warning threshold"
+  },
+  "github": {
+    "repository": "https://github.com/robom-labs/flowscalper",
+    "branch": "main",
+    "main_contains_source_head": true,
+    "initial_failed_run_id": 33049542705,
+    "initial_failure": "Ubuntu runner did not provide zsh for the macOS-only dynamic runner test",
+    "fixed_run_id": 33049813379,
+    "fixed_run_status": "PASS",
+    "linux_backend": "475 passed, 1 macOS-only skipped",
+    "frontend": "68 passed",
+    "fixture": "18 passed",
+    "playwright_viewports": "3 passed",
+    "browser_evidence_uploaded": true
   },
   "paper_safety": {
     "real_orders_enabled": false,

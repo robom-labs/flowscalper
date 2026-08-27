@@ -2784,6 +2784,7 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | 정적·build | PASS_WITH_WARNING | Ruff·mypy 97 source·ESLint·TypeScript·Vite build PASS. 기존 JS 525.71kB 경고는 P1로 남김 |
 | PAPER safety·security | PASS | 실제 주문 false·인증 false·private/secret/wallet 경로 0 |
 | macOS 불변 릴리스 | PASS | commit `667ad7b61587cf9e0a58d57150fe53f677d92d5d`, 같은 `run-2b7135a972dd` 복구 |
+| GitHub main·Actions | PASS | source HEAD `a08a14f142a5931c8792367e0c4469e9b0458b57`, Actions `33049813379`. Linux backend 475 PASS·macOS 전용 1 SKIP, frontend 68, fixture 18, Playwright 3 PASS·증거 업로드 PASS |
 | 최종 5분 무오염 관찰 | PASS | 300.031초·61표본·event +21,706·평가 +79,224·queue 최대 1·처리/체결 p95 최대 55.290/90.192ms·flush 최대 14.831초·WAL 최대 8.274초·비계획 reconnect/gap/resync/drop/fault 0 |
 | 실제 브라우저 6개 주요 화면 | PASS | 시장·전략·기록·과거 재생·분석·설정을 실제 클릭. 11전략·22계좌, 기록 87건, PAPER·실제주문 0을 확인 |
 | 작은 저장 Run replay | PASS | `run-c74c67ff5976` ETHUSDT 125 events, 14.635초, input checksum `f838cb90…80c7`, 평가 288·적격/후보/main/shadow 0, 실제 주문/인증 0. 다음 이벤트 1/100→2/100 |
@@ -2799,3 +2800,5 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 - BASE 현재버전은 CBR 1건, VWAP 7건, AGGRESSOR 4건이며 모두 승률 0·비용후 음수다. STRESS도 같은 12건이 모두 비용후 음수다. 높은 승률 전략이 입증됐다고 말할 수 없고, 30건·시간순 OOS·STRESS·강건성 gate 전에는 순위를 만들거나 ACTIVE로 승격하지 않는다.
 
 기계판독 브라우저·replay 요약은 `evidence/WAVE93_ACTUAL_BROWSER_SMALL_REPLAY_AND_STRATEGY_TRUTH.json`, 원본 장시간·중간 실패·최종 관찰은 `evidence/WAVE69_*.json`부터 `evidence/WAVE92_*.json`까지 보존한다. 전략 임계값, TP1·TP2·SL, 비용률, 체결, 위험예산과 계좌는 이번 안정화에서 변경하지 않았다. 최종 상태는 `LATEST_5M_AND_SMALL_REPLAY_PASS_LARGE_REPLAY_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
+
+첫 GitHub Actions `33049542705`는 macOS 전용 동적 runner 검사가 Ubuntu에서 `zsh`를 찾지 못해 475 PASS 뒤 1건 실패했다. 정적 LaunchAgent 계약은 모든 플랫폼에서 유지하고 실제 `/bin/zsh` 실행 한 건만 Darwin으로 제한한 `a08a14f`를 적용했다. macOS 전체 476 PASS와 수정 Actions `33049813379`의 Linux 475 PASS·1 SKIP을 모두 확인했으므로 환경 의존 실패를 숨기거나 재실행만으로 넘기지 않았다.
