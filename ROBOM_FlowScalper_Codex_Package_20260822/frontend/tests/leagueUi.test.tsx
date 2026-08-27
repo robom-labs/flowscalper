@@ -23,6 +23,9 @@ test('shows eleven compact strategy rows, easy modes and BASE/STRESS account det
   expect(screen.getByText('6개 감시 · 검증 중지 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getAllByText('준비 중')).toHaveLength(6)
   expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(5)
+  expect(screen.getByRole('columnheader', { name: '이번 Run PAPER' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '현재버전 완료' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '현재버전 승률' })).toBeInTheDocument()
 
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[0])
   expect(screen.getByRole('dialog', { name: '전략 상세 정보' })).toBeInTheDocument()
@@ -262,6 +265,20 @@ test('uses current-version report costs and drawdown in stored performance stati
   expect(storedStatistics).not.toContain('91.11 USDT')
   expect(storedStatistics).not.toContain('92.22 USDT')
   expect(storedStatistics).not.toContain('93.33 USDT')
+})
+
+test('hides strategy statistics while the versioned history cache is loading', () => {
+  const data = dashboardFixture()
+  data.system.dashboard_trade_cache_ready = false
+
+  const { unmount } = render(<PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
+  expect(screen.getByRole('status')).toHaveTextContent('준비가 끝나기 전에는 승률·기대값·순위를 표시하지 않습니다.')
+  expect(document.querySelector('.strategy-performance-panel')?.textContent).toContain('불러오는 중')
+  unmount()
+
+  render(<StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={false} onConfigure={vi.fn(async () => undefined)} />)
+  expect(screen.getByRole('status')).toHaveTextContent('준비 전 숫자는 순위나 승률로 사용하지 않습니다.')
+  expect(document.querySelector('.strategy-compact-table')?.textContent).toContain('불러오는 중')
 })
 
 test('derives strategy and account totals from the backend registry payload', () => {

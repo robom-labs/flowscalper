@@ -131,7 +131,7 @@ export default function App() {
       {bootstrapState === 'ERROR' ? <p className="connection-error" role="alert">프로그램 서버에 연결하지 못했습니다. 실행 상태를 확인하세요.</p> : null}
       {requestError ? <p className="control-error" role="alert">{requestError}</p> : null}
       {page === 'summary' ? <LivePage data={data} onNavigate={changePage} /> : null}
-      {page === 'strategies' ? <StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} onConfigure={changeStrategy} onRollback={undoStrategy} /> : null}
+      {page === 'strategies' ? <StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} onConfigure={changeStrategy} onRollback={undoStrategy} /> : null}
       {page === 'positions' ? <LeaguePositionsPage positions={data.league_positions} strategies={data.strategies} /> : null}
       {page === 'history' ? <HistoryPage rows={data.history} currentRunId={data.status.run_id} historyScope={data.history_scope} onReplay={openReplay} /> : null}
       {page === 'replay' ? <ReplayPage trade={replayTrade} /> : null}

@@ -1887,6 +1887,7 @@ class PaperRuntime:
 
         trades: list[dict[str, object]] = []
         prior_version_trades: list[dict[str, object]] = []
+        data_state = "READY"
         if self.ledger is not None and include_persisted:
             trades, prior_version_trades = self._current_strategy_version_trades(
                 self.ledger.list_shadow_trades()
@@ -1895,8 +1896,15 @@ class PaperRuntime:
             cache_key = self._dashboard_strategy_cache_key()
             if cache_key == self._dashboard_strategy_performance_cache_key:
                 return list(self._dashboard_strategy_performance_cache)
-            trades.extend(self._dashboard_live_shadow_trades())
-            prior_version_trades.extend(self._historical_prior_version_shadow_trades)
+            if self.dashboard_trade_cache_ready:
+                trades.extend(self._dashboard_live_shadow_trades())
+                prior_version_trades.extend(self._historical_prior_version_shadow_trades)
+            else:
+                data_state = (
+                    "LOADING_HISTORY"
+                    if self.dashboard_trade_cache_loading
+                    else "HISTORY_UNAVAILABLE"
+                )
         else:
             for account in self.paper_portfolio.shadows.values():
                 trades.extend(self._paper_trade_row(trade) for trade in account.completed_trades)
@@ -1911,6 +1919,7 @@ class PaperRuntime:
         for report in reports:
             report["analysis_scope"] = "CURRENT_STRATEGY_VERSION"
             report["strategy_version"] = STRATEGY_VERSION
+            report["data_state"] = data_state
             report["excluded_prior_version_samples"] = excluded_counts.get(
                 (str(report["strategy_id"]), str(report["profile"])),
                 0,
@@ -1933,6 +1942,8 @@ class PaperRuntime:
         )
         return (
             self.run_id,
+            self.dashboard_trade_cache_ready,
+            self.dashboard_trade_cache_loading,
             len(self._historical_shadow_trades),
             len(self._historical_prior_version_shadow_trades),
             account_versions,
@@ -1948,8 +1959,12 @@ class PaperRuntime:
         trades: list[dict[str, object]]
         prior_version_trades: list[dict[str, object]]
         if self.mode is RuntimeMode.LIVE_SHADOW_PAPER and not include_persisted:
-            trades = list(self._dashboard_live_shadow_trades())
-            prior_version_trades = list(self._historical_prior_version_shadow_trades)
+            if self.dashboard_trade_cache_ready:
+                trades = list(self._dashboard_live_shadow_trades())
+                prior_version_trades = list(self._historical_prior_version_shadow_trades)
+            else:
+                trades = []
+                prior_version_trades = []
         elif self.ledger is None:
             trades = []
             for account in self.paper_portfolio.shadows.values():
@@ -1971,6 +1986,7 @@ class PaperRuntime:
         for row in rows:
             row["analysis_scope"] = "CURRENT_STRATEGY_VERSION"
             row["strategy_version"] = STRATEGY_VERSION
+            row["data_state"] = self._strategy_analytics_data_state()
             row["excluded_prior_version_samples"] = excluded_counts.get(
                 (str(row["strategy_id"]), str(row["profile"]), str(row["symbol"])),
                 0,
@@ -1989,8 +2005,18 @@ class PaperRuntime:
         return {
             "analysis_scope": "CURRENT_STRATEGY_VERSION",
             "strategy_version": STRATEGY_VERSION,
+            "data_state": self._strategy_analytics_data_state(),
             "excluded_prior_version_samples": excluded_count,
         }
+
+    def _strategy_analytics_data_state(self) -> str:
+        """LIVE 통계가 버전이 확정된 원장 캐시를 사용하는지 공개한다."""
+
+        if self.mode is not RuntimeMode.LIVE_SHADOW_PAPER:
+            return "READY"
+        if self.dashboard_trade_cache_ready:
+            return "READY"
+        return "LOADING_HISTORY" if self.dashboard_trade_cache_loading else "HISTORY_UNAVAILABLE"
 
     @staticmethod
     def _current_strategy_version_trades(

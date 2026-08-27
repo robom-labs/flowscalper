@@ -15,6 +15,7 @@ type StrategyConfiguration = {
 type Props = {
   strategies: StrategyRow[]
   leagueAccounts: LeagueAccount[]
+  analyticsReady?: boolean
   onConfigure: (strategyId: string, configuration: StrategyConfiguration) => Promise<unknown>
   onRollback?: (strategyId: string, targetRevision: number, expectedRevision: number) => Promise<unknown>
 }
@@ -75,12 +76,13 @@ function monitorState(strategy: StrategyRow, accounts: LeagueAccount[]) {
   return { tone: 'watching', label: '정상 감시 중', detail: reasons.join(' · ') || '진입 조건 대기' }
 }
 
-function ProfileDetails({ report, account }: { report: StrategyPerformance; account: LeagueAccount | undefined }) {
+function ProfileDetails({ report, account, analyticsReady }: { report: StrategyPerformance; account: LeagueAccount | undefined; analyticsReady: boolean }) {
   const windows = ['recent_50', 'recent_100', 'recent_300'] as const
   return (
     <section className="profile-detail-block">
       <h3>{report.profile} 가상계좌</h3>
       <p className="profile-scope-note">자산·순손익은 이번 Run, 아래 통계는 현재 전략 버전의 공개시장 PAPER 기준입니다.</p>
+      {!analyticsReady ? <p className="profile-scope-note" role="status">과거 거래기록을 전략 버전별로 확인하고 있습니다. 완료되기 전에는 승률과 손익 통계를 표시하지 않습니다.</p> : null}
       <dl className="drawer-detail-list">
         <div><dt>이번 Run 현재자산</dt><dd>{formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })}</dd></div>
         <div><dt>이번 Run 순손익</dt><dd>{formatUsdt(account ? number(account.current_equity_usdt) - number(account.starting_equity_usdt) : 0, { signed: true })}</dd></div>
@@ -120,7 +122,7 @@ function ProfileDetails({ report, account }: { report: StrategyPerformance; acco
   )
 }
 
-export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRollback }: Props) {
+export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = true, onConfigure, onRollback }: Props) {
   const [saving, setSaving] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const ordered = useMemo(() => orderedStrategies(strategies), [strategies])
@@ -154,11 +156,13 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRoll
   return (
     <section aria-labelledby="strategies-heading">
       <div className="page-heading"><div><p className="section-kicker">PAPER 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 실제로 평가 중인지와 지금 진입하지 않는 이유를 한 줄로 표시합니다. 조건이 맞지 않는 대기는 오류가 아닙니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 감시 · 검증 중지 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
+      {!analyticsReady ? <p className="profile-scope-note" role="status">과거 거래통계를 전략 버전별로 불러오는 중입니다. 준비 전 숫자는 순위나 승률로 사용하지 않습니다.</p> : null}
       {ordered.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
-      <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>현재 감시</th><th>사용 상태</th><th>방향</th><th>현재 PAPER</th><th>완료</th><th>승률</th><th>표본</th><th>상세</th></tr></thead><tbody>{ordered.map((strategy) => {
+      <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>현재 감시</th><th>사용 상태</th><th>방향</th><th>이번 Run PAPER</th><th>현재버전 완료</th><th>현재버전 승률</th><th>표본</th><th>상세</th></tr></thead><tbody>{ordered.map((strategy) => {
         const account = leagueAccounts.find((item) => item.strategy_id === strategy.strategy_id && item.profile === 'BASE')
+        const report = strategy.performance.BASE
         const pnl = account ? number(account.current_equity_usdt) - number(account.starting_equity_usdt) : 0
-        const winRate = account?.win_rate === null || account?.win_rate === undefined ? '표본 없음' : formatPercentFraction(account.win_rate)
+        const winRate = !analyticsReady ? '불러오는 중' : report.win_rate === null ? '표본 없음' : formatPercentFraction(report.win_rate)
         const isSaving = saving === strategy.strategy_id
         const monitor = monitorState(strategy, leagueAccounts.filter((item) => item.strategy_id === strategy.strategy_id))
         const changeMode = (mode: StrategyConfiguration['mode']) => {
@@ -167,7 +171,7 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRoll
             void configure(strategy, { mode })
           }
         }
-        return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}><td><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td><td><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail} · {strategy.evaluated_paths}개 경로 확인</small></td><td><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving || (strategy.policy_reactivation_locked && mode !== 'OFF')} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.policy_reactivation_locked ? '비용후 검증 실패로 재활성화 잠금' : strategy.manual_lock ? '사용자 고정' : '자동 변경 가능'} · rev {strategy.settings_revision} · {strategy.changed_by}</small></td><td><div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div></td><td><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })}</small></td><td>{account?.trade_count ?? 0}건<small>진행 {account?.open_positions ?? 0}건</small></td><td>{winRate}</td><td>{strategy.performance.BASE.sample_status}</td><td><button type="button" className="secondary-button" onClick={() => setSelectedId(strategy.strategy_id)}>자세히</button></td></tr>
+        return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}><td><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td><td><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail} · {strategy.evaluated_paths}개 경로 확인</small></td><td><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving || (strategy.policy_reactivation_locked && mode !== 'OFF')} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.policy_reactivation_locked ? '비용후 검증 실패로 재활성화 잠금' : strategy.manual_lock ? '사용자 고정' : '자동 변경 가능'} · rev {strategy.settings_revision} · {strategy.changed_by}</small></td><td><div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div></td><td><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })} · 진행 {account?.open_positions ?? 0}건</small></td><td>{analyticsReady ? `${report.sample_size}건` : '불러오는 중'}</td><td>{winRate}</td><td>{analyticsReady ? report.sample_status : '확인 중'}</td><td><button type="button" className="secondary-button" onClick={() => setSelectedId(strategy.strategy_id)}>자세히</button></td></tr>
       })}</tbody></table></div></section>
       <SideDrawer title={selected ? `${selected.short_name} · ${selected.display_name_ko}` : '전략 상세'} open={selected !== null} onClose={closeDrawer} label="전략 상세 정보">
         {selected ? <>
@@ -220,8 +224,8 @@ export function StrategiesPage({ strategies, leagueAccounts, onConfigure, onRoll
               if (previous && window.confirm(`${selected.short_name} 설정을 rev ${previous.settings_revision}로 복원할까요? 현재 기록은 삭제되지 않습니다.`)) void onRollback(selected.strategy_id, previous.settings_revision, selected.settings_revision)
             }}>직전 설정으로 복원</button> : null}
           </section>
-          <ProfileDetails report={selected.performance.BASE} account={accounts.find((account) => account.profile === 'BASE')} />
-          <ProfileDetails report={selected.performance.STRESS} account={accounts.find((account) => account.profile === 'STRESS')} />
+          <ProfileDetails report={selected.performance.BASE} account={accounts.find((account) => account.profile === 'BASE')} analyticsReady={analyticsReady} />
+          <ProfileDetails report={selected.performance.STRESS} account={accounts.find((account) => account.profile === 'STRESS')} analyticsReady={analyticsReady} />
         </> : null}
       </SideDrawer>
     </section>

@@ -351,6 +351,7 @@ export type StrategyPerformance = {
   recommendation_is_advisory: true
   analysis_scope: 'CURRENT_STRATEGY_VERSION'
   strategy_version: string
+  data_state?: 'READY' | 'LOADING_HISTORY' | 'HISTORY_UNAVAILABLE'
   excluded_prior_version_samples: number
   windows: Record<string, Record<string, unknown>>
 }

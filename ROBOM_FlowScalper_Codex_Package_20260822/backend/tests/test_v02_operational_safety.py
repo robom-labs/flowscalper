@@ -429,6 +429,50 @@ def test_live_dashboard_strategy_statistics_are_cached_until_trade_state_changes
     assert calls == 2
 
 
+def test_live_dashboard_waits_for_versioned_trade_cache_before_showing_statistics(
+    monkeypatch,
+) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-performance-loading",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    recovered_as_current = {
+        **_sample_trade("recovered-prior-version"),
+        "sample_type": "LIVE_PUBLIC",
+        "strategy_version": runtime_module.STRATEGY_VERSION,
+    }
+    monkeypatch.setattr(
+        PaperRuntime,
+        "_dashboard_live_shadow_trades",
+        lambda _runtime: (recovered_as_current,),
+    )
+    runtime.dashboard_trade_cache_loading = True
+
+    loading = next(
+        row
+        for row in runtime.strategy_performance(include_persisted=False)
+        if row["strategy_id"] == "LSA_REVERSAL_V1" and row["profile"] == "BASE"
+    )
+    assert loading["sample_size"] == 0
+    assert loading["data_state"] == "LOADING_HISTORY"
+    assert runtime.strategy_symbol_performance(include_persisted=False) == []
+    assert runtime.strategy_analytics_scope(include_persisted=False)["data_state"] == (
+        "LOADING_HISTORY"
+    )
+
+    runtime.dashboard_trade_cache_loading = False
+    runtime.dashboard_trade_cache_ready = True
+    ready = next(
+        row
+        for row in runtime.strategy_performance(include_persisted=False)
+        if row["strategy_id"] == "LSA_REVERSAL_V1" and row["profile"] == "BASE"
+    )
+    assert ready["sample_size"] == 1
+    assert ready["data_state"] == "READY"
+
+
 def test_live_strategy_symbol_analytics_reuses_warmed_trade_cache(
     tmp_path: Path,
     monkeypatch,
