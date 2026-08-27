@@ -2861,6 +2861,6 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | 새 6시간·24시간 | NOT_RUN | 수정 릴리스에서 실제 시간을 채우지 않았다. 최종 문서 릴리스 뒤 6시간을 새로 시작한다. |
 | 485,283-event replay | NOT_RUN | 장시간 관찰과 I/O를 겹치지 않기 위해 이번 Wave에서 실행하지 않았다. |
 | 전략 수익성 | NOT_PROVEN | 5분 중 적격신호·main 거래·League 거래 증가 0. 현재버전 BASE/STRESS 각 12건, net -8.221104992/-14.657179544 USDT로 30건·비용후·OOS·강건성 gate를 충족하지 못했다. |
-| GitHub main·Actions | PENDING | 문서와 `evidence/WAVE95_BACKLOG_AWARE_RELEASE_CLEAN_5M.json`을 동기화한 뒤 별도로 확인한다. |
+| GitHub main·Actions | PASS | main `3c5e4a9fc8cdeb8e7ae1ca9c265fa29ffe18449d`, Actions `33056662395`. validate 1분 4초, browser 1분 17초, desktop·tablet·mobile E2E와 브라우저 증거 업로드가 모두 PASS했다. |
 
 원본 5분 표본은 `evidence/WAVE95_BACKLOG_AWARE_RELEASE_CLEAN_5M.json`, 중단한 장시간 표본은 `evidence/WAVE94_POST_TP_DETAIL_RELEASE_CLEAN_6H.json`, 결정 근거는 `docs/adr/ADR-071-backlog-aware-wal-checkpoint.md`다. 전략 임계값, 진입 기준, TP1·TP2·SL, 수수료·슬리피지, 위험예산, BASE/STRESS 계좌와 Governor 승격 gate는 변경하지 않았다. 실제 주문·private API·API key·secret·wallet·런타임 AI 주문판단은 계속 0이다. 현재 수용상태는 `ACTUAL_BROWSER_AND_CLEAN_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
