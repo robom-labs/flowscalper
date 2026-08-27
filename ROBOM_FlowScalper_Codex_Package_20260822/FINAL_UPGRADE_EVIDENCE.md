@@ -2963,3 +2963,37 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 증가 중인 약 3.1GB 활성 SQLite writer에 direct `quick_check`·`integrity_check`·`foreign_key_check`를 시작한 것이 ADR-049와 충돌함을 발견해 결과가 나오기 전에 두 검사 프로세스를 종료했다. 따라서 이번 active ledger full integrity 결과는 `PASS`가 아니라 `NOT_RUN`, 시도 상태는 `ABORTED_FOR_LIVE_PRIORITY`다. 중단 뒤 서비스는 RUNNING·LIVE·PAPER, queue 0, drop·persistence fault·buffer drop·backlog lock·critical incident·실제 주문·인증 0과 storage entry 허용을 유지했다. 이 간섭 뒤 WAL busy 누적값은 5이므로 깨끗한 20분 증거 이후 상태와 혼합하지 않는다. 향후 full integrity PASS는 ADR-049의 평탄 Run 종료·WAL 0·다른 device immutable copy 절차에서만 기록한다.
 
 원시 실패·통과 관찰은 `evidence/WAVE97_STORAGE_HEALTH_OFFLOOP_FINAL_CLEAN_20M.json`, `evidence/WAVE98_ATOMIC_EXECUTION_PERSISTENCE_CLEAN_5M.json`, `evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_5M.json`, `evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_20M.json`이고 통합 기계판독 근거는 `evidence/WAVE98_ACTUAL_BROWSER_REGRESSION_AND_RUNTIME_QA.json`이다. 결정 근거는 ADR-074와 ADR-075다. 현재 수용상태는 `ACTUAL_BROWSER_AND_CLEAN_5M_20M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_ACTIVE_LEDGER_FULL_CHECK_NOT_RUN`이다.
+
+## 74. Wave 99 임계 지연 실행호가 격리와 재배포 기준선
+
+### 첫 6시간 시도와 원인
+
+- 요청한 21,600초 관찰은 1,141.869초·39표본에서 중단해 `ABORTED_OPERATOR`로 보존했다. event +93,292·전략평가 +306,384는 전진했지만 critical event +30·incident +1·최장 5,037.395ms와 처리 p95 최대 1,012.725ms가 발생해 네 gate가 실패했다.
+- queue 최대 6, 신규 local event-loop 500ms 초과 0, 비계획 재연결·sequence gap·resync·drop·persistence fault·buffer drop 0이었다. 따라서 이 사건을 로컬 queue·event loop·저장 실패 또는 정상 planned rotation으로 축소하지 않는다.
+- SHA-256 `1046eb85…`의 immutable Parquet 1,000행에서 ETHUSDT·ZECUSDT·DOGEUSDT·BTCUSDT `DEPTH_UPDATE` 30건이 1,502.087~1,717.235ms였고 수신 기준 2,145.405ms burst였다. 당시 30건은 모두 `is_stale=false`, flag 0이었다.
+
+### 수정 계약
+
+- supervisor의 기존 1,500ms 기준을 넘은 LIVE `DEPTH_UPDATE`·`ORDERBOOK`에 `EXECUTABLE_LAG_STALE`을 붙이고 critical 사건·잠금·archive 집계는 그대로 보존한다. 기준·전략 임계값·비용·TP1·TP2·SL·위험예산은 낮추지 않았다.
+- stale 또는 sequence-invalid 호가는 최신 실행호가, PAPER 체결, feature history, 전략평가, 후보와 포지션 건강판정을 갱신하지 않는다. data-gap은 같은 종목의 fresh sequence-valid depth에서만 해제한다.
+- 설정 고급진단에는 격리 누적 건수와 최근 종목·종류·지연·거래소시각을 추가했다. wide scanner와 공개 체결 지연은 기존 별도 telemetry를 유지한다.
+
+### 구현·배포·브라우저·5분 검증
+
+| 항목 | 상태 | 실제 근거 |
+|---|---|---|
+| 표적·관련 backend | PASS | 임계 경계·wide 제외·archive flag·최신호가·피처·평가 불변·fresh 복구 2건과 관련 90건 PASS |
+| 전체 backend·fixture | PASS | backend 497·fixture 19 PASS |
+| frontend·정적·build | PASS_WITH_WARNING | frontend 14 files·71 tests, Ruff, mypy 97 source, ESLint, TypeScript, Vite 50 modules PASS. JS 527.49kB·gzip 162.09kB 기존 경고 유지 |
+| PAPER safety·security·hygiene | PASS | 실제 주문 path false, security 132 source·위반·secret-like 0, repository hygiene PASS |
+| 불변 배포 | PASS | commit `6caad216f9acc08ba80f92eeb036ece4f34804f1`, 같은 `run-2b7135a972dd`, LIVE 공개시장·PAPER·RUNNING, 11전략·22계좌, 포지션·pending·실제주문·인증 0 |
+| 실제 브라우저 | PASS | 실행 SHA·작동 중·PAPER 실제 주문 0·화면 연결됨과 새 격리 진단을 확인. 1440×900·834×1112·390×844 overflow 0, 모바일 차트 표시, console warning/error 0 |
+| 새 5분 기준선 | PASS | 300.037초·61표본·probe 오류 0, event/consumer +29,420·평가 +83,160, queue 최대 28, 처리/체결 p95 최대 54.568/152.271ms, local loop 최대 237ms·500ms 초과 0 |
+| 저장·메모리 | PASS | buffer 최대 1,028·backlog peak 1,064·flush/WAL 최근 최대 3.995/6.360초·busy 증가 0, 현재 RSS +28.109MB |
+| 런타임 안전 | PASS | critical·비계획 reconnect·gap·resync·drop·consumer fault·queue overload·persistence fault·buffer drop·backlog lock·실제주문·인증 0 |
+| 실제 고지연 격리 재발 | NOT_OBSERVED | 배포 뒤 5분에는 임계 초과 실행호가가 없어 격리 누적은 0. 종단 격리 계약은 deterministic 회귀로 PASS했지만 실제 재발을 관찰했다고 쓰지 않음 |
+| 자연 거래·수익성 | NOT_OBSERVED / NOT_PROVEN | 5분 신규 거래 0. 현재버전 BASE/STRESS 각 14건·net -10.512252272/-17.957519704 USDT, 최소 30건·OOS·walk-forward·강건성 미충족 |
+| 새 6시간·24시간 | NOT_RUN | 새 릴리스에서 실제 시간을 아직 채우지 않음 |
+| 활성 원장 full integrity·485,283-event replay | NOT_RUN | LIVE 우선순위와 ADR-049 경계를 지키기 위해 이번 기준선과 겹치지 않음 |
+
+원시 실패 관찰은 `evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_6H.json`, 사건 분석은 `evidence/WAVE99_CRITICAL_LAG_INCIDENT_DIAGNOSIS.json`, 새 기준선은 `evidence/WAVE99_POST_QUARANTINE_CLEAN_5M.json`, 통합 증거는 `evidence/WAVE99_POST_QUARANTINE_RELEASE_QA.json`이다. 실제 화면은 `evidence/screenshots/WAVE99_ACTUAL_SYSTEM_DIAGNOSTICS_DESKTOP.png`, `WAVE99_ACTUAL_MARKET_TABLET.png`, `WAVE99_ACTUAL_MARKET_MOBILE.png`에 보존했고 결정 근거는 ADR-076이다. 현재 수용상태는 `CRITICAL_LAG_FAILURE_PRESERVED_QUARANTINE_IMPLEMENTED_ACTUAL_RELEASE_AND_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
