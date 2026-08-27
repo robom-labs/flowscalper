@@ -2826,6 +2826,7 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed·16.6초. TP1·TP2 라벨과 legacy 누락값을 확인 |
 | macOS 불변 릴리스 | PASS | commit `b1a89276a86a1547336960fd540c04e363541619`, 같은 Run 복구, LIVE·PAPER·RUNNING, 11전략·22계좌, 열린 포지션 0, 실제 주문 false, 인증 false |
 | 실제 브라우저 현재 거래 | PASS | 현재버전·전략계좌·공개시장 24건, 첫 거래 TP1 79,162.28·TP2 79,528.75·초기손절 78,559.36·실제종료 78,821.4를 분리 표시 |
+| GitHub main·Actions | PASS | main `10d56d2a76a178f16771617eab4060643dc5fcb7`, Actions `33051706575`. validate 1분 4초, browser 1분 20초와 브라우저 증거 업로드 PASS |
 | 6시간 무간섭 관찰 | IN_PROGRESS | 2026-08-27 16:51 KST 시작. 초기 event 8,643→8,875, 처리/체결 p95 50.675/61.290ms, queue·비계획 reconnect·gap·resync·drop·저장결함 0. 출력 예정 `evidence/WAVE94_POST_TP_DETAIL_RELEASE_CLEAN_6H.json` |
 | 24시간 관찰 | NOT_RUN | 실제 시간을 채우지 않음 |
 | 고정 485,283-event replay | NOT_RUN | 이번 릴리스 장시간 관찰과 겹치지 않음 |

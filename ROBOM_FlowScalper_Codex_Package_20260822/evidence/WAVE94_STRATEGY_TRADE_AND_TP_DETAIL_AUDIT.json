@@ -77,6 +77,15 @@
     "vite_build": "PASS_WITH_526_08_KB_WARNING",
     "playwright": "PASS_DESKTOP_TABLET_MOBILE_3"
   },
+  "github": {
+    "status": "PASS",
+    "main_sha": "10d56d2a76a178f16771617eab4060643dc5fcb7",
+    "actions_run_id": 33051706575,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/33051706575",
+    "validate": "PASS_1M04S",
+    "browser": "PASS_1M20S",
+    "browser_evidence_upload": "PASS"
+  },
   "long_observation": {
     "status": "IN_PROGRESS",
     "duration_seconds": 21600,
