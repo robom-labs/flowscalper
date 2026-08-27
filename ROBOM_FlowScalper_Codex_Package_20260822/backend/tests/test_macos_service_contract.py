@@ -156,6 +156,10 @@ def test_service_uses_immutable_current_release_and_manifest_paths() -> None:
     assert 'ROBOM_MARKET_ARCHIVE_PATH="$PROJECT_DIR/data/market-parquet-v6"' not in runner
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="실제 /bin/zsh LaunchAgent runner 계약은 macOS에서 검증한다.",
+)
 def test_service_runner_pins_backend_import_to_physical_release(tmp_path: Path) -> None:
     release = tmp_path / "release"
     support = tmp_path / "home" / "Library" / "Application Support" / "ROBOM FlowScalper"
