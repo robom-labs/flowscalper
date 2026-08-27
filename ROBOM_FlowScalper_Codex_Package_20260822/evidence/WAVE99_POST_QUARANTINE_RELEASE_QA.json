@@ -3,6 +3,19 @@
   "wave": 99,
   "status": "POST_DEPLOY_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN",
   "implementation_commit": "6caad216f9acc08ba80f92eeb036ece4f34804f1",
+  "github": {
+    "status": "PASS",
+    "main_sha": "ad37cafcd1c72d5e746556f019cb7fbb770fde53",
+    "actions_run_id": 33080439159,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/33080439159",
+    "validate_job_id": 98545860317,
+    "validate_duration_seconds": 69,
+    "validate_conclusion": "success",
+    "browser_job_id": 98546250521,
+    "browser_duration_seconds": 71,
+    "browser_conclusion": "success",
+    "browser_evidence_upload": "PASS"
+  },
   "run_id": "run-2b7135a972dd",
   "deployment": {
     "status": "PASS",

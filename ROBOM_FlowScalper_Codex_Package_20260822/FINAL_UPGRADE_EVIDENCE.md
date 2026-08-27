@@ -2987,6 +2987,7 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | frontend·정적·build | PASS_WITH_WARNING | frontend 14 files·71 tests, Ruff, mypy 97 source, ESLint, TypeScript, Vite 50 modules PASS. JS 527.49kB·gzip 162.09kB 기존 경고 유지 |
 | PAPER safety·security·hygiene | PASS | 실제 주문 path false, security 132 source·위반·secret-like 0, repository hygiene PASS |
 | 불변 배포 | PASS | commit `6caad216f9acc08ba80f92eeb036ece4f34804f1`, 같은 `run-2b7135a972dd`, LIVE 공개시장·PAPER·RUNNING, 11전략·22계좌, 포지션·pending·실제주문·인증 0 |
+| GitHub main·Actions | PASS | main `ad37cafcd1c72d5e746556f019cb7fbb770fde53`, Actions `33080439159`; validate 69초·browser 71초와 브라우저 증거 업로드 PASS |
 | 실제 브라우저 | PASS | 실행 SHA·작동 중·PAPER 실제 주문 0·화면 연결됨과 새 격리 진단을 확인. 1440×900·834×1112·390×844 overflow 0, 모바일 차트 표시, console warning/error 0 |
 | 새 5분 기준선 | PASS | 300.037초·61표본·probe 오류 0, event/consumer +29,420·평가 +83,160, queue 최대 28, 처리/체결 p95 최대 54.568/152.271ms, local loop 최대 237ms·500ms 초과 0 |
 | 저장·메모리 | PASS | buffer 최대 1,028·backlog peak 1,064·flush/WAL 최근 최대 3.995/6.360초·busy 증가 0, 현재 RSS +28.109MB |
