@@ -43,7 +43,7 @@ export default function App() {
     data.system.release_commit,
   )
 
-  if (!releaseCompatibility.compatible) {
+  if (bootstrapState === 'READY' && !releaseCompatibility.compatible) {
     return (
       <main className="release-mismatch-shell">
         <section className="release-mismatch-card" role="alert" aria-labelledby="release-mismatch-title">

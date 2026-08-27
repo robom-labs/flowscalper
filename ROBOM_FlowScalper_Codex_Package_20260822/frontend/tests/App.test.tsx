@@ -47,6 +47,20 @@ test('fails closed when immutable frontend and backend release commits differ', 
   expect(screen.queryByRole('button', { name: '전략' })).not.toBeInTheDocument()
 })
 
+test('does not show a false release mismatch before the first dashboard arrives', () => {
+  const releaseMeta = document.createElement('meta')
+  releaseMeta.name = 'robom-release-commit'
+  releaseMeta.content = '1'.repeat(40)
+  document.head.append(releaseMeta)
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+
+  expect(screen.getByRole('status')).toHaveTextContent('프로그램 상태를 불러오는 중입니다.')
+  expect(screen.queryByRole('alert', { name: /프로그램 버전/ })).not.toBeInTheDocument()
+})
+
 test('shows a compact matching immutable release in advanced diagnostics', async () => {
   const releaseCommit = 'a'.repeat(40)
   const releaseMeta = document.createElement('meta')
