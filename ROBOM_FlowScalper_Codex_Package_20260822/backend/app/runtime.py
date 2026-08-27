@@ -78,8 +78,8 @@ from backend.app.strategies.shadow import ShadowLedger
 if TYPE_CHECKING:
     from backend.app.replay.safety import ReplayLiveSafetySnapshot
 
-_MARKET_PERSISTENCE_FLUSH_THRESHOLD = 2_000
-_MARKET_PERSISTENCE_BATCH_SIZE = 2_000
+_MARKET_PERSISTENCE_FLUSH_THRESHOLD = 1_000
+_MARKET_PERSISTENCE_BATCH_SIZE = 1_000
 _SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
 
 

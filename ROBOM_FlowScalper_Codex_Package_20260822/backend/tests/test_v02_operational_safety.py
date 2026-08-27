@@ -799,7 +799,7 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     worker = asyncio.create_task(runtime.run_persistence_worker(stop))
     heartbeat_ticks = 0
     for _ in range(500):
-        if ledger.count("market_event_archives") == 1:
+        if ledger.count("market_event_archives") == 2:
             break
         heartbeat_ticks += 1
         await asyncio.sleep(0.01)
@@ -807,14 +807,14 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     await worker
 
     assert heartbeat_ticks >= 10
-    assert ledger.count("market_event_archives") == 1
+    assert ledger.count("market_event_archives") == 2
     assert ledger.market_event_symbols(runtime.run_id) == [
         {"symbol": "BTCUSDT", "event_count": 2_000}
     ]
     assert runtime._persistence_flush_count >= 1
     assert runtime._persistence_flush_last_completed_ts_ms == runtime.clock.utc_ms()
     assert runtime._persistence_flush_max_ts_ms == runtime.clock.utc_ms()
-    assert runtime._persistence_flush_slowest_market_events == 2_000
+    assert runtime._persistence_flush_slowest_market_events == 1_000
     assert runtime._persistence_flush_slowest_candles >= 0
     assert runtime._persistence_flush_slowest_archive_batches == 1
     assert runtime._persistence_flush_slowest_archive_ms >= 0
