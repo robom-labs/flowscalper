@@ -99,6 +99,9 @@ test('separates local event-loop delay from public-market delay in diagnostics',
       event_loop_lag_max_ms: 250.25,
       event_loop_lag_over_100ms_count: 1,
       event_loop_lag_last_over_100ms_ts_ms: 1_787_818_022_698,
+      event_loop_lag_over_500ms_count: 0,
+      event_loop_lag_last_over_500ms_ts_ms: null,
+      event_loop_lag_last_over_500ms_ms: null,
       persistence_backlog_peak: 10_001,
       persistence_backlog_entry_lock_count: 1,
       wal_checkpoint_deferred_count: 3,
@@ -119,6 +122,9 @@ test('separates local event-loop delay from public-market delay in diagnostics',
   expect(screen.getByText('로컬 처리루프 최대 지연 ms')).toBeInTheDocument()
   expect(screen.getByText('로컬 처리루프 100ms 초과 횟수')).toBeInTheDocument()
   expect(screen.getByText('최근 로컬 처리루프 지연시각 ms')).toBeInTheDocument()
+  expect(screen.getByText('로컬 처리루프 500ms 초과 횟수')).toBeInTheDocument()
+  expect(screen.getByText('최근 로컬 처리루프 500ms 초과시각 ms')).toBeInTheDocument()
+  expect(screen.getByText('최근 로컬 처리루프 500ms 초과값 ms')).toBeInTheDocument()
   expect(screen.getByText('시장 저장 대기 최대 건수')).toBeInTheDocument()
   expect(screen.getByText('저장 적체 안전대기 횟수')).toBeInTheDocument()
   expect(screen.getByText('저장 적체 중 checkpoint 연기 횟수')).toBeInTheDocument()

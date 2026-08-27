@@ -111,6 +111,8 @@ class RunningServiceSample:
     event_loop_lag_last_ms: float
     event_loop_lag_max_ms: float
     event_loop_lag_over_100ms_count: int
+    event_loop_lag_over_500ms_count: int
+    event_loop_lag_last_over_500ms: float
     critical_lag_active: bool
     entry_locked: bool
     storage_entry_allowed: bool
@@ -353,6 +355,14 @@ def parse_running_service_sample(
             system.get("event_loop_lag_over_100ms_count"),
             "system.event_loop_lag_over_100ms_count",
         ),
+        event_loop_lag_over_500ms_count=_integer(
+            system.get("event_loop_lag_over_500ms_count"),
+            "system.event_loop_lag_over_500ms_count",
+        ),
+        event_loop_lag_last_over_500ms=_number(
+            system.get("event_loop_lag_last_over_500ms_ms") or 0.0,
+            "system.event_loop_lag_last_over_500ms_ms",
+        ),
         critical_lag_active=_boolean(
             system.get("critical_lag_active"), "system.critical_lag_active"
         ),
@@ -452,6 +462,17 @@ def summarize_running_service_soak(
         max(sample.process_memory_mb for sample in samples)
         - baseline.process_memory_mb
     )
+    event_loop_lag_over_500ms_delta = (
+        final.event_loop_lag_over_500ms_count
+        - baseline.event_loop_lag_over_500ms_count
+    )
+    if active_thresholds.max_event_loop_lag_ms == 500.0:
+        event_loop_lag_bounded = event_loop_lag_over_500ms_delta == 0
+    else:
+        event_loop_lag_bounded = (
+            max(sample.event_loop_lag_max_ms for sample in samples)
+            <= active_thresholds.max_event_loop_lag_ms
+        )
     allowed_operation_samples = all(_operation_sample_is_safe(sample) for sample in samples)
     adjacent_samples = tuple(zip(samples, samples[1:], strict=False))
     baseline_strategy_ids = {state.strategy_id for state in baseline.strategy_states}
@@ -599,10 +620,7 @@ def summarize_running_service_soak(
         <= active_thresholds.max_processing_lag_p95_ms,
         "trade_lag_bounded": max(sample.trade_lag_p95_ms for sample in samples)
         <= active_thresholds.max_trade_lag_p95_ms,
-        "event_loop_lag_bounded": max(
-            sample.event_loop_lag_max_ms for sample in samples
-        )
-        <= active_thresholds.max_event_loop_lag_ms,
+        "event_loop_lag_bounded": event_loop_lag_bounded,
         "memory_growth_bounded": memory_growth <= active_thresholds.max_memory_growth_mb,
         "market_persistence_buffer_bounded": max(
             sample.market_persistence_buffer for sample in samples
@@ -666,6 +684,8 @@ def summarize_running_service_soak(
         "event_loop_lag_counter_monotonic": all(
             current.event_loop_lag_over_100ms_count
             >= previous.event_loop_lag_over_100ms_count
+            and current.event_loop_lag_over_500ms_count
+            >= previous.event_loop_lag_over_500ms_count
             for previous, current in adjacent_samples
         ),
         "probe_errors_bounded": (
@@ -789,6 +809,8 @@ def summarize_running_service_soak(
             final.event_loop_lag_over_100ms_count
             - baseline.event_loop_lag_over_100ms_count
         ),
+        "event_loop_lag_over_500ms_delta": event_loop_lag_over_500ms_delta,
+        "event_loop_lag_last_over_500ms": final.event_loop_lag_last_over_500ms,
         "maximum_event_loop_lag_ms": max(
             sample.event_loop_lag_max_ms for sample in samples
         ),

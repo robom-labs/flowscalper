@@ -897,13 +897,17 @@ def test_supervisor_records_event_loop_lag_without_changing_entry_state() -> Non
     telemetry = SupervisorTelemetry(entry_locked=False)
 
     telemetry.observe_event_loop_lag(250.25, 10_000)
+    telemetry.observe_event_loop_lag(750.5, 10_050)
     telemetry.observe_event_loop_lag(20.0, 10_100)
 
     diagnostics = telemetry.as_dict()
     assert diagnostics["event_loop_lag_last_ms"] == 20.0
-    assert diagnostics["event_loop_lag_max_ms"] == 250.25
-    assert diagnostics["event_loop_lag_over_100ms_count"] == 1
-    assert diagnostics["event_loop_lag_last_over_100ms_ts_ms"] == 10_000
+    assert diagnostics["event_loop_lag_max_ms"] == 750.5
+    assert diagnostics["event_loop_lag_over_100ms_count"] == 2
+    assert diagnostics["event_loop_lag_last_over_100ms_ts_ms"] == 10_050
+    assert diagnostics["event_loop_lag_over_500ms_count"] == 1
+    assert diagnostics["event_loop_lag_last_over_500ms_ts_ms"] == 10_050
+    assert diagnostics["event_loop_lag_last_over_500ms_ms"] == 750.5
     assert telemetry.entry_locked is False
 
 

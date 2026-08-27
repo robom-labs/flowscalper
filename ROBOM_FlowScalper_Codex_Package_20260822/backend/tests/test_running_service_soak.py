@@ -122,6 +122,8 @@ def _payload() -> dict[str, object]:
             "event_loop_lag_last_ms": 0.0,
             "event_loop_lag_max_ms": 0.0,
             "event_loop_lag_over_100ms_count": 0,
+            "event_loop_lag_over_500ms_count": 0,
+            "event_loop_lag_last_over_500ms_ms": None,
             "critical_lag_active": False,
             "entry_locked": False,
             "storage_entry_allowed": True,
@@ -184,6 +186,7 @@ def test_running_service_soak_passes_only_with_exact_progress_and_dynamic_accoun
     assert result["critical_lag_incident_delta"] == 0
     assert result["event_gap_over_500ms_delta"] == 0
     assert result["event_loop_lag_over_100ms_delta"] == 0
+    assert result["event_loop_lag_over_500ms_delta"] == 0
     assert result["persistence_backlog_entry_lock_delta"] == 0
     assert result["wal_checkpoint_deferred_delta"] == 0
     assert result["failures"] == []
@@ -495,6 +498,8 @@ def test_running_service_soak_rejects_local_event_loop_stall() -> None:
             "event_loop_lag_last_ms": 510.0,
             "event_loop_lag_max_ms": 510.0,
             "event_loop_lag_over_100ms_count": 1,
+            "event_loop_lag_over_500ms_count": 1,
+            "event_loop_lag_last_over_500ms_ms": 510.0,
         }
     )
 
@@ -507,6 +512,42 @@ def test_running_service_soak_rejects_local_event_loop_stall() -> None:
     assert "event_loop_lag_bounded" in result["failures"]
     assert result["thresholds"]["max_event_loop_lag_ms"] == 500.0
     assert result["maximum_event_loop_lag_ms"] == 510.0
+    assert result["event_loop_lag_over_500ms_delta"] == 1
+
+
+def test_running_service_soak_ignores_process_lifetime_event_loop_max_before_baseline() -> None:
+    baseline = _payload()
+    baseline_system = baseline["system"]
+    assert isinstance(baseline_system, dict)
+    baseline_system.update(
+        {
+            "event_loop_lag_max_ms": 1_031.0,
+            "event_loop_lag_over_100ms_count": 12,
+            "event_loop_lag_over_500ms_count": 1,
+            "event_loop_lag_last_over_500ms_ms": 1_031.0,
+        }
+    )
+    stable = _advanced_payload()
+    stable_system = stable["system"]
+    assert isinstance(stable_system, dict)
+    stable_system.update(
+        {
+            "event_loop_lag_max_ms": 1_031.0,
+            "event_loop_lag_over_100ms_count": 14,
+            "event_loop_lag_over_500ms_count": 1,
+            "event_loop_lag_last_over_500ms_ms": 1_031.0,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(baseline, 0.0), _sample(stable, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["checks"]["event_loop_lag_bounded"] is True
+    assert result["event_loop_lag_over_500ms_delta"] == 0
+    assert result["maximum_event_loop_lag_ms"] == 1_031.0
 
 
 def test_running_service_soak_rejects_persistence_backlog_growth_and_lock() -> None:

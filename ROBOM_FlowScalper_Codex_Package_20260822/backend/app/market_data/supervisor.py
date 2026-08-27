@@ -39,6 +39,7 @@ _STRATEGY_TRADE_LAG_MAX_MS = 500.0
 _ROTATION_WARMUP_DEPTH_LAG_MAX_MS = 1_500.0
 _EVENT_LOOP_WATCHDOG_INTERVAL_SECONDS = 0.1
 _EVENT_LOOP_LAG_OBSERVATION_MS = 100.0
+_EVENT_LOOP_SOAK_LAG_THRESHOLD_MS = 500.0
 
 
 def _rotation_depth_output_ready(
@@ -145,6 +146,9 @@ class SupervisorTelemetry:
     event_loop_lag_max_ms: float = 0.0
     event_loop_lag_over_100ms_count: int = 0
     event_loop_lag_last_over_100ms_ts_ms: int | None = None
+    event_loop_lag_over_500ms_count: int = 0
+    event_loop_lag_last_over_500ms_ts_ms: int | None = None
+    event_loop_lag_last_over_500ms_ms: float | None = None
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     trade_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     wide_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
@@ -201,6 +205,10 @@ class SupervisorTelemetry:
         if bounded > _EVENT_LOOP_LAG_OBSERVATION_MS:
             self.event_loop_lag_over_100ms_count += 1
             self.event_loop_lag_last_over_100ms_ts_ms = observed_ts_ms
+        if bounded > _EVENT_LOOP_SOAK_LAG_THRESHOLD_MS:
+            self.event_loop_lag_over_500ms_count += 1
+            self.event_loop_lag_last_over_500ms_ts_ms = observed_ts_ms
+            self.event_loop_lag_last_over_500ms_ms = bounded
 
     def observe_critical_lag_state(
         self,
@@ -332,6 +340,15 @@ class SupervisorTelemetry:
             "event_loop_lag_over_100ms_count": self.event_loop_lag_over_100ms_count,
             "event_loop_lag_last_over_100ms_ts_ms": (
                 self.event_loop_lag_last_over_100ms_ts_ms
+            ),
+            "event_loop_lag_over_500ms_count": self.event_loop_lag_over_500ms_count,
+            "event_loop_lag_last_over_500ms_ts_ms": (
+                self.event_loop_lag_last_over_500ms_ts_ms
+            ),
+            "event_loop_lag_last_over_500ms_ms": (
+                round(self.event_loop_lag_last_over_500ms_ms, 3)
+                if self.event_loop_lag_last_over_500ms_ms is not None
+                else None
             ),
             "lag_percentile_refresh_count": self.lag_percentile_refresh_count,
             "critical_lag_active": self.critical_lag_active,
