@@ -1932,8 +1932,8 @@ def _apply_storage_worker_cpu_priority() -> None:
 
     try:
         current_niceness = os.nice(0)
-        if current_niceness < 19:
-            os.nice(19 - current_niceness)
+        if current_niceness < 10:
+            os.nice(10 - current_niceness)
     except OSError:
         return
 

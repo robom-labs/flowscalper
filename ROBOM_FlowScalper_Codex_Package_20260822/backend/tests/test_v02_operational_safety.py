@@ -188,8 +188,8 @@ def test_storage_worker_keeps_low_cpu_priority_without_accumulating(
     sqlite_module._apply_storage_worker_cpu_priority()
     sqlite_module._apply_storage_worker_cpu_priority()
 
-    assert adjustments == [0, 19, 0]
-    assert current_niceness == 19
+    assert adjustments == [0, 10, 0]
+    assert current_niceness == 10
 
 
 def test_archive_worker_warms_arrow_and_zstd_without_disk_write(monkeypatch) -> None:
