@@ -171,6 +171,27 @@ def test_atomic_sqlite_commit_temporarily_leaves_background_priority(
     ledger.close()
 
 
+def test_storage_worker_keeps_low_cpu_priority_without_accumulating(
+    monkeypatch,
+) -> None:
+    current_niceness = 0
+    adjustments: list[int] = []
+
+    def adjust_niceness(increment: int) -> int:
+        nonlocal current_niceness
+        adjustments.append(increment)
+        current_niceness = min(19, current_niceness + increment)
+        return current_niceness
+
+    monkeypatch.setattr(sqlite_module.os, "nice", adjust_niceness)
+
+    sqlite_module._apply_storage_worker_cpu_priority()
+    sqlite_module._apply_storage_worker_cpu_priority()
+
+    assert adjustments == [0, 19, 0]
+    assert current_niceness == 19
+
+
 def test_archive_worker_warms_arrow_and_zstd_without_disk_write(monkeypatch) -> None:
     warmed = 0
 
@@ -843,7 +864,7 @@ async def test_incomplete_oversized_wal_checkpoint_fails_closed(
 
     async def incomplete_checkpoint(function, *arguments):
         assert function is runtime_module.run_passive_wal_checkpoint_in_process
-        assert arguments == (str(ledger.path),)
+        assert arguments == (str(ledger.path), True)
         return (0, 20_000, 0)
 
     monkeypatch.setattr(runtime_module.to_process, "run_sync", incomplete_checkpoint)

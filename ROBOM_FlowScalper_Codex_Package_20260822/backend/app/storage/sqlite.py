@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import zlib
 from collections.abc import Callable, Mapping, Sequence
@@ -1926,9 +1927,25 @@ class _Transaction:
             self._lock.release()
 
 
-def run_passive_wal_checkpoint_in_process(path: str) -> tuple[int, int, int]:
+def _apply_storage_worker_cpu_priority() -> None:
+    """저장 child의 CPU를 LIVE 이벤트 처리보다 낮게 유지한다."""
+
+    try:
+        current_niceness = os.nice(0)
+        if current_niceness < 19:
+            os.nice(19 - current_niceness)
+    except OSError:
+        return
+
+
+def run_passive_wal_checkpoint_in_process(
+    path: str,
+    apply_low_cpu_priority: bool = False,
+) -> tuple[int, int, int]:
     """COMMIT 호출자와 분리된 process에서 비차단 PASSIVE checkpoint를 실행한다."""
 
+    if apply_low_cpu_priority:
+        _apply_storage_worker_cpu_priority()
     with storage_io_priority_gate(path, exclusive=True):
         connection = sqlite3.connect(path, timeout=0.0, isolation_level=None)
         try:
@@ -1948,11 +1965,14 @@ def persist_archives_and_candles_in_process(
     ledger_path: str,
     market_groups: list[list[dict[str, object]]],
     candles: list[dict[str, object]],
+    apply_low_cpu_priority: bool = False,
 ) -> dict[str, float | int]:
     """Parquet 작성과 FULL SQLite 커밋을 시장 처리 프로세스 밖에서 끝낸다."""
 
     import time
 
+    if apply_low_cpu_priority:
+        _apply_storage_worker_cpu_priority()
     with storage_io_priority_gate(ledger_path, exclusive=True):
         _apply_persistence_background_io_policy()
         archive_started = time.perf_counter()

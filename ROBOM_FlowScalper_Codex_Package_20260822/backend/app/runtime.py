@@ -3687,6 +3687,7 @@ class PaperRuntime:
                         str(self.ledger.path),
                         groups,
                         candle_batch,
+                        True,
                     )
                     timings.update(process_timings)
                     candle_batch = []
@@ -3730,6 +3731,7 @@ class PaperRuntime:
                 busy, log_frames, checkpointed_frames = await to_process.run_sync(
                     run_passive_wal_checkpoint_in_process,
                     str(self.ledger.path),
+                    True,
                 )
             except Exception as error:
                 self._wal_checkpoint_fault_count += 1
