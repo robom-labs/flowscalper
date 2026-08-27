@@ -62,6 +62,30 @@ def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> N
     assert "stderr=sys.stderr" in stage
 
 
+def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
+        encoding="utf-8"
+    )
+
+    kickstart_at = installer.index('launchctl kickstart "$SERVICE_TARGET"')
+    readiness_at = installer.index("for readiness_wait in {1..180}")
+    pass_at = installer.index(
+        'echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"'
+    )
+    assert kickstart_at < readiness_at < pass_at
+    readiness = installer[readiness_at:pass_at]
+    assert "http://127.0.0.1:8870/api/dashboard" in readiness
+    assert 'system["release_commit"] == expected' in readiness
+    assert 'system["release_isolated"] is True' in readiness
+    assert 'status["market_data_state"] == "LIVE"' in readiness
+    assert 'status["execution_state"] == "PAPER"' in readiness
+    assert 'status["real_orders_enabled"] is False' in readiness
+    assert 'status["auth_required"] is False' in readiness
+    assert 'operation["market_observation_active"] is True' in readiness
+    assert 'operation["automatic_recovery"] is True' in readiness
+    assert "exit 6" in readiness
+
+
 def test_installer_can_prepare_release_without_restarting_loaded_service() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
         encoding="utf-8"

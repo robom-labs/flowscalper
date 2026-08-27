@@ -104,7 +104,41 @@ fi
 launchctl enable "$SERVICE_TARGET"
 launchctl kickstart "$SERVICE_TARGET"
 
-echo "PASS: 자동 실행 서비스 설치 완료"
+EXPECTED_RELEASE_COMMIT="$("$RUNTIME_VENV/bin/python" -c \
+  'import json,sys; print(json.loads(open(sys.argv[1], encoding="utf-8").read())["commit"])' \
+  "$PROJECT_DIR/release-manifest.json")"
+service_ready="false"
+for readiness_wait in {1..180}; do
+  if dashboard_payload="$(curl -fsS --max-time 2 http://127.0.0.1:8870/api/dashboard 2>/dev/null)"; then
+    if printf '%s' "$dashboard_payload" | "$RUNTIME_VENV/bin/python" -c \
+      'import json,sys
+payload=json.load(sys.stdin)
+expected=sys.argv[1]
+status=payload["status"]
+system=payload["system"]
+operation=payload["operation_status"]
+assert system["release_commit"] == expected
+assert system["release_isolated"] is True
+assert status["market_data_state"] == "LIVE"
+assert status["execution_state"] == "PAPER"
+assert status["real_orders_enabled"] is False
+assert status["auth_required"] is False
+assert operation["market_observation_active"] is True
+assert operation["automatic_recovery"] is True' \
+      "$EXPECTED_RELEASE_COMMIT" 2>/dev/null; then
+      service_ready="true"
+      break
+    fi
+  fi
+  sleep 1
+done
+if [[ "$service_ready" != "true" ]]; then
+  echo "PAPER 서비스가 180초 안에 안전한 LIVE 준비 상태가 되지 않았습니다." >&2
+  echo "로그를 확인하세요: $SUPPORT_DIR" >&2
+  exit 6
+fi
+
+echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"
 echo "주소: http://127.0.0.1:8870/"
 echo "로그: $SUPPORT_DIR"
 echo "릴리스: $(cd "$PROJECT_DIR" && pwd -P)"
