@@ -68,8 +68,22 @@ if [[ "$PREPARE_ONLY" == "true" ]]; then
   exit 0
 fi
 
-if launchctl print "$SERVICE_TARGET" >/dev/null 2>&1; then
+service_pid=""
+if service_snapshot="$(launchctl print "$SERVICE_TARGET" 2>/dev/null)"; then
+  service_pid="$(printf '%s\n' "$service_snapshot" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')"
   launchctl bootout "$SERVICE_TARGET"
+fi
+if [[ -n "$service_pid" ]]; then
+  for shutdown_wait in {1..60}; do
+    if ! kill -0 "$service_pid" 2>/dev/null; then
+      break
+    fi
+    sleep 1
+  done
+  if kill -0 "$service_pid" 2>/dev/null; then
+    echo "기존 PAPER 서비스가 60초 안에 안전 종료되지 않았습니다: PID $service_pid" >&2
+    exit 5
+  fi
 fi
 bootstrap_succeeded="false"
 for attempt in 1 2 3; do

@@ -52,6 +52,9 @@ def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> N
     )
 
     assert "for attempt in 1 2 3" in installer
+    assert 'service_pid="$(printf' in installer
+    assert "for shutdown_wait in {1..60}" in installer
+    assert 'kill -0 "$service_pid"' in installer
     assert 'bootstrap_succeeded="true"' in installer
     assert "LaunchAgent 등록이 3회 연속 실패했습니다" in installer
     assert 'payload["status"] == "ACTIVATED"' in installer
