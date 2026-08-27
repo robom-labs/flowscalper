@@ -627,3 +627,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Keep actual browser evidence separate from OFFLINE FIXTURE Playwright screenshots and record the exact release SHA for both.
 9. Never run a full SQLite integrity scan against the growing active writer. A mistakenly started scan must be terminated, marked `NOT_RUN` and followed by runtime-safety checks; only ADR-049's closed immutable-copy procedure can yield a full integrity PASS.
 10. Synchronize code, raw failures, passing evidence and documentation to GitHub main, confirm Actions, then start the clean six-hour observer without replay, tests, build or ledger maintenance.
+
+## Executable-lag quarantine Wave
+
+1. Preserve the first Wave 98 six-hour attempt as `ABORTED_OPERATOR`; it stopped after 1,141.869 seconds with 30 critical executable-lag events and one incident. Never reuse its initial normal samples as a six-hour PASS.
+2. Diagnose the incident from the immutable market archive, not from a dashboard percentile alone. Record file checksum, exact event types, symbols, calibrated lag values and receive-time burst duration.
+3. Keep the registered 1,500ms critical threshold unchanged. Mark a LIVE depth or orderbook event above that threshold `EXECUTABLE_LAG_STALE` before it enters the consumer queue.
+4. Preserve the event id, sequence, venue timestamp, lag and book payload in the authoritative Run archive and ledger. Continue counting the critical incident and fail-closed entry lock.
+5. Do not update the latest executable book, PAPER fills, feature history, strategy evaluation, candidate planning or position-health decisions from stale or sequence-invalid depth.
+6. Keep the data-gap start until the same symbol receives fresh sequence-valid depth. Apply the existing recovery, TP/SL and emergency-stale policies only from valid same-venue data.
+7. Expose quarantined event count and the latest symbol, event type, lag and venue timestamp in Korean advanced diagnostics. Keep wide ticker and trade-lag telemetry separate.
+8. Add regression tests for the configurable threshold boundary, non-executable event exclusion, archive flag preservation, latest-book and feature immutability, strategy-evaluation immutability and fresh-depth recovery.
+9. Run the complete backend, frontend, lint, typecheck, build, PAPER safety, security, repository hygiene and desktop/tablet/mobile actual-browser checks before GitHub synchronization.
+10. Deploy an immutable release with the same Run and flat PAPER state, verify zero real orders and authentication, then run a clean five-minute baseline followed by a new uninterrupted six-hour observer. Keep 24 hours and profitability `NOT_RUN` and `NOT_PROVEN` until their actual gates are met.

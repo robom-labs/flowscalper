@@ -851,14 +851,37 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     initial_fresh = _event(runtime.run_id, "BTCUSDT", clock, 0, lag_ms=5)
     supervisor._observe(initial_fresh)
     runtime.ingest_live_event(initial_fresh)
+    initial_book = runtime.latest_books["BTCUSDT"]
+    initial_sample_count = runtime.feature_engines["BTCUSDT"].snapshot().sample_count
+    initial_evaluation_count = runtime.strategy_evaluation_count
     delayed = _event(runtime.run_id, "BTCUSDT", clock, 1, lag_ms=2_000).model_copy(
         update={"event_type": "DEPTH_UPDATE"}
     )
+    delayed = supervisor._quarantine_executable_lag(delayed)
     supervisor._observe(delayed)
     runtime.ingest_live_event(delayed)
 
+    assert delayed.quality.is_stale is True
+    assert delayed.quality.flags == ("EXECUTABLE_LAG_STALE",)
     assert supervisor.telemetry.entry_locked is True
     assert supervisor.telemetry.critical_lag_event_count == 1
+    assert supervisor.telemetry.quarantined_executable_lag_event_count == 1
+    assert supervisor.telemetry.quarantined_executable_lag_last_symbol == "BTCUSDT"
+    assert supervisor.telemetry.quarantined_executable_lag_last_event_type == "DEPTH_UPDATE"
+    assert supervisor.telemetry.quarantined_executable_lag_last_ms == 2_000
+    assert supervisor.telemetry.quarantined_executable_lag_last_venue_ts_ms == 1_000
+    assert runtime.latest_books["BTCUSDT"] is initial_book
+    assert runtime.feature_engines["BTCUSDT"].snapshot().sample_count == initial_sample_count
+    assert runtime.strategy_evaluation_count == initial_evaluation_count
+    assert runtime.data_gap_since_ms["BTCUSDT"] == 1_000
+    persisted = runtime._persistable_market_event(delayed)
+    assert persisted["quality"] == {
+        "is_live": True,
+        "is_stale": True,
+        "sequence_valid": True,
+        "lag_ms": 2_000,
+        "flags": ["EXECUTABLE_LAG_STALE"],
+    }
     assert runtime.paused is True
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" in runtime.runtime_health_flags
@@ -887,6 +910,11 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert supervisor.telemetry.critical_lag_last_recovered_ts_ms == 3_500
     assert supervisor.telemetry.critical_lag_last_duration_ms == 2_500
     assert supervisor.telemetry.critical_lag_max_duration_ms == 2_500
+    assert "BTCUSDT" not in runtime.data_gap_since_ms
+    assert runtime.latest_books["BTCUSDT"].ts_ms == 3_500
+    assert runtime.feature_engines["BTCUSDT"].snapshot().sample_count == (
+        initial_sample_count + 1
+    )
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert runtime.paused is False
@@ -899,6 +927,46 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     manual_status = runtime.dashboard()["operation_status"]
     assert manual_status["state"] == "MANUALLY_PAUSED"
     assert manual_status["recommended_action"] == "RESUME"
+
+
+def test_executable_lag_quarantine_respects_configured_boundary_and_event_scope() -> None:
+    clock = DeterministicClock(current_utc_ms=5_000)
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id="run-configured-lag-boundary",
+        clock=clock,
+        sink=lambda _: None,
+        critical_lag_threshold_ms=750,
+    )
+    boundary_depth = _event(
+        supervisor.run_id,
+        "BTCUSDT",
+        clock,
+        0,
+        lag_ms=750,
+    )
+    delayed_depth = _event(
+        supervisor.run_id,
+        "BTCUSDT",
+        clock,
+        0,
+        lag_ms=750.001,
+    )
+    delayed_wide = _event(
+        supervisor.run_id,
+        "ETHUSDT",
+        clock,
+        1,
+        lag_ms=9_000,
+    ).model_copy(update={"event_type": "WIDE_TICKER"})
+
+    assert supervisor._quarantine_executable_lag(boundary_depth) is boundary_depth
+    quarantined = supervisor._quarantine_executable_lag(delayed_depth)
+    assert quarantined is not delayed_depth
+    assert quarantined.quality.is_stale is True
+    assert quarantined.quality.flags == ("EXECUTABLE_LAG_STALE",)
+    assert quarantined.quality.lag_ms == 750.001
+    assert supervisor._quarantine_executable_lag(delayed_wide) is delayed_wide
 
 
 def test_runtime_surfaces_consumer_and_queue_entry_lock_reasons() -> None:

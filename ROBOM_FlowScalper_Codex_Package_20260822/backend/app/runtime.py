@@ -1444,6 +1444,10 @@ class PaperRuntime:
             sequence_valid=event.quality.sequence_valid,
             stale=event.quality.is_stale,
         )
+        if event.quality.is_stale or not event.quality.sequence_valid:
+            # 원본 이벤트와 data-gap 시작점은 보존하지만, 오래되거나 끊긴 호가로
+            # 최신 체결호가·피처 이력·전략 후보·포지션 관리를 갱신하지 않는다.
+            return
         self.latest_books[event.symbol] = book
         self.paper_portfolio.on_book(book)
         if persist_execution:

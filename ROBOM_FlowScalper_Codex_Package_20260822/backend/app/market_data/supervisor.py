@@ -131,6 +131,11 @@ class SupervisorTelemetry:
     entry_locked: bool = True
     critical_lag_threshold_ms: float = 1_500.0
     critical_lag_event_count: int = 0
+    quarantined_executable_lag_event_count: int = 0
+    quarantined_executable_lag_last_symbol: str | None = None
+    quarantined_executable_lag_last_event_type: str | None = None
+    quarantined_executable_lag_last_ms: float | None = None
+    quarantined_executable_lag_last_venue_ts_ms: int | None = None
     critical_lag_active: bool = False
     critical_lag_incident_count: int = 0
     critical_lag_last_started_ts_ms: int | None = None
@@ -327,6 +332,19 @@ class SupervisorTelemetry:
             "entry_locked": self.entry_locked,
             "critical_lag_threshold_ms": self.critical_lag_threshold_ms,
             "critical_lag_event_count": self.critical_lag_event_count,
+            "quarantined_executable_lag_event_count": (
+                self.quarantined_executable_lag_event_count
+            ),
+            "quarantined_executable_lag_last_symbol": (
+                self.quarantined_executable_lag_last_symbol
+            ),
+            "quarantined_executable_lag_last_event_type": (
+                self.quarantined_executable_lag_last_event_type
+            ),
+            "quarantined_executable_lag_last_ms": self.quarantined_executable_lag_last_ms,
+            "quarantined_executable_lag_last_venue_ts_ms": (
+                self.quarantined_executable_lag_last_venue_ts_ms
+            ),
             "critical_lag_incident_count": self.critical_lag_incident_count,
             "critical_lag_last_started_ts_ms": self.critical_lag_last_started_ts_ms,
             "critical_lag_last_recovered_ts_ms": self.critical_lag_last_recovered_ts_ms,
@@ -494,6 +512,7 @@ class PersistentPublicSupervisor:
                         return
                     attempt = 0
                     self._apply_clock_sync(self.selection)
+                    event = self._quarantine_executable_lag(event)
                     self._observe(event)
                     self._enqueue(event)
                 if not self._stopping.is_set():
@@ -544,6 +563,28 @@ class PersistentPublicSupervisor:
         if callable(updater):
             updater(tuple(dict.fromkeys(self.protected_symbols())))
 
+    def _quarantine_executable_lag(self, event: MarketEvent) -> MarketEvent:
+        """임계 초과 실행호가를 보존하되 체결·피처 입력에서는 stale로 격리한다."""
+
+        lag_ms = event.quality.lag_ms
+        if (
+            event.event_type not in {"DEPTH_UPDATE", "ORDERBOOK"}
+            or not event.quality.is_live
+            or lag_ms is None
+            or lag_ms <= self.telemetry.critical_lag_threshold_ms
+            or "EXECUTABLE_LAG_STALE" in event.quality.flags
+        ):
+            return event
+        quality = event.quality.model_copy(
+            update={
+                "is_stale": True,
+                "flags": tuple(
+                    dict.fromkeys((*event.quality.flags, "EXECUTABLE_LAG_STALE"))
+                ),
+            }
+        )
+        return event.model_copy(update={"quality": quality})
+
     def _observe(self, event: MarketEvent) -> None:
         self.telemetry.event_count += 1
         if event.event_type == "TRADE":
@@ -570,6 +611,18 @@ class PersistentPublicSupervisor:
                 )
                 if event.quality.lag_ms > self.telemetry.critical_lag_threshold_ms:
                     self.telemetry.critical_lag_event_count += 1
+                    if "EXECUTABLE_LAG_STALE" in event.quality.flags:
+                        self.telemetry.quarantined_executable_lag_event_count += 1
+                        self.telemetry.quarantined_executable_lag_last_symbol = event.symbol
+                        self.telemetry.quarantined_executable_lag_last_event_type = (
+                            event.event_type
+                        )
+                        self.telemetry.quarantined_executable_lag_last_ms = (
+                            event.quality.lag_ms
+                        )
+                        self.telemetry.quarantined_executable_lag_last_venue_ts_ms = (
+                            event.venue_ts_ms
+                        )
         flags = set(event.quality.flags)
         if "SEQUENCE_GAP" in flags:
             self.telemetry.gap_count += 1
