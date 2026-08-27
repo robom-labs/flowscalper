@@ -163,6 +163,8 @@ class SQLiteLedger:
                     exit_ts_ms INTEGER NOT NULL,
                     payload_json TEXT NOT NULL
                 );
+                CREATE INDEX IF NOT EXISTS trades_focus_compare
+                ON trades(run_id, strategy_id, symbol, exit_ts_ms, trade_id);
                 CREATE TABLE IF NOT EXISTS incidents (
                     incident_id TEXT PRIMARY KEY,
                     run_id TEXT REFERENCES runs(run_id),
@@ -253,6 +255,10 @@ class SQLiteLedger:
                     closed_ts_ms INTEGER NOT NULL,
                     payload_json TEXT NOT NULL,
                     checksum TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS shadow_trades_focus_compare
+                ON shadow_trades(
+                    run_id, strategy_id, closed_ts_ms, shadow_trade_id
                 );
                 CREATE TABLE IF NOT EXISTS execution_audit (
                     audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1702,9 +1708,11 @@ class SQLiteLedger:
                 """
                 SELECT payload_json, checksum FROM shadow_trades
                 WHERE run_id = ? AND strategy_id = ?
+                  AND json_extract(payload_json, '$.symbol') = ?
+                  AND json_extract(payload_json, '$.side') = ?
                 ORDER BY closed_ts_ms, shadow_trade_id
                 """,
-                (run_id, strategy_id),
+                (run_id, strategy_id, symbol, side),
             ).fetchall()
         main = [json.loads(str(row["payload_json"])) for row in main_rows]
         shadow = self._verified_payload_rows(shadow_rows, "shadow 거래")

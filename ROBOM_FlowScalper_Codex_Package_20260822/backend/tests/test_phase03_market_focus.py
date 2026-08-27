@@ -230,6 +230,55 @@ def test_strategy_symbol_report_requires_thirty_samples() -> None:
     assert report["sample_status"] == "RESEARCH_SAMPLE"
 
 
+def test_focus_profile_comparison_filters_shadow_rows_with_index(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "focus-comparison-index.sqlite3")
+    ledger.start_run(
+        "run-focus-comparison",
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260827},
+        started_ts_ms=1_000,
+    )
+    for trade_id, symbol, side in (
+        ("wanted", "BTCUSDT", "LONG"),
+        ("other-symbol", "ETHUSDT", "LONG"),
+        ("other-side", "BTCUSDT", "SHORT"),
+    ):
+        ledger.record_shadow_trade(
+            {
+                "shadow_trade_id": trade_id,
+                "run_id": "run-focus-comparison",
+                "strategy_id": "FOCUS_STRATEGY_V1",
+                "profile": "BASE",
+                "closed_ts_ms": 2_000,
+                "symbol": symbol,
+                "side": side,
+            }
+        )
+
+    rows = ledger.list_comparable_paper_trades(
+        "run-focus-comparison",
+        strategy_id="FOCUS_STRATEGY_V1",
+        symbol="BTCUSDT",
+        side="LONG",
+    )
+    plan = ledger._read_connection.execute(  # noqa: SLF001 - 인덱스 회귀 계약
+        """
+        EXPLAIN QUERY PLAN
+        SELECT payload_json, checksum FROM shadow_trades
+        WHERE run_id = ? AND strategy_id = ?
+          AND json_extract(payload_json, '$.symbol') = ?
+          AND json_extract(payload_json, '$.side') = ?
+        ORDER BY closed_ts_ms, shadow_trade_id
+        """,
+        ("run-focus-comparison", "FOCUS_STRATEGY_V1", "BTCUSDT", "LONG"),
+    ).fetchall()
+
+    assert [row["shadow_trade_id"] for row in rows] == ["wanted"]
+    assert any("shadow_trades_focus_compare" in str(row["detail"]) for row in plan)
+    ledger.close()
+
+
 def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     tmp_path: Path,
     monkeypatch,
