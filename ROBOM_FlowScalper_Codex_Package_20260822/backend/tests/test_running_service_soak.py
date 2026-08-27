@@ -26,6 +26,27 @@ def _strategy(strategy_id: str, *, revision: int = 1) -> dict[str, object]:
     }
 
 
+def _protected_position(**overrides: object) -> dict[str, object]:
+    position: dict[str, object] = {
+        "planned_entry": "100",
+        "actual_entry": "100.1",
+        "quantity": "1",
+        "initial_stop": "99",
+        "current_stop": "99",
+        "take_profit_1": "102",
+        "take_profit_2": "103",
+        "maximum_planned_loss_usdt": "1",
+        "entry_fee_usdt": "0.06",
+        "estimated_exit_fee_usdt": "0.06",
+        "slippage_usdt": "0.01",
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+    }
+    position.update(overrides)
+    return position
+
+
 def _payload() -> dict[str, object]:
     strategies = [_strategy("A"), _strategy("B")]
     accounts = [
@@ -79,6 +100,8 @@ def _payload() -> dict[str, object]:
             "dropped_events": 0,
             "persistence_fault_count": 0,
             "persistence_buffer_dropped": 0,
+            "persistence_backlog_peak": 10,
+            "persistence_backlog_entry_lock_count": 0,
             "persistence_flush_count": 10,
             "persistence_flush_last_ms": 100.0,
             "persistence_flush_slow_count": 0,
@@ -88,7 +111,17 @@ def _payload() -> dict[str, object]:
             "wal_checkpoint_fault_count": 0,
             "wal_checkpoint_log_frames": 10,
             "wal_checkpointed_frames": 10,
+            "wal_checkpoint_deferred_count": 0,
+            "wal_checkpoint_last_wal_bytes": 1_000,
+            "critical_lag_event_count": 0,
             "critical_lag_incident_count": 0,
+            "critical_lag_last_duration_ms": None,
+            "critical_lag_max_duration_ms": 0.0,
+            "event_gap_max_ms": 0.0,
+            "event_gap_over_500ms_count": 0,
+            "event_loop_lag_last_ms": 0.0,
+            "event_loop_lag_max_ms": 0.0,
+            "event_loop_lag_over_100ms_count": 0,
             "critical_lag_active": False,
             "entry_locked": False,
             "storage_entry_allowed": True,
@@ -147,6 +180,12 @@ def test_running_service_soak_passes_only_with_exact_progress_and_dynamic_accoun
     assert result["event_delta"] == 200
     assert result["strategy_evaluation_delta"] == 500
     assert result["memory_growth_mb"] == 10.0
+    assert result["critical_lag_event_delta"] == 0
+    assert result["critical_lag_incident_delta"] == 0
+    assert result["event_gap_over_500ms_delta"] == 0
+    assert result["event_loop_lag_over_100ms_delta"] == 0
+    assert result["persistence_backlog_entry_lock_delta"] == 0
+    assert result["wal_checkpoint_deferred_delta"] == 0
     assert result["failures"] == []
     assert result["paper_safety"]["additional_market_connection_started"] is False
 
@@ -257,24 +296,8 @@ def test_running_service_soak_allows_fail_closed_reconnect_that_recovers() -> No
 def test_running_service_soak_requires_every_open_position_to_have_paper_protection() -> None:
     unprotected = _advanced_payload()
     unprotected["focus_positions"] = [
-        {
-            "initial_stop": "99",
-            "current_stop": "99",
-            "take_profit_1": "102",
-            "maximum_planned_loss_usdt": "1",
-            "paper_only": True,
-            "real_orders_enabled": False,
-            "auth_required": False,
-        },
-        {
-            "initial_stop": "99",
-            "current_stop": "99",
-            "take_profit_1": None,
-            "maximum_planned_loss_usdt": "1",
-            "paper_only": True,
-            "real_orders_enabled": False,
-            "auth_required": False,
-        },
+        _protected_position(),
+        _protected_position(take_profit_2=None),
     ]
 
     result = summarize_running_service_soak(
@@ -285,6 +308,33 @@ def test_running_service_soak_requires_every_open_position_to_have_paper_protect
     assert result["status"] == "FAIL"
     assert result["maximum_open_positions"] == 2
     assert "all_positions_protected" in result["failures"]
+
+
+def test_running_service_soak_requires_complete_entry_and_cost_contract() -> None:
+    required_fields = (
+        "planned_entry",
+        "actual_entry",
+        "quantity",
+        "initial_stop",
+        "current_stop",
+        "take_profit_1",
+        "take_profit_2",
+        "maximum_planned_loss_usdt",
+        "entry_fee_usdt",
+        "estimated_exit_fee_usdt",
+        "slippage_usdt",
+    )
+
+    for field in required_fields:
+        invalid = _advanced_payload()
+        invalid["focus_positions"] = [_protected_position(**{field: None})]
+        result = summarize_running_service_soak(
+            [_sample(_payload(), 0.0), _sample(invalid, 30.0)],
+            requested_duration_seconds=30.0,
+        )
+
+        assert result["status"] == "FAIL", field
+        assert "all_positions_protected" in result["failures"], field
 
 
 def test_running_service_soak_rejects_missing_base_stress_account_pair() -> None:
@@ -397,3 +447,117 @@ def test_running_service_soak_requires_critical_lag_to_lock_entries() -> None:
 
     assert result["status"] == "FAIL"
     assert "critical_lag_fail_closed" in result["failures"]
+
+
+def test_running_service_soak_rejects_recovered_critical_lag_and_preserves_diagnostics() -> None:
+    recovered = _advanced_payload()
+    system = recovered["system"]
+    assert isinstance(system, dict)
+    system.update(
+        {
+            "critical_lag_event_count": 20,
+            "critical_lag_incident_count": 1,
+            "critical_lag_last_duration_ms": 3_230.0,
+            "critical_lag_max_duration_ms": 3_230.0,
+            "event_gap_max_ms": 7_385.0,
+            "event_gap_over_500ms_count": 83,
+            "event_loop_lag_last_ms": 250.0,
+            "event_loop_lag_max_ms": 250.0,
+            "event_loop_lag_over_100ms_count": 1,
+            "critical_lag_active": False,
+            "entry_locked": False,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(recovered, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "FAIL"
+    assert "no_critical_lag_events" in result["failures"]
+    assert "no_critical_lag_incidents" in result["failures"]
+    assert result["critical_lag_event_delta"] == 20
+    assert result["critical_lag_incident_delta"] == 1
+    assert result["maximum_critical_lag_duration_ms"] == 3_230.0
+    assert result["event_gap_over_500ms_delta"] == 83
+    assert result["maximum_event_gap_ms"] == 7_385.0
+    assert result["event_loop_lag_over_100ms_delta"] == 1
+    assert result["maximum_event_loop_lag_ms"] == 250.0
+
+
+def test_running_service_soak_rejects_local_event_loop_stall() -> None:
+    stalled = _advanced_payload()
+    system = stalled["system"]
+    assert isinstance(system, dict)
+    system.update(
+        {
+            "event_loop_lag_last_ms": 510.0,
+            "event_loop_lag_max_ms": 510.0,
+            "event_loop_lag_over_100ms_count": 1,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(stalled, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "FAIL"
+    assert "event_loop_lag_bounded" in result["failures"]
+    assert result["thresholds"]["max_event_loop_lag_ms"] == 500.0
+    assert result["maximum_event_loop_lag_ms"] == 510.0
+
+
+def test_running_service_soak_rejects_persistence_backlog_growth_and_lock() -> None:
+    backlogged = _advanced_payload()
+    system = backlogged["system"]
+    assert isinstance(system, dict)
+    system.update(
+        {
+            "market_persistence_buffer": 10_001,
+            "persistence_backlog_peak": 10_001,
+            "persistence_backlog_entry_lock_count": 1,
+            "entry_locked": True,
+        }
+    )
+    operation = backlogged["operation_status"]
+    assert isinstance(operation, dict)
+    operation.update(
+        {
+            "state": "SAFETY_WAITING",
+            "paper_entry_active": False,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(backlogged, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "FAIL"
+    assert "no_persistence_backlog_entry_locks" in result["failures"]
+    assert "market_persistence_buffer_bounded" in result["failures"]
+    assert result["persistence_backlog_entry_lock_delta"] == 1
+    assert result["maximum_market_persistence_buffer"] == 10_001
+
+
+def test_running_service_soak_preserves_wal_checkpoint_deferral_evidence() -> None:
+    deferred = _advanced_payload()
+    system = deferred["system"]
+    assert isinstance(system, dict)
+    system.update(
+        {
+            "wal_checkpoint_deferred_count": 3,
+            "wal_checkpoint_last_wal_bytes": 8 * 1024 * 1024,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(deferred, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["wal_checkpoint_deferred_delta"] == 3
+    assert result["maximum_wal_checkpoint_observed_bytes"] == 8 * 1024 * 1024

@@ -379,6 +379,7 @@ async def test_cancel_during_supervisor_start_leaves_no_tasks(monkeypatch) -> No
         in {
             "public-producer-run-cancel-start",
             "paper-consumer-run-cancel-start",
+            "event-loop-watchdog-run-cancel-start",
         }
     ]
     assert leaked == []

@@ -28,8 +28,10 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
         max_queue_depth=arguments.max_queue_depth,
         max_processing_lag_p95_ms=arguments.max_processing_lag_p95_ms,
         max_trade_lag_p95_ms=arguments.max_trade_lag_p95_ms,
+        max_event_loop_lag_ms=arguments.max_event_loop_lag_ms,
         max_event_stall_seconds=arguments.max_event_stall_seconds,
         max_memory_growth_mb=arguments.max_memory_growth_mb,
+        max_market_persistence_buffer=arguments.max_market_persistence_buffer,
         max_persistence_flush_last_ms=arguments.max_persistence_flush_last_ms,
         max_wal_checkpoint_last_ms=arguments.max_wal_checkpoint_last_ms,
     )
@@ -134,8 +136,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--max-queue-depth", type=int, default=64)
     parser.add_argument("--max-processing-lag-p95-ms", type=float, default=500.0)
     parser.add_argument("--max-trade-lag-p95-ms", type=float, default=1_000.0)
+    parser.add_argument("--max-event-loop-lag-ms", type=float, default=500.0)
     parser.add_argument("--max-event-stall-seconds", type=float, default=30.0)
     parser.add_argument("--max-memory-growth-mb", type=float, default=256.0)
+    parser.add_argument("--max-market-persistence-buffer", type=int, default=10_000)
     parser.add_argument("--max-persistence-flush-last-ms", type=float, default=20_000.0)
     parser.add_argument("--max-wal-checkpoint-last-ms", type=float, default=30_000.0)
     parser.add_argument("--output", type=Path, required=True)

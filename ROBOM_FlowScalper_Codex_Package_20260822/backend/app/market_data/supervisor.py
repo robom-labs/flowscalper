@@ -37,6 +37,8 @@ EventSink = Callable[[MarketEvent], Awaitable[None] | None]
 ProtectedSymbolSource = Callable[[], Sequence[str]]
 _STRATEGY_TRADE_LAG_MAX_MS = 500.0
 _ROTATION_WARMUP_DEPTH_LAG_MAX_MS = 1_500.0
+_EVENT_LOOP_WATCHDOG_INTERVAL_SECONDS = 0.1
+_EVENT_LOOP_LAG_OBSERVATION_MS = 100.0
 
 
 def _rotation_depth_output_ready(
@@ -139,6 +141,10 @@ class SupervisorTelemetry:
     event_gap_max_ts_ms: int | None = None
     event_gap_over_500ms_count: int = 0
     event_gap_last_over_500ms_ts_ms: int | None = None
+    event_loop_lag_last_ms: float = 0.0
+    event_loop_lag_max_ms: float = 0.0
+    event_loop_lag_over_100ms_count: int = 0
+    event_loop_lag_last_over_100ms_ts_ms: int | None = None
     lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     trade_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
     wide_lag_samples_ms: deque[float] = field(default_factory=lambda: deque(maxlen=2_000))
@@ -185,6 +191,16 @@ class SupervisorTelemetry:
         if gap_ms > 500:
             self.event_gap_over_500ms_count += 1
             self.event_gap_last_over_500ms_ts_ms = observed_ts_ms
+
+    def observe_event_loop_lag(self, lag_ms: float, observed_ts_ms: int) -> None:
+        """네트워크 이벤트 시각과 분리된 로컬 asyncio scheduling 지연을 기록한다."""
+
+        bounded = max(0.0, lag_ms)
+        self.event_loop_lag_last_ms = bounded
+        self.event_loop_lag_max_ms = max(self.event_loop_lag_max_ms, bounded)
+        if bounded > _EVENT_LOOP_LAG_OBSERVATION_MS:
+            self.event_loop_lag_over_100ms_count += 1
+            self.event_loop_lag_last_over_100ms_ts_ms = observed_ts_ms
 
     def observe_critical_lag_state(
         self,
@@ -311,6 +327,12 @@ class SupervisorTelemetry:
             "event_gap_max_ts_ms": self.event_gap_max_ts_ms,
             "event_gap_over_500ms_count": self.event_gap_over_500ms_count,
             "event_gap_last_over_500ms_ts_ms": self.event_gap_last_over_500ms_ts_ms,
+            "event_loop_lag_last_ms": round(self.event_loop_lag_last_ms, 3),
+            "event_loop_lag_max_ms": round(self.event_loop_lag_max_ms, 3),
+            "event_loop_lag_over_100ms_count": self.event_loop_lag_over_100ms_count,
+            "event_loop_lag_last_over_100ms_ts_ms": (
+                self.event_loop_lag_last_over_100ms_ts_ms
+            ),
             "lag_percentile_refresh_count": self.lag_percentile_refresh_count,
             "critical_lag_active": self.critical_lag_active,
             "last_error": self.last_error,
@@ -374,7 +396,7 @@ class PersistentPublicSupervisor:
         self._queue: asyncio.Queue[MarketEvent] = asyncio.Queue(maxsize=queue_capacity)
         self._ready = asyncio.Event()
         self._stopping = asyncio.Event()
-        self._tasks: tuple[asyncio.Task[None], asyncio.Task[None]] | None = None
+        self._tasks: tuple[asyncio.Task[None], ...] | None = None
         self._consumer_recovery_success_streak = 0
         self._consumer_recovery_successes_required = max(4, min(64, queue_capacity))
         self._queue_recovery_depth = queue_capacity // 8
@@ -393,7 +415,10 @@ class PersistentPublicSupervisor:
         self.telemetry.started_monotonic_ns = self.clock.monotonic_ns()
         consumer = asyncio.create_task(self._consume(), name=f"paper-consumer-{self.run_id}")
         producer = asyncio.create_task(self._produce(), name=f"public-producer-{self.run_id}")
-        self._tasks = (producer, consumer)
+        watchdog = asyncio.create_task(
+            self._watch_event_loop(), name=f"event-loop-watchdog-{self.run_id}"
+        )
+        self._tasks = (producer, consumer, watchdog)
         try:
             await asyncio.wait_for(self._ready.wait(), timeout=self.startup_timeout_seconds)
         except TimeoutError as error:
@@ -658,6 +683,21 @@ class PersistentPublicSupervisor:
                 self.telemetry.consumer_fault_active = True
                 self.telemetry.entry_locked = True
                 self.telemetry.last_error = "ConsumerStopped: consumer task exited"
+
+    async def _watch_event_loop(self) -> None:
+        """정해진 주기보다 늦게 재개된 시간을 네트워크 지연과 별도로 측정한다."""
+
+        loop = asyncio.get_running_loop()
+        interval = _EVENT_LOOP_WATCHDOG_INTERVAL_SECONDS
+        expected = loop.time() + interval
+        while not self._stopping.is_set():
+            await asyncio.sleep(interval)
+            observed = loop.time()
+            self.telemetry.observe_event_loop_lag(
+                (observed - expected) * 1_000,
+                self.clock.utc_ms(),
+            )
+            expected = observed + interval
 
     async def _deliver(self, event: MarketEvent) -> None:
         outcome = self.sink(event)

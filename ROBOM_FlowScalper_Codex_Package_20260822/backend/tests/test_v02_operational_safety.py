@@ -1031,6 +1031,89 @@ def test_market_persistence_batch_is_bounded_on_slow_storage(tmp_path: Path) -> 
     ledger.close()
 
 
+def test_persistence_backlog_fail_closes_once_and_recovers_with_hysteresis(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "backlog-safety.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-backlog-safety",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+
+    runtime._refresh_persistence_backlog_safety(9_999)
+    assert "PERSISTENCE_BACKLOG_ENTRY_LOCK" not in runtime.runtime_health_flags
+
+    runtime._refresh_persistence_backlog_safety(10_000)
+    runtime._refresh_persistence_backlog_safety(5_000)
+    diagnostics = runtime.dashboard()["system"]
+    assert isinstance(diagnostics, dict)
+    assert runtime.paused is True
+    assert diagnostics["entry_locked"] is True
+    assert diagnostics["persistence_backlog_peak"] == 10_000
+    assert diagnostics["persistence_backlog_entry_lock_count"] == 1
+    assert "PERSISTENCE_BACKLOG_ENTRY_LOCK" in runtime.runtime_health_flags
+
+    runtime._refresh_persistence_backlog_safety(2_001)
+    assert "PERSISTENCE_BACKLOG_ENTRY_LOCK" in runtime.runtime_health_flags
+    runtime._refresh_persistence_backlog_safety(2_000)
+    assert "PERSISTENCE_BACKLOG_ENTRY_LOCK" not in runtime.runtime_health_flags
+    assert runtime._persistence_backlog_entry_lock_count == 1
+    ledger.close()
+
+
+async def test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "backlog-checkpoint.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-backlog-checkpoint",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime._wal_checkpoint_next_flush = 1
+    for index in range(3_000):
+        runtime.ingest_live_event(
+            MarketEvent(
+                event_id=f"backlog-{index}",
+                run_id=runtime.run_id,
+                venue=runtime.venue,
+                symbol="BTCUSDT",
+                event_type="WIDE_TICKER",
+                venue_ts_ms=index,
+                receive_monotonic_ns=index,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=False,
+                    sequence_valid=True,
+                    lag_ms=0,
+                ),
+                data={"last_price": "100"},
+            )
+        )
+
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    for _ in range(500):
+        if runtime._market_event_buffer == []:
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert runtime._market_event_buffer == []
+    assert runtime._persistence_flush_count == 3
+    assert runtime._wal_checkpoint_deferred_count == 1
+    assert runtime._wal_checkpoint_count == 1
+    assert runtime._wal_checkpoint_last_wal_bytes < 16 * 1024 * 1024
+    assert runtime._wal_checkpoint_fault_count == 0
+    ledger.close()
+
+
 def test_stale_trade_is_archived_but_not_used_for_candles_or_strategy_features() -> None:
     clock = DeterministicClock(current_utc_ms=2_000)
     runtime = PaperRuntime(

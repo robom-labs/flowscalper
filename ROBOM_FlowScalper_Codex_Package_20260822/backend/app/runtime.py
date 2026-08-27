@@ -101,8 +101,12 @@ class PaperEntryIntentConflict(RuntimeError):
 
 _WAL_CHECKPOINT_FLUSH_INTERVAL = 4
 _SLOW_WAL_CHECKPOINT_MS = 2_000.0
+_WAL_CHECKPOINT_BACKLOG_DEFER_EVENTS = 2_000
+_WAL_CHECKPOINT_SOFT_BYTES = 16 * 1024 * 1024
 _MAX_WAL_BYTES_WITHOUT_CHECKPOINT = 64 * 1024 * 1024
 _MAX_WAL_FRAMES_WITHOUT_CHECKPOINT = _MAX_WAL_BYTES_WITHOUT_CHECKPOINT // 4_096
+_PERSISTENCE_BACKLOG_ENTRY_LOCK_EVENTS = 10_000
+_PERSISTENCE_BACKLOG_RECOVERY_EVENTS = 2_000
 _PERSISTED_CANDLE_INTERVALS = frozenset({1, 180})
 _LIVE_DEEP_SYMBOL_TARGET = 12
 _LIVE_DASHBOARD_EVENT_LIMIT = 512
@@ -191,6 +195,8 @@ class PaperRuntime:
     _persisted_audit_count: int = 0
     _persistence_fault_count: int = 0
     _persistence_buffer_dropped: int = 0
+    _persistence_backlog_peak: int = 0
+    _persistence_backlog_entry_lock_count: int = 0
     _last_persistence_error: str | None = None
     _persistence_flush_count: int = 0
     _persistence_flush_last_ms: float = 0.0
@@ -215,6 +221,8 @@ class PaperRuntime:
     _wal_checkpoint_last_completed_ts_ms: int | None = None
     _wal_checkpoint_fault_count: int = 0
     _wal_checkpoint_last_error: str | None = None
+    _wal_checkpoint_deferred_count: int = 0
+    _wal_checkpoint_last_wal_bytes: int = 0
     _persistence_worker_warmed: bool = False
     _persistence_worker_warm_ms: float = 0.0
     _historical_live_trades: tuple[dict[str, object], ...] = field(
@@ -724,6 +732,16 @@ class PaperRuntime:
             **self._storage_health_snapshot,
             "persistence_fault_count": self._persistence_fault_count,
             "persistence_buffer_dropped": self._persistence_buffer_dropped,
+            "persistence_backlog_peak": self._persistence_backlog_peak,
+            "persistence_backlog_entry_lock_count": (
+                self._persistence_backlog_entry_lock_count
+            ),
+            "persistence_backlog_entry_lock_events": (
+                _PERSISTENCE_BACKLOG_ENTRY_LOCK_EVENTS
+            ),
+            "persistence_backlog_recovery_events": (
+                _PERSISTENCE_BACKLOG_RECOVERY_EVENTS
+            ),
             "persistence_last_error": self._last_persistence_error or "NONE",
             "persistence_flush_count": self._persistence_flush_count,
             "persistence_flush_last_ms": round(self._persistence_flush_last_ms, 3),
@@ -761,12 +779,16 @@ class PaperRuntime:
             "wal_checkpoint_last_completed_ts_ms": (self._wal_checkpoint_last_completed_ts_ms),
             "wal_checkpoint_fault_count": self._wal_checkpoint_fault_count,
             "wal_checkpoint_last_error": self._wal_checkpoint_last_error or "NONE",
+            "wal_checkpoint_deferred_count": self._wal_checkpoint_deferred_count,
+            "wal_checkpoint_last_wal_bytes": self._wal_checkpoint_last_wal_bytes,
+            "wal_checkpoint_soft_bytes": _WAL_CHECKPOINT_SOFT_BYTES,
             "persistence_worker_warmed": self._persistence_worker_warmed,
             "persistence_worker_warm_ms": round(self._persistence_worker_warm_ms, 3),
             "event_memory_count": len(self._events),
             "event_memory_limit": 10_000,
             "market_persistence_buffer": len(self._market_event_buffer),
             "candle_persistence_buffer": len(self._candle_buffer),
+            "entry_locked": self.paused,
             "stale_trade_symbols": len(self._stale_trade_symbols),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
             "strategy_evaluation_count": self.strategy_evaluation_count,
@@ -1029,6 +1051,8 @@ class PaperRuntime:
         if self.ledger is not None and self.mode is not RuntimeMode.READY:
             with self._persistence_lock:
                 self._market_event_buffer.append(self._persistable_market_event(event))
+                persistence_backlog = len(self._market_event_buffer)
+            self._refresh_persistence_backlog_safety(persistence_backlog)
         if event.quality.is_stale or not event.quality.sequence_valid:
             self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
         if event.event_type == "TRADE":
@@ -1149,6 +1173,7 @@ class PaperRuntime:
             or flag
             in {
                 "PERSISTENCE_FAULT_ENTRY_LOCK",
+                "PERSISTENCE_BACKLOG_ENTRY_LOCK",
                 "RECOVERY_FAIL_CLOSED",
                 "STORAGE_PRESSURE_ENTRY_LOCK",
                 "SUPERVISOR_ENTRY_LOCK",
@@ -2985,6 +3010,7 @@ class PaperRuntime:
                 and (
                     self.market_data_state is not MarketDataState.LIVE
                     or "CRITICAL_MARKET_LAG_ENTRY_LOCK" in self.runtime_health_flags
+                    or "PERSISTENCE_BACKLOG_ENTRY_LOCK" in self.runtime_health_flags
                     or (self._supervisor is not None and self._supervisor.telemetry.entry_locked)
                     or self.paper_portfolio.main.risk_state.faulted
                     or not self._refresh_storage_safety(force=True)
@@ -3094,6 +3120,10 @@ class PaperRuntime:
             "PERSISTENCE_FAULT_ENTRY_LOCK": (
                 "PERSISTENCE_SAFETY_LOCK",
                 "저장 안전오류가 있어 자동 관찰을 시작할 수 없습니다.",
+            ),
+            "PERSISTENCE_BACKLOG_ENTRY_LOCK": (
+                "PERSISTENCE_BACKLOG_SAFETY_LOCK",
+                "시장데이터 저장 적체가 회복될 때까지 새 PAPER Run을 시작할 수 없습니다.",
             ),
             "STORAGE_PRESSURE_ENTRY_LOCK": (
                 "STORAGE_SAFETY_LOCK",
@@ -3613,6 +3643,8 @@ class PaperRuntime:
                 del self._market_event_buffer[: len(market_batch)]
             candle_batch = self._candle_buffer
             self._candle_buffer = []
+            persistence_backlog = len(self._market_event_buffer)
+        self._refresh_persistence_backlog_safety(persistence_backlog)
         return market_batch, candle_batch
 
     def _restore_persistence_batch(
@@ -3631,6 +3663,28 @@ class PaperRuntime:
                 candle_rows = candle_rows[-5_000:]
             self._market_event_buffer = market_rows
             self._candle_buffer = candle_rows
+            persistence_backlog = len(self._market_event_buffer)
+        self._refresh_persistence_backlog_safety(persistence_backlog)
+
+    def _refresh_persistence_backlog_safety(self, event_count: int) -> None:
+        """저장 적체가 커지면 유실 없이 신규 PAPER 진입만 가역적으로 잠근다."""
+
+        self._persistence_backlog_peak = max(self._persistence_backlog_peak, event_count)
+        flag = "PERSISTENCE_BACKLOG_ENTRY_LOCK"
+        already_locked = flag in self.runtime_health_flags
+        should_lock = event_count >= _PERSISTENCE_BACKLOG_ENTRY_LOCK_EVENTS or (
+            already_locked and event_count > _PERSISTENCE_BACKLOG_RECOVERY_EVENTS
+        )
+        if should_lock:
+            self.paused = True
+            if not already_locked:
+                self._persistence_backlog_entry_lock_count += 1
+                self.runtime_health_flags.append(flag)
+            return
+        if already_locked:
+            self.runtime_health_flags = [
+                current for current in self.runtime_health_flags if current != flag
+            ]
 
     @staticmethod
     def _group_market_archive_rows(
@@ -3752,6 +3806,18 @@ class PaperRuntime:
                 return
             if self._persistence_flush_count < self._wal_checkpoint_next_flush:
                 return
+            wal_path = self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
+            wal_size = wal_path.stat().st_size if wal_path.exists() else 0
+            self._wal_checkpoint_last_wal_bytes = wal_size
+            with self._persistence_lock:
+                persistence_backlog = len(self._market_event_buffer)
+            if (
+                persistence_backlog >= _WAL_CHECKPOINT_BACKLOG_DEFER_EVENTS
+                and wal_size < _WAL_CHECKPOINT_SOFT_BYTES
+            ):
+                self._wal_checkpoint_deferred_count += 1
+                self._wal_checkpoint_next_flush = self._persistence_flush_count + 1
+                return
             started = asyncio.get_running_loop().time()
             try:
                 busy, log_frames, checkpointed_frames = await to_process.run_sync(
@@ -3765,8 +3831,8 @@ class PaperRuntime:
                 if "WAL_CHECKPOINT_DEGRADED" not in self.runtime_health_flags:
                     self.runtime_health_flags.append("WAL_CHECKPOINT_DEGRADED")
                 self._wal_checkpoint_next_flush = self._persistence_flush_count + 1
-                wal_path = self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
                 wal_size = wal_path.stat().st_size if wal_path.exists() else 0
+                self._wal_checkpoint_last_wal_bytes = wal_size
                 if wal_size >= _MAX_WAL_BYTES_WITHOUT_CHECKPOINT:
                     self._handle_persistence_fault(
                         RuntimeError(

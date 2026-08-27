@@ -18,8 +18,10 @@ class RunningServiceSoakThresholds:
     max_queue_depth: int = 64
     max_processing_lag_p95_ms: float = 500.0
     max_trade_lag_p95_ms: float = 1_000.0
+    max_event_loop_lag_ms: float = 500.0
     max_event_stall_seconds: float = 30.0
     max_memory_growth_mb: float = 256.0
+    max_market_persistence_buffer: int = 10_000
     max_persistence_flush_last_ms: float = 20_000.0
     max_wal_checkpoint_last_ms: float = 30_000.0
 
@@ -28,8 +30,10 @@ class RunningServiceSoakThresholds:
             self.max_queue_depth,
             self.max_processing_lag_p95_ms,
             self.max_trade_lag_p95_ms,
+            self.max_event_loop_lag_ms,
             self.max_event_stall_seconds,
             self.max_memory_growth_mb,
+            self.max_market_persistence_buffer,
             self.max_persistence_flush_last_ms,
             self.max_wal_checkpoint_last_ms,
         )
@@ -85,6 +89,8 @@ class RunningServiceSample:
     dropped_events: int
     persistence_fault_count: int
     persistence_buffer_dropped: int
+    persistence_backlog_peak: int
+    persistence_backlog_entry_lock_count: int
     persistence_flush_count: int
     persistence_flush_last_ms: float
     persistence_flush_slow_count: int
@@ -94,7 +100,17 @@ class RunningServiceSample:
     wal_checkpoint_fault_count: int
     wal_checkpoint_log_frames: int
     wal_checkpointed_frames: int
+    wal_checkpoint_deferred_count: int
+    wal_checkpoint_last_wal_bytes: int
+    critical_lag_event_count: int
     critical_lag_incident_count: int
+    critical_lag_last_duration_ms: float
+    critical_lag_max_duration_ms: float
+    event_gap_max_ms: float
+    event_gap_over_500ms_count: int
+    event_loop_lag_last_ms: float
+    event_loop_lag_max_ms: float
+    event_loop_lag_over_100ms_count: int
     critical_lag_active: bool
     entry_locked: bool
     storage_entry_allowed: bool
@@ -255,6 +271,14 @@ def parse_running_service_sample(
             system.get("persistence_buffer_dropped"),
             "system.persistence_buffer_dropped",
         ),
+        persistence_backlog_peak=_integer(
+            system.get("persistence_backlog_peak"),
+            "system.persistence_backlog_peak",
+        ),
+        persistence_backlog_entry_lock_count=_integer(
+            system.get("persistence_backlog_entry_lock_count"),
+            "system.persistence_backlog_entry_lock_count",
+        ),
         persistence_flush_count=_integer(
             system.get("persistence_flush_count"), "system.persistence_flush_count"
         ),
@@ -286,9 +310,48 @@ def parse_running_service_sample(
         wal_checkpointed_frames=_integer(
             system.get("wal_checkpointed_frames"), "system.wal_checkpointed_frames"
         ),
+        wal_checkpoint_deferred_count=_integer(
+            system.get("wal_checkpoint_deferred_count"),
+            "system.wal_checkpoint_deferred_count",
+        ),
+        wal_checkpoint_last_wal_bytes=_integer(
+            system.get("wal_checkpoint_last_wal_bytes"),
+            "system.wal_checkpoint_last_wal_bytes",
+        ),
+        critical_lag_event_count=_integer(
+            system.get("critical_lag_event_count"),
+            "system.critical_lag_event_count",
+        ),
         critical_lag_incident_count=_integer(
             system.get("critical_lag_incident_count"),
             "system.critical_lag_incident_count",
+        ),
+        critical_lag_last_duration_ms=_number(
+            system.get("critical_lag_last_duration_ms") or 0.0,
+            "system.critical_lag_last_duration_ms",
+        ),
+        critical_lag_max_duration_ms=_number(
+            system.get("critical_lag_max_duration_ms"),
+            "system.critical_lag_max_duration_ms",
+        ),
+        event_gap_max_ms=_number(
+            system.get("event_gap_max_ms"), "system.event_gap_max_ms"
+        ),
+        event_gap_over_500ms_count=_integer(
+            system.get("event_gap_over_500ms_count"),
+            "system.event_gap_over_500ms_count",
+        ),
+        event_loop_lag_last_ms=_number(
+            system.get("event_loop_lag_last_ms"),
+            "system.event_loop_lag_last_ms",
+        ),
+        event_loop_lag_max_ms=_number(
+            system.get("event_loop_lag_max_ms"),
+            "system.event_loop_lag_max_ms",
+        ),
+        event_loop_lag_over_100ms_count=_integer(
+            system.get("event_loop_lag_over_100ms_count"),
+            "system.event_loop_lag_over_100ms_count",
         ),
         critical_lag_active=_boolean(
             system.get("critical_lag_active"), "system.critical_lag_active"
@@ -416,8 +479,18 @@ def summarize_running_service_soak(
         "no_persistence_buffer_drops": (
             final.persistence_buffer_dropped == baseline.persistence_buffer_dropped
         ),
+        "no_persistence_backlog_entry_locks": (
+            final.persistence_backlog_entry_lock_count
+            == baseline.persistence_backlog_entry_lock_count
+        ),
         "no_wal_checkpoint_faults": (
             final.wal_checkpoint_fault_count == baseline.wal_checkpoint_fault_count
+        ),
+        "no_critical_lag_events": (
+            final.critical_lag_event_count == baseline.critical_lag_event_count
+        ),
+        "no_critical_lag_incidents": (
+            final.critical_lag_incident_count == baseline.critical_lag_incident_count
         ),
     }
     checks = {
@@ -526,7 +599,15 @@ def summarize_running_service_soak(
         <= active_thresholds.max_processing_lag_p95_ms,
         "trade_lag_bounded": max(sample.trade_lag_p95_ms for sample in samples)
         <= active_thresholds.max_trade_lag_p95_ms,
+        "event_loop_lag_bounded": max(
+            sample.event_loop_lag_max_ms for sample in samples
+        )
+        <= active_thresholds.max_event_loop_lag_ms,
         "memory_growth_bounded": memory_growth <= active_thresholds.max_memory_growth_mb,
+        "market_persistence_buffer_bounded": max(
+            sample.market_persistence_buffer for sample in samples
+        )
+        <= active_thresholds.max_market_persistence_buffer,
         "persistence_flush_continued": (
             final.persistence_flush_count > baseline.persistence_flush_count
         ),
@@ -545,6 +626,16 @@ def summarize_running_service_soak(
             current.wal_checkpoint_count >= previous.wal_checkpoint_count
             for previous, current in adjacent_samples
         ),
+        "wal_checkpoint_deferred_count_monotonic": all(
+            current.wal_checkpoint_deferred_count
+            >= previous.wal_checkpoint_deferred_count
+            for previous, current in adjacent_samples
+        ),
+        "persistence_backlog_lock_count_monotonic": all(
+            current.persistence_backlog_entry_lock_count
+            >= previous.persistence_backlog_entry_lock_count
+            for previous, current in adjacent_samples
+        ),
         "wal_checkpoint_latency_bounded": max(
             sample.wal_checkpoint_last_ms for sample in samples
         )
@@ -559,6 +650,22 @@ def summarize_running_service_soak(
         "reconnect_counters_monotonic": all(
             current.reconnects >= previous.reconnects
             and current.planned_rotations >= previous.planned_rotations
+            for previous, current in adjacent_samples
+        ),
+        "critical_lag_counters_monotonic": all(
+            current.critical_lag_event_count >= previous.critical_lag_event_count
+            and current.critical_lag_incident_count
+            >= previous.critical_lag_incident_count
+            for previous, current in adjacent_samples
+        ),
+        "event_gap_counter_monotonic": all(
+            current.event_gap_over_500ms_count
+            >= previous.event_gap_over_500ms_count
+            for previous, current in adjacent_samples
+        ),
+        "event_loop_lag_counter_monotonic": all(
+            current.event_loop_lag_over_100ms_count
+            >= previous.event_loop_lag_over_100ms_count
             for previous, current in adjacent_samples
         ),
         "probe_errors_bounded": (
@@ -639,6 +746,13 @@ def summarize_running_service_soak(
         "maximum_market_persistence_buffer": max(
             sample.market_persistence_buffer for sample in samples
         ),
+        "maximum_persistence_backlog_peak": max(
+            sample.persistence_backlog_peak for sample in samples
+        ),
+        "persistence_backlog_entry_lock_delta": (
+            final.persistence_backlog_entry_lock_count
+            - baseline.persistence_backlog_entry_lock_count
+        ),
         "maximum_candle_persistence_buffer": max(
             sample.candle_persistence_buffer for sample in samples
         ),
@@ -651,8 +765,32 @@ def summarize_running_service_soak(
         "wal_checkpoint_busy_delta": (
             final.wal_checkpoint_busy_count - baseline.wal_checkpoint_busy_count
         ),
+        "wal_checkpoint_deferred_delta": (
+            final.wal_checkpoint_deferred_count
+            - baseline.wal_checkpoint_deferred_count
+        ),
+        "maximum_wal_checkpoint_observed_bytes": max(
+            sample.wal_checkpoint_last_wal_bytes for sample in samples
+        ),
         "critical_lag_incident_delta": (
             final.critical_lag_incident_count - baseline.critical_lag_incident_count
+        ),
+        "critical_lag_event_delta": (
+            final.critical_lag_event_count - baseline.critical_lag_event_count
+        ),
+        "maximum_critical_lag_duration_ms": max(
+            sample.critical_lag_max_duration_ms for sample in samples
+        ),
+        "event_gap_over_500ms_delta": (
+            final.event_gap_over_500ms_count - baseline.event_gap_over_500ms_count
+        ),
+        "maximum_event_gap_ms": max(sample.event_gap_max_ms for sample in samples),
+        "event_loop_lag_over_100ms_delta": (
+            final.event_loop_lag_over_100ms_count
+            - baseline.event_loop_lag_over_100ms_count
+        ),
+        "maximum_event_loop_lag_ms": max(
+            sample.event_loop_lag_max_ms for sample in samples
         ),
         "longest_event_stall_seconds": longest_event_stall,
         "maximum_open_positions": max(sample.position_count for sample in samples),
@@ -689,10 +827,17 @@ def _operation_sample_is_safe(sample: RunningServiceSample) -> bool:
 
 def _position_is_protected(position: Mapping[str, object]) -> int:
     required = (
+        "planned_entry",
+        "actual_entry",
+        "quantity",
         "initial_stop",
         "current_stop",
         "take_profit_1",
+        "take_profit_2",
         "maximum_planned_loss_usdt",
+        "entry_fee_usdt",
+        "estimated_exit_fee_usdt",
+        "slippage_usdt",
     )
     if any(position.get(field) in {None, "", "—"} for field in required):
         return 0

@@ -893,6 +893,20 @@ def test_supervisor_records_receive_gap_without_changing_safety_thresholds() -> 
     assert diagnostics["critical_lag_threshold_ms"] == 1_500
 
 
+def test_supervisor_records_event_loop_lag_without_changing_entry_state() -> None:
+    telemetry = SupervisorTelemetry(entry_locked=False)
+
+    telemetry.observe_event_loop_lag(250.25, 10_000)
+    telemetry.observe_event_loop_lag(20.0, 10_100)
+
+    diagnostics = telemetry.as_dict()
+    assert diagnostics["event_loop_lag_last_ms"] == 20.0
+    assert diagnostics["event_loop_lag_max_ms"] == 250.25
+    assert diagnostics["event_loop_lag_over_100ms_count"] == 1
+    assert diagnostics["event_loop_lag_last_over_100ms_ts_ms"] == 10_000
+    assert telemetry.entry_locked is False
+
+
 def test_wide_scanner_lag_is_visible_but_does_not_lock_executable_path() -> None:
     clock = DeterministicClock(current_utc_ms=1_000)
     provider = RecordedProvider()

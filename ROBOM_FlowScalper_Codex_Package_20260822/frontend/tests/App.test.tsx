@@ -76,6 +76,41 @@ test('shows a compact matching immutable release in advanced diagnostics', async
   expect(screen.getByText('개발 폴더와 실행본 분리')).toBeInTheDocument()
 })
 
+test('separates local event-loop delay from public-market delay in diagnostics', async () => {
+  const diagnosticDashboard = {
+    ...initialDashboard,
+    system: {
+      ...initialDashboard.system,
+      event_loop_lag_last_ms: 2.5,
+      event_loop_lag_max_ms: 250.25,
+      event_loop_lag_over_100ms_count: 1,
+      event_loop_lag_last_over_100ms_ts_ms: 1_787_818_022_698,
+      persistence_backlog_peak: 10_001,
+      persistence_backlog_entry_lock_count: 1,
+      wal_checkpoint_deferred_count: 3,
+      wal_checkpoint_last_wal_bytes: 8_388_608,
+    },
+  }
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => diagnosticDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: '설정' }))
+  fireEvent.click(screen.getByText('고급 진단 보기'))
+
+  expect(screen.getByText('로컬 처리루프 최근 지연 ms')).toBeInTheDocument()
+  expect(screen.getByText('로컬 처리루프 최대 지연 ms')).toBeInTheDocument()
+  expect(screen.getByText('로컬 처리루프 100ms 초과 횟수')).toBeInTheDocument()
+  expect(screen.getByText('최근 로컬 처리루프 지연시각 ms')).toBeInTheDocument()
+  expect(screen.getByText('시장 저장 대기 최대 건수')).toBeInTheDocument()
+  expect(screen.getByText('저장 적체 안전대기 횟수')).toBeInTheDocument()
+  expect(screen.getByText('저장 적체 중 checkpoint 연기 횟수')).toBeInTheDocument()
+  expect(screen.getByText('최근 checkpoint 판단 WAL bytes')).toBeInTheDocument()
+})
+
 test('renders permanent paper-only ready status and market controls', async () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
   vi.stubGlobal('WebSocket', FakeWebSocket)
