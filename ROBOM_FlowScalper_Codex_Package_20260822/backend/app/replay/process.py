@@ -7,7 +7,6 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from backend.app.replay.focus import ReplayFocusSessionBuilder
 from backend.app.replay.market import StoredMarketReplay
 from backend.app.replay.timeline import build_replay_timeline
 from backend.app.storage.parquet import ParquetEventStore
@@ -101,34 +100,6 @@ def replay_timeline_from_paths(
             symbol=symbol.strip().upper() if symbol else None,
             limit=limit,
             cooperative_yield=cpu_budget.checkpoint,
-        )
-    finally:
-        ledger.close()
-
-
-def replay_focus_session_from_paths(
-    database_path: str,
-    archive_root: str | None,
-    source_run_id: str,
-    trade_id: str,
-    profile: str,
-    created_ts_ms: int,
-) -> dict[str, object]:
-    """거래 집중 replay의 원장 읽기와 전략 재처리를 LIVE 프로세스에서 격리한다."""
-
-    cpu_budget = _prepare_cpu_budget()
-    ledger = _open_ledger(database_path, archive_root)
-    try:
-        return ReplayFocusSessionBuilder().build(
-            ledger,
-            run_id=source_run_id,
-            trade_id=trade_id,
-            profile=profile,
-            created_ts_ms=created_ts_ms,
-            cooperative_yield=cpu_budget.checkpoint,
-            # LIVE 영속화가 쓰기 잠금을 가진 동안 선택적 UI 캐시 때문에
-            # busy_timeout까지 기다리지 않고 읽기 결과를 바로 반환한다.
-            persist_cache=False,
         )
     finally:
         ledger.close()

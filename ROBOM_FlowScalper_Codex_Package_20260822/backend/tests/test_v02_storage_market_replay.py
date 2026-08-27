@@ -17,7 +17,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.app.main as main_module
-import backend.app.replay.process as replay_process_module
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
@@ -219,51 +218,6 @@ def test_replay_cpu_budget_yields_without_carrying_unbounded_sleep_debt() -> Non
     budget.checkpoint()
 
     assert sleeps == [0.50]
-
-
-def test_live_focus_process_returns_without_optional_cache_write(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    class LedgerStub:
-        def close(self) -> None:
-            captured["closed"] = True
-
-    class BudgetStub:
-        def checkpoint(self) -> None:
-            return None
-
-    ledger = LedgerStub()
-    monkeypatch.setattr(replay_process_module, "_open_ledger", lambda *_args: ledger)
-    monkeypatch.setattr(
-        replay_process_module,
-        "_prepare_cpu_budget",
-        lambda: BudgetStub(),
-    )
-
-    def build_stub(_self, opened_ledger, **kwargs):
-        captured.update(kwargs)
-        captured["ledger"] = opened_ledger
-        return {"trade_id": kwargs["trade_id"]}
-
-    monkeypatch.setattr(
-        replay_process_module.ReplayFocusSessionBuilder,
-        "build",
-        build_stub,
-    )
-
-    result = replay_process_module.replay_focus_session_from_paths(
-        "ledger.sqlite3",
-        None,
-        "run-live",
-        "trade-live",
-        "BASE",
-        1_000,
-    )
-
-    assert result == {"trade_id": "trade-live"}
-    assert captured["persist_cache"] is False
-    assert captured["ledger"] is ledger
-    assert captured["closed"] is True
 
 
 def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(
@@ -1640,7 +1594,7 @@ def test_live_http_replay_auto_aborts_without_persisting_unsafe_result(
         )
 
 
-def test_live_timeline_and_focus_are_process_isolated(
+def test_live_timeline_is_process_isolated_and_focus_uses_bounded_reader(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1667,23 +1621,21 @@ def test_live_timeline_and_focus_are_process_isolated(
         }
 
     def focus_stub(
-        database_path: str,
-        archive_root: str | None,
+        _runtime: PaperRuntime,
         source_run_id: str,
+        *,
         trade_id: str,
         profile: str,
-        created_ts_ms: int,
+        persist_cache: bool,
     ) -> dict[str, object]:
         calls.append(
             (
                 "focus",
                 (
-                    database_path,
-                    archive_root,
                     source_run_id,
                     trade_id,
                     profile,
-                    created_ts_ms,
+                    persist_cache,
                 ),
             )
         )
@@ -1693,7 +1645,7 @@ def test_live_timeline_and_focus_are_process_isolated(
         return function(*arguments)
 
     monkeypatch.setattr(main_module, "replay_timeline_from_paths", timeline_stub)
-    monkeypatch.setattr(main_module, "replay_focus_session_from_paths", focus_stub)
+    monkeypatch.setattr(PaperRuntime, "replay_focus_session", focus_stub)
     monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
     client = TestClient(create_app(runtime))
 
@@ -1707,14 +1659,12 @@ def test_live_timeline_and_focus_are_process_isolated(
     assert focus.status_code == 200
     assert [name for name, _ in calls] == ["timeline", "focus"]
     assert calls[0][1][0] == str(ledger.path)
-    assert calls[1][1][:5] == (
-        str(ledger.path),
-        None,
+    assert calls[1][1] == (
         "run-live-ui-replay",
         "trade-live-focus",
         "BASE",
+        False,
     )
-    assert calls[1][1][5] == runtime.clock.utc_ms()
     ledger.close()
 
 

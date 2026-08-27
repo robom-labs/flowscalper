@@ -2496,6 +2496,7 @@ class PaperRuntime:
         *,
         trade_id: str,
         profile: str = "BASE",
+        persist_cache: bool = True,
     ) -> dict[str, object]:
         """저장된 실제 PAPER 거래의 포지션 집중 리플레이를 생성한다."""
 
@@ -2509,6 +2510,7 @@ class PaperRuntime:
             trade_id=trade_id,
             profile=profile,
             created_ts_ms=self.clock.utc_ms(),
+            persist_cache=persist_cache,
         )
 
     def candles(
