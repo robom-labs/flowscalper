@@ -311,6 +311,10 @@ async def test_live_sink_defers_changed_execution_persistence_to_worker(monkeypa
     await runtime.ingest_live_event_async(event)
 
     assert calls == [("ingest", True), ("thread", (1_000,))]
+    assert runtime._live_event_processing_count == 1
+    assert runtime._live_event_processing_last_ms >= 0
+    assert runtime._live_event_processing_max_event_type == "DEPTH_UPDATE"
+    assert runtime._live_event_processing_max_symbol == "BTCUSDT"
 
 
 def test_unchanged_execution_state_skips_sqlite_persistence(monkeypatch) -> None:
@@ -363,6 +367,40 @@ def test_runtime_event_memory_rolls_one_event_at_fixed_capacity() -> None:
     assert len(runtime.events) == 10_000
     assert runtime.events[-1] is last
     assert sum(event is first for event in runtime.events) == 9_999
+
+
+def test_live_runtime_keeps_bounded_display_event_memory() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-event-memory",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    first = MarketEvent(
+        event_id="first-live",
+        run_id=runtime.run_id,
+        venue=runtime.venue,
+        symbol="BTCUSDT",
+        event_type="BOOK_TICKER",
+        venue_ts_ms=1,
+        receive_monotonic_ns=1,
+        quality=DataQuality(
+            is_live=True,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"bid": "100", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+    )
+    last = first.model_copy(update={"event_id": "last-live", "venue_ts_ms": 2})
+
+    runtime._events.extend([first] * 2_048)
+    runtime._events.append(last)
+
+    assert runtime._events.maxlen == 2_048
+    assert len(runtime.events) == 2_048
+    assert runtime.events[-1] is last
+    assert runtime._operational_diagnostics()["event_memory_limit"] == 2_048
 
 
 def test_runtime_plan_rejections_roll_one_row_at_fixed_capacity() -> None:

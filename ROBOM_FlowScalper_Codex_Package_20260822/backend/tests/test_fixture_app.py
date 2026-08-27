@@ -499,6 +499,29 @@ async def test_slow_replay_listing_never_blocks_live_status(monkeypatch) -> None
     assert replay_response.status_code == 200
 
 
+async def test_dashboard_snapshot_build_runs_outside_event_loop(monkeypatch) -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    original_dashboard = PaperRuntime.dashboard
+    started = threading.Event()
+
+    def slow_dashboard(active_runtime: PaperRuntime) -> dict[str, object]:
+        started.set()
+        time.sleep(0.08)
+        return original_dashboard(active_runtime)
+
+    monkeypatch.setattr(PaperRuntime, "dashboard", slow_dashboard)
+    transport = httpx.ASGITransport(app=create_app(runtime))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        dashboard_request = asyncio.create_task(client.get("/api/dashboard"))
+        assert await asyncio.to_thread(started.wait, 1)
+        assert not dashboard_request.done()
+        status = await asyncio.wait_for(client.get("/api/status"), timeout=0.05)
+        dashboard_response = await dashboard_request
+
+    assert status.status_code == 200
+    assert dashboard_response.status_code == 200
+
+
 def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "runtime.sqlite3")
     runtime = PaperRuntime(

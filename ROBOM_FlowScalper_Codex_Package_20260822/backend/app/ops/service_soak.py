@@ -99,6 +99,12 @@ class RunningServiceSample:
     execution_persistence_last_ms: float
     execution_persistence_max_ms: float
     execution_persistence_last_items: int
+    live_event_processing_count: int
+    live_event_processing_last_ms: float
+    live_event_processing_max_ms: float
+    live_event_processing_over_100ms_count: int
+    live_event_processing_max_event_type: str
+    live_event_processing_max_symbol: str
     wal_checkpoint_count: int
     wal_checkpoint_last_ms: float
     wal_checkpoint_busy_count: int
@@ -318,6 +324,30 @@ def parse_running_service_sample(
         execution_persistence_last_items=_integer(
             system.get("execution_persistence_last_items") or 0,
             "system.execution_persistence_last_items",
+        ),
+        live_event_processing_count=_integer(
+            system.get("live_event_processing_count") or 0,
+            "system.live_event_processing_count",
+        ),
+        live_event_processing_last_ms=_number(
+            system.get("live_event_processing_last_ms") or 0.0,
+            "system.live_event_processing_last_ms",
+        ),
+        live_event_processing_max_ms=_number(
+            system.get("live_event_processing_max_ms") or 0.0,
+            "system.live_event_processing_max_ms",
+        ),
+        live_event_processing_over_100ms_count=_integer(
+            system.get("live_event_processing_over_100ms_count") or 0,
+            "system.live_event_processing_over_100ms_count",
+        ),
+        live_event_processing_max_event_type=_string(
+            system.get("live_event_processing_max_event_type") or "NONE",
+            "system.live_event_processing_max_event_type",
+        ),
+        live_event_processing_max_symbol=_string(
+            system.get("live_event_processing_max_symbol") or "NONE",
+            "system.live_event_processing_max_symbol",
         ),
         wal_checkpoint_count=_integer(
             system.get("wal_checkpoint_count"), "system.wal_checkpoint_count"
@@ -683,6 +713,16 @@ def summarize_running_service_soak(
             >= previous.execution_persistence_count
             for previous, current in adjacent_samples
         ),
+        "live_event_processing_count_monotonic": all(
+            current.live_event_processing_count
+            >= previous.live_event_processing_count
+            for previous, current in adjacent_samples
+        ),
+        "live_event_processing_slow_count_monotonic": all(
+            current.live_event_processing_over_100ms_count
+            >= previous.live_event_processing_over_100ms_count
+            for previous, current in adjacent_samples
+        ),
         "storage_health_refresh_count_monotonic": all(
             current.storage_health_refresh_count
             >= previous.storage_health_refresh_count
@@ -851,6 +891,23 @@ def summarize_running_service_soak(
         "maximum_execution_persistence_last_items": max(
             sample.execution_persistence_last_items for sample in samples
         ),
+        "live_event_processing_delta": (
+            final.live_event_processing_count - baseline.live_event_processing_count
+        ),
+        "live_event_processing_over_100ms_delta": (
+            final.live_event_processing_over_100ms_count
+            - baseline.live_event_processing_over_100ms_count
+        ),
+        "maximum_live_event_processing_last_ms": max(
+            sample.live_event_processing_last_ms for sample in samples
+        ),
+        "maximum_live_event_processing_max_ms": max(
+            sample.live_event_processing_max_ms for sample in samples
+        ),
+        "live_event_processing_max_event_type": (
+            final.live_event_processing_max_event_type
+        ),
+        "live_event_processing_max_symbol": final.live_event_processing_max_symbol,
         "storage_health_refresh_delta": (
             final.storage_health_refresh_count - baseline.storage_health_refresh_count
         ),

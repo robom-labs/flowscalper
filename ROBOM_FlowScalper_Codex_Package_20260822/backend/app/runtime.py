@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
+from itertools import islice
 from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING, Any
@@ -113,6 +114,8 @@ _PERSISTENCE_BACKLOG_RECOVERY_EVENTS = 2_000
 _PERSISTED_CANDLE_INTERVALS = frozenset({1, 180})
 _LIVE_DEEP_SYMBOL_TARGET = 12
 _LIVE_DASHBOARD_EVENT_LIMIT = 512
+_DEFAULT_EVENT_MEMORY_LIMIT = 10_000
+_LIVE_EVENT_MEMORY_LIMIT = 2_048
 _RECOVERY_STATE_AUDIT_EVENTS = frozenset(
     {
         "MAIN_CANDIDATE_SELECTED",
@@ -140,7 +143,7 @@ class PaperRuntime:
     clock: Clock = field(default_factory=SystemClock)
     run_id: str = "ready"
     _events: deque[MarketEvent] = field(
-        default_factory=lambda: deque(maxlen=10_000),
+        default_factory=lambda: deque(maxlen=_DEFAULT_EVENT_MEMORY_LIMIT),
     )
     paused: bool = True
     position_visible: bool = False
@@ -220,6 +223,13 @@ class PaperRuntime:
     _execution_persistence_last_completed_ts_ms: int | None = None
     _execution_persistence_max_ts_ms: int | None = None
     _execution_persistence_last_items: int = 0
+    _live_event_processing_count: int = 0
+    _live_event_processing_last_ms: float = 0.0
+    _live_event_processing_max_ms: float = 0.0
+    _live_event_processing_over_100ms_count: int = 0
+    _live_event_processing_max_ts_ms: int | None = None
+    _live_event_processing_max_event_type: str = "NONE"
+    _live_event_processing_max_symbol: str = "NONE"
     _wal_checkpoint_next_flush: int = _WAL_CHECKPOINT_FLUSH_INTERVAL
     _wal_checkpoint_count: int = 0
     _wal_checkpoint_last_ms: float = 0.0
@@ -305,6 +315,9 @@ class PaperRuntime:
     def __post_init__(self) -> None:
         post_init_started = time.monotonic()
         assert_paper_only(self.mode, os.environ)
+        if self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
+            # LIVE 원본은 archive에 전량 보존하므로 화면용 메모리는 짧게 유지한다.
+            self._events = deque(self._events, maxlen=_LIVE_EVENT_MEMORY_LIMIT)
         storage_path = self.ledger.path.parent if self.ledger is not None else Path.cwd()
         self.resource_sampler = ProcessResourceSampler(storage_path)
         portfolio_started = time.monotonic()
@@ -898,6 +911,23 @@ class PaperRuntime:
             ),
             "execution_persistence_max_ts_ms": self._execution_persistence_max_ts_ms,
             "execution_persistence_last_items": self._execution_persistence_last_items,
+            "live_event_processing_count": self._live_event_processing_count,
+            "live_event_processing_last_ms": round(
+                self._live_event_processing_last_ms,
+                3,
+            ),
+            "live_event_processing_max_ms": round(
+                self._live_event_processing_max_ms,
+                3,
+            ),
+            "live_event_processing_over_100ms_count": (
+                self._live_event_processing_over_100ms_count
+            ),
+            "live_event_processing_max_ts_ms": self._live_event_processing_max_ts_ms,
+            "live_event_processing_max_event_type": (
+                self._live_event_processing_max_event_type
+            ),
+            "live_event_processing_max_symbol": self._live_event_processing_max_symbol,
             "wal_autocheckpoint_pages": 0,
             "wal_checkpoint_flush_interval": _WAL_CHECKPOINT_FLUSH_INTERVAL,
             "wal_checkpoint_count": self._wal_checkpoint_count,
@@ -916,7 +946,7 @@ class PaperRuntime:
             "persistence_worker_warmed": self._persistence_worker_warmed,
             "persistence_worker_warm_ms": round(self._persistence_worker_warm_ms, 3),
             "event_memory_count": len(self._events),
-            "event_memory_limit": 10_000,
+            "event_memory_limit": self._events.maxlen or 0,
             "market_persistence_buffer": len(self._market_event_buffer),
             "candle_persistence_buffer": len(self._candle_buffer),
             "universe_snapshot_persistence_buffer": len(
@@ -1040,7 +1070,7 @@ class PaperRuntime:
                 )
                 continue
             self.venue = result.venue
-            self._events = deque(result.events, maxlen=10_000)
+            self._events = deque(result.events, maxlen=_LIVE_EVENT_MEMORY_LIMIT)
             self.wide_symbol_count = result.wide_symbol_count
             self.deep_symbol_count = result.deep_symbol_count
             self.processing_lag_p95_ms = result.websocket_lag_ms
@@ -1176,7 +1206,20 @@ class PaperRuntime:
     async def ingest_live_event_async(self, event: MarketEvent) -> None:
         """시장 판단은 순서대로 유지하고 SQLite 동기 I/O만 worker thread로 보낸다."""
 
-        self.ingest_live_event(event, defer_execution_persistence=True)
+        started = asyncio.get_running_loop().time()
+        try:
+            self.ingest_live_event(event, defer_execution_persistence=True)
+        finally:
+            elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+            self._live_event_processing_count += 1
+            self._live_event_processing_last_ms = elapsed_ms
+            if elapsed_ms >= 100:
+                self._live_event_processing_over_100ms_count += 1
+            if elapsed_ms > self._live_event_processing_max_ms:
+                self._live_event_processing_max_ms = elapsed_ms
+                self._live_event_processing_max_ts_ms = self.clock.utc_ms()
+                self._live_event_processing_max_event_type = event.event_type
+                self._live_event_processing_max_symbol = event.symbol
         if self._has_unpersisted_execution_state():
             await to_thread.run_sync(
                 self._persist_execution_state_safely,
@@ -3000,7 +3043,11 @@ class PaperRuntime:
                 }
             )
         dashboard_events = (
-            tuple(self._events)[-_LIVE_DASHBOARD_EVENT_LIMIT:]
+            tuple(
+                reversed(
+                    tuple(islice(reversed(self._events), _LIVE_DASHBOARD_EVENT_LIMIT))
+                )
+            )
             if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
             else self.events
         )

@@ -502,6 +502,7 @@ def create_app(
             )
 
     websocket_clients: set[WebSocket] = set()
+    dashboard_build_lock = asyncio.Lock()
 
     def dashboard_snapshot() -> dict[str, object]:
         return {
@@ -510,9 +511,17 @@ def create_app(
             "control_revision": operation_manager.revision,
         }
 
-    def dashboard_message() -> str:
-        return json.dumps(
-            {"type": "dashboard", "data": dashboard_snapshot()},
+    async def dashboard_snapshot_async() -> dict[str, object]:
+        """무거운 화면 집계를 직렬 worker에서 실행해 시장 이벤트 루프를 지킨다."""
+
+        async with dashboard_build_lock:
+            return await asyncio.to_thread(dashboard_snapshot)
+
+    async def dashboard_message() -> str:
+        snapshot = await dashboard_snapshot_async()
+        return await asyncio.to_thread(
+            json.dumps,
+            {"type": "dashboard", "data": snapshot},
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -522,7 +531,7 @@ def create_app(
 
         while True:
             if websocket_clients:
-                payload = dashboard_message()
+                payload = await dashboard_message()
                 clients = tuple(websocket_clients)
                 results = await asyncio.gather(
                     *(client.send_text(payload) for client in clients),
@@ -682,7 +691,7 @@ def create_app(
 
     @app.get("/api/dashboard")
     async def dashboard() -> dict[str, object]:
-        return dashboard_snapshot()
+        return await dashboard_snapshot_async()
 
     @app.get("/api/markets/catalog")
     async def market_catalog(
@@ -797,7 +806,7 @@ def create_app(
                     "current_intent": active_runtime.paper_entry_intent(),
                 },
             ) from error
-        return dashboard_snapshot()
+        return await dashboard_snapshot_async()
 
     @app.post("/api/control/pause")
     async def pause_entries(
@@ -824,7 +833,7 @@ def create_app(
     @app.post("/api/control/emergency-close")
     async def emergency_paper_close() -> dict[str, object]:
         active_runtime.emergency_paper_close()
-        return dashboard_snapshot()
+        return await dashboard_snapshot_async()
 
     async def start_live_runner(progress: ProgressCallback) -> None:
         if active_runtime.live_observation_running():
@@ -990,7 +999,7 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return dashboard_snapshot()
+        return await dashboard_snapshot_async()
 
     @app.post("/api/strategies/{strategy_id}")
     async def configure_strategy(
@@ -1031,7 +1040,7 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return dashboard_snapshot()
+        return await dashboard_snapshot_async()
 
     @app.post("/api/strategies/{strategy_id}/rollback")
     async def rollback_strategy(
@@ -1067,7 +1076,7 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return dashboard_snapshot()
+        return await dashboard_snapshot_async()
 
     @app.get("/api/governance")
     async def strategy_governance() -> dict[str, object]:
@@ -1472,7 +1481,7 @@ def create_app(
             return
         await websocket.accept()
         try:
-            await websocket.send_text(dashboard_message())
+            await websocket.send_text(await dashboard_message())
             websocket_clients.add(websocket)
             while True:
                 await websocket.receive_text()
