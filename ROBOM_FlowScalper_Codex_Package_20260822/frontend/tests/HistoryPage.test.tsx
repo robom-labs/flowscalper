@@ -22,6 +22,8 @@ const trade: HistoryRow = {
   exit_ts_ms: 2_000,
   initial_stop: '99',
   take_profit: '103',
+  take_profit_1: '102',
+  take_profit_2: '103',
   time_to_tp1_ms: 800,
   time_to_tp2_ms: 1_696,
   time_to_stop_ms: null,
@@ -63,6 +65,10 @@ test('clears stale trade detail when the current history no longer contains it',
   expect(screen.getByRole('complementary', { name: '거래 상세' })).toBeInTheDocument()
   expect(screen.getByText('TP1까지')).toBeInTheDocument()
   expect(screen.getByText('TP2까지')).toBeInTheDocument()
+  expect(screen.getByText('TP1 목표가')).toBeInTheDocument()
+  expect(screen.getByText('102')).toBeInTheDocument()
+  expect(screen.getByText('TP2 목표가')).toBeInTheDocument()
+  expect(screen.getByText('103')).toBeInTheDocument()
   expect(screen.getByText('손절까지')).toBeInTheDocument()
   expect(screen.getByText('해당 없음')).toBeInTheDocument()
 
@@ -71,6 +77,24 @@ test('clears stale trade detail when the current history no longer contains it',
   await waitFor(() => {
     expect(screen.queryByRole('complementary', { name: '거래 상세' })).not.toBeInTheDocument()
   })
+})
+
+test('labels a legacy single target without pretending it is TP1 or TP2', () => {
+  render(
+    <HistoryPage
+      rows={[{ ...trade, take_profit_1: null, take_profit_2: null }]}
+      currentRunId="run-history"
+      onReplay={vi.fn()}
+    />,
+  )
+
+  fireEvent.change(screen.getByLabelText('전략 버전'), { target: { value: 'CURRENT' } })
+  fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
+  fireEvent.click(screen.getByRole('button', { name: '상세' }))
+
+  expect(screen.getByText('목표가(과거 기록)')).toBeInTheDocument()
+  expect(screen.queryByText('TP1 목표가')).not.toBeInTheDocument()
+  expect(screen.queryByText('TP2 목표가')).not.toBeInTheDocument()
 })
 
 test('shows only the current Run by default and can reveal immutable history', () => {

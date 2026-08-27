@@ -468,6 +468,16 @@ def _history_rows(
                 "exit_ts_ms": int(str(trade["exit_ts_ms"])),
                 "initial_stop": str(trade.get("initial_stop", "—")),
                 "take_profit": str(trade.get("take_profit", "—")),
+                "take_profit_1": (
+                    str(trade["take_profit_1"])
+                    if trade.get("take_profit_1") is not None
+                    else None
+                ),
+                "take_profit_2": (
+                    str(trade["take_profit_2"])
+                    if trade.get("take_profit_2") is not None
+                    else None
+                ),
                 "tp1_hit_ts_ms": _optional_int(trade.get("tp1_hit_ts_ms")),
                 "tp2_hit_ts_ms": _optional_int(trade.get("tp2_hit_ts_ms")),
                 "time_to_tp1_ms": _optional_int(trade.get("time_to_tp1_ms")),
@@ -501,6 +511,8 @@ def _history_rows(
             "exit_ts_ms": 1_721_000_185_000,
             "initial_stop": "99.65",
             "take_profit": "101.85",
+            "take_profit_1": "101.40",
+            "take_profit_2": "101.85",
             "tp1_hit_ts_ms": 1_721_000_121_000,
             "tp2_hit_ts_ms": 1_721_000_185_000,
             "time_to_tp1_ms": 120_000,
