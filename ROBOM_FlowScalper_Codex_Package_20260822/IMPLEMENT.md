@@ -4,6 +4,19 @@
 
 Follow `PLANS.md` milestone by milestone. Do not stop after producing an architecture proposal. Implement, validate, repair, document, and continue until the current Wave exit gate is satisfied.
 
+## Strategy-profitability operating objective
+
+1. Treat the user's long-term money-making objective as a research-selection objective, not as permission to add real trading. Keep this program credential-free, public-data PAPER-only and structurally unable to place an exchange order.
+2. Repair runtime, ledger, replay and UI truthfulness first because unstable or mixed evidence cannot qualify a strategy.
+3. For each strategy iteration, record Run, strategy version, account/profile, BASE/STRESS cost basis and every active history/replay filter before interpreting results.
+4. Predeclare the hypothesis, parameters, chronological split, fee/slippage model and promotion gates. Evaluate the unchanged candidate once across train, validation, purged OOS and independent future data where available.
+5. Evaluate win rate together with its confidence interval, cost-adjusted expectancy, Profit Factor, payoff, maximum drawdown, downside risk, holding time, symbol/regime concentration, bootstrap lower bound, DSR and PBO. Never choose a strategy from win rate alone.
+6. Preserve the existing minimum gates in ADR-038 and `docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md`. Below 30 current-version natural `LIVE_PUBLIC` samples, keep ranking and profitability `NOT_PROVEN`; do not call a backtest or replay result a live profit proof.
+7. Promote only a preregistered candidate that passes every BASE/STRESS, OOS, robustness and natural-sample gate. Keep failures `SHADOW`, `RETIRED` or unregistered and move to the next predefined hypothesis instead of tuning the failed sample repeatedly.
+8. Record entry, TP1, TP2, SL and actual-close timestamps and durations independently of promotion. Exercise one concrete PAPER trade in replay and confirm the same milestones, costs and outcome on the actual chart.
+9. Do not hide an empty champion state. If no strategy qualifies, report why each candidate failed, retain actual orders at 0 and continue collecting independent PAPER evidence.
+10. A future real-money system is a separate product phase requiring explicit user approval, credential/security design, legal and venue review, capital/risk limits, kill switches and new acceptance evidence. It is not implemented by this runbook.
+
 ## At the start of every Wave
 
 1. Re-read applicable sections of `AGENTS.md` and `docs/`.

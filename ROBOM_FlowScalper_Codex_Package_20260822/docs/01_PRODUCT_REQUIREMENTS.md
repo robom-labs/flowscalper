@@ -23,6 +23,14 @@ The user launches the application without creating an account or entering creden
 - a live chart and event log;
 - historical paper performance and replay.
 
+### 1.3.1 Long-term research outcome
+
+The user's long-term objective is to find cost-adjusted strategies that could justify a separately approved real-money product in the future. FlowScalper 0.2.0-paper supports that objective by rejecting weak or overfit hypotheses and collecting auditable PAPER evidence. It does not implement the future real-money product.
+
+Raw win rate is not the optimization target. A strategy must be judged by win-rate uncertainty, net expectancy after actual bid/ask, fees and slippage, Profit Factor, payoff, maximum drawdown, BASE/STRESS results, chronological and independent OOS evidence, bootstrap lower bound, DSR, PBO, symbol/regime concentration and sufficient current-version natural `LIVE_PUBLIC` samples. A high win rate with negative expectancy, fragile tail loss or failed STRESS costs is a failed candidate.
+
+The product keeps unqualified strategies `SHADOW`, `RETIRED` or unregistered and keeps the shared PAPER benchmark empty when no strategy passes. It never weakens a signal or safety threshold to manufacture activity. A useful cadence such as two to three natural opportunities per day is a secondary research objective after profitability and safety gates, not a guaranteed output.
+
 ## 1.4 Default mode
 
 ```text

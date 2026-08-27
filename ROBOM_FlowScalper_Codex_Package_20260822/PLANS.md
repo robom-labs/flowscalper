@@ -8,6 +8,16 @@ This file is the source of truth for long-horizon implementation. Codex must con
 
 The application runs locally without credentials, connects to a supported venue's real public market data, dynamically scans dozens of eligible USDT perpetual symbols, operates a 1,000 USDT paper account, simulates realistic fills from executable order-book depth, displays a polished Korean dashboard, persists/replays trades, and contains no usable real-order path.
 
+## Product north star and strategy-profitability gate
+
+- The long-term user outcome is to discover strategies that may later deserve a separately approved real-money implementation. This repository remains public-market PAPER research and contains no real-order, private API, credential, wallet or deposit path.
+- Do not optimize raw win rate in isolation. A strategy is useful only when current-version chronological evidence passes cost-adjusted expectancy, Profit Factor, drawdown, payoff, BASE and STRESS costs, sample sufficiency, symbol/regime concentration, independent OOS, deterministic bootstrap, DSR and PBO gates together.
+- Freeze the hypothesis, parameters, market-data cutoff, fees, slippage and acceptance gates before each evaluation. Never lower a threshold or repeatedly tune the same sample merely to increase trades, win rate or dashboard rank.
+- Keep fewer than 30 current-version natural `LIVE_PUBLIC` trades unranked and `NOT_PROVEN`. `SHADOW` to `CHALLENGER` still requires the existing 30-trade, 7-day and 2-regime gate; an `ACTIVE` replacement still requires the existing 100-trade, 21-day and 3-regime gate plus its stricter robustness and correlation checks.
+- Failed candidates remain `SHADOW`, `RETIRED` or unregistered. Only a candidate that passes the preregistered cost and robustness contract may enter the shared PAPER benchmark. Test passage, a few wins or a high displayed win rate is not promotion evidence.
+- Target a useful non-ultra-scalp cadence, observed by the user as roughly two to three natural opportunities per day, only after the profitability gates pass. Frequency is a research objective, not a reason to weaken signal or safety criteria.
+- Every iteration records train/validation/OOS boundaries, BASE/STRESS trade counts, win rate with uncertainty, net expectancy, Profit Factor, costs, maximum drawdown, hold duration, entry-to-TP1/TP2/SL/actual-close timing, hashes and the exact Registry decision.
+
 ## Wave 00 — Contract, architecture, scaffold
 
 Deliverables:
