@@ -7,7 +7,7 @@ import json
 import sqlite3
 import zlib
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -995,27 +995,25 @@ class SQLiteLedger:
                         value is not None
                         for value in (symbol, start_ts_ms, end_ts_ms)
                     ) or bool(event_types)
-                    guard = (
-                        archive_batch_guard()
-                        if archive_batch_guard is not None
-                        else nullcontext()
-                    )
-                    with guard:
-                        archive_events = (
-                            self.market_event_archive.read_market_event_batch_filtered(
-                                Path(str(archive["path"])),
-                                expected_checksum=str(archive["checksum"]),
-                                symbol=symbol,
-                                event_types=event_types,
-                                start_ts_ms=start_ts_ms,
-                                end_ts_ms=end_ts_ms,
-                            )
-                            if filtered_archive_read
-                            else self.market_event_archive.read_market_event_batch(
-                                Path(str(archive["path"])),
-                                expected_checksum=str(archive["checksum"]),
-                            )
+                    archive_events = (
+                        self.market_event_archive.read_market_event_batch_filtered(
+                            Path(str(archive["path"])),
+                            expected_checksum=str(archive["checksum"]),
+                            symbol=symbol,
+                            event_types=event_types,
+                            start_ts_ms=start_ts_ms,
+                            end_ts_ms=end_ts_ms,
+                            batch_guard=archive_batch_guard,
+                            cooperative_yield=cooperative_yield,
                         )
+                        if filtered_archive_read
+                        else self.market_event_archive.read_market_event_batch(
+                            Path(str(archive["path"])),
+                            expected_checksum=str(archive["checksum"]),
+                            batch_guard=archive_batch_guard,
+                            cooperative_yield=cooperative_yield,
+                        )
+                    )
                     for decoded in archive_events:
                         if str(decoded.get("run_id")) != run_id:
                             raise LedgerInvariantError(

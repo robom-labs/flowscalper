@@ -950,6 +950,47 @@ def test_archive_manifest_stats_and_candles_use_one_full_commit(tmp_path: Path) 
     ledger.close()
 
 
+def test_filtered_archive_read_releases_live_gate_between_small_batches(
+    tmp_path: Path,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "market-parquet-streamed",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    rows = [
+        market_event(
+            "run-streamed",
+            event_id=f"streamed-{index}",
+            ts_ms=1_000 + index,
+            event_type="TRADE" if index % 2 else "DEPTH_UPDATE",
+        ).model_dump(mode="json")
+        for index in range(300)
+    ]
+    archived = archive.write_market_event_batch(rows)
+    guard_steps: list[str] = []
+    cooperative_checkpoints: list[int] = []
+
+    @contextmanager
+    def archive_guard():
+        guard_steps.append("ENTER")
+        yield
+        guard_steps.append("EXIT")
+
+    restored = archive.read_market_event_batch_filtered(
+        archived.path,
+        expected_checksum=archived.checksum,
+        symbol="BTCUSDT",
+        batch_guard=archive_guard,
+        cooperative_yield=lambda: cooperative_checkpoints.append(1),
+        batch_size=64,
+    )
+
+    assert len(restored) == 300
+    assert cooperative_checkpoints == [1, 1, 1, 1, 1]
+    assert guard_steps == ["ENTER", "EXIT"] * 6
+
+
 def test_passive_checkpoint_runs_outside_commit_connection(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "passive-checkpoint.sqlite3")
     run_id = "run-passive-checkpoint"
@@ -1126,6 +1167,9 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
         event_types: tuple[str, ...] = (),
         start_ts_ms: int | None = None,
         end_ts_ms: int | None = None,
+        batch_guard=None,
+        cooperative_yield=None,
+        batch_size: int = 128,
     ) -> list[dict[str, object]]:
         read_paths.append(path)
         return original_read(
@@ -1135,6 +1179,9 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
             event_types=event_types,
             start_ts_ms=start_ts_ms,
             end_ts_ms=end_ts_ms,
+            batch_guard=batch_guard,
+            cooperative_yield=cooperative_yield,
+            batch_size=batch_size,
         )
 
     monkeypatch.setattr(archive, "read_market_event_batch_filtered", counted_read)
@@ -1158,7 +1205,7 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
     assert [event["event_id"] for event in events] == ["limited-0"]
     assert len(read_paths) == 1
     assert yielded_archive_bytes == [read_paths[0].stat().st_size]
-    assert guard_steps == ["ENTER", "EXIT"]
+    assert guard_steps == ["ENTER", "EXIT", "ENTER", "EXIT"]
 
     late_sqlite_event = market_event(
         "run-limited",
