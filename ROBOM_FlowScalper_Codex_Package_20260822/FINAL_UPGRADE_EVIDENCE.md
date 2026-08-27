@@ -2802,3 +2802,33 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 기계판독 브라우저·replay 요약은 `evidence/WAVE93_ACTUAL_BROWSER_SMALL_REPLAY_AND_STRATEGY_TRUTH.json`, 원본 장시간·중간 실패·최종 관찰은 `evidence/WAVE69_*.json`부터 `evidence/WAVE92_*.json`까지 보존한다. 전략 임계값, TP1·TP2·SL, 비용률, 체결, 위험예산과 계좌는 이번 안정화에서 변경하지 않았다. 최종 상태는 `LATEST_5M_AND_SMALL_REPLAY_PASS_LARGE_REPLAY_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
 
 첫 GitHub Actions `33049542705`는 macOS 전용 동적 runner 검사가 Ubuntu에서 `zsh`를 찾지 못해 475 PASS 뒤 1건 실패했다. 정적 LaunchAgent 계약은 모든 플랫폼에서 유지하고 실제 `/bin/zsh` 실행 한 건만 Darwin으로 제한한 `a08a14f`를 적용했다. macOS 전체 476 PASS와 수정 Actions `33049813379`의 Linux 475 PASS·1 SKIP을 모두 확인했으므로 환경 의존 실패를 숨기거나 재실행만으로 넘기지 않았다.
+
+## 69. Wave 94 거래 목표 표시와 현재 전략 경제성 재감사
+
+### 현재 전략버전 원장 판정
+
+- 범위는 `run-2b7135a972dd`, Strategy League, 현재 전략 버전, `LIVE_PUBLIC`, BASE+STRESS로 고정했다. API와 실제 브라우저 필터 모두 24건을 반환했다.
+- 보유시간은 최소 14.010초, 중앙 28.080초, p90 44.868초, 최대 46.368초다. 3초 미만과 10초 미만은 각각 0건이므로 이번 버전에서 과거 1~3초 ordinary `EDGE_DECAY`는 재현되지 않았다.
+- 모든 종료는 `EDGE_DECAY`이며 TP1·TP2·STOP 도달은 각각 0건이다. 24건 중 비용전 양수는 14건이지만 비용후 양수는 0건이다.
+- BASE 12건은 gross +1.19888, 수수료 9.195754992, 슬리피지 0.22423, net -8.221104992 USDT다. STRESS 12건은 gross +0.91110, 수수료 15.194189544, 슬리피지 0.37409, net -14.657179544 USDT다.
+- 전략별로 AGGRESSOR 8건 net -10.96066888, CBR 2건 net -0.487650416, VWAP 14건 net -11.42996524 USDT다. 모두 30건 미만이고 비용후 음수이므로 순위·CHALLENGER·ACTIVE 승격 근거가 없으며 수익성은 `NOT_PROVEN`이다.
+
+### 재현 결함과 수정
+
+원장과 `/api/history`에는 `take_profit_1`과 `take_profit_2`가 따로 있었지만 실제 거래 상세는 모호한 `목표가` 하나만 표시했다. 현재 기록은 `TP1 목표가`와 `TP2 목표가`를 각각 표시하고, 두 필드가 없던 과거 단일목표 기록은 `목표가(과거 기록)`으로 명시해 임의 추정을 막았다. 전략 임계값, 진입, `EDGE_DECAY`, TP·SL 계산, 체결비용, 위험예산, 계좌와 원장은 변경하지 않았다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| backend 전체 | PASS | 최종 변경 뒤 476 passed·62.35초 |
+| frontend 전체 | PASS | 14 files·69 tests |
+| fixture backend | PASS | 18 passed·8.57초 |
+| 정적·build | PASS_WITH_WARNING | ESLint·TypeScript·Vite PASS. JS 526.08kB·gzip 161.76kB의 기존 500kB 경고는 남음 |
+| OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed·16.6초. TP1·TP2 라벨과 legacy 누락값을 확인 |
+| macOS 불변 릴리스 | PASS | commit `b1a89276a86a1547336960fd540c04e363541619`, 같은 Run 복구, LIVE·PAPER·RUNNING, 11전략·22계좌, 열린 포지션 0, 실제 주문 false, 인증 false |
+| 실제 브라우저 현재 거래 | PASS | 현재버전·전략계좌·공개시장 24건, 첫 거래 TP1 79,162.28·TP2 79,528.75·초기손절 78,559.36·실제종료 78,821.4를 분리 표시 |
+| 6시간 무간섭 관찰 | IN_PROGRESS | 2026-08-27 16:51 KST 시작. 초기 event 8,643→8,875, 처리/체결 p95 50.675/61.290ms, queue·비계획 reconnect·gap·resync·drop·저장결함 0. 출력 예정 `evidence/WAVE94_POST_TP_DETAIL_RELEASE_CLEAN_6H.json` |
+| 24시간 관찰 | NOT_RUN | 실제 시간을 채우지 않음 |
+| 고정 485,283-event replay | NOT_RUN | 이번 릴리스 장시간 관찰과 겹치지 않음 |
+| 전략 수익성 | NOT_PROVEN | 현재버전 BASE/STRESS 각 12건, 전부 비용후 음수, TP1·TP2·STOP 도달 0 |
+
+기계판독 중간 근거는 `evidence/WAVE94_STRATEGY_TRADE_AND_TP_DETAIL_AUDIT.json`이다. 6시간 관찰이 끝나기 전에는 초기 정상값을 장시간 PASS로 확대 해석하지 않는다.

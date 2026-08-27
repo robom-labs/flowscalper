@@ -562,3 +562,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Evaluate all 11 strategies against the same public input with 22 independent BASE/STRESS accounts. Retain six unproven candidates in SHADOW and five failed candidates as immutable RETIRED/OFF evidence; deletion is not an acceptable shortcut.
 9. Do not rank or promote before 30 current-version `LIVE_PUBLIC` trades and cost-adjusted expectancy, Profit Factor, drawdown, BASE/STRESS, chronological OOS and robustness gates. Keep profitability `NOT_PROVEN` until those gates pass.
 10. Keep natural signal thresholds, TP1, TP2, SL, fills, fees, slippage, Governor, account topology and risk budgets unchanged. Actual orders, private APIs, credentials, wallets and runtime AI order decisions remain zero.
+
+## Trade target truth and post-release long-observation Wave
+
+1. Audit only the current Run, current strategy version, Strategy League accounts and `LIVE_PUBLIC` samples before interpreting win rate or holding time.
+2. Preserve explicit TP1 and TP2 prices independently in the history contract and display them with distinct labels. Never infer which target a legacy single `take_profit` represented.
+3. Trace every hold below 10 seconds through entry, management and exit audit. Do not change the 10-second grace, two-signal confirmation or three-second persistence unless a current-version defect is reproduced.
+4. Separate gross directional correctness from fees, spread and slippage. A gross-positive but net-negative row is not a winning strategy sample.
+5. Keep all 11 strategies and 22 BASE/STRESS accounts on identical public-market input. Preserve six SHADOW and five RETIRED/OFF histories while profitability is unproven.
+6. Require 30 current-version natural samples, cost-adjusted expectancy, Profit Factor, drawdown, BASE/STRESS, chronological OOS, walk-forward and robustness before ranking or promotion.
+7. Run the complete backend, frontend, fixture, lint, typecheck, build and desktop/tablet/mobile browser regression before installing an immutable release.
+8. Deploy only while every PAPER account is flat, preserve the current Run and ledger, then verify the exact release commit, LIVE public data, PAPER execution, zero real orders and zero authentication.
+9. Start a new six-hour observer only after deployment. Keep its status `IN_PROGRESS` until all wall-clock time and samples have actually completed, and keep 24 hours `NOT_RUN` until separately executed.
+10. Do not overlap the long observer with replay, full tests, builds or ledger maintenance. Preserve any threshold violation as FAIL rather than restarting or weakening the gate.
