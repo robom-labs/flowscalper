@@ -2731,20 +2731,37 @@ cache를 읽되 새로 쓰지 않고 결과를 바로 반환하게 했다. DEMO�
 같은지 검증한다. 재생 진입 중에는 진입 수수료와 예상 종료비, 종료 뒤에는 진입 수수료와 실현
 종료 수수료를 분리한다. focus cache schema는 7이다.
 
+후속 계측에서는 같은 전략 비교 조회가 5.931초였고, focus 전용 인덱스 뒤에도 저우선순위 공용
+replay worker 대기가 남았다. 제한된 UI focus 읽기는 query-only thread로 분리하되 전체 Run과
+정밀 timeline replay만 기존 `nice(19)` process 격리를 유지했다. 재시작 거래 cache 61,917.006ms는
+focus 인덱스가 전체 시간순 조회에 선택돼 temp B-tree를 만들던 별도 결함이었다. 전체·Run별 거래
+시간순 인덱스를 추가하고 query plan 회귀를 고정해 6,610.263ms로 줄였다.
+
+commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID의 정상 종료를 최대 60초
+기다리고 bootstrap을 제한 재시도하는 설치 경로로 전환했다. stage build 출력과 결과 JSON도
+분리해 `ACTIVATED`를 실제 파싱한 뒤에만 전환한다. 같은 Run `run-2b7135a972dd`를 유지했고 실제
+브라우저 거래 기록 81건은 308ms, 첫 ZECUSDT focus는 2,223ms에 준비됐다. 직접 API는 ZECUSDT
+1.051초, SOLUSDT 0.190초였다. 진입·TP1·TP2·SL·실제 종료를 확인했고 진입·종료 수수료는 각각
+0.025 USDT, 보유 28초, 최종 순손익 -0.0495 USDT, 콘솔 오류 0이었다. ZECUSDT 총수수료
+0.049931496과 SOLUSDT 총수수료 1.07237592·총슬리피지 0.0462는 분리 합계가 원장과 정확히
+일치했다.
+
 | 검증 | 상태 | 이번 실행 결과 |
 |---|---|---|
 | 변경 표적 backend | PASS | focus·process 2 passed, 전체 관련 41 passed |
-| 전체 backend | PASS | 최종 process cache 회귀 포함 465 passed·42.55초 |
-| frontend | PASS | 14 files·67 tests·6.27초 |
+| 전체 backend | PASS | bounded focus·history query plan 회귀 포함 467 passed·39.04초 |
+| frontend | PASS | 14 files·67 tests·4.61초 |
 | 정적·build | PASS | Ruff, mypy 96 source, ESLint, TypeScript, Vite 50 modules. JS 524.49kB·gzip 161.44kB의 기존 500kB 경고는 남아 있다 |
 | PAPER safety·security·hygiene | PASS | PAPER 불변조건, security 131 source·위반·secret-like·실주문 path 0, 저장소 위반 0 |
-| OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed·31.3초 |
-| 새 불변 릴리스 실제 브라우저 재측정 | NOT_RUN | 현재 수정 source는 아직 설치 전 |
-| 5분·30분 무오염 관찰 | NOT_RUN | 실제 브라우저 재측정 뒤 실행 |
+| OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed·24.1초 |
+| 새 불변 릴리스 실제 브라우저 재측정 | PASS | 기록 81건 308ms, 첫 focus 2,223ms, API 1.051초·0.190초, 비용 합계 일치, 콘솔 오류 0 |
+| 5분 무오염 관찰 | PASS | 300.029초·61표본·event +23,229·전략평가 +80,232·consumer +23,229·queue 최대 1·처리 p95 최대 42.443ms·trade p95 최대 81.730ms. 비계획 reconnect·gap·resync·drop·저장결함·buffer drop·critical incident 0 |
+| 30분 무오염 관찰 | NOT_RUN | 최종 증거 commit 릴리스 뒤 무간섭으로 실행 |
 | 485,283-event 고정 replay | NOT_RUN | LIVE 안전감시와 병행 예정 |
 | 새 6시간·24시간 | NOT_RUN | 실제 시간을 채우지 않음 |
 | 수익성 | NOT_PROVEN | 전략 또는 기준을 변경하지 않았고 현재 표본으로 입증하지 않음 |
 
-판단 근거는 ADR-068이다. 전략 임계값, 진입조건, TP, SL, 체결, 비용률, Governor, 위험예산과
+판단 근거는 ADR-068과 ADR-069이고 원본 5분 표본은
+`evidence/WAVE68_POST_DEPLOY_CLEAN_5M.json`이다. 전략 임계값, 진입조건, TP, SL, 체결, 비용률, Governor, 위험예산과
 계좌 구성은 변경하지 않았다. 실제 주문·private API·API key·secret·wallet·런타임 AI 주문판단은
-0이다. 현재 수용상태는 `IMPLEMENTED_REGRESSION_PASS_PENDING_IMMUTABLE_DEPLOY`다.
+0이다. 현재 수용상태는 `ACTUAL_BROWSER_AND_CLEAN_5M_PASS_PENDING_30M_REPLAY_LONG_SOAK`다.

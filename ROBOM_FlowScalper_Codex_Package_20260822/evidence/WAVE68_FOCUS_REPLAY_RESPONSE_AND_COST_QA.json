@@ -1,6 +1,6 @@
 {
   "schema": "flowscalper.wave68.focus_replay_response_and_cost_qa.v1",
-  "status": "IMPLEMENTED_REGRESSION_PASS_PENDING_IMMUTABLE_DEPLOY",
+  "status": "ACTUAL_BROWSER_AND_CLEAN_5M_PASS_PENDING_30M_REPLAY_LONG_SOAK",
   "date": "2026-08-27",
   "baseline_release_commit": "50d97075fc99fe79d9c426506d59521582eeccc6",
   "actual_browser_baseline": {
@@ -36,6 +36,66 @@
       "exit_reason_visible": "EDGE_DECAY"
     }
   },
+  "fixed_release_actual": {
+    "commit": "3e4e728b7524a53965014f49c526042fb1dc07f5",
+    "immutable_release_stage": "PASS",
+    "installer_result_json": "ACTIVATED",
+    "same_run_id": "run-2b7135a972dd",
+    "dashboard_history_cache_baseline_ms": 61917.006,
+    "dashboard_history_cache_fixed_ms": 6610.263,
+    "actual_browser": {
+      "history_visible_rows": 81,
+      "history_shared_rows": 1,
+      "history_league_rows": 80,
+      "history_ready_ms": 308,
+      "first_focus_ready_ms": 2223,
+      "zec_focus_api_seconds": 1.051076,
+      "sol_focus_api_seconds": 0.189683,
+      "entry_tp1_tp2_sl_actual_exit_visible": true,
+      "entry_fee_usdt_visible": "0.025",
+      "exit_fee_usdt_visible": "0.025",
+      "holding_seconds_visible": 28,
+      "net_pnl_usdt_visible": "-0.0495",
+      "console_error_count": 0
+    },
+    "ledger_cost_reconciliation": {
+      "zec_total_fee_usdt": "0.049931496",
+      "zec_split_sum_exact": true,
+      "sol_total_fee_usdt": "1.07237592",
+      "sol_split_sum_exact": true,
+      "sol_total_slippage_usdt": "0.0462",
+      "sol_slippage_split_sum_exact": true
+    },
+    "clean_5m": {
+      "status": "PASS",
+      "evidence": "evidence/WAVE68_POST_DEPLOY_CLEAN_5M.json",
+      "observed_duration_seconds": 300.029,
+      "sample_count": 61,
+      "probe_error_count": 0,
+      "event_delta": 23229,
+      "strategy_evaluation_delta": 80232,
+      "consumer_delivery_delta": 23229,
+      "maximum_queue_depth": 1,
+      "maximum_processing_lag_p95_ms": 42.442626953125,
+      "maximum_trade_lag_p95_ms": 81.72998046875,
+      "maximum_wide_lag_p95_ms_observational": 1867.97265625,
+      "memory_growth_mb": 25.515,
+      "maximum_persistence_flush_last_ms": 8197.0,
+      "maximum_wal_checkpoint_last_ms": 13025.0,
+      "wal_checkpoint_complete_at_end": true,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "resyncs": 0,
+      "dropped_events": 0,
+      "persistence_faults": 0,
+      "persistence_buffer_drops": 0,
+      "critical_lag_incidents": 0,
+      "actual_orders_enabled": false,
+      "auth_required": false,
+      "trade_delta": 0,
+      "qualified_signal_delta": 0
+    }
+  },
   "defects": [
     {
       "id": "LIVE_FOCUS_OPTIONAL_CACHE_WRITE_WAIT",
@@ -48,6 +108,30 @@
       "root_cause": "ReplayPage assigned the completed trade total fee to entry_fee_usdt and always reported zero realized exit fee.",
       "fix": "Focus session v7 allocates the immutable total fee by executed entry and exit notional and preserves the exact ledger total. The UI shows entry plus estimated exit fee while open and entry plus realized exit fee when closed.",
       "strategy_thresholds_lowered": false
+    },
+    {
+      "id": "FOCUS_COMPARISON_UNINDEXED_AND_LOW_PRIORITY_WORKER",
+      "root_cause": "The bounded focus request still waited on the shared nice(19) replay worker and its comparison query lacked a matching Run, strategy, symbol, and side access path.",
+      "fix": "The UI-only bounded focus read uses the existing query-only reader in asyncio.to_thread with dedicated comparison indexes. Full Run and precision timeline replay remain process isolated and nice(19).",
+      "strategy_thresholds_lowered": false
+    },
+    {
+      "id": "DASHBOARD_HISTORY_ORDER_PLAN_TEMP_BTREE",
+      "root_cause": "SQLite selected the focus comparison index for full history ordering and built a temporary B-tree, extending restart cache warmup to 61,917.006ms.",
+      "fix": "Purpose-built all-history and Run-history order indexes were added for trades and shadow_trades, with query-plan regression coverage that rejects a temporary B-tree.",
+      "strategy_thresholds_lowered": false
+    },
+    {
+      "id": "LAUNCHD_BOOTSTRAP_BEFORE_OLD_PID_EXIT",
+      "root_cause": "launchctl bootout returned before the old Python process completed its graceful shutdown, so immediate bootstrap intermittently failed with macOS error 5.",
+      "fix": "The installer waits up to 60 seconds for the captured old PID to disappear, then retries bootstrap at most three times with one-second intervals.",
+      "strategy_thresholds_lowered": false
+    },
+    {
+      "id": "STAGE_BUILD_STDOUT_CORRUPTED_JSON",
+      "root_cause": "Frontend build stdout was written before the stage result and made latest-release-stage.json invalid JSON.",
+      "fix": "Stage build output is directed away from the result stream and the installer parses status=ACTIVATED before switching the service.",
+      "strategy_thresholds_lowered": false
     }
   ],
   "validation": {
@@ -58,19 +142,18 @@
     },
     "backend_full": {
       "status": "PASS",
-      "tests": 465,
-      "seconds": 42.55
+      "tests": 467,
+      "seconds": 39.04
     },
-    "focus_process_regressions": {
+    "focus_and_history_regressions": {
       "status": "PASS",
-      "tests": 2,
-      "seconds": 7.93
+      "scope": "bounded query-only focus reader, exact comparison indexes, and history query plans are included in backend_full"
     },
     "frontend": {
       "status": "PASS",
       "files": 14,
       "tests": 67,
-      "seconds": 6.27
+      "seconds": 4.61
     },
     "ruff": "PASS",
     "mypy": {
@@ -103,7 +186,7 @@
         "mobile"
       ],
       "tests": 3,
-      "seconds": 31.3
+      "seconds": 24.1
     }
   },
   "paper_safety": {
@@ -118,10 +201,10 @@
   "profitability": "NOT_PROVEN",
   "remaining": {
     "final_backend_full_after_added_regression": "PASS",
-    "fixed_release_commit": "NOT_CREATED",
-    "immutable_release_stage": "NOT_RUN",
-    "actual_browser_on_fixed_release": "NOT_RUN",
-    "clean_5m_soak": "NOT_RUN",
+    "fixed_release_commit": "3e4e728b7524a53965014f49c526042fb1dc07f5",
+    "immutable_release_stage": "PASS",
+    "actual_browser_on_fixed_release": "PASS",
+    "clean_5m_soak": "PASS",
     "clean_30m_soak": "NOT_RUN",
     "fixed_485283_event_replay": "NOT_RUN",
     "post_deploy_6h": "NOT_RUN",

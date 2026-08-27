@@ -6,6 +6,8 @@
 
 ## 아직 배포하지 않음
 
+- 거래 기록 전체·Run별 시간순 인덱스와 focus 비교 인덱스를 분리해 재시작 cache를 61,917.006ms에서 6,610.263ms로 줄였다. 제한된 거래 focus는 query-only thread로 처리하고 전체 Run·정밀 timeline replay만 기존 저우선순위 process 격리를 유지한다. 실제 불변 릴리스에서 기록 81건은 308ms, 첫 focus는 2,223ms에 준비됐고 5분 무오염 관찰은 queue 최대 1·처리 p95 42.443ms·비계획 reconnect와 저장결함 0으로 PASS했다.
+- 불변 설치가 이전 서비스 PID의 정상 종료를 기다린 뒤 launchd bootstrap을 제한 재시도하게 했다. stage build 로그가 결과 JSON을 깨뜨리지 않도록 분리하고 `ACTIVATED`를 파싱한 뒤에만 서비스를 전환한다.
 - LIVE 거래 집중 재생은 활성 원장의 선택적 cache 쓰기 잠금을 기다리지 않고 제한된 읽기 결과를 바로 반환한다. 재생 비용은 원장 총액과 합계가 일치하는 진입·종료 수수료로 나눠 각 단계의 실제·예상 종료비를 구분한다.
 - 계획 회전 감시 수정 릴리스의 3,031,654,400 byte 닫힌 원장을 다른 device로 전송해 양쪽 SHA-256 일치, 같은 Run 복구, 4,168개 LIVE 표본과 5회 계획 회전, `quick_check=ok`, foreign key 위반 0을 실제로 완료했다. 임시 사본과 이전 실패 중복 검증본은 새 PASS 뒤 제거했다.
 - 원장 전수검사 안전감시가 정상 planned rotation의 `SAFETY_WAITING`을 장애로 오인하던 모순을 수정했다. 새 계획 회전, 진입잠금, planned/reconnect count와 기존 15초 유예가 모두 맞을 때만 허용하며 수동 일시정지와 다른 비RUNNING 상태는 계속 실패한다.
