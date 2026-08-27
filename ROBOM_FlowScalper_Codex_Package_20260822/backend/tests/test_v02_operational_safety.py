@@ -582,6 +582,40 @@ def test_disk_pressure_is_connected_to_runtime_entry_gate_and_dashboard(
     assert runtime.paper_portfolio.main.pending_entry is None
 
 
+def test_repeated_dashboard_snapshots_do_not_probe_storage_volume(
+    tmp_path: Path,
+) -> None:
+    storage_probes = 0
+
+    def disk_usage(_: Path) -> DiskUsage:
+        nonlocal storage_probes
+        storage_probes += 1
+        return DiskUsage(total=1_000, used=100, free=900)
+
+    guard = ParquetEventStore(
+        tmp_path / "dashboard-cache-archive",
+        minimum_free_bytes=100,
+        minimum_free_ratio=0.10,
+        disk_usage=disk_usage,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-dashboard-storage-cache",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        storage_guard=guard,
+    )
+
+    assert runtime._refresh_storage_safety(force=True) is True
+    assert storage_probes == 1
+
+    runtime.dashboard()
+    runtime.dashboard()
+    runtime.dashboard()
+
+    assert storage_probes == 1
+
+
 def test_runtime_checks_active_ledger_volume_as_well_as_archive(
     tmp_path: Path,
 ) -> None:
