@@ -2888,6 +2888,7 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | 실제 브라우저 | PASS | 확인된 버전 불일치 0, `작동 중`, `PAPER · 실제 주문 0`, 새 500ms 초과 횟수·시각·값 문구를 실제 설정 고급진단에서 확인 |
 | 첫 깨끗한 5분 | FAIL | 300.047초·61표본·event +27,788·평가 +82,548. queue 최대 1이었지만 처리 p95 579.710ms·critical incident +1·4,091.954ms라 세 gate 실패. 비계획 reconnect·gap·resync·drop·저장 fault·실주문·인증 0 |
 | 재시도 5분 | PASS | 300.041초·61표본·event +28,629·평가 +82,920·queue 최대 12·처리/체결 p95 최대 147.376/272.032ms·저장 대기 최대 1,562건·flush/WAL 최대 7.197/19.327초. 신규 critical·비계획 reconnect·gap·resync·drop·저장 fault·실주문·인증 0 |
+| GitHub main·Actions | PASS | main `fa8fc09f47d7530beae774ae198c93e756b0c232`, Actions `33059333016`. validate 1분 15초, browser 1분 23초, desktop·tablet·mobile E2E와 브라우저 증거 업로드 PASS |
 | 새 6시간·24시간 | NOT_RUN | 최종 문서 릴리스에서 실제 시간을 채우지 않음 |
 | 고정 485,283-event replay | NOT_RUN | 깨끗한 관찰과 I/O를 겹치지 않기 위해 실행하지 않음 |
 
