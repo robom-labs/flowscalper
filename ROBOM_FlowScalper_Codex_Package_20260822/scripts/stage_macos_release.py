@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 from datetime import UTC, datetime
@@ -85,6 +86,8 @@ def _build_frontend(snapshot_root: Path, source_root: Path, commit: str) -> None
             cwd=snapshot_root / "frontend",
             env=environment,
             check=True,
+            stdout=sys.stderr,
+            stderr=sys.stderr,
             timeout=600,
         )
     finally:

@@ -43,6 +43,22 @@ def test_installer_uses_launchd_graceful_bootout_before_new_bootstrap() -> None:
     assert 'launchctl kickstart -k "$SERVICE_TARGET"' not in installer
 
 
+def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
+        encoding="utf-8"
+    )
+    stage = (PROJECT_ROOT / "scripts" / "stage_macos_release.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "for attempt in 1 2 3" in installer
+    assert 'bootstrap_succeeded="true"' in installer
+    assert "LaunchAgent 등록이 3회 연속 실패했습니다" in installer
+    assert 'payload["status"] == "ACTIVATED"' in installer
+    assert "stdout=sys.stderr" in stage
+    assert "stderr=sys.stderr" in stage
+
+
 def test_installer_can_prepare_release_without_restarting_loaded_service() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
         encoding="utf-8"

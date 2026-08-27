@@ -48,6 +48,9 @@ STAGE_RESULT="$SUPPORT_DIR/latest-release-stage.json"
   --market-archive "$MARKET_ARCHIVE_PATH" \
   --active-ledger-dir "$RUNTIME_ROOT/active-ledger" \
   --activate > "$STAGE_RESULT"
+"$RUNTIME_VENV/bin/python" -c \
+  'import json,sys; payload=json.loads(open(sys.argv[1], encoding="utf-8").read()); assert payload["status"] == "ACTIVATED"' \
+  "$STAGE_RESULT"
 PROJECT_DIR="$RUNTIME_ROOT/current"
 [[ -f "$PROJECT_DIR/release-manifest.json" ]] || { echo "불변 릴리스 준비에 실패했습니다." >&2; exit 1; }
 escaped_project="${PROJECT_DIR//&/\\&}"
@@ -68,7 +71,22 @@ fi
 if launchctl print "$SERVICE_TARGET" >/dev/null 2>&1; then
   launchctl bootout "$SERVICE_TARGET"
 fi
-launchctl bootstrap "gui/$USER_ID" "$TARGET_PLIST"
+bootstrap_succeeded="false"
+for attempt in 1 2 3; do
+  if launchctl bootstrap "gui/$USER_ID" "$TARGET_PLIST"; then
+    bootstrap_succeeded="true"
+    break
+  fi
+  if (( attempt < 3 )); then
+    echo "LaunchAgent 등록이 아직 정리 중입니다. ${attempt}/3 재시도합니다." >&2
+    launchctl bootout "$SERVICE_TARGET" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+done
+if [[ "$bootstrap_succeeded" != "true" ]]; then
+  echo "LaunchAgent 등록이 3회 연속 실패했습니다: $TARGET_PLIST" >&2
+  exit 5
+fi
 launchctl enable "$SERVICE_TARGET"
 launchctl kickstart "$SERVICE_TARGET"
 
