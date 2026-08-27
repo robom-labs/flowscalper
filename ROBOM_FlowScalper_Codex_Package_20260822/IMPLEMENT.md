@@ -601,3 +601,29 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Run the complete backend, frontend, fixture, lint, typecheck, build, PAPER safety, security, repository hygiene and desktop/tablet/mobile browser regression before GitHub synchronization.
 9. Install the exact immutable source release, verify the actual browser and preserve the same Run, public-market LIVE input, PAPER execution, zero real orders and zero authentication.
 10. Start a fresh six-hour observer only from a valid bounded baseline after the final documented release. Keep 24 hours and the fixed 485,283-event replay `NOT_RUN` until actually executed.
+
+## Nonblocking storage-health and atomic execution-persistence Wave
+
+1. Preserve the Wave 97 clean 20-minute queue and event-loop failures. Do not replace them with later passing samples.
+2. Move disk usage, archive safety and ledger safety probes to one off-loop worker. Normal dashboard, replay-safety and market-event paths read only the last completed cache.
+3. Fail new PAPER entry closed when the storage-health cache is older than five seconds. Continue public-market observation and protection or exit of an existing PAPER position.
+4. Persist all order, fill, main trade, strategy trade, execution-audit, changed-account and recovery-snapshot rows created by one market event in one SQLite transaction.
+5. Complete invariant validation, canonical JSON and checksum computation before `BEGIN IMMEDIATE`. Advance in-memory persisted IDs and audit offsets only after commit; retry the unchanged state after rollback.
+6. Yield the consumer cooperatively after 10ms of uninterrupted synchronous work without changing event order, signal thresholds or the bounded-queue fail-closed contract.
+7. Expose storage-health, atomic execution-persistence and consumer-yield counters in advanced diagnostics and the running-service observer.
+8. Audit every natural trade in the observation window for entry, initial stop, TP1, TP2, holding time, exit reason, gross PnL, all costs and net PnL. Keep a 13.864-second `EDGE_DECAY` distinct from the historical 1–3-second defect.
+9. Keep 11 strategies, 22 BASE/STRESS accounts, all historical rows, zero real orders and zero authentication unchanged. Do not lower natural-signal thresholds to create a passing runtime sample.
+10. A passing five- or 20-minute retry does not prove six or 24 hours and does not prove profitability.
+
+## Off-loop dashboard and bounded LIVE display-memory Wave
+
+1. Preserve the first atomic-persistence five-minute failure with its 577ms event-loop delay. Trace the remaining event-loop work before applying another change.
+2. Build the dashboard snapshot and JSON outside the market event loop. Serialize concurrent WebSocket broadcast, HTTP dashboard and mutation-response snapshots with one async lock.
+3. Keep status and market consumption independent from the dashboard lock so a slow or disconnected screen cannot stop watchdog or strategy evaluation.
+4. Limit only the LIVE display deque to 2,048 events and copy only the most recent 512 by reverse bounded iteration. Preserve every authoritative event in the persistence buffer and public-market archive.
+5. Record per-event processing count, latest and maximum duration, count above 100ms, maximum event type and symbol to distinguish strategy work from dashboard work.
+6. Run an uncontaminated five-minute observer and then an uncontaminated 20-minute observer. Require queue at most 64, no new event-loop delay above 500ms and no executable-path critical incident, unplanned reconnect, gap, resync, drop or persistence fault.
+7. Exercise pause, resume, strategy details, history, trade details, saved replay, analysis, settings, symbol drawer and indicator controls in the actual browser. Verify desktop, tablet and mobile without horizontal overflow or console errors.
+8. Keep actual browser evidence separate from OFFLINE FIXTURE Playwright screenshots and record the exact release SHA for both.
+9. Never run a full SQLite integrity scan against the growing active writer. A mistakenly started scan must be terminated, marked `NOT_RUN` and followed by runtime-safety checks; only ADR-049's closed immutable-copy procedure can yield a full integrity PASS.
+10. Synchronize code, raw failures, passing evidence and documentation to GitHub main, confirm Actions, then start the clean six-hour observer without replay, tests, build or ledger maintenance.

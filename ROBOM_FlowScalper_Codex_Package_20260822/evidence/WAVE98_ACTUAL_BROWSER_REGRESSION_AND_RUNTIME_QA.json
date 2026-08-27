@@ -1,0 +1,298 @@
+{
+  "schema": "flowscalper.wave98.actual_browser_regression_runtime_qa.v1",
+  "recorded_at": "2026-08-27T22:07:25+09:00",
+  "status": "PASS_WITH_DECLARED_NOT_RUN",
+  "acceptance_state": "ACTUAL_BROWSER_AND_CLEAN_5M_20M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_ACTIVE_LEDGER_FULL_CHECK_NOT_RUN",
+  "source": {
+    "commit": "5f82e4e00f057c6a6bcb338d41b7a45a290cf63f",
+    "branch": "codex/flowscalper-v0.2-upgrade",
+    "origin_main_at_verification": "5f82e4e00f057c6a6bcb338d41b7a45a290cf63f",
+    "runtime_release_commit": "5f82e4e00f057c6a6bcb338d41b7a45a290cf63f",
+    "github_actions": {
+      "run_id": 33071478970,
+      "workflow": "flowscalper-ci",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/robom-labs/flowscalper/actions/runs/33071478970"
+    }
+  },
+  "runtime": {
+    "url": "http://127.0.0.1:8870/",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "connection_state": "LIVE",
+    "execution_mode": "PAPER",
+    "strategies": 11,
+    "independent_accounts": 22,
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_requested": false,
+    "api_key_requested": false,
+    "wallet_requested": false
+  },
+  "failure_to_fix_sequence": [
+    {
+      "evidence": "evidence/WAVE97_STORAGE_HEALTH_OFFLOOP_FINAL_CLEAN_20M.json",
+      "status": "FAIL",
+      "failures": [
+        "queue_bounded",
+        "event_loop_lag_bounded"
+      ],
+      "observed_seconds": 1200.035,
+      "event_delta": 95886,
+      "strategy_evaluation_delta": 323088,
+      "maximum_queue_depth": 464,
+      "maximum_event_loop_lag_ms": 874.0,
+      "event_loop_lag_over_500ms_delta": 6,
+      "natural_trade": {
+        "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "profiles": [
+          "BASE",
+          "STRESS"
+        ],
+        "holding_seconds": 13.864,
+        "exit_reason": "EDGE_DECAY",
+        "tp1_reached": false,
+        "tp2_reached": false,
+        "stop_reached": false,
+        "one_to_three_second_recurrence": false
+      }
+    },
+    {
+      "evidence": "evidence/WAVE98_ATOMIC_EXECUTION_PERSISTENCE_CLEAN_5M.json",
+      "status": "FAIL",
+      "failures": [
+        "event_loop_lag_bounded"
+      ],
+      "observed_seconds": 300.032,
+      "event_delta": 23180,
+      "strategy_evaluation_delta": 80556,
+      "maximum_queue_depth": 21,
+      "maximum_event_loop_lag_ms": 577.0,
+      "event_loop_lag_over_500ms_delta": 1,
+      "consumer_cooperative_yield_delta": 6675,
+      "natural_trade_delta": 0
+    },
+    {
+      "evidence": "evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_5M.json",
+      "status": "PASS",
+      "observed_seconds": 300.032,
+      "sample_count": 149,
+      "event_delta": 22374,
+      "strategy_evaluation_delta": 80100,
+      "maximum_queue_depth": 14,
+      "maximum_processing_lag_p95_ms": 39.5185546875,
+      "maximum_trade_lag_p95_ms": 61.380859375,
+      "maximum_event_loop_lag_ms": 167.0,
+      "event_loop_lag_over_500ms_delta": 0,
+      "event_gap_over_500ms_delta": 0,
+      "maximum_live_event_processing_ms": 160.0,
+      "memory_growth_mb": 56.235,
+      "natural_trade_delta": 0
+    },
+    {
+      "evidence": "evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_20M.json",
+      "status": "PASS",
+      "observed_seconds": 1200.036,
+      "sample_count": 587,
+      "event_delta": 90759,
+      "strategy_evaluation_delta": 318432,
+      "consumer_delivery_delta": 90759,
+      "consumer_cooperative_yield_delta": 30311,
+      "maximum_queue_depth": 26,
+      "maximum_processing_lag_p95_ms": 47.506591796875,
+      "maximum_trade_lag_p95_ms": 106.292236328125,
+      "maximum_wide_lag_p95_ms_observational": 1938.705322265625,
+      "maximum_event_loop_lag_ms": 493.0,
+      "event_loop_lag_over_500ms_delta": 0,
+      "maximum_event_gap_ms": 4506.649,
+      "event_gap_over_500ms_delta": 12,
+      "longest_event_stall_seconds": 4.064,
+      "planned_rotations": 2,
+      "unplanned_reconnect_delta": 0,
+      "sequence_gap_delta": 0,
+      "resync_delta": 0,
+      "drop_delta": 0,
+      "persistence_fault_delta": 0,
+      "persistence_buffer_drop_delta": 0,
+      "critical_lag_event_delta": 0,
+      "critical_lag_incident_delta": 0,
+      "maximum_market_persistence_buffer": 1132,
+      "maximum_persistence_backlog_peak": 1165,
+      "maximum_persistence_flush_last_ms": 9211.0,
+      "maximum_wal_checkpoint_last_ms": 14434.0,
+      "wal_checkpoint_busy_delta": 0,
+      "memory_baseline_mb": 227.281,
+      "maximum_memory_mb": 241.109,
+      "memory_growth_mb": 13.828,
+      "natural_trade_delta": 0
+    }
+  ],
+  "actual_browser": {
+    "status": "PASS",
+    "browser": "Codex in-app browser",
+    "console_errors": 0,
+    "page_errors": 0,
+    "interactions": [
+      {
+        "control": "새 진입 잠시 멈춤",
+        "before": "작동 중",
+        "after": "사용자가 일시정지"
+      },
+      {
+        "control": "새 진입 다시 시작",
+        "before": "사용자가 일시정지",
+        "after": "작동 중"
+      },
+      {
+        "screen": "전략",
+        "result": "11개 전략, 22개 BASE/STRESS 계좌, 6개 감시·5개 RETIRED/OFF, CBR 계약과 TP1·TP2·EDGE_DECAY·NOT_PROVEN 확인"
+      },
+      {
+        "screen": "기록",
+        "result": "현재 필터 91행, 공동계좌 1행과 전략계좌 90행, 거래 상세의 계획·실제 진입·초기손절·TP1·TP2·종료·비용·순손익 확인"
+      },
+      {
+        "screen": "과거 재생",
+        "result": "7개 이벤트 준비, 1/7에서 2/7 재생, 일시정지, 7/7 종료와 비용후 순손익·종료 marker 확인"
+      },
+      {
+        "screen": "분석",
+        "result": "22개 계좌, 30건 전 순위 금지, 관찰 조합 16개·비교 가능 0 확인"
+      },
+      {
+        "screen": "설정",
+        "result": "KST·공개시장·PAPER·실제 주문 0과 고급진단·안전계좌 범위 확인"
+      },
+      {
+        "screen": "시장",
+        "result": "698개 종목 drawer, MA5 true-false-true 전환, 차트와 PAPER 상태 확인"
+      }
+    ],
+    "responsive": [
+      {
+        "viewport": "1440x900",
+        "horizontal_overflow": false,
+        "result": "PASS"
+      },
+      {
+        "viewport": "834x1112",
+        "horizontal_overflow": false,
+        "result": "PASS"
+      },
+      {
+        "viewport": "390x844",
+        "horizontal_overflow": false,
+        "result": "PASS"
+      }
+    ],
+    "screenshots": [
+      "evidence/screenshots/WAVE98_ACTUAL_MARKET_DESKTOP.png",
+      "evidence/screenshots/WAVE98_ACTUAL_MARKET_TABLET.png",
+      "evidence/screenshots/WAVE98_ACTUAL_MARKET_MOBILE.png"
+    ]
+  },
+  "regression": {
+    "backend": {
+      "status": "PASS",
+      "tests": 496,
+      "elapsed_seconds": 95.97
+    },
+    "ruff": {
+      "status": "PASS"
+    },
+    "mypy": {
+      "status": "PASS",
+      "source_files": 97
+    },
+    "frontend": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 71
+    },
+    "eslint": {
+      "status": "PASS"
+    },
+    "typescript": {
+      "status": "PASS"
+    },
+    "vite_build": {
+      "status": "PASS_WITH_WARNING",
+      "modules": 50,
+      "javascript_kb": 527.10,
+      "javascript_gzip_kb": 161.99,
+      "warning": "existing_chunk_over_500kb"
+    },
+    "playwright": {
+      "status": "PASS",
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "tests": 3,
+      "elapsed_seconds": 18.7
+    },
+    "paper_build_safety": {
+      "status": "PASS"
+    },
+    "security": {
+      "status": "PASS",
+      "source_files": 132,
+      "violations": 0,
+      "secret_like": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": {
+      "status": "PASS"
+    }
+  },
+  "active_ledger_full_integrity": {
+    "status": "NOT_RUN",
+    "attempt_state": "ABORTED_FOR_LIVE_PRIORITY",
+    "result": null,
+    "reason": "ADR-049에 반해 증가 중인 대형 활성 writer에 direct quick_check/integrity_check/foreign_key_check를 시작한 것을 발견해 결과 전 즉시 중단했다. 활성 서비스 우선순위와 무오염 장시간 관찰을 보존하기 위해 이 실행을 PASS로 해석하지 않는다.",
+    "terminated_process_ids": [
+      65898,
+      65968
+    ],
+    "post_abort": {
+      "operation_state": "RUNNING",
+      "connection_state": "LIVE",
+      "execution_mode": "PAPER",
+      "queue_depth": 0,
+      "consumer_delivery_drop_count": 0,
+      "persistence_fault_count": 0,
+      "persistence_buffer_dropped": 0,
+      "persistence_backlog_entry_lock_count": 0,
+      "critical_lag_incident_count": 0,
+      "storage_entry_allowed": true,
+      "real_orders_enabled": false,
+      "auth_required": false,
+      "wal_checkpoint_busy_count_after_attempt": 5
+    }
+  },
+  "strategy_economics": {
+    "status": "NOT_PROVEN",
+    "current_version_samples": {
+      "BASE": 14,
+      "STRESS": 14
+    },
+    "current_version_net_pnl_usdt": {
+      "BASE": "-10.51225227200000000000000000",
+      "STRESS": "-17.95751970400000000000000000"
+    },
+    "ranking_allowed": false,
+    "promotion_allowed": false,
+    "reason": "각 비용 프로필이 최소 30건보다 작고 비용후 누적 손실이다. 시간순 OOS, walk-forward와 강건성 gate도 완료되지 않았다."
+  },
+  "duration_gates": {
+    "five_minutes": "PASS",
+    "twenty_minutes": "PASS",
+    "six_hours": "NOT_RUN",
+    "twenty_four_hours": "NOT_RUN"
+  }
+}

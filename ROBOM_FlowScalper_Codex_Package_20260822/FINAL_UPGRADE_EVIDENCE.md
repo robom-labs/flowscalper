@@ -2900,3 +2900,66 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 - 현재버전 누적은 BASE 13건·-8.639132072 USDT, STRESS 13건·-15.666633704 USDT다. 모두 최소 30건 미만이고 비용후 음수라 순위·CHALLENGER·ACTIVE 승격은 금지하며 수익성은 `NOT_PROVEN`이다.
 
 원본 관찰은 `evidence/WAVE95_FINAL_RELEASE_CLEAN_6H.json`, `evidence/WAVE96_OBSERVATION_WINDOW_CLEAN_5M.json`, `evidence/WAVE96_OBSERVATION_WINDOW_CLEAN_RETRY_5M.json`에 모두 보존했다. 통합 기계판독 근거는 `evidence/WAVE96_EVENT_LOOP_WINDOW_AND_CBR_AUDIT.json`, 결정 근거는 `docs/adr/ADR-072-observation-window-event-loop-lag.md`다. 전략 임계값, TP1·TP2·SL, 비용, 위험예산, BASE/STRESS 계좌와 Governor gate는 변경하지 않았다. 현재 수용상태는 `ONE_REAL_5M_FAIL_THEN_RECOVERY_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
+
+## 72. Wave 97 저장소 상태 격리와 잔여 queue 실패
+
+### 구현과 실제 실패 보존
+
+- 외장 볼륨의 `disk_usage`, archive 안전상태와 ledger 안전상태를 시장 이벤트 루프에서 직접 조회하던 경로를 단일 `storage-health-worker`로 옮겼다. dashboard·시장 이벤트·replay 안전표본은 마지막 완료 cache만 읽는다.
+- 상태 갱신이 5초 이상 오래되면 `STORAGE_HEALTH_STALE`로 신규 PAPER 진입만 잠그고 공개시장 관찰과 기존 포지션 보호·청산은 유지한다. 전략 신호·TP1·TP2·SL·비용·위험예산과 11전략·22계좌는 바꾸지 않았다.
+- 수정 뒤 실제 1,200.035초는 event +95,886·전략평가 +323,088, 계획 회전 1회와 자연 적격신호 2경로를 처리했다. 비계획 reconnect·sequence gap·resync·drop·persistence fault·buffer drop·critical lag·실제 주문·인증은 0이었다.
+- 그러나 자연 AGGRESSOR 거래 구간에서 queue 최대 464와 event-loop 최대 874ms·500ms 초과 6회를 관찰해 `queue_bounded`와 `event_loop_lag_bounded`를 `FAIL`로 보존했다. 정상 항목만 떼어 Wave 전체를 PASS로 만들지 않았다.
+
+### 자연 거래 감사
+
+- BTCUSDT LONG `AGGRESSOR_FLOW_CONTINUATION_V1`가 같은 계획으로 BASE·STRESS 독립계좌에 진입했고 13.864초 뒤 `EDGE_DECAY`로 종료됐다.
+- TP1·TP2·초기손절에는 도달하지 않았으며 1~3초 ordinary `EDGE_DECAY` 재발은 아니다.
+- 현재버전 표본은 BASE·STRESS 각 14건이 됐고 누적 순손익은 -10.512252272/-17.957519704 USDT다. 두 프로필 모두 30건 미만·비용후 음수이므로 순위·CHALLENGER·ACTIVE 승격은 금지하고 수익성 `NOT_PROVEN`을 유지한다.
+
+원본은 `evidence/WAVE97_STORAGE_HEALTH_OFFLOOP_FINAL_CLEAN_20M.json`, 결정은 `docs/adr/ADR-073-nonblocking-storage-health.md`와 `docs/adr/ADR-074-atomic-execution-persistence-and-cooperative-consumer.md`에 보존했다. 현재 판정은 `STORAGE_HEALTH_OFFLOOP_PASS_QUEUE_AND_EVENT_LOOP_FAIL`이다.
+
+## 73. Wave 98 원자 실행저장·대시보드 격리와 실제 20분 검증
+
+### 실패 뒤 수술식 수정
+
+1. 한 이벤트가 만든 주문·체결·main 거래·전략 거래·실행감사·변경계좌·복구 snapshot을 `record_execution_state_batch()` 한 트랜잭션으로 저장했다. 검증·정규 JSON·checksum은 `BEGIN IMMEDIATE` 전에 끝내고, 메모리의 저장 ID와 감사 offset은 commit 성공 뒤에만 전진한다.
+2. consumer가 10ms 이상 연속으로 동기 작업을 처리하면 `asyncio.sleep(0)`으로 실행권을 양보한다. 첫 실제 300.032초에서 queue는 최대 21로 줄었지만 577ms event-loop 지연 1회가 남아 `FAIL`로 보존했다.
+3. dashboard 집계와 약 240KB JSON 직렬화를 `asyncio.to_thread`로 옮기고 하나의 async lock으로 중복 집계를 막았다. LIVE 표시 deque는 2,048건으로 제한하되 권위 있는 archive·persistence·ReplayEngine 입력은 줄이지 않았다.
+4. 새 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 다음 300.032초와 1,200.036초 관찰은 모두 `PASS`했다.
+
+### 최종 20분 런타임 증거
+
+| 항목 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 시간·표본 | PASS | 1,200.036초·587표본, 같은 `run-2b7135a972dd`와 같은 프로세스 유지 |
+| 공개시장·전략 | PASS | event +90,759·consumer +90,759·전략평가 +318,432·협력 양보 +30,311 |
+| queue·실행지연 | PASS | queue 최대 26, 처리 p95 최대 47.507ms, 거래 p95 최대 106.292ms |
+| local event loop | PASS | 최대 493ms, 관찰구간 500ms 초과 0회 |
+| 이벤트 공백 | PASS_WITH_CONTEXT | 최대 4,506.649ms·500ms 초과 +12, 최장 정지 4.064초이며 계획 회전 2회가 모두 accounted. 비계획 reconnect·gap·resync·drop 0 |
+| 저장·메모리 | PASS | buffer 최대 1,132·backlog peak 1,165·flush 최근 최대 9.211초·WAL 최근 최대 14.434초·busy 증가 0, 현재 RSS 증가 13.828MB |
+| 판단경로 계측 | PASS | LIVE event +90,759, 100ms 초과 +5, 최대 292ms `DEPTH_UPDATE`·`BTRUSDT` |
+| 안전경계 | PASS | critical·과부하·consumer 실패·누락·persistence fault·buffer drop·entry lock 0, 실제 주문 false·인증 false |
+| 자연 거래 | NOT_OBSERVED | 해당 20분에 적격신호·main·전략 거래 증가 0. 자연신호 기준은 낮추지 않음 |
+| 수익성 | NOT_PROVEN | 현재버전 BASE/STRESS 각 14건, net -10.512252272/-17.957519704 USDT. 30건·OOS·walk-forward·강건성 미충족 |
+| 6시간·24시간 | NOT_RUN | 실제 시간을 아직 채우지 않음 |
+
+### 전체 회귀와 실제 브라우저
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| backend | PASS | 496 passed·95.97초 |
+| 정적·안전 | PASS | Ruff, mypy 97 source, PAPER build safety, security 132 source·위반·secret-like·실주문 path 0, repository hygiene PASS |
+| frontend | PASS | 14 files·71 tests, ESLint·TypeScript PASS |
+| Vite build | PASS_WITH_WARNING | 50 modules, JS 527.10kB·gzip 161.99kB. 기존 500kB 경고는 남음 |
+| OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed·18.7초 |
+| 실제 브라우저 제어 | PASS | 정지 `작동 중→사용자가 일시정지`, 재개 `→작동 중`, 전략·진행거래·기록·상세·재생 1/7→2/7→7/7·분석·설정·종목 drawer·MA5를 직접 조작 |
+| 실제 반응형 | PASS | 1440×900·834×1112·390×844에서 수평 overflow 0·차트 안정·console/page error 0 |
+| GitHub 코드·Actions | PASS | 코드 commit과 main `5f82e4e…` 일치, Actions `33071478970` success |
+
+실제 화면은 `evidence/screenshots/WAVE98_ACTUAL_MARKET_DESKTOP.png`, `WAVE98_ACTUAL_MARKET_TABLET.png`, `WAVE98_ACTUAL_MARKET_MOBILE.png`에 보존했다. Playwright fixture 화면은 실제 LIVE 확인의 대체 증거로 사용하지 않는다.
+
+### 활성 원장 전수검사 경계 정정
+
+증가 중인 약 3.1GB 활성 SQLite writer에 direct `quick_check`·`integrity_check`·`foreign_key_check`를 시작한 것이 ADR-049와 충돌함을 발견해 결과가 나오기 전에 두 검사 프로세스를 종료했다. 따라서 이번 active ledger full integrity 결과는 `PASS`가 아니라 `NOT_RUN`, 시도 상태는 `ABORTED_FOR_LIVE_PRIORITY`다. 중단 뒤 서비스는 RUNNING·LIVE·PAPER, queue 0, drop·persistence fault·buffer drop·backlog lock·critical incident·실제 주문·인증 0과 storage entry 허용을 유지했다. 이 간섭 뒤 WAL busy 누적값은 5이므로 깨끗한 20분 증거 이후 상태와 혼합하지 않는다. 향후 full integrity PASS는 ADR-049의 평탄 Run 종료·WAL 0·다른 device immutable copy 절차에서만 기록한다.
+
+원시 실패·통과 관찰은 `evidence/WAVE97_STORAGE_HEALTH_OFFLOOP_FINAL_CLEAN_20M.json`, `evidence/WAVE98_ATOMIC_EXECUTION_PERSISTENCE_CLEAN_5M.json`, `evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_5M.json`, `evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_20M.json`이고 통합 기계판독 근거는 `evidence/WAVE98_ACTUAL_BROWSER_REGRESSION_AND_RUNTIME_QA.json`이다. 결정 근거는 ADR-074와 ADR-075다. 현재 수용상태는 `ACTUAL_BROWSER_AND_CLEAN_5M_20M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_ACTIVE_LEDGER_FULL_CHECK_NOT_RUN`이다.
