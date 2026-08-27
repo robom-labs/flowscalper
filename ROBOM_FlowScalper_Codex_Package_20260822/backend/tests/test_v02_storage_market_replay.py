@@ -277,7 +277,17 @@ def test_storage_io_priority_gate_blocks_replay_read_for_live_exclusive_writer(
 
 
 def test_replay_process_applies_background_io_policy_before_work(monkeypatch) -> None:
-    applied: list[str] = []
+    applied: list[object] = []
+    monkeypatch.setattr(
+        replay_process_module.pa,
+        "set_cpu_count",
+        lambda count: applied.append(("cpu", count)),
+    )
+    monkeypatch.setattr(
+        replay_process_module.pa,
+        "set_io_thread_count",
+        lambda count: applied.append(("io", count)),
+    )
     monkeypatch.setattr(
         replay_process_module,
         "_apply_replay_background_io_policy",
@@ -286,7 +296,16 @@ def test_replay_process_applies_background_io_policy_before_work(monkeypatch) ->
 
     replay_process_module._prepare_cpu_budget()
 
-    assert applied == ["background"]
+    assert applied == [("cpu", 1), ("io", 1), "background"]
+
+
+def test_replay_subprocess_environment_limits_parallel_numeric_workers() -> None:
+    environment = replay_process_module._worker_environment()
+
+    assert all(
+        environment[variable] == "1"
+        for variable in replay_process_module._REPLAY_SINGLE_THREAD_ENVIRONMENT
+    )
 
 
 async def test_replay_subprocess_returns_paper_result_from_low_priority_worker(

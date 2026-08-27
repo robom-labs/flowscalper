@@ -12,6 +12,8 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
+
 from backend.app.replay.market import StoredMarketReplay
 from backend.app.replay.timeline import build_replay_timeline
 from backend.app.storage.io_priority import storage_io_priority_gate
@@ -25,6 +27,13 @@ _LOW_PRIORITY_APPLIED = False
 _REPLAY_TARGET_CPU_RATIO = 0.05
 _REPLAY_TARGET_ARCHIVE_READ_BYTES_PER_SECOND = 256 * 1024
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_REPLAY_SINGLE_THREAD_ENVIRONMENT = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
 
 
 class _ReplayCpuBudget:
@@ -133,6 +142,7 @@ async def replay_stored_run_in_subprocess(
     process = await asyncio.create_subprocess_exec(
         *_worker_command(),
         cwd=str(_PROJECT_ROOT),
+        env=_worker_environment(),
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -209,6 +219,7 @@ def _prepare_cpu_budget() -> _ReplayCpuBudget:
     """worker 프로세스의 CPU와 I/O를 모두 LIVE보다 낮은 우선순위로 둔다."""
 
     global _LOW_PRIORITY_APPLIED
+    _limit_replay_worker_threads()
     _apply_replay_background_io_policy()
     nice = getattr(os, "nice", None)
     if callable(nice) and not _LOW_PRIORITY_APPLIED:
@@ -218,6 +229,22 @@ def _prepare_cpu_budget() -> _ReplayCpuBudget:
             pass
         _LOW_PRIORITY_APPLIED = True
     return _ReplayCpuBudget()
+
+
+def _worker_environment() -> dict[str, str]:
+    """Python import 전부터 수치 라이브러리의 병렬 worker 생성을 막는다."""
+
+    environment = dict(os.environ)
+    for variable in _REPLAY_SINGLE_THREAD_ENVIRONMENT:
+        environment[variable] = "1"
+    return environment
+
+
+def _limit_replay_worker_threads() -> None:
+    """Parquet 한 파일의 병렬 decode burst가 LIVE 수신을 밀지 않게 한다."""
+
+    pa.set_cpu_count(1)
+    pa.set_io_thread_count(1)
 
 
 def _open_ledger(database_path: str, archive_root: str | None) -> SQLiteLedger:
