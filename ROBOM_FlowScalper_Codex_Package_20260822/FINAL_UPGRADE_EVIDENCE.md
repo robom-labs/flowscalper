@@ -2954,7 +2954,7 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | OFFLINE FIXTURE Playwright | PASS | desktop·tablet·mobile 3 passed·18.7초 |
 | 실제 브라우저 제어 | PASS | 정지 `작동 중→사용자가 일시정지`, 재개 `→작동 중`, 전략·진행거래·기록·상세·재생 1/7→2/7→7/7·분석·설정·종목 drawer·MA5를 직접 조작 |
 | 실제 반응형 | PASS | 1440×900·834×1112·390×844에서 수평 overflow 0·차트 안정·console/page error 0 |
-| GitHub 코드·Actions | PASS | 코드 commit과 main `5f82e4e…` 일치, Actions `33071478970` success |
+| GitHub 코드·증거·Actions | PASS | 실행 코드 `5f82e4e…`의 Actions `33071478970` success. 문서·원본·실제 화면 증거 commit `fa8f526…`의 validate 1분 10초·browser 1분 42초·증거 업로드도 Actions `33075575481` success |
 
 실제 화면은 `evidence/screenshots/WAVE98_ACTUAL_MARKET_DESKTOP.png`, `WAVE98_ACTUAL_MARKET_TABLET.png`, `WAVE98_ACTUAL_MARKET_MOBILE.png`에 보존했다. Playwright fixture 화면은 실제 LIVE 확인의 대체 증거로 사용하지 않는다.
 

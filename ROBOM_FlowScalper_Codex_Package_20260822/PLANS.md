@@ -383,4 +383,4 @@ Wave 95 코드·문서·기계판독 증거는 GitHub main `3c5e4a9fc8cdeb8e7ae1
 
 Wave 96 코드·문서·기계판독 증거는 GitHub main `fa8fc09f47d7530beae774ae198c93e756b0c232`에 동기화했고 Actions `33059333016`의 validate 1분 15초, browser 1분 23초와 브라우저 증거 업로드가 모두 PASS했다.
 
-Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`는 GitHub main과 일치하고 Actions `33071478970`이 PASS했다. 문서·원시 관찰·실제 브라우저 증거는 후속 증거 커밋으로 동기화한다.
+Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `33071478970`이 PASS했다. 문서·원시 관찰·실제 브라우저 증거는 GitHub main 증거 커밋 `fa8f526a3f6c84de0c6f78abc3b937b552ad0300`에 동기화했고 그 커밋의 validate 1분 10초·browser 1분 42초와 증거 업로드도 Actions `33075575481`에서 모두 PASS했다.
