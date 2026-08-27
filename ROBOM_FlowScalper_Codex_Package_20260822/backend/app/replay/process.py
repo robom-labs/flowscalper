@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from backend.app.replay.market import StoredMarketReplay
 from backend.app.replay.timeline import build_replay_timeline
@@ -18,6 +22,7 @@ from backend.app.storage.sqlite import SQLiteLedger
 _LOW_PRIORITY_APPLIED = False
 _REPLAY_TARGET_CPU_RATIO = 0.05
 _REPLAY_TARGET_ARCHIVE_READ_BYTES_PER_SECOND = 256 * 1024
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class _ReplayCpuBudget:
@@ -104,6 +109,76 @@ def replay_stored_run_from_paths(
         ledger.close()
 
 
+async def replay_stored_run_in_subprocess(
+    database_path: str,
+    archive_root: str | None,
+    source_run_id: str,
+    created_ts_ms: int,
+    symbol: str | None,
+    event_limit: int | None,
+) -> dict[str, object]:
+    """Python import 전부터 낮은 CPU·I/O 우선순위인 취소 가능한 worker를 실행한다."""
+
+    payload = {
+        "database_path": database_path,
+        "archive_root": archive_root,
+        "source_run_id": source_run_id,
+        "created_ts_ms": created_ts_ms,
+        "symbol": symbol,
+        "event_limit": event_limit,
+    }
+    process = await asyncio.create_subprocess_exec(
+        *_worker_command(),
+        cwd=str(_PROJECT_ROOT),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await process.communicate(
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode()
+        )
+    except asyncio.CancelledError:
+        await _terminate_worker(process)
+        raise
+    if process.returncode != 0:
+        detail = stderr.decode(errors="replace").strip()[-2_000:]
+        raise RuntimeError(
+            f"replay worker가 종료 코드 {process.returncode}로 실패했습니다: {detail}"
+        )
+    decoded: Any = json.loads(stdout)
+    if not isinstance(decoded, dict):
+        raise RuntimeError("replay worker 결과는 JSON 객체여야 합니다.")
+    return {str(key): value for key, value in decoded.items()}
+
+
+def _worker_command() -> tuple[str, ...]:
+    python_command = (sys.executable, "-m", "backend.app.replay.process")
+    taskpolicy = Path("/usr/sbin/taskpolicy")
+    nice = Path("/usr/bin/nice")
+    if sys.platform == "darwin" and taskpolicy.is_file() and nice.is_file():
+        return (
+            str(nice),
+            "-n",
+            "19",
+            str(taskpolicy),
+            "-b",
+            *python_command,
+        )
+    return python_command
+
+
+async def _terminate_worker(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is not None:
+        return
+    process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5.0)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+
+
 def replay_timeline_from_paths(
     database_path: str,
     archive_root: str | None,
@@ -145,3 +220,27 @@ def _prepare_cpu_budget() -> _ReplayCpuBudget:
 def _open_ledger(database_path: str, archive_root: str | None) -> SQLiteLedger:
     archive = ParquetEventStore(Path(archive_root)) if archive_root else None
     return SQLiteLedger(Path(database_path), market_event_archive=archive)
+
+
+def _worker_main() -> int:
+    """stdin JSON 요청 하나를 처리하고 stdout JSON 결과 하나만 반환한다."""
+
+    payload: Any = json.loads(sys.stdin.buffer.read())
+    if not isinstance(payload, dict):
+        raise ValueError("replay worker 요청은 JSON 객체여야 합니다.")
+    result = replay_stored_run_from_paths(
+        str(payload["database_path"]),
+        str(payload["archive_root"]) if payload.get("archive_root") is not None else None,
+        str(payload["source_run_id"]),
+        int(str(payload["created_ts_ms"])),
+        str(payload["symbol"]) if payload.get("symbol") is not None else None,
+        int(str(payload["event_limit"]))
+        if payload.get("event_limit") is not None
+        else None,
+    )
+    sys.stdout.write(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_worker_main())

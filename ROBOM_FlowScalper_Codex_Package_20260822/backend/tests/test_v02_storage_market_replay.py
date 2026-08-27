@@ -256,6 +256,41 @@ def test_replay_process_applies_background_io_policy_before_work(monkeypatch) ->
     assert applied == ["background"]
 
 
+async def test_replay_subprocess_returns_paper_result_from_low_priority_worker(
+    tmp_path: Path,
+) -> None:
+    ledger_path = tmp_path / "subprocess-replay.sqlite3"
+    ledger = SQLiteLedger(ledger_path)
+    ledger.start_run(
+        "run-subprocess-replay",
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    event = market_event(
+        "run-subprocess-replay",
+        event_id="subprocess-depth",
+        ts_ms=1_000,
+    )
+    assert ledger.record_market_events([event.model_dump(mode="json")]) == 1
+    ledger.close()
+
+    result = await replay_process_module.replay_stored_run_in_subprocess(
+        str(ledger_path),
+        None,
+        "run-subprocess-replay",
+        2_000,
+        "BTCUSDT",
+        1,
+    )
+
+    assert result["event_count"] == 1
+    assert len(str(result["input_checksum"])) == 64
+    assert result["real_orders_enabled"] is False
+    assert result["auth_required"] is False
+
+
 def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(
     tmp_path: Path,
 ) -> None:
@@ -1524,9 +1559,9 @@ def test_live_http_replay_uses_isolated_process_path(
         _runtime.paused = False
         return True
 
-    async def run_sync(function, *arguments, **_options):
+    async def run_subprocess(*arguments, **_options):
         calls.append(arguments)
-        return function(*arguments)
+        return replay_process_module.replay_stored_run_from_paths(*arguments)
 
     monkeypatch.setattr(
         PaperRuntime,
@@ -1540,7 +1575,11 @@ def test_live_http_replay_uses_isolated_process_path(
             "LIVE replay 요청이 강제 저장 flush를 호출했습니다."
         ),
     )
-    monkeypatch.setattr(main_module.to_process, "run_sync", run_sync)
+    monkeypatch.setattr(
+        main_module,
+        "replay_stored_run_in_subprocess",
+        run_subprocess,
+    )
     with TestClient(create_app(runtime)) as client:
         response = client.post(f"/api/replay/{runtime.run_id}", json={})
         assert response.status_code == 202
@@ -1603,7 +1642,7 @@ def test_live_http_replay_auto_aborts_without_persisting_unsafe_result(
             entry_locked=True,
         )
 
-    async def blocking_run_sync(_function, *_arguments, **_options):
+    async def blocking_subprocess(*_arguments, **_options):
         try:
             await asyncio.Event().wait()
         finally:
@@ -1623,7 +1662,11 @@ def test_live_http_replay_auto_aborts_without_persisting_unsafe_result(
         start_persistent_live_without_network,
     )
     monkeypatch.setattr(PaperRuntime, "replay_live_safety_snapshot", safety_probe)
-    monkeypatch.setattr(main_module.to_process, "run_sync", blocking_run_sync)
+    monkeypatch.setattr(
+        main_module,
+        "replay_stored_run_in_subprocess",
+        blocking_subprocess,
+    )
     monkeypatch.setattr(main_module, "run_with_live_safety", fast_live_safety)
     with TestClient(create_app(runtime)) as client:
         response = client.post(f"/api/replay/{runtime.run_id}", json={})

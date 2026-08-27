@@ -37,7 +37,7 @@ from backend.app.replay.operations import (
     ReplayOperationManager,
 )
 from backend.app.replay.process import (
-    replay_stored_run_from_paths,
+    replay_stored_run_in_subprocess,
     replay_timeline_from_paths,
 )
 from backend.app.replay.safety import ReplayLiveSafetyViolation, run_with_live_safety
@@ -1367,15 +1367,13 @@ def create_app(
                     )
                     async with replay_process_lock:
                         async def start_process_replay() -> dict[str, object]:
-                            return await to_process.run_sync(
-                                replay_stored_run_from_paths,
+                            return await replay_stored_run_in_subprocess(
                                 str(ledger.path),
                                 str(archive.root) if archive is not None else None,
                                 run_id,
                                 active_runtime.clock.utc_ms(),
                                 symbol,
                                 total_events,
-                                cancellable=True,
                             )
 
                         try:
