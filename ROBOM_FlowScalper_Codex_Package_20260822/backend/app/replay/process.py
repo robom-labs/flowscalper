@@ -8,11 +8,13 @@ import os
 import sys
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any
 
 from backend.app.replay.market import StoredMarketReplay
 from backend.app.replay.timeline import build_replay_timeline
+from backend.app.storage.io_priority import storage_io_priority_gate
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.parquet import (
     _apply_background_io_policy as _apply_replay_background_io_policy,
@@ -103,6 +105,7 @@ def replay_stored_run_from_paths(
             event_limit=event_limit,
             cooperative_yield=cpu_budget.checkpoint,
             archive_batch_yield=cpu_budget.archive_checkpoint,
+            archive_batch_guard=lambda: _replay_archive_read_gate(database_path),
             persist_result=False,
         ).as_dict()
     finally:
@@ -220,6 +223,12 @@ def _prepare_cpu_budget() -> _ReplayCpuBudget:
 def _open_ledger(database_path: str, archive_root: str | None) -> SQLiteLedger:
     archive = ParquetEventStore(Path(archive_root)) if archive_root else None
     return SQLiteLedger(Path(database_path), market_event_archive=archive)
+
+
+def _replay_archive_read_gate(database_path: str) -> AbstractContextManager[None]:
+    """각 archive 읽기는 LIVE 영속화가 끝난 뒤 공유 I/O 구간에서 수행한다."""
+
+    return storage_io_priority_gate(database_path, exclusive=False)
 
 
 def _worker_main() -> int:

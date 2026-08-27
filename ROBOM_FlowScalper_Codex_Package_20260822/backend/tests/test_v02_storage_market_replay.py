@@ -8,6 +8,7 @@ import json
 import sqlite3
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -42,6 +43,7 @@ from backend.app.replay.safety import (
     run_with_live_safety,
 )
 from backend.app.runtime import PaperRuntime
+from backend.app.storage.io_priority import storage_io_priority_gate
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import (
     LedgerInvariantError,
@@ -241,6 +243,37 @@ def test_replay_archive_budget_throttles_bytes_independently_from_cpu() -> None:
     budget.archive_checkpoint(250)
 
     assert sleeps == [0.25]
+
+
+def test_storage_io_priority_gate_blocks_replay_read_for_live_exclusive_writer(
+    tmp_path: Path,
+) -> None:
+    ledger_path = tmp_path / "priority-gate.sqlite3"
+    writer_ready = threading.Event()
+    release_writer = threading.Event()
+    replay_acquired = threading.Event()
+
+    def hold_live_writer() -> None:
+        with storage_io_priority_gate(ledger_path, exclusive=True):
+            writer_ready.set()
+            assert release_writer.wait(1.0)
+
+    def wait_for_replay_read() -> None:
+        with storage_io_priority_gate(ledger_path, exclusive=False):
+            replay_acquired.set()
+
+    writer = threading.Thread(target=hold_live_writer)
+    replay = threading.Thread(target=wait_for_replay_read)
+    writer.start()
+    assert writer_ready.wait(1.0)
+    replay.start()
+    assert not replay_acquired.wait(0.1)
+    release_writer.set()
+    writer.join(1.0)
+    assert replay_acquired.wait(1.0)
+    replay.join(1.0)
+    assert not writer.is_alive()
+    assert not replay.is_alive()
 
 
 def test_replay_process_applies_background_io_policy_before_work(monkeypatch) -> None:
@@ -1087,16 +1120,26 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
 
     monkeypatch.setattr(archive, "read_market_event_batch_filtered", counted_read)
     yielded_archive_bytes: list[int] = []
+    guard_steps: list[str] = []
+
+    @contextmanager
+    def archive_guard():
+        guard_steps.append("ENTER")
+        yield
+        guard_steps.append("EXIT")
+
     events = ledger.list_market_events(
         "run-limited",
         symbol="BTCUSDT",
         limit=1,
         archive_batch_yield=yielded_archive_bytes.append,
+        archive_batch_guard=archive_guard,
     )
 
     assert [event["event_id"] for event in events] == ["limited-0"]
     assert len(read_paths) == 1
     assert yielded_archive_bytes == [read_paths[0].stat().st_size]
+    assert guard_steps == ["ENTER", "EXIT"]
 
     late_sqlite_event = market_event(
         "run-limited",

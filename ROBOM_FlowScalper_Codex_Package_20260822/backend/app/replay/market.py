@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -79,6 +80,7 @@ class StoredMarketReplay:
         event_limit: int | None = None,
         cooperative_yield: Callable[[], None] | None = None,
         archive_batch_yield: Callable[[int], None] | None = None,
+        archive_batch_guard: Callable[[], AbstractContextManager[None]] | None = None,
         persist_result: bool = True,
     ) -> StoredMarketReplayResult:
         run = ledger.get_run(source_run_id)
@@ -93,6 +95,7 @@ class StoredMarketReplay:
             limit=event_limit,
             cooperative_yield=cooperative_yield,
             archive_batch_yield=archive_batch_yield,
+            archive_batch_guard=archive_batch_guard,
         )
         if event_limit is not None and len(events) != event_limit:
             raise LedgerInvariantError(
