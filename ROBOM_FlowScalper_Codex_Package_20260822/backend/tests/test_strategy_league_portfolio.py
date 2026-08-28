@@ -81,9 +81,10 @@ def league_plan(
         ),
         regime=(
             Regime.RANGE
-            if StrategyRegistry().descriptor(strategy_id).exit_style
-            is ExitStyle.REVERSION_70_30
-            else Regime.TREND_UP if side is Side.LONG else Regime.TREND_DOWN
+            if StrategyRegistry().descriptor(strategy_id).exit_style is ExitStyle.REVERSION_70_30
+            else Regime.TREND_UP
+            if side is Side.LONG
+            else Regime.TREND_DOWN
         ),
         book=league_book(symbol, signal_time_ms),
         instrument=instrument,
@@ -331,9 +332,13 @@ def test_exit_styles_have_exact_fractions_and_trend_tp1_never_widens_stop() -> N
     )
     engine.evaluate_health(adverse, Regime.SHOCK, now_ms=3_000)
     assert managed.pending_exit is None
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=3_500)
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=11_999)
+    assert managed.pending_exit is None
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=12_000)
+    assert managed.pending_exit is None
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=14_999)
     assert managed.pending_exit is not None
-    assert managed.pending_exit.label == "EDGE_DECAY"
+    assert managed.pending_exit.label == "EXIT_EDGE_DECAY"
 
 
 def _trigger_book(
@@ -421,9 +426,7 @@ def test_every_strategy_runs_entry_protection_and_exit_end_to_end(
         assert trade.side is side
         assert trade.exit_reason is expected_reason
         assert trade.flags == expected_flags
-        assert trade.net_pnl_usdt == (
-            trade.gross_pnl_usdt - trade.fees_usdt - trade.slippage_usdt
-        )
+        assert trade.net_pnl_usdt == (trade.gross_pnl_usdt - trade.fees_usdt - trade.slippage_usdt)
         assert (trade.net_pnl_usdt > 0) is (outcome == "TAKE_PROFIT")
 
     base_trade = engine.shadow_ledger.account(strategy_id, CostProfile.BASE).trades[0]
@@ -556,9 +559,7 @@ def test_current_snapshot_rejects_missing_existing_profile_account() -> None:
         snapshot_ts_ms=2_000,
     )
     payload["accounts"] = [
-        row
-        for row in payload["accounts"]
-        if row["account_id"] != "CBR_CONTINUATION_V1:STRESS"
+        row for row in payload["accounts"] if row["account_id"] != "CBR_CONTINUATION_V1:STRESS"
     ]
     with pytest.raises(ValueError, match="Strategy Registry"):
         league_engine().restore_state(payload)

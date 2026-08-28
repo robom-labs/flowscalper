@@ -51,6 +51,7 @@ class ExitReason(StrEnum):
     STOP = "STOP"
     EDGE_DECAY = "EDGE_DECAY"
     PROFIT_PROTECTION = "PROFIT_PROTECTION"
+    TRAILING_STOP = "TRAILING_STOP"
     MAX_HOLD = "MAX_HOLD"
     EMERGENCY_STALE = "EMERGENCY_STALE"
     DATA_GAP = "DATA_GAP"
@@ -67,12 +68,22 @@ class BookSnapshot:
     asks: tuple[tuple[Decimal, Decimal], ...]
     sequence_valid: bool = True
     stale: bool = False
+    receive_ts_ms: int | None = None
 
     def validate(self) -> None:
         if not self.sequence_valid or self.stale:
             raise ValueError("stale 또는 sequence-invalid 호가를 체결에 사용할 수 없습니다.")
-        if not self.bids or not self.asks or self.bids[0][0] >= self.asks[0][0]:
+        if not self.bids or not self.asks:
             raise ValueError("실행 가능한 비교차 양방향 호가가 필요합니다.")
+        if any(
+            not price.is_finite() or not quantity.is_finite() or price <= 0 or quantity <= 0
+            for price, quantity in (*self.bids, *self.asks)
+        ):
+            raise ValueError("체결 호가 가격과 수량은 유한한 양수여야 합니다.")
+        if self.bids[0][0] >= self.asks[0][0]:
+            raise ValueError("실행 가능한 비교차 양방향 호가가 필요합니다.")
+        if self.receive_ts_ms is not None and self.receive_ts_ms < self.ts_ms:
+            raise ValueError("호가 receive 시각은 event 시각보다 빠를 수 없습니다.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +175,7 @@ class PaperTrade:
     flags: tuple[str, ...]
     profile: CostProfile
     candidate_id: str | None = None
+    signal_event_id: str | None = None
     take_profit_1: Decimal | None = None
     take_profit_2: Decimal | None = None
     tp1_hit_ts_ms: int | None = None
@@ -171,3 +183,31 @@ class PaperTrade:
     time_to_tp1_ms: int | None = None
     time_to_tp2_ms: int | None = None
     time_to_stop_ms: int | None = None
+    trailing_activation_ts_ms: int | None = None
+    runner_started_ts_ms: int | None = None
+    peak_unrealized_usdt: Decimal = Decimal(0)
+    giveback_usdt: Decimal = Decimal(0)
+    runner_net_pnl_usdt: Decimal = Decimal(0)
+    trail_trigger_slippage_usdt: Decimal = Decimal(0)
+    trailing_state_checksum: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.closed_ts_ms < self.opened_ts_ms:
+            raise ValueError("PAPER 거래 종료 시각은 진입 이전일 수 없습니다.")
+        milestones = (
+            self.tp1_hit_ts_ms,
+            self.tp2_hit_ts_ms,
+            self.trailing_activation_ts_ms,
+            self.runner_started_ts_ms,
+        )
+        if any(
+            timestamp is not None
+            and (timestamp < self.opened_ts_ms or timestamp > self.closed_ts_ms)
+            for timestamp in milestones
+        ):
+            raise ValueError("PAPER 거래 milestone 시각이 진입·종료 범위를 벗어났습니다.")
+        if self.runner_started_ts_ms is not None and (
+            self.trailing_activation_ts_ms is None
+            or self.runner_started_ts_ms < self.trailing_activation_ts_ms
+        ):
+            raise ValueError("PAPER runner는 trailing 활성화 후에만 시작할 수 있습니다.")

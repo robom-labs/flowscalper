@@ -1,0 +1,1160 @@
+{
+  "schema_version": 1,
+  "collected_ts_utc": "2026-08-27T20:28:46.879291Z",
+  "channel_id": "UC7Z6zXw5q1vou0DgPZ80GBA",
+  "status": "COMPLETE",
+  "counts": {
+    "total": 59,
+    "inspected": 59,
+    "not_run": 0
+  },
+  "raw_description_text_committed": false,
+  "records": [
+    {
+      "video_id": "cCLI_ge6Tzg",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-27T01:00:10-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/cCLI_ge6Tzg.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "RXKPiGnufOc",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-26T01:00:22-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/RXKPiGnufOc.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "1mJDNm4Yko4",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-25T03:29:04-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/1mJDNm4Yko4.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "60rKwt6sLTE",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-25T03:29:00-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/60rKwt6sLTE.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "JgmZaXLDRr0",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-25T01:00:31-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "202c7213e802722000d2a131a4bf7c9336fc4c7de1a481c61e315d57f9324c96",
+      "description_bytes": 293,
+      "research_cache_path": "data/research/siho/descriptions/JgmZaXLDRr0.txt",
+      "linked_video_ids": [
+        "Ph_aKjums9Q"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "XmkRgFV2iCM",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-25T01:00:05-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/XmkRgFV2iCM.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "Ph_aKjums9Q",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-25T01:00:03-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/Ph_aKjums9Q.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "eyiedufNcO4",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-23T03:26:43-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "98428a859e0da3e0db2d4c4711e561e6d7d75291bd05bd7004e40cd15e49abcf",
+      "description_bytes": 203,
+      "research_cache_path": "data/research/siho/descriptions/eyiedufNcO4.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "Rhj6h242lZY",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-20T17:35:10-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "02332f6ba3114d699e3f072fa9d55744b2bf9b254ecdf28998123ee3338f1524",
+      "description_bytes": 268,
+      "research_cache_path": "data/research/siho/descriptions/Rhj6h242lZY.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "lpBwSgKfpT0",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-20T01:00:33-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/lpBwSgKfpT0.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "IWK6huSVgxw",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-19T01:00:12-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/IWK6huSVgxw.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "WSwkXB0SoyE",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-18T01:00:32-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/WSwkXB0SoyE.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "fsj6TTHqXC4",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-17T01:00:20-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/fsj6TTHqXC4.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "FFnFMYk31W4",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-16T05:56:59-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "b48fcb019da2bff320aab1f93c6f17c882841bb1287c308d96c9c2b22b570190",
+      "description_bytes": 408,
+      "research_cache_path": "data/research/siho/descriptions/FFnFMYk31W4.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "_xYSeFqZhbc",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-16T01:00:20-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/_xYSeFqZhbc.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "v50ZUg0Hiss",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-15T01:00:36-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/v50ZUg0Hiss.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "sSt2zejDFVc",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-13T23:55:05-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "5d4a43a582381214987fbdcec63afec53442a871f02b2d1396394e89c8b18cf1",
+      "description_bytes": 410,
+      "research_cache_path": "data/research/siho/descriptions/sSt2zejDFVc.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "XnD-Ry1NIe0",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-13T20:59:52-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "a1e5f8e4dd6e4a1cb9c4e5f8df06bab71040c78644101af2b522a750481f7a73",
+      "description_bytes": 406,
+      "research_cache_path": "data/research/siho/descriptions/XnD-Ry1NIe0.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "Eu5OKg6_bWg",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-13T07:38:04-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "73afdfe26d7401ea16db6d3ec15009e83d27147e3a827b23608d4329922a92cf",
+      "description_bytes": 408,
+      "research_cache_path": "data/research/siho/descriptions/Eu5OKg6_bWg.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "7pQb1VvUDMA",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-13T06:04:08-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "75e39ea729204b338569029d9bcf0a1a27ac9735969278d1f52ca6df92351e69",
+      "description_bytes": 407,
+      "research_cache_path": "data/research/siho/descriptions/7pQb1VvUDMA.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "zFE3YDTuPZs",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-13T05:08:50-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "79ac61f44941b9eec634a790797ea623109fcb073d872b7aebc6ca3e210c63ce",
+      "description_bytes": 406,
+      "research_cache_path": "data/research/siho/descriptions/zFE3YDTuPZs.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "VCLdwNTuD8A",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-07T01:00:18-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/VCLdwNTuD8A.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "LOZZ2jgWt_k",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-06T01:00:10-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c2dae10a735649bd6de557c39e2835b71e01e10bdc24b188b18d01e2a938e8d1",
+      "description_bytes": 457,
+      "research_cache_path": "data/research/siho/descriptions/LOZZ2jgWt_k.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "6lJNZD9nV9c",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-04T06:34:36-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "eaafc386ab7c8ff66628c231c094809d5cc65f2d39186f01ebc188edb59b8571",
+      "description_bytes": 407,
+      "research_cache_path": "data/research/siho/descriptions/6lJNZD9nV9c.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "kYJhzJGu2yw",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-04T05:04:39-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "ab14db6c7d678f74816ec53824b75acadeb2bf1289352c746f1ce30c4103228e",
+      "description_bytes": 407,
+      "research_cache_path": "data/research/siho/descriptions/kYJhzJGu2yw.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "aATPMPgar78",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-04T04:23:05-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "59e87abe2c582a6a516613c277f3193b200c199e746fbf88b0c1b02b785785dd",
+      "description_bytes": 405,
+      "research_cache_path": "data/research/siho/descriptions/aATPMPgar78.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "stOgHjR5E1k",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-08-04T03:50:02-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "367a98cfbb8053e56eb11d36b5a18e9fbe3781722ca9c667c6d9ca778b10c27d",
+      "description_bytes": 405,
+      "research_cache_path": "data/research/siho/descriptions/stOgHjR5E1k.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "XafsX1EHx8g",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-07-31T01:00:04-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/XafsX1EHx8g.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "2NvbysumcBw",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-07-30T01:00:27-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/2NvbysumcBw.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "_IgS8vxVyac",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-07-29T05:40:26-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "87a28d2bd038c1454ae89c4937c3764b9e562a3c0ad7ceb9c196d7f342624952",
+      "description_bytes": 505,
+      "research_cache_path": "data/research/siho/descriptions/_IgS8vxVyac.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "진입",
+        "손절",
+        "익절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "lZoUfBxdK3A",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-07-28T01:04:09-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/lZoUfBxdK3A.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "7MWaaM3c2NE",
+      "content_kind": "LONG_FORM",
+      "upload_timestamp": "2026-07-27T06:56:26-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+      "description_bytes": 1455,
+      "research_cache_path": "data/research/siho/descriptions/7MWaaM3c2NE.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "trail",
+        "stop",
+        "전략",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "J5eO1Tb5b0o",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-27T01:00:06-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "e45db9e2c524f3b722f9714ecc9d57ec930663104c9c509df6b6614534eb7467",
+      "description_bytes": 290,
+      "research_cache_path": "data/research/siho/descriptions/J5eO1Tb5b0o.txt",
+      "linked_video_ids": [
+        "cCLI_ge6Tzg"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "NTiMjZ8mJxA",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-26T01:00:15-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c2f1c019be6104d14bd1e8a09736c7e8173c663abd0217d51e80ca147d7c254c",
+      "description_bytes": 289,
+      "research_cache_path": "data/research/siho/descriptions/NTiMjZ8mJxA.txt",
+      "linked_video_ids": [
+        "RXKPiGnufOc"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "Nq0wjHxJ4Ic",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-25T03:29:02-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "78869d287ebec7110a4808f1bd862bc15ef6a7b7bbee8fc90d79dc2022ae4ba0",
+      "description_bytes": 292,
+      "research_cache_path": "data/research/siho/descriptions/Nq0wjHxJ4Ic.txt",
+      "linked_video_ids": [
+        "1mJDNm4Yko4"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "0dkdro9d-WA",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-25T03:28:58-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "52cf951cb3355dd9c6c383003ac4903f035de0bccc96e62f00a45c79f2cbc53f",
+      "description_bytes": 290,
+      "research_cache_path": "data/research/siho/descriptions/0dkdro9d-WA.txt",
+      "linked_video_ids": [
+        "60rKwt6sLTE"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "VVDVAohHfCM",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-25T01:00:03-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "64baf4cd44ec90d01797baf1df9efec0e7ad2bc09573828b01a92c420d09649c",
+      "description_bytes": 290,
+      "research_cache_path": "data/research/siho/descriptions/VVDVAohHfCM.txt",
+      "linked_video_ids": [
+        "XmkRgFV2iCM"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "WxH3HTcxYN0",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-20T15:11:46-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c4b42fb095624ab132e47fdeb2fd385542ff3a91f025a7d16189e74a1d30f13a",
+      "description_bytes": 267,
+      "research_cache_path": "data/research/siho/descriptions/WxH3HTcxYN0.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "66pk8HsZA5s",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-20T05:01:34-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "e7ebaaec273656d178efdd233d74b71e50ce1fc072dc228878f1ecb1f56f0d6b",
+      "description_bytes": 291,
+      "research_cache_path": "data/research/siho/descriptions/66pk8HsZA5s.txt",
+      "linked_video_ids": [
+        "lpBwSgKfpT0"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "fPSU6nzdeQI",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-18T01:00:15-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "929edc51531d9ac6a10feade02563c8975030814d9ceb185fb599cb307338e70",
+      "description_bytes": 291,
+      "research_cache_path": "data/research/siho/descriptions/fPSU6nzdeQI.txt",
+      "linked_video_ids": [
+        "WSwkXB0SoyE"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "SsqCLt64S2Q",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-17T01:00:19-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "b435be789161c54157f1091f10b9d33784fbcc197e0f6dd36bb25685700739e1",
+      "description_bytes": 289,
+      "research_cache_path": "data/research/siho/descriptions/SsqCLt64S2Q.txt",
+      "linked_video_ids": [
+        "fsj6TTHqXC4"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "1cPoF4XmRxM",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-16T06:20:07-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "3cc1cd961d936a8107604192e0eaf295733adefe773060b4dd5b0ed0ce37b8d4",
+      "description_bytes": 214,
+      "research_cache_path": "data/research/siho/descriptions/1cPoF4XmRxM.txt",
+      "linked_video_ids": [
+        "FFnFMYk31W4"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "1yHYv6WRu00",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-16T01:00:04-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "fc5defffd7987fc35ed0b7826550740851fb8825b22828c2f772d64b63f06b16",
+      "description_bytes": 290,
+      "research_cache_path": "data/research/siho/descriptions/1yHYv6WRu00.txt",
+      "linked_video_ids": [
+        "_xYSeFqZhbc"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "djO51oce3bg",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-15T01:00:08-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "4f0e97590c3ef23511da6038b673cf709822d7487eb1064d45628f48d7dce25a",
+      "description_bytes": 289,
+      "research_cache_path": "data/research/siho/descriptions/djO51oce3bg.txt",
+      "linked_video_ids": [
+        "v50ZUg0Hiss"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "7rwCcUn_jmM",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-14T00:26:45-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "455bc46da8a2d6d99f5c878227d9bd4cb16ae7504c913667d83748fbab6df68b",
+      "description_bytes": 216,
+      "research_cache_path": "data/research/siho/descriptions/7rwCcUn_jmM.txt",
+      "linked_video_ids": [
+        "sSt2zejDFVc"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "bHydyBbFCaw",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-13T21:20:29-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "35c1ebdf69a7a179652f175de6971e3b88f69577a9eaf22e0c53e0f44bbb8c84",
+      "description_bytes": 212,
+      "research_cache_path": "data/research/siho/descriptions/bHydyBbFCaw.txt",
+      "linked_video_ids": [
+        "XnD-Ry1NIe0"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "0aPJRCu7r74",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-13T07:56:49-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "02c0413455218eeec648ce8b5768ea02e4e0d83ed15241f7824b0e56b8fda4df",
+      "description_bytes": 214,
+      "research_cache_path": "data/research/siho/descriptions/0aPJRCu7r74.txt",
+      "linked_video_ids": [
+        "Eu5OKg6_bWg"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "yqlljDPTDaI",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-13T06:17:57-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "928ce6d195471f59651290f17dc3c6dc24a1a8a8fbc757d939c14e623bb7d315",
+      "description_bytes": 213,
+      "research_cache_path": "data/research/siho/descriptions/yqlljDPTDaI.txt",
+      "linked_video_ids": [
+        "7pQb1VvUDMA"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "BNtz-r95K_I",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-13T05:15:11-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "f4f1c722e4d119ad3487ea071aa386d4ad31bd7426a94ee78d0a22d8348a2160",
+      "description_bytes": 212,
+      "research_cache_path": "data/research/siho/descriptions/BNtz-r95K_I.txt",
+      "linked_video_ids": [
+        "zFE3YDTuPZs"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "aYcT3kTrnus",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-07T01:00:27-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "8e2092117108edbda5932ce66d02497c89e362e9d93315ba92537cd9f9121f83",
+      "description_bytes": 289,
+      "research_cache_path": "data/research/siho/descriptions/aYcT3kTrnus.txt",
+      "linked_video_ids": [
+        "VCLdwNTuD8A"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "NYTYTSm4rj0",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-04T07:06:55-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "baea4ba4a92aef06eff3adcb009b9afcbff734ff0ba7682b82550dac8a2aa094",
+      "description_bytes": 213,
+      "research_cache_path": "data/research/siho/descriptions/NYTYTSm4rj0.txt",
+      "linked_video_ids": [
+        "6lJNZD9nV9c"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "hPS1Y9dS7Uw",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-04T05:12:35-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "9f9b078e6830f1c16892de2f4f0251b0bec863461c26f961eeb6218c8650c57f",
+      "description_bytes": 213,
+      "research_cache_path": "data/research/siho/descriptions/hPS1Y9dS7Uw.txt",
+      "linked_video_ids": [
+        "kYJhzJGu2yw"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "Kg9krTXEXl0",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-04T04:28:34-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "6950da4cad5306f123bf5177b747cb02ab6a162968a4a2b200d28bb32b6d960e",
+      "description_bytes": 212,
+      "research_cache_path": "data/research/siho/descriptions/Kg9krTXEXl0.txt",
+      "linked_video_ids": [
+        "aATPMPgar78"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "L5zOiVsRyWQ",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-08-04T03:55:57-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "a1c98b3581cee8c2fc37be4bdd8b6e6dd75db8532cd2048e17718c17b1223f5b",
+      "description_bytes": 212,
+      "research_cache_path": "data/research/siho/descriptions/L5zOiVsRyWQ.txt",
+      "linked_video_ids": [
+        "stOgHjR5E1k"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "1rreaLToOas",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-07-31T01:00:39-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "51f4a18fceacfb041a2076337800474c8a367337513c4edb13a75ba15feb5649",
+      "description_bytes": 288,
+      "research_cache_path": "data/research/siho/descriptions/1rreaLToOas.txt",
+      "linked_video_ids": [
+        "XafsX1EHx8g"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "OzXPLCw0H7I",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-07-30T01:00:37-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "baf33643c2c880294a6fb4156de83fb7f27170099c7b9f493b04cf2b0469e788",
+      "description_bytes": 288,
+      "research_cache_path": "data/research/siho/descriptions/OzXPLCw0H7I.txt",
+      "linked_video_ids": [
+        "2NvbysumcBw"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "q3AbXKXHTIg",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-07-29T01:00:24-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "f2408ecb467fa3fa0686806d5004f1d9bbce906393bc1abb68c19dd8373a830e",
+      "description_bytes": 277,
+      "research_cache_path": "data/research/siho/descriptions/q3AbXKXHTIg.txt",
+      "linked_video_ids": [],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "yHEVRiZGkms",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-07-28T01:09:46-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "c7d23599db30006c642d6bd688322b8d58ba8f38ebb236aa9bf948719b203084",
+      "description_bytes": 720,
+      "research_cache_path": "data/research/siho/descriptions/yHEVRiZGkms.txt",
+      "linked_video_ids": [
+        "lZoUfBxdK3A"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "손절",
+        "익절",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    },
+    {
+      "video_id": "BDVzUNmUQx4",
+      "content_kind": "SHORTS",
+      "upload_timestamp": "2026-07-27T08:05:57-07:00",
+      "inspection_status": "INSPECTED",
+      "description_present": true,
+      "description_sha256": "f4a93b07cf8ff9550bab71a1280c18877f53df102b50901182f66ac4d9286a70",
+      "description_bytes": 713,
+      "research_cache_path": "data/research/siho/descriptions/BDVzUNmUQx4.txt",
+      "linked_video_ids": [
+        "7MWaaM3c2NE"
+      ],
+      "strategy_keyword_hits": [
+        "자동매매",
+        "추세",
+        "손절",
+        "익절",
+        "tradingview",
+        "bybit"
+      ],
+      "description_text_git_tracked": false
+    }
+  ],
+  "claims_boundary": {
+    "description_checksum_proves_rule_meaning": false,
+    "marketing_performance_is_verified": false
+  }
+}

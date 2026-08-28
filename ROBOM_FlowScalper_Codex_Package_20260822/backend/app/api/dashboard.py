@@ -19,11 +19,9 @@ def release_identity() -> tuple[str, bool]:
 
     candidate = os.environ.get("ROBOM_RELEASE_COMMIT", "").strip().lower()
     commit = candidate if _COMMIT_PATTERN.fullmatch(candidate) else "development"
-    isolated = (
-        commit != "development"
-        and os.environ.get("ROBOM_RELEASE_ISOLATED", "false").lower()
-        in {"1", "true", "yes"}
-    )
+    isolated = commit != "development" and os.environ.get(
+        "ROBOM_RELEASE_ISOLATED", "false"
+    ).lower() in {"1", "true", "yes"}
     return commit, isolated
 
 
@@ -54,9 +52,7 @@ def build_dashboard_snapshot(
 ) -> dict[str, Any]:
     fixture_mode = status.mode.value == "DEMO_FIXTURE"
     ready_mode = status.mode.value == "READY"
-    quoted_events = [
-        event for event in events if "bid" in event.data and "ask" in event.data
-    ]
+    quoted_events = [event for event in events if "bid" in event.data and "ask" in event.data]
     symbols = sorted({event.symbol for event in quoted_events})
     latest_by_symbol = {event.symbol: event for event in quoted_events}
     scanner: list[dict[str, object]] = []
@@ -118,11 +114,7 @@ def build_dashboard_snapshot(
         else latest_by_symbol.get("SOLUSDT") or (events[-1] if events else None)
     )
     if chart_symbol is not None:
-        selected_events = [
-            event
-            for event in quoted_events
-            if event.symbol == chart_symbol
-        ]
+        selected_events = [event for event in quoted_events if event.symbol == chart_symbol]
         if selected_events:
             selected = selected_events[-1]
     chart = _chart_points(selected, events, fixture_mode=fixture_mode)
@@ -284,11 +276,7 @@ def _operation_status(
             "RECOVERY_FAIL_CLOSED",
         }
     )
-    if (
-        mode == "LIVE_SHADOW_PAPER"
-        and paused
-        and diagnostics.get("consumer_running") is False
-    ):
+    if mode == "LIVE_SHADOW_PAPER" and paused and diagnostics.get("consumer_running") is False:
         return {
             "state": "SAFETY_BLOCKED",
             "title_ko": (
@@ -311,11 +299,7 @@ def _operation_status(
             "recommended_action": "NONE" if hard_blocked else "START",
             "lag_p95_ms": lag,
         }
-    if (
-        mode == "LIVE_SHADOW_PAPER"
-        and paused
-        and diagnostics.get("supervisor_running") is False
-    ):
+    if mode == "LIVE_SHADOW_PAPER" and paused and diagnostics.get("supervisor_running") is False:
         return {
             "state": "SAFETY_BLOCKED",
             "title_ko": (
@@ -343,8 +327,7 @@ def _operation_status(
             "state": "SAFETY_BLOCKED",
             "title_ko": "작동 중 · 안전 확인 필요",
             "detail_ko": (
-                "시장 관찰은 계속 중이지만 저장 또는 복구 안전문제로 "
-                "새 PAPER 진입을 막았습니다."
+                "시장 관찰은 계속 중이지만 저장 또는 복구 안전문제로 새 PAPER 진입을 막았습니다."
             ),
             "market_observation_active": market_state == "LIVE",
             "paper_entry_active": False,
@@ -370,8 +353,7 @@ def _operation_status(
                 "state": "MANUALLY_PAUSED",
                 "title_ko": "사용자가 일시정지",
                 "detail_ko": (
-                    "시장 관찰은 계속 중입니다. 버튼을 누르면 "
-                    "새 PAPER 진입을 다시 시작합니다."
+                    "시장 관찰은 계속 중입니다. 버튼을 누르면 새 PAPER 진입을 다시 시작합니다."
                 ),
                 "market_observation_active": True,
                 "paper_entry_active": False,
@@ -469,20 +451,27 @@ def _history_rows(
                 "initial_stop": str(trade.get("initial_stop", "—")),
                 "take_profit": str(trade.get("take_profit", "—")),
                 "take_profit_1": (
-                    str(trade["take_profit_1"])
-                    if trade.get("take_profit_1") is not None
-                    else None
+                    str(trade["take_profit_1"]) if trade.get("take_profit_1") is not None else None
                 ),
                 "take_profit_2": (
-                    str(trade["take_profit_2"])
-                    if trade.get("take_profit_2") is not None
-                    else None
+                    str(trade["take_profit_2"]) if trade.get("take_profit_2") is not None else None
                 ),
                 "tp1_hit_ts_ms": _optional_int(trade.get("tp1_hit_ts_ms")),
                 "tp2_hit_ts_ms": _optional_int(trade.get("tp2_hit_ts_ms")),
                 "time_to_tp1_ms": _optional_int(trade.get("time_to_tp1_ms")),
                 "time_to_tp2_ms": _optional_int(trade.get("time_to_tp2_ms")),
                 "time_to_stop_ms": _optional_int(trade.get("time_to_stop_ms")),
+                "trailing_activation_ts_ms": _optional_int(trade.get("trailing_activation_ts_ms")),
+                "runner_started_ts_ms": _optional_int(trade.get("runner_started_ts_ms")),
+                "peak_unrealized_usdt": str(trade.get("peak_unrealized_usdt", "0")),
+                "giveback_usdt": str(trade.get("giveback_usdt", "0")),
+                "runner_net_pnl_usdt": str(trade.get("runner_net_pnl_usdt", "0")),
+                "trail_trigger_slippage_usdt": str(trade.get("trail_trigger_slippage_usdt", "0")),
+                "trailing_state_checksum": (
+                    str(trade["trailing_state_checksum"])
+                    if trade.get("trailing_state_checksum") is not None
+                    else None
+                ),
                 "quantity": str(trade.get("quantity", "—")),
                 "exit_reason": str(trade["exit_reason"]),
                 "gross_pnl": str(trade["gross_pnl_usdt"]),
@@ -609,11 +598,7 @@ def _chart_points(
         if event.symbol == symbol and "bid" in event.data and "ask" in event.data
     ]
     if not matching:
-        matching = [
-            event
-            for event in events[-20:]
-            if "bid" in event.data and "ask" in event.data
-        ]
+        matching = [event for event in events[-20:] if "bid" in event.data and "ask" in event.data]
     points: list[dict[str, object]] = []
     for index, event in enumerate(matching[-30:]):
         bid = Decimal(str(event.data["bid"]))

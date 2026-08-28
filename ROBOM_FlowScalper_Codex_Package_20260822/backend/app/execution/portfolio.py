@@ -21,6 +21,16 @@ from backend.app.execution.models import (
     ProtectedPosition,
 )
 from backend.app.execution.simulator import PaperExecutionEngine, PaperExecutionError
+from backend.app.execution.trailing import (
+    TrailingActivationNotFeeSafeError,
+    TrailingActivationRule,
+    TrailingDecision,
+    TrailingModel,
+    TrailingObservation,
+    TrailingPolicy,
+    TrailingState,
+    TrailingStateMachine,
+)
 from backend.app.features import FeatureSnapshot
 from backend.app.positions import (
     ManagementAction,
@@ -45,11 +55,11 @@ _PAPER_LIFECYCLE_TARGETS = {
     "ENTRY_UNFILLED": "SCANNING",
     "ENTRY_FILLED": "PROTECTED",
     "MAIN_MANUAL_EXIT_PENDING": "EXIT_PENDING",
-    "TREND_EDGE_DECAY_EXIT_ARMED": "EXIT_PENDING",
     "MANAGEMENT_EXIT_ARMED": "EXIT_PENDING",
     "FORCED_EXIT_PENDING": "EXIT_PENDING",
     "STOP_EXIT_PENDING": "EXIT_PENDING",
     "TAKE_PROFIT_EXIT_PENDING": "EXIT_PENDING",
+    "TRAIL_EXIT_PENDING": "EXIT_PENDING",
     "EXIT_REJECTED": "PROTECTED",
     "EXIT_UNFILLED": "PROTECTED",
 }
@@ -64,6 +74,15 @@ _PAPER_LIFECYCLE_STATES = frozenset(
         "CLOSED",
     }
 )
+_TRAILING_DATA_HEALTH_STATES = frozenset({"HEALTHY", "DEGRADED"})
+_TRAILING_ADVERSE_REASON_CODES = frozenset(
+    {
+        "OFI_ADVERSE",
+        "AGGRESSOR_FLOW_ADVERSE",
+        "MICROPRICE_ADVERSE",
+        "SPREAD_DEGRADED",
+    }
+)
 _PAPER_LIFECYCLE_DESCRIPTIONS_KO = {
     "MAIN_CANDIDATE_SELECTED": "공동 PAPER 계좌가 진입 체결 대기를 시작했습니다.",
     "LEAGUE_CANDIDATE_ARMED": "전략별 PAPER 계좌가 진입 체결 대기를 시작했습니다.",
@@ -72,11 +91,11 @@ _PAPER_LIFECYCLE_DESCRIPTIONS_KO = {
     "ENTRY_UNFILLED": "실행 가능한 호가에서 PAPER 진입이 체결되지 않았습니다.",
     "ENTRY_FILLED": "실행 가능한 호가로 PAPER 진입을 체결하고 보호관리를 시작했습니다.",
     "MAIN_MANUAL_EXIT_PENDING": "사용자가 공동 PAPER 포지션 종료를 요청했습니다.",
-    "TREND_EDGE_DECAY_EXIT_ARMED": "추세 근거 약화를 확인해 PAPER 종료 체결을 대기합니다.",
     "MANAGEMENT_EXIT_ARMED": "포지션 관리 규칙이 PAPER 종료 체결을 요청했습니다.",
     "FORCED_EXIT_PENDING": "안전 종료 사유가 발생해 PAPER 종료 체결을 대기합니다.",
     "STOP_EXIT_PENDING": "손절 가격에 도달해 PAPER 종료 체결을 대기합니다.",
     "TAKE_PROFIT_EXIT_PENDING": "목표 가격에 도달해 PAPER 청산 체결을 대기합니다.",
+    "TRAIL_EXIT_PENDING": "러너가 단조 trailing 가격에 도달해 PAPER 종료 체결을 대기합니다.",
     "EXIT_REJECTED": "종료 체결 요청이 거부되어 포지션 보호관리를 계속합니다.",
     "EXIT_UNFILLED": "종료 호가가 체결되지 않아 포지션 보호관리를 계속합니다.",
     "EXIT_FILL": "PAPER 청산 호가가 체결되었습니다.",
@@ -118,7 +137,13 @@ class ManagedPaperPosition:
     mae_r: Decimal = Decimal(0)
     forced_exit_reason: ExitReason | None = None
     forced_exit_label: str | None = None
-    edge_decay_evaluations: int = 0
+    trailing_machine: TrailingStateMachine | None = None
+    trailing_audit_emitted_count: int = 0
+    trailing_data_health: str = "HEALTHY"
+    trailing_adverse_since_ms: int | None = None
+    trailing_adverse_reason_count: int = 0
+    trailing_adverse_active: bool = False
+    trailing_adverse_reasons: tuple[str, ...] = ()
 
     def next_target(self) -> TakeProfitTarget | None:
         for target in self.plan.take_profit_targets:
@@ -211,8 +236,7 @@ class PaperPortfolioEngine:
         valid = tuple(
             plan
             for plan in plans
-            if plan.run_id == self.run_id
-            and (self.venue is None or plan.venue is self.venue)
+            if plan.run_id == self.run_id and (self.venue is None or plan.venue is self.venue)
         )
         if entries_paused:
             if valid:
@@ -298,8 +322,7 @@ class PaperPortfolioEngine:
                     rejections += self.league_risk_manager.pending_rejections(
                         account.risk_state,
                         planned_risk=selected.max_planned_loss,
-                        planned_notional=selected.position_size
-                        * selected.worst_allowed_entry,
+                        planned_notional=selected.position_size * selected.worst_allowed_entry,
                     )
                     if rejections:
                         self._audit(
@@ -392,39 +415,20 @@ class PaperPortfolioEngine:
             remaining_edge = (
                 (next_target.price - mark) * direction
                 - plan.expected_fees_usdt / max(plan.position_size, plan.minimum_quantity)
-                - plan.expected_slippage_usdt
-                / max(plan.position_size, plan.minimum_quantity)
+                - plan.expected_slippage_usdt / max(plan.position_size, plan.minimum_quantity)
             )
             flow_aligned = snapshot.ofi_3s * float(direction)
             trade_aligned = snapshot.trade_imbalance_3s * float(direction)
             micro_aligned = (Decimal(str(snapshot.microprice)) - mark) * direction
-            runner_active = managed.target_remaining.get("TP1", Decimal(0)) == 0
-            if plan.exit_style is ExitStyle.TREND_40_60 and runner_active:
-                trend_broken = (
-                    regime is not plan.regime
-                    and flow_aligned <= 0
-                    and micro_aligned < 0
-                )
-                managed.edge_decay_evaluations = (
-                    managed.edge_decay_evaluations + 1 if trend_broken else 0
-                )
-                if managed.edge_decay_evaluations >= 2 and managed.pending_exit is None:
-                    managed.forced_exit_reason = ExitReason.EDGE_DECAY
-                    managed.forced_exit_label = "EDGE_DECAY"
-                    managed.pending_exit = PendingExit(
-                        reason=ExitReason.EDGE_DECAY,
-                        label="EDGE_DECAY",
-                        requested_quantity=managed.remaining_quantity,
-                        trigger_reference_price=mark,
-                        trigger_ts_ms=now_ms,
-                    )
-                    self._audit(
-                        "TREND_EDGE_DECAY_EXIT_ARMED",
-                        plan,
-                        audit_ts_ms=now_ms,
-                        account_id=account.account_id,
-                    )
-                    continue
+            self._update_trailing_health(
+                account,
+                managed,
+                snapshot=snapshot,
+                now_ms=now_ms,
+                flow_aligned=flow_aligned,
+                trade_aligned=trade_aligned,
+                micro_aligned=micro_aligned,
+            )
             regime_health = (
                 1.0
                 if regime is plan.regime
@@ -437,8 +441,7 @@ class PaperPortfolioEngine:
             spread_health = max(0.0, min(1.0, 1.0 - snapshot.spread_bps / 12.0))
             liquidity_health = (
                 0.80
-                if snapshot.data_healthy
-                and min(snapshot.depth_bid_10, snapshot.depth_ask_10) > 0
+                if snapshot.data_healthy and min(snapshot.depth_bid_10, snapshot.depth_ask_10) > 0
                 else 0.20
             )
             opposite_aggression = max(
@@ -562,8 +565,7 @@ class PaperPortfolioEngine:
             "slippage": str(current["slippage"]),
             "elapsed_seconds": max(
                 0,
-                (book.ts_ms if book else plan.signal_time_ms)
-                - managed.protected.opened_ts_ms,
+                (book.ts_ms if book else plan.signal_time_ms) - managed.protected.opened_ts_ms,
             )
             // 1_000,
             "management_reason": (
@@ -580,6 +582,7 @@ class PaperPortfolioEngine:
             ),
             "management_policy": list(plan.management_policy),
             "maximum_holding_ms": plan.maximum_holding_ms,
+            "trailing": self._trailing_view(managed),
         }
 
     def main_summary(self, book: BookSnapshot | None = None) -> dict[str, Decimal | int]:
@@ -628,13 +631,11 @@ class PaperPortfolioEngine:
         """main·shadow 실행계좌와 shadow 회계를 checksum 가능한 JSON 값으로 만든다."""
 
         return {
-            "schema_version": 4,
+            "schema_version": 5,
             "run_id": self.run_id,
             "venue": self.venue.value if self.venue is not None else None,
             "snapshot_ts_ms": snapshot_ts_ms,
-            "execution_transition_revisions": dict(
-                sorted(self._transition_revisions.items())
-            ),
+            "execution_transition_revisions": dict(sorted(self._transition_revisions.items())),
             "execution_transition_states": dict(sorted(self._transition_states.items())),
             "last_execution_transition": dict(self._last_execution_transition),
             "strategy_registry": [dict(row) for row in registry_settings],
@@ -649,7 +650,7 @@ class PaperPortfolioEngine:
         """기존 계좌는 엄격히 검증하고 신규 Registry 계좌만 빈 상태로 추가한다."""
 
         schema_version = int(str(payload.get("schema_version", 0)))
-        if schema_version not in {1, 2, 3, 4}:
+        if schema_version not in {1, 2, 3, 4, 5}:
             raise ValueError("지원하지 않는 PAPER 복구 snapshot 버전입니다.")
         if str(payload.get("run_id")) != self.run_id:
             raise ValueError("다른 Run의 PAPER 상태를 복구할 수 없습니다.")
@@ -677,11 +678,15 @@ class PaperPortfolioEngine:
         additive_registry_extension = False
         if schema_version >= 2 and seen != set(expected):
             registry_rows = payload.get("strategy_registry")
-            snapshot_strategy_ids = {
-                str(row["strategy_id"])
-                for row in registry_rows
-                if isinstance(row, Mapping) and row.get("strategy_id") is not None
-            } if isinstance(registry_rows, list) else set()
+            snapshot_strategy_ids = (
+                {
+                    str(row["strategy_id"])
+                    for row in registry_rows
+                    if isinstance(row, Mapping) and row.get("strategy_id") is not None
+                }
+                if isinstance(registry_rows, list)
+                else set()
+            )
             seen_strategy_ids = {
                 account_id.rsplit(":", 1)[0]
                 for account_id in seen
@@ -706,9 +711,7 @@ class PaperPortfolioEngine:
                 )
             )
             if not additive_registry_extension:
-                raise ValueError(
-                    "PAPER 복구 snapshot 계좌 집합이 Strategy Registry와 다릅니다."
-                )
+                raise ValueError("PAPER 복구 snapshot 계좌 집합이 Strategy Registry와 다릅니다.")
         if self.MAIN_ACCOUNT_ID not in seen:
             raise ValueError("PAPER 복구 snapshot에 main 계좌가 없습니다.")
         shadow_payload = payload.get("shadow_ledger")
@@ -790,9 +793,7 @@ class PaperPortfolioEngine:
             last_account_id = str(raw_last.get("account_id", ""))
             last_symbol = str(raw_last.get("symbol", ""))
             last_key = self._transition_scope_key(last_account_id, last_symbol)
-            last_response_revision = int(
-                str(raw_last.get("response_revision", -1))
-            )
+            last_response_revision = int(str(raw_last.get("response_revision", -1)))
             if (
                 not str(raw_last.get("transition_id", ""))
                 or str(raw_last.get("run_id", "")) != self.run_id
@@ -800,8 +801,7 @@ class PaperPortfolioEngine:
                 or not last_symbol
                 or last_key not in revisions
                 or last_response_revision != revisions[last_key]
-                or int(str(raw_last.get("request_revision", -1)))
-                != last_response_revision - 1
+                or int(str(raw_last.get("request_revision", -1))) != last_response_revision - 1
                 or str(raw_last.get("new_state", "")) != states[last_key]
             ):
                 raise ValueError("PAPER 복구 snapshot의 마지막 상태전환이 cursor와 다릅니다.")
@@ -817,31 +817,26 @@ class PaperPortfolioEngine:
         self._last_execution_transition = {}
         for account in self.accounts:
             for symbol in account.pending_entries:
-                self._transition_states[
-                    self._transition_scope_key(account.account_id, symbol)
-                ] = "ENTRY_PENDING"
+                self._transition_states[self._transition_scope_key(account.account_id, symbol)] = (
+                    "ENTRY_PENDING"
+                )
             for symbol, managed in account.positions.items():
-                self._transition_states[
-                    self._transition_scope_key(account.account_id, symbol)
-                ] = "EXIT_PENDING" if managed.pending_exit is not None else "PROTECTED"
+                self._transition_states[self._transition_scope_key(account.account_id, symbol)] = (
+                    "EXIT_PENDING" if managed.pending_exit is not None else "PROTECTED"
+                )
 
     @staticmethod
     def _transition_scope_key(account_id: str, symbol: str) -> str:
         return f"{account_id}|{symbol}"
 
-    def reconcile_persisted_main_trades(
-        self, rows: Sequence[Mapping[str, object]]
-    ) -> None:
+    def reconcile_persisted_main_trades(self, rows: Sequence[Mapping[str, object]]) -> None:
         """snapshot 직후 crash 창에서 이미 확정된 원장 거래를 최종 진실로 적용한다."""
 
         trades = [_paper_trade_from_payload(row) for row in rows]
         if len({trade.trade_id for trade in trades}) != len(trades):
             raise ValueError("복구할 main PAPER 거래 ID가 중복됩니다.")
         closed_ids = {trade.trade_id for trade in trades}
-        if (
-            self.main.position is not None
-            and self.main.position.protected.trade_id in closed_ids
-        ):
+        if self.main.position is not None and self.main.position.protected.trade_id in closed_ids:
             self.main.positions.clear()
         self.main.completed_trades = trades
         risk = self.main.risk_state
@@ -896,18 +891,12 @@ class PaperPortfolioEngine:
             )
             execution = self.shadows[account_id]
             row["pending_candidate"] = next(
-                (
-                    pending.plan.candidate_id
-                    for pending in execution.pending_entries.values()
-                ),
+                (pending.plan.candidate_id for pending in execution.pending_entries.values()),
                 None,
             )
             row["pending_entries"] = len(execution.pending_entries)
             row["execution_open_position"] = next(
-                (
-                    position.protected.trade_id
-                    for position in execution.positions.values()
-                ),
+                (position.protected.trade_id for position in execution.positions.values()),
                 None,
             )
             row["open_positions"] = len(execution.positions)
@@ -955,17 +944,14 @@ class PaperPortfolioEngine:
                     "pending_entries": len(account.pending_entries),
                     "gross_notional_usdt": str(account.risk_state.gross_notional),
                     "effective_leverage": str(
-                        account.risk_state.gross_notional
-                        / account.risk_state.current_equity
+                        account.risk_state.gross_notional / account.risk_state.current_equity
                     )
                     if account.risk_state.current_equity > 0
                     else "0",
                     "maximum_effective_leverage": str(
                         account.risk_state.maximum_effective_leverage
                     ),
-                    "maximum_drawdown_usdt": str(
-                        shadow_account.maximum_drawdown_usdt
-                    ),
+                    "maximum_drawdown_usdt": str(shadow_account.maximum_drawdown_usdt),
                     "paused": account.risk_state.paused,
                     "faulted": account.risk_state.faulted,
                 }
@@ -1019,9 +1005,7 @@ class PaperPortfolioEngine:
                         "original_quantity": str(managed.original_quantity),
                         "remaining_quantity": str(managed.remaining_quantity),
                         "notional": str(notional),
-                        "effective_leverage": str(
-                            notional / account.risk_state.current_equity
-                        )
+                        "effective_leverage": str(notional / account.risk_state.current_equity)
                         if account.risk_state.current_equity > 0
                         else "0",
                         "gross_pnl": str(current["gross"]),
@@ -1034,6 +1018,7 @@ class PaperPortfolioEngine:
                             if managed.pending_exit is not None
                             else "TP·SL·근거감쇠 자동 관리"
                         ),
+                        "trailing": self._trailing_view(managed),
                         "elapsed_seconds": max(
                             0,
                             (
@@ -1047,6 +1032,61 @@ class PaperPortfolioEngine:
                     }
                 )
         return rows
+
+    @staticmethod
+    def _trailing_view(managed: ManagedPaperPosition) -> dict[str, object]:
+        machine = managed.trailing_machine
+        if machine is None:
+            return {
+                "enabled": False,
+                "state": "DISABLED",
+                "policy_id": None,
+                "model": None,
+                "current_trail": None,
+                "activation_price": None,
+                "activation_ts_ms": None,
+                "runner_quantity": "0",
+                "giveback_usdt": "0",
+                "data_health": managed.trailing_data_health,
+                "adverse_active": False,
+                "adverse_reasons": [],
+                "reference_ts_ms": None,
+                "reference_interval_seconds": None,
+            }
+        return {
+            "enabled": True,
+            "state": machine.state.value,
+            "policy_id": machine.policy.policy_id,
+            "model": machine.policy.model.value,
+            "activation_rule": machine.policy.activation_rule.value,
+            "activation_price": str(machine.activation_price),
+            "activation_ts_ms": machine.activation_ts_ms,
+            "current_trail": str(machine.current_trail)
+            if machine.current_trail is not None
+            else None,
+            "previous_trail": str(machine.previous_trail)
+            if machine.previous_trail is not None
+            else None,
+            "highest_favorable_bid": str(machine.highest_favorable_bid)
+            if machine.highest_favorable_bid is not None
+            else None,
+            "lowest_favorable_ask": str(machine.lowest_favorable_ask)
+            if machine.lowest_favorable_ask is not None
+            else None,
+            "fee_adjusted_breakeven": str(machine.fee_adjusted_breakeven),
+            "runner_quantity": str(machine.runner_quantity),
+            "realized_quantity": str(machine.realized_quantity),
+            "mfe_r": str(machine.mfe_r),
+            "mae_r": str(machine.mae_r),
+            "peak_unrealized_usdt": str(machine.peak_unrealized),
+            "current_unrealized_usdt": str(machine.current_unrealized),
+            "giveback_usdt": str(machine.giveback),
+            "data_health": managed.trailing_data_health,
+            "adverse_active": managed.trailing_adverse_active,
+            "adverse_reasons": list(managed.trailing_adverse_reasons),
+            "reference_ts_ms": managed.plan.trailing_reference_ts_ms,
+            "reference_interval_seconds": (managed.plan.trailing_reference_interval_seconds),
+        }
 
     def _advance_entry(
         self,
@@ -1075,8 +1115,7 @@ class PaperPortfolioEngine:
         try:
             result = self.execution_engine.open_position(
                 trade_id=(
-                    f"paper-{plan.candidate_id}-"
-                    f"{account.account_id.lower().replace(':', '-')}"
+                    f"paper-{plan.candidate_id}-{account.account_id.lower().replace(':', '-')}"
                 ),
                 run_id=plan.run_id,
                 venue=plan.venue,
@@ -1107,14 +1146,14 @@ class PaperPortfolioEngine:
                 error_type=type(error).__name__,
             )
             return
-        account.entry_orders.append(result.entry_order)
-        account.pending_entries.pop(plan.symbol, None)
-        self._risk_manager_for(account).release_pending(
-            account.risk_state,
-            plan.max_planned_loss,
-            plan.position_size * plan.worst_allowed_entry,
-        )
         if result.position is None:
+            account.entry_orders.append(result.entry_order)
+            account.pending_entries.pop(plan.symbol, None)
+            self._risk_manager_for(account).release_pending(
+                account.risk_state,
+                plan.max_planned_loss,
+                plan.position_size * plan.worst_allowed_entry,
+            )
             self._audit(
                 "ENTRY_UNFILLED",
                 plan,
@@ -1123,10 +1162,44 @@ class PaperPortfolioEngine:
                 reason_codes=list(result.entry_order.reason_codes),
             )
             return
-        target_remaining = self._target_quantities(
-            plan.take_profit_targets,
-            result.position.quantity,
-            plan.minimum_quantity,
+        try:
+            target_remaining = self._target_quantities(
+                plan.take_profit_targets,
+                result.position.quantity,
+                plan.minimum_quantity,
+            )
+            trailing_machine = self._new_trailing_machine(
+                account,
+                plan,
+                result.position,
+            )
+        except ValueError as error:
+            account.pending_entries.pop(plan.symbol, None)
+            self._risk_manager_for(account).release_pending(
+                account.risk_state,
+                plan.max_planned_loss,
+                plan.position_size * plan.worst_allowed_entry,
+            )
+            reason_code = (
+                "TRAILING_ACTIVATION_NOT_FEE_SAFE"
+                if isinstance(error, TrailingActivationNotFeeSafeError)
+                else "ENTRY_CONFIGURATION_INVALID"
+            )
+            self._audit(
+                "ENTRY_REJECTED",
+                plan,
+                audit_ts_ms=book.ts_ms,
+                account_id=account.account_id,
+                error_type=type(error).__name__,
+                reason_codes=[reason_code],
+            )
+            return
+        account.entry_orders.append(result.entry_order)
+        account.pending_entries.pop(plan.symbol, None)
+        self._risk_manager_for(account).release_pending(
+            account.risk_state,
+            plan.max_planned_loss,
+            plan.position_size * plan.worst_allowed_entry,
         )
         managed = ManagedPaperPosition(
             plan=plan,
@@ -1134,11 +1207,10 @@ class PaperPortfolioEngine:
             original_quantity=result.position.quantity,
             remaining_quantity=result.position.quantity,
             target_remaining=target_remaining,
+            trailing_machine=trailing_machine,
         )
         account.positions[plan.symbol] = managed
-        actual_planned_risk = (
-            plan.max_planned_loss * result.position.quantity / plan.position_size
-        )
+        actual_planned_risk = plan.max_planned_loss * result.position.quantity / plan.position_size
         actual_notional = result.position.entry_fill.notional
         effective_leverage = actual_notional / account.risk_state.current_equity
         self._risk_manager_for(account).record_open(
@@ -1172,6 +1244,223 @@ class PaperPortfolioEngine:
             fill_price=str(result.position.entry_fill.average_price),
             partial=result.position.quantity != plan.position_size,
         )
+        self._emit_trailing_transitions(managed)
+
+    def _new_trailing_machine(
+        self,
+        account: ExecutionAccount,
+        plan: CandidatePlan,
+        position: ProtectedPosition,
+    ) -> TrailingStateMachine | None:
+        policy = plan.trailing_policy
+        if policy is None:
+            return None
+        if policy.activation_rule is TrailingActivationRule.TP1_TRIGGERED:
+            policy = replace(
+                policy,
+                activation_price_override=plan.first_target.price,
+            )
+        roundtrip_fee_bps = self.cost_model.fee_bps(
+            entry=True,
+            profile=account.profile,
+        ) + self.cost_model.fee_bps(entry=False, profile=account.profile)
+        adjustment = position.entry_fill.average_price * roundtrip_fee_bps / Decimal(10_000)
+        fee_adjusted_breakeven = (
+            position.entry_fill.average_price + adjustment
+            if plan.direction is Side.LONG
+            else position.entry_fill.average_price - adjustment
+        )
+        machine = TrailingStateMachine(
+            account_id=account.account_id,
+            trade_id=position.trade_id,
+            strategy_id=plan.strategy_id,
+            strategy_version=plan.strategy_version,
+            profile=account.profile.value,
+            symbol=plan.symbol,
+            side=plan.direction,
+            entry_price=position.entry_fill.average_price,
+            initial_stop=position.initial_stop,
+            fee_adjusted_breakeven=fee_adjusted_breakeven,
+            original_quantity=position.quantity,
+            policy=policy,
+        )
+        machine.confirm_entry(
+            event_time_ms=position.entry_fill.book_ts_ms,
+            receive_time_ms=position.entry_fill.book_ts_ms,
+        )
+        return machine
+
+    def _observe_trailing(
+        self,
+        managed: ManagedPaperPosition,
+        book: BookSnapshot,
+    ) -> TrailingDecision | None:
+        machine = managed.trailing_machine
+        if machine is None:
+            return None
+        protection_before = (
+            machine.state,
+            machine.highest_favorable_bid,
+            machine.lowest_favorable_ask,
+            machine.current_trail,
+        )
+        transition_count_before = len(machine.transitions)
+        receive_ts_ms = book.receive_ts_ms if book.receive_ts_ms is not None else book.ts_ms
+        current = self._current_pnl(managed, book)
+        decision = machine.observe(
+            TrailingObservation(
+                event_id=(
+                    f"{book.venue.value}:{book.symbol}:{book.ts_ms}:"
+                    f"{book.bids[0][0]}:{book.asks[0][0]}"
+                ),
+                event_time_ms=book.ts_ms,
+                receive_time_ms=receive_ts_ms,
+                best_bid=book.bids[0][0],
+                best_ask=book.asks[0][0],
+                sequence_valid=book.sequence_valid,
+                stale=book.stale,
+                data_health=managed.trailing_data_health,
+                remaining_quantity=managed.remaining_quantity,
+                realized_quantity=managed.original_quantity - managed.remaining_quantity,
+                current_unrealized=current["net"],
+                atr=managed.plan.trailing_atr,
+                completed_structure_stop=managed.plan.trailing_structure_stop,
+                adverse_edge=managed.trailing_adverse_active,
+            )
+        )
+        protection_after = (
+            machine.state,
+            machine.highest_favorable_bid,
+            machine.lowest_favorable_ask,
+            machine.current_trail,
+        )
+        if (
+            protection_after != protection_before
+            and len(machine.transitions) == transition_count_before
+        ):
+            self.audit_events.append(
+                {
+                    "event": "TRAILING_MARK_UPDATED",
+                    "candidate_id": managed.plan.candidate_id,
+                    "run_id": managed.plan.run_id,
+                    "ts_ms": book.ts_ms,
+                    **machine.audit_snapshot(
+                        event_time_ms=book.ts_ms,
+                        receive_time_ms=receive_ts_ms,
+                        actor="POSITION_MANAGER",
+                        reason_codes=("EXECUTABLE_FAVORABLE_MARK_OR_TRAIL_UPDATED",),
+                        data_health=managed.trailing_data_health,
+                    ),
+                }
+            )
+        if machine.current_trail is not None:
+            proposed = (
+                max(managed.protected.current_stop, machine.current_trail)
+                if managed.plan.direction is Side.LONG
+                else min(managed.protected.current_stop, machine.current_trail)
+            )
+            managed.protected = self.position_manager.tighten_stop(
+                managed.protected,
+                proposed,
+            )
+        self._emit_trailing_transitions(managed)
+        return decision
+
+    def _update_trailing_health(
+        self,
+        account: ExecutionAccount,
+        managed: ManagedPaperPosition,
+        *,
+        snapshot: FeatureSnapshot,
+        now_ms: int,
+        flow_aligned: float,
+        trade_aligned: float,
+        micro_aligned: Decimal,
+    ) -> None:
+        machine = managed.trailing_machine
+        if machine is None:
+            return
+        before = (
+            managed.trailing_data_health,
+            managed.trailing_adverse_since_ms,
+            managed.trailing_adverse_reason_count,
+            managed.trailing_adverse_active,
+            managed.trailing_adverse_reasons,
+        )
+        managed.trailing_data_health = "HEALTHY" if snapshot.data_healthy else "DEGRADED"
+        reasons: list[str] = []
+        if machine.policy.model is TrailingModel.EDGE_ADAPTIVE and machine.state in {
+            TrailingState.TRAIL_ARMED,
+            TrailingState.RUNNER_ACTIVE,
+        }:
+            if flow_aligned <= 0:
+                reasons.append("OFI_ADVERSE")
+            if trade_aligned < 0:
+                reasons.append("AGGRESSOR_FLOW_ADVERSE")
+            if micro_aligned < 0:
+                reasons.append("MICROPRICE_ADVERSE")
+            if snapshot.spread_bps >= 12:
+                reasons.append("SPREAD_DEGRADED")
+        managed.trailing_adverse_reasons = tuple(reasons)
+        managed.trailing_adverse_reason_count = len(reasons)
+        if (
+            managed.trailing_data_health == "HEALTHY"
+            and len(reasons) >= machine.policy.adverse_signal_count
+        ):
+            if managed.trailing_adverse_since_ms is None:
+                managed.trailing_adverse_since_ms = now_ms
+            managed.trailing_adverse_active = (
+                now_ms - managed.trailing_adverse_since_ms >= machine.policy.adverse_persistence_ms
+            )
+        else:
+            managed.trailing_adverse_since_ms = None
+            managed.trailing_adverse_active = False
+        after = (
+            managed.trailing_data_health,
+            managed.trailing_adverse_since_ms,
+            managed.trailing_adverse_reason_count,
+            managed.trailing_adverse_active,
+            managed.trailing_adverse_reasons,
+        )
+        if after == before:
+            return
+        self.audit_events.append(
+            {
+                "event": "TRAILING_EDGE_STATE_UPDATED",
+                "candidate_id": managed.plan.candidate_id,
+                "run_id": managed.plan.run_id,
+                "ts_ms": now_ms,
+                "account_id": account.account_id,
+                "data_health": managed.trailing_data_health,
+                "adverse_since_ms": managed.trailing_adverse_since_ms,
+                "adverse_reason_count": managed.trailing_adverse_reason_count,
+                "adverse_active": managed.trailing_adverse_active,
+                "adverse_reasons": list(managed.trailing_adverse_reasons),
+                "state_checksum": machine.checksum(),
+            }
+        )
+
+    def _emit_trailing_transitions(self, managed: ManagedPaperPosition) -> None:
+        machine = managed.trailing_machine
+        if machine is None:
+            return
+        rows = machine.to_payload()["transitions"]
+        if not isinstance(rows, list):
+            raise ValueError("trailing transition payload는 list여야 합니다.")
+        for row in rows[managed.trailing_audit_emitted_count :]:
+            if not isinstance(row, dict):
+                raise ValueError("trailing transition row는 object여야 합니다.")
+            self.audit_events.append(
+                {
+                    "event": "TRAILING_STATE_TRANSITION",
+                    "candidate_id": managed.plan.candidate_id,
+                    "run_id": managed.plan.run_id,
+                    "ts_ms": row["event_time_ms"],
+                    **row,
+                    "state_checksum": machine.checksum(),
+                }
+            )
+        managed.trailing_audit_emitted_count = len(rows)
 
     def _advance_position(
         self,
@@ -1203,14 +1492,44 @@ class PaperPortfolioEngine:
                 reason=managed.forced_exit_reason.value,
             )
             return
+        trailing_decision = self._observe_trailing(managed, book)
+        if trailing_decision is not None and trailing_decision.trail_exit_triggered:
+            trigger = trailing_decision.current_trail or best_executable
+            managed.pending_exit = PendingExit(
+                ExitReason.TRAILING_STOP,
+                "TRAILING_STOP",
+                managed.remaining_quantity,
+                trigger,
+                book.ts_ms,
+            )
+            self._audit(
+                "TRAIL_EXIT_PENDING",
+                managed.plan,
+                audit_ts_ms=book.ts_ms,
+                account_id=account.account_id,
+                label="TRAILING_STOP",
+                trigger_price=str(trigger),
+            )
+            return
         stop_hit = (
             best_executable <= managed.protected.current_stop
             if managed.plan.direction is Side.LONG
             else best_executable >= managed.protected.current_stop
         )
         target = managed.next_target()
+        trailing = managed.trailing_machine
+        fixed_target_allowed = trailing is None or (
+            trailing.policy.partial_tp_required
+            and trailing.state
+            in {
+                TrailingState.PROFIT_ACTIVATION_PENDING,
+                TrailingState.TRAIL_ARMED,
+                TrailingState.PARTIAL_TP_PENDING,
+            }
+        )
         target_hit = bool(
-            target
+            fixed_target_allowed
+            and target
             and (
                 best_executable >= target.price
                 if managed.plan.direction is Side.LONG
@@ -1236,6 +1555,13 @@ class PaperPortfolioEngine:
             )
             return
         if target_hit and target is not None:
+            if target.label == "TP1" and trailing is not None:
+                trailing.mark_partial_tp_pending(
+                    event_time_ms=book.ts_ms,
+                    receive_time_ms=book.ts_ms,
+                    data_health="HEALTHY",
+                )
+                self._emit_trailing_transitions(managed)
             managed.pending_exit = PendingExit(
                 ExitReason.TAKE_PROFIT,
                 target.label,
@@ -1267,9 +1593,7 @@ class PaperPortfolioEngine:
         trigger_reference = pending.trigger_reference_price
         if trigger_reference <= 0:
             trigger_reference = (
-                book.bids[0][0]
-                if managed.plan.direction is Side.LONG
-                else book.asks[0][0]
+                book.bids[0][0] if managed.plan.direction is Side.LONG else book.asks[0][0]
             )
         position = replace(
             managed.protected,
@@ -1287,6 +1611,7 @@ class PaperPortfolioEngine:
             )
         except (PaperExecutionError, ValueError) as error:
             managed.pending_exit = None
+            self._restore_trailing_after_unfilled_exit(managed, pending, book.ts_ms)
             self._audit(
                 "EXIT_REJECTED",
                 managed.plan,
@@ -1300,6 +1625,7 @@ class PaperPortfolioEngine:
         managed.pending_exit = None
         fill = result.exit_order.fill
         if fill is None:
+            self._restore_trailing_after_unfilled_exit(managed, pending, book.ts_ms)
             self._audit(
                 "EXIT_UNFILLED",
                 managed.plan,
@@ -1316,6 +1642,17 @@ class PaperPortfolioEngine:
             managed.target_remaining[pending.label] = max(
                 Decimal(0), managed.target_remaining[pending.label] - fill.quantity
             )
+        trailing = managed.trailing_machine
+        if pending.label == "TP1" and trailing is not None and managed.remaining_quantity > 0:
+            trailing.mark_partial_tp_filled(
+                event_time_ms=fill.book_ts_ms,
+                receive_time_ms=fill.book_ts_ms,
+                realized_quantity=managed.original_quantity - managed.remaining_quantity,
+                remaining_quantity=managed.remaining_quantity,
+                target_complete=managed.target_remaining.get("TP1", Decimal(0)) == 0,
+                data_health="HEALTHY",
+            )
+            self._emit_trailing_transitions(managed)
         if (
             pending.label == "TP1"
             and managed.plan.exit_style is ExitStyle.TREND_40_60
@@ -1325,9 +1662,7 @@ class PaperPortfolioEngine:
                 entry=True,
                 profile=account.profile,
             ) + self.cost_model.fee_bps(entry=False, profile=account.profile)
-            adjustment = (
-                managed.protected.entry_fill.average_price * fee_bps / Decimal(10_000)
-            )
+            adjustment = managed.protected.entry_fill.average_price * fee_bps / Decimal(10_000)
             proposed_stop = (
                 managed.protected.entry_fill.average_price + adjustment
                 if managed.plan.direction is Side.LONG
@@ -1353,7 +1688,24 @@ class PaperPortfolioEngine:
             fill_price=str(fill.average_price),
         )
         if managed.remaining_quantity > 0:
+            if pending.reason is ExitReason.TRAILING_STOP:
+                managed.pending_exit = PendingExit(
+                    reason=ExitReason.TRAILING_STOP,
+                    label="TRAILING_STOP",
+                    requested_quantity=managed.remaining_quantity,
+                    trigger_reference_price=pending.trigger_reference_price,
+                    trigger_ts_ms=book.ts_ms,
+                )
             return
+        if trailing is not None:
+            trailing.mark_closed(
+                event_time_ms=fill.book_ts_ms,
+                receive_time_ms=fill.book_ts_ms,
+                actor="PAPER_EXECUTION",
+                reason_codes=(pending.label,),
+                data_health="HEALTHY",
+            )
+            self._emit_trailing_transitions(managed)
         trade = self._finalize_trade(managed, pending.reason, book.ts_ms)
         account.completed_trades.append(trade)
         self._risk_manager_for(account).record_close(
@@ -1371,12 +1723,8 @@ class PaperPortfolioEngine:
         if account is self.main:
             self._new_main_trades.append(trade)
         else:
-            exit_quantity = sum(
-                (leg.fill.quantity for leg in managed.exit_legs), start=Decimal(0)
-            )
-            exit_notional = sum(
-                (leg.fill.notional for leg in managed.exit_legs), start=Decimal(0)
-            )
+            exit_quantity = sum((leg.fill.quantity for leg in managed.exit_legs), start=Decimal(0))
+            exit_notional = sum((leg.fill.notional for leg in managed.exit_legs), start=Decimal(0))
             self.shadow_ledger.close(
                 managed.plan.strategy_id,
                 account.profile,
@@ -1395,8 +1743,38 @@ class PaperPortfolioEngine:
                 time_to_tp1_ms=trade.time_to_tp1_ms,
                 time_to_tp2_ms=trade.time_to_tp2_ms,
                 time_to_stop_ms=trade.time_to_stop_ms,
+                trailing_activation_ts_ms=trade.trailing_activation_ts_ms,
+                runner_started_ts_ms=trade.runner_started_ts_ms,
+                peak_unrealized_usdt=trade.peak_unrealized_usdt,
+                giveback_usdt=trade.giveback_usdt,
+                runner_net_pnl_usdt=trade.runner_net_pnl_usdt,
+                trail_trigger_slippage_usdt=trade.trail_trigger_slippage_usdt,
+                trailing_state_checksum=trade.trailing_state_checksum,
             )
         account.positions.pop(managed.plan.symbol, None)
+
+    def _restore_trailing_after_unfilled_exit(
+        self,
+        managed: ManagedPaperPosition,
+        pending: PendingExit,
+        event_time_ms: int,
+    ) -> None:
+        trailing = managed.trailing_machine
+        if trailing is None:
+            return
+        if pending.label == "TP1":
+            trailing.mark_partial_tp_rejected(
+                event_time_ms=event_time_ms,
+                receive_time_ms=event_time_ms,
+                data_health="HEALTHY",
+            )
+        elif pending.reason is ExitReason.TRAILING_STOP:
+            trailing.mark_exit_rejected(
+                event_time_ms=event_time_ms,
+                receive_time_ms=event_time_ms,
+                data_health="HEALTHY",
+            )
+        self._emit_trailing_transitions(managed)
 
     def _finalize_trade(
         self,
@@ -1415,6 +1793,16 @@ class PaperPortfolioEngine:
         )
         slippage = entry.slippage_usdt + sum(
             (leg.fill.slippage_usdt for leg in managed.exit_legs), start=Decimal(0)
+        )
+        trailing = managed.trailing_machine
+        runner_net_pnl = self._runner_net_pnl(managed)
+        trail_trigger_slippage = sum(
+            (
+                leg.fill.slippage_usdt
+                for leg in managed.exit_legs
+                if leg.reason is ExitReason.TRAILING_STOP
+            ),
+            start=Decimal(0),
         )
         return PaperTrade(
             trade_id=managed.protected.trade_id,
@@ -1442,6 +1830,7 @@ class PaperPortfolioEngine:
             flags=tuple(leg.label for leg in managed.exit_legs),
             profile=managed.protected.profile,
             candidate_id=managed.plan.candidate_id,
+            signal_event_id=managed.plan.signal_event_id,
             take_profit_1=managed.plan.take_profit_targets[0].price,
             take_profit_2=(
                 managed.plan.take_profit_targets[1].price
@@ -1463,7 +1852,35 @@ class PaperPortfolioEngine:
                 if final_reason is ExitReason.STOP
                 else None
             ),
+            trailing_activation_ts_ms=(trailing.activation_ts_ms if trailing is not None else None),
+            runner_started_ts_ms=(trailing.runner_started_ts_ms if trailing is not None else None),
+            peak_unrealized_usdt=(trailing.peak_unrealized if trailing is not None else Decimal(0)),
+            giveback_usdt=trailing.giveback if trailing is not None else Decimal(0),
+            runner_net_pnl_usdt=runner_net_pnl,
+            trail_trigger_slippage_usdt=trail_trigger_slippage,
+            trailing_state_checksum=trailing.checksum() if trailing is not None else None,
         )
+
+    @staticmethod
+    def _runner_net_pnl(managed: ManagedPaperPosition) -> Decimal:
+        """부분익절 뒤 러너 또는 전량 trailing 구간의 순기여를 보수적으로 배분한다."""
+
+        trailing = managed.trailing_machine
+        if trailing is None or trailing.activation_ts_ms is None:
+            return Decimal(0)
+        entry = managed.protected.entry_fill
+        direction = Decimal(1) if managed.plan.direction is Side.LONG else Decimal(-1)
+        entry_cost = entry.fee_usdt + entry.slippage_usdt
+        total = Decimal(0)
+        for leg in managed.exit_legs:
+            if trailing.policy.partial_tp_required and leg.label == "TP1":
+                continue
+            quantity_share = leg.fill.quantity / entry.quantity
+            gross = (leg.fill.average_price - entry.average_price) * leg.fill.quantity * direction
+            total += (
+                gross - leg.fill.fee_usdt - leg.fill.slippage_usdt - entry_cost * quantity_share
+            )
+        return total
 
     def _current_pnl(
         self,
@@ -1474,9 +1891,7 @@ class PaperPortfolioEngine:
         direction = Decimal(1) if managed.plan.direction is Side.LONG else Decimal(-1)
         realized_gross = sum(
             (
-                (leg.fill.average_price - entry.average_price)
-                * leg.fill.quantity
-                * direction
+                (leg.fill.average_price - entry.average_price) * leg.fill.quantity * direction
                 for leg in managed.exit_legs
             ),
             start=Decimal(0),
@@ -1514,7 +1929,7 @@ class PaperPortfolioEngine:
     def _exit_latency_ms(self, reason: ExitReason, profile: CostProfile) -> int:
         base = (
             self.cost_model.stop_processing_latency_ms
-            if reason is ExitReason.STOP
+            if reason in {ExitReason.STOP, ExitReason.TRAILING_STOP}
             else self.cost_model.decision_to_arrival_latency_ms
         )
         multiplier = (
@@ -1612,16 +2027,12 @@ class PaperPortfolioEngine:
             * self.cost_model.fee_bps(entry=False, profile=account.profile)
             / Decimal(10_000)
         )
-        expected_slippage = (
-            quantity * plan.noise_buffer * Decimal("1.5") * slippage_multiplier
-        )
+        expected_slippage = quantity * plan.noise_buffer * Decimal("1.5") * slippage_multiplier
         net_reward = gross_reward - expected_fees - expected_slippage
         if net_reward <= 0 or sizing.planned_loss <= 0:
             return None
         net_rr = (net_reward / sizing.planned_loss).quantize(Decimal("0.0001"))
-        effective_leverage = (
-            quantity * plan.worst_allowed_entry / account.risk_state.current_equity
-        )
+        effective_leverage = quantity * plan.worst_allowed_entry / account.risk_state.current_equity
         if effective_leverage > manager.limits.maximum_gross_notional_fraction:
             return None
         return replace(
@@ -1673,10 +2084,7 @@ class PaperPortfolioEngine:
                 else _PAPER_LIFECYCLE_TARGETS[event]
             )
             cause_code = str(
-                payload.get("reason")
-                or payload.get("action")
-                or payload.get("label")
-                or event
+                payload.get("reason") or payload.get("action") or payload.get("label") or event
             )
             row.update(
                 {
@@ -1690,9 +2098,7 @@ class PaperPortfolioEngine:
                     "cause": cause_code,
                     "cause_code": cause_code,
                     "description_ko": _PAPER_LIFECYCLE_DESCRIPTIONS_KO[event],
-                    "actor": "USER_UI"
-                    if event == "MAIN_MANUAL_EXIT_PENDING"
-                    else "AUTO_SAFETY",
+                    "actor": "USER_UI" if event == "MAIN_MANUAL_EXIT_PENDING" else "AUTO_SAFETY",
                     "run_id": plan.run_id,
                     "strategy_id": plan.strategy_id,
                     "account_id": account_id,
@@ -1721,9 +2127,7 @@ def _execution_account_payload(account: ExecutionAccount) -> dict[str, object]:
             symbol: _managed_position_payload(position)
             for symbol, position in account.positions.items()
         },
-        "completed_trades": [
-            _paper_trade_payload(trade) for trade in account.completed_trades
-        ],
+        "completed_trades": [_paper_trade_payload(trade) for trade in account.completed_trades],
         "entry_orders": [_paper_order_payload(order) for order in account.entry_orders],
         "exit_orders": [_paper_order_payload(order) for order in account.exit_orders],
     }
@@ -1761,9 +2165,7 @@ def _restore_execution_account(
             else None
         )
         account.pending_entries = (
-            {restored_pending.plan.symbol: restored_pending}
-            if restored_pending is not None
-            else {}
+            {restored_pending.plan.symbol: restored_pending} if restored_pending is not None else {}
         )
     position_rows = payload.get("positions")
     if isinstance(position_rows, Mapping):
@@ -1777,9 +2179,7 @@ def _restore_execution_account(
     else:
         position = payload.get("position")
         restored_position = (
-            _managed_position_from_payload(position)
-            if isinstance(position, Mapping)
-            else None
+            _managed_position_from_payload(position) if isinstance(position, Mapping) else None
         )
         account.positions = (
             {restored_position.plan.symbol: restored_position}
@@ -1796,9 +2196,7 @@ def _restore_execution_account(
     ):
         raise ValueError("복구 계좌의 거래·주문 목록 형식이 잘못됐습니다.")
     account.completed_trades = [
-        _paper_trade_from_payload(value)
-        for value in completed
-        if isinstance(value, Mapping)
+        _paper_trade_from_payload(value) for value in completed if isinstance(value, Mapping)
     ]
     account.entry_orders = [
         _paper_order_from_payload(value) for value in entries if isinstance(value, Mapping)
@@ -1837,10 +2235,7 @@ def _restore_execution_account(
         )
     if "gross_notional" not in risk_payload:
         account.risk_state.gross_notional = sum(
-            (
-                position.protected.entry_fill.notional
-                for position in account.positions.values()
-            ),
+            (position.protected.entry_fill.notional for position in account.positions.values()),
             start=Decimal(0),
         )
     if "pending_notional" not in risk_payload:
@@ -1905,9 +2300,7 @@ def _risk_state_from_payload(payload: Mapping[str, object]) -> RiskState:
         pending_planned_risk=Decimal(str(payload.get("pending_planned_risk", "0"))),
         gross_notional=Decimal(str(payload.get("gross_notional", "0"))),
         pending_notional=Decimal(str(payload.get("pending_notional", "0"))),
-        maximum_effective_leverage=Decimal(
-            str(payload.get("maximum_effective_leverage", "0"))
-        ),
+        maximum_effective_leverage=Decimal(str(payload.get("maximum_effective_leverage", "0"))),
         global_consecutive_losses=int(str(payload["global_consecutive_losses"])),
         paused=bool(payload["paused"]),
         faulted=bool(payload["faulted"]),
@@ -1924,9 +2317,7 @@ def _managed_position_payload(position: ManagedPaperPosition) -> dict[str, objec
         "protected": _protected_position_payload(position.protected),
         "original_quantity": str(position.original_quantity),
         "remaining_quantity": str(position.remaining_quantity),
-        "target_remaining": {
-            key: str(value) for key, value in position.target_remaining.items()
-        },
+        "target_remaining": {key: str(value) for key, value in position.target_remaining.items()},
         "target_hit_ts_ms": dict(position.target_hit_ts_ms),
         "exit_legs": [_exit_leg_payload(leg) for leg in position.exit_legs],
         "pending_exit": _pending_exit_payload(position.pending_exit)
@@ -1938,7 +2329,15 @@ def _managed_position_payload(position: ManagedPaperPosition) -> dict[str, objec
         if position.forced_exit_reason is not None
         else None,
         "forced_exit_label": position.forced_exit_label,
-        "edge_decay_evaluations": position.edge_decay_evaluations,
+        "trailing_machine": position.trailing_machine.to_payload()
+        if position.trailing_machine is not None
+        else None,
+        "trailing_audit_emitted_count": position.trailing_audit_emitted_count,
+        "trailing_data_health": position.trailing_data_health,
+        "trailing_adverse_since_ms": position.trailing_adverse_since_ms,
+        "trailing_adverse_reason_count": position.trailing_adverse_reason_count,
+        "trailing_adverse_active": position.trailing_adverse_active,
+        "trailing_adverse_reasons": list(position.trailing_adverse_reasons),
     }
 
 
@@ -1965,6 +2364,21 @@ def _managed_position_from_payload(payload: Mapping[str, object]) -> ManagedPape
     if not Decimal(0) < remaining <= original or protected.quantity != original:
         raise ValueError("복구 포지션의 수량 불변조건이 잘못됐습니다.")
     pending = payload.get("pending_exit")
+    trailing_payload = payload.get("trailing_machine")
+    trailing_health = payload.get("trailing_data_health", "HEALTHY")
+    adverse_active = payload.get("trailing_adverse_active", False)
+    adverse_reason_rows = payload.get("trailing_adverse_reasons", [])
+    if trailing_health not in _TRAILING_DATA_HEALTH_STATES:
+        raise ValueError("복구 trailing 데이터 건강상태가 잘못됐습니다.")
+    if not isinstance(adverse_active, bool):
+        raise ValueError("복구 trailing adverse 활성값은 boolean이어야 합니다.")
+    if not isinstance(adverse_reason_rows, list) or not all(
+        isinstance(value, str) and value in _TRAILING_ADVERSE_REASON_CODES
+        for value in adverse_reason_rows
+    ):
+        raise ValueError("복구 trailing adverse 사유 형식이 잘못됐습니다.")
+    if len(set(adverse_reason_rows)) != len(adverse_reason_rows):
+        raise ValueError("복구 trailing adverse 사유가 중복됐습니다.")
     position = ManagedPaperPosition(
         plan=plan,
         protected=protected,
@@ -1973,15 +2387,11 @@ def _managed_position_from_payload(payload: Mapping[str, object]) -> ManagedPape
         target_remaining={
             str(key): Decimal(str(value)) for key, value in remaining_payload.items()
         },
-        target_hit_ts_ms={
-            str(key): int(str(value)) for key, value in target_hit_payload.items()
-        },
+        target_hit_ts_ms={str(key): int(str(value)) for key, value in target_hit_payload.items()},
         exit_legs=[
             _exit_leg_from_payload(value) for value in leg_rows if isinstance(value, Mapping)
         ],
-        pending_exit=_pending_exit_from_payload(pending)
-        if isinstance(pending, Mapping)
-        else None,
+        pending_exit=_pending_exit_from_payload(pending) if isinstance(pending, Mapping) else None,
         mfe_r=Decimal(str(payload["mfe_r"])),
         mae_r=Decimal(str(payload["mae_r"])),
         forced_exit_reason=ExitReason(str(payload["forced_exit_reason"]))
@@ -1990,15 +2400,76 @@ def _managed_position_from_payload(payload: Mapping[str, object]) -> ManagedPape
         forced_exit_label=str(payload["forced_exit_label"])
         if payload.get("forced_exit_label") is not None
         else None,
-        edge_decay_evaluations=int(str(payload.get("edge_decay_evaluations", 0))),
+        trailing_machine=TrailingStateMachine.from_payload(trailing_payload)
+        if isinstance(trailing_payload, Mapping)
+        else None,
+        trailing_audit_emitted_count=int(str(payload.get("trailing_audit_emitted_count", 0))),
+        trailing_data_health=str(trailing_health),
+        trailing_adverse_since_ms=int(str(payload["trailing_adverse_since_ms"]))
+        if payload.get("trailing_adverse_since_ms") is not None
+        else None,
+        trailing_adverse_reason_count=int(str(payload.get("trailing_adverse_reason_count", 0))),
+        trailing_adverse_active=adverse_active,
+        trailing_adverse_reasons=tuple(adverse_reason_rows),
     )
     if len(position.exit_legs) != len(leg_rows):
         raise ValueError("복구 포지션의 exit leg 형식이 잘못됐습니다.")
-    if (
-        position.pending_exit is not None
-        and position.pending_exit.requested_quantity > remaining
-    ):
+    if position.pending_exit is not None and position.pending_exit.requested_quantity > remaining:
         raise ValueError("복구 포지션의 대기 청산 수량이 잔여 수량을 넘습니다.")
+    if (
+        position.trailing_machine is not None
+        and position.trailing_machine.trade_id != protected.trade_id
+    ):
+        raise ValueError("복구 trailing 상태와 보호 포지션 trade ID가 다릅니다.")
+    if position.trailing_audit_emitted_count > len(
+        position.trailing_machine.transitions if position.trailing_machine else ()
+    ):
+        raise ValueError("복구 trailing audit count가 transition 수를 넘습니다.")
+    if position.trailing_adverse_reason_count != len(position.trailing_adverse_reasons):
+        raise ValueError("복구 trailing adverse 사유 수가 목록과 다릅니다.")
+    if position.trailing_adverse_reason_count < 0:
+        raise ValueError("복구 trailing adverse 사유 수는 음수일 수 없습니다.")
+    if position.trailing_adverse_since_ms is not None and position.trailing_adverse_since_ms < 0:
+        raise ValueError("복구 trailing adverse 시작시각이 잘못됐습니다.")
+    if position.trailing_machine is None and (
+        position.trailing_data_health != "HEALTHY"
+        or position.trailing_adverse_since_ms is not None
+        or position.trailing_adverse_reason_count
+        or position.trailing_adverse_active
+        or position.trailing_adverse_reasons
+    ):
+        raise ValueError("trailing 없는 복구 포지션에 trailing 상태가 남았습니다.")
+    if position.trailing_machine is not None:
+        policy = position.trailing_machine.policy
+        if policy.model is not TrailingModel.EDGE_ADAPTIVE and (
+            position.trailing_adverse_since_ms is not None
+            or position.trailing_adverse_reason_count
+            or position.trailing_adverse_active
+            or position.trailing_adverse_reasons
+        ):
+            raise ValueError("비적응형 trailing 복구에 adverse 상태가 남았습니다.")
+        if (
+            policy.model is TrailingModel.EDGE_ADAPTIVE
+            and (position.trailing_adverse_since_ms is not None)
+            and (
+                position.trailing_data_health != "HEALTHY"
+                or position.trailing_adverse_reason_count < policy.adverse_signal_count
+            )
+        ):
+            raise ValueError("복구 adaptive trailing 지속시각의 근거가 부족합니다.")
+        if (
+            policy.model is TrailingModel.EDGE_ADAPTIVE
+            and position.trailing_data_health == "HEALTHY"
+            and position.trailing_adverse_reason_count >= policy.adverse_signal_count
+            and position.trailing_adverse_since_ms is None
+        ):
+            raise ValueError("복구 adaptive trailing에 adverse 시작시각이 없습니다.")
+        if position.trailing_adverse_active and (
+            position.trailing_data_health != "HEALTHY"
+            or position.trailing_adverse_since_ms is None
+            or position.trailing_adverse_reason_count < policy.adverse_signal_count
+        ):
+            raise ValueError("복구 adaptive trailing 활성상태의 근거가 부족합니다.")
     return position
 
 
@@ -2050,6 +2521,15 @@ def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
         "management_policy": list(plan.management_policy),
         "main_eligible": plan.main_eligible,
         "shadow_eligible": plan.shadow_eligible,
+        "trailing_policy": _trailing_policy_payload(plan.trailing_policy)
+        if plan.trailing_policy is not None
+        else None,
+        "trailing_atr": str(plan.trailing_atr) if plan.trailing_atr is not None else None,
+        "trailing_structure_stop": (
+            str(plan.trailing_structure_stop) if plan.trailing_structure_stop is not None else None
+        ),
+        "trailing_reference_ts_ms": plan.trailing_reference_ts_ms,
+        "trailing_reference_interval_seconds": plan.trailing_reference_interval_seconds,
     }
 
 
@@ -2120,6 +2600,76 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         management_policy=_strings(payload, "management_policy"),
         main_eligible=bool(payload["main_eligible"]),
         shadow_eligible=bool(payload["shadow_eligible"]),
+        trailing_policy=_trailing_policy_from_payload(payload.get("trailing_policy")),
+        trailing_atr=Decimal(str(payload["trailing_atr"]))
+        if payload.get("trailing_atr") is not None
+        else None,
+        trailing_structure_stop=Decimal(str(payload["trailing_structure_stop"]))
+        if payload.get("trailing_structure_stop") is not None
+        else None,
+        trailing_reference_ts_ms=int(str(payload["trailing_reference_ts_ms"]))
+        if payload.get("trailing_reference_ts_ms") is not None
+        else None,
+        trailing_reference_interval_seconds=int(str(payload["trailing_reference_interval_seconds"]))
+        if payload.get("trailing_reference_interval_seconds") is not None
+        else None,
+    )
+
+
+def _trailing_policy_payload(policy: TrailingPolicy) -> dict[str, object]:
+    return {
+        "policy_id": policy.policy_id,
+        "model": policy.model.value,
+        "activation_rule": policy.activation_rule.value,
+        "activation_r": str(policy.activation_r),
+        "partial_tp_required": policy.partial_tp_required,
+        "fixed_distance": str(policy.fixed_distance) if policy.fixed_distance is not None else None,
+        "retracement_rate": str(policy.retracement_rate)
+        if policy.retracement_rate is not None
+        else None,
+        "atr_multiplier": str(policy.atr_multiplier) if policy.atr_multiplier is not None else None,
+        "adverse_atr_multiplier": str(policy.adverse_atr_multiplier)
+        if policy.adverse_atr_multiplier is not None
+        else None,
+        "adverse_signal_count": policy.adverse_signal_count,
+        "adverse_persistence_ms": policy.adverse_persistence_ms,
+        "activation_price_override": str(policy.activation_price_override)
+        if policy.activation_price_override is not None
+        else None,
+    }
+
+
+def _trailing_policy_from_payload(payload: object) -> TrailingPolicy | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, Mapping):
+        raise ValueError("복구 trailing policy 형식이 잘못됐습니다.")
+    return TrailingPolicy(
+        policy_id=str(payload["policy_id"]),
+        model=TrailingModel(str(payload["model"])),
+        activation_rule=TrailingActivationRule(str(payload["activation_rule"])),
+        activation_r=Decimal(str(payload["activation_r"])),
+        partial_tp_required=_strict_bool(
+            payload.get("partial_tp_required"),
+            "partial_tp_required",
+        ),
+        fixed_distance=Decimal(str(payload["fixed_distance"]))
+        if payload.get("fixed_distance") is not None
+        else None,
+        retracement_rate=Decimal(str(payload["retracement_rate"]))
+        if payload.get("retracement_rate") is not None
+        else None,
+        atr_multiplier=Decimal(str(payload["atr_multiplier"]))
+        if payload.get("atr_multiplier") is not None
+        else None,
+        adverse_atr_multiplier=Decimal(str(payload["adverse_atr_multiplier"]))
+        if payload.get("adverse_atr_multiplier") is not None
+        else None,
+        adverse_signal_count=int(str(payload.get("adverse_signal_count", 2))),
+        adverse_persistence_ms=int(str(payload.get("adverse_persistence_ms", 3_000))),
+        activation_price_override=Decimal(str(payload["activation_price_override"]))
+        if payload.get("activation_price_override") is not None
+        else None,
     )
 
 
@@ -2136,9 +2686,7 @@ def _protected_position_payload(position: ProtectedPosition) -> dict[str, object
         "initial_stop": str(position.initial_stop),
         "current_stop": str(position.current_stop),
         "take_profit": str(position.take_profit),
-        "protection_orders": [
-            _paper_order_payload(order) for order in position.protection_orders
-        ],
+        "protection_orders": [_paper_order_payload(order) for order in position.protection_orders],
         "opened_ts_ms": position.opened_ts_ms,
         "profile": position.profile.value,
     }
@@ -2150,9 +2698,7 @@ def _protected_position_from_payload(payload: Mapping[str, object]) -> Protected
     if not isinstance(fill_payload, Mapping) or not isinstance(order_rows, list):
         raise ValueError("복구 보호 포지션 형식이 잘못됐습니다.")
     orders = tuple(
-        _paper_order_from_payload(value)
-        for value in order_rows
-        if isinstance(value, Mapping)
+        _paper_order_from_payload(value) for value in order_rows if isinstance(value, Mapping)
     )
     if len(orders) != 2 or len(order_rows) != 2:
         raise ValueError("복구 보호 포지션에는 TP와 SL 두 주문이 필요합니다.")
@@ -2300,17 +2846,21 @@ def _paper_trade_payload(trade: PaperTrade) -> dict[str, object]:
         "initial_stop": str(trade.initial_stop),
         "take_profit": str(trade.take_profit),
         "candidate_id": trade.candidate_id,
-        "take_profit_1": (
-            str(trade.take_profit_1) if trade.take_profit_1 is not None else None
-        ),
-        "take_profit_2": (
-            str(trade.take_profit_2) if trade.take_profit_2 is not None else None
-        ),
+        "signal_event_id": trade.signal_event_id,
+        "take_profit_1": (str(trade.take_profit_1) if trade.take_profit_1 is not None else None),
+        "take_profit_2": (str(trade.take_profit_2) if trade.take_profit_2 is not None else None),
         "tp1_hit_ts_ms": trade.tp1_hit_ts_ms,
         "tp2_hit_ts_ms": trade.tp2_hit_ts_ms,
         "time_to_tp1_ms": trade.time_to_tp1_ms,
         "time_to_tp2_ms": trade.time_to_tp2_ms,
         "time_to_stop_ms": trade.time_to_stop_ms,
+        "trailing_activation_ts_ms": trade.trailing_activation_ts_ms,
+        "runner_started_ts_ms": trade.runner_started_ts_ms,
+        "peak_unrealized_usdt": str(trade.peak_unrealized_usdt),
+        "giveback_usdt": str(trade.giveback_usdt),
+        "runner_net_pnl_usdt": str(trade.runner_net_pnl_usdt),
+        "trail_trigger_slippage_usdt": str(trade.trail_trigger_slippage_usdt),
+        "trailing_state_checksum": trade.trailing_state_checksum,
         "exit_reason": trade.exit_reason.value,
         "gross_pnl_usdt": str(trade.gross_pnl_usdt),
         "fees_usdt": str(trade.fees_usdt),
@@ -2358,9 +2908,10 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
         flags=_strings(payload, "flags"),
         profile=CostProfile(str(payload.get("profile", CostProfile.BASE.value))),
         candidate_id=(
-            str(payload["candidate_id"])
-            if payload.get("candidate_id") is not None
-            else None
+            str(payload["candidate_id"]) if payload.get("candidate_id") is not None else None
+        ),
+        signal_event_id=(
+            str(payload["signal_event_id"]) if payload.get("signal_event_id") is not None else None
         ),
         take_profit_1=(
             Decimal(str(payload["take_profit_1"]))
@@ -2377,11 +2928,28 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
         time_to_tp1_ms=_optional_int(payload.get("time_to_tp1_ms")),
         time_to_tp2_ms=_optional_int(payload.get("time_to_tp2_ms")),
         time_to_stop_ms=_optional_int(payload.get("time_to_stop_ms")),
+        trailing_activation_ts_ms=_optional_int(payload.get("trailing_activation_ts_ms")),
+        runner_started_ts_ms=_optional_int(payload.get("runner_started_ts_ms")),
+        peak_unrealized_usdt=Decimal(str(payload.get("peak_unrealized_usdt", "0"))),
+        giveback_usdt=Decimal(str(payload.get("giveback_usdt", "0"))),
+        runner_net_pnl_usdt=Decimal(str(payload.get("runner_net_pnl_usdt", "0"))),
+        trail_trigger_slippage_usdt=Decimal(str(payload.get("trail_trigger_slippage_usdt", "0"))),
+        trailing_state_checksum=(
+            str(payload["trailing_state_checksum"])
+            if payload.get("trailing_state_checksum") is not None
+            else None
+        ),
     )
 
 
 def _optional_int(value: object | None) -> int | None:
     return None if value is None else int(str(value))
+
+
+def _strict_bool(value: object, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"복구 payload의 {field_name}은 boolean이어야 합니다.")
+    return value
 
 
 def _elapsed_from_open(opened_ts_ms: int, milestone_ts_ms: int | None) -> int | None:

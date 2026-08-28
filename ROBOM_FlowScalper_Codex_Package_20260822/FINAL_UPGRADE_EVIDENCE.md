@@ -2998,3 +2998,43 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | 활성 원장 full integrity·485,283-event replay | NOT_RUN | LIVE 우선순위와 ADR-049 경계를 지키기 위해 이번 기준선과 겹치지 않음 |
 
 원시 실패 관찰은 `evidence/WAVE98_OFFLOOP_DASHBOARD_CLEAN_6H.json`, 사건 분석은 `evidence/WAVE99_CRITICAL_LAG_INCIDENT_DIAGNOSIS.json`, 새 기준선은 `evidence/WAVE99_POST_QUARANTINE_CLEAN_5M.json`, 통합 증거는 `evidence/WAVE99_POST_QUARANTINE_RELEASE_QA.json`이다. 실제 화면은 `evidence/screenshots/WAVE99_ACTUAL_SYSTEM_DIAGNOSTICS_DESKTOP.png`, `WAVE99_ACTUAL_MARKET_TABLET.png`, `WAVE99_ACTUAL_MARKET_MOBILE.png`에 보존했고 결정 근거는 ADR-076이다. 현재 수용상태는 `CRITICAL_LAG_FAILURE_PRESERVED_QUARANTINE_IMPLEMENTED_ACTUAL_RELEASE_AND_5M_PASS_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN`이다.
+
+## 75. Wave 100 SIHO·100후보·활성화형 trailing 진행 증거
+
+사용자 승인 장기 목표 원문은 2,079줄·50,730 byte이며 SHA-256은
+`d0e098c539da78bfb0a00d726eb32ad0697581d050d37b383abf8f466115204f`다. 이 Wave는
+수익률을 높게 보이는 후보가 아니라 동일 입력·비용·분할에서 OOS·STRESS·multiple-testing을
+통과한 PAPER 근거만 남긴다. 실제 주문·private API·API Key·wallet·runtime AI는 계속 0이다.
+
+| 항목 | 현재 상태 | 이번 작업 근거 |
+|---|---|---|
+| SIHO 공식 채널·전체 목록 | `COMPLETE_METADATA` | 기준 video `1mJDNm4Yko4`, channel ID·handle과 공개영상 59개 전체의 목록·watch metadata를 hydration했다. 장편 32개·Shorts 27개다. 이는 영상 내용 전체검토 완료가 아니다. |
+| SIHO 설명 원문 수집 | `COMPLETE` | 공개영상 59개 설명을 모두 검사하고 원문·checksum·영상 연결을 `SIHO_DESCRIPTION_ARCHIVE_MANIFEST.json`에 보존했다. |
+| SIHO 자막·ASR·frame 전체검토 | `ASSETS_COLLECTED_REVIEW_NOT_RUN` | 장편 32개, 총 25,843초에 공개 transcript는 0개다. 분리된 연구도구로 ASR timeline 32개, overview frame 2,585개, scene frame 4개를 checkpoint 수집했고 32개 timeline과 2,589개 frame의 파일·byte·checksum을 독립 재검증했다. timeline·frame·전체 영상 내용 검토는 각각 0개이므로 exact 전략규칙은 아직 확인하지 않았다. |
+| SIHO 현재 exact 전략 | `BLOCKED` | 공개 설명에서 EMA·RSI·market structure·retest·SL·TP·trailing·risk 개념은 확인했지만 exact 수치·순서·timeframe·sizing이 없어 `CURRENT_STRATEGY = UNCONFIRMED`다. |
+| 20×5 후보 사전등록 | `PASS` | Registry는 100개 고유 trial, screening eligible 90, SIHO blocked 10, ACTIVE 0, LIVE SHADOW 0을 유지한다. 최종 25개 실행 소스를 다시 해시한 manifest SHA-256은 `0b4340ae832e21754ad55c05ef5ce4ae1b948a874a9eef4f3b572a932eac72fc`이다. |
+| manifest 실행 의미 고정 | `PASS` | Registry, 18 alpha evaluator, 완료봉·point-in-time universe·미세구조 feature builder, 6h 내부 연구시간구간, trailing, Candidate Planner, dataset freeze, screening 집계, exporter와 공통 archive reader·호가/체결 변환기를 source SHA-256에 묶었다. runner는 시작 전에 현재 파일을 다시 해시해 stale manifest를 거부한다. Final OOS 혼입도 fail closed다. |
+| screening 집계 계약 | `EXECUTED_NO_SELECTION` | Train 6·Validation 2 Run을 끝까지 처리했다. 100 trial 중 MICRO F17~F20의 20개는 EXECUTED, FAST 55개·SWING 15개는 데이터 구간 부족으로 FAILED_PRESERVED, SIHO 10개는 BLOCKED다. 계획계좌 200·관찰계좌 180·실행계좌 40·실패보존 140·차단 20, 보존 거래 77건이며 선택·ACTIVE·LIVE SHADOW는 모두 0이다. Final OOS는 봉인했다. |
+| horizon별 시간격리 | `PASS_FAIL_CLOSED` | MICRO 180초·FAST 1시간·SWING 6시간 purge·embargo와 최대보유·1초 체결여유를 trial별로 적용했다. 실제 네 Validation fold는 MICRO만 실행 가능했고 FAST 55개·SWING 15개 trial은 각각 `DATASET_WINDOW_INSUFFICIENT_*`로 실패 보존됐다. 구간이나 최대보유시간을 줄여 결과를 만들지 않았다. |
+| anchored·rolling·holdout | `EXECUTED_VALIDATION_ONLY_NO_PRIMARY_CANDIDATE` | 고정 parameter의 anchored·rolling 4-fold와 symbol·venue·regime·volatility·bull/bear/range·BASE/STRESS holdout을 생성했다. Validation 거래가 있는 trial은 12개였지만 계좌별 표본이 0~2건이고 primary gate 통과가 0이라 event replay 선택도 0이다. |
+| 시간순 독립계좌 carry | `PASS` | trial×BASE/STRESS별 1,000 USDT 시작계좌를 source Run마다 재설정하지 않고 현재·최고자산·연속손실을 시간순으로 넘긴다. 보존 거래 순손익·실행계좌·ShadowLedger 불일치 fail-closed 회귀를 통과했다. |
+| 실제 수신순 no-lookahead | `REGRESSION_PASS_REPLAY_PENDING` | SQLite·Parquet reader·ReplayEngine 순서를 `(receive_ts_ms, receive_monotonic_ns, venue_ts_ms, event_id)`로 통일했다. 늦게 받은 사건·legacy archive·limit·종료경계·비유한 체결 회귀와 backend 전체 회귀를 통과했다. 실제 저장 Run의 별도 ReplayEngine 결정성은 아직 `NOT_RUN`이다. |
+| trailing 구현 | `REGRESSION_PASS_SCREENING_EXECUTED_NOT_DEPLOYED` | 8상태, bid/ask 실행기준, 단조 stop, TP1, activation과 실제 runner 시작 시각 분리, 최근 256 event 중복차단, favorable mark·edge state 감사, strict recovery validation을 구현했다. Stage 1의 77개 거래 경로를 끝까지 처리했으나 완전 paired cohort는 0이라 ablation은 `EXECUTED_INSUFFICIENT_PAIRED_COHORTS`다. 실제 신규 릴리스 자연 PAPER 체결은 아직 `NOT_RUN`이다. |
+| 1~3초 종료 재발 방지 | `REGRESSION_PASS_SCREENING_EXECUTED_NOT_DEPLOYED` | 모든 근거약화 종료에 일반 `10초 유예 + 3초 지속`을 적용했다. 실제 평균 진입체결과 왕복비용을 반영한 activation이 본전보다 불리한 STRESS 진입 3건은 `TRAILING_ACTIVATION_NOT_FEE_SAFE`로 계좌 반영 전에 원자 거부됐다. 실제 신규 릴리스 자연표본은 아직 없다. |
+| 데이터 건강 잠금 자동복구 | `IMPLEMENTED_NOT_DEPLOYED` | 실행 릴리스 `6caad216…`에서 sequence gap 1·resync 1 후 scanner 12종목은 모두 `HEALTHY`였지만 `ENTRY_LOCK_DATA_HEALTH`가 남아 신규 PAPER 진입이 안전대기였다. 코드에 health flag 해제 경로가 없는 원인을 확인했다. 모든 gap·stale trade가 사라지고 fresh depth가 실제 처리된 뒤에만 해제하도록 수정했다. 교차호가·0 이하 수량·비유한 가격이나 수량은 latest book·PAPER 체결 전에 거부하며, 정규화한 같은 호가 snapshot만 피처·체결에 전달한다. 비유한 공개 체결도 캔들·전략 전에 격리하고, 피처 결함은 모든 결함 종목의 fresh snapshot 후에만 복구한다. 두 종목 gap·두 종목 피처 결함·비유한 체결을 포함한 직접 호출·관련 회귀 7건·정적검사는 PASS, 전체 회귀·불변 배포·실제 브라우저 자동복구는 `NOT_RUN`이다. |
+| 완료봉 참조 | `REGRESSION_PASS` | 연속·정렬·동일 시간구간·유효 OHLCV·완성시각을 검사해 ATR과 side별 구조 stop을 고정하고, 한 시간구간보다 오래된 계획 참조를 거부하는 회귀를 통과했다. |
+| adaptive trail | `REGRESSION_PASS` | OFI·aggressor flow·microprice·spread 중 두 사유 이상이 건강한 데이터에서 3초 지속돼야 좁아지고 상태를 recovery에 보존하는 회귀를 통과했다. |
+| 초보자 UI | `FIXTURE_BROWSER_PASS_ACTUAL_RELEASE_NOT_RUN` | 진행 거래와 집중 차트 계획 패널에 고정관리·활성화대기·러너 추적·종료대기와 보호선을 쉬운 한국어로 연결했다. 거래 상세에는 추적 조건 활성과 실제 runner 시작을 따로 표시한다. Playwright desktop·tablet·mobile 3종은 PASS했고 실제 신규 릴리스 브라우저는 아직 `NOT_RUN`이다. |
+| 새 코드 정적검사 | `PASS` | 변경 Python의 Ruff·Ruff format·`py_compile`, frontend ESLint·TypeScript typecheck, 생성 JSON 문법, `git diff --check`를 이번 작업에서 통과했다. |
+| 새 단위·통합·frontend | `PASS` | 최종 source에서 backend 전체 642건, frontend 14 files·72건, fixture backend 19건, Playwright desktop·tablet·mobile 3건, Ruff 변경파일·mypy 106 source·ESLint·TypeScript·Vite build·PAPER safety·security 142 source·repository hygiene·`git diff --check`를 통과했다. 전체 기존 Python format check의 과거 미포맷 41개는 이번 변경과 분리했고 변경 Python 58개는 format PASS다. 실제 신규 릴리스 브라우저는 아직 `NOT_RUN`이다. |
+| dataset freeze | `PASS_HISTORICAL_FORWARD_PENDING` | 13개 Run·2,690,582 events의 범위·건수·symbol·archive SHA를 다시 검증했다. Train 6·Validation 2·봉인 Final OOS 5이며 manifest SHA-256은 `61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20`이다. 미래 LIVE_PUBLIC Forward는 아직 없다. |
+| 200,000-event 자원 benchmark | `PASS_WITH_LIMITS` | 최종 소스 90 trial·180 독립 PAPER 계좌를 단독으로 234.054764초에 처리했다. 854.501 events/s·484.331 후보평가/s, 종료 RSS 673.688MiB·peak 687.734MiB, 완료거래 0이다. queue·persistence·dashboard·replay를 계측하지 않은 동기 benchmark이며 수익성 증거가 아니다. manifest SHA-256은 `0f24ce545e910a222da65f027e69dad89fa42451400bcde951515f0f48ed0910`이다. |
+| screening·ablation·walk-forward | `EXECUTED_NO_SELECTION` | screening manifest `cdbee9dbcd6b402192d8a09e8b3cb936d7c6f9c7b17271ca74a0b9a00f436ad9`, audit `2793d7bc9d73994ac3cdc3418712fb132105f6739eca0877eedc317b7698b2db`, trailing ablation `6996ca9444246d02b7518a4871f53dcd4ffd7759e1b5c3658e5212db218c201c`, walk-forward `b6db01731b599d5d2ab3b870a2be6fc5718d67407418747505b67ba47a7a03e3`, multiple-testing `a55688c313065503245b2656e1a5a71b99e7303d579477ecc40f015f3bd42236`다. recursive 982,240회 중 mismatch 1,080, point-in-time instrument metadata 없음, Validation gate PASS 0, PBO 조합 0으로 선택·ACTIVE·LIVE SHADOW 0, 수익성 `NOT_PROVEN`이다. |
+| 장시간 안정성 | `FAIL_BASELINE_PRESERVED` | 수정 전 immutable release `6caad216…`에서 21,600.025초·720표본·probe 오류 0을 채웠다. event +1,806,796·전략평가 +5,834,040, queue 최대 31, 메모리 +44.141MB, 비계획 reconnect·drop·critical lag·persistence fault·buffer drop·실제주문·인증 0이었다. 그러나 최종 `SAFETY_WAITING`·잠금 true, 처리 p95 최대 604.303ms, event-loop 최대 1,199ms·500ms 초과 21회, WAL checkpoint 최대 34.426초, sequence gap·resync 각 +1로 `FAIL`이다. 원본은 `evidence/WAVE99_POST_QUARANTINE_CLEAN_6H.json`이며 수정 후 6시간과 24시간은 `NOT_RUN`이다. |
+| 자금 준비 | `NOT_READY` | 충분한 Final OOS·LIVE_PUBLIC·BASE/STRESS·bootstrap·PBO·DSR·drawdown·집중도·24h 근거가 없다. 최대 상태도 독립검토 전에는 올리지 않는다. |
+
+현재 작업트리 구현은 실행 중인 immutable release `6caad216…`에 반영된 것으로 간주하지
+않는다. 전체 회귀와 fixture 브라우저는 PASS했지만 실제 신규 릴리스 배포·자동복구·자연 PAPER
+표본·30분·6시간·24시간은 별도 검증이 남아 있다. screening 선택 0이므로 event replay·full
+PAPER replay·LIVE SHADOW는 `NOT_RUN/BLOCKED_GATE`, Final OOS는 봉인, 자금 준비는
+`NOT_READY`다.

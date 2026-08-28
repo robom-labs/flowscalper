@@ -203,7 +203,7 @@ No real order, credential, transfer or withdrawal endpoint may exist.
 
 ## 2.13 Canonical candle and intraday research boundary
 
-- `backend/app/market_data/timeframes.py` is the single timeframe registry for API, dashboard labels, market history and research. Public chart intervals are 1m, 3m, 5m, 15m, 30m, 1h and 4h; internal research may additionally aggregate 1s, 5s, 15s and 30s.
+- `backend/app/market_data/timeframes.py` is the single timeframe registry for API, dashboard labels, market history and research. Public chart intervals are 1m, 3m, 5m, 15m, 30m, 1h and 4h; internal research may additionally aggregate 1s, 5s, 15s, 30s and the completed 6h research horizon.
 - `CandleBuilder` owns event-ID deduplication, symbol-local ordering and complete-boundary emission. The in-progress candle is never exposed as a completed research observation.
 - `backend/app/intraday/` consumes completed candles and provides research-only multi-timeframe features, horizon-specific immutable plans and ORIGINAL/MIRROR/REVERSE candidate variants.
 - The production `StrategyRegistry` remains the sole runtime strategy source. An intraday research result cannot register, promote or alter a runtime strategy.

@@ -131,12 +131,8 @@ def test_replay_candidate_count_deduplicates_main_and_league_accounts() -> None:
 
 def test_cooperative_market_replay_preserves_canonical_checksum() -> None:
     events = [
-        market_event("run-streaming", event_id="event-2", ts_ms=2_000).model_dump(
-            mode="json"
-        ),
-        market_event("run-streaming", event_id="event-1", ts_ms=1_000).model_dump(
-            mode="json"
-        ),
+        market_event("run-streaming", event_id="event-2", ts_ms=2_000).model_dump(mode="json"),
+        market_event("run-streaming", event_id="event-1", ts_ms=1_000).model_dump(mode="json"),
     ]
     engine = ReplayEngine()
     baseline = engine.replay_market_path(
@@ -167,6 +163,51 @@ def test_cooperative_market_replay_preserves_canonical_checksum() -> None:
     assert checkpoints >= 2
 
 
+def test_market_replay_and_ledger_use_observed_receive_order(tmp_path: Path) -> None:
+    received_first = market_event(
+        "run-receive-order",
+        event_id="received-first",
+        ts_ms=2_000,
+    ).model_copy(update={"receive_monotonic_ns": 10})
+    received_second = market_event(
+        "run-receive-order",
+        event_id="received-second",
+        ts_ms=1_000,
+    ).model_copy(update={"receive_monotonic_ns": 20})
+    events = [
+        received_second.model_dump(mode="json"),
+        received_first.model_dump(mode="json"),
+    ]
+    events[0]["receive_ts_ms"] = 4_000
+    events[1]["receive_ts_ms"] = 3_000
+
+    digest = ReplayEngine().replay_market_path(
+        events,
+        config={"seed": 20260822},
+        strategy_version="receive-order-test",
+        seed=20260822,
+        decision_path=(),
+        final_state="OBSERVED_RECEIVE_ORDER",
+    )
+    assert digest.first_ts_ms == 2_000
+    assert digest.last_ts_ms == 1_000
+
+    ledger = SQLiteLedger(tmp_path / "receive-order.sqlite3")
+    ledger.start_run(
+        "run-receive-order",
+        mode="REPLAY",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260822},
+        started_ts_ms=1_000,
+    )
+    assert ledger.record_market_events(events) == 2
+    assert [row["event_id"] for row in ledger.list_market_events("run-receive-order")] == [
+        "received-first",
+        "received-second",
+    ]
+    ledger.close()
+
+
 def test_market_replay_event_limit_freezes_open_run_input_scope(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "event-limit-replay.sqlite3")
     runtime = PaperRuntime(
@@ -176,12 +217,8 @@ def test_market_replay_event_limit_freezes_open_run_input_scope(tmp_path: Path) 
         ledger=ledger,
         clock=DeterministicClock(),
     )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="event-1", ts_ms=1_000)
-    )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="event-2", ts_ms=2_000)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="event-1", ts_ms=1_000))
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="event-2", ts_ms=2_000))
     runtime.flush_storage()
 
     first = StoredMarketReplay().run(
@@ -190,9 +227,7 @@ def test_market_replay_event_limit_freezes_open_run_input_scope(tmp_path: Path) 
         created_ts_ms=2_100,
         event_limit=2,
     )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="event-3", ts_ms=3_000)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="event-3", ts_ms=3_000))
     runtime.flush_storage()
     second = StoredMarketReplay().run(
         ledger,
@@ -368,9 +403,7 @@ def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(
         "event-2",
     ]
     assert ledger.record_market_events([earlier.model_dump(mode="json")]) == 0
-    conflicting = earlier.model_copy(
-        update={"data": {**earlier.data, "bid": "1.0"}}
-    )
+    conflicting = earlier.model_copy(update={"data": {**earlier.data, "bid": "1.0"}})
     with pytest.raises(LedgerInvariantError, match="payload 불일치"):
         ledger.record_market_events([conflicting.model_dump(mode="json")])
     ledger.start_run(
@@ -386,9 +419,7 @@ def test_schema_v7_market_events_are_ordered_checksummed_immutable_and_counted(
     summaries = ledger.list_replayable_run_summaries()
     first_run = next(row for row in summaries if row["run_id"] == "run-market")
     assert first_run["market_event_count"] == 2
-    assert ledger.market_event_symbols("run-market") == [
-        {"symbol": "BTCUSDT", "event_count": 2}
-    ]
+    assert ledger.market_event_symbols("run-market") == [{"symbol": "BTCUSDT", "event_count": 2}]
     ledger.close()
 
     connection = sqlite3.connect(tmp_path / "ledger.sqlite3")
@@ -772,15 +803,11 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
         clock=DeterministicClock(),
     )
     runtime.paused = False
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="depth-1", ts_ms=1_000)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="depth-1", ts_ms=1_000))
     runtime.ingest_live_event(
         market_event(runtime.run_id, event_id="trade-1", ts_ms=1_100, event_type="TRADE")
     )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="depth-2", ts_ms=1_500)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="depth-2", ts_ms=1_500))
     runtime.ingest_live_event(
         market_event(runtime.run_id, event_id="trade-2", ts_ms=2_100, event_type="TRADE")
     )
@@ -845,24 +872,18 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
         )
         for index in range(4)
     ]
-    persisted_rows = [
-        runtime._persistable_market_event(event) for event in reversed(events)
-    ]
+    persisted_rows = [runtime._persistable_market_event(event) for event in reversed(events)]
     runtime._market_event_buffer = list(persisted_rows)
 
     runtime.flush_storage()
 
     assert ledger.count("market_events") == 0
     assert ledger.count("market_event_archives") == 1
-    assert ledger.market_event_symbols(runtime.run_id) == [
-        {"symbol": "BTCUSDT", "event_count": 4}
-    ]
+    assert ledger.market_event_symbols(runtime.run_id) == [{"symbol": "BTCUSDT", "event_count": 4}]
     assert [row["event_id"] for row in ledger.list_market_events(runtime.run_id)] == [
         f"event-{index}" for index in range(4)
     ]
-    assert len(
-        ledger.list_market_events(runtime.run_id, event_types=("TRADE",))
-    ) == 2
+    assert len(ledger.list_market_events(runtime.run_id, event_types=("TRADE",))) == 2
     assert ledger.list_market_events(runtime.run_id, limit=2)[-1]["event_id"] == "event-1"
     files = archive.dataset_files()
     assert len(files) == 1
@@ -879,6 +900,7 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
             symbol="BTCUSDT",
         )
     complete_table = pq.ParquetFile(files[0]).read()
+    assert {"receive_ts_ms", "receive_monotonic_ns"} <= set(complete_table.column_names)
     truncated_file = files[0].with_name("tampered-truncated.parquet")
     pq.write_table(complete_table.slice(0, complete_table.num_rows - 1), truncated_file)
     with pytest.raises(ValueError, match="배치 checksum"):
@@ -887,16 +909,19 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
             expected_checksum=repeated.checksum,
             symbol="BTCUSDT",
         )
-    assert len(
-        archive.read_market_event_batch_filtered(
-            files[0],
-            expected_checksum=repeated.checksum,
-            symbol="BTCUSDT",
-            event_types=("TRADE",),
-            start_ts_ms=1_000,
-            end_ts_ms=2_000,
+    assert (
+        len(
+            archive.read_market_event_batch_filtered(
+                files[0],
+                expected_checksum=repeated.checksum,
+                symbol="BTCUSDT",
+                event_types=("TRADE",),
+                start_ts_ms=1_000,
+                end_ts_ms=2_000,
+            )
         )
-    ) == 2
+        == 2
+    )
     replay = StoredMarketReplay().run(
         ledger,
         source_run_id=runtime.run_id,
@@ -928,9 +953,7 @@ def test_archive_manifest_stats_and_candles_use_one_full_commit(tmp_path: Path) 
         started_ts_ms=1_000,
     )
     assert ledger._connection.execute("PRAGMA wal_autocheckpoint").fetchone()[0] == 0
-    event = market_event(run_id, event_id="atomic-event", ts_ms=1_000).model_dump(
-        mode="json"
-    )
+    event = market_event(run_id, event_id="atomic-event", ts_ms=1_000).model_dump(mode="json")
     batch = archive.write_market_event_batch([event])
     statements: list[str] = []
     ledger._connection.set_trace_callback(statements.append)
@@ -944,9 +967,7 @@ def test_archive_manifest_stats_and_candles_use_one_full_commit(tmp_path: Path) 
     assert sum(statement == "COMMIT" for statement in statements) == 1
     assert ledger.count("market_event_archives") == 1
     assert ledger.count("candles") == 1
-    assert ledger.market_event_symbols(run_id) == [
-        {"symbol": "BTCUSDT", "event_count": 1}
-    ]
+    assert ledger.market_event_symbols(run_id) == [{"symbol": "BTCUSDT", "event_count": 1}]
     ledger.close()
 
 
@@ -1003,9 +1024,7 @@ def test_passive_checkpoint_runs_outside_commit_connection(tmp_path: Path) -> No
     )
     assert ledger.record_candles([candle_row(run_id)]) == 1
 
-    busy, log_frames, checkpointed_frames = run_passive_wal_checkpoint_in_process(
-        str(ledger.path)
-    )
+    busy, log_frames, checkpointed_frames = run_passive_wal_checkpoint_in_process(str(ledger.path))
 
     assert busy == 0
     assert log_frames > 0
@@ -1028,13 +1047,16 @@ def test_candle_timeline_range_reads_only_requested_event_window(tmp_path: Path)
         config={"seed": 20260822},
         started_ts_ms=1_000,
     )
-    assert ledger.record_candles(
-        [
-            candle_row(run_id, open_ts_ms=1_000),
-            candle_row(run_id, open_ts_ms=2_000),
-            candle_row(run_id, open_ts_ms=3_000),
-        ]
-    ) == 3
+    assert (
+        ledger.record_candles(
+            [
+                candle_row(run_id, open_ts_ms=1_000),
+                candle_row(run_id, open_ts_ms=2_000),
+                candle_row(run_id, open_ts_ms=3_000),
+            ]
+        )
+        == 3
+    )
 
     bounded = ledger.list_candles(
         run_id,
@@ -1066,9 +1088,7 @@ def test_archive_and_full_commit_use_independent_connection(tmp_path: Path) -> N
         config={"seed": 20260822},
         started_ts_ms=1_000,
     )
-    event = market_event(run_id, event_id="process-event", ts_ms=1_000).model_dump(
-        mode="json"
-    )
+    event = market_event(run_id, event_id="process-event", ts_ms=1_000).model_dump(mode="json")
 
     timings = persist_archives_and_candles_in_process(
         str(archive.root),
@@ -1084,9 +1104,7 @@ def test_archive_and_full_commit_use_independent_connection(tmp_path: Path) -> N
     assert float(timings["ledger_ms"]) >= 0
     assert ledger.count("market_event_archives") == 1
     assert ledger.count("candles") == 1
-    assert ledger.market_event_symbols(run_id) == [
-        {"symbol": "BTCUSDT", "event_count": 1}
-    ]
+    assert ledger.market_event_symbols(run_id) == [{"symbol": "BTCUSDT", "event_count": 1}]
     ledger.close()
 
 
@@ -1111,9 +1129,7 @@ def test_atomic_persistence_rolls_back_manifest_and_stats_on_candle_fault(
         started_ts_ms=1_000,
     )
     assert ledger.record_candles([candle_row(run_id)]) == 1
-    event = market_event(run_id, event_id="rollback-event", ts_ms=1_000).model_dump(
-        mode="json"
-    )
+    event = market_event(run_id, event_id="rollback-event", ts_ms=1_000).model_dump(mode="json")
     batch = archive.write_market_event_batch([event])
 
     with pytest.raises(LedgerInvariantError, match="중복 캔들 payload 불일치"):
@@ -1128,7 +1144,7 @@ def test_atomic_persistence_rolls_back_manifest_and_stats_on_candle_fault(
     ledger.close()
 
 
-def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
+def test_market_archive_timeline_limit_verifies_all_receive_order_batches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1203,9 +1219,9 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
     )
 
     assert [event["event_id"] for event in events] == ["limited-0"]
-    assert len(read_paths) == 1
-    assert yielded_archive_bytes == [read_paths[0].stat().st_size]
-    assert guard_steps == ["ENTER", "EXIT", "ENTER", "EXIT"]
+    assert len(read_paths) == 3
+    assert yielded_archive_bytes == [path.stat().st_size for path in read_paths]
+    assert guard_steps == ["ENTER", "EXIT", "ENTER", "EXIT"] * 3
 
     late_sqlite_event = market_event(
         "run-limited",
@@ -1221,7 +1237,7 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
     )
 
     assert [event["event_id"] for event in mixed_events] == ["limited-0"]
-    assert len(read_paths) == 1
+    assert len(read_paths) == 3
 
     early_sqlite_event = market_event(
         "run-limited",
@@ -1240,7 +1256,7 @@ def test_market_archive_timeline_limit_stops_after_first_sufficient_batch(
         "limited-early-sqlite",
         "limited-0",
     ]
-    assert len(read_paths) == 1
+    assert len(read_paths) == 3
     ledger.close()
 
 
@@ -1278,14 +1294,20 @@ def test_market_archive_separates_runtime_partitions_and_replays_both(
     assert "run=RUN-FIRST" in first.path.parts
     assert "run=RUN-SECOND" in second.path.parts
     assert first.path.parent != second.path.parent
-    assert archive.read_market_event_batch(
-        first.path,
-        expected_checksum=first.checksum,
-    ) == first_rows
-    assert archive.read_market_event_batch(
-        second.path,
-        expected_checksum=second.checksum,
-    ) == second_rows
+    assert (
+        archive.read_market_event_batch(
+            first.path,
+            expected_checksum=first.checksum,
+        )
+        == first_rows
+    )
+    assert (
+        archive.read_market_event_batch(
+            second.path,
+            expected_checksum=second.checksum,
+        )
+        == second_rows
+    )
 
 
 def test_runtime_persists_top10_book_without_mutating_live_event() -> None:
@@ -1307,6 +1329,7 @@ def test_runtime_persists_top10_book_without_mutating_live_event() -> None:
     expected = event.model_dump(mode="json")
     expected["data"]["bids"] = bids[:10]
     expected["data"]["asks"] = asks[:10]
+    expected["receive_ts_ms"] = event.venue_ts_ms + round(event.quality.lag_ms)
     assert persisted == expected
 
 
@@ -1372,9 +1395,9 @@ def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(
         and row.get("transition_id") is not None
     ]
     assert persisted_main_transitions
-    assert [
-        int(str(row["response_revision"])) for row in persisted_main_transitions
-    ] == list(range(1, len(persisted_main_transitions) + 1))
+    assert [int(str(row["response_revision"])) for row in persisted_main_transitions] == list(
+        range(1, len(persisted_main_transitions) + 1)
+    )
     assert all(
         int(str(row["occurred_ts_ms"])) == int(str(row["ts_ms"]))
         for row in persisted_main_transitions
@@ -1437,8 +1460,7 @@ def test_strategy_reports_include_empty_profiles_costs_pf_expectancy_and_confide
     empty = next(
         report
         for report in reports
-        if report["strategy_id"] == "CBR_CONTINUATION_V1"
-        and report["profile"] == "STRESS"
+        if report["strategy_id"] == "CBR_CONTINUATION_V1" and report["profile"] == "STRESS"
     )
     assert empty["sample_size"] == 0
     assert empty["profit_factor"] is None
@@ -1520,9 +1542,7 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         ledger=ledger,
         clock=DeterministicClock(),
     )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="api-depth", ts_ms=1_000)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="api-depth", ts_ms=1_000))
     with TestClient(create_app(runtime)) as client:
         runs = client.get("/api/replay/runs")
         assert runs.status_code == 200
@@ -1551,9 +1571,7 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         assert timeline.json()["symbol"] == "BTCUSDT"
         assert timeline.json()["total_events"] == 1
         assert timeline.json()["events"][0]["event_id"] == "api-depth"
-        assert timeline.json()["available_symbols"] == [
-            {"symbol": "BTCUSDT", "event_count": 1}
-        ]
+        assert timeline.json()["available_symbols"] == [{"symbol": "BTCUSDT", "event_count": 1}]
         preview = client.get(f"/api/replay/{runtime.run_id}/preview")
         assert preview.status_code == 200
         assert preview.json()["symbol"] == "BTCUSDT"
@@ -1571,8 +1589,7 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         assert analytics.status_code == 200
         assert len(analytics.json()) == len(STRATEGY_IDS) * 2
         assert all(
-            report["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
-            for report in analytics.json()
+            report["analysis_scope"] == "CURRENT_STRATEGY_VERSION" for report in analytics.json()
         )
         symbols = client.get("/api/analytics/strategy-symbols")
         assert symbols.status_code == 200
@@ -1589,15 +1606,11 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
         assert replay_transitions[-1]["payload"]["new_state"] == "COMPLETED"
         assert replay_transitions[-1]["payload"]["reversible"] is False
         assert all(
-            row["payload"]["transition_id"] == row["incident_id"]
-            for row in replay_transitions
+            row["payload"]["transition_id"] == row["incident_id"] for row in replay_transitions
         )
+        assert all(row["payload"]["run_id"] == runtime.run_id for row in replay_transitions)
         assert all(
-            row["payload"]["run_id"] == runtime.run_id for row in replay_transitions
-        )
-        assert all(
-            row["payload"]["cause_code"] == "USER_REPLAY_REQUEST"
-            for row in replay_transitions
+            row["payload"]["cause_code"] == "USER_REPLAY_REQUEST" for row in replay_transitions
         )
         assert all(row["payload"]["actor"] == "USER_UI" for row in replay_transitions)
         assert all(row["payload"]["strategy_id"] is None for row in replay_transitions)
@@ -1651,9 +1664,7 @@ def test_live_http_replay_uses_isolated_process_path(
         ledger=ledger,
         clock=DeterministicClock(),
     )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="isolated-depth", ts_ms=1_000)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="isolated-depth", ts_ms=1_000))
     runtime.flush_storage()
     runtime.ingest_live_event(
         market_event(runtime.run_id, event_id="isolated-buffered-depth", ts_ms=2_000)
@@ -1680,9 +1691,7 @@ def test_live_http_replay_uses_isolated_process_path(
     monkeypatch.setattr(
         PaperRuntime,
         "flush_storage",
-        lambda _runtime: pytest.fail(
-            "LIVE replay 요청이 강제 저장 flush를 호출했습니다."
-        ),
+        lambda _runtime: pytest.fail("LIVE replay 요청이 강제 저장 flush를 호출했습니다."),
     )
     monkeypatch.setattr(
         main_module,
@@ -1720,9 +1729,7 @@ def test_live_http_replay_auto_aborts_without_persisting_unsafe_result(
         ledger=ledger,
         clock=DeterministicClock(),
     )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="safety-depth", ts_ms=1_000)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="safety-depth", ts_ms=1_000))
     runtime.market_data_state = MarketDataState.LIVE
     runtime.paused = False
     baseline = runtime.replay_live_safety_snapshot()
@@ -1796,9 +1803,7 @@ def test_live_http_replay_auto_aborts_without_persisting_unsafe_result(
         assert worker_stopped.is_set()
         assert ledger.list_replay_runs(runtime.run_id) == []
         transitions = ledger.list_incidents(category="REPLAY_STATE_TRANSITION")
-        assert transitions[-1]["payload"]["cause_code"] == (
-            "REPLAY_ABORTED_LIVE_SAFETY"
-        )
+        assert transitions[-1]["payload"]["cause_code"] == ("REPLAY_ABORTED_LIVE_SAFETY")
 
 
 def test_live_timeline_is_process_isolated_and_focus_uses_bounded_reader(
@@ -1858,8 +1863,7 @@ def test_live_timeline_is_process_isolated_and_focus_uses_bounded_reader(
 
     timeline = client.get("/api/replay/run-live-ui-replay/timeline?symbol=BTCUSDT")
     focus = client.get(
-        "/api/replay/run-live-ui-replay/focus"
-        "?trade_id=trade-live-focus&profile=BASE"
+        "/api/replay/run-live-ui-replay/focus?trade_id=trade-live-focus&profile=BASE"
     )
 
     assert timeline.status_code == 200
@@ -1912,9 +1916,7 @@ def test_live_replay_returns_busy_instead_of_hanging_other_ui_requests(
 
     with TestClient(create_app(runtime)) as client:
         worker = threading.Thread(
-            target=lambda: responses.append(
-                client.get(f"/api/replay/{runtime.run_id}/timeline")
-            )
+            target=lambda: responses.append(client.get(f"/api/replay/{runtime.run_id}/timeline"))
         )
         worker.start()
         assert started.wait(timeout=2)
@@ -1947,9 +1949,7 @@ def test_live_scanner_uses_actual_strategy_decision_without_fake_score() -> None
         deep_symbols=("BTCUSDT",),
         bootstrap_events=(),
     )
-    runtime.ingest_live_event(
-        market_event(runtime.run_id, event_id="scanner-depth", ts_ms=1_000)
-    )
+    runtime.ingest_live_event(market_event(runtime.run_id, event_id="scanner-depth", ts_ms=1_000))
 
     scanner = runtime.dashboard()["scanner"]
     assert isinstance(scanner, list)

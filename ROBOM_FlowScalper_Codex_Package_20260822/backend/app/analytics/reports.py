@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
-from math import sqrt
+from math import ceil, sqrt
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -256,9 +256,7 @@ class TradeAnalytics:
             for index, row in enumerate(eligible_rows, start=1)
         }
         for row in rows:
-            row["rank"] = rank_by_key.get(
-                (row["strategy_id"], row["profile"], row["symbol"])
-            )
+            row["rank"] = rank_by_key.get((row["strategy_id"], row["profile"], row["symbol"]))
         return sorted(
             rows,
             key=lambda row: (
@@ -285,8 +283,7 @@ def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
             str(
                 trade.get(
                     "entry_ts_ms",
-                    int(str(trade["exit_ts_ms"]))
-                    - int(str(trade.get("holding_ms", 0))),
+                    int(str(trade["exit_ts_ms"])) - int(str(trade.get("holding_ms", 0))),
                 )
             )
         ),
@@ -298,6 +295,13 @@ def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
         "time_to_tp1_ms": _optional_int(trade.get("time_to_tp1_ms")),
         "time_to_tp2_ms": _optional_int(trade.get("time_to_tp2_ms")),
         "time_to_stop_ms": _optional_int(trade.get("time_to_stop_ms")),
+        "exit_reason": str(trade.get("exit_reason", "UNKNOWN")),
+        "trailing_activation_ts_ms": _optional_int(trade.get("trailing_activation_ts_ms")),
+        "runner_started_ts_ms": _optional_int(trade.get("runner_started_ts_ms")),
+        "peak_unrealized_usdt": str(trade.get("peak_unrealized_usdt", "0")),
+        "giveback_usdt": str(trade.get("giveback_usdt", "0")),
+        "runner_net_pnl_usdt": str(trade.get("runner_net_pnl_usdt", "0")),
+        "trail_trigger_slippage_usdt": str(trade.get("trail_trigger_slippage_usdt", "0")),
         "gross_pnl_usdt": str(trade["gross_pnl_usdt"]),
         "fees_usdt": str(trade["fees_usdt"]),
         "slippage_usdt": str(trade["slippage_usdt"]),
@@ -319,13 +323,9 @@ def _strategy_report(
     sample_size = len(ordered)
     regimes = sorted({str(trade["regime"]) for trade in ordered})
     symbols = sorted({str(trade["symbol"]) for trade in ordered})
-    sides = {
-        side: sum(trade["side"] == side for trade in ordered)
-        for side in ("LONG", "SHORT")
-    }
+    sides = {side: sum(trade["side"] == side for trade in ordered) for side in ("LONG", "SHORT")}
     span_days = (
-        (int(str(ordered[-1]["exit_ts_ms"])) - int(str(ordered[0]["entry_ts_ms"])))
-        / 86_400_000
+        (int(str(ordered[-1]["exit_ts_ms"])) - int(str(ordered[0]["entry_ts_ms"]))) / 86_400_000
         if ordered
         else 0.0
     )
@@ -414,6 +414,20 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
             "median_time_to_tp1_ms": None,
             "median_time_to_tp2_ms": None,
             "median_time_to_stop_ms": None,
+            "trail_activation_count": 0,
+            "trail_activation_rate": None,
+            "tp1_fill_rate": None,
+            "runner_count": 0,
+            "runner_rate": None,
+            "runner_net_contribution_usdt": "0",
+            "mfe_capture_ratio_mean": None,
+            "average_peak_giveback_usdt": "0",
+            "median_peak_giveback_usdt": "0",
+            "p90_peak_giveback_usdt": "0",
+            "trailing_exit_count": 0,
+            "stop_before_trail_activation_count": 0,
+            "activation_after_net_negative_exit_count": 0,
+            "trail_trigger_slippage_usdt": "0",
             "regime_contributions": [],
             "metric_status": {
                 "omega_ratio": "NOT_AVAILABLE_NO_LOSSES",
@@ -425,9 +439,7 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
     pnl = [Decimal(str(trade["net_pnl_usdt"])) for trade in trades]
     gross = sum((Decimal(str(trade["gross_pnl_usdt"])) for trade in trades), Decimal(0))
     fees = sum((Decimal(str(trade["fees_usdt"])) for trade in trades), Decimal(0))
-    slippage = sum(
-        (Decimal(str(trade["slippage_usdt"])) for trade in trades), Decimal(0)
-    )
+    slippage = sum((Decimal(str(trade["slippage_usdt"])) for trade in trades), Decimal(0))
     net = sum(pnl, Decimal(0))
     wins = [value for value in pnl if value > 0]
     losses = [value for value in pnl if value < 0]
@@ -462,20 +474,14 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         peak = max(peak, equity)
         maximum_drawdown = max(maximum_drawdown, peak - equity)
     downside_deviation = (
-        sum((min(value, Decimal(0)) ** 2 for value in pnl), Decimal(0))
-        / Decimal(len(pnl))
+        sum((min(value, Decimal(0)) ** 2 for value in pnl), Decimal(0)) / Decimal(len(pnl))
     ).sqrt()
     expectancy = net / len(pnl)
-    sortino_ratio = (
-        expectancy / downside_deviation if downside_deviation > 0 else None
-    )
+    sortino_ratio = expectancy / downside_deviation if downside_deviation > 0 else None
     calmar_ratio = net / maximum_drawdown if maximum_drawdown > 0 else None
     turnover = sum(
         (
-            (
-                Decimal(str(trade["entry_price"]))
-                + Decimal(str(trade["exit_price"]))
-            )
+            (Decimal(str(trade["entry_price"])) + Decimal(str(trade["exit_price"])))
             * Decimal(str(trade["quantity"]))
             for trade in trades
         ),
@@ -498,15 +504,29 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         if trade.get("time_to_stop_ms") is not None
     )
     mae_values = [
-        Decimal(str(trade["mae_r"]))
-        for trade in trades
-        if trade.get("mae_r") is not None
+        Decimal(str(trade["mae_r"])) for trade in trades if trade.get("mae_r") is not None
     ]
     mfe_values = [
-        Decimal(str(trade["mfe_r"]))
-        for trade in trades
-        if trade.get("mfe_r") is not None
+        Decimal(str(trade["mfe_r"])) for trade in trades if trade.get("mfe_r") is not None
     ]
+    trail_activation_count = sum(
+        trade.get("trailing_activation_ts_ms") is not None for trade in trades
+    )
+    runner_count = sum(trade.get("runner_started_ts_ms") is not None for trade in trades)
+    runner_net_contribution = sum(
+        (Decimal(str(trade.get("runner_net_pnl_usdt", "0"))) for trade in trades),
+        Decimal(0),
+    )
+    givebacks = sorted(Decimal(str(trade.get("giveback_usdt", "0"))) for trade in trades)
+    peak_capture_ratios = [
+        Decimal(str(trade["net_pnl_usdt"])) / Decimal(str(trade.get("peak_unrealized_usdt", "0")))
+        for trade in trades
+        if Decimal(str(trade.get("peak_unrealized_usdt", "0"))) > 0
+    ]
+    trail_trigger_slippage = sum(
+        (Decimal(str(trade.get("trail_trigger_slippage_usdt", "0"))) for trade in trades),
+        Decimal(0),
+    )
     cost_denominator = sum((abs(value) for value in pnl), Decimal(0)) + fees + slippage
     regime_contributions = []
     for regime in sorted({str(trade["regime"]) for trade in trades}):
@@ -520,9 +540,7 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
                 "regime": regime,
                 "sample_size": len(regime_pnl),
                 "net_pnl": str(sum(regime_pnl, Decimal(0))),
-                "expectancy_usdt": str(
-                    sum(regime_pnl, Decimal(0)) / len(regime_pnl)
-                ),
+                "expectancy_usdt": str(sum(regime_pnl, Decimal(0)) / len(regime_pnl)),
             }
         )
     return {
@@ -544,43 +562,55 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         else None,
         "profit_factor": str(profit_factor) if profit_factor is not None else None,
         "omega_ratio": str(profit_factor) if profit_factor is not None else None,
-        "sortino_ratio_per_trade": (
-            str(sortino_ratio) if sortino_ratio is not None else None
-        ),
-        "calmar_ratio_nonannualized": (
-            str(calmar_ratio) if calmar_ratio is not None else None
-        ),
+        "sortino_ratio_per_trade": (str(sortino_ratio) if sortino_ratio is not None else None),
+        "calmar_ratio_nonannualized": (str(calmar_ratio) if calmar_ratio is not None else None),
         "downside_deviation_usdt": str(downside_deviation),
         "gross_pnl": str(gross),
         "fees": str(fees),
         "slippage": str(slippage),
         "net_pnl": str(net),
-        "cost_burden": str((fees + slippage) / cost_denominator)
-        if cost_denominator > 0
-        else None,
+        "cost_burden": str((fees + slippage) / cost_denominator) if cost_denominator > 0 else None,
         "maximum_drawdown": str(maximum_drawdown),
         "turnover_usdt": str(turnover),
         "turnover_ratio": str(turnover / Decimal("1000")),
-        "mae_r_mean": str(sum(mae_values, Decimal(0)) / len(mae_values))
-        if mae_values
-        else None,
-        "mfe_r_mean": str(sum(mfe_values, Decimal(0)) / len(mfe_values))
-        if mfe_values
-        else None,
+        "mae_r_mean": str(sum(mae_values, Decimal(0)) / len(mae_values)) if mae_values else None,
+        "mfe_r_mean": str(sum(mfe_values, Decimal(0)) / len(mfe_values)) if mfe_values else None,
         "median_hold_ms": int(median(holds)),
         "p90_hold_ms": _percentile(holds, 0.90),
         "tp1_sample_size": len(times_to_tp1),
         "tp2_sample_size": len(times_to_tp2),
         "stop_sample_size": len(times_to_stop),
-        "median_time_to_tp1_ms": (
-            int(median(times_to_tp1)) if times_to_tp1 else None
+        "median_time_to_tp1_ms": (int(median(times_to_tp1)) if times_to_tp1 else None),
+        "median_time_to_tp2_ms": (int(median(times_to_tp2)) if times_to_tp2 else None),
+        "median_time_to_stop_ms": (int(median(times_to_stop)) if times_to_stop else None),
+        "trail_activation_count": trail_activation_count,
+        "trail_activation_rate": str(Decimal(trail_activation_count) / Decimal(len(trades))),
+        "tp1_fill_rate": str(Decimal(len(times_to_tp1)) / Decimal(len(trades))),
+        "runner_count": runner_count,
+        "runner_rate": str(Decimal(runner_count) / Decimal(len(trades))),
+        "runner_net_contribution_usdt": str(runner_net_contribution),
+        "mfe_capture_ratio_mean": (
+            str(sum(peak_capture_ratios, Decimal(0)) / len(peak_capture_ratios))
+            if peak_capture_ratios
+            else None
         ),
-        "median_time_to_tp2_ms": (
-            int(median(times_to_tp2)) if times_to_tp2 else None
+        "average_peak_giveback_usdt": str(sum(givebacks, Decimal(0)) / len(givebacks)),
+        "median_peak_giveback_usdt": str(median(givebacks)),
+        "p90_peak_giveback_usdt": str(givebacks[max(0, ceil(len(givebacks) * 0.9) - 1)]),
+        "trailing_exit_count": sum(
+            str(trade.get("exit_reason")) == "TRAILING_STOP" for trade in trades
         ),
-        "median_time_to_stop_ms": (
-            int(median(times_to_stop)) if times_to_stop else None
+        "stop_before_trail_activation_count": sum(
+            str(trade.get("exit_reason")) == "STOP"
+            and trade.get("trailing_activation_ts_ms") is None
+            for trade in trades
         ),
+        "activation_after_net_negative_exit_count": sum(
+            trade.get("trailing_activation_ts_ms") is not None
+            and Decimal(str(trade["net_pnl_usdt"])) < 0
+            for trade in trades
+        ),
+        "trail_trigger_slippage_usdt": str(trail_trigger_slippage),
         "regime_contributions": regime_contributions,
         "metric_status": {
             "omega_ratio": (
@@ -605,9 +635,7 @@ def _wilson_interval(wins: int, total: int) -> dict[str, str] | None:
     denominator = 1 + z * z / total
     center = (proportion + z * z / (2 * total)) / denominator
     margin = (
-        z
-        * sqrt(proportion * (1 - proportion) / total + z * z / (4 * total * total))
-        / denominator
+        z * sqrt(proportion * (1 - proportion) / total + z * z / (4 * total * total)) / denominator
     )
     return {
         "lower": str(max(0.0, center - margin)),

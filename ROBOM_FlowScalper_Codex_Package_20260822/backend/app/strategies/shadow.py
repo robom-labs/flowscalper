@@ -50,6 +50,34 @@ class ShadowTrade:
     time_to_tp1_ms: int | None = None
     time_to_tp2_ms: int | None = None
     time_to_stop_ms: int | None = None
+    trailing_activation_ts_ms: int | None = None
+    runner_started_ts_ms: int | None = None
+    peak_unrealized_usdt: Decimal = Decimal(0)
+    giveback_usdt: Decimal = Decimal(0)
+    runner_net_pnl_usdt: Decimal = Decimal(0)
+    trail_trigger_slippage_usdt: Decimal = Decimal(0)
+    trailing_state_checksum: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.closed_ts_ms < self.opened_ts_ms:
+            raise ValueError("shadow PAPER 거래 종료 시각은 진입 이전일 수 없습니다.")
+        milestones = (
+            self.tp1_hit_ts_ms,
+            self.tp2_hit_ts_ms,
+            self.trailing_activation_ts_ms,
+            self.runner_started_ts_ms,
+        )
+        if any(
+            timestamp is not None
+            and (timestamp < self.opened_ts_ms or timestamp > self.closed_ts_ms)
+            for timestamp in milestones
+        ):
+            raise ValueError("shadow PAPER milestone 시각이 진입·종료 범위를 벗어났습니다.")
+        if self.runner_started_ts_ms is not None and (
+            self.trailing_activation_ts_ms is None
+            or self.runner_started_ts_ms < self.trailing_activation_ts_ms
+        ):
+            raise ValueError("shadow PAPER runner는 trailing 활성화 후에만 시작할 수 있습니다.")
 
 
 @dataclass(slots=True)
@@ -139,6 +167,13 @@ class ShadowLedger:
         time_to_tp1_ms: int | None = None,
         time_to_tp2_ms: int | None = None,
         time_to_stop_ms: int | None = None,
+        trailing_activation_ts_ms: int | None = None,
+        runner_started_ts_ms: int | None = None,
+        peak_unrealized_usdt: Decimal = Decimal(0),
+        giveback_usdt: Decimal = Decimal(0),
+        runner_net_pnl_usdt: Decimal = Decimal(0),
+        trail_trigger_slippage_usdt: Decimal = Decimal(0),
+        trailing_state_checksum: str | None = None,
     ) -> ShadowTrade:
         account = self.account(strategy_id, profile)
         matches = [
@@ -177,6 +212,13 @@ class ShadowLedger:
             time_to_tp1_ms=time_to_tp1_ms,
             time_to_tp2_ms=time_to_tp2_ms,
             time_to_stop_ms=time_to_stop_ms,
+            trailing_activation_ts_ms=trailing_activation_ts_ms,
+            runner_started_ts_ms=runner_started_ts_ms,
+            peak_unrealized_usdt=peak_unrealized_usdt,
+            giveback_usdt=giveback_usdt,
+            runner_net_pnl_usdt=runner_net_pnl_usdt,
+            trail_trigger_slippage_usdt=trail_trigger_slippage_usdt,
+            trailing_state_checksum=trailing_state_checksum,
         )
         account.trades.append(trade)
         account.open_positions.pop(position.symbol, None)
@@ -237,9 +279,7 @@ class ShadowLedger:
         for value in rows:
             if not isinstance(value, Mapping):
                 raise ValueError("shadow 복구 계좌 형식이 잘못됐습니다.")
-            key = ShadowAccountKey(
-                str(value["strategy_id"]), CostProfile(str(value["profile"]))
-            )
+            key = ShadowAccountKey(str(value["strategy_id"]), CostProfile(str(value["profile"])))
             if key in seen or key not in self._accounts:
                 raise ValueError(f"shadow 복구 계좌가 중복되거나 미등록입니다: {key}")
             seen.add(key)
@@ -250,9 +290,7 @@ class ShadowLedger:
             account.realized_pnl_usdt = Decimal(str(value["realized_pnl_usdt"]))
             account.fees_usdt = Decimal(str(value["fees_usdt"]))
             account.slippage_usdt = Decimal(str(value["slippage_usdt"]))
-            account.maximum_drawdown_usdt = Decimal(
-                str(value["maximum_drawdown_usdt"])
-            )
+            account.maximum_drawdown_usdt = Decimal(str(value["maximum_drawdown_usdt"]))
             positions = value.get("open_positions")
             if isinstance(positions, Mapping):
                 account.open_positions = {
@@ -275,9 +313,7 @@ class ShadowLedger:
             if not isinstance(trade_rows, list):
                 raise ValueError("shadow 복구 거래 목록 형식이 잘못됐습니다.")
             account.trades = [
-                _shadow_trade_from_payload(row)
-                for row in trade_rows
-                if isinstance(row, Mapping)
+                _shadow_trade_from_payload(row) for row in trade_rows if isinstance(row, Mapping)
             ]
             if len(account.trades) != len(trade_rows):
                 raise ValueError("shadow 복구 거래 행 형식이 잘못됐습니다.")
@@ -339,6 +375,13 @@ def _shadow_trade_payload(trade: ShadowTrade) -> dict[str, object]:
         "time_to_tp1_ms": trade.time_to_tp1_ms,
         "time_to_tp2_ms": trade.time_to_tp2_ms,
         "time_to_stop_ms": trade.time_to_stop_ms,
+        "trailing_activation_ts_ms": trade.trailing_activation_ts_ms,
+        "runner_started_ts_ms": trade.runner_started_ts_ms,
+        "peak_unrealized_usdt": str(trade.peak_unrealized_usdt),
+        "giveback_usdt": str(trade.giveback_usdt),
+        "runner_net_pnl_usdt": str(trade.runner_net_pnl_usdt),
+        "trail_trigger_slippage_usdt": str(trade.trail_trigger_slippage_usdt),
+        "trailing_state_checksum": trade.trailing_state_checksum,
     }
 
 
@@ -364,6 +407,17 @@ def _shadow_trade_from_payload(payload: Mapping[str, object]) -> ShadowTrade:
         time_to_tp1_ms=_optional_int(payload.get("time_to_tp1_ms")),
         time_to_tp2_ms=_optional_int(payload.get("time_to_tp2_ms")),
         time_to_stop_ms=_optional_int(payload.get("time_to_stop_ms")),
+        trailing_activation_ts_ms=_optional_int(payload.get("trailing_activation_ts_ms")),
+        runner_started_ts_ms=_optional_int(payload.get("runner_started_ts_ms")),
+        peak_unrealized_usdt=Decimal(str(payload.get("peak_unrealized_usdt", "0"))),
+        giveback_usdt=Decimal(str(payload.get("giveback_usdt", "0"))),
+        runner_net_pnl_usdt=Decimal(str(payload.get("runner_net_pnl_usdt", "0"))),
+        trail_trigger_slippage_usdt=Decimal(str(payload.get("trail_trigger_slippage_usdt", "0"))),
+        trailing_state_checksum=(
+            str(payload["trailing_state_checksum"])
+            if payload.get("trailing_state_checksum") is not None
+            else None
+        ),
     )
 
 

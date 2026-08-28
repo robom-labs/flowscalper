@@ -1,0 +1,265 @@
+{
+  "archive_verification": {
+    "event_count": 2690582,
+    "method": "RECOMPUTED_RUN_EVENT_RANGE_COUNT_AND_FILE_SHA256",
+    "run_count": 13,
+    "status": "PASS"
+  },
+  "candidate_contract": {
+    "alpha_family_count": 20,
+    "exit_module_count": 5,
+    "live_shadow_may_execute": false,
+    "same_historical_dataset_required": true,
+    "screening_may_execute": true,
+    "trial_count": 100
+  },
+  "forward_live_public": {
+    "may_not_be_reassigned_to_historical_split": true,
+    "must_start_after_historical_freeze": true,
+    "status": "NOT_STARTED"
+  },
+  "generated_ts_utc": "2026-08-28T01:32:06.015301+00:00",
+  "historical_splits": {
+    "final_oos_run_ids": [
+      "RUN-4C905F26DA0D",
+      "RUN-72EB83B350A7",
+      "RUN-8805DB58DCE8",
+      "RUN-D1CBBE3D2458",
+      "RUN-517B78C88366"
+    ],
+    "final_oos_start_ts_ms": 1787633768081,
+    "horizon_without_four_usable_validation_folds_must_fail": true,
+    "maximum_holding_ms_by_horizon": {
+      "FAST_INTRADAY": 3600000,
+      "INTRADAY_SWING": 21600000,
+      "MICRO_SCALP": 180000
+    },
+    "purge_and_embargo_required": true,
+    "purge_embargo_ms_by_horizon": {
+      "FAST_INTRADAY": 3600000,
+      "INTRADAY_SWING": 21600000,
+      "MICRO_SCALP": 180000
+    },
+    "random_shuffle": false,
+    "symbol_venue_regime_volatility_cost_holdouts_required": true,
+    "train_end_ts_ms": 1787624630706,
+    "train_run_ids": [
+      "RUN-94899287D623",
+      "RUN-B987D1D386C6",
+      "RUN-6D9E264F0360",
+      "RUN-B85A51C5DAED",
+      "RUN-E6FE0A69A138",
+      "RUN-683EA01095FE"
+    ],
+    "validation_end_ts_ms": 1787633718374,
+    "validation_run_ids": [
+      "RUN-ED214939F990",
+      "RUN-8CD493F93260"
+    ],
+    "validation_start_ts_ms": 1787624684322
+  },
+  "manifest_sha256": "61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20",
+  "paper_only": true,
+  "private_api_enabled": false,
+  "real_orders_enabled": false,
+  "runs": [
+    {
+      "checksum": "98c8a953df5d1168d9dc39a420e0c499779953c6fbc0b74b311adedb3cae25cc",
+      "end_ts_ms": 1787608758058,
+      "event_count": 411835,
+      "role": "TRAIN",
+      "run_id": "RUN-B987D1D386C6",
+      "start_ts_ms": 1787605553533,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "d00ca234348452157e3e98efcabfc3b5d1ea127b6665f7929bd8f9ed610272ce",
+      "end_ts_ms": 1787611885088,
+      "event_count": 299028,
+      "role": "TRAIN",
+      "run_id": "RUN-94899287D623",
+      "start_ts_ms": 1787609630005,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "fc14c6b78d6b7ccb80554c0344c333aeb35d57c411f7545ab9304b0e21ed5295",
+      "end_ts_ms": 1787617105918,
+      "event_count": 308923,
+      "role": "TRAIN",
+      "run_id": "RUN-6D9E264F0360",
+      "start_ts_ms": 1787614985565,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "aa5e442e640a63f6ac0efdd679858119cf7413e43fc9832ce7b31db807a5604c",
+      "end_ts_ms": 1787621139795,
+      "event_count": 197902,
+      "role": "TRAIN",
+      "run_id": "RUN-B85A51C5DAED",
+      "start_ts_ms": 1787619906199,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "62646dd28da71cc9ba33e370c0621135c55138b8200f1e65780afa17f0f58049",
+      "end_ts_ms": 1787623764054,
+      "event_count": 384948,
+      "role": "TRAIN",
+      "run_id": "RUN-E6FE0A69A138",
+      "start_ts_ms": 1787621150215,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "6d118e445a999e5181f04015e3a0bf259213acdc8e8caef32b0ec08fba11e569",
+      "end_ts_ms": 1787624630706,
+      "event_count": 40181,
+      "role": "TRAIN",
+      "run_id": "RUN-683EA01095FE",
+      "start_ts_ms": 1787624427393,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "3c49658829d0f0434650f6c07d9e0514994a7580d80f225584b4d12a5422c4ba",
+      "end_ts_ms": 1787626304136,
+      "event_count": 283753,
+      "role": "VALIDATION",
+      "run_id": "RUN-ED214939F990",
+      "start_ts_ms": 1787624684322,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "8a9d5192a0ad6574170e0a41b8877a4ce67dd39c5083e177596194a0e34d8530",
+      "end_ts_ms": 1787633718374,
+      "event_count": 162250,
+      "role": "VALIDATION",
+      "run_id": "RUN-8CD493F93260",
+      "start_ts_ms": 1787632183932,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "b34ee779586a8da36371a5453ea5c5e57ba005766ffba351535addf6d3b58e3d",
+      "end_ts_ms": 1787635309719,
+      "event_count": 168659,
+      "role": "FINAL_OOS",
+      "run_id": "RUN-4C905F26DA0D",
+      "start_ts_ms": 1787633768081,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "785789a6f17d1443c03a0a714fca4fe241bd6477dac7057b64b498c756b7a3d4",
+      "end_ts_ms": 1787635640969,
+      "event_count": 26876,
+      "role": "FINAL_OOS",
+      "run_id": "RUN-72EB83B350A7",
+      "start_ts_ms": 1787635389634,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "ebf90178008bb94706be656261600a973a0b6e06c0cc1cf4f516c9e64991e7d5",
+      "end_ts_ms": 1787636567730,
+      "event_count": 33194,
+      "role": "FINAL_OOS",
+      "run_id": "RUN-8805DB58DCE8",
+      "start_ts_ms": 1787636254978,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "aef4e601d44f3f44a7c22a098439d559533b0db296f66a7d0d5c007a55b892c2",
+      "end_ts_ms": 1787638207084,
+      "event_count": 168504,
+      "role": "FINAL_OOS",
+      "run_id": "RUN-D1CBBE3D2458",
+      "start_ts_ms": 1787636583556,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    },
+    {
+      "checksum": "9f3692a0ef4f04046a8cab09a4faedda050253d2134362bacd994707c89e28a9",
+      "end_ts_ms": 1787641745892,
+      "event_count": 204529,
+      "role": "FINAL_OOS",
+      "run_id": "RUN-517B78C88366",
+      "start_ts_ms": 1787639835095,
+      "symbols": [
+        "MULTI"
+      ],
+      "venue": "BINANCE_USDM"
+    }
+  ],
+  "runtime_ai_enabled": false,
+  "schema_version": 2,
+  "source_evidence": {
+    "dataset_hash": "5107f072ce2584f8a25c4cc0968a1681af63165ede27e85e047bc0cce17496dc",
+    "execution_scope": "FULL_PREREGISTERED_ARCHIVE",
+    "path": "evidence/WAVE34_INTRADAY_RESEARCH.json",
+    "sha256": "e2b3ca0d72a51410215fe9a355926fa6889dc761184c77235074468c2075bf39"
+  },
+  "status": "FROZEN_HISTORICAL_FORWARD_PENDING",
+  "trial_manifest": {
+    "code_version": "cf5751505cfb197999bb18f8cd80dbf313e29696+research-bundle-sha256:fbb724d0cd97d0db6ca6862a80ef67ca878e68963bc5680bba8e496e36b570bc",
+    "file_sha256": "b1add8601f3d93a63d25a9eef5024d281619c0b2fc6be6b62714a595b8b5346f",
+    "manifest_sha256": "0b4340ae832e21754ad55c05ef5ce4ae1b948a874a9eef4f3b572a932eac72fc",
+    "path": "evidence/STRATEGY_100_TRIAL_MANIFEST.json",
+    "source_checksums": {
+      "backend/app/candidates/plans.py": "956e677b825559e4de125b976ddfc2b70403f7e3de6cd49b6f382d4fd088d60a",
+      "backend/app/costing/models.py": "73a20f98a1f279acdd26ca0f662ea1e235b30cc4e64f61185414a4c05038b063",
+      "backend/app/execution/models.py": "507b8473b42dea831945daf9f05b0a6524c384add0276f437d630dbd011225e2",
+      "backend/app/execution/portfolio.py": "77e5a8ed95a01a496208f25baa3fd384e5436ad6e427c64159c0e6ad370f9a53",
+      "backend/app/execution/simulator.py": "9877d6ef76654efdf8511654f77df2d524202e698c57d41978ea6cef86f74809",
+      "backend/app/execution/trailing.py": "279608098977f498f9420b85fdc64f9706f6bae1528e290d70ba9112b7e3eac4",
+      "backend/app/features/engine.py": "112ed5747e5a7bf7d77ab5d7588898476318590b1f89fff0635c44e24776e9a6",
+      "backend/app/market_data/candles.py": "b4b16b2ad7f9e0617887b2279ff7c2a93ac2c935e42b14c57e419134b7403c66",
+      "backend/app/market_data/timeframes.py": "b7ecf42fe04fe3b744d0064de8ba1928a96e0733a27304e7ab9853f3ad3c7268",
+      "backend/app/positions/manager.py": "868fc6931ac734fa291a606a1bdedc31dde33e4f458cbc4c45ca222479c6c629",
+      "backend/app/regime/classifier.py": "d71d3164962422efd0bcb2c060c7aef5778ef4a0838b8ca5a50ff75f35649560",
+      "backend/app/research/alpha_evaluators.py": "fe5a7b5b29156fd2abbdb59b21f5002fcc2d4c2c2b27342240d235ffd038c691",
+      "backend/app/research/alpha_features.py": "594e6ab6ca1ba7252151b59813d4c6dfc98234b02d1a47957c49aaa510f7d28f",
+      "backend/app/research/candidate_registry.py": "720747d323bd99ca76c245d44260c95554d5699271755bbd7a7a30b114ecb545",
+      "backend/app/research/dataset_freeze.py": "19d46dd4c89b3d5e341e7324f184b9d9c544fe1095afa82c4e77505b2cab1f67",
+      "backend/app/research/execution.py": "97a4ed6b1588b23a476542284773400f1cfacc1fdeaab948ff029cc15f15f065",
+      "backend/app/research/instrument_metadata.py": "035df6e7076427cebf341d46458ff4dd16e81c61b18623f87c8305baf592b7ce",
+      "backend/app/research/screening.py": "78ea0f126336546dbf9993e00ecee62afebd68ff60accf1afcd0e1edda56541a",
+      "backend/app/research/secondary_reports.py": "451ae2207c5955d328d39f4ea4a97570a480a576ac0e01780515a331c81372e3",
+      "backend/app/risk/manager.py": "26ca2b79f883056c0ac0bf90856f74f1d10938184e9ebec4e1430e91b675a968",
+      "backend/app/strategies/shadow.py": "553373aabf9fccfd42ecbfcb0b12545692c22f4d9d4fd31837fa5ae8c0f94985",
+      "scripts/benchmark_strategy_100_candidates.py": "065d0b5850b3b8a10134bf31ef7a06363194da281ad697b92c4a5d641fe1af41",
+      "scripts/export_strategy_100_manifest.py": "250ab45fe7feb2c1bebaf7e16b705fd20e96e728609f1c0a60037c0d8a129a82",
+      "scripts/research_intraday_candidates.py": "46ebf63ec499f6356895aa650f4b078586d7755cdab949afa8764f592f16f222",
+      "scripts/research_strategy_100_candidates.py": "03c5f965ff3f09ee26e28ac79c672c0d6b5567c9061ae76c32c172f98626387a"
+    }
+  }
+}

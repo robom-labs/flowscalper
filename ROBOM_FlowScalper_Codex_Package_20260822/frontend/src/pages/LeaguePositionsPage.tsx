@@ -2,6 +2,7 @@
 import { memo, useMemo, useState } from 'react'
 import { formatPrice, formatQuantity, formatRatio, formatUsdt } from '../format'
 import { strategyLabel } from '../strategyPresentation'
+import { trailingSummary } from '../trailingPresentation'
 import type { LeaguePosition, StrategyRow } from '../types'
 
 type ProfileFilter = 'BASE' | 'STRESS' | 'ALL'
@@ -20,7 +21,7 @@ const PositionRow = memo(function PositionRow({ position, strategy }: { position
       <td>{formatUsdt(position.notional)}<small>{formatRatio(position.effective_leverage, 'x')}</small></td>
       <td>{formatUsdt(position.gross_pnl)}<small>수수료 {formatUsdt(position.fees)} · 슬리피지 {formatUsdt(position.slippage)}</small></td>
       <td className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(position.net_pnl, { signed: true })}</td>
-      <td>{position.elapsed_seconds}초<small>{position.management_reason}</small></td>
+      <td>{position.elapsed_seconds}초<small>{position.management_reason}</small><small>{trailingSummary(position.trailing)}</small></td>
     </tr>
   )
 })

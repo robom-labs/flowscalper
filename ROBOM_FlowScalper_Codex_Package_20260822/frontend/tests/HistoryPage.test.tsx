@@ -27,6 +27,13 @@ const trade: HistoryRow = {
   time_to_tp1_ms: 800,
   time_to_tp2_ms: 1_696,
   time_to_stop_ms: null,
+  trailing_activation_ts_ms: 1_500,
+  runner_started_ts_ms: 1_700,
+  peak_unrealized_usdt: '1.2',
+  giveback_usdt: '0.35',
+  runner_net_pnl_usdt: '0.4',
+  trail_trigger_slippage_usdt: '0.02',
+  trailing_state_checksum: 'a'.repeat(64),
   quantity: '1',
   exit_reason: 'TP2',
   gross_pnl: '1',
@@ -71,6 +78,13 @@ test('clears stale trade detail when the current history no longer contains it',
   expect(screen.getByText('103')).toBeInTheDocument()
   expect(screen.getByText('손절까지')).toBeInTheDocument()
   expect(screen.getByText('해당 없음')).toBeInTheDocument()
+  expect(screen.getByText('추적 익절 활성화')).toBeInTheDocument()
+  expect(screen.getByText('러너 추적 시작')).toBeInTheDocument()
+  expect(screen.getByText('0.7초 뒤')).toBeInTheDocument()
+  expect(screen.getByText('최고 미실현 손익')).toBeInTheDocument()
+  expect(screen.getByText('고점 대비 되돌림')).toBeInTheDocument()
+  expect(screen.getByText('러너 순기여')).toBeInTheDocument()
+  expect(screen.getByText('추적 종료 가격차이 비용')).toBeInTheDocument()
 
   view.rerender(<HistoryPage rows={[]} currentRunId="run-history" onReplay={vi.fn()} />)
 

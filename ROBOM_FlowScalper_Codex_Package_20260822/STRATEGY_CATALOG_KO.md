@@ -84,6 +84,24 @@ Wave 34의 후보는 런타임 A~J Registry와 분리된 연구 전용 계층이
 
 Wave 39의 Binance USDⓈ-M 12종목·완성 5분봉 414,720개 사전등록 후보 6개도 BASE와 STRESS가 모두 음수여서 선택하지 않았다. Wave 41은 완성 1시간봉의 비용인식 추세가 진단 OOS 42건에서 BASE +32.212bp·PF 1.346, STRESS +20.212bp·PF 1.202였으나 bootstrap 95% 하한 -48.537bp, DSR 0, PBO 0.3714로 승격 gate를 통과하지 못했다. Wave 46의 고정 독립 과거구간 재현도 147일·166건에서 BASE 기대값 -18.263bp·PF 0.856, STRESS -30.263bp·PF 0.775로 실패해 K는 `RETIRED·OFF`이며 수익성은 `NOT_PROVEN`이다. 기계판독 결과는 `evidence/WAVE39_PUBLIC_TREND_RESEARCH.json`, `evidence/WAVE40_PUBLIC_HOURLY_TREND_DIAGNOSTIC.json`, `evidence/WAVE41_PUBLIC_COST_AWARE_TREND_DIAGNOSTIC.json`과 `evidence/wave46-strategy-survival/fixed-hourly-prior-holdout.json`에 보존한다.
 
+## 연구 전용 20×5 전략 경쟁리그
+
+새 장기 연구는 정확히 20개 alpha family와 5개 exit module을 곱한 100개 configuration을
+`evidence/STRATEGY_100_TRIAL_MANIFEST.json`에 사전등록한다. 이는 런타임 전략 100개를 동시에
+켜는 기능이 아니다. offline 100 → event replay 최대 25 → full PAPER replay 최대 10 →
+LIVE_PUBLIC SHADOW 3~6의 자원 제한 funnel이다.
+
+F01 SIHO exact와 F02 보수적 해석은 공개 entry·exit·timeframe·trailing·sizing 규칙이
+확정되지 않아 각각 다섯 exit, 총 10개 trial이 `BLOCKED`다. 나머지 90개도 dataset freeze와
+screening을 실행하기 전에는 `RESEARCH`일 뿐이다. 현재 manifest는 Registry, trailing 상태
+머신, Candidate Planner, dataset freeze와 exporter 다섯 소스 checksum을 함께 고정한다.
+현재 ACTIVE와 이 연구의 LIVE SHADOW는 모두 0이며, manifest 생성은 수익성 증거가 아니다.
+
+Exit E02~E05는 별도 가짜 체결을 사용하지 않고 공통 `PaperPortfolioEngine`에 연결된다.
+ATR·Chandelier·structure는 신호 전에 끝난 연속 완성봉의 ATR·구조 stop·완성시각을 계획에
+고정한다. E05는 건강한 데이터에서 adverse 근거 두 개 이상이 3초 지속된 뒤에만 trail을
+좁힌다. 이 구현의 실제 테스트·replay·ablation은 아직 `NOT_RUN`이다.
+
 ## 후보에서 불변 계획까지
 
 전략의 `QUALIFIED` 결과만 바로 체결되는 것은 아니다. 공통 Candidate Planner가 다음 항목을 모두 확정하고 비용·위험 게이트를 통과해야 한다.

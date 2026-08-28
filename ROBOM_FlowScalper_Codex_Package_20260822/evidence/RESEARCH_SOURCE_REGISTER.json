@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "collected_ts_utc": "2026-08-27T15:06:21Z",
+  "code_imported": false,
+  "dependencies_added": false,
+  "official_documents": [
+    {
+      "source_id": "BYBIT_OFFICIAL_TRAILING_FORMULA",
+      "url": "https://www.bybit.com/en/help-center/article/Trailing-Stop-Order-Perpetual-and-Futures-Trading",
+      "concept": "activation price, favorable high or low, distance and percentage retracement",
+      "adoption": "research specification only",
+      "private_order_path_adopted": false
+    },
+    {
+      "source_id": "BINANCE_PUBLIC_EXCHANGE_INFO",
+      "url": "https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data",
+      "concept": "public exchangeInfo, tickSize, stepSize, minimum quantity and notional",
+      "adoption": "existing public market and symbol-filter verification only",
+      "private_order_path_adopted": false
+    },
+    {
+      "source_id": "BINANCE_PUBLIC_LOCAL_BOOK",
+      "url": "https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/websocket-market-streams/How-to-manage-a-local-order-book-correctly",
+      "concept": "snapshot plus buffered depth sequence and resync invariants",
+      "adoption": "existing public local-order-book verification only",
+      "private_order_path_adopted": false
+    },
+    {
+      "source_id": "FREQTRADE_LOOKAHEAD_RECURSIVE_GUIDANCE",
+      "url": "https://www.freqtrade.io/en/stable/lookahead-analysis/",
+      "concept": "lookahead detection",
+      "adoption": "test-design reference only"
+    },
+    {
+      "source_id": "FREQTRADE_RECURSIVE_GUIDANCE",
+      "url": "https://docs.freqtrade.io/en/stable/recursive-analysis/",
+      "concept": "recursive indicator stability",
+      "adoption": "test-design reference only"
+    },
+    {
+      "source_id": "FREQTRADE_TRAILING_OFFSET_GUIDANCE",
+      "url": "https://www.freqtrade.io/en/stable/stoploss/",
+      "concept": "static protection before profit offset and monotonic positive trailing",
+      "adoption": "state-machine reference only"
+    },
+    {
+      "source_id": "BACKTRADER_STOPTRAIL_GUIDANCE",
+      "url": "https://www.backtrader.com/blog/posts/2017-03-22-stoptrail/stoptrail/",
+      "concept": "fixed distance or percentage trail and monotonic update",
+      "adoption": "state-machine reference only"
+    },
+    {
+      "source_id": "BACKTRADER_SLIPPAGE_GUIDANCE",
+      "url": "https://www.backtrader.com/docu/slippage/slippage/",
+      "concept": "requested price may not match and slippage affects order lifecycle",
+      "adoption": "test-design reference only"
+    }
+  ],
+  "academic_sources": [
+    {
+      "source_id": "BAILEY_ET_AL_PBO",
+      "url": "https://ssrn.com/abstract=2326253",
+      "title": "The Probability of Backtest Overfitting",
+      "publication_status": "journal publication listed by SSRN",
+      "adoption": "CSCV PBO gate",
+      "crypto_intraday_profitability_proof": false
+    },
+    {
+      "source_id": "BAILEY_LOPEZ_DE_PRADO_DSR",
+      "url": "https://doi.org/10.2139/ssrn.2460551",
+      "title": "The Deflated Sharpe Ratio",
+      "publication_status": "SSRN research paper",
+      "adoption": "multiple-testing and non-normality gate",
+      "crypto_intraday_profitability_proof": false
+    },
+    {
+      "source_id": "MOSKOWITZ_OOI_PEDERSEN_2012_TSMOM",
+      "url": "https://doi.org/10.1016/j.jfineco.2011.11.003",
+      "title": "Time Series Momentum",
+      "publication_status": "peer-reviewed Journal of Financial Economics article",
+      "adoption": "F15 hypothesis source",
+      "crypto_intraday_profitability_proof": false
+    },
+    {
+      "source_id": "CONT_KUKANOV_STOIKOV_2010_OFI",
+      "url": "https://arxiv.org/abs/1011.6402",
+      "title": "The Price Impact of Order Book Events",
+      "publication_status": "public preprint of later journal research",
+      "adoption": "OFI hypothesis source",
+      "crypto_intraday_profitability_proof": false
+    },
+    {
+      "source_id": "GOULD_BONART_2015_QUEUE_IMBALANCE",
+      "url": "https://arxiv.org/abs/1512.03492",
+      "title": "Queue Imbalance as a One-Tick-Ahead Price Predictor in a Limit Order Book",
+      "publication_status": "preprint",
+      "adoption": "F17 hypothesis source",
+      "crypto_intraday_profitability_proof": false
+    },
+    {
+      "source_id": "XU_GOULD_HOWISON_2019_MLOFI",
+      "url": "https://arxiv.org/abs/1907.06230",
+      "title": "Multi-Level Order-Flow Imbalance in a Limit Order Book",
+      "publication_status": "preprint",
+      "adoption": "F18 hypothesis source",
+      "crypto_intraday_profitability_proof": false
+    }
+  ],
+  "github_repositories": [
+    {
+      "repository": "freqtrade/freqtrade",
+      "commit": "997ef6e36ad01841cd9b237d2240acf23e0d144c",
+      "branch": "develop",
+      "license": "GPL-3.0",
+      "concept": "dry-run, lookahead and recursive analysis, strategy interface",
+      "code_imported": false,
+      "dependency_added": false,
+      "security_risk": "real-trading capability exists upstream; never import its private exchange path"
+    },
+    {
+      "repository": "polakowo/vectorbt",
+      "commit": "34b6d5935e3ea3eccd549e2592bc0f455b8045f5",
+      "branch": "master",
+      "license": "Apache-2.0 with Commons Clause",
+      "concept": "columnar screening structure",
+      "code_imported": false,
+      "dependency_added": false,
+      "security_risk": "non-standard Commons Clause; no code or dependency adoption"
+    },
+    {
+      "repository": "nautechsystems/nautilus_trader",
+      "commit": "f2b2addb99527e3c9465573a596284f47b9edf10",
+      "branch": "develop",
+      "license": "LGPL-3.0",
+      "concept": "deterministic event-driven architecture",
+      "code_imported": false,
+      "dependency_added": false,
+      "security_risk": "large external runtime and live adapters; architecture reference only"
+    },
+    {
+      "repository": "jesse-ai/jesse",
+      "commit": "d53f6d16446e61284f7d0ad297dfb5a70b1d1ae0",
+      "branch": "master",
+      "license": "MIT",
+      "concept": "research strategy interface",
+      "code_imported": false,
+      "dependency_added": false,
+      "security_risk": "live-trading features exist upstream; interface reference only"
+    },
+    {
+      "repository": "mementum/backtrader",
+      "commit": "b853d7c90b6721476eb5a5ea3135224e33db1f14",
+      "branch": "master",
+      "license": "GPL-3.0-or-later",
+      "concept": "StopTrail order lifecycle and slippage semantics",
+      "code_imported": false,
+      "dependency_added": false,
+      "security_risk": "bar-based broker assumptions differ from executable-book PAPER fills"
+    }
+  ]
+}

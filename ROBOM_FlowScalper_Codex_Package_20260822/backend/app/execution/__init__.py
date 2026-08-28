@@ -10,6 +10,19 @@ from backend.app.execution.models import (
     ProtectedPosition,
 )
 from backend.app.execution.simulator import PaperExecutionEngine
+from backend.app.execution.trailing import (
+    TrailingActivationNotFeeSafeError,
+    TrailingActivationRule,
+    TrailingDecision,
+    TrailingModel,
+    TrailingObservation,
+    TrailingPolicy,
+    TrailingReference,
+    TrailingState,
+    TrailingStateMachine,
+    TrailingTransition,
+    trailing_reference_from_completed_candles,
+)
 
 __all__ = [
     "BookSnapshot",
@@ -21,4 +34,15 @@ __all__ = [
     "PaperTradeService",
     "PortfolioSet",
     "ProtectedPosition",
+    "TrailingActivationNotFeeSafeError",
+    "TrailingActivationRule",
+    "TrailingDecision",
+    "TrailingModel",
+    "TrailingObservation",
+    "TrailingPolicy",
+    "TrailingReference",
+    "TrailingState",
+    "TrailingStateMachine",
+    "TrailingTransition",
+    "trailing_reference_from_completed_candles",
 ]

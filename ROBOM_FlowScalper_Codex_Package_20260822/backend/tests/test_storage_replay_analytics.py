@@ -212,6 +212,12 @@ def test_strategy_metrics_include_nonannualized_risk_turnover_and_regime_attribu
         "time_to_tp1_ms": 60_000,
         "time_to_tp2_ms": 120_000,
         "time_to_stop_ms": None,
+        "trailing_activation_ts_ms": 70_000,
+        "runner_started_ts_ms": 75_000,
+        "peak_unrealized_usdt": "2.0",
+        "giveback_usdt": "0.4",
+        "runner_net_pnl_usdt": "0.6",
+        "trail_trigger_slippage_usdt": "0.05",
     }
     loss = {
         **_sample_trade(
@@ -246,6 +252,20 @@ def test_strategy_metrics_include_nonannualized_risk_turnover_and_regime_attribu
     assert report["median_time_to_tp1_ms"] == 60_000
     assert report["median_time_to_tp2_ms"] == 120_000
     assert report["median_time_to_stop_ms"] == 184_000
+    assert report["trail_activation_count"] == 1
+    assert report["trail_activation_rate"] == "0.5"
+    assert report["tp1_fill_rate"] == "0.5"
+    assert report["runner_count"] == 1
+    assert report["runner_rate"] == "0.5"
+    assert report["runner_net_contribution_usdt"] == "0.6"
+    assert report["mfe_capture_ratio_mean"] == "0.7394"
+    assert report["average_peak_giveback_usdt"] == "0.2"
+    assert report["median_peak_giveback_usdt"] == "0.2"
+    assert report["p90_peak_giveback_usdt"] == "0.4"
+    assert report["trailing_exit_count"] == 0
+    assert report["stop_before_trail_activation_count"] == 1
+    assert report["activation_after_net_negative_exit_count"] == 0
+    assert report["trail_trigger_slippage_usdt"] == "0.05"
     assert report["metric_status"] == {
         "omega_ratio": "CALCULATED",
         "sortino_ratio_per_trade": "CALCULATED",

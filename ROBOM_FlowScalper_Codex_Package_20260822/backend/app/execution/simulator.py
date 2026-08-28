@@ -336,6 +336,7 @@ class PaperExecutionEngine:
             ExitReason.STOP: OrderIntent.STOP_EXIT,
             ExitReason.EDGE_DECAY: OrderIntent.EDGE_DECAY_EXIT,
             ExitReason.PROFIT_PROTECTION: OrderIntent.EDGE_DECAY_EXIT,
+            ExitReason.TRAILING_STOP: OrderIntent.STOP_EXIT,
             ExitReason.MAX_HOLD: OrderIntent.EMERGENCY_EXIT,
             ExitReason.EMERGENCY_STALE: OrderIntent.EMERGENCY_EXIT,
             ExitReason.DATA_GAP: OrderIntent.EMERGENCY_EXIT,

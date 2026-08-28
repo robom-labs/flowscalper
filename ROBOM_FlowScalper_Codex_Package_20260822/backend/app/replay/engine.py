@@ -97,10 +97,11 @@ class ReplayEngine:
         """저장된 공개시장 이벤트와 재처리 결정 경로를 하나의 checksum으로 묶는다."""
 
         ordered_events = sorted(
-            events,
+            (_normalize_market_event(event) for event in events),
             key=lambda event: (
-                int(str(event["venue_ts_ms"])),
+                int(str(event["receive_ts_ms"])),
                 int(str(event["receive_monotonic_ns"])),
+                int(str(event["venue_ts_ms"])),
                 str(event["event_id"]),
             ),
         )
@@ -110,8 +111,7 @@ class ReplayEngine:
         event_type_counts: dict[str, int] = {}
         symbol_counts: dict[str, int] = {}
         event_stream_digest = hashlib.sha256()
-        for index, source_event in enumerate(ordered_events, start=1):
-            event = _normalize_market_event(source_event)
+        for index, event in enumerate(ordered_events, start=1):
             event_id = str(event["event_id"])
             if event_id in event_ids:
                 raise ReplayIntegrityError("시장 리플레이에 중복 event_id가 있습니다.")
@@ -131,7 +131,7 @@ class ReplayEngine:
             cooperative_yield()
         input_checksum = event_stream_digest.hexdigest()
         material = {
-            "schema_version": 3,
+            "schema_version": 4,
             "strategy_version": strategy_version,
             "seed": seed,
             "config": dict(config),
@@ -148,12 +148,8 @@ class ReplayEngine:
             checksum=checksum,
             input_checksum=input_checksum,
             event_count=len(ordered_events),
-            first_ts_ms=(
-                int(str(ordered_events[0]["venue_ts_ms"])) if ordered_events else None
-            ),
-            last_ts_ms=(
-                int(str(ordered_events[-1]["venue_ts_ms"])) if ordered_events else None
-            ),
+            first_ts_ms=(int(str(ordered_events[0]["venue_ts_ms"])) if ordered_events else None),
+            last_ts_ms=(int(str(ordered_events[-1]["venue_ts_ms"])) if ordered_events else None),
             event_type_counts=dict(sorted(event_type_counts.items())),
             symbol_counts=dict(sorted(symbol_counts.items())),
             decision_path=normalized_path,
@@ -224,6 +220,7 @@ def _normalize_event(event: Mapping[str, object]) -> dict[str, object]:
 
 
 def _normalize_market_event(event: Mapping[str, object]) -> dict[str, object]:
+    receive_ts_ms = _market_event_receive_ts_ms(event)
     return {
         "event_id": str(event["event_id"]),
         "run_id": str(event["run_id"]),
@@ -231,6 +228,7 @@ def _normalize_market_event(event: Mapping[str, object]) -> dict[str, object]:
         "symbol": str(event["symbol"]),
         "event_type": str(event["event_type"]),
         "venue_ts_ms": int(str(event["venue_ts_ms"])),
+        "receive_ts_ms": receive_ts_ms,
         "transaction_ts_ms": (
             int(str(event["transaction_ts_ms"]))
             if event.get("transaction_ts_ms") is not None
@@ -244,6 +242,24 @@ def _normalize_market_event(event: Mapping[str, object]) -> dict[str, object]:
         "quality": event.get("quality", {}),
         "data": event.get("data", {}),
     }
+
+
+def _market_event_receive_ts_ms(event: Mapping[str, object]) -> int:
+    venue_ts_ms = int(str(event["venue_ts_ms"]))
+    explicit = event.get("receive_ts_ms")
+    if explicit is not None:
+        receive_ts_ms = int(str(explicit))
+    else:
+        quality = event.get("quality")
+        lag_value = quality.get("lag_ms", 0) if isinstance(quality, Mapping) else 0
+        try:
+            lag_ms = max(0, round(float(lag_value)))
+        except (OverflowError, TypeError, ValueError):
+            lag_ms = 0
+        receive_ts_ms = venue_ts_ms + lag_ms
+    if receive_ts_ms < venue_ts_ms:
+        raise ReplayIntegrityError("시장 이벤트 수신시각이 거래소 시각보다 빠릅니다.")
+    return receive_ts_ms
 
 
 def _canonical_json(value: object) -> str:

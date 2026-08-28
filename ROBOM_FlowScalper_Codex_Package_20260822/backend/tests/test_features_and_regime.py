@@ -77,23 +77,12 @@ def test_single_pass_window_metrics_match_reference_calculations() -> None:
     engine = build_engine()
     snapshot = engine.snapshot()
     latest = engine._books[-1]
-    mids = [
-        (book.ts_ms, float((book.bids[0][0] + book.asks[0][0]) / 2))
-        for book in engine._books
-    ]
+    mids = [(book.ts_ms, float((book.bids[0][0] + book.asks[0][0]) / 2)) for book in engine._books]
 
-    assert snapshot.ofi_250ms == pytest.approx(
-        engine._window_sum(engine._ofi, latest.ts_ms, 250)
-    )
-    assert snapshot.ofi_1s == pytest.approx(
-        engine._window_sum(engine._ofi, latest.ts_ms, 1_000)
-    )
-    assert snapshot.ofi_3s == pytest.approx(
-        engine._window_sum(engine._ofi, latest.ts_ms, 3_000)
-    )
-    assert snapshot.ofi_10s == pytest.approx(
-        engine._window_sum(engine._ofi, latest.ts_ms, 10_000)
-    )
+    assert snapshot.ofi_250ms == pytest.approx(engine._window_sum(engine._ofi, latest.ts_ms, 250))
+    assert snapshot.ofi_1s == pytest.approx(engine._window_sum(engine._ofi, latest.ts_ms, 1_000))
+    assert snapshot.ofi_3s == pytest.approx(engine._window_sum(engine._ofi, latest.ts_ms, 3_000))
+    assert snapshot.ofi_10s == pytest.approx(engine._window_sum(engine._ofi, latest.ts_ms, 10_000))
     assert snapshot.trade_imbalance_1s == pytest.approx(
         engine._trade_imbalance(latest.ts_ms, 1_000)
     )
@@ -121,9 +110,7 @@ def test_single_pass_window_metrics_match_reference_calculations() -> None:
     assert snapshot.realized_volatility_120s == pytest.approx(
         engine._realized_volatility(mids, latest.ts_ms, 120_000)
     )
-    assert snapshot.compression_ratio == pytest.approx(
-        engine._compression(mids, latest.ts_ms)
-    )
+    assert snapshot.compression_ratio == pytest.approx(engine._compression(mids, latest.ts_ms))
     assert snapshot.efficiency_ratio_30s == pytest.approx(
         engine._efficiency_ratio(mids, latest.ts_ms, 30_000)
     )
@@ -134,18 +121,14 @@ def test_single_pass_window_metrics_match_reference_calculations() -> None:
     ask_quantity = sum(quantity for _, quantity in latest.asks[:10])
     bid_vwap = Decimal(str(snapshot.depth_bid_10)) / bid_quantity
     ask_vwap = Decimal(str(snapshot.depth_ask_10)) / ask_quantity
-    multi_level_microprice = (
-        bid_vwap * ask_quantity + ask_vwap * bid_quantity
-    ) / (bid_quantity + ask_quantity)
-    assert snapshot.multi_level_microprice_10 == pytest.approx(
-        float(multi_level_microprice)
+    multi_level_microprice = (bid_vwap * ask_quantity + ask_vwap * bid_quantity) / (
+        bid_quantity + ask_quantity
     )
+    assert snapshot.multi_level_microprice_10 == pytest.approx(float(multi_level_microprice))
     assert snapshot.multi_level_microprice_10_minus_mid_bps == pytest.approx(
         (float(multi_level_microprice) - snapshot.mid) / snapshot.mid * 10_000
     )
-    average_depth_notional = (
-        snapshot.depth_bid_10 + snapshot.depth_ask_10
-    ) / 2
+    average_depth_notional = (snapshot.depth_bid_10 + snapshot.depth_ask_10) / 2
     assert snapshot.depth_adjusted_ofi_3s_bps == pytest.approx(
         snapshot.ofi_3s * snapshot.mid / average_depth_notional * 10_000
     )

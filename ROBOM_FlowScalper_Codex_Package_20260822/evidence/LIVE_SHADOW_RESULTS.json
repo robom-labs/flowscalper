@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "generated_ts_utc": "2026-08-28T02:20:00Z",
+  "status": "NOT_RUN",
+  "reason": "NO_CANDIDATE_PASSED_SCREENING_REPLAY_AND_PROMOTION_GATES",
+  "screening_manifest_sha256": "cdbee9dbcd6b402192d8a09e8b3cb936d7c6f9c7b17271ca74a0b9a00f436ad9",
+  "final_oos_status": "SEALED_NOT_USED_FOR_SELECTION",
+  "selected_candidate_count": 0,
+  "selected_candidates": [],
+  "base_accounts": [],
+  "stress_accounts": [],
+  "live_public_trade_count": 0,
+  "profitability": "NOT_PROVEN",
+  "runtime_active_count": 0,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "runtime_ai_enabled": false
+}

@@ -149,6 +149,8 @@ class ParquetEventStore:
                 {
                     "ts_ms": int(str(row["venue_ts_ms"])),
                     "venue_ts_ms": int(str(row["venue_ts_ms"])),
+                    "receive_ts_ms": _market_event_receive_ts_ms(row),
+                    "receive_monotonic_ns": _market_event_receive_monotonic_ns(row),
                     "symbol": str(row["symbol"]),
                     "event_type": str(row["event_type"]),
                     "payload_json": payload_json,
@@ -173,6 +175,7 @@ class ParquetEventStore:
             checksum=batch_checksum,
             event_count=len(archived_rows),
         )
+
     def read_market_event_batch_filtered(
         self,
         path: Path,
@@ -211,14 +214,8 @@ class ParquetEventStore:
                 for event in legacy_events
                 if (symbol is None or str(event.get("symbol")) == symbol)
                 and (not event_types or str(event.get("event_type")) in event_types)
-                and (
-                    start_ts_ms is None
-                    or int(str(event["venue_ts_ms"])) >= start_ts_ms
-                )
-                and (
-                    end_ts_ms is None
-                    or int(str(event["venue_ts_ms"])) <= end_ts_ms
-                )
+                and (start_ts_ms is None or int(str(event["venue_ts_ms"])) >= start_ts_ms)
+                and (end_ts_ms is None or int(str(event["venue_ts_ms"])) <= end_ts_ms)
             ]
         columns = [
             "payload_json",
@@ -264,9 +261,7 @@ class ParquetEventStore:
                 events.append(decoded)
             if cooperative_yield is not None:
                 cooperative_yield()
-        actual_batch_checksum = hashlib.sha256(
-            "\n".join(row_checksums).encode()
-        ).hexdigest()
+        actual_batch_checksum = hashlib.sha256("\n".join(row_checksums).encode()).hexdigest()
         if (
             stored_batch_checksums != {expected_checksum}
             or actual_batch_checksum != expected_checksum
@@ -420,6 +415,36 @@ def _set_background_io_policy(enabled: bool) -> bool:
 def _default_disk_usage(path: Path) -> DiskUsage:
     usage = shutil.disk_usage(path)
     return DiskUsage(total=usage.total, used=usage.used, free=usage.free)
+
+
+def _market_event_receive_ts_ms(event: Mapping[str, object]) -> int:
+    venue_ts_ms = int(str(event["venue_ts_ms"]))
+    explicit = event.get("receive_ts_ms", event.get("recv_ts_ms"))
+    if explicit is not None:
+        receive_ts_ms = int(str(explicit))
+    else:
+        quality = event.get("quality")
+        lag_value = quality.get("lag_ms", 0) if isinstance(quality, Mapping) else 0
+        try:
+            lag_ms = max(0, round(float(lag_value)))
+        except (OverflowError, TypeError, ValueError):
+            lag_ms = 0
+        receive_ts_ms = venue_ts_ms + lag_ms
+    if receive_ts_ms < venue_ts_ms:
+        raise ValueError("시장 이벤트 수신시각이 거래소 시각보다 빠릅니다.")
+    return receive_ts_ms
+
+
+def _market_event_receive_monotonic_ns(event: Mapping[str, object]) -> int:
+    explicit = event.get("receive_monotonic_ns")
+    if explicit is not None:
+        value = int(str(explicit))
+        if value < 0:
+            raise ValueError("시장 이벤트 monotonic 수신시각은 음수일 수 없습니다.")
+        return value
+    # 구 archive 입력은 monotonic 필드가 없을 수 있다. payload는 바꾸지 않고
+    # 검증된 wall-clock 수신시각으로 결정적 정렬 보조값만 복구한다.
+    return _market_event_receive_ts_ms(event) * 1_000_000
 
 
 def _safe_partition(value: str) -> str:

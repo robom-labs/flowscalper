@@ -1,5 +1,44 @@
 """시간순 PAPER 전략 연구의 재현성과 선택편향 검증 기능을 공개한다."""
 
+from backend.app.research.alpha_evaluators import (
+    ALPHA_EVALUATION_INTERVAL_SECONDS,
+    ALPHA_EVALUATORS,
+    AlphaEvaluationError,
+    AlphaFeatureSnapshot,
+    AlphaSignal,
+    TrendDirection,
+    evaluate_alpha,
+)
+from backend.app.research.alpha_features import (
+    AlphaFeatureBuilder,
+    AlphaFeatureDiagnostics,
+    AlphaFeatureError,
+    MicroFeatureValues,
+)
+from backend.app.research.candidate_registry import (
+    ALPHA_FAMILIES,
+    EXIT_MODULES,
+    HORIZON_MAXIMUM_HOLD_MS,
+    AlphaFamilySpec,
+    EvidenceGrade,
+    ExitModuleSpec,
+    ResearchTrialSpec,
+    TrialLifecycle,
+    preregistered_trials,
+    trailing_policy_for_exit,
+    trial_manifest,
+)
+from backend.app.research.dataset_freeze import build_strategy_100_dataset_manifest
+from backend.app.research.execution import (
+    InstrumentMetadataEvidence,
+    ResearchCandidatePlanBuilder,
+    ResearchInstrumentMetadata,
+    ResearchPlanBuildResult,
+)
+from backend.app.research.instrument_metadata import (
+    build_binance_instrument_manifest,
+    load_research_instruments,
+)
 from backend.app.research.protocol import (
     DatasetSlice,
     ResearchObservation,
@@ -11,15 +50,70 @@ from backend.app.research.protocol import (
     probability_of_backtest_overfitting,
     walk_forward_folds,
 )
+from backend.app.research.screening import (
+    SCREENING_PROFILES,
+    STARTING_EQUITY_USDT,
+    ScreeningAccountResult,
+    ScreeningStatus,
+    ScreeningTrade,
+    TrialScreeningResult,
+    build_screening_report,
+    point_in_time_volatility_regime,
+)
+from backend.app.research.secondary_reports import (
+    build_multiple_testing_report,
+    build_trailing_ablation_report,
+    build_walk_forward_report,
+)
 
 __all__ = [
+    "ALPHA_FAMILIES",
+    "ALPHA_EVALUATION_INTERVAL_SECONDS",
+    "ALPHA_EVALUATORS",
+    "EXIT_MODULES",
+    "HORIZON_MAXIMUM_HOLD_MS",
+    "AlphaFamilySpec",
+    "AlphaEvaluationError",
+    "AlphaFeatureSnapshot",
+    "AlphaFeatureBuilder",
+    "AlphaFeatureDiagnostics",
+    "AlphaFeatureError",
+    "AlphaSignal",
     "DatasetSlice",
+    "EvidenceGrade",
+    "ExitModuleSpec",
+    "InstrumentMetadataEvidence",
     "ResearchObservation",
+    "ResearchCandidatePlanBuilder",
+    "ResearchInstrumentMetadata",
+    "ResearchPlanBuildResult",
     "ResearchProtocol",
+    "ResearchTrialSpec",
+    "SCREENING_PROFILES",
+    "STARTING_EQUITY_USDT",
+    "ScreeningAccountResult",
+    "ScreeningStatus",
+    "ScreeningTrade",
+    "MicroFeatureValues",
+    "TrialLifecycle",
+    "TrialScreeningResult",
+    "TrendDirection",
     "bootstrap_mean_interval",
+    "build_strategy_100_dataset_manifest",
+    "build_binance_instrument_manifest",
+    "build_screening_report",
+    "build_multiple_testing_report",
+    "build_trailing_ablation_report",
+    "build_walk_forward_report",
     "chronological_split",
     "deflated_sharpe_ratio",
+    "evaluate_alpha",
     "finalize_research_manifest",
+    "load_research_instruments",
     "probability_of_backtest_overfitting",
+    "point_in_time_volatility_regime",
+    "preregistered_trials",
+    "trailing_policy_for_exit",
+    "trial_manifest",
     "walk_forward_folds",
 ]

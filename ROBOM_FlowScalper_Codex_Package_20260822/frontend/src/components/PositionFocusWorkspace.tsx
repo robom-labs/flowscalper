@@ -2,6 +2,7 @@
 import { PriceChart, type ChartOverlay } from './PriceChart'
 import { useState, type ReactNode } from 'react'
 import { formatPrice, formatQuantity, formatRatio, formatUsdt, paperAccountLabel } from '../format'
+import { trailingStateLabel } from '../trailingPresentation'
 import type { ChartData, FocusPosition, HistoryRow, ReplayFocusFrame } from '../types'
 
 type Props = {
@@ -18,7 +19,7 @@ function PlanRail({ position }: { position: FocusPosition }) {
   return <aside className="focus-plan" aria-label="진입 계획">
     <div className="focus-rail-title"><span>{position.side === 'LONG' ? '상승 방향' : '하락 방향'} · {formatRatio(position.effective_leverage, '배')}</span><b>{position.symbol}</b><small>{position.strategy_display_name_ko} · {position.profile} · {paperAccountLabel(position.account_id)}</small></div>
     <dl>
-      <div><dt>실제 진입</dt><dd>{formatPrice(position.actual_entry)}</dd></div><div><dt>초기 손절</dt><dd>{formatPrice(position.initial_stop)}</dd></div><div><dt>현재 손절</dt><dd>{formatPrice(position.current_stop)}<small>{position.current_stop === position.initial_stop ? '변경 없음' : '진입 뒤 조정'}</small></dd></div><div><dt>TP1</dt><dd>{formatPrice(position.take_profit_1)}</dd></div><div><dt>TP2</dt><dd>{position.take_profit_2 ? formatPrice(position.take_profit_2) : '—'}</dd></div><div><dt>계획 손실</dt><dd>{formatUsdt(position.maximum_planned_loss_usdt)}</dd></div><div><dt>보유 / 남은</dt><dd>{formatQuantity(position.original_quantity)} / {formatQuantity(position.remaining_quantity)}</dd></div><div><dt>명목금액</dt><dd>{formatUsdt(position.notional_usdt)}</dd></div><div><dt>PAPER 증거금</dt><dd>{formatUsdt(position.margin_used_usdt)}</dd></div>
+      <div><dt>실제 진입</dt><dd>{formatPrice(position.actual_entry)}</dd></div><div><dt>초기 손절</dt><dd>{formatPrice(position.initial_stop)}</dd></div><div><dt>현재 손절</dt><dd>{formatPrice(position.current_stop)}<small>{position.current_stop === position.initial_stop ? '변경 없음' : '진입 뒤 조정'}</small></dd></div><div><dt>TP1</dt><dd>{formatPrice(position.take_profit_1)}</dd></div><div><dt>TP2</dt><dd>{position.take_profit_2 ? formatPrice(position.take_profit_2) : '—'}</dd></div><div><dt>추적 익절</dt><dd>{trailingStateLabel(position.trailing)}<small>{position.trailing?.current_trail ? `보호선 ${formatPrice(position.trailing.current_trail)}` : '활성화 전에는 기존 손절 유지'}</small></dd></div><div><dt>계획 손실</dt><dd>{formatUsdt(position.maximum_planned_loss_usdt)}</dd></div><div><dt>보유 / 남은</dt><dd>{formatQuantity(position.original_quantity)} / {formatQuantity(position.remaining_quantity)}</dd></div><div><dt>명목금액</dt><dd>{formatUsdt(position.notional_usdt)}</dd></div><div><dt>PAPER 증거금</dt><dd>{formatUsdt(position.margin_used_usdt)}</dd></div>
     </dl>
     <details><summary>계획 상세</summary><p>위험예산 {formatUsdt(position.risk_budget_usdt)}</p><p>남은 계획손실 {formatUsdt(position.remaining_planned_loss_usdt)}</p><p>{position.exit_style}</p></details>
   </aside>

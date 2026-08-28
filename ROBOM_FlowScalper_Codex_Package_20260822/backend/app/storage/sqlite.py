@@ -714,9 +714,7 @@ class SQLiteLedger:
                         (row[1], row[0]),
                     ).fetchone()
                     if existing is None or str(existing["checksum"]) != str(row[-1]):
-                        raise LedgerInvariantError(
-                            f"중복 시장 이벤트 payload 불일치: {row[0]}"
-                        )
+                        raise LedgerInvariantError(f"중복 시장 이벤트 payload 불일치: {row[0]}")
                 self._rebuild_market_event_stats(connection, run_id)
             else:
                 self._increment_market_event_stats(connection, rows)
@@ -740,16 +738,13 @@ class SQLiteLedger:
 
     def record_archives_and_candles(
         self,
-        archives: Sequence[
-            tuple[ArchivedEventBatch, Sequence[Mapping[str, object]]]
-        ],
+        archives: Sequence[tuple[ArchivedEventBatch, Sequence[Mapping[str, object]]]],
         candles: Sequence[Mapping[str, object]],
     ) -> tuple[int, int]:
         """Parquet manifest·통계·캔들을 한 번의 FULL 커밋으로 원자 저장한다."""
 
         prepared_archives = [
-            self._prepare_market_event_archive(batch, events)
-            for batch, events in archives
+            self._prepare_market_event_archive(batch, events) for batch, events in archives
         ]
         prepared_candles = self._prepare_candles(candles) if candles else None
         run_ids = {run_id for run_id, _, _ in prepared_archives}
@@ -758,9 +753,7 @@ class SQLiteLedger:
         if not run_ids:
             return (0, 0)
         if len(run_ids) != 1:
-            raise LedgerInvariantError(
-                "한 영속화 커밋에 여러 Run의 데이터가 섞였습니다."
-            )
+            raise LedgerInvariantError("한 영속화 커밋에 여러 Run의 데이터가 섞였습니다.")
         run_id = next(iter(run_ids))
         with self._transaction() as connection:
             self._assert_open_run(connection, run_id)
@@ -932,7 +925,7 @@ class SQLiteLedger:
         if end_ts_ms is not None:
             query += " AND venue_ts_ms <= ?"
             parameters.append(end_ts_ms)
-        query += " ORDER BY venue_ts_ms, receive_monotonic_ns, event_id"
+        query += " ORDER BY receive_monotonic_ns, venue_ts_ms, event_id"
         archive_query = """
             SELECT path, checksum, symbols_json, event_types_json,
                    first_ts_ms, last_ts_ms
@@ -951,21 +944,20 @@ class SQLiteLedger:
                 archive_query,
                 tuple(archive_parameters),
             ).fetchall()
-        if limit is not None:
-            if limit <= 0:
-                raise ValueError("limit은 양수여야 합니다.")
-            query += " LIMIT ?"
-            parameters.append(limit)
+        if limit is not None and limit <= 0:
+            raise ValueError("limit은 양수여야 합니다.")
         with self._read_lock:
             rows = self._read_connection.execute(query, tuple(parameters)).fetchall()
         result: list[dict[str, Any]] = []
 
-        def event_sort_key(event: Mapping[str, object]) -> tuple[int, int, str]:
+        def event_sort_key(event: Mapping[str, object]) -> tuple[int, int, int, str]:
             return (
-                int(str(event["venue_ts_ms"])),
+                _market_event_receive_ts_ms(event),
                 int(str(event["receive_monotonic_ns"])),
+                int(str(event["venue_ts_ms"])),
                 str(event["event_id"]),
             )
+
         for index, row in enumerate(rows, start=1):
             payload_json = str(row["payload_json"])
             if hashlib.sha256(payload_json.encode()).hexdigest() != row["checksum"]:
@@ -981,11 +973,6 @@ class SQLiteLedger:
                 raise LedgerInvariantError("시장 이벤트 아카이브 저장소가 없습니다.")
             try:
                 for archive in archive_rows:
-                    if limit is not None and len(result) >= limit:
-                        result.sort(key=event_sort_key)
-                        cutoff_ts_ms = int(str(result[limit - 1]["venue_ts_ms"]))
-                        if int(str(archive["first_ts_ms"])) > cutoff_ts_ms:
-                            break
                     archived_symbols = json.loads(str(archive["symbols_json"]))
                     archived_event_types = json.loads(str(archive["event_types_json"]))
                     if symbol is not None and symbol not in archived_symbols:
@@ -993,8 +980,7 @@ class SQLiteLedger:
                     if event_types and not set(event_types).intersection(archived_event_types):
                         continue
                     filtered_archive_read = any(
-                        value is not None
-                        for value in (symbol, start_ts_ms, end_ts_ms)
+                        value is not None for value in (symbol, start_ts_ms, end_ts_ms)
                     ) or bool(event_types)
                     archive_events = (
                         self.market_event_archive.read_market_event_batch_filtered(
@@ -1031,15 +1017,11 @@ class SQLiteLedger:
                             continue
                         result.append(decoded)
                     if archive_batch_yield is not None:
-                        archive_batch_yield(
-                            Path(str(archive["path"])).stat().st_size
-                        )
+                        archive_batch_yield(Path(str(archive["path"])).stat().st_size)
                     if cooperative_yield is not None:
                         cooperative_yield()
             except (OSError, ValueError) as error:
-                raise LedgerInvariantError(
-                    f"시장 이벤트 아카이브 검증 실패: {error}"
-                ) from error
+                raise LedgerInvariantError(f"시장 이벤트 아카이브 검증 실패: {error}") from error
         result.sort(key=event_sort_key)
         if cooperative_yield is not None:
             cooperative_yield()
@@ -1222,9 +1204,7 @@ class SQLiteLedger:
                     run_id,
                     int(str(candidate["signal_time_ms"])),
                     str(candidate.get("status", "ARMED")),
-                    _canonical_json(
-                        {"reason_codes": candidate.get("reason_codes", [])}
-                    ),
+                    _canonical_json({"reason_codes": candidate.get("reason_codes", [])}),
                     _canonical_json(candidate),
                 ),
             )
@@ -1298,9 +1278,7 @@ class SQLiteLedger:
         )
 
     def list_strategy_settings(self, run_id: str) -> list[dict[str, Any]]:
-        return self._verified_table_payloads(
-            "strategy_settings", run_id, "ts_ms, setting_id"
-        )
+        return self._verified_table_payloads("strategy_settings", run_id, "ts_ms, setting_id")
 
     def record_strategy_account_snapshot(self, snapshot: Mapping[str, object]) -> None:
         self._record_versioned_payload(
@@ -1411,19 +1389,13 @@ class SQLiteLedger:
             return
         for label, rows in groups:
             mixed_run_ids = {
-                str(row.get("run_id", ""))
-                for row in rows
-                if str(row.get("run_id", "")) != run_id
+                str(row.get("run_id", "")) for row in rows if str(row.get("run_id", "")) != run_id
             }
             if mixed_run_ids:
                 raise LedgerInvariantError(
-                    f"{label} 실행상태 배치에 다른 Run을 섞을 수 없습니다: "
-                    f"{sorted(mixed_run_ids)}"
+                    f"{label} 실행상태 배치에 다른 Run을 섞을 수 없습니다: {sorted(mixed_run_ids)}"
                 )
-        if (
-            recovery_snapshot is not None
-            and str(recovery_snapshot.get("run_id", "")) != run_id
-        ):
+        if recovery_snapshot is not None and str(recovery_snapshot.get("run_id", "")) != run_id:
             raise LedgerInvariantError("복구 snapshot에 다른 Run을 섞을 수 없습니다.")
 
         # 손익 불변조건과 JSON 직렬화를 BEGIN 전에 끝내 잠금 보유 시간을 줄인다.
@@ -1455,9 +1427,7 @@ class SQLiteLedger:
             slippage = _decimal(trade["slippage_usdt"])
             net = _decimal(trade["net_pnl_usdt"])
             if gross - fees - slippage != net:
-                raise LedgerInvariantError(
-                    f"순손익 불일치: {gross} - {fees} - {slippage} != {net}"
-                )
+                raise LedgerInvariantError(f"순손익 불일치: {gross} - {fees} - {slippage} != {net}")
             trade_rows.append(
                 (
                     str(trade["trade_id"]),
@@ -1592,9 +1562,7 @@ class SQLiteLedger:
                 )
 
     def list_execution_audits(self, run_id: str) -> list[dict[str, Any]]:
-        return self._verified_table_payloads(
-            "execution_audit", run_id, "ts_ms, audit_id"
-        )
+        return self._verified_table_payloads("execution_audit", run_id, "ts_ms, audit_id")
 
     def record_replay_run(self, replay: Mapping[str, object]) -> None:
         with self._transaction() as connection:
@@ -2066,8 +2034,7 @@ class SQLiteLedger:
             raise ValueError("허용되지 않은 검증 payload 조회입니다.")
         with self._lock:
             rows = self._connection.execute(
-                f"SELECT payload_json, checksum FROM {table} "
-                f"WHERE run_id = ? ORDER BY {ordering}",
+                f"SELECT payload_json, checksum FROM {table} WHERE run_id = ? ORDER BY {ordering}",
                 (run_id,),
             ).fetchall()
         return self._verified_payload_rows(rows, table)
@@ -2187,9 +2154,7 @@ def persist_archives_and_candles_in_process(
             minimum_free_bytes=minimum_free_bytes,
             minimum_free_ratio=minimum_free_ratio,
         )
-        archive_records: list[
-            tuple[ArchivedEventBatch, list[dict[str, object]]]
-        ] = []
+        archive_records: list[tuple[ArchivedEventBatch, list[dict[str, object]]]] = []
         for rows in market_groups:
             archive_records.append((store.write_market_event_batch(rows), rows))
         archive_ms = (time.perf_counter() - archive_started) * 1_000
@@ -2228,9 +2193,7 @@ def persist_archives_and_candles_in_process(
                 )
                 mode = connection.execute("PRAGMA journal_mode").fetchone()
                 if mode is None or str(mode[0]).lower() != "wal":
-                    raise LedgerInvariantError(
-                        "분리 영속화 연결의 journal_mode가 WAL이 아닙니다."
-                    )
+                    raise LedgerInvariantError("분리 영속화 연결의 journal_mode가 WAL이 아닙니다.")
                 connection.execute("BEGIN IMMEDIATE")
                 try:
                     run = connection.execute(
@@ -2261,6 +2224,24 @@ def persist_archives_and_candles_in_process(
             "ledger_ms": (time.perf_counter() - ledger_started) * 1_000,
             "archive_batches": len(archive_records),
         }
+
+
+def _market_event_receive_ts_ms(event: Mapping[str, object]) -> int:
+    venue_ts_ms = int(str(event["venue_ts_ms"]))
+    explicit = event.get("receive_ts_ms")
+    if explicit is not None:
+        receive_ts_ms = int(str(explicit))
+    else:
+        quality = event.get("quality")
+        lag_value = quality.get("lag_ms", 0) if isinstance(quality, Mapping) else 0
+        try:
+            lag_ms = max(0, round(float(lag_value)))
+        except (OverflowError, TypeError, ValueError):
+            lag_ms = 0
+        receive_ts_ms = venue_ts_ms + lag_ms
+    if receive_ts_ms < venue_ts_ms:
+        raise LedgerInvariantError("시장 이벤트 수신시각이 거래소 시각보다 빠릅니다.")
+    return receive_ts_ms
 
 
 def _canonical_json(value: object) -> str:

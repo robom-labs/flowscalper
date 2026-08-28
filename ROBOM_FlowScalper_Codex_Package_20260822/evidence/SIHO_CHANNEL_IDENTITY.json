@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "requested_video_url": "https://youtu.be/1mJDNm4Yko4?si=YA087v8-63qUF6kl",
+  "video_id": "1mJDNm4Yko4",
+  "verified_video_url": "https://www.youtube.com/watch?v=1mJDNm4Yko4",
+  "video_title": "AI 코인 자동매매 | 300만원으로 1,500만원 만들기 | DAY 30 | 손절 14번. 아쉬운 마감",
+  "upload_timestamp": "2026-08-25T03:29:04-07:00",
+  "length_seconds": 1562,
+  "channel_id": "UC7Z6zXw5q1vou0DgPZ80GBA",
+  "channel_handle": "@siholab",
+  "channel_title": "Siho LAB",
+  "channel_url": "https://www.youtube.com/@siholab",
+  "verification_sources": [
+    {
+      "source": "youtube_watch_initial_player_response",
+      "url": "https://www.youtube.com/watch?v=1mJDNm4Yko4",
+      "observed": {
+        "playability_status": "OK",
+        "video_id": "1mJDNm4Yko4",
+        "channel_id": "UC7Z6zXw5q1vou0DgPZ80GBA",
+        "channel_title": "Siho LAB",
+        "owner_profile_url": "http://www.youtube.com/@siholab"
+      }
+    },
+    {
+      "source": "youtube_channel_about_public_html",
+      "url": "https://www.youtube.com/@siholab/about",
+      "observed": {
+        "channel_id": "UC7Z6zXw5q1vou0DgPZ80GBA",
+        "external_id": "UC7Z6zXw5q1vou0DgPZ80GBA",
+        "canonical_base_url": "/@siholab",
+        "vanity_channel_url": "http://www.youtube.com/@siholab"
+      }
+    },
+    {
+      "source": "youtube_official_atom_feed",
+      "url": "https://www.youtube.com/feeds/videos.xml?channel_id=UC7Z6zXw5q1vou0DgPZ80GBA",
+      "observed": {
+        "feed_title": "Siho LAB",
+        "feed_author": "Siho LAB",
+        "requested_video_present": true,
+        "requested_video_published": "2026-08-25T10:29:04+00:00",
+        "atom_channel_id_text": "7Z6zXw5q1vou0DgPZ80GBA"
+      }
+    }
+  ],
+  "verification_status": "VERIFIED",
+  "ambiguity": "공식 Atom feed의 yt:channelId 텍스트는 UC 접두사 없이 제공됐지만, 기준 영상의 player response와 채널 About 공개 HTML은 동일한 전체 channel_id와 @siholab을 독립적으로 확인한다. 채널 동일성에는 남은 모호성이 없다.",
+  "description_sha256": "c3d3113d0c91b1551e266e63f1191b1737bf4183e160956ebb8e6ca7678b5eaa",
+  "source_checksum": "sha256:4449fbb2c01a264b4b07816325bac7cc293055abe51e0900e829d5b0b3cfe70c",
+  "source_checksums": {
+    "youtube_watch_html_sha256": "4449fbb2c01a264b4b07816325bac7cc293055abe51e0900e829d5b0b3cfe70c",
+    "youtube_channel_about_html_sha256": "ad47a98116caf42a7f6b672661834a3c0b3d6cc1893bbeb9b458301fffa07715",
+    "youtube_atom_feed_sha256": "96f3a49c0dceadd3dc7f3edd627c1909f9f514ec80f4adf34d2ef3a68e7e2adc"
+  },
+  "collected_ts_utc": "2026-08-27T14:49:28Z",
+  "claims_boundary": {
+    "channel_identity_only": true,
+    "video_marketing_claims_verified": false,
+    "trading_rules_verified": false,
+    "profitability_verified": false,
+    "real_order_path_allowed_in_flowscalper": false
+  }
+}

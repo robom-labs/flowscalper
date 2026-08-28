@@ -21,6 +21,7 @@ data/**/*.sqlite-*
 data/parquet/
 data/market-parquet-v6/
 data/public-trend-klines-v1/
+data/research/
 artifacts/
 playwright-report/
 test-results/

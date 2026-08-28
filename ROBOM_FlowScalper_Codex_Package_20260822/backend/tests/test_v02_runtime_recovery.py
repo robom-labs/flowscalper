@@ -6,6 +6,7 @@ import asyncio
 import sqlite3
 import threading
 from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 
 from backend.app.clocks import TestClock as DeterministicClock
@@ -16,6 +17,11 @@ from backend.app.domain.models import (
     RuntimeMode,
     Side,
     Venue,
+)
+from backend.app.execution.trailing import (
+    TrailingActivationRule,
+    TrailingModel,
+    TrailingPolicy,
 )
 from backend.app.main import _runtime_from_environment
 from backend.app.runtime import PaperRuntime
@@ -75,6 +81,59 @@ def _live_depth_event(
             "asks": [["100.1", "100"]],
         },
     )
+
+
+def test_trailing_mark_update_persists_latest_monotonic_stop_for_restart(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "trailing-mark-recovery.sqlite3"
+    run_id = "run-trailing-mark-recovery"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    plan = replace(
+        candidate_plan(),
+        run_id=run_id,
+        venue=Venue.BINANCE_USDM,
+        trailing_policy=TrailingPolicy(
+            policy_id="RECOVERY_PERCENT_TRAIL_V1",
+            model=TrailingModel.FIXED_RATE,
+            activation_rule=TrailingActivationRule.R_MULTIPLE,
+            activation_r=Decimal("1"),
+            partial_tp_required=False,
+            retracement_rate=Decimal("0.005"),
+        ),
+    )
+    runtime.paper_portfolio.offer((plan,), entries_paused=False)
+    runtime.paper_portfolio.on_book(_live_book(1_250))
+    runtime._persist_execution_state(1_250)
+    runtime.paper_portfolio.on_book(_live_book(2_000, bid="102", ask="102.1"))
+    runtime._persist_execution_state(2_000)
+    runtime.paper_portfolio.on_book(_live_book(2_050, bid="103", ask="103.1"))
+    runtime._persist_execution_state(2_050)
+
+    audits = ledger.list_execution_audits(run_id)
+    mark = [
+        row
+        for row in audits
+        if row["event"] == "TRAILING_MARK_UPDATED" and row["account_id"] == "MAIN:BASE"
+    ]
+    assert len(mark) == 1
+    assert mark[0]["current_trail"] == "102.485"
+    ledger.close()
+
+    recovered_runtime, reopened = _reopen_runtime(database, run_id)
+    recovered = recovered_runtime.paper_portfolio.main.position
+    assert recovered is not None
+    assert recovered.trailing_machine is not None
+    assert recovered.trailing_machine.current_trail == Decimal("102.485")
+    assert recovered.protected.current_stop == Decimal("102.485")
+    reopened.close()
 
 
 def test_dashboard_history_reads_do_not_wait_for_write_lock(tmp_path: Path) -> None:
@@ -167,9 +226,7 @@ def test_runtime_revalidates_every_recovered_league_symbol_before_unlock(
     )
     runtime.paper_portfolio.offer(plans, entries_paused=False)
     for symbol in symbols:
-        runtime.paper_portfolio.on_book(
-            replace(_live_book(1_250), symbol=symbol)
-        )
+        runtime.paper_portfolio.on_book(replace(_live_book(1_250), symbol=symbol))
     runtime._persist_execution_state(1_250)
     ledger.close()
 
@@ -204,15 +261,13 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
         long_enabled=False,
         short_enabled=True,
     )
-    setting_transition = ledger.list_incidents(
-        category="STRATEGY_SETTINGS_TRANSITION"
-    )[-1]["payload"]
+    setting_transition = ledger.list_incidents(category="STRATEGY_SETTINGS_TRANSITION")[-1][
+        "payload"
+    ]
     assert setting_transition["previous_state"] == (
         "SHADOW|SHADOW|LONG=ON|SHORT=ON|MANUAL_LOCK=OFF"
     )
-    assert setting_transition["new_state"] == (
-        "SHADOW|SHADOW|LONG=OFF|SHORT=ON|MANUAL_LOCK=ON"
-    )
+    assert setting_transition["new_state"] == ("SHADOW|SHADOW|LONG=OFF|SHORT=ON|MANUAL_LOCK=ON")
     assert setting_transition["actor"] == "USER_UI"
     assert setting_transition["request_revision"] == 0
     assert setting_transition["response_revision"] == 1
@@ -247,9 +302,7 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     assert recovered_runtime._manual_pause_requested is True
     assert "ENTRY_LOCK_RECOVERY_REVALIDATION" in recovered_runtime.runtime_health_flags
     assert recovered_runtime._recovery_revalidation_symbol == "BTCUSDT"
-    registry = {
-        row["strategy_id"]: row for row in recovered_runtime.strategy_registry.rows()
-    }
+    registry = {row["strategy_id"]: row for row in recovered_runtime.strategy_registry.rows()}
     assert registry["CBR_CONTINUATION_V1"]["mode"] == "SHADOW"
     assert registry["CBR_CONTINUATION_V1"]["settings_revision"] == 1
     assert registry["CBR_CONTINUATION_V1"]["manual_lock"] is True
@@ -262,9 +315,7 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     assert recovered_runtime.paused is True
 
     tp1 = recovered_runtime.paper_portfolio.main.position.plan.take_profit_targets[0].price
-    recovered_runtime.paper_portfolio.on_book(
-        _live_book(2_000, bid=str(tp1 + 1), ask=str(tp1 + 2))
-    )
+    recovered_runtime.paper_portfolio.on_book(_live_book(2_000, bid=str(tp1 + 1), ask=str(tp1 + 2)))
     recovered_runtime._persist_execution_state(2_000)
     assert recovered_runtime.paper_portfolio.lifecycle_state() == "EXIT_PENDING"
     reopened.close()
@@ -325,9 +376,7 @@ def test_strategy_rollback_history_survives_process_restart(tmp_path: Path) -> N
 
     recovered_runtime, reopened = _reopen_runtime(database, run_id)
     setting = recovered_runtime.strategy_registry.setting("CBR_CONTINUATION_V1")
-    history = recovered_runtime.strategy_registry.revision_history(
-        "CBR_CONTINUATION_V1"
-    )
+    history = recovered_runtime.strategy_registry.revision_history("CBR_CONTINUATION_V1")
 
     assert setting.mode is StrategyMode.SHADOW
     assert setting.revision == 2
@@ -391,9 +440,7 @@ def test_restart_recovery_transition_is_normalized_and_public(
     monkeypatch.setenv("ROBOM_MODE", RuntimeMode.LIVE_SHADOW_PAPER.value)
     recovered_runtime = _runtime_from_environment()
     assert recovered_runtime.ledger is not None
-    transition = recovered_runtime.ledger.list_incidents(
-        category="PAPER_RESTART_RECOVERY"
-    )[-1]
+    transition = recovered_runtime.ledger.list_incidents(category="PAPER_RESTART_RECOVERY")[-1]
     payload = transition["payload"]
 
     assert payload["transition_id"] == transition["incident_id"]
@@ -451,9 +498,7 @@ def test_ready_mode_records_recovery_deferred_without_mutating_open_run(
     assert ready_runtime.run_id == "ready"
     assert ready_runtime.ledger is not None
     assert ready_runtime.ledger.get_run(run_id)["finalized_ts_ms"] is None
-    transition = ready_runtime.ledger.list_incidents(
-        category="PAPER_RESTART_RECOVERY"
-    )[-1]
+    transition = ready_runtime.ledger.list_incidents(category="PAPER_RESTART_RECOVERY")[-1]
     assert transition["run_id"] == run_id
     assert transition["payload"]["previous_state"] == "SCANNING"
     assert transition["payload"]["new_state"] == "RECOVERY_DEFERRED"
@@ -484,9 +529,9 @@ def test_fixture_restart_is_never_described_as_live_revalidation(
     monkeypatch.setenv("ROBOM_MODE", RuntimeMode.DEMO_FIXTURE.value)
     fixture_runtime = _runtime_from_environment()
     assert fixture_runtime.ledger is not None
-    transition = fixture_runtime.ledger.list_incidents(
-        category="PAPER_RESTART_RECOVERY"
-    )[-1]["payload"]
+    transition = fixture_runtime.ledger.list_incidents(category="PAPER_RESTART_RECOVERY")[-1][
+        "payload"
+    ]
     assert transition["new_state"] == "FIXTURE_STATE_RECOVERED"
     assert transition["cause_code"] == "PAPER_FIXTURE_STATE_RECOVERED"
     assert transition["description_ko"] == (
@@ -538,9 +583,7 @@ def test_corrupt_latest_snapshot_boots_ready_and_never_creates_a_new_trade(
     assert transition["payload"]["transition_id"] == transition["incident_id"]
     assert transition["payload"]["previous_state"] == "OPEN_RUN_UNVERIFIED"
     assert transition["payload"]["new_state"] == "RECOVERY_FAIL_CLOSED"
-    assert transition["payload"]["cause_code"] == (
-        "RECOVERY_CHECKSUM_OR_SCHEMA_INVALID"
-    )
+    assert transition["payload"]["cause_code"] == ("RECOVERY_CHECKSUM_OR_SCHEMA_INVALID")
     assert transition["payload"]["actor"] == "RECOVERY"
     assert transition["payload"]["run_id"] == "run-corrupt"
     assert transition["payload"]["request_revision"] == 0

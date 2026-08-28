@@ -10,11 +10,23 @@ from backend.app.costing import CostModel, CostProfile
 from backend.app.domain.market import Instrument
 from backend.app.domain.models import Side, Venue
 from backend.app.execution.models import BookSnapshot
+from backend.app.execution.trailing import TrailingModel, TrailingPolicy
 from backend.app.features import FeatureSnapshot
 from backend.app.regime import Regime
 from backend.app.risk import RiskManager, RiskSizingInput, RiskState
 from backend.app.strategies.base import CandidateDecision, CandidateStatus
 from backend.app.strategies.registry import ExitStyle
+
+_ATR_TRAILING_MODELS = {
+    TrailingModel.ATR_CHANDELIER,
+    TrailingModel.CHANDELIER_STRUCTURE,
+    TrailingModel.EDGE_ADAPTIVE,
+}
+_STRUCTURE_TRAILING_MODELS = {
+    TrailingModel.CHANDELIER_STRUCTURE,
+    TrailingModel.STRUCTURE,
+}
+_COMPLETED_REFERENCE_MODELS = _ATR_TRAILING_MODELS | _STRUCTURE_TRAILING_MODELS
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +85,11 @@ class CandidatePlan:
     management_policy: tuple[str, ...]
     main_eligible: bool
     shadow_eligible: bool
+    trailing_policy: TrailingPolicy | None = None
+    trailing_atr: Decimal | None = None
+    trailing_structure_stop: Decimal | None = None
+    trailing_reference_ts_ms: int | None = None
+    trailing_reference_interval_seconds: int | None = None
 
     def __post_init__(self) -> None:
         if self.expires_at_ms <= self.signal_time_ms:
@@ -101,6 +118,62 @@ class CandidatePlan:
                 raise ValueError("숏 익절 가격은 계획 진입가보다 낮아야 합니다.")
         if self.max_planned_loss > self.risk_budget:
             raise ValueError("최대 계획손실은 위험예산을 넘을 수 없습니다.")
+        if self.trailing_policy is None and any(
+            value is not None
+            for value in (
+                self.trailing_atr,
+                self.trailing_structure_stop,
+                self.trailing_reference_ts_ms,
+                self.trailing_reference_interval_seconds,
+            )
+        ):
+            raise ValueError("trailing policy 없는 계획에 trailing 참조값이 남았습니다.")
+        if (
+            self.trailing_policy is not None
+            and self.trailing_policy.model not in _ATR_TRAILING_MODELS
+            and self.trailing_atr is not None
+        ):
+            raise ValueError("비ATR trailing 계획에 ATR 참조값이 남았습니다.")
+        if (
+            self.trailing_policy is not None
+            and self.trailing_policy.model not in _STRUCTURE_TRAILING_MODELS
+            and self.trailing_structure_stop is not None
+        ):
+            raise ValueError("비구조 trailing 계획에 구조 stop이 남았습니다.")
+        if (
+            self.trailing_policy is not None
+            and self.trailing_policy.model not in _COMPLETED_REFERENCE_MODELS
+            and (
+                self.trailing_reference_ts_ms is not None
+                or self.trailing_reference_interval_seconds is not None
+            )
+        ):
+            raise ValueError("완료봉을 쓰지 않는 trailing 계획에 참조시각이 남았습니다.")
+        if self.trailing_policy is not None and self.trailing_policy.model in _ATR_TRAILING_MODELS:
+            if self.trailing_atr is None or self.trailing_atr <= 0:
+                raise ValueError("ATR trailing 계획에는 진입 전 완성봉 ATR이 필요합니다.")
+        if (
+            self.trailing_policy is not None
+            and self.trailing_policy.model in _STRUCTURE_TRAILING_MODELS
+            and (self.trailing_structure_stop is None or self.trailing_structure_stop <= 0)
+        ):
+            raise ValueError("구조 trailing 계획에는 진입 전 완성봉 stop이 필요합니다.")
+        if (
+            self.trailing_policy is not None
+            and self.trailing_policy.model in _COMPLETED_REFERENCE_MODELS
+        ):
+            if (
+                self.trailing_reference_ts_ms is None
+                or self.trailing_reference_ts_ms > self.signal_time_ms
+                or self.trailing_reference_interval_seconds is None
+                or self.trailing_reference_interval_seconds <= 0
+            ):
+                raise ValueError("trailing 참조봉은 신호시각 전에 완성돼야 합니다.")
+            reference_age_ms = self.signal_time_ms - self.trailing_reference_ts_ms
+            if reference_age_ms > self.trailing_reference_interval_seconds * 1_000:
+                raise ValueError("trailing 완료봉 참조가 한 시간구간보다 오래됐습니다.")
+        if self.trailing_structure_stop is not None and self.trailing_structure_stop <= 0:
+            raise ValueError("trailing 구조 stop은 양수여야 합니다.")
 
     @property
     def first_target(self) -> TakeProfitTarget:
@@ -160,14 +233,22 @@ class CandidatePlanner:
         trend_take_profit_2_r: Decimal = Decimal("3.0"),
         maximum_holding_ms: int = 900_000,
         strategy_version: str = "1",
+        trailing_policy: TrailingPolicy | None = None,
+        trailing_atr: Decimal | None = None,
+        trailing_structure_stop: Decimal | None = None,
+        trailing_reference_ts_ms: int | None = None,
+        trailing_reference_interval_seconds: int | None = None,
+        take_profit_targets_override: tuple[TakeProfitTarget, ...] | None = None,
+        candidate_id_override: str | None = None,
     ) -> PlanBuildResult:
         if decision.status is not CandidateStatus.QUALIFIED:
             return PlanBuildResult(None, ("STRATEGY_NOT_QUALIFIED",))
-        if (
-            trend_take_profit_1_r <= 0
-            or trend_take_profit_2_r <= trend_take_profit_1_r
-        ):
+        if trend_take_profit_1_r <= 0 or trend_take_profit_2_r <= trend_take_profit_1_r:
             return PlanBuildResult(None, ("INVALID_TREND_TAKE_PROFIT_MULTIPLES",))
+        if take_profit_targets_override is not None and not take_profit_targets_override:
+            return PlanBuildResult(None, ("EMPTY_TAKE_PROFIT_TARGET_OVERRIDE",))
+        if candidate_id_override is not None and not candidate_id_override.strip():
+            return PlanBuildResult(None, ("INVALID_CANDIDATE_ID_OVERRIDE",))
         if (
             decision.planned_entry is None
             or decision.initial_stop is None
@@ -175,6 +256,69 @@ class CandidatePlanner:
             or decision.net_reward_risk is None
         ):
             return PlanBuildResult(None, ("INCOMPLETE_STRATEGY_PLAN",))
+        trailing_reference_values = (
+            trailing_atr,
+            trailing_structure_stop,
+            trailing_reference_ts_ms,
+            trailing_reference_interval_seconds,
+        )
+        if trailing_policy is None and any(
+            value is not None for value in trailing_reference_values
+        ):
+            return PlanBuildResult(None, ("TRAILING_POLICY_MISSING",))
+        if (
+            trailing_policy is not None
+            and trailing_policy.model not in _ATR_TRAILING_MODELS
+            and trailing_atr is not None
+        ):
+            return PlanBuildResult(None, ("UNEXPECTED_TRAILING_ATR_REFERENCE",))
+        if (
+            trailing_policy is not None
+            and trailing_policy.model not in _STRUCTURE_TRAILING_MODELS
+            and trailing_structure_stop is not None
+        ):
+            return PlanBuildResult(None, ("UNEXPECTED_TRAILING_STRUCTURE_REFERENCE",))
+        if (
+            trailing_policy is not None
+            and trailing_policy.model not in _COMPLETED_REFERENCE_MODELS
+            and (
+                trailing_reference_ts_ms is not None
+                or trailing_reference_interval_seconds is not None
+            )
+        ):
+            return PlanBuildResult(None, ("UNEXPECTED_TRAILING_CANDLE_REFERENCE",))
+        if (
+            trailing_policy is not None
+            and trailing_policy.model in _ATR_TRAILING_MODELS
+            and (trailing_atr is None or trailing_atr <= 0)
+        ):
+            return PlanBuildResult(None, ("TRAILING_COMPLETED_CANDLE_ATR_MISSING",))
+        if (
+            trailing_policy is not None
+            and trailing_policy.model in _STRUCTURE_TRAILING_MODELS
+            and (trailing_structure_stop is None or trailing_structure_stop <= 0)
+        ):
+            return PlanBuildResult(None, ("TRAILING_COMPLETED_STRUCTURE_MISSING",))
+        if (
+            trailing_policy is not None
+            and trailing_policy.model in _COMPLETED_REFERENCE_MODELS
+            and (
+                trailing_reference_ts_ms is None
+                or trailing_reference_ts_ms > signal_time_ms
+                or trailing_reference_interval_seconds is None
+                or trailing_reference_interval_seconds <= 0
+            )
+        ):
+            return PlanBuildResult(None, ("TRAILING_COMPLETED_CANDLE_REFERENCE_MISSING",))
+        if (
+            trailing_policy is not None
+            and trailing_policy.model in _COMPLETED_REFERENCE_MODELS
+            and trailing_reference_ts_ms is not None
+            and trailing_reference_interval_seconds is not None
+            and signal_time_ms - trailing_reference_ts_ms
+            > trailing_reference_interval_seconds * 1_000
+        ):
+            return PlanBuildResult(None, ("TRAILING_COMPLETED_CANDLE_REFERENCE_STALE",))
         try:
             book.validate()
         except ValueError:
@@ -202,7 +346,7 @@ class CandidatePlanner:
         if side is Side.SHORT and worst_entry <= final_target:
             return PlanBuildResult(None, ("WORST_ENTRY_REACHES_TARGET",))
 
-        targets = self._targets(
+        targets = take_profit_targets_override or self._targets(
             exit_style=exit_style,
             side=side,
             entry=entry,
@@ -224,12 +368,14 @@ class CandidatePlanner:
             ),
             start=Decimal(0),
         )
-        entry_fee_per_unit = worst_entry * self.cost_model.fee_bps(
-            entry=True, profile=CostProfile.BASE
-        ) / Decimal(10_000)
-        stop_fee_per_unit = stop * self.cost_model.fee_bps(
-            entry=False, profile=CostProfile.BASE
-        ) / Decimal(10_000)
+        entry_fee_per_unit = (
+            worst_entry
+            * self.cost_model.fee_bps(entry=True, profile=CostProfile.BASE)
+            / Decimal(10_000)
+        )
+        stop_fee_per_unit = (
+            stop * self.cost_model.fee_bps(entry=False, profile=CostProfile.BASE) / Decimal(10_000)
+        )
         sizing = self.risk_manager.size(
             RiskSizingInput(
                 equity=risk_state.current_equity,
@@ -247,10 +393,7 @@ class CandidatePlanner:
             return PlanBuildResult(None, sizing.rejection_codes or ("RISK_SIZE_REJECTED",))
         quantity = sizing.quantity
         weighted_reward_per_unit = sum(
-            (
-                abs(target.price - entry) * target.quantity_fraction
-                for target in targets
-            ),
+            (abs(target.price - entry) * target.quantity_fraction for target in targets),
             start=Decimal(0),
         )
         gross_reward = weighted_reward_per_unit * quantity
@@ -283,7 +426,7 @@ class CandidatePlanner:
         liquidity_quality = min(Decimal(1), depth_notional / Decimal("5000"))
         explanation = decision.korean_explanation(instrument.symbol)
         plan = CandidatePlan(
-            candidate_id=f"candidate-{uuid4().hex[:16]}",
+            candidate_id=candidate_id_override or f"candidate-{uuid4().hex[:16]}",
             signal_event_id=signal_event_id,
             run_id=run_id,
             venue=venue,
@@ -329,6 +472,11 @@ class CandidatePlanner:
             ),
             main_eligible=main_eligible,
             shadow_eligible=shadow_eligible,
+            trailing_policy=trailing_policy,
+            trailing_atr=trailing_atr,
+            trailing_structure_stop=trailing_structure_stop,
+            trailing_reference_ts_ms=trailing_reference_ts_ms,
+            trailing_reference_interval_seconds=trailing_reference_interval_seconds,
         )
         return PlanBuildResult(plan, ())
 

@@ -6,6 +6,7 @@ import asyncio
 import threading
 import time
 from collections.abc import AsyncIterator, Mapping
+from decimal import Decimal
 
 import backend.app.market_data.supervisor as supervisor_module
 from backend.app.adapters.base import BackoffPolicy, ConnectionState
@@ -592,7 +593,7 @@ def test_runtime_builds_every_chart_interval_from_public_trades() -> None:
     assert len(dashboard["chart"]["candles"]) == 2
     assert dashboard["chart"]["candles"][0]["open"] == 100.0
     assert dashboard["chart"]["candles"][0]["close"] == 101.0
-    for interval in (5, 15, 30, 60, 180, 300, 600, 900, 1_800, 3_600, 14_400):
+    for interval in (5, 15, 30, 60, 180, 300, 600, 900, 1_800, 3_600, 14_400, 21_600):
         runtime.set_chart_selection("BTCUSDT", interval)
         assert runtime.dashboard()["chart"]["interval"]
 
@@ -912,9 +913,7 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert supervisor.telemetry.critical_lag_max_duration_ms == 2_500
     assert "BTCUSDT" not in runtime.data_gap_since_ms
     assert runtime.latest_books["BTCUSDT"].ts_ms == 3_500
-    assert runtime.feature_engines["BTCUSDT"].snapshot().sample_count == (
-        initial_sample_count + 1
-    )
+    assert runtime.feature_engines["BTCUSDT"].snapshot().sample_count == (initial_sample_count + 1)
     assert "CRITICAL_MARKET_LAG_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert "SUPERVISOR_ENTRY_LOCK" not in runtime.runtime_health_flags
     assert runtime.paused is False
@@ -927,6 +926,227 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     manual_status = runtime.dashboard()["operation_status"]
     assert manual_status["state"] == "MANUALLY_PAUSED"
     assert manual_status["recommended_action"] == "RESUME"
+
+
+def test_sequence_gap_data_health_lock_recovers_after_fresh_depth() -> None:
+    clock = DeterministicClock(current_utc_ms=10_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-sequence-gap-recovery",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    runtime._supervisor = supervisor
+    supervisor.telemetry.consumer_running = True
+    supervisor.running = lambda: True  # type: ignore[method-assign]
+    supervisor.telemetry.entry_locked = False
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
+
+    invalid = _event(runtime.run_id, "BTCUSDT", clock, 1, lag_ms=5).model_copy(
+        update={
+            "event_type": "DEPTH_UPDATE",
+            "quality": DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=False,
+                lag_ms=5,
+                flags=("SEQUENCE_GAP",),
+            ),
+        }
+    )
+    runtime.ingest_live_event(invalid)
+    invalid_eth = invalid.model_copy(update={"event_id": "gap-eth", "symbol": "ETHUSDT"})
+    runtime.ingest_live_event(invalid_eth)
+
+    assert runtime.paused is True
+    assert runtime.data_gap_since_ms == {"BTCUSDT": 10_000, "ETHUSDT": 10_000}
+    assert "ENTRY_LOCK_DATA_HEALTH" in runtime.runtime_health_flags
+
+    clock.advance_ms(100)
+    recovered = _event(runtime.run_id, "BTCUSDT", clock, 2, lag_ms=5).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
+    )
+    runtime.ingest_live_event(recovered)
+
+    assert runtime.data_gap_since_ms == {"ETHUSDT": 10_000}
+    assert "ENTRY_LOCK_DATA_HEALTH" in runtime.runtime_health_flags
+    assert runtime.paused is True
+
+    recovered_eth = _event(runtime.run_id, "ETHUSDT", clock, 3, lag_ms=5).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
+    )
+    runtime.ingest_live_event(recovered_eth)
+
+    assert runtime.data_gap_since_ms == {}
+    assert "ENTRY_LOCK_DATA_HEALTH" not in runtime.runtime_health_flags
+    assert runtime.paused is False
+    assert runtime.dashboard()["operation_status"]["state"] == "RUNNING"
+
+
+def test_crossed_book_is_rejected_before_execution_and_feature_lock_recovers() -> None:
+    clock = DeterministicClock(current_utc_ms=20_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-feature-input-recovery",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    runtime._supervisor = supervisor
+    supervisor.telemetry.consumer_running = True
+    supervisor.running = lambda: True  # type: ignore[method-assign]
+    supervisor.telemetry.entry_locked = False
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
+
+    crossed = _event(runtime.run_id, "BTCUSDT", clock, 1, lag_ms=5).model_copy(
+        update={
+            "event_type": "DEPTH_UPDATE",
+            "data": {
+                "bid": "101",
+                "bid_qty": "2",
+                "ask": "100",
+                "ask_qty": "2",
+                "bids": [["101", "2"]],
+                "asks": [["100", "2"]],
+            },
+        }
+    )
+    runtime.ingest_live_event(crossed)
+    zero_quantity = crossed.model_copy(
+        update={
+            "event_id": "zero-quantity-eth",
+            "symbol": "ETHUSDT",
+            "data": {
+                "bid": "99",
+                "bid_qty": "0",
+                "ask": "100",
+                "ask_qty": "0",
+                "bids": [["99", "0"]],
+                "asks": [["100", "0"]],
+            },
+        }
+    )
+    runtime.ingest_live_event(zero_quantity)
+
+    assert "BTCUSDT" not in runtime.latest_books
+    assert "ETHUSDT" not in runtime.latest_books
+    assert runtime._feature_input_fault_symbols == {"BTCUSDT", "ETHUSDT"}
+    assert "ENTRY_LOCK_FEATURE_INPUT" in runtime.runtime_health_flags
+    assert runtime.paused is True
+    assert runtime.dashboard()["system"]["feature_input_fault_symbols"] == 2
+
+    clock.advance_ms(600)
+    fresh = _event(runtime.run_id, "BTCUSDT", clock, 2, lag_ms=5).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
+    )
+    runtime.ingest_live_event(fresh)
+
+    assert runtime.latest_books["BTCUSDT"].ts_ms == 20_600
+    assert runtime._feature_input_fault_symbols == {"ETHUSDT"}
+    assert "ENTRY_LOCK_FEATURE_INPUT" in runtime.runtime_health_flags
+    assert runtime.paused is True
+
+    clock.advance_ms(600)
+    fresh_eth = _event(runtime.run_id, "ETHUSDT", clock, 3, lag_ms=5).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
+    )
+    runtime.ingest_live_event(fresh_eth)
+
+    assert runtime.latest_books["ETHUSDT"].ts_ms == 21_200
+    assert runtime._feature_input_fault_symbols == set()
+    assert "ENTRY_LOCK_FEATURE_INPUT" not in runtime.runtime_health_flags
+    assert runtime.paused is False
+    assert runtime.dashboard()["operation_status"]["state"] == "RUNNING"
+
+
+def test_runtime_canonicalizes_book_levels_before_execution() -> None:
+    clock = DeterministicClock(current_utc_ms=30_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-book-level-order",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    event = _event(runtime.run_id, "BTCUSDT", clock, 1, lag_ms=5).model_copy(
+        update={
+            "event_type": "DEPTH_UPDATE",
+            "data": {
+                "bid": "98",
+                "bid_qty": "1",
+                "ask": "101",
+                "ask_qty": "1",
+                "bids": [["98", "1"], ["99", "2"]],
+                "asks": [["101", "1"], ["100", "2"]],
+            },
+        }
+    )
+
+    runtime.ingest_live_event(event)
+
+    assert runtime.latest_books["BTCUSDT"].bids[0] == (Decimal("99"), Decimal("2"))
+    assert runtime.latest_books["BTCUSDT"].asks[0] == (Decimal("100"), Decimal("2"))
+
+
+def test_nonfinite_trade_is_rejected_before_candles_and_recovers_on_fresh_book() -> None:
+    clock = DeterministicClock(current_utc_ms=40_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-invalid-trade-recovery",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    runtime._supervisor = supervisor
+    supervisor.telemetry.consumer_running = True
+    supervisor.running = lambda: True  # type: ignore[method-assign]
+    supervisor.telemetry.entry_locked = False
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
+    invalid = _event(runtime.run_id, "BTCUSDT", clock, 1, lag_ms=5).model_copy(
+        update={
+            "event_type": "TRADE",
+            "data": {
+                "price": "NaN",
+                "quantity": "1",
+                "buyer_is_aggressor": True,
+            },
+        }
+    )
+
+    runtime.ingest_live_event(invalid)
+
+    assert runtime.candle_builder.diagnostics.accepted_trades == 0
+    assert runtime._feature_input_fault_symbols == {"BTCUSDT"}
+    assert "ENTRY_LOCK_FEATURE_INPUT" in runtime.runtime_health_flags
+    assert runtime.paused is True
+
+    clock.advance_ms(600)
+    fresh = _event(runtime.run_id, "BTCUSDT", clock, 2, lag_ms=5).model_copy(
+        update={"event_type": "DEPTH_UPDATE"}
+    )
+    runtime.ingest_live_event(fresh)
+
+    assert runtime._feature_input_fault_symbols == set()
+    assert "ENTRY_LOCK_FEATURE_INPUT" not in runtime.runtime_health_flags
+    assert runtime.paused is False
 
 
 def test_executable_lag_quarantine_respects_configured_boundary_and_event_scope() -> None:
@@ -1275,13 +1495,9 @@ def test_rotation_waits_for_fresh_depth_from_every_selected_symbol() -> None:
         update={"event_type": "DEPTH_UPDATE"}
     )
 
-    assert (
-        supervisor_module._rotation_depth_output_ready(btc, warming_symbols) is False
-    )
+    assert supervisor_module._rotation_depth_output_ready(btc, warming_symbols) is False
     assert warming_symbols == {"ETHUSDT"}
-    assert (
-        supervisor_module._rotation_depth_output_ready(btc, warming_symbols) is False
-    )
+    assert supervisor_module._rotation_depth_output_ready(btc, warming_symbols) is False
     assert warming_symbols == {"ETHUSDT"}
     assert supervisor_module._rotation_depth_output_ready(eth, warming_symbols) is True
     assert warming_symbols == set()

@@ -173,18 +173,14 @@ def chronological_split(
     if purge_ms < 0 or embargo_ms < 0:
         raise ValueError("purge와 embargo는 음수일 수 없습니다.")
     ordered = sorted(observations, key=lambda row: (row.signal_ts_ms, row.observation_id))
-    train = tuple(
-        row for row in ordered if row.outcome_ts_ms < train_end_ts_ms - purge_ms
-    )
+    train = tuple(row for row in ordered if row.outcome_ts_ms < train_end_ts_ms - purge_ms)
     validation = tuple(
         row
         for row in ordered
         if row.signal_ts_ms > train_end_ts_ms + embargo_ms
         and row.outcome_ts_ms < validation_end_ts_ms - purge_ms
     )
-    oos = tuple(
-        row for row in ordered if row.signal_ts_ms > validation_end_ts_ms + embargo_ms
-    )
+    oos = tuple(row for row in ordered if row.signal_ts_ms > validation_end_ts_ms + embargo_ms)
     _assert_disjoint(train, validation, oos)
     return {"train": train, "validation": validation, "oos": oos}
 
@@ -237,6 +233,16 @@ def probability_of_backtest_overfitting(
         return {"pbo": 0.0, "combinations": 0, "logits": [], "status": "ONE_HYPOTHESIS"}
     if fold_count < 4 or fold_count % 2:
         raise ValueError("PBO에는 4개 이상의 짝수 fold가 필요합니다.")
+    if all(
+        len({float(candidate_fold_returns[name][fold]) for name in names}) == 1
+        for fold in range(fold_count)
+    ):
+        return {
+            "pbo": None,
+            "combinations": 0,
+            "logits": [],
+            "status": "INSUFFICIENT_CROSS_SECTIONAL_VARIATION",
+        }
     half = fold_count // 2
     logits: list[float] = []
     all_indexes = set(range(fold_count))
@@ -297,13 +303,10 @@ def deflated_sharpe_ratio(
     normal = NormalDist()
     expected_max = 0.0
     if trials > 1:
-        expected_max = (
-            (1 - gamma) * normal.inv_cdf(1 - 1 / trials)
-            + gamma * normal.inv_cdf(1 - 1 / (trials * math.e))
+        expected_max = (1 - gamma) * normal.inv_cdf(1 - 1 / trials) + gamma * normal.inv_cdf(
+            1 - 1 / (trials * math.e)
         )
-    variance = (
-        1 - skew * sharpe + ((kurtosis - 1) / 4) * sharpe**2
-    ) / (len(values) - 1)
+    variance = (1 - skew * sharpe + ((kurtosis - 1) / 4) * sharpe**2) / (len(values) - 1)
     if variance <= 0:
         return {
             "dsr_probability": None,
@@ -336,10 +339,7 @@ def bootstrap_mean_interval(
         raise ValueError("bootstrap 반복수와 신뢰수준이 올바르지 않습니다.")
     samples = [float(value) for value in values]
     rng = random.Random(seed)
-    means = sorted(
-        fmean(rng.choice(samples) for _ in samples)
-        for _ in range(resamples)
-    )
+    means = sorted(fmean(rng.choice(samples) for _ in samples) for _ in range(resamples))
     tail = (1 - confidence) / 2
     lower_index = min(len(means) - 1, max(0, int(tail * len(means))))
     upper_index = min(len(means) - 1, max(0, int((1 - tail) * len(means)) - 1))
@@ -387,10 +387,7 @@ def _validate_candidate_returns(candidate_fold_returns: Mapping[str, Sequence[fl
 
 
 def _assert_disjoint(*groups: Sequence[ResearchObservation]) -> None:
-    identifiers = [
-        {row.observation_id for row in group}
-        for group in groups
-    ]
+    identifiers = [{row.observation_id for row in group} for group in groups]
     for left_index, left in enumerate(identifiers):
         for right in identifiers[left_index + 1 :]:
             if left & right:

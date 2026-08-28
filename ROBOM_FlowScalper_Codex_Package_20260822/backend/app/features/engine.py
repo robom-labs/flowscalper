@@ -104,6 +104,12 @@ class FeatureSnapshot:
     depth_adjusted_ofi_3s_bps: float = 0.0
     bid_book_slope_10: float = 0.0
     ask_book_slope_10: float = 0.0
+    trade_count_3s: int = 0
+    trade_notional_3s: float = 0.0
+    bid_refill_ratio_3s: float = 0.0
+    ask_refill_ratio_3s: float = 0.0
+    bid_cancel_ratio_3s: float = 0.0
+    ask_cancel_ratio_3s: float = 0.0
 
     def assert_finite(self) -> None:
         for field in fields(self):
@@ -119,7 +125,7 @@ class FeatureEngine:
         self._books: deque[BookFrame] = deque()
         self._trades: deque[TradeTick] = deque()
         self._ofi: deque[tuple[int, float]] = deque()
-        self._depth_changes: deque[tuple[int, float, float]] = deque()
+        self._depth_changes: deque[tuple[int, float, float, float, float]] = deque()
 
     def ingest_book(self, frame: BookFrame) -> None:
         frame.validate()
@@ -170,8 +176,7 @@ class FeatureEngine:
             bid_vwap_10 = depth_bid_10 / multi_level_bid_quantity
             ask_vwap_10 = depth_ask_10 / multi_level_ask_quantity
             multi_level_microprice_10 = (
-                bid_vwap_10 * multi_level_ask_quantity
-                + ask_vwap_10 * multi_level_bid_quantity
+                bid_vwap_10 * multi_level_ask_quantity + ask_vwap_10 * multi_level_bid_quantity
             ) / multi_level_total_quantity
         else:
             multi_level_microprice_10 = mid
@@ -201,6 +206,8 @@ class FeatureEngine:
         signed_quantity_3s = Decimal(0)
         signed_quantity_10s = Decimal(0)
         signed_notional_3s = Decimal(0)
+        trade_notional_3s = Decimal(0)
+        trade_count_3s = 0
         notional_10s = Decimal(0)
         for trade in reversed(self._trades):
             age_ms = latest.ts_ms - trade.trade_ts_ms
@@ -214,24 +221,38 @@ class FeatureEngine:
                 trade_quantity_3s += trade.quantity
                 signed_quantity_3s += trade.quantity * direction
                 signed_notional_3s += trade.price * trade.quantity * direction
+                trade_notional_3s += trade.price * trade.quantity
+                trade_count_3s += 1
             if age_ms <= 1_000:
                 trade_quantity_1s += trade.quantity
                 signed_quantity_1s += trade.quantity * direction
 
-        additions_3s = 0.0
-        removals_3s = 0.0
-        for timestamp, additions, removals in reversed(self._depth_changes):
+        bid_additions_3s = 0.0
+        bid_removals_3s = 0.0
+        ask_additions_3s = 0.0
+        ask_removals_3s = 0.0
+        for (
+            timestamp,
+            bid_additions,
+            bid_removals,
+            ask_additions,
+            ask_removals,
+        ) in reversed(self._depth_changes):
             if latest.ts_ms - timestamp > 3_000:
                 break
-            additions_3s += additions
-            removals_3s += removals
+            bid_additions_3s += bid_additions
+            bid_removals_3s += bid_removals
+            ask_additions_3s += ask_additions
+            ask_removals_3s += ask_removals
+        additions_3s = bid_additions_3s + ask_additions_3s
+        removals_3s = bid_removals_3s + ask_removals_3s
         depth_total_3s = additions_3s + removals_3s
+        bid_change_total_3s = bid_additions_3s + bid_removals_3s
+        ask_change_total_3s = ask_additions_3s + ask_removals_3s
 
         values_3s = [value for timestamp, value in mids if timestamp >= latest.ts_ms - 3_000]
         values_30s = [value for timestamp, value in mids if timestamp >= latest.ts_ms - 30_000]
-        values_120s = [
-            value for timestamp, value in mids if timestamp >= latest.ts_ms - 120_000
-        ]
+        values_120s = [value for timestamp, value in mids if timestamp >= latest.ts_ms - 120_000]
         volatility_30s = self._volatility_from_values(values_30s)
         volatility_120s = self._volatility_from_values(values_120s)
         path_30s = sum(
@@ -280,18 +301,14 @@ class FeatureEngine:
             ),
             realized_volatility_30s=volatility_30s,
             realized_volatility_120s=volatility_120s,
-            compression_ratio=(
-                volatility_30s / volatility_120s if volatility_120s > 0 else 0.0
-            ),
+            compression_ratio=(volatility_30s / volatility_120s if volatility_120s > 0 else 0.0),
             efficiency_ratio_30s=(
                 abs(values_30s[-1] - values_30s[0]) / path_30s
                 if len(values_30s) >= 2 and path_30s
                 else 0.0
             ),
             micro_vwap_10s=(
-                float(notional_10s / trade_quantity_10s)
-                if trade_quantity_10s
-                else float(mid)
+                float(notional_10s / trade_quantity_10s) if trade_quantity_10s else float(mid)
             ),
             multi_level_microprice_10=float(multi_level_microprice_10),
             multi_level_microprice_10_minus_mid_bps=float(
@@ -300,6 +317,20 @@ class FeatureEngine:
             depth_adjusted_ofi_3s_bps=float(depth_adjusted_ofi_3s_bps),
             bid_book_slope_10=bid_book_slope_10,
             ask_book_slope_10=ask_book_slope_10,
+            trade_count_3s=trade_count_3s,
+            trade_notional_3s=float(trade_notional_3s),
+            bid_refill_ratio_3s=(
+                bid_additions_3s / bid_change_total_3s if bid_change_total_3s else 0.0
+            ),
+            ask_refill_ratio_3s=(
+                ask_additions_3s / ask_change_total_3s if ask_change_total_3s else 0.0
+            ),
+            bid_cancel_ratio_3s=(
+                bid_removals_3s / bid_change_total_3s if bid_change_total_3s else 0.0
+            ),
+            ask_cancel_ratio_3s=(
+                ask_removals_3s / ask_change_total_3s if ask_change_total_3s else 0.0
+            ),
         )
         snapshot.assert_finite()
         return snapshot
@@ -381,18 +412,34 @@ class FeatureEngine:
         return float(bid_flow - ask_flow)
 
     @staticmethod
-    def _depth_change(previous: BookFrame, current: BookFrame) -> tuple[float, float]:
-        old = {price: quantity for price, quantity in (*previous.bids[:10], *previous.asks[:10])}
-        new = {price: quantity for price, quantity in (*current.bids[:10], *current.asks[:10])}
-        refill = Decimal(0)
-        cancel = Decimal(0)
-        for price in old.keys() | new.keys():
-            delta = new.get(price, Decimal(0)) - old.get(price, Decimal(0))
-            if delta > 0:
-                refill += delta
-            else:
-                cancel -= delta
-        return float(refill), float(cancel)
+    def _depth_change(
+        previous: BookFrame,
+        current: BookFrame,
+    ) -> tuple[float, float, float, float]:
+        def changes(
+            old_levels: tuple[tuple[Decimal, Decimal], ...],
+            new_levels: tuple[tuple[Decimal, Decimal], ...],
+        ) -> tuple[Decimal, Decimal]:
+            old = {price: quantity for price, quantity in old_levels}
+            new = {price: quantity for price, quantity in new_levels}
+            refill = Decimal(0)
+            cancel = Decimal(0)
+            for price in old.keys() | new.keys():
+                delta = new.get(price, Decimal(0)) - old.get(price, Decimal(0))
+                if delta > 0:
+                    refill += delta
+                else:
+                    cancel -= delta
+            return refill, cancel
+
+        bid_refill, bid_cancel = changes(previous.bids[:10], current.bids[:10])
+        ask_refill, ask_cancel = changes(previous.asks[:10], current.asks[:10])
+        return (
+            float(bid_refill),
+            float(bid_cancel),
+            float(ask_refill),
+            float(ask_cancel),
+        )
 
     @staticmethod
     def _window_sum(values: deque[tuple[int, float]], now_ms: int, window_ms: int) -> float:
@@ -423,8 +470,8 @@ class FeatureEngine:
 
     def _depth_ratio(self, now_ms: int, window_ms: int, *, refill: bool) -> float:
         changes = [item for item in self._depth_changes if item[0] >= now_ms - window_ms]
-        additions = sum(item[1] for item in changes)
-        removals = sum(item[2] for item in changes)
+        additions = sum(item[1] + item[3] for item in changes)
+        removals = sum(item[2] + item[4] for item in changes)
         total = additions + removals
         return (additions if refill else removals) / total if total else 0.0
 

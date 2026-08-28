@@ -184,7 +184,7 @@ No personal credentials exist in exports.
 - LIVE replay cancellation propagates into the isolated process call. Refreshing the browser reattaches to an active operation, while server shutdown cancels it before closing the ledger.
 - Replay result history loads after the Run list and preview. A slow historical result scan cannot leave Run and symbol controls blank, and subsequent reads use the verified in-process cache.
 - Interactive timeline reads at most 100 checksum-verified events and only the 1-second candles inside that event window. The full stored count remains visible. Full strategy validation continues to process all stored events for the selected symbol.
-- When active SQLite rows and immutable Parquet archives coexist, each source is bounded before the canonical `(venue_ts_ms, receive_monotonic_ns, event_id)` merge. A later archive is skipped only when its first timestamp is strictly beyond the current limit cutoff.
+- When active SQLite rows and immutable Parquet archives coexist, canonical replay order is `(receive_ts_ms, receive_monotonic_ns, venue_ts_ms, event_id)`. Exchange time remains the market-time filter and chart axis, but an event may enter the strategy information set only in the order it was actually received. The wall-clock receive time keeps order valid across process or machine restarts, while monotonic time resolves events received in the same millisecond. A bounded request therefore verifies and merges every relevant archive batch before applying its final limit; it does not skip a batch from exchange-time metadata alone.
 - See `docs/adr/ADR-043-observable-cancellable-bounded-replay.md`.
 
 ## 10.16 활성 writer와 거래 상세 재생 cache
@@ -205,3 +205,38 @@ No personal credentials exist in exports.
 - 전수검사 동안 event 전진, queue, 실행 p95, planned·unplanned reconnect, gap, resync, drop, persistence fault, buffer drop, critical incident, 포지션과 PAPER 안전경계를 별도 thread로 감시한다.
 - 실패하거나 안전상한을 넘으면 검사를 중단하고 서비스를 복구한다. PASS 후 외장 clone과 별도 device 임시 사본을 모두 제거한다.
 - 자세한 중단·회전·HTTP 감시 계약은 `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`를 따른다.
+
+## 10.18 Trailing runner 감사와 복구
+
+- PAPER portfolio recovery payload schema 5는 trailing policy, 여덟 상태, transition history,
+  최근 중복방지 event ID, favorable executable bid/ask, 단조 trail과 외부 감사 cursor를 보존한다.
+- `TRAILING_STATE_TRANSITION`, `TRAILING_MARK_UPDATED`, `TRAILING_EDGE_STATE_UPDATED`,
+  `TRAIL_EXIT_PENDING`는 모두 상태변경 감사로 분류돼 checksum 보호 recovery snapshot을 쓴다.
+- 단순 화면용 미실현손익 변화는 snapshot을 쓰지 않는다. 새로운 favorable mark 또는 실제
+  보호 trail 변화만 저장해 writer 부담을 제한한다.
+- 복구는 transition 연결·허용 전이·시간·식별자·결정적 transition ID뿐 아니라 strict
+  boolean, adverse 사유 목록·개수·지속시각, 단조 trail과 수수료 반영 보호경계를 검증하고
+  불일치 시 fail-closed한다.
+- ATR·구조 reference는 연속 완성봉만 사용하고, 산출 ATR·구조 stop·마지막 완성시각·시간구간을
+  `CandidatePlan`과 recovery snapshot에 고정한다. replay도 같은 고정값을 사용한다.
+- 같은 저장 event와 정책을 replay했을 때 transition 경로와 최종 state checksum이 같아야 한다.
+  이 검증을 실행하기 전 상태는 `NOT_RUN`이며 수익성 증거가 아니다.
+- 완료 거래 payload는 `trailing_activation_ts_ms`, `peak_unrealized_usdt`,
+  `giveback_usdt`, `runner_net_pnl_usdt`, `trail_trigger_slippage_usdt`와
+  `trailing_state_checksum`을 메인·BASE·STRESS 계좌에 같은 의미로 저장한다.
+- 전략 성과 API는 현재 전략버전의 독립 `LIVE_PUBLIC` 거래만 사용해 activation 표본,
+  runner 순기여, 평균 giveback과 trailing trigger 체결차이 비용을 계산한다. 거래 상세와
+  전략별 통계 화면은 이 값을 표시하되 표본이 없으면 수익성 숫자를 만들어내지 않는다.
+
+## 10.19 고정 파라미터 walk-forward와 holdout
+
+- 네 Validation fold에서 anchored는 모든 이전 fold, rolling은 직전 fold를
+  training 창으로 사용하고 다음 fold를 평가한다.
+- trial parameter는 사전등록값으로 고정하며 창별 결과로 재튜닝하지 않는다.
+- symbol·venue·regime·volatility·bull/bear/range·BASE/STRESS cost를 독립
+  leave-one-group-out 진단으로 남긴다. 그룹이 하나뿐이거나 신호 시점
+  라벨이 누락되면 성공으로 표시하지 않는다.
+- 변동성은 신호 시점 완료본의 fast/slow 실현변동성 비율로
+  `LOW < 0.75`, `NORMAL <= 1.5`, `HIGH > 1.5`를 고정한다.
+- 결과는 Validation 진단이며 Final OOS를 열거나 수익성·승격을 입증하지 않는다.
+- 상세 경계는 `docs/adr/ADR-081-fixed-parameter-walk-forward-and-holdouts.md`를 따른다.

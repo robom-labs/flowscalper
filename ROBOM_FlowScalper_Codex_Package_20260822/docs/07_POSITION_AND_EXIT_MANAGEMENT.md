@@ -126,3 +126,31 @@ A trade is not complete until:
 - trade record is immutable;
 - cooldown begins;
 - replay slice is finalized.
+
+## 7.11 Activated trailing runner contract
+
+An explicitly configured PAPER candidate may use the eight-state runner lifecycle from
+`ENTRY_PENDING` through `CLOSED`. Existing strategies receive no implicit trailing policy.
+
+- LONG favorable movement and the trailing trigger use a fresh, sequence-valid executable
+  best bid. SHORT uses the corresponding best ask.
+- A percentage, fixed-distance, ATR Chandelier, completed-structure or preregistered
+  edge-adaptive policy may tighten protection, but never widen it.
+- ATR·Chandelier·structure 기준은 신호 전에 끝난 연속 완성봉에서 산출해 불변 계획에
+  고정한다. 누락봉·미완성봉·한 시간구간보다 오래된 참조는 신규 PAPER 진입을 거부한다.
+- Edge-adaptive 축소는 건강한 데이터에서 서로 다른 adverse 근거 두 개 이상이 3초
+  지속된 뒤에만 활성화한다. 한 번의 OFI·체결흐름 변화로 즉시 좁히지 않는다.
+- TP1-triggered policies arm only from the TP1 execution path. An R-multiple policy cannot
+  be armed merely because TP1 was requested.
+- A rejected or partially filled PAPER exit keeps the remaining runner protected and uses
+  the existing delayed depth-walk execution path.
+- State transitions are append-only. A favorable mark or trail change without a state
+  transition is also persisted as `TRAILING_MARK_UPDATED` so restart recovery does not
+  restore an older stop.
+- Adaptive adverse 시작시각·사유·활성상태는 `TRAILING_EDGE_STATE_UPDATED`로 저장하며,
+  재시작 뒤 같은 지속시간 상태를 복원한다.
+- 거래가 완전히 닫히면 activation 시각, 최고 실행가능 미실현손익, peak giveback,
+  비용을 배분한 runner 순기여, trigger 이후 실제 depth 체결까지의 추가 가격차이 비용과
+  최종 trailing checksum을 불변 거래행에 함께 고정한다.
+- The implementation is research infrastructure, not promotion or profitability evidence.
+  ACTIVE remains zero until every preregistered gate passes.

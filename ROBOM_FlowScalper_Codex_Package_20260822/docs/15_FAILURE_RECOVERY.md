@@ -135,6 +135,15 @@ Recovery requires satisfying a deterministic health check, not merely a UI toggl
 - A market-archive worker-process error follows the same fail-closed path; its popped batch is restored ahead of newly arrived rows before the bounded retry limit is applied.
 - CPU, process memory, thread count, uptime and disk figures on the System diagnostics screen come from the local process and filesystem rather than fixture constants.
 - Rolling public-event lag p95 above 1,500ms sets `CRITICAL_MARKET_LAG_ENTRY_LOCK` in both supervisor telemetry and the PAPER runtime. A fresh sequence-valid depth clears an automatically recoverable safety wait after p95 recovery; only a user-requested pause requires an explicit resume.
+- `ENTRY_LOCK_DATA_HEALTH`는 모든 종목 gap과 stale trade가 사라지고 해당 fresh depth가 실제 호가·feature·포지션 건강 경로를 통과한 뒤에만 해제한다. 한 종목의 fresh event로 다른 종목 gap을 풀지 않는다.
+- 교차호가·0 이하 수량·비유한 가격이나 수량은 latest executable book이나 PAPER 체결 경로에 넣기 전에 거부한다. `ENTRY_LOCK_FEATURE_INPUT`은 결함 종목 모두의 정상 snapshot이 확인된 뒤에만 해제한다.
+- 비유한 값이나 0 이하 가격·수량의 공개 체결은 캔들·피처·전략 경로에 넣지 않고 피처 입력 안전잠금으로 격리한다. 원본 시장 이벤트 보존과 실행 입력 허용은 서로 분리한다.
+- PAPER portfolio recovery schema 5 preserves trailing runner state. State transitions and
+  favorable executable mark or trail changes write a new recovery snapshot; corrupted
+  transition chains, identifiers, timestamps, transition ID checksums, string booleans,
+  비정상 adverse 사유·지속시각 또는 보호경계를 넓힌 trail은 fail closed한다.
+- ATR·구조형 runner는 진입계획에 고정된 마지막 연속 완성봉 기준만 복구한다. 미완성봉이나
+  한 시간구간보다 오래된 참조로 계획을 다시 만들지 않는다.
 - 신규 PAPER 진입가격을 결정하는 실행호가 p95는 sequence-valid depth·order-book 입력만 사용한다. 공개 trade와 wide scanner 지연은 별도 telemetry로 유지해 느린 비실행 stream이 실제 bid·ask 안전상태로 오인되지 않게 한다.
 - 거래소 보정시각 기준 500ms보다 늦은 aggregate trade는 `TRADE_LAG_STALE`로 저장하되 candle·FeatureEngine·전략평가에서 제외한다. 해당 종목은 신선한 trade가 도착할 때까지 `data_healthy=false`로 fail-closed한다.
 - A planned WebSocket rotation enters `RECONNECTING` and locks new PAPER entries before metadata and snapshots are prepared. Public socket close waits are bounded, and the lock clears only after a new sequence-valid depth event.

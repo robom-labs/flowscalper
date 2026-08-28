@@ -26,6 +26,8 @@ Required cases:
 - ping/pong and planned reconnect;
 - host wall-clock step after venue calibration;
 - planned rotation entry lock before provider prepare and automatic unlock after fresh depth;
+- multi-symbol sequence gap and feature-input locks stay closed until every affected symbol has a fresh valid snapshot;
+- crossed, zero/nonfinite book data and zero/nonfinite trade data are rejected before executable-book, PAPER fill, candle and strategy paths;
 - unplanned reconnect metadata/time recalibration, failed-prepare backoff and recovered error clearing;
 - bounded multi-socket close and repeated actual public rotation;
 - rate-limit/backoff behavior;
@@ -35,6 +37,7 @@ Required cases:
 ## 12.3 Order-book tests
 
 - sorted bid/ask invariants;
+- unsorted valid raw levels are canonicalized once and the same ordered snapshot feeds features and PAPER execution;
 - crossed-book rejection;
 - level add/update/remove;
 - checksum or update-ID continuity where applicable;

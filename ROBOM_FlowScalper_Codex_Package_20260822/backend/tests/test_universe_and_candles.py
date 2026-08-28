@@ -93,6 +93,7 @@ def test_candles_use_only_observed_trades() -> None:
         1_800,
         3_600,
         14_400,
+        21_600,
     )
     builder.add(TradeTick(Venue.FIXTURE, "BTCUSDT", Decimal("100"), Decimal("2"), 1_000, True))
     builder.add(TradeTick(Venue.FIXTURE, "BTCUSDT", Decimal("101"), Decimal("3"), 1_500, True))
@@ -126,17 +127,20 @@ def test_candle_builder_ignores_identified_duplicates_and_late_trades() -> None:
     )
     assert builder.add(original) == []
     assert builder.add(original) == []
-    assert builder.add(
-        TradeTick(
-            Venue.FIXTURE,
-            "BTCUSDT",
-            Decimal("999"),
-            Decimal("9"),
-            60_999,
-            False,
-            "trade-late",
+    assert (
+        builder.add(
+            TradeTick(
+                Venue.FIXTURE,
+                "BTCUSDT",
+                Decimal("999"),
+                Decimal("9"),
+                60_999,
+                False,
+                "trade-late",
+            )
         )
-    ) == []
+        == []
+    )
     current = builder.series("BTCUSDT", 60)[0]
     assert current.close == Decimal("100")
     assert current.volume == Decimal("2")

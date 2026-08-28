@@ -40,11 +40,7 @@ class TimeframeRegistry:
         return tuple(spec.seconds for spec in self._specs if spec.public_chart)
 
     def public_rows(self) -> list[dict[str, object]]:
-        return [
-            spec.as_public_dict()
-            for spec in self._specs
-            if spec.public_chart
-        ]
+        return [spec.as_public_dict() for spec in self._specs if spec.public_chart]
 
     def label(self, seconds: int) -> str:
         spec = self._by_seconds.get(seconds)
@@ -83,5 +79,6 @@ TIMEFRAME_REGISTRY = TimeframeRegistry(
         TimeframeSpec(1_800, "30m", "30분", True, "30m", 30),
         TimeframeSpec(3_600, "1h", "1시간", True, "1h", 60),
         TimeframeSpec(14_400, "4h", "4시간", True, "4h", 240),
+        TimeframeSpec(21_600, "6h", "6시간", False, None, None),
     )
 )

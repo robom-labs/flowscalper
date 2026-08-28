@@ -99,6 +99,24 @@ def test_latency_and_stale_book_fail_closed() -> None:
         PaperExecutionEngine().open_position(**stale)
 
 
+@pytest.mark.parametrize(
+    ("bids", "asks"),
+    (
+        ((("99.9", "0"),), (("100.1", "1"),)),
+        ((("NaN", "1"),), (("100.1", "1"),)),
+        ((("99.9", "1"),), (("100.1", "Infinity"),)),
+    ),
+)
+def test_nonpositive_or_nonfinite_execution_book_fails_closed(
+    bids: tuple[tuple[str, str], ...],
+    asks: tuple[tuple[str, str], ...],
+) -> None:
+    snapshot = book(bids=bids, asks=asks)
+
+    with pytest.raises(ValueError, match="유한한 양수"):
+        snapshot.validate()
+
+
 def test_exit_uses_executable_side_and_ambiguous_ordering_is_pessimistic() -> None:
     engine = PaperExecutionEngine()
     opened = engine.open_position(**open_arguments(Side.LONG)).position

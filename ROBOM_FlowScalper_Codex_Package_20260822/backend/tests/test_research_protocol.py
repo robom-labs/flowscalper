@@ -151,8 +151,7 @@ def test_walk_forward_folds_are_deterministic_and_disjoint() -> None:
     assert len(first) == 3
     for fold in first:
         identifiers = [
-            {row.observation_id for row in fold[name]}
-            for name in ("train", "validation", "oos")
+            {row.observation_id for row in fold[name]} for name in ("train", "validation", "oos")
         ]
         assert not identifiers[0] & identifiers[1]
         assert not identifiers[1] & identifiers[2]
@@ -176,3 +175,19 @@ def test_multiple_testing_and_bootstrap_are_reported_without_annualization() -> 
     assert float(many_trials["dsr_probability"]) <= float(one_trial["dsr_probability"])
     assert interval_a == interval_b
     assert float(interval_a["lower"]) <= float(interval_a["upper"])
+
+
+def test_pbo_is_not_invented_when_all_candidates_have_identical_fold_returns() -> None:
+    pbo = probability_of_backtest_overfitting(
+        {
+            "candidate-a": (0.0, 0.0, 0.0, 0.0),
+            "candidate-b": (0.0, 0.0, 0.0, 0.0),
+        }
+    )
+
+    assert pbo == {
+        "pbo": None,
+        "combinations": 0,
+        "logits": [],
+        "status": "INSUFFICIENT_CROSS_SECTIONAL_VARIATION",
+    }

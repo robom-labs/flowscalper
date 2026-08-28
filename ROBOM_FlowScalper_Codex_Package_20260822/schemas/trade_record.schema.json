@@ -20,6 +20,7 @@
     "initial_stop": {"type": "string"},
     "take_profit": {"type": "string"},
     "candidate_id": {"type": ["string", "null"]},
+    "signal_event_id": {"type": ["string", "null"]},
     "take_profit_1": {"type": ["string", "null"]},
     "take_profit_2": {"type": ["string", "null"]},
     "tp1_hit_ts_ms": {"type": ["integer", "null"]},
@@ -27,6 +28,13 @@
     "time_to_tp1_ms": {"type": ["integer", "null"], "minimum": 0},
     "time_to_tp2_ms": {"type": ["integer", "null"], "minimum": 0},
     "time_to_stop_ms": {"type": ["integer", "null"], "minimum": 0},
+    "trailing_activation_ts_ms": {"type": ["integer", "null"]},
+    "runner_started_ts_ms": {"type": ["integer", "null"]},
+    "peak_unrealized_usdt": {"type": "string"},
+    "giveback_usdt": {"type": "string"},
+    "runner_net_pnl_usdt": {"type": "string"},
+    "trail_trigger_slippage_usdt": {"type": "string"},
+    "trailing_state_checksum": {"type": ["string", "null"]},
     "quantity": {"type": "string"},
     "exit_reason": {"enum": ["TAKE_PROFIT", "STOP", "EDGE_DECAY", "PROFIT_PROTECTION", "MAX_HOLD", "EMERGENCY_STALE", "DATA_GAP", "MANUAL_PAPER_EXIT", "FAULT"]},
     "gross_pnl_usdt": {"type": "string"},
@@ -38,7 +46,8 @@
     "holding_ms": {"type": "integer", "minimum": 0},
     "flags": {"type": "array", "items": {"type": "string"}},
     "config_hash": {"type": "string"},
-    "strategy_version": {"type": "string"}
+    "strategy_version": {"type": "string"},
+    "sample_type": {"enum": ["LIVE_PUBLIC", "REPLAY", "DEMO_FIXTURE", "OFFLINE_FIXTURE"]}
   },
   "additionalProperties": false
 }

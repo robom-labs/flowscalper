@@ -132,6 +132,8 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Trade coalescing preserves direction, quantity, notional and VWAP without lowering a strategy or fill threshold.
 - [ ] Integrated public-market lag stays below the 1,500ms entry-lock threshold or fails closed; queue/drop/gap/fault evidence is recorded.
 - [ ] Host wall-clock correction does not create false venue lag; planned rotation locks before prepare and automatically recovers only after fresh valid depth.
+- [ ] Every affected symbol must pass fresh valid book and feature validation before a data-health or feature-input lock clears; one recovered symbol cannot unlock another.
+- [ ] Crossed, zero/nonfinite book data and zero/nonfinite trade data remain archived for audit but never enter executable-book, PAPER fill, candle or strategy calculations.
 - [ ] DEMO never inherits LIVE lag or universe counts and cannot be mistaken for LIVE on phone, tablet or desktop.
 - [ ] READY start controls and LIVE PAPER observation state remain visible at phone width.
 - [ ] Completed trade replay exposes entry and exit ledger transitions even when the market-event post-roll ends early.

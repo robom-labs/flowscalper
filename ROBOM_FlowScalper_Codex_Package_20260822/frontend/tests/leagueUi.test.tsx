@@ -235,6 +235,30 @@ test('uses BASE as the default open-trade filter and can reveal STRESS', () => {
   expect(document.querySelector('tbody')?.textContent).not.toContain('BTCUSDT')
 })
 
+test('shows the active runner trail in beginner Korean without hiding the stop', () => {
+  const trailingPosition: LeaguePosition = {
+    ...basePosition,
+    trailing: {
+      enabled: true,
+      state: 'RUNNER_ACTIVE',
+      policy_id: 'EDGE_ADAPTIVE_V1',
+      model: 'EDGE_ADAPTIVE',
+      activation_price: '101',
+      activation_ts_ms: 2_000,
+      current_trail: '100.8',
+      runner_quantity: '0.6',
+      giveback_usdt: '0.2',
+      data_health: 'HEALTHY',
+      adverse_active: true,
+      adverse_reasons: ['OFI_ADVERSE', 'MICROPRICE_ADVERSE'],
+    },
+  }
+
+  render(<LeaguePositionsPage positions={[trailingPosition]} strategies={strategies} />)
+
+  expect(screen.getByText(/남은 수량 추적 중.*보호선 100.8.*추세 약화 지속 확인/)).toBeInTheDocument()
+})
+
 test('uses current-version report costs and drawdown in stored performance statistics', () => {
   const data = dashboardFixture()
   const first = data.strategies[0]
@@ -244,6 +268,20 @@ test('uses current-version report costs and drawdown in stored performance stati
     slippage: '23.45',
     maximum_drawdown: '34.56',
     excluded_prior_version_samples: 7,
+    trail_activation_count: 2,
+    trail_activation_rate: '0.5',
+    tp1_fill_rate: '0.5',
+    runner_count: 1,
+    runner_rate: '0.25',
+    runner_net_contribution_usdt: '0.67',
+    mfe_capture_ratio_mean: '0.4',
+    average_peak_giveback_usdt: '0.12',
+    median_peak_giveback_usdt: '0.1',
+    p90_peak_giveback_usdt: '0.2',
+    trailing_exit_count: 1,
+    stop_before_trail_activation_count: 0,
+    activation_after_net_negative_exit_count: 0,
+    trail_trigger_slippage_usdt: '0.03',
   }
   const firstAccount = data.league_accounts.find((account) => account.strategy_id === first.strategy_id && account.profile === 'BASE')
   if (!firstAccount) throw new Error('BASE fixture account missing')
@@ -261,6 +299,12 @@ test('uses current-version report costs and drawdown in stored performance stati
   expect(storedStatistics).toContain('12.34 USDT')
   expect(storedStatistics).toContain('23.45 USDT')
   expect(storedStatistics).toContain('34.56 USDT')
+  expect(storedStatistics).toContain('추적 활성 2건')
+  expect(storedStatistics).toContain('실제 러너 1건')
+  expect(storedStatistics).toContain('TP1 체결 50%')
+  expect(storedStatistics).toContain('러너 순기여 +0.67 USDT')
+  expect(storedStatistics).toContain('되돌림 중앙 0.1 USDT / P90 0.2 USDT')
+  expect(storedStatistics).toContain('추적 종료 0.03 USDT')
   expect(storedStatistics).toContain('과거 버전 7건 제외')
   expect(storedStatistics).not.toContain('91.11 USDT')
   expect(storedStatistics).not.toContain('92.22 USDT')

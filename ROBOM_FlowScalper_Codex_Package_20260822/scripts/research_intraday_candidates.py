@@ -7,6 +7,7 @@ import hashlib
 import html
 import json
 import math
+import tempfile
 import time
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
@@ -153,30 +154,70 @@ def _event_rows(run_dir: Path, *, maximum_events: int | None = None) -> Iterator
     files = tuple(sorted(run_dir.rglob("*.parquet")))
     if not files:
         raise FileNotFoundError(f"시장 archive가 없습니다: {run_dir}")
-    connection = duckdb.connect(":memory:")
+    spill_root = run_dir.parent / ".research-duckdb-spill"
+    spill_root.mkdir(parents=True, exist_ok=True)
     try:
-        connection.execute("SET memory_limit = '192MB'")
-        connection.execute("SET threads = 1")
-        connection.execute("SET preserve_insertion_order = false")
-        query = """
-            SELECT payload_json
-            FROM read_parquet(?, union_by_name = true)
-            WHERE json_extract_string(payload_json, '$.event_type') IN (
-              'TRADE', 'DEPTH_UPDATE', 'ORDERBOOK', 'REST_BOOK_TICKER_BOOTSTRAP'
-            )
-            ORDER BY ts_ms, venue_ts_ms, symbol, payload_json
-        """
-        if maximum_events is not None:
-            query += " LIMIT ?"
-            parameters: list[object] = [[str(path) for path in files], maximum_events]
-        else:
-            parameters = [[str(path) for path in files]]
-        reader = connection.execute(query, parameters).to_arrow_reader(batch_size=2_048)
-        for batch in reader:
-            for raw in batch.column(0).to_pylist():
-                yield json.loads(raw)
+        with tempfile.TemporaryDirectory(prefix="receive-order-", dir=spill_root) as spill_dir:
+            connection = duckdb.connect(":memory:")
+            try:
+                connection.execute("SET memory_limit = '512MB'")
+                connection.execute("SET threads = 1")
+                connection.execute("SET preserve_insertion_order = false")
+                connection.execute("SET temp_directory = ?", [spill_dir])
+                query = """
+                    SELECT payload_json
+                    FROM read_parquet(?, union_by_name = true)
+                    WHERE json_extract_string(payload_json, '$.event_type') IN (
+                      'TRADE', 'DEPTH_UPDATE', 'ORDERBOOK', 'REST_BOOK_TICKER_BOOTSTRAP'
+                    )
+                    ORDER BY
+                      COALESCE(
+                        TRY_CAST(
+                          json_extract_string(payload_json, '$.receive_ts_ms') AS UBIGINT
+                        ),
+                        venue_ts_ms + CAST(
+                          GREATEST(
+                            0,
+                            ROUND(
+                              COALESCE(
+                                TRY_CAST(
+                                  json_extract_string(
+                                    payload_json,
+                                    '$.quality.lag_ms'
+                                  ) AS DOUBLE
+                                ),
+                                0
+                              )
+                            )
+                          ) AS BIGINT
+                        )
+                      ),
+                      CAST(
+                        json_extract_string(payload_json, '$.receive_monotonic_ns') AS UBIGINT
+                      ),
+                      venue_ts_ms,
+                      symbol,
+                      payload_json
+                """
+                if maximum_events is not None:
+                    query += " LIMIT ?"
+                    parameters: list[object] = [
+                        [str(path) for path in files],
+                        maximum_events,
+                    ]
+                else:
+                    parameters = [[str(path) for path in files]]
+                reader = connection.execute(query, parameters).to_arrow_reader(batch_size=2_048)
+                for batch in reader:
+                    for raw in batch.column(0).to_pylist():
+                        yield json.loads(raw)
+            finally:
+                connection.close()
     finally:
-        connection.close()
+        try:
+            spill_root.rmdir()
+        except OSError:
+            pass
 
 
 def _book_frame(payload: dict[str, Any]) -> BookFrame:
@@ -196,7 +237,7 @@ def _book_frame(payload: dict[str, Any]) -> BookFrame:
 
 def _trade_tick(payload: dict[str, Any]) -> TradeTick:
     data = payload["data"]
-    return TradeTick(
+    trade = TradeTick(
         venue=Venue.BINANCE_USDM,
         symbol=str(payload["symbol"]),
         price=Decimal(str(data["price"])),
@@ -205,6 +246,14 @@ def _trade_tick(payload: dict[str, Any]) -> TradeTick:
         buyer_is_aggressor=bool(data["buyer_is_aggressor"]),
         event_id=str(payload["event_id"]),
     )
+    if (
+        not trade.price.is_finite()
+        or not trade.quantity.is_finite()
+        or trade.price <= 0
+        or trade.quantity <= 0
+    ):
+        raise FeatureInputError("연구 체결 가격과 수량은 유한한 양수여야 합니다.")
+    return trade
 
 
 def _variant_key(
@@ -352,10 +401,18 @@ def research_run(
     specs: Sequence[IntervalResearchSpec] = INTERVAL_SPECS,
     maximum_events: int | None = None,
 ) -> tuple[list[ResearchOutcome], RunDiagnostics]:
-    intervals = tuple(sorted({value for spec in specs for value in (
-        spec.interval_seconds,
-        *((spec.higher_interval_seconds,) if spec.higher_interval_seconds else ()),
-    )}))
+    intervals = tuple(
+        sorted(
+            {
+                value
+                for spec in specs
+                for value in (
+                    spec.interval_seconds,
+                    *((spec.higher_interval_seconds,) if spec.higher_interval_seconds else ()),
+                )
+            }
+        )
+    )
     builder = CandleBuilder(intervals=intervals, maximum_bars=128)
     features = MultiTimeframeFeatureEngine(
         intervals=intervals,
@@ -384,7 +441,7 @@ def research_run(
         if event_type in {"DEPTH_UPDATE", "ORDERBOOK", "REST_BOOK_TICKER_BOOTSTRAP"}:
             try:
                 frame = _book_frame(payload)
-            except (FeatureInputError, KeyError, ValueError):
+            except (ArithmeticError, FeatureInputError, KeyError, TypeError, ValueError):
                 continue
             diagnostics.depth_event_count += 1
             latest_books[symbol] = frame
@@ -402,7 +459,7 @@ def research_run(
         try:
             trade = _trade_tick(payload)
             completed = builder.add(trade)
-        except (KeyError, ValueError):
+        except (ArithmeticError, FeatureInputError, KeyError, TypeError, ValueError):
             continue
         for candle in completed:
             features.ingest_completed(candle)
@@ -444,8 +501,7 @@ def research_run(
                         )
                     )
                 variant_groups.extend(
-                    ((reverse.as_variant(), reverse.family),)
-                    for reverse in reverse_hypotheses
+                    ((reverse.as_variant(), reverse.family),) for reverse in reverse_hypotheses
                 )
                 for group in variant_groups:
                     group_keys = [
@@ -485,8 +541,7 @@ def research_run(
                         pending_key = (key, symbol)
                         pending[pending_key] = trade_plan
                         cooldown_until[pending_key] = (
-                            trade_plan.signal.signal_ts_ms
-                            + trade_plan.plan.maximum_holding_ms
+                            trade_plan.signal.signal_ts_ms + trade_plan.plan.maximum_holding_ms
                         )
                         diagnostics.signal_count += 1
                         diagnostics.signals_by_key[key] += 1
@@ -519,9 +574,7 @@ def _profile(values: Sequence[float]) -> dict[str, object]:
         peak = max(peak, equity)
         maximum_drawdown = max(maximum_drawdown, peak - equity)
     downside = [min(0.0, value) for value in values]
-    downside_deviation = (
-        math.sqrt(fmean(value * value for value in downside)) if downside else None
-    )
+    downside_deviation = math.sqrt(fmean(value * value for value in downside)) if downside else None
     gross_loss = abs(sum(losses))
     return {
         "sample_size": len(values),
@@ -547,9 +600,7 @@ def _summaries(outcomes: Sequence[ResearchOutcome], keys: Sequence[str]) -> dict
                 sorted(
                     {
                         reason: sum(
-                            1
-                            for row in outcomes
-                            if row.key == key and row.exit_reason == reason
+                            1 for row in outcomes if row.key == key and row.exit_reason == reason
                         )
                         for reason in {row.exit_reason for row in outcomes if row.key == key}
                     }.items()
@@ -579,10 +630,7 @@ def _purged_split_outcomes(
             for row in by_run[run_id]
         ],
         "oos": [
-            row
-            for run_id in DEFAULT_OOS_RUNS
-            if run_id in selected_runs
-            for row in by_run[run_id]
+            row for run_id in DEFAULT_OOS_RUNS if run_id in selected_runs for row in by_run[run_id]
         ],
     }
     slices = {row.run_id: row for row in dataset}
@@ -605,8 +653,7 @@ def _purged_split_outcomes(
             row
             for row in raw["validation"]
             if row.entry_ts_ms > train_boundary_ms + HORIZON_HOLDING_MS[row.horizon]
-            and row.exit_ts_ms
-            < validation_boundary_ms - HORIZON_HOLDING_MS[row.horizon]
+            and row.exit_ts_ms < validation_boundary_ms - HORIZON_HOLDING_MS[row.horizon]
         ],
         "oos": [
             row
@@ -621,9 +668,7 @@ def _purged_split_outcomes(
         "horizon_specific_purge_embargo_ms": HORIZON_HOLDING_MS,
         "raw_counts": {split: len(rows) for split, rows in raw.items()},
         "included_counts": {split: len(rows) for split, rows in filtered.items()},
-        "excluded_counts": {
-            split: len(raw[split]) - len(filtered[split]) for split in raw
-        },
+        "excluded_counts": {split: len(raw[split]) - len(filtered[split]) for split in raw},
     }
 
 
@@ -706,11 +751,15 @@ def _selection_report(
     promotable_keys = [key for key in keys if not key.endswith(":MECHANICAL_MIRROR")]
     fold_returns = {
         key: [
-            fmean(values) if (values := [
-                row.base_net_bps
-                for row in train_validation
-                if row.key == key and row.run_id == run_id
-            ]) else 0.0
+            fmean(values)
+            if (
+                values := [
+                    row.base_net_bps
+                    for row in train_validation
+                    if row.key == key and row.run_id == run_id
+                ]
+            )
+            else 0.0
             for run_id in train_validation_run_ids
         ]
         for key in promotable_keys
@@ -802,9 +851,7 @@ def _promotion_assessment(
         "oos_base": base,
         "oos_stress": stress_profile,
         "registry_changes": [],
-        "registry_policy": (
-            "OOS_PASS여도 별도 신규 ID와 SHADOW 승인 전에는 등록하지 않음"
-        ),
+        "registry_policy": ("OOS_PASS여도 별도 신규 ID와 SHADOW 승인 전에는 등록하지 않음"),
     }
 
 
@@ -888,10 +935,10 @@ def _html_report(output: dict[str, object]) -> str:
 table{{border-collapse:collapse;width:100%}}
 th,td{{border:1px solid #ccd5df;padding:7px;text-align:left}}th{{background:#edf3f7}}</style>
 <h1>FlowScalper 장중 후보 OOS 연구</h1>
-<p>PAPER 전용 · 실제 주문 0 · 수익성 상태 {html.escape(str(assessment['status']))}</p>
-<p>선정 후보 {html.escape(str(assessment['selected_candidate']))}</p>
+<p>PAPER 전용 · 실제 주문 0 · 수익성 상태 {html.escape(str(assessment["status"]))}</p>
+<p>선정 후보 {html.escape(str(assessment["selected_candidate"]))}</p>
 <table><thead><tr><th>후보</th><th>OOS 표본</th><th>BASE 기대값 bp</th>
-<th>Profit Factor</th><th>표본 상태</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+<th>Profit Factor</th><th>표본 상태</th></tr></thead><tbody>{"".join(rows)}</tbody></table>
 </html>"""
 
 

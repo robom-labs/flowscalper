@@ -174,6 +174,13 @@ export type HistoryRow = {
   time_to_tp1_ms?: number | null
   time_to_tp2_ms?: number | null
   time_to_stop_ms?: number | null
+  trailing_activation_ts_ms?: number | null
+  runner_started_ts_ms?: number | null
+  peak_unrealized_usdt?: string
+  giveback_usdt?: string
+  runner_net_pnl_usdt?: string
+  trail_trigger_slippage_usdt?: string
+  trailing_state_checksum?: string | null
   quantity: string
   exit_reason: string
   gross_pnl: string
@@ -338,6 +345,20 @@ export type StrategyPerformance = {
   median_time_to_tp1_ms: number | null
   median_time_to_tp2_ms: number | null
   median_time_to_stop_ms: number | null
+  trail_activation_count: number
+  trail_activation_rate: string | null
+  tp1_fill_rate: string | null
+  runner_count: number
+  runner_rate: string | null
+  runner_net_contribution_usdt: string
+  mfe_capture_ratio_mean: string | null
+  average_peak_giveback_usdt: string
+  median_peak_giveback_usdt: string
+  p90_peak_giveback_usdt: string
+  trailing_exit_count: number
+  stop_before_trail_activation_count: number
+  activation_after_net_negative_exit_count: number
+  trail_trigger_slippage_usdt: string
   regime_contributions: { regime: string; sample_size: number; net_pnl: string; expectancy_usdt: string }[]
   metric_status: Record<string, string>
   sample_status: string
@@ -420,6 +441,26 @@ export type LeaguePosition = {
   elapsed_seconds: number
   exit_style: string
   management_reason: string
+  trailing?: TrailingPositionState
+}
+
+export type TrailingPositionState = {
+  enabled: boolean
+  state: string
+  policy_id: string | null
+  model?: string | null
+  activation_rule?: string
+  activation_price: string | null
+  activation_ts_ms: number | null
+  current_trail: string | null
+  previous_trail?: string | null
+  runner_quantity: string
+  giveback_usdt: string
+  data_health?: string
+  adverse_active?: boolean
+  adverse_reasons?: string[]
+  reference_ts_ms?: number | null
+  reference_interval_seconds?: number | null
 }
 
 export type FocusPosition = {
@@ -485,6 +526,7 @@ export type FocusPosition = {
   real_orders_enabled: false
   auth_required: false
   funding_usdt?: string
+  trailing?: TrailingPositionState
 }
 
 export type MarketCatalogRow = {
