@@ -1,0 +1,224 @@
+{
+  "schema": "flowscalper.wave103.utc_risk_period_rollover.v1",
+  "status": "PASS_WITH_LIMITS",
+  "recorded_at": "2026-08-28T10:04:00Z",
+  "scope": "PAPER risk daily and weekly period rollover, recovery, immutable deployment, actual browser, and short runtime smoke",
+  "run_id": "run-2b7135a972dd",
+  "source": {
+    "functional_commit": "119a3548e75bf0a46f68f629a35f6fc59cab0b34",
+    "deployed_release_commit": "47cf13d46d46b766403e627b44417c28e651e1b7",
+    "previous_release_commit": "ef146de47ccaea941a1b28516301f299ad1d5a92",
+    "release_isolated": true,
+    "decision_record": "docs/adr/ADR-085-utc-risk-period-rollover.md"
+  },
+  "pre_fix_reproduction": {
+    "status": "REPRODUCED",
+    "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+    "profiles": [
+      "BASE",
+      "STRESS"
+    ],
+    "completed_trades_per_profile": 12,
+    "completed_trades_by_utc_day_per_profile": {
+      "20690": 4,
+      "20691": 7,
+      "20692": 1,
+      "20693": 0
+    },
+    "current_utc_day_index": 20693,
+    "false_rejections": [
+      {
+        "symbol": "PUMPUSDT",
+        "reason": "MAX_DAILY_TRADES"
+      },
+      {
+        "symbol": "DOGEUSDT",
+        "reason": "MAX_DAILY_TRADES"
+      }
+    ],
+    "root_cause": "RiskState daily_trade_count, realized_today, and realized_week had no UTC period cursor. Recovery also restored all completed Run trades into current daily and weekly counters."
+  },
+  "implementation": {
+    "daily_period": "UTC 00:00 boundary",
+    "weekly_period": "Monday UTC 00:00 boundary",
+    "entry_path_refresh": true,
+    "open_path_refresh": true,
+    "close_path_refresh": true,
+    "recovery_current_period_rebuild": true,
+    "legacy_snapshot_compatibility": true,
+    "not_reset_on_rollover": [
+      "equity",
+      "peak_equity",
+      "drawdown",
+      "open_risk",
+      "cooldowns",
+      "consecutive_losses"
+    ],
+    "diagnostic_fields": [
+      "daily_trade_count",
+      "max_daily_trades",
+      "realized_today_usdt",
+      "realized_week_usdt",
+      "daily_period_start_ms",
+      "weekly_period_start_ms"
+    ]
+  },
+  "validation": {
+    "backend_full": {
+      "status": "PASS",
+      "tests": 653,
+      "duration_seconds": 27.09
+    },
+    "backend_targeted_final": {
+      "status": "PASS",
+      "tests": 117,
+      "duration_seconds": 1.3
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 106
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 14,
+      "tests": 74
+    },
+    "frontend_eslint": "PASS",
+    "frontend_typecheck": "PASS",
+    "frontend_build": {
+      "status": "PASS_WITH_EXISTING_WARNING",
+      "modules": 51,
+      "javascript_kb": 535.64,
+      "gzip_kb": 164.13,
+      "warning": "existing chunk exceeds 500 kB"
+    },
+    "playwright_responsive": {
+      "status": "PASS",
+      "tests": 3,
+      "viewports": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "duration_seconds": 22.9
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "source_files": 142,
+      "real_order_path": false,
+      "secret_like_files": []
+    },
+    "repository_hygiene": "PASS",
+    "diff_check": "PASS"
+  },
+  "deployment": {
+    "status": "PASS",
+    "release_commit": "47cf13d46d46b766403e627b44417c28e651e1b7",
+    "release_path": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/releases/47cf13d46d46b766403e627b44417c28e651e1b7",
+    "same_run_recovered": true,
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "strategy_count": 11,
+    "league_account_count": 22,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "post_fix_actual_recovery": {
+    "status": "PASS",
+    "server_time_ms": 1787911289198,
+    "daily_period_start_ms": 1787875200000,
+    "weekly_period_start_ms": 1787529600000,
+    "accounts": [
+      {
+        "account_id": "VWAP_EXHAUSTION_REVERSION_V1:BASE",
+        "daily_trade_count": 0,
+        "max_daily_trades": 12,
+        "realized_today_usdt": "0",
+        "realized_week_usdt": "-6.58665241000000000000000000"
+      },
+      {
+        "account_id": "VWAP_EXHAUSTION_REVERSION_V1:STRESS",
+        "daily_trade_count": 0,
+        "max_daily_trades": 12,
+        "realized_today_usdt": "0",
+        "realized_week_usdt": "-11.16922554000000000000000000"
+      }
+    ]
+  },
+  "actual_browser": {
+    "status": "PASS",
+    "url": "http://127.0.0.1:8870/",
+    "verified_surfaces": [
+      "market",
+      "strategy",
+      "trade history"
+    ],
+    "visible_operation_state": "작동 중",
+    "visible_safety_state": "PAPER · 실제 주문 0",
+    "visible_history_rows_current_scope": 3,
+    "visible_strategy_summary": "6개 감시 · 검증 중지 5개 · 문제 0개 · 실제 주문 0",
+    "console_warning_error_count": 0
+  },
+  "runtime_smoke": {
+    "status": "PASS",
+    "evidence": "evidence/WAVE103_RUNNING_SERVICE_SMOKE_60S.json",
+    "observed_duration_seconds": 60.052,
+    "sample_count": 13,
+    "event_delta": 5254,
+    "strategy_evaluation_delta": 16500,
+    "maximum_queue_depth": 6,
+    "maximum_processing_lag_p95_ms": 49.276611328125,
+    "maximum_trade_lag_p95_ms": 64.500244140625,
+    "maximum_wide_lag_p95_ms_observational": 1575.76416015625,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "resync_delta": 0,
+    "dropped_event_delta": 0,
+    "persistence_fault_delta": 0,
+    "persistence_buffer_drop_delta": 0,
+    "critical_lag_incident_delta": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "natural_position_observed_before_deployment": {
+    "status": "PASS_AUDITED",
+    "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+    "profile": "BASE",
+    "symbol": "BTCUSDT",
+    "side": "SHORT",
+    "hold_seconds": 900,
+    "exit_reason": "MAX_HOLD",
+    "forced_exit_for_deployment": false,
+    "note": "The existing PAPER position was allowed to close naturally before the immutable release switch."
+  },
+  "ledger_integrity_boundary": {
+    "status": "FULL_CHECK_NOT_RUN",
+    "attempt_status": "FAIL_ONLINE_SNAPSHOT_STALL",
+    "source_evidence": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/ledger-integrity/heartbeat-20260828T093740Z.json",
+    "duration_seconds": 43.991,
+    "stall_seconds": 30.962,
+    "restart_count": 4,
+    "remaining_pages": 936134,
+    "temporary_snapshot_removed": true,
+    "active_ledger_quick_check_requested": false,
+    "runtime_event_delta_during_attempt": 2782,
+    "maximum_queue_depth_during_attempt": 8,
+    "runtime_violations": [],
+    "interpretation": "This is an online backup progress failure, not evidence of ledger corruption."
+  },
+  "research_boundaries": {
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "strategy_thresholds_lowered": false,
+    "strategy_ranking_allowed": false
+  },
+  "github": {
+    "main_sync": "PENDING",
+    "actions": "PENDING"
+  }
+}

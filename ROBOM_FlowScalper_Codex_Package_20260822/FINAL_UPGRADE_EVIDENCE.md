@@ -3176,3 +3176,39 @@ Actions `33153112970`은 validate 1분 20초, browser 1분 38초와 브라우저
 
 현 수용상태는
 `COST_AWARE_EXIT_REGRESSION_PASS_BEGINNER_UI_ACTUAL_BROWSER_PASS_LEDGER_FULL_CHECK_NOT_RUN_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 77. Wave 103 UTC 일간·주간 위험한도 rollover 증거
+
+같은 장기 Run에서 `VWAP_EXHAUSTION_REVERSION_V1` BASE·STRESS는 각각 12건을
+완료했지만 UTC 일자별로는 4·7·1건이었고 현재 UTC 일자에는 0건이었다. 그런데
+PUMPUSDT와 DOGEUSDT의 새 적격신호가 `MAX_DAILY_TRADES`로 거절됐다. 원인은
+`daily_trade_count`, `realized_today`, `realized_week`에 기간 cursor가 없었고 복구가
+Run 전체 완료거래를 오늘·이번 주 수치로 재적재한 것이었다.
+
+UTC 00:00 일간 cursor와 월요일 UTC 00:00 주간 cursor를 추가했다. 후보 거절,
+진입, 종료 전에 현재 기간으로 rollover하고 복구 snapshot은 해당 시점의 불변 완료거래와
+열린 포지션에서 현재 일간·주간 수치를 다시 계산한다. 일자 변경은 일간 거래수와
+일간 실현손익만, 주 변경은 주간 실현손익만 초기화한다. 자산·최고자산·drawdown·
+열린 위험·cooldown·연속손실은 초기화하지 않는다. 과거 cursor 없는 snapshot도
+현재 기간으로 안전하게 재계산한다. 결정은 `ADR-085`에 고정했다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 수정 전 재현 | `PASS` | VWAP BASE·STRESS 각각 12건이 UTC 20690/20691/20692에 4/7/1건, 현재 20693에는 0건인데 PUMPUSDT·DOGEUSDT가 `MAX_DAILY_TRADES`로 거절됨 |
+| 기간 경계 회귀 | `PASS` | 금요일→토요일 일간 초기화, 월요일 주간 초기화, 새 기간 진입·종료 손익, stale 복구 재집계를 포함한 표적 최종 117건 PASS |
+| backend 전체 | `PASS` | 653건 27.09초, Ruff, mypy 106 source, PAPER safety, security 142 source, repository hygiene, diff check PASS |
+| frontend 전체 | `PASS_WITH_WARNING` | Vitest 14 files·74건, ESLint, TypeScript, 51 modules build PASS. 535.64kB·gzip 164.13kB의 기존 500kB 경고는 남김 |
+| 반응형 fixture | `PASS` | Playwright desktop·tablet·mobile 3건 22.9초 PASS |
+| 불변 릴리스·복구 | `PASS` | release `47cf13d46d46b766403e627b44417c28e651e1b7`, 같은 `run-2b7135a972dd`, 작동 중·LIVE 공개시장·PAPER·11전략·22계좌·실제 주문 false·인증 false |
+| 실제 현재기간 계수 | `PASS` | VWAP BASE·STRESS 모두 현재 UTC 일간 `0/12`, `realized_today=0`, 일간 cursor `1787875200000`, 주간 cursor `1787529600000`으로 복구됨 |
+| 실제 브라우저 | `PASS` | 실제 시장·전략·기록 화면에서 `작동 중`, `PAPER · 실제 주문 0`, 현재범위 기록 3건, 6개 감시·5개 퇴역·문제 0, console warning/error 0을 확인 |
+| 60초 서비스 관찰 | `PASS` | 60.052초·13표본, event +5,254·전략평가 +16,500, queue 최대 6, 처리/체결 p95 최대 49.277/64.500ms, 비계획 reconnect·gap·resync·drop·fault·critical·실제주문·인증 0 |
+| 배포 전 자연 포지션 | `PASS_AUDITED` | AGGRESSOR BTCUSDT SHORT BASE를 강제 종료하지 않고 900초 `MAX_HOLD` 자연 종료 후 배포함. 몇 초짜리 일반 관리청산이 아님 |
+| 활성 원장 전수검사 | `NOT_RUN` | Online Backup snapshot은 43.991초 중 30.962초 무진행·restart 4·remaining 936,134로 안전중단했다. 임시 사본 제거·active ledger 직접 quick-check 0·runtime 위반 0이며 원장 손상 증거가 아님 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 현재 개정 BASE/STRESS 표본 2/1로 30건 미만이며 6h·24h도 `NOT_RUN`. 전략 기준을 낮추거나 순위를 만들지 않음 |
+
+기계판독 원본은 `evidence/WAVE103_UTC_RISK_PERIOD_ROLLOVER_QA.json`과
+`evidence/WAVE103_RUNNING_SERVICE_SMOKE_60S.json`에 보존했다.
+
+현 수용상태는
+`UTC_RISK_PERIOD_ROLLOVER_ACTUAL_RECOVERY_PASS_BROWSER_PASS_60S_PASS_LEDGER_FULL_CHECK_NOT_RUN_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY_GITHUB_PENDING`다.
