@@ -159,6 +159,41 @@ def test_risk_sizing_rounds_down_and_locks_operate() -> None:
     assert manager.entry_rejections(state, "BTC:A", 0) == ("MAX_OPEN_POSITIONS",)
 
 
+def test_daily_and_weekly_risk_limits_roll_at_utc_boundaries() -> None:
+    manager = RiskManager()
+    friday_ms = 86_400_000
+    state = RiskState(
+        realized_today=Decimal("-5"),
+        realized_week=Decimal("-6"),
+        daily_trade_count=12,
+    )
+
+    assert "MAX_DAILY_TRADES" in manager.entry_rejections(state, "BTC:A", friday_ms)
+    saturday_ms = friday_ms + 24 * 60 * 60 * 1_000
+    assert manager.entry_rejections(state, "BTC:A", saturday_ms) == ()
+    assert state.daily_trade_count == 0
+    assert state.realized_today == 0
+    assert state.realized_week == Decimal("-6")
+
+    monday_ms = friday_ms + 3 * 24 * 60 * 60 * 1_000
+    assert manager.entry_rejections(state, "BTC:A", monday_ms) == ()
+    assert state.realized_week == 0
+
+
+def test_record_open_and_close_use_the_new_utc_period() -> None:
+    manager = RiskManager()
+    state = RiskState(realized_today=Decimal("-4"), daily_trade_count=12)
+    first_day_ms = 86_400_000
+    manager.entry_rejections(state, "BTC:A", first_day_ms)
+
+    next_day_ms = first_day_ms + 24 * 60 * 60 * 1_000
+    manager.record_open(state, now_ms=next_day_ms)
+    manager.record_close(state, Decimal("1"), key="BTC:A", now_ms=next_day_ms + 1)
+
+    assert state.daily_trade_count == 1
+    assert state.realized_today == Decimal("1")
+
+
 def test_candidate_to_closed_trade_reconciles_exactly_and_is_idempotent() -> None:
     state = RiskState()
     service = PaperTradeService(PaperExecutionEngine(), RiskManager(), state)

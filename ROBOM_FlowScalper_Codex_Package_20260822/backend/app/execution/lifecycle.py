@@ -127,7 +127,7 @@ class PaperTradeService:
         self.machine.transition(f"{event_id}:protected", LifecycleState.PROTECTED)
         self.machine.transition(f"{event_id}:managing", LifecycleState.MANAGING)
         self.machine.processed_event_ids.add(event_id)
-        self.risk_manager.record_open(self.risk_state)
+        self.risk_manager.record_open(self.risk_state, now_ms=now_ms)
         return self.position
 
     def close(

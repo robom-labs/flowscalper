@@ -5,6 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
 
+_DAY_MS = 24 * 60 * 60 * 1_000
+
+
+def _utc_day_start_ms(timestamp_ms: int) -> int:
+    if timestamp_ms < 0:
+        raise ValueError("위험 기간 시각은 음수일 수 없습니다.")
+    return timestamp_ms // _DAY_MS * _DAY_MS
+
+
+def _utc_week_start_ms(timestamp_ms: int) -> int:
+    """Unix epoch의 목요일 오프셋을 보정해 월요일 00:00 UTC를 반환한다."""
+
+    day_index = timestamp_ms // _DAY_MS
+    monday_day_index = ((day_index + 3) // 7) * 7 - 3
+    return monday_day_index * _DAY_MS
+
 
 @dataclass(frozen=True, slots=True)
 class RiskLimits:
@@ -60,6 +76,8 @@ class RiskState:
     realized_today: Decimal = Decimal(0)
     realized_week: Decimal = Decimal(0)
     daily_trade_count: int = 0
+    daily_period_start_ms: int | None = None
+    weekly_period_start_ms: int | None = None
     open_positions: int = 0
     open_planned_risk: Decimal = Decimal(0)
     pending_planned_risk: Decimal = Decimal(0)
@@ -116,6 +134,7 @@ class RiskManager:
         return RiskSizingResult(quantity, risk_budget, planned_loss, ())
 
     def entry_rejections(self, state: RiskState, key: str, now_ms: int) -> tuple[str, ...]:
+        self.refresh_periods(state, now_ms)
         reasons: list[str] = []
         if state.paused:
             reasons.append("RUN_PAUSED")
@@ -136,6 +155,24 @@ class RiskManager:
         if state.cooldowns_until_ms.get("GLOBAL", 0) > now_ms:
             reasons.append("GLOBAL_COOLDOWN_ACTIVE")
         return tuple(reasons)
+
+    @staticmethod
+    def refresh_periods(state: RiskState, now_ms: int) -> None:
+        """UTC 일·주 경계가 바뀌면 해당 기간 한도만 새로 시작한다."""
+
+        daily_start = _utc_day_start_ms(now_ms)
+        weekly_start = _utc_week_start_ms(now_ms)
+        if state.daily_period_start_ms is None:
+            state.daily_period_start_ms = daily_start
+        elif daily_start > state.daily_period_start_ms:
+            state.daily_period_start_ms = daily_start
+            state.realized_today = Decimal(0)
+            state.daily_trade_count = 0
+        if state.weekly_period_start_ms is None:
+            state.weekly_period_start_ms = weekly_start
+        elif weekly_start > state.weekly_period_start_ms:
+            state.weekly_period_start_ms = weekly_start
+            state.realized_week = Decimal(0)
 
     def pending_rejections(
         self,
@@ -186,10 +223,12 @@ class RiskManager:
         self,
         state: RiskState,
         *,
+        now_ms: int,
         planned_risk: Decimal = Decimal(0),
         notional: Decimal = Decimal(0),
         effective_leverage: Decimal = Decimal(0),
     ) -> None:
+        self.refresh_periods(state, now_ms)
         if state.open_positions >= self.limits.max_open_positions:
             raise RuntimeError("동시 포지션 상한을 초과할 수 없습니다.")
         state.open_positions += 1
@@ -217,6 +256,7 @@ class RiskManager:
         planned_risk: Decimal = Decimal(0),
         notional: Decimal = Decimal(0),
     ) -> None:
+        self.refresh_periods(state, now_ms)
         if state.open_positions <= 0:
             raise RuntimeError("열린 포지션 없이 종료를 기록할 수 없습니다.")
         state.open_positions -= 1

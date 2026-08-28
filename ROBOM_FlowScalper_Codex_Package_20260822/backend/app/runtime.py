@@ -595,7 +595,8 @@ class PaperRuntime:
             if isinstance(portfolio_payload, Mapping):
                 self.paper_portfolio.restore_state(portfolio_payload)
                 self.paper_portfolio.reconcile_persisted_main_trades(
-                    self.ledger.list_trades(self.run_id)
+                    self.ledger.list_trades(self.run_id),
+                    as_of_ts_ms=self.clock.utc_ms(),
                 )
             elif recovered.lifecycle_state not in {"SCANNING", "CLOSED"}:
                 raise ValueError("열린 lifecycle snapshot에 복구 가능한 portfolio가 없습니다.")

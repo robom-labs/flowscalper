@@ -269,7 +269,7 @@ def test_three_losses_create_global_cooldown() -> None:
     manager = RiskManager()
     state = RiskState()
     for index in range(3):
-        manager.record_open(state)
+        manager.record_open(state, now_ms=index)
         manager.record_close(
             state,
             Decimal("-1"),

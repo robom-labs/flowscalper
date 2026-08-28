@@ -642,6 +642,9 @@ class PaperPortfolioEngine:
     ) -> dict[str, object]:
         """main·shadow 실행계좌와 shadow 회계를 checksum 가능한 JSON 값으로 만든다."""
 
+        if snapshot_ts_ms is not None:
+            for account in self.accounts:
+                _reconcile_account_risk_periods(account, snapshot_ts_ms)
         return {
             "schema_version": 5,
             "run_id": self.run_id,
@@ -687,6 +690,10 @@ class PaperPortfolioEngine:
                 raise ValueError(f"PAPER 복구 계좌가 중복되거나 미등록입니다: {account_id}")
             seen.add(account_id)
             _restore_execution_account(expected[account_id], value, run_id=self.run_id)
+        snapshot_ts_ms = payload.get("snapshot_ts_ms")
+        if snapshot_ts_ms is not None:
+            for account in expected.values():
+                _reconcile_account_risk_periods(account, int(str(snapshot_ts_ms)))
         additive_registry_extension = False
         if schema_version >= 2 and seen != set(expected):
             registry_rows = payload.get("strategy_registry")
@@ -841,7 +848,12 @@ class PaperPortfolioEngine:
     def _transition_scope_key(account_id: str, symbol: str) -> str:
         return f"{account_id}|{symbol}"
 
-    def reconcile_persisted_main_trades(self, rows: Sequence[Mapping[str, object]]) -> None:
+    def reconcile_persisted_main_trades(
+        self,
+        rows: Sequence[Mapping[str, object]],
+        *,
+        as_of_ts_ms: int | None = None,
+    ) -> None:
         """snapshot 직후 crash 창에서 이미 확정된 원장 거래를 최종 진실로 적용한다."""
 
         trades = [_paper_trade_from_payload(row) for row in rows]
@@ -860,9 +872,12 @@ class PaperPortfolioEngine:
             running += trade.net_pnl_usdt
             peak = max(peak, running)
         risk.peak_equity = peak
-        risk.realized_today = realized
-        risk.realized_week = realized
-        risk.daily_trade_count = len(trades) + int(self.main.position is not None)
+        _reconcile_account_risk_periods(
+            self.main,
+            as_of_ts_ms
+            if as_of_ts_ms is not None
+            else max((trade.closed_ts_ms for trade in trades), default=0),
+        )
         risk.open_positions = int(self.main.position is not None)
         risk.open_planned_risk = sum(
             (
@@ -949,6 +964,12 @@ class PaperPortfolioEngine:
                     "fees_usdt": str(fees),
                     "slippage_usdt": str(slippage),
                     "trade_count": len(trades),
+                    "daily_trade_count": account.risk_state.daily_trade_count,
+                    "max_daily_trades": self.league_risk_manager.limits.max_daily_trades,
+                    "realized_today_usdt": str(account.risk_state.realized_today),
+                    "realized_week_usdt": str(account.risk_state.realized_week),
+                    "daily_period_start_ms": account.risk_state.daily_period_start_ms,
+                    "weekly_period_start_ms": account.risk_state.weekly_period_start_ms,
                     "wins": wins,
                     "losses": losses,
                     "win_rate": str(Decimal(wins) / len(trades)) if trades else None,
@@ -1227,6 +1248,7 @@ class PaperPortfolioEngine:
         effective_leverage = actual_notional / account.risk_state.current_equity
         self._risk_manager_for(account).record_open(
             account.risk_state,
+            now_ms=result.position.opened_ts_ms,
             planned_risk=actual_planned_risk,
             notional=actual_notional,
             effective_leverage=effective_leverage,
@@ -2283,6 +2305,8 @@ def _risk_state_payload(state: RiskState) -> dict[str, object]:
         "realized_today": str(state.realized_today),
         "realized_week": str(state.realized_week),
         "daily_trade_count": state.daily_trade_count,
+        "daily_period_start_ms": state.daily_period_start_ms,
+        "weekly_period_start_ms": state.weekly_period_start_ms,
         "open_positions": state.open_positions,
         "open_planned_risk": str(state.open_planned_risk),
         "pending_planned_risk": str(state.pending_planned_risk),
@@ -2296,6 +2320,42 @@ def _risk_state_payload(state: RiskState) -> dict[str, object]:
     }
 
 
+def _reconcile_account_risk_periods(account: ExecutionAccount, as_of_ts_ms: int) -> None:
+    """복구된 거래에서 UTC 일·주 손익과 일간 진입 횟수를 다시 계산한다."""
+
+    state = account.risk_state
+    state.daily_period_start_ms = None
+    state.weekly_period_start_ms = None
+    RiskManager.refresh_periods(state, as_of_ts_ms)
+    daily_start = state.daily_period_start_ms
+    weekly_start = state.weekly_period_start_ms
+    if daily_start is None or weekly_start is None:
+        raise RuntimeError("위험 기간 경계를 초기화하지 못했습니다.")
+    daily_trades = tuple(
+        trade
+        for trade in account.completed_trades
+        if daily_start <= trade.closed_ts_ms <= as_of_ts_ms
+    )
+    weekly_trades = tuple(
+        trade
+        for trade in account.completed_trades
+        if weekly_start <= trade.closed_ts_ms <= as_of_ts_ms
+    )
+    open_today = sum(
+        daily_start <= managed.protected.opened_ts_ms <= as_of_ts_ms
+        for managed in account.positions.values()
+    )
+    state.realized_today = sum(
+        (trade.net_pnl_usdt for trade in daily_trades),
+        start=Decimal(0),
+    )
+    state.realized_week = sum(
+        (trade.net_pnl_usdt for trade in weekly_trades),
+        start=Decimal(0),
+    )
+    state.daily_trade_count = len(daily_trades) + open_today
+
+
 def _risk_state_from_payload(payload: Mapping[str, object]) -> RiskState:
     cooldowns = payload.get("cooldowns_until_ms", {})
     if not isinstance(cooldowns, Mapping):
@@ -2307,6 +2367,16 @@ def _risk_state_from_payload(payload: Mapping[str, object]) -> RiskState:
         realized_today=Decimal(str(payload["realized_today"])),
         realized_week=Decimal(str(payload["realized_week"])),
         daily_trade_count=int(str(payload["daily_trade_count"])),
+        daily_period_start_ms=(
+            int(str(payload["daily_period_start_ms"]))
+            if payload.get("daily_period_start_ms") is not None
+            else None
+        ),
+        weekly_period_start_ms=(
+            int(str(payload["weekly_period_start_ms"]))
+            if payload.get("weekly_period_start_ms") is not None
+            else None
+        ),
         open_positions=int(str(payload["open_positions"])),
         open_planned_risk=Decimal(str(payload.get("open_planned_risk", "0"))),
         pending_planned_risk=Decimal(str(payload.get("pending_planned_risk", "0"))),

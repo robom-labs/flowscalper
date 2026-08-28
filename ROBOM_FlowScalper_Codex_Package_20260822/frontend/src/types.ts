@@ -401,6 +401,12 @@ export type LeagueAccount = {
   fees_usdt: string
   slippage_usdt: string
   trade_count: number
+  daily_trade_count: number
+  max_daily_trades: number
+  realized_today_usdt: string
+  realized_week_usdt: string
+  daily_period_start_ms: number | null
+  weekly_period_start_ms: number | null
   wins: number
   losses: number
   win_rate: string | null

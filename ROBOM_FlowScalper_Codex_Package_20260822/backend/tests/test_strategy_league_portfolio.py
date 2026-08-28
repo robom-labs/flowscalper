@@ -171,6 +171,7 @@ def test_account_loss_and_cooldown_do_not_leak_to_another_account() -> None:
     isolated = engine.shadows["CBR_CONTINUATION_V1:BASE"]
     engine.league_risk_manager.record_open(
         losing.risk_state,
+        now_ms=10_000,
         planned_risk=Decimal("5"),
         notional=Decimal("500"),
         effective_leverage=Decimal("0.5"),
@@ -556,6 +557,43 @@ def test_schema_v2_additive_strategy_accounts_start_empty_without_rejecting_reco
         )
         assert shadow.current_equity_usdt == Decimal("1000")
         assert shadow.trades == []
+
+
+def test_recovery_rebuilds_daily_and_weekly_limits_from_current_period_trades() -> None:
+    engine = league_engine()
+    payload = engine.recovery_state(
+        registry_settings=StrategyRegistry().rows(),
+        snapshot_ts_ms=2 * 24 * 60 * 60 * 1_000,
+    )
+    base_payload = next(
+        row for row in payload["accounts"] if row["account_id"] == "LSA_REVERSAL_V1:BASE"
+    )
+    base_payload["risk_state"]["daily_trade_count"] = 12
+    base_payload["risk_state"]["realized_today"] = "-20"
+    base_payload["risk_state"]["realized_week"] = "-20"
+    base_payload["risk_state"]["daily_period_start_ms"] = 0
+    base_payload["risk_state"]["weekly_period_start_ms"] = 0
+
+    restored = league_engine()
+    restored.restore_state(payload)
+    state = restored.shadows["LSA_REVERSAL_V1:BASE"].risk_state
+
+    assert state.daily_trade_count == 0
+    assert state.realized_today == 0
+    assert state.realized_week == 0
+    assert restored.league_risk_manager.entry_rejections(
+        state,
+        "BTCUSDT:LSA_REVERSAL_V1",
+        2 * 24 * 60 * 60 * 1_000,
+    ) == ()
+    row = next(
+        row
+        for row in restored.league_account_rows()
+        if row["account_id"] == "LSA_REVERSAL_V1:BASE"
+    )
+    assert row["daily_trade_count"] == 0
+    assert row["max_daily_trades"] == 12
+    assert row["daily_period_start_ms"] == 2 * 24 * 60 * 60 * 1_000
 
 
 def test_current_snapshot_rejects_missing_existing_profile_account() -> None:

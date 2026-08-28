@@ -653,3 +653,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Add regression tests for the configurable threshold boundary, non-executable event exclusion, archive flag preservation, latest-book and feature immutability, strategy-evaluation immutability and fresh-depth recovery.
 9. Run the complete backend, frontend, lint, typecheck, build, PAPER safety, security, repository hygiene and desktop/tablet/mobile actual-browser checks before GitHub synchronization.
 10. Deploy an immutable release with the same Run and flat PAPER state, verify zero real orders and authentication, then run a clean five-minute baseline followed by a new uninterrupted six-hour observer. Keep 24 hours and profitability `NOT_RUN` and `NOT_PROVEN` until their actual gates are met.
+
+## UTC risk-period rollover Wave
+
+1. Preserve the actual `MAX_DAILY_TRADES` rejections and count the rejected account's immutable trades by UTC day before changing code. Do not delete or relabel prior trades.
+2. Use exchange-independent UTC 00:00 for the daily boundary and Monday UTC 00:00 for the weekly boundary. Do not use the browser, host locale or display timezone for risk accounting.
+3. Refresh period cursors before candidate rejection, entry accounting and close accounting. Only a forward period transition can reset counters.
+4. Reset only daily trade count and daily realized PnL at a daily boundary, and only weekly realized PnL at a weekly boundary. Preserve equity, peak, drawdown, open risk, cooldowns and consecutive-loss safety state.
+5. Persist the additive period cursors in recovery snapshots. Rebuild current daily and weekly values from immutable completed trades and open-position event times during snapshot creation and recovery.
+6. Keep snapshots without period cursors backward compatible. Never turn a malformed account, mismatched Run or open-position invariant into a permissive recovery.
+7. Keep the 12-trade daily cap, daily and weekly loss percentages, cost profiles, strategy signals, TP/SL and PAPER-only execution unchanged.
+8. Test Friday-to-Saturday daily rollover, Monday weekly rollover, open and close accounting, old snapshot recovery and current snapshot roundtrip.
+9. Run the complete backend, frontend, lint, typecheck, build, PAPER safety, security, repository hygiene and responsive Playwright suites before immutable deployment.
+10. Recover the same Run in the immutable release, verify current-period account counts from the actual ledger, then observe event and strategy-evaluation progress with zero unplanned reconnect, gap, drop, persistence fault, real orders and authentication. Keep profitability `NOT_PROVEN` and 6h·24h `NOT_RUN` until their real gates complete.

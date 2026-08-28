@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 같은 PAPER Run을 여러 날 유지하면 과거 전체 거래수가 `오늘 거래수`로 복구되어 새 UTC 일자의 자연 후보도 `MAX_DAILY_TRADES`로 영구 차단될 수 있던 문제를 수정했다. 일간은 UTC 00:00, 주간은 월요일 UTC 00:00에 안전한도를 새로 시작하고 recovery snapshot은 현재 기간의 불변 거래·열린 포지션만 다시 집계한다. 일간 12건·손실한도·전략신호·비용·실제주문 0 경계는 낮추거나 바꾸지 않았다.
 - 일반 근거약화 PAPER 종료는 진입 후 30초, 서로 다른 불리 근거 2개, 실제 bid·ask 기준 가격손실이 `max(0.25R, 계획 왕복비용 R)` 이상, 3초 지속을 모두 만족할 때만 허용한다. 과거 거래는 `진입 근거 약화(과거 기준)`, 현재 정책은 `가격·근거 동시 악화`로 구분한다. 거래기록·전략·진행거래·성과·과거재생 기본 화면은 쉬운 한국어 핵심만 남기고 원시 ID·코드·연구 지표를 접힌 기술 정보로 옮겼다. 새 개정의 자연표본은 BASE·STRESS 0건부터 다시 시작하므로 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
 - 20 alpha×5 exit의 100개 PAPER 후보를 사전등록하고 고정 Train·Validation·봉인 Final OOS, 수신순 no-lookahead, 시간순 독립계좌, 활성화형 trailing·부분 TP·runner를 연구 경로에 연결했다. Stage 1은 MICRO 20개만 실행되고 FAST 55개·SWING 15개는 데이터 부족 실패로 보존됐으며 SIHO 10개는 exact 규칙 미확인으로 차단됐다. 선택·ACTIVE·LIVE SHADOW는 0, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
 - 대형 닫힌 원장 검사 중 새 PAPER 진입만 멈춘 수 있는 `--require-manual-pause` 계약을 추가했다. 사용자 일시정지·시장 관찰 유지·진입 비활성을 매 샘플 확인할 때만 `MANUALLY_PAUSED`·`ENTRY_LOCKED`를 허용하며 포지션·critical lag·실주문·인증·저장·재연결 상한은 유지한다. 실제 3.706GB 사본의 cross-device SHA-256·동일 Run 복구는 PASS했지만 검사 중 critical lag incident 1건으로 중단돼 full `quick_check`·foreign key는 `NOT_RUN`으로 보존했다.
