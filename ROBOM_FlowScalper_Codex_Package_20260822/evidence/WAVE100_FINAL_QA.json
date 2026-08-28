@@ -1,7 +1,7 @@
 {
   "schema": "flowscalper.wave100_final_qa.v1",
-  "generated_at": "2026-08-28T04:50:04Z",
-  "status": "COMPLETE_WITH_LIMITS_GITHUB_PENDING",
+  "generated_at": "2026-08-28T04:57:22Z",
+  "status": "COMPLETE_WITH_LIMITS",
   "product_boundary": {
     "market_input": "PUBLIC_CRYPTO_MARKET_DATA",
     "execution": "PAPER_ONLY",
@@ -15,7 +15,7 @@
     "real_money_readiness": "NOT_READY"
   },
   "implementation": {
-    "installed_commit": "7d58a1c2df31e21fba0a8bea75f2306f825050cd",
+    "installed_commit": "12e86d7b7335af50e4b76e0fb33b63e64f7f7538",
     "release_isolated": true,
     "run_id": "run-2b7135a972dd",
     "strategy_count": 11,
@@ -257,7 +257,12 @@
     "real_money_readiness": "NOT_READY"
   },
   "github": {
-    "main_push": "NOT_RUN_BEFORE_FINAL_COMMIT",
-    "actions": "NOT_RUN_BEFORE_FINAL_COMMIT"
+    "main_push": "PASS",
+    "verified_commit": "12e86d7b7335af50e4b76e0fb33b63e64f7f7538",
+    "actions": "PASS",
+    "run_id": 33143156840,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/33143156840",
+    "validate": {"status": "PASS", "seconds": 62},
+    "browser": {"status": "PASS", "seconds": 97, "evidence_upload": "PASS"}
   }
 }

@@ -3083,6 +3083,13 @@ RSS는 241.812→251.531MiB, +9.719MiB이다. 이 구간의 적격신호·main·
 `WAVE100_MACOS_LEDGER_MAINTENANCE_FAST.json`,
 `WAVE100_MACOS_LEDGER_MAINTENANCE_PAUSED.json`에 실패를 포함해 보존한다.
 
+수동 일시정지 안전 계약과 최종 증거 commit
+`12e86d7b7335af50e4b76e0fb33b63e64f7f7538`도 불변 release로 설치했다.
+실제 브라우저에서 `작동 중`·`PAPER · 실제 주문 0`·차트를 다시
+확인했고, 동일 Run에서 3초 동안 event 183건이 전진했다. GitHub main의
+같은 commit을 지정한 Actions `33143156840`은 validate 1분 2초·browser 1분 37초에
+모두 PASS했고 브라우저 증거 업로드도 PASS했다.
+
 ### 최종 수용 경계
 
 - 실제 불변 release·실제 브라우저·30분 무간섭 관찰은 `PASS`다.
@@ -3091,7 +3098,7 @@ RSS는 241.812→251.531MiB, +9.719MiB이다. 이 구간의 적격신호·main·
 - 신규 trailing·TP1·runner의 실제 자연 종단 표본은 30분에 포지션·거래 증가가 0이어서 `NOT_RUN/NOT_OBSERVED`다.
 - screening 선택 0이므로 Final OOS는 봉인했고 event replay·full PAPER replay·LIVE SHADOW는 `NOT_RUN/BLOCKED_GATE`다.
 - 현재버전 BASE/STRESS는 각 14건·net -10.512252272/-17.957519704 USDT로 작은 과거 표본이며, 선택된 신규 후보는 0이다. 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
-- GitHub main·Actions는 이 증거 commit을 올린 뒤 별도 확인하며, 현재 문서 작성 시점에는 `NOT_RUN`이다.
+- GitHub main `12e86d7…`과 Actions `33143156840`의 validate·browser·증거 업로드는 `PASS`다.
 
 현 수용상태는
 `ACTUAL_RELEASE_BROWSER_30M_PASS_LEDGER_FULL_CHECK_ABORTED_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
