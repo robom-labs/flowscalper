@@ -3101,8 +3101,11 @@ peak를 현재 RSS보다 작지 않게 하한 보정하고 출처를
 `PEAK_MAX_RSS_FLOORED_BY_CURRENT`로 명시했다. 전용 2건을 10회 연속
 PASS했고 GitHub과 동일 `make lint typecheck test build`에서 backend 648건·
 frontend 72건·build·PAPER safety를 PASS했다. security 142 source·저장소
-위생·diff check도 PASS했다. 이 수정 commit의 GitHub 재검증은 아직
-`NOT_RUN`으로 보존한다.
+위생·diff check도 PASS했다. 수정 commit
+`93de81ddf9507ce33e29994f194762afd4597b64`를 불변 release로 설치해
+동일 Run·작동 중·포지션 0·3초 event +228·peak≥current·실주문·인증 0을
+확인했다. GitHub Actions `33143784984`는 validate 1분 5초·browser 1분 21초·
+증거 업로드까지 모두 `PASS`했다.
 
 ### 최종 수용 경계
 

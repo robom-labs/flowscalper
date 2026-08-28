@@ -1,7 +1,7 @@
 {
   "schema": "flowscalper.wave100_final_qa.v1",
-  "generated_at": "2026-08-28T05:05:24Z",
-  "status": "COMPLETE_WITH_LIMITS_GITHUB_REVERIFY_PENDING",
+  "generated_at": "2026-08-28T05:09:42Z",
+  "status": "COMPLETE_WITH_LIMITS",
   "product_boundary": {
     "market_input": "PUBLIC_CRYPTO_MARKET_DATA",
     "execution": "PAPER_ONLY",
@@ -15,7 +15,7 @@
     "real_money_readiness": "NOT_READY"
   },
   "implementation": {
-    "installed_commit": "12e86d7b7335af50e4b76e0fb33b63e64f7f7538",
+    "installed_commit": "93de81ddf9507ce33e29994f194762afd4597b64",
     "release_isolated": true,
     "run_id": "run-2b7135a972dd",
     "strategy_count": 11,
@@ -276,7 +276,17 @@
       "local_exact_ci_command": "PASS",
       "backend_tests": 648,
       "targeted_two_tests_repetitions": 10,
-      "github_reverification": "NOT_RUN"
+      "installed_release": "PASS",
+      "same_run_recovered": true,
+      "event_delta_three_seconds": 228,
+      "peak_greater_than_or_equal_to_current": true,
+      "real_orders_enabled": false,
+      "auth_required": false,
+      "github_reverification": "PASS",
+      "verified_commit": "93de81ddf9507ce33e29994f194762afd4597b64",
+      "run_id": 33143784984,
+      "validate": {"status": "PASS", "seconds": 65},
+      "browser": {"status": "PASS", "seconds": 81, "evidence_upload": "PASS"}
     }
   }
 }
