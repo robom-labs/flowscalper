@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 약 447KB 대시보드 전체 집계와 JSON을 HTTP·WebSocket 화면이 1초 주기로 공유하도록 바꿔 반복 Python 객체 생성과 직렬화를 줄였다. Run·운영상태·일시정지·PAPER 의도·차트 선택·전략 설정이 바뀌면 즉시 갱신하고 build·serialization 시간을 고급 진단에 표시한다. 수정 전 6시간 성능 `FAIL`은 보존했으며 수정 후 60초 부하와 5분 실행 서비스 관찰은 PASS, 새 6시간·24시간은 실제 경과 전까지 `NOT_RUN`이다. 실제 주문, private API, 전략·비용·체결·TP·SL·Governor는 변경하지 않았다.
 - 같은 PAPER Run을 여러 날 유지하면 과거 전체 거래수가 `오늘 거래수`로 복구되어 새 UTC 일자의 자연 후보도 `MAX_DAILY_TRADES`로 영구 차단될 수 있던 문제를 수정했다. 일간은 UTC 00:00, 주간은 월요일 UTC 00:00에 안전한도를 새로 시작하고 recovery snapshot은 현재 기간의 불변 거래·열린 포지션만 다시 집계한다. 일간 12건·손실한도·전략신호·비용·실제주문 0 경계는 낮추거나 바꾸지 않았다.
 - 일반 근거약화 PAPER 종료는 진입 후 30초, 서로 다른 불리 근거 2개, 실제 bid·ask 기준 가격손실이 `max(0.25R, 계획 왕복비용 R)` 이상, 3초 지속을 모두 만족할 때만 허용한다. 과거 거래는 `진입 근거 약화(과거 기준)`, 현재 정책은 `가격·근거 동시 악화`로 구분한다. 거래기록·전략·진행거래·성과·과거재생 기본 화면은 쉬운 한국어 핵심만 남기고 원시 ID·코드·연구 지표를 접힌 기술 정보로 옮겼다. 새 개정의 자연표본은 BASE·STRESS 0건부터 다시 시작하므로 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
 - 20 alpha×5 exit의 100개 PAPER 후보를 사전등록하고 고정 Train·Validation·봉인 Final OOS, 수신순 no-lookahead, 시간순 독립계좌, 활성화형 trailing·부분 TP·runner를 연구 경로에 연결했다. Stage 1은 MICRO 20개만 실행되고 FAST 55개·SWING 15개는 데이터 부족 실패로 보존됐으며 SIHO 10개는 exact 규칙 미확인으로 차단됐다. 선택·ACTIVE·LIVE SHADOW는 0, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.

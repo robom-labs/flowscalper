@@ -3217,3 +3217,35 @@ UTC 00:00 일간 cursor와 월요일 UTC 00:00 주간 cursor를 추가했다. �
 
 현 수용상태는
 `UTC_RISK_PERIOD_ROLLOVER_ACTUAL_RECOVERY_PASS_BROWSER_PASS_60S_PASS_LEDGER_FULL_CHECK_NOT_RUN_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY_GITHUB_PASS`다.
+
+## 78. Wave 104 대시보드 공용 캐시와 장시간 기준선 증거
+
+수정 전 불변 release `47cf13d46d46b766403e627b44417c28e651e1b7`의 같은 Run
+`run-2b7135a972dd`를 실제 6시간 관찰했다. 공개시장 event와 전략평가는 계속 전진했지만
+처리 p95, event-loop, 저장 flush, WAL checkpoint와 critical lag 기준을 넘었으므로
+`PASS`로 바꾸지 않고 `FAIL` 원본을 보존했다.
+
+약 447KB인 전체 대시보드를 HTTP 요청마다 만들고 WebSocket마다 0.5초 간격으로 다시
+직렬화하던 경로를 확인했다. 한 1초 화면주기의 snapshot·raw HTTP JSON·WebSocket JSON을
+공유하고 상태변경은 즉시 강제갱신하도록 수정했다. 전략 신호·비용·fill·위험한도·entry·
+TP1·TP2·SL·Governor와 실제 주문 경로는 바꾸지 않았다. 결정은 `ADR-086`에 고정했다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 수정 전 6시간 | `FAIL` | 21,600.053초·720표본, event +1,560,430·전략평가 +5,706,432, 처리 p95 최대 1,032.383ms, loop 최대 1,914ms·500ms 초과 497회, flush/checkpoint 최대 24.263/30.508초, critical event/incident +46/+3 |
+| 수정 전 안전 항목 | `PASS_WITH_PERFORMANCE_FAILURE` | queue 최대 59/4096, trade p95 최대 636.773ms, 메모리 +11.203MB, 비계획 reconnect·gap·resync·drop·fault·buffer drop·실제주문·인증 0 |
+| 코드 회귀 | `PASS` | backend 655건, frontend 14 files·74건, fixture backend 21건, Playwright 3 viewports, Ruff·mypy 106 source·ESLint·TypeScript·build·PAPER safety·security 142 source·repository hygiene PASS |
+| 불변 릴리스 | `PASS` | `0f09703ea973361c3f8d1c52c55dd0437d671f6f`, 같은 Run, isolated release, RUNNING·LIVE 공개시장·PAPER, 11전략·22계좌, 배포 직전·직후 포지션 0, 실제주문·인증 false |
+| 60초 HTTP·화면 부하 | `PASS_SHORT_SCOPE` | 60회 평균/최대 12.585/49.556ms, event +3,923·전략평가 +16,356, build +60·HTTP/WS serialize +120, loop 500ms 초과·critical·fault·buffer drop 증가 0 |
+| 수정 후 5분 | `PASS_SHORT_SCOPE` | 300.021초·61표본, probe 오류 0, event +19,094·전략평가 +78,048, queue 최대 1, 처리/체결 p95 최대 34.640/51.182ms, loop 최대 203ms·500ms 초과 0, flush/checkpoint 최대 1.133/0.774초 |
+| 실제 브라우저 | `PASS` | 재로드 후 `시작 전`에서 3초 안에 `작동 중`, 표시 p95 31ms. 기록 25건, ETHUSDT replay 13 events의 진입 7/13·종료 13/13·순손익 -1.493 USDT, 전략 6 감시·5 퇴역·문제 0, 30건 전 비교 금지, 실제주문 경로 0, console warning/error 0을 직접 확인 |
+| 수정 후 6시간·24시간 | `NOT_RUN` | 새 release에서 실제 시간을 아직 채우지 않음. 수정 전 6시간 FAIL이나 5분 PASS로 대체하지 않음 |
+| 원장 전수검사 | `NOT_RUN` | 활성 writer에 full quick-check를 실행하지 않음. 기존 닫힌 사본 유지관리 경계 유지 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 현재버전 BASE/STRESS 13/12건, 순손익 -18.1140910600/-22.4771721880 USDT, 새 5분 표본 증가 0. 30건 전 순위·승격 없음 |
+
+원시 근거는 `evidence/WAVE104_RUNNING_SERVICE_SOAK_6H.json`,
+`evidence/WAVE104_POST_DASHBOARD_CACHE_CLEAN_5M.json`과
+`evidence/WAVE104_DASHBOARD_CACHE_AND_BROWSER_QA.json`에 보존했다.
+
+현 수용상태는
+`DASHBOARD_CACHE_ACTUAL_BROWSER_PASS_5M_PASS_BASELINE_6H_FAIL_POSTFIX_6H_24H_NOT_RUN_LEDGER_FULL_CHECK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

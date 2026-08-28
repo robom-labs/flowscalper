@@ -81,3 +81,27 @@
 | probe 오류 / 실패한 검사 | 0 / 0, 45개 전부 true |
 
 적격신호와 신규 거래가 0인 결과를 성능 결함이나 수익성으로 해석하지 않는다. 현재버전 BASE 5건은 -3.573282460 USDT, STRESS 5건은 -6.819651904 USDT로 표본이 부족하고 비용후 손실이다. 전략 수익성은 `NOT_PROVEN`이며 진입조건을 낮추지 않았다. 6시간·24시간은 이 구현으로 실제 시간을 채우지 않았으므로 계속 `NOT_RUN`이다.
+
+## 2026-08-29 Wave 104 대시보드 부하 수정 전·후 검증
+
+수정 전 불변 release `47cf13d…`의 실행 서비스를 21,600.053초·720표본 동안 실제
+관찰했다. event +1,560,430, 전략평가 +5,706,432, queue 최대 59, 메모리 증가
+11.203MB였고 비계획 reconnect·gap·resync·drop·persistence fault·buffer drop은 0이었다.
+그러나 처리 p95 최대 1,032.383ms, event-loop 최대 1,914ms·500ms 초과 497회,
+flush 최대 24.263초, WAL checkpoint 최대 30.508초, critical lag event 46건·incident
+3건으로 `FAIL`이다. 원본 `WAVE104_RUNNING_SERVICE_SOAK_6H.json`을 그대로 보존한다.
+
+대시보드 snapshot과 HTTP·WebSocket JSON을 1초 공용 캐시로 바꾼 불변 release
+`0f09703e…`에서 화면 연결을 둔 채 초당 HTTP 60회를 실행했다. 평균/최대 응답은
+12.585/49.556ms, event-loop 500ms 초과·critical lag·저장 fault·buffer drop 증가는
+0이었다. 같은 60초 동안 event +3,923, 전략평가 +16,356이 전진했다.
+
+이어 `WAVE104_POST_DASHBOARD_CACHE_CLEAN_5M.json`은 300.021초·61표본을 채워
+`PASS`했다. event +19,094, 전략평가 +78,048, queue 최대 1, 처리/체결 p95 최대
+34.640/51.182ms, event-loop 최대 203ms·500ms 초과 0, flush/checkpoint 최대
+1.133/0.774초였다. 비계획 reconnect·gap·resync·drop·persistence fault·buffer drop·
+critical lag·실제 주문·인증은 모두 0이었다.
+
+이 5분은 수정 후 장시간 안정성의 대체 증거가 아니다. 수정 후 6시간과 24시간은
+실제 시간을 채우기 전까지 `NOT_RUN`이다. 현재버전 BASE 13건·STRESS 12건, 순손익
+-18.1140910600/-22.4771721880 USDT이며 새 표본 증가는 0이므로 수익성은 `NOT_PROVEN`이다.

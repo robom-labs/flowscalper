@@ -666,3 +666,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Test Friday-to-Saturday daily rollover, Monday weekly rollover, open and close accounting, old snapshot recovery and current snapshot roundtrip.
 9. Run the complete backend, frontend, lint, typecheck, build, PAPER safety, security, repository hygiene and responsive Playwright suites before immutable deployment.
 10. Recover the same Run in the immutable release, verify current-period account counts from the actual ledger, then observe event and strategy-evaluation progress with zero unplanned reconnect, gap, drop, persistence fault, real orders and authentication. Keep profitability `NOT_PROVEN` and 6h·24h `NOT_RUN` until their real gates complete.
+
+## Shared dashboard snapshot-cache Wave
+
+1. Preserve the complete pre-change six-hour `FAIL`; do not discard the 1,032ms processing p95, 1,914ms event-loop delay, 24.263-second flush, 30.508-second checkpoint or critical incidents because market events continued.
+2. Measure the dashboard payload and reproduce its cost with the actual WebSocket screen connected before assigning causality.
+3. Share one full snapshot, one raw HTTP JSON payload and one WebSocket envelope payload per one-second display cycle across every client.
+4. Keep snapshot building and serialization outside the event loop and serialize cache refreshes with one async lock.
+5. Invalidate immediately on Run, mode, market state, pause, PAPER intent revision, chart selection and control revision. Force a refresh for every successful control or strategy mutation response.
+6. Preserve the one-second visible status cadence. Do not change strategy thresholds, costs, fills, risk, entry, TP1, TP2, SL, Governor or ledger semantics to make performance pass.
+7. Add concurrent cache-sharing and immediate mutation-response regressions, then run the complete backend, frontend, lint, typecheck, build, PAPER safety, security, repository hygiene and responsive browser suites.
+8. Deploy only a committed immutable release while every PAPER account is flat. Require same-Run recovery, LIVE public data, PAPER execution, isolated commit and zero actual orders or authentication.
+9. Verify the real History rows, focused Replay entry and exit jumps, Strategy sample state, Performance 30-sample warning, System safety and browser console after deployment.
+10. Treat the passing 60-second load comparison and five-minute observer as short evidence only. Start a fresh six-hour observer before any 24-hour observer and keep profitability `NOT_PROVEN` until its separate gates pass.
