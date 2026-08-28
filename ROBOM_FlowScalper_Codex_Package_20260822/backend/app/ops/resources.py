@@ -52,6 +52,10 @@ class ProcessResourceSampler:
         self._last_process_seconds = process_seconds
         memory_bytes, memory_source = _process_memory_bytes()
         peak_memory_bytes, peak_memory_source = _peak_process_memory_bytes()
+        if peak_memory_bytes < memory_bytes:
+            # 커널 계측원의 순간 차이가 최대값 불변조건을 깨지 않게 현재 RSS를 하한으로 쓴다.
+            peak_memory_bytes = memory_bytes
+            peak_memory_source = f"{peak_memory_source}_FLOORED_BY_CURRENT"
         return {
             "process_cpu_percent": round(self._last_cpu_percent, 3),
             "process_memory_mb": round(memory_bytes / 1024**2, 3),

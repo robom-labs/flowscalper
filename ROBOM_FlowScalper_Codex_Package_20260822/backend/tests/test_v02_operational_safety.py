@@ -101,6 +101,25 @@ def test_current_memory_fallback_is_labeled_as_peak(monkeypatch) -> None:
     assert source == "PEAK_MAX_RSS_FALLBACK"
 
 
+def test_resource_sampler_never_reports_peak_below_current(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        resources_module,
+        "_process_memory_bytes",
+        lambda: (219 * 1024**2, "CURRENT_RSS_PROCFS"),
+    )
+    monkeypatch.setattr(
+        resources_module,
+        "_peak_process_memory_bytes",
+        lambda: (218 * 1024**2, "PEAK_MAX_RSS"),
+    )
+
+    sample = ProcessResourceSampler(tmp_path).sample()
+
+    assert sample["process_memory_mb"] == 219.0
+    assert sample["process_memory_peak_mb"] == 219.0
+    assert sample["process_memory_peak_source"] == "PEAK_MAX_RSS_FLOORED_BY_CURRENT"
+
+
 def test_soak_current_and_peak_memory_growth_remain_independent() -> None:
     current_growth = maximum_observed_growth([96.0, 94.0, 95.0], 100.0)
     peak_growth = maximum_observed_growth([162.0, 170.0, 170.0], 150.0)

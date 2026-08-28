@@ -3026,7 +3026,7 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | adaptive trail | `REGRESSION_PASS` | OFI·aggressor flow·microprice·spread 중 두 사유 이상이 건강한 데이터에서 3초 지속돼야 좁아지고 상태를 recovery에 보존하는 회귀를 통과했다. |
 | 초보자 UI | `FIXTURE_BROWSER_PASS_ACTUAL_RELEASE_NOT_RUN` | 진행 거래와 집중 차트 계획 패널에 고정관리·활성화대기·러너 추적·종료대기와 보호선을 쉬운 한국어로 연결했다. 거래 상세에는 추적 조건 활성과 실제 runner 시작을 따로 표시한다. Playwright desktop·tablet·mobile 3종은 PASS했고 실제 신규 릴리스 브라우저는 아직 `NOT_RUN`이다. |
 | 새 코드 정적검사 | `PASS` | 변경 Python의 Ruff·Ruff format·`py_compile`, frontend ESLint·TypeScript typecheck, 생성 JSON 문법, `git diff --check`를 이번 작업에서 통과했다. |
-| 새 단위·통합·frontend | `PASS` | 최종 source에서 backend 전체 647건, frontend 14 files·72건, fixture backend 19건, Playwright desktop·tablet·mobile 3건, Ruff·mypy 106 source·ESLint·TypeScript·Vite build·PAPER safety·security 142 source·repository hygiene·`git diff --check`를 통과했다. Vite JS 530.08kB·gzip 162.81kB의 기존 500kB 경고는 남겼다. 전체 기존 Python format check의 과거 미포맷 41개는 이번 변경과 분리했고 변경 Python 58개는 format PASS다. |
+| 새 단위·통합·frontend | `PASS` | 최종 source에서 backend 전체 648건, frontend 14 files·72건, fixture backend 19건, Playwright desktop·tablet·mobile 3건, Ruff·mypy 106 source·ESLint·TypeScript·Vite build·PAPER safety·security 142 source·repository hygiene·`git diff --check`를 통과했다. Vite JS 530.08kB·gzip 162.81kB의 기존 500kB 경고는 남겼다. 전체 기존 Python format check의 과거 미포맷 41개는 이번 변경과 분리했고 변경 Python 58개는 format PASS다. |
 | dataset freeze | `PASS_HISTORICAL_FORWARD_PENDING` | 13개 Run·2,690,582 events의 범위·건수·symbol·archive SHA를 다시 검증했다. Train 6·Validation 2·봉인 Final OOS 5이며 manifest SHA-256은 `61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20`이다. 미래 LIVE_PUBLIC Forward는 아직 없다. |
 | 200,000-event 자원 benchmark | `PASS_WITH_LIMITS` | 최종 소스 90 trial·180 독립 PAPER 계좌를 단독으로 234.054764초에 처리했다. 854.501 events/s·484.331 후보평가/s, 종료 RSS 673.688MiB·peak 687.734MiB, 완료거래 0이다. queue·persistence·dashboard·replay를 계측하지 않은 동기 benchmark이며 수익성 증거가 아니다. manifest SHA-256은 `0f24ce545e910a222da65f027e69dad89fa42451400bcde951515f0f48ed0910`이다. |
 | screening·ablation·walk-forward | `EXECUTED_NO_SELECTION` | screening manifest `cdbee9dbcd6b402192d8a09e8b3cb936d7c6f9c7b17271ca74a0b9a00f436ad9`, audit `2793d7bc9d73994ac3cdc3418712fb132105f6739eca0877eedc317b7698b2db`, trailing ablation `6996ca9444246d02b7518a4871f53dcd4ffd7759e1b5c3658e5212db218c201c`, walk-forward `b6db01731b599d5d2ab3b870a2be6fc5718d67407418747505b67ba47a7a03e3`, multiple-testing `a55688c313065503245b2656e1a5a71b99e7303d579477ecc40f015f3bd42236`다. recursive 982,240회 중 mismatch 1,080, point-in-time instrument metadata 없음, Validation gate PASS 0, PBO 조합 0으로 선택·ACTIVE·LIVE SHADOW 0, 수익성 `NOT_PROVEN`이다. |
@@ -3052,7 +3052,7 @@ LaunchAgent `kr.robom.flowscalper`는 실제 release 디렉토리에서 기동�
 | 차트 | `PASS` | 실제 봉·거래량·MA5/10/20·RSI·KST, 4시간→1분→4시간, 전체화면 열기·닫기, MA60 켜기·MA5 끄기·원복을 실제 조작 |
 | 실제 화면 스크린샷 | `PASS` | `wave100-actual-market-desktop.jpg` SHA-256 `a892f0bf…87f0`, history `cfb38a18…7537`, replay `7aaf78dd…40e` |
 | 실제 브라우저 runtime error 수집 | `NOT_RUN_LIMITATION` | 실제 window가 non-extensible라 임시 collector 주입을 완료하지 못했다. 화면에 표시된 오류는 없었고 OFFLINE FIXTURE Playwright 3종은 PASS지만, 이를 실제 console 수집 PASS로 대체하지 않는다 |
-| 최종 회귀 | `PASS_WITH_WARNING` | backend 647·frontend 72·fixture 19·Playwright 3, Ruff·mypy 106 source·ESLint·TypeScript·PAPER safety·security 142 source·hygiene·diff check PASS. Vite JS 530.08kB 기존 size 경고 유지 |
+| 최종 회귀 | `PASS_WITH_WARNING` | backend 648·frontend 72·fixture 19·Playwright 3, Ruff·mypy 106 source·ESLint·TypeScript·PAPER safety·security 142 source·hygiene·diff check PASS. Vite JS 530.08kB 기존 size 경고 유지 |
 
 30분 무간섭 관찰 `evidence/WAVE100_RUNNING_SERVICE_SOAK_30M.json`은
 1,800.028초·181표본을 완료해 `PASS`했다. 같은 Run·process를 유지했고 event
@@ -3089,6 +3089,20 @@ RSS는 241.812→251.531MiB, +9.719MiB이다. 이 구간의 적격신호·main·
 확인했고, 동일 Run에서 3초 동안 event 183건이 전진했다. GitHub main의
 같은 commit을 지정한 Actions `33143156840`은 validate 1분 2초·browser 1분 37초에
 모두 PASS했고 브라우저 증거 업로드도 PASS했다.
+
+### GitHub Linux 메모리 계측 불변조건 수정
+
+후속 문서 commit `46d1a9d…`의 Actions `33143465472`는 backend 647건 중
+`test_process_resource_sampler_reports_actual_cpu_memory_and_disk` 1건에서 FAIL했다.
+Linux `/proc/self/statm`의 현재 RSS 219.031MiB가 `getrusage().ru_maxrss`의
+peak 218.754MiB보다 순간적으로 크 교차 계측이 원인이다.
+
+peak를 현재 RSS보다 작지 않게 하한 보정하고 출처를
+`PEAK_MAX_RSS_FLOORED_BY_CURRENT`로 명시했다. 전용 2건을 10회 연속
+PASS했고 GitHub과 동일 `make lint typecheck test build`에서 backend 648건·
+frontend 72건·build·PAPER safety를 PASS했다. security 142 source·저장소
+위생·diff check도 PASS했다. 이 수정 commit의 GitHub 재검증은 아직
+`NOT_RUN`으로 보존한다.
 
 ### 최종 수용 경계
 

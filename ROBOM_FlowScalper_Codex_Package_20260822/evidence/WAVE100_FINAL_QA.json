@@ -1,7 +1,7 @@
 {
   "schema": "flowscalper.wave100_final_qa.v1",
-  "generated_at": "2026-08-28T04:57:22Z",
-  "status": "COMPLETE_WITH_LIMITS",
+  "generated_at": "2026-08-28T05:05:24Z",
+  "status": "COMPLETE_WITH_LIMITS_GITHUB_REVERIFY_PENDING",
   "product_boundary": {
     "market_input": "PUBLIC_CRYPTO_MARKET_DATA",
     "execution": "PAPER_ONLY",
@@ -85,7 +85,7 @@
       "ruff": "PASS"
     },
     "post_delta_full_regression": {
-      "backend": {"status": "PASS", "passed": 647, "seconds": 116.61},
+      "backend": {"status": "PASS", "passed": 648, "seconds": 25.67},
       "frontend": {"status": "PASS", "files": 14, "passed": 72},
       "fixture_backend": {"status": "PASS", "passed": 19, "seconds": 1.21},
       "playwright": {"status": "PASS", "viewports": 3, "seconds": 16.7},
@@ -263,6 +263,20 @@
     "run_id": 33143156840,
     "url": "https://github.com/robom-labs/flowscalper/actions/runs/33143156840",
     "validate": {"status": "PASS", "seconds": 62},
-    "browser": {"status": "PASS", "seconds": 97, "evidence_upload": "PASS"}
+    "browser": {"status": "PASS", "seconds": 97, "evidence_upload": "PASS"},
+    "subsequent_documentation_commit": {
+      "commit": "46d1a9d10dd3700203a840105f35006ca800c133",
+      "run_id": 33143465472,
+      "status": "FAIL",
+      "failed_test": "test_process_resource_sampler_reports_actual_cpu_memory_and_disk",
+      "reason": "CURRENT_RSS_219.031_MIB_EXCEEDED_RU_MAXRSS_218.754_MIB",
+      "browser": "NOT_RUN_DEPENDENCY_FAILED"
+    },
+    "resource_invariant_fix": {
+      "local_exact_ci_command": "PASS",
+      "backend_tests": 648,
+      "targeted_two_tests_repetitions": 10,
+      "github_reverification": "NOT_RUN"
+    }
   }
 }
