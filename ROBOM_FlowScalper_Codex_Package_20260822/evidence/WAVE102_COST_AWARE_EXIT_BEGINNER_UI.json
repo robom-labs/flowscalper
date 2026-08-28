@@ -223,7 +223,7 @@
     "real_money_readiness": "NOT_READY",
     "six_hour_observation": "NOT_RUN",
     "twenty_four_hour_observation": "NOT_RUN",
-    "github_main": "PENDING",
-    "github_actions": "PENDING"
+    "github_main": "PASS_3e56425ee63adfe5b54d397a018fce02275dbda1",
+    "github_actions": "PASS_33153112970_VALIDATE_1M20S_BROWSER_1M38S_EVIDENCE_UPLOAD"
   }
 }
