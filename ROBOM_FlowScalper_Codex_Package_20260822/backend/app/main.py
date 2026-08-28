@@ -16,7 +16,7 @@ import httpx
 from anyio import to_process
 from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -59,6 +59,8 @@ _TERMINAL_OPERATION_STATES = {
     "FAILED_BLOCKED",
     "CANCELLED",
 }
+
+_DASHBOARD_REFRESH_SECONDS = 1.0
 
 
 def _operation_transition_audit(
@@ -503,27 +505,143 @@ def create_app(
 
     websocket_clients: set[WebSocket] = set()
     dashboard_build_lock = asyncio.Lock()
+    dashboard_snapshot_cache: dict[str, object] | None = None
+    dashboard_websocket_message_cache: str | None = None
+    dashboard_http_message_cache: str | None = None
+    dashboard_cache_identity: tuple[object, ...] | None = None
+    dashboard_cache_created_monotonic = 0.0
+    dashboard_build_count = 0
+    dashboard_build_last_ms = 0.0
+    dashboard_build_max_ms = 0.0
+    dashboard_serialize_count = 0
+    dashboard_serialize_last_ms = 0.0
+    dashboard_serialize_max_ms = 0.0
 
     def dashboard_snapshot() -> dict[str, object]:
-        return {
+        nonlocal dashboard_build_count
+        nonlocal dashboard_build_last_ms
+        nonlocal dashboard_build_max_ms
+        started = time.monotonic()
+        snapshot = {
             **active_runtime.dashboard(),
             "control_operation": operation_manager.current_public(),
             "control_revision": operation_manager.revision,
         }
+        elapsed_ms = (time.monotonic() - started) * 1_000
+        dashboard_build_count += 1
+        dashboard_build_last_ms = elapsed_ms
+        dashboard_build_max_ms = max(dashboard_build_max_ms, elapsed_ms)
+        system = snapshot.get("system")
+        if isinstance(system, dict):
+            system.update(
+                {
+                    "dashboard_refresh_seconds": _DASHBOARD_REFRESH_SECONDS,
+                    "dashboard_build_count": dashboard_build_count,
+                    "dashboard_build_last_ms": round(dashboard_build_last_ms, 3),
+                    "dashboard_build_max_ms": round(dashboard_build_max_ms, 3),
+                    "dashboard_serialize_count": dashboard_serialize_count,
+                    "dashboard_serialize_last_ms": round(dashboard_serialize_last_ms, 3),
+                    "dashboard_serialize_max_ms": round(dashboard_serialize_max_ms, 3),
+                }
+            )
+        return snapshot
 
-    async def dashboard_snapshot_async() -> dict[str, object]:
-        """무거운 화면 집계를 직렬 worker에서 실행해 시장 이벤트 루프를 지킨다."""
+    async def cached_dashboard(
+        *,
+        force: bool = False,
+        serialization: str | None = None,
+    ) -> tuple[dict[str, object], str | None]:
+        """화면 한 주기에는 같은 전체 snapshot과 JSON을 모든 소비자가 공유한다."""
 
+        nonlocal dashboard_snapshot_cache
+        nonlocal dashboard_websocket_message_cache
+        nonlocal dashboard_http_message_cache
+        nonlocal dashboard_cache_identity
+        nonlocal dashboard_cache_created_monotonic
+        nonlocal dashboard_serialize_count
+        nonlocal dashboard_serialize_last_ms
+        nonlocal dashboard_serialize_max_ms
         async with dashboard_build_lock:
-            return await asyncio.to_thread(dashboard_snapshot)
+            now = asyncio.get_running_loop().time()
+            current_identity = (
+                active_runtime.run_id,
+                active_runtime.mode.value,
+                active_runtime.market_data_state.value,
+                active_runtime.paused,
+                active_runtime.paper_entry_intent()["revision"],
+                active_runtime.selected_symbol,
+                active_runtime.selected_interval_seconds,
+                operation_manager.revision,
+            )
+            expired = (
+                dashboard_snapshot_cache is None
+                or dashboard_cache_identity != current_identity
+                or now - dashboard_cache_created_monotonic >= _DASHBOARD_REFRESH_SECONDS
+            )
+            if force or expired:
+                dashboard_snapshot_cache = await asyncio.to_thread(dashboard_snapshot)
+                dashboard_websocket_message_cache = None
+                dashboard_http_message_cache = None
+                dashboard_cache_created_monotonic = asyncio.get_running_loop().time()
+                dashboard_cache_identity = (
+                    active_runtime.run_id,
+                    active_runtime.mode.value,
+                    active_runtime.market_data_state.value,
+                    active_runtime.paused,
+                    active_runtime.paper_entry_intent()["revision"],
+                    active_runtime.selected_symbol,
+                    active_runtime.selected_interval_seconds,
+                    operation_manager.revision,
+                )
+            payload = (
+                dashboard_websocket_message_cache
+                if serialization == "websocket"
+                else dashboard_http_message_cache
+                if serialization == "http"
+                else None
+            )
+            if serialization is not None and payload is None:
+                started = asyncio.get_running_loop().time()
+                serialized_value: object = (
+                    {"type": "dashboard", "data": dashboard_snapshot_cache}
+                    if serialization == "websocket"
+                    else dashboard_snapshot_cache
+                )
+                payload = await asyncio.to_thread(
+                    json.dumps,
+                    serialized_value,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                if serialization == "websocket":
+                    dashboard_websocket_message_cache = payload
+                elif serialization == "http":
+                    dashboard_http_message_cache = payload
+                else:
+                    raise ValueError("unsupported dashboard serialization")
+                elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+                dashboard_serialize_count += 1
+                dashboard_serialize_last_ms = elapsed_ms
+                dashboard_serialize_max_ms = max(dashboard_serialize_max_ms, elapsed_ms)
+            if dashboard_snapshot_cache is None:
+                raise RuntimeError("dashboard snapshot cache was not initialized")
+            return dashboard_snapshot_cache, payload
 
-    async def dashboard_message() -> str:
-        snapshot = await dashboard_snapshot_async()
-        return await asyncio.to_thread(
-            json.dumps,
-            {"type": "dashboard", "data": snapshot},
-            ensure_ascii=False,
-            separators=(",", ":"),
+    async def dashboard_message(*, force: bool = False) -> str:
+        _, payload = await cached_dashboard(force=force, serialization="websocket")
+        if payload is None:
+            raise RuntimeError("dashboard message cache was not initialized")
+        return payload
+
+    async def dashboard_response(*, force: bool = False) -> Response:
+        """HTTP도 worker에서 만든 JSON을 재사용해 이벤트 루프 직렬화를 피한다."""
+
+        _, payload = await cached_dashboard(force=force, serialization="http")
+        if payload is None:
+            raise RuntimeError("dashboard HTTP cache was not initialized")
+        return Response(
+            content=payload,
+            media_type="application/json",
         )
 
     async def broadcast_dashboard() -> None:
@@ -540,7 +658,7 @@ def create_app(
                 for client, result in zip(clients, results, strict=True):
                     if isinstance(result, Exception):
                         websocket_clients.discard(client)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(_DASHBOARD_REFRESH_SECONDS)
 
     async def maintain_hourly_strategy_history() -> None:
         """새 deep 종목에 인증 없는 완성 1시간 봉을 보충하고 LIVE 입력과 분리한다."""
@@ -690,8 +808,8 @@ def create_app(
         return [event.model_dump(mode="json") for event in active_runtime.events[-100:]]
 
     @app.get("/api/dashboard")
-    async def dashboard() -> dict[str, object]:
-        return await dashboard_snapshot_async()
+    async def dashboard() -> Response:
+        return await dashboard_response()
 
     @app.get("/api/markets/catalog")
     async def market_catalog(
@@ -773,7 +891,7 @@ def create_app(
         *,
         request: PaperEntryIntentRequest | None,
         idempotency_key: str | None,
-    ) -> dict[str, object]:
+    ) -> Response:
         try:
             await asyncio.to_thread(
                 active_runtime.set_paused,
@@ -806,13 +924,13 @@ def create_app(
                     "current_intent": active_runtime.paper_entry_intent(),
                 },
             ) from error
-        return await dashboard_snapshot_async()
+        return await dashboard_response(force=True)
 
     @app.post("/api/control/pause")
     async def pause_entries(
         request: PaperEntryIntentRequest | None = None,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ) -> dict[str, object]:
+    ) -> Response:
         return await change_paper_entry_intent(
             True,
             request=request,
@@ -823,7 +941,7 @@ def create_app(
     async def resume_entries(
         request: PaperEntryIntentRequest | None = None,
         idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    ) -> dict[str, object]:
+    ) -> Response:
         return await change_paper_entry_intent(
             False,
             request=request,
@@ -831,9 +949,9 @@ def create_app(
         )
 
     @app.post("/api/control/emergency-close")
-    async def emergency_paper_close() -> dict[str, object]:
+    async def emergency_paper_close() -> Response:
         active_runtime.emergency_paper_close()
-        return await dashboard_snapshot_async()
+        return await dashboard_response(force=True)
 
     async def start_live_runner(progress: ProgressCallback) -> None:
         if active_runtime.live_observation_running():
@@ -987,7 +1105,7 @@ def create_app(
         return operation
 
     @app.post("/api/control/chart")
-    async def select_chart(request: ChartSelectionRequest) -> dict[str, object]:
+    async def select_chart(request: ChartSelectionRequest) -> Response:
         try:
             active_runtime.set_chart_selection(request.symbol, request.interval_seconds)
         except ValueError as error:
@@ -999,13 +1117,13 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return await dashboard_snapshot_async()
+        return await dashboard_response(force=True)
 
     @app.post("/api/strategies/{strategy_id}")
     async def configure_strategy(
         strategy_id: str,
         request: StrategyConfigurationRequest,
-    ) -> dict[str, object]:
+    ) -> Response:
         try:
             await asyncio.to_thread(
                 active_runtime.configure_strategy,
@@ -1040,13 +1158,13 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return await dashboard_snapshot_async()
+        return await dashboard_response(force=True)
 
     @app.post("/api/strategies/{strategy_id}/rollback")
     async def rollback_strategy(
         strategy_id: str,
         request: StrategyRollbackRequest,
-    ) -> dict[str, object]:
+    ) -> Response:
         try:
             await asyncio.to_thread(
                 active_runtime.rollback_strategy,
@@ -1076,7 +1194,7 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return await dashboard_snapshot_async()
+        return await dashboard_response(force=True)
 
     @app.get("/api/governance")
     async def strategy_governance() -> dict[str, object]:

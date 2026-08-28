@@ -522,6 +522,53 @@ async def test_dashboard_snapshot_build_runs_outside_event_loop(monkeypatch) -> 
     assert dashboard_response.status_code == 200
 
 
+async def test_dashboard_snapshot_and_json_are_shared_within_one_refresh(monkeypatch) -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    original_dashboard = PaperRuntime.dashboard
+    build_count = 0
+
+    def counted_dashboard(active_runtime: PaperRuntime) -> dict[str, object]:
+        nonlocal build_count
+        build_count += 1
+        return original_dashboard(active_runtime)
+
+    monkeypatch.setattr(PaperRuntime, "dashboard", counted_dashboard)
+    transport = httpx.ASGITransport(app=create_app(runtime))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        responses = await asyncio.gather(
+            client.get("/api/dashboard"),
+            client.get("/api/dashboard"),
+            client.get("/api/dashboard"),
+        )
+
+    assert all(response.status_code == 200 for response in responses)
+    assert all(response.json()["status"]["mode"] == "READY" for response in responses)
+    assert len({response.content for response in responses}) == 1
+    assert build_count == 1
+
+
+async def test_dashboard_mutation_forces_immediate_cache_refresh(monkeypatch) -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    original_dashboard = PaperRuntime.dashboard
+    build_count = 0
+
+    def counted_dashboard(active_runtime: PaperRuntime) -> dict[str, object]:
+        nonlocal build_count
+        build_count += 1
+        return original_dashboard(active_runtime)
+
+    monkeypatch.setattr(PaperRuntime, "dashboard", counted_dashboard)
+    transport = httpx.ASGITransport(app=create_app(runtime))
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        before = await client.get("/api/dashboard")
+        after = await client.post("/api/control/pause")
+
+    assert before.status_code == 200
+    assert after.status_code == 200
+    assert after.json()["paused"] is True
+    assert build_count == 2
+
+
 def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "runtime.sqlite3")
     runtime = PaperRuntime(
