@@ -218,7 +218,13 @@
     "strategy_ranking_allowed": false
   },
   "github": {
-    "main_sync": "PENDING",
-    "actions": "PENDING"
+    "main_sync": "PASS",
+    "verified_commit": "1aec71a2e1d2a5cbe02ba94d774a3135bbfd95ea",
+    "actions": "PASS",
+    "actions_run_id": 33162070164,
+    "validate_duration_seconds": 74,
+    "browser_duration_seconds": 87,
+    "browser_evidence_uploaded": true,
+    "url": "https://github.com/robom-labs/flowscalper/actions/runs/33162070164"
   }
 }
