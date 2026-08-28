@@ -33,6 +33,8 @@ from backend.app.storage.integrity import (
 )
 from backend.app.storage.parquet import _apply_background_io_policy
 
+_VERIFIED_MANUAL_PAUSE_ALLOWED_VIOLATIONS = frozenset({"ENTRY_LOCKED", "OPERATION_NOT_RUNNING"})
+
 
 class LaunchAgentController:
     """로드된 서비스를 충분한 종료 유예로 닫고 다시 복구한다."""
@@ -72,9 +74,7 @@ class LaunchAgentController:
         }
 
     def loaded(self) -> bool:
-        result = _command(
-            ["/bin/launchctl", "print", self.service_target], check=False
-        )
+        result = _command(["/bin/launchctl", "print", self.service_target], check=False)
         return result.returncode == 0
 
     def running(self) -> bool:
@@ -96,8 +96,7 @@ class LaunchAgentController:
                 time.sleep(0.25)
             else:
                 raise LedgerIntegrityError(
-                    "PAPER 저장 종료가 유예시간 안에 끝나지 않았습니다: "
-                    f"holders={last_holders}"
+                    f"PAPER 저장 종료가 유예시간 안에 끝나지 않았습니다: holders={last_holders}"
                 )
         except BaseException:
             self.ensure_started()
@@ -148,13 +147,38 @@ def _open_pids(source_path: Path) -> tuple[int, ...]:
     return tuple(sorted({int(row) for row in result.stdout.splitlines() if row.strip()}))
 
 
-def _probe(runtime_url: str, timeout_seconds: float) -> RuntimeSafetySample:
-    return parse_runtime_safety_sample(
-        fetch_dashboard_payload(
-            runtime_url.rstrip("/") + "/api/dashboard",
-            timeout_seconds=timeout_seconds,
-        )
+def _require_manual_pause_contract(payload: dict[str, object]) -> None:
+    """사용자 진입 일시정지가 시장 관찰을 유지한 채 진짜 적용됐는지 확인한다."""
+
+    intent = payload.get("paper_entry_intent")
+    operation = payload.get("operation_status")
+    if not isinstance(intent, dict) or not isinstance(operation, dict):
+        raise RuntimeSafetyViolation("수동 일시정지 상태 필드가 없습니다.")
+    if intent.get("manual_pause_requested") is not True:
+        raise RuntimeSafetyViolation("사용자 수동 진입 일시정지가 필요합니다.")
+    if intent.get("state") != "USER_PAUSED":
+        raise RuntimeSafetyViolation("수동 일시정지 의도 상태가 다릅니다.")
+    if operation.get("state") not in {"MANUALLY_PAUSED", "SAFETY_WAITING"}:
+        raise RuntimeSafetyViolation("수동 일시정지 운영 상태가 다릅니다.")
+    if operation.get("market_observation_active") is not True:
+        raise RuntimeSafetyViolation("수동 일시정지 중 시장 관찰이 멈춰습니다.")
+    if operation.get("paper_entry_active") is not False:
+        raise RuntimeSafetyViolation("수동 일시정지 중 PAPER 진입이 활성입니다.")
+
+
+def _probe(
+    runtime_url: str,
+    timeout_seconds: float,
+    *,
+    require_manual_pause: bool = False,
+) -> RuntimeSafetySample:
+    payload = fetch_dashboard_payload(
+        runtime_url.rstrip("/") + "/api/dashboard",
+        timeout_seconds=timeout_seconds,
     )
+    if require_manual_pause:
+        _require_manual_pause_contract(payload)
+    return parse_runtime_safety_sample(payload)
 
 
 def _wait_for_recovered_runtime(
@@ -163,13 +187,22 @@ def _wait_for_recovered_runtime(
     expected_run_id: str,
     thresholds: RuntimeSafetyThresholds,
     timeout_seconds: float,
+    require_manual_pause: bool = False,
 ) -> RuntimeSafetySample:
     deadline = time.monotonic() + timeout_seconds
     last_error = "응답 없음"
     while time.monotonic() < deadline:
         try:
-            sample = _probe(runtime_url, thresholds.request_timeout_seconds)
-            violations = runtime_safety_violations(sample, sample, thresholds)
+            sample = _probe(
+                runtime_url,
+                thresholds.request_timeout_seconds,
+                require_manual_pause=require_manual_pause,
+            )
+            violations = tuple(
+                code
+                for code in runtime_safety_violations(sample, sample, thresholds)
+                if not (require_manual_pause and code in _VERIFIED_MANUAL_PAUSE_ALLOWED_VIOLATIONS)
+            )
             if sample.run_id != expected_run_id:
                 last_error = f"Run 불일치: {sample.run_id}"
             elif violations:
@@ -186,9 +219,25 @@ def _validate_initial_runtime(
     violations: tuple[str, ...],
     *,
     allow_failed_runtime_recovery: bool,
+    verified_manual_pause: bool = False,
 ) -> dict[str, object]:
     """멈춘 소비경로 복구 시에만 이미 활성인 fail-closed 잠금을 허용한다."""
 
+    if verified_manual_pause:
+        remaining = tuple(
+            code for code in violations if code not in _VERIFIED_MANUAL_PAUSE_ALLOWED_VIOLATIONS
+        )
+        if remaining:
+            raise RuntimeSafetyViolation(
+                "수동 일시정지 유지관리 기준선 실패: " + ", ".join(remaining)
+            )
+        return {
+            "override_requested": False,
+            "override_applied": True,
+            "violations": list(violations),
+            "allowed_violations": sorted(_VERIFIED_MANUAL_PAUSE_ALLOWED_VIOLATIONS),
+            "reason": "VERIFIED_USER_ENTRY_PAUSE",
+        }
     if not violations:
         return {
             "override_requested": allow_failed_runtime_recovery,
@@ -241,9 +290,7 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
         poll_seconds=arguments.poll_seconds,
         request_timeout_seconds=arguments.request_timeout_seconds,
         max_consecutive_probe_errors=arguments.max_consecutive_probe_errors,
-        planned_rotation_lock_grace_seconds=(
-            arguments.planned_rotation_lock_grace_seconds
-        ),
+        planned_rotation_lock_grace_seconds=(arguments.planned_rotation_lock_grace_seconds),
     )
     controller = LaunchAgentController(
         label=arguments.service_label,
@@ -272,11 +319,16 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
     downtime_seconds: float | None = None
     try:
         launch_contract = controller.validate_contract()
-        baseline = _probe(arguments.runtime_url, thresholds.request_timeout_seconds)
+        baseline = _probe(
+            arguments.runtime_url,
+            thresholds.request_timeout_seconds,
+            require_manual_pause=arguments.require_manual_pause,
+        )
         initial_violations = runtime_safety_violations(baseline, baseline, thresholds)
         baseline_recovery_override = _validate_initial_runtime(
             initial_violations,
             allow_failed_runtime_recovery=arguments.allow_failed_runtime_recovery,
+            verified_manual_pause=arguments.require_manual_pause,
         )
         downtime_started = time.monotonic()
         maintenance_started = True
@@ -295,9 +347,7 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
             transfer_closed_snapshot(
                 snapshot_path,
                 verification_path,
-                minimum_free_headroom_bytes=(
-                    arguments.minimum_verification_headroom_bytes
-                ),
+                minimum_free_headroom_bytes=(arguments.minimum_verification_headroom_bytes),
                 chunk_bytes=arguments.transfer_chunk_bytes,
                 chunk_sleep_seconds=arguments.transfer_chunk_sleep_ms / 1_000,
             )
@@ -311,6 +361,7 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
             expected_run_id=baseline.run_id,
             thresholds=thresholds,
             timeout_seconds=arguments.startup_timeout_seconds,
+            require_manual_pause=arguments.require_manual_pause,
         )
         downtime_seconds = round(time.monotonic() - downtime_started, 3)
         recovery_result = {
@@ -326,8 +377,17 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
         if not recovery_result["process_restarted"]:
             raise LedgerIntegrityError("유지관리 종료·복구를 확인하지 못했습니다.")
         monitor = RuntimeSafetyMonitor(
-            lambda: _probe(arguments.runtime_url, thresholds.request_timeout_seconds),
+            lambda: _probe(
+                arguments.runtime_url,
+                thresholds.request_timeout_seconds,
+                require_manual_pause=arguments.require_manual_pause,
+            ),
             thresholds=thresholds,
+            allowed_violation_codes=(
+                _VERIFIED_MANUAL_PAUSE_ALLOWED_VIOLATIONS
+                if arguments.require_manual_pause
+                else None
+            ),
         )
         monitor.start()
         monitor_started = True
@@ -396,6 +456,20 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
         "temporary_verification_copy_removed": verification_removed,
         "launch_agent_contract": launch_contract,
         "baseline_recovery_override": baseline_recovery_override,
+        "manual_pause_contract": {
+            "required": arguments.require_manual_pause,
+            "verified_before_shutdown": bool(
+                arguments.require_manual_pause and baseline is not None
+            ),
+            "verified_after_restart": bool(
+                arguments.require_manual_pause and recovered is not None
+            ),
+            "allowed_violation_codes": (
+                sorted(_VERIFIED_MANUAL_PAUSE_ALLOWED_VIOLATIONS)
+                if arguments.require_manual_pause
+                else []
+            ),
+        },
         "baseline": asdict(baseline) if baseline is not None else None,
         "shutdown": shutdown_result,
         "closed_wal_checkpoint": checkpoint_result,
@@ -428,6 +502,7 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
             "active_ledger_quick_check_requested": False,
             "snapshot_only_quick_check_requested": True,
             "forced_kill_requested": False,
+            "verified_user_entry_pause_required": arguments.require_manual_pause,
         },
         "thresholds": {
             "max_queue_depth": thresholds.max_queue_depth,
@@ -436,28 +511,23 @@ def verify_with_maintenance(arguments: argparse.Namespace) -> dict[str, object]:
             "poll_seconds": thresholds.poll_seconds,
             "request_timeout_seconds": thresholds.request_timeout_seconds,
             "max_consecutive_probe_errors": thresholds.max_consecutive_probe_errors,
-            "planned_rotation_lock_grace_seconds": (
-                thresholds.planned_rotation_lock_grace_seconds
-            ),
+            "planned_rotation_lock_grace_seconds": (thresholds.planned_rotation_lock_grace_seconds),
             "shutdown_timeout_seconds": arguments.shutdown_timeout_seconds,
             "startup_timeout_seconds": arguments.startup_timeout_seconds,
             "minimum_free_headroom_bytes": arguments.minimum_free_headroom_bytes,
-            "minimum_verification_headroom_bytes": (
-                arguments.minimum_verification_headroom_bytes
-            ),
+            "minimum_verification_headroom_bytes": (arguments.minimum_verification_headroom_bytes),
             "transfer_chunk_bytes": arguments.transfer_chunk_bytes,
             "transfer_chunk_sleep_ms": arguments.transfer_chunk_sleep_ms,
             "check_progress_opcodes": arguments.check_progress_opcodes,
             "check_sleep_ms": arguments.check_sleep_ms,
+            "require_manual_pause": arguments.require_manual_pause,
         },
     }
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "PAPER LaunchAgent를 안전 정지하고 닫힌 APFS clone만 전수검사합니다."
-        )
+        description=("PAPER LaunchAgent를 안전 정지하고 닫힌 APFS clone만 전수검사합니다.")
     )
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--snapshot-dir", type=Path, required=True)
@@ -468,9 +538,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--plist",
         type=Path,
-        default=(
-            Path.home() / "Library" / "LaunchAgents" / "kr.robom.flowscalper.plist"
-        ),
+        default=(Path.home() / "Library" / "LaunchAgents" / "kr.robom.flowscalper.plist"),
     )
     parser.add_argument("--shutdown-timeout-seconds", type=float, default=60.0)
     parser.add_argument("--startup-timeout-seconds", type=float, default=90.0)
@@ -502,6 +570,14 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--keep-snapshot", action="store_true")
     parser.add_argument("--keep-failed-snapshot", action="store_true")
     parser.add_argument(
+        "--require-manual-pause",
+        action="store_true",
+        help=(
+            "사용자 새 PAPER 진입 일시정지가 재기동 전후로 유지될 때만 "
+            "ENTRY_LOCKED와 MANUALLY_PAUSED를 검사 안전 상태로 허용합니다."
+        ),
+    )
+    parser.add_argument(
         "--allow-failed-runtime-recovery",
         action="store_true",
         help=(
@@ -526,9 +602,7 @@ def main() -> None:
         encoding="utf-8",
     )
     summary = {
-        key: value
-        for key, value in result.items()
-        if key not in {"runtime_monitor", "baseline"}
+        key: value for key, value in result.items() if key not in {"runtime_monitor", "baseline"}
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if result["status"] == "PASS":

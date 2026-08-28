@@ -1,0 +1,263 @@
+{
+  "schema": "flowscalper.wave100_final_qa.v1",
+  "generated_at": "2026-08-28T04:50:04Z",
+  "status": "COMPLETE_WITH_LIMITS_GITHUB_PENDING",
+  "product_boundary": {
+    "market_input": "PUBLIC_CRYPTO_MARKET_DATA",
+    "execution": "PAPER_ONLY",
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_requested": false,
+    "api_key_requested": false,
+    "secret_requested": false,
+    "wallet_requested": false,
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  },
+  "implementation": {
+    "installed_commit": "7d58a1c2df31e21fba0a8bea75f2306f825050cd",
+    "release_isolated": true,
+    "run_id": "run-2b7135a972dd",
+    "strategy_count": 11,
+    "league_account_count": 22,
+    "strategy_modes": {
+      "ACTIVE": 0,
+      "SHADOW": 6,
+      "OFF_RETIRED": 5
+    },
+    "data_health_lock_recovery_actual": "PASS",
+    "manual_pause_maintenance_contract": "IMPLEMENTED_TARGETED_TEST_PASS"
+  },
+  "strategy_research": {
+    "preregistered_trials": 100,
+    "eligible_trials": 90,
+    "blocked_siho_trials": 10,
+    "stage1": {
+      "executed_trials": 20,
+      "failed_preserved_trials": 70,
+      "blocked_trials": 10,
+      "planned_accounts": 200,
+      "observed_accounts": 180,
+      "executed_accounts": 40,
+      "failed_preserved_accounts": 140,
+      "blocked_accounts": 20,
+      "preserved_trades": 77
+    },
+    "selected_candidates": 0,
+    "active_promotions": 0,
+    "live_shadow_promotions": 0,
+    "final_oos": "SEALED_NOT_RUN",
+    "event_replay": "NOT_RUN_BLOCKED_GATE",
+    "full_paper_replay": "NOT_RUN_BLOCKED_GATE",
+    "live_shadow_forward": "NOT_RUN_BLOCKED_GATE",
+    "siho_content_review": {
+      "metadata_videos": 59,
+      "long_form_videos": 32,
+      "shorts": 27,
+      "asr_timelines_collected": 32,
+      "overview_frames_collected": 2585,
+      "scene_frames_collected": 4,
+      "timeline_content_reviewed": 0,
+      "frame_content_reviewed": 0,
+      "full_videos_reviewed": 0,
+      "exact_current_strategy": "BLOCKED_UNCONFIRMED"
+    },
+    "profitability": "NOT_PROVEN"
+  },
+  "tests": {
+    "pre_deploy_exact_source": {
+      "backend": {"status": "PASS", "passed": 642},
+      "frontend": {"status": "PASS", "files": 14, "passed": 72},
+      "fixture_backend": {"status": "PASS", "passed": 19},
+      "playwright": {"status": "PASS", "viewports": 3},
+      "ruff_changed_python": "PASS",
+      "mypy_backend_app_sources": {"status": "PASS", "sources": 106},
+      "eslint": "PASS",
+      "typescript": "PASS",
+      "vite_build": "PASS_WITH_EXISTING_SIZE_WARNING",
+      "paper_safety": "PASS",
+      "security": {"status": "PASS", "sources": 142, "violations": 0},
+      "repository_hygiene": "PASS"
+    },
+    "manual_pause_maintenance_delta": {
+      "status": "PASS",
+      "targeted_tests": 37,
+      "ruff": "PASS"
+    },
+    "post_delta_full_regression": {
+      "backend": {"status": "PASS", "passed": 647, "seconds": 116.61},
+      "frontend": {"status": "PASS", "files": 14, "passed": 72},
+      "fixture_backend": {"status": "PASS", "passed": 19, "seconds": 1.21},
+      "playwright": {"status": "PASS", "viewports": 3, "seconds": 16.7},
+      "ruff": "PASS",
+      "ruff_format_changed_files": "PASS",
+      "mypy_backend_app_sources": {"status": "PASS", "sources": 106},
+      "eslint": "PASS",
+      "typescript": "PASS",
+      "vite_build": {
+        "status": "PASS_WITH_EXISTING_SIZE_WARNING",
+        "modules": 51,
+        "javascript_kb": 530.08,
+        "gzip_kb": 162.81
+      },
+      "paper_safety": "PASS",
+      "security": {"status": "PASS", "sources": 142, "violations": 0},
+      "repository_hygiene": "PASS",
+      "git_diff_check": "PASS"
+    }
+  },
+  "actual_browser": {
+    "status": "PASS_WITH_CONSOLE_COLLECTION_LIMITATION",
+    "pause_resume": "PASS",
+    "top_pages_clicked": ["MARKET", "STRATEGIES", "HISTORY", "ANALYTICS", "SETTINGS"],
+    "history": {
+      "displayed": 91,
+      "shared_account": 1,
+      "strategy_accounts": 90,
+      "past_versions_preserved": 63
+    },
+    "small_replay": {
+      "status": "PASS",
+      "run_id": "demo-7f9159e59d01",
+      "run_event_count": 240,
+      "symbol": "ADAUSDT",
+      "loaded_events": 24,
+      "stepped_from": 1,
+      "stepped_to": 2,
+      "played_to": 24,
+      "input_checksum": "ee0445256ab8bd6d72c861e47f974e4ae7d62213cfdd54c26ac381281f233366",
+      "candidate_count": 0,
+      "main_trade_count": 0,
+      "strategy_trade_count": 0,
+      "real_orders_enabled": false,
+      "auth_required": false
+    },
+    "chart": {
+      "real_candles": "PASS",
+      "interval_4h_to_1m_to_4h": "PASS",
+      "fullscreen_open_close": "PASS",
+      "indicators": ["VOLUME", "MA5", "MA10", "MA20", "RSI", "KST"],
+      "ma60_toggle_and_restore": "PASS"
+    },
+    "actual_console_runtime_collector": "NOT_RUN_WINDOW_NON_EXTENSIBLE",
+    "visible_runtime_error": "NOT_OBSERVED",
+    "screenshots": [
+      {
+        "path": "evidence/screenshots/wave100-actual-market-desktop.jpg",
+        "sha256": "a892f0bfb854e3e274d65dc83a9193de03a28ebfcf50dacca44efc58718787f0"
+      },
+      {
+        "path": "evidence/screenshots/wave100-actual-history-desktop.jpg",
+        "sha256": "cfb38a18fed7b7fdad737203880926a0dee5909acaf2d18083ac7ef2a85f7537"
+      },
+      {
+        "path": "evidence/screenshots/wave100-actual-replay-desktop.jpg",
+        "sha256": "7aaf78dd438dd0e402664529f240447a01b067db9f3c8eb275417c1f73e2e40e"
+      }
+    ]
+  },
+  "running_service_soak_30m": {
+    "status": "PASS",
+    "evidence_path": "evidence/WAVE100_RUNNING_SERVICE_SOAK_30M.json",
+    "sha256": "fdbca88859aa8a30747a75652058d53cb5e6d6f25d86df9bfe5314c9e0876d83",
+    "requested_seconds": 1800.0,
+    "observed_seconds": 1800.028,
+    "samples": 181,
+    "event_delta": 148304,
+    "strategy_evaluation_delta": 483036,
+    "qualified_signal_delta": 0,
+    "consumer_delivery_delta": 148303,
+    "main_trade_delta": 0,
+    "league_trade_delta": 0,
+    "maximum_queue_depth": 16,
+    "queue_capacity": 4096,
+    "maximum_processing_lag_p95_ms": 95.910888671875,
+    "maximum_trade_lag_p95_ms": 137.3662109375,
+    "maximum_wide_lag_p95_ms_observational": 1789.0595703125,
+    "maximum_event_loop_lag_ms": 341.0,
+    "event_loop_over_500ms_delta": 0,
+    "maximum_live_event_processing_ms": 234.0,
+    "critical_lag_event_delta": 0,
+    "critical_lag_incident_delta": 0,
+    "planned_rotations": 2,
+    "reconnects": 2,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "event_drops": 0,
+    "persistence_faults": 0,
+    "persistence_buffer_drops": 0,
+    "maximum_open_positions": 0,
+    "memory_growth_mb": 9.719,
+    "probe_errors": 0,
+    "failures": []
+  },
+  "ledger_integrity": {
+    "overall_status": "ABORTED_RUNTIME_SAFETY_QUICK_CHECK_NOT_RUN",
+    "active_ledger_direct_check_requested": false,
+    "online_snapshot_attempts": [
+      {
+        "status": "FAIL",
+        "reason": "BACKUP_PROGRESS_STALL",
+        "stall_seconds": 31.284,
+        "backup_restarts": 6
+      },
+      {
+        "status": "FAIL",
+        "reason": "BACKUP_PROGRESS_STALL",
+        "stall_seconds": 61.68,
+        "backup_restarts": 4
+      }
+    ],
+    "unpaused_closed_clone_attempt": {
+      "status": "ABORTED_RUNTIME_SAFETY",
+      "copied_bytes": 3690582016,
+      "sha256_match": true,
+      "sha256": "b9a1b87198a59f866e6a0b16eff9e6791a626d8175ddf6fb845283541e76b40c",
+      "same_run_recovered": true,
+      "abort_reason": "POSITION_OPENED",
+      "maximum_positions": 2,
+      "quick_check": "NOT_RUN"
+    },
+    "slow_verification_volume_attempt": {
+      "status": "ABORTED_OPERATOR",
+      "reason": "VERIFICATION_DEVICE_TOO_SLOW_AND_SITE_DOWNTIME_PROTECTED",
+      "quick_check": "NOT_RUN"
+    },
+    "verified_manual_pause_attempt": {
+      "status": "ABORTED_RUNTIME_SAFETY",
+      "manual_pause_contract": "PASS",
+      "copied_bytes": 3706220544,
+      "transfer_seconds": 206.206,
+      "sha256_match": true,
+      "sha256": "ea91529d988862ff6a6007c46d9b5bea594d50769d87464c046827801955465c",
+      "same_run_recovered": true,
+      "downtime_seconds": 243.307,
+      "event_delta": 142428,
+      "maximum_queue_depth": 23,
+      "maximum_lag_p95_ms": 490.5,
+      "maximum_positions": 0,
+      "abort_reason": "CRITICAL_LAG_INCIDENT",
+      "critical_lag_incident_delta": 1,
+      "quick_check": "NOT_RUN",
+      "foreign_key_check": "NOT_RUN",
+      "temporary_snapshot_removed": true,
+      "temporary_verification_copy_removed": true
+    },
+    "retry_policy": "NO_FOURTH_RETRY_WITHOUT_FASTER_DEVICE_OR_EXPLICIT_FULL_DOWNTIME_WINDOW"
+  },
+  "remaining_gates": {
+    "actual_trailing_tp_runner_natural_sample": "NOT_RUN_NOT_OBSERVED",
+    "post_release_6h": "NOT_RUN",
+    "post_release_24h": "NOT_RUN",
+    "full_ledger_quick_check": "NOT_RUN",
+    "foreign_key_check": "NOT_RUN",
+    "siho_content_review": "BLOCKED",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  },
+  "github": {
+    "main_push": "NOT_RUN_BEFORE_FINAL_COMMIT",
+    "actions": "NOT_RUN_BEFORE_FINAL_COMMIT"
+  }
+}

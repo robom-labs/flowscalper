@@ -258,12 +258,15 @@ def test_runtime_guard_allows_only_explicit_planned_rotation_lock_grace() -> Non
         planned_lock,
         RuntimeSafetyThresholds(),
     ) == ("OPERATION_NOT_RUNNING", "ENTRY_LOCKED")
-    assert runtime_safety_violations(
-        baseline,
-        planned_lock,
-        RuntimeSafetyThresholds(),
-        allow_planned_rotation_transition=True,
-    ) == ()
+    assert (
+        runtime_safety_violations(
+            baseline,
+            planned_lock,
+            RuntimeSafetyThresholds(),
+            allow_planned_rotation_transition=True,
+        )
+        == ()
+    )
 
 
 def test_runtime_guard_allows_planned_rotation_before_reconnect_within_grace() -> None:
@@ -286,12 +289,15 @@ def test_runtime_guard_allows_planned_rotation_before_reconnect_within_grace() -
         "ENTRY_LOCKED",
         "RECONNECT_NOT_PLANNED_ROTATION",
     )
-    assert runtime_safety_violations(
-        baseline,
-        rotation_start,
-        RuntimeSafetyThresholds(),
-        allow_planned_rotation_transition=True,
-    ) == ()
+    assert (
+        runtime_safety_violations(
+            baseline,
+            rotation_start,
+            RuntimeSafetyThresholds(),
+            allow_planned_rotation_transition=True,
+        )
+        == ()
+    )
 
 
 def test_runtime_guard_never_treats_manual_pause_as_planned_rotation() -> None:
@@ -356,6 +362,80 @@ def test_runtime_monitor_allows_safety_waiting_during_planned_rotation() -> None
     assert monitor.report()["violations"] == []
 
 
+def test_runtime_monitor_allows_only_explicit_manual_pause_codes() -> None:
+    calls = 0
+
+    def probe() -> RuntimeSafetySample:
+        nonlocal calls
+        calls += 1
+        return _sample(
+            operation_state="MANUALLY_PAUSED",
+            entry_locked=True,
+            event_count=100 + calls,
+            process_uptime_seconds=100.0 + calls,
+        )
+
+    monitor = RuntimeSafetyMonitor(
+        probe,
+        thresholds=RuntimeSafetyThresholds(
+            poll_seconds=0.005,
+            max_event_stall_seconds=1.0,
+        ),
+        allowed_violation_codes=frozenset({"ENTRY_LOCKED", "OPERATION_NOT_RUNNING"}),
+    )
+    monitor.start()
+    deadline = time.monotonic() + 1.0
+    while calls < 3 and time.monotonic() < deadline:
+        time.sleep(0.005)
+    monitor.stop()
+    report = monitor.report()
+
+    assert report["allowed_violation_codes"] == [
+        "ENTRY_LOCKED",
+        "OPERATION_NOT_RUNNING",
+    ]
+    assert report["violations"] == []
+
+
+def test_runtime_monitor_manual_pause_never_masks_open_position() -> None:
+    calls = 0
+
+    def probe() -> RuntimeSafetySample:
+        nonlocal calls
+        calls += 1
+        return _sample(
+            operation_state="MANUALLY_PAUSED",
+            entry_locked=True,
+            position_count=int(calls > 1),
+            event_count=100 + calls,
+            process_uptime_seconds=100.0 + calls,
+        )
+
+    monitor = RuntimeSafetyMonitor(
+        probe,
+        thresholds=RuntimeSafetyThresholds(
+            poll_seconds=0.005,
+            max_event_stall_seconds=1.0,
+        ),
+        allowed_violation_codes=frozenset({"ENTRY_LOCKED", "OPERATION_NOT_RUNNING"}),
+    )
+    monitor.start()
+    deadline = time.monotonic() + 1.0
+    while calls < 2 and time.monotonic() < deadline:
+        time.sleep(0.005)
+
+    with pytest.raises(RuntimeSafetyViolation, match="POSITION_OPENED"):
+        monitor.checkpoint()
+
+
+def test_runtime_monitor_rejects_non_pause_safety_exception() -> None:
+    with pytest.raises(ValueError, match="REAL_ORDERS_ENABLED"):
+        RuntimeSafetyMonitor(
+            lambda: _sample(),
+            allowed_violation_codes=frozenset({"REAL_ORDERS_ENABLED"}),
+        )
+
+
 def test_runtime_monitor_tolerates_two_transient_probe_timeouts() -> None:
     calls = 0
 
@@ -413,6 +493,7 @@ def test_runtime_monitor_fails_after_three_consecutive_probe_errors() -> None:
     with pytest.raises(RuntimeSafetyViolation, match="런타임 감시 요청 실패"):
         monitor.checkpoint()
     assert monitor.report()["maximum_consecutive_probe_errors"] == 3
+
 
 def test_dashboard_parser_keeps_paper_and_health_boundaries() -> None:
     payload = {

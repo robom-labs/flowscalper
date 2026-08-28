@@ -189,9 +189,7 @@ def parse_runtime_safety_sample(payload: Mapping[str, object]) -> RuntimeSafetyS
         observed_at=datetime.now(UTC).isoformat(),
         run_id=_string(status.get("run_id"), "status.run_id"),
         operation_state=_string(operation.get("state"), "operation_status.state"),
-        market_data_state=_string(
-            status.get("market_data_state"), "status.market_data_state"
-        ),
+        market_data_state=_string(status.get("market_data_state"), "status.market_data_state"),
         execution_state=_string(status.get("execution_state"), "status.execution_state"),
         event_count=_integer(system.get("event_count"), "system.event_count"),
         queue_depth=_integer(system.get("queue_depth"), "system.queue_depth"),
@@ -201,9 +199,7 @@ def parse_runtime_safety_sample(payload: Mapping[str, object]) -> RuntimeSafetyS
             system.get("critical_lag_threshold_ms"), "system.critical_lag_threshold_ms"
         ),
         reconnects=_integer(system.get("reconnects"), "system.reconnects"),
-        planned_rotations=_integer(
-            system.get("planned_rotations"), "system.planned_rotations"
-        ),
+        planned_rotations=_integer(system.get("planned_rotations"), "system.planned_rotations"),
         unplanned_reconnects=_integer(
             system.get("unplanned_reconnects"), "system.unplanned_reconnects"
         ),
@@ -309,9 +305,7 @@ def runtime_safety_violations(
             sample.critical_lag_incident_count,
         ),
     )
-    violations.extend(
-        code for code, before, current in counter_fields if current > before
-    )
+    violations.extend(code for code, before, current in counter_fields if current > before)
     planned_delta = sample.planned_rotations - baseline.planned_rotations
     reconnect_delta = sample.reconnects - baseline.reconnects
     planned_transition_counts = bool(
@@ -336,9 +330,20 @@ class RuntimeSafetyMonitor:
         probe: Callable[[], RuntimeSafetySample],
         *,
         thresholds: RuntimeSafetyThresholds | None = None,
+        allowed_violation_codes: frozenset[str] | None = None,
     ) -> None:
         self._probe = probe
         self.thresholds = thresholds or RuntimeSafetyThresholds()
+        self.allowed_violation_codes = allowed_violation_codes or frozenset()
+        # 수동 진입 일시정지는 시장 관찰 상태와 진입 잠금만 예외로 취급한다.
+        unsupported_allowed_codes = self.allowed_violation_codes - {
+            "ENTRY_LOCKED",
+            "OPERATION_NOT_RUNNING",
+        }
+        if unsupported_allowed_codes:
+            raise ValueError(
+                "허용할 수 없는 런타임 안전 예외: " + ", ".join(sorted(unsupported_allowed_codes))
+            )
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -361,7 +366,15 @@ class RuntimeSafetyMonitor:
         if self._thread is not None:
             raise RuntimeError("런타임 안전감시는 한 번만 시작할 수 있습니다.")
         baseline = self._probe()
-        initial = runtime_safety_violations(baseline, baseline, self.thresholds)
+        initial = tuple(
+            code
+            for code in runtime_safety_violations(
+                baseline,
+                baseline,
+                self.thresholds,
+            )
+            if code not in self.allowed_violation_codes
+        )
         if initial:
             raise RuntimeSafetyViolation("초기 안전조건 실패: " + ", ".join(initial))
         with self._lock:
@@ -435,6 +448,7 @@ class RuntimeSafetyMonitor:
             ),
             "maximum_queue_depth": max((sample.queue_depth for sample in samples), default=0),
             "maximum_lag_p95_ms": max((sample.lag_p95_ms for sample in samples), default=0.0),
+            "allowed_violation_codes": sorted(self.allowed_violation_codes),
             "violations": violations,
             "probe_error": probe_error,
             "probe_error_count": probe_error_count,
@@ -462,10 +476,7 @@ class RuntimeSafetyMonitor:
             )
             if len(self._probe_error_examples) < 10:
                 self._probe_error_examples.append(detail)
-            if (
-                self._consecutive_probe_errors
-                >= self.thresholds.max_consecutive_probe_errors
-            ):
+            if self._consecutive_probe_errors >= self.thresholds.max_consecutive_probe_errors:
                 self._probe_error = detail
                 self._stop.set()
 
@@ -482,8 +493,7 @@ class RuntimeSafetyMonitor:
                 self._last_event_count = sample.event_count
                 self._last_event_progress_monotonic = now
             elif (
-                now - self._last_event_progress_monotonic
-                > self.thresholds.max_event_stall_seconds
+                now - self._last_event_progress_monotonic > self.thresholds.max_event_stall_seconds
             ):
                 self._violations.append("EVENT_STREAM_STALLED")
             if sample.planned_rotations > self._last_planned_rotations:
@@ -501,12 +511,14 @@ class RuntimeSafetyMonitor:
             self._latest = sample
             self._samples.append(sample)
             self._violations.extend(
-                runtime_safety_violations(
+                code
+                for code in runtime_safety_violations(
                     baseline,
                     sample,
                     self.thresholds,
                     allow_planned_rotation_transition=allow_planned_transition,
                 )
+                if code not in self.allowed_violation_codes
             )
             self._violations = list(dict.fromkeys(self._violations))
             if self._violations:

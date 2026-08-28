@@ -6,6 +6,8 @@
 
 ## 아직 배포하지 않음
 
+- 20 alpha×5 exit의 100개 PAPER 후보를 사전등록하고 고정 Train·Validation·봉인 Final OOS, 수신순 no-lookahead, 시간순 독립계좌, 활성화형 trailing·부분 TP·runner를 연구 경로에 연결했다. Stage 1은 MICRO 20개만 실행되고 FAST 55개·SWING 15개는 데이터 부족 실패로 보존됐으며 SIHO 10개는 exact 규칙 미확인으로 차단됐다. 선택·ACTIVE·LIVE SHADOW는 0, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+- 대형 닫힌 원장 검사 중 새 PAPER 진입만 멈춘 수 있는 `--require-manual-pause` 계약을 추가했다. 사용자 일시정지·시장 관찰 유지·진입 비활성을 매 샘플 확인할 때만 `MANUALLY_PAUSED`·`ENTRY_LOCKED`를 허용하며 포지션·critical lag·실주문·인증·저장·재연결 상한은 유지한다. 실제 3.706GB 사본의 cross-device SHA-256·동일 Run 복구는 PASS했지만 검사 중 critical lag incident 1건으로 중단돼 full `quick_check`·foreign key는 `NOT_RUN`으로 보존했다.
 - 첫 6시간 관찰을 1,141.869초에서 실제 공개호가 지연 30건·사건 1건으로 중단해 실패를 보존했다. 기존 1,500ms 잠금 기준은 유지하면서 임계 초과 실행호가를 `EXECUTABLE_LAG_STALE`로 원장·archive에 남기고 최신호가·PAPER 체결·피처·전략 후보에서는 격리한다. 신선한 호가가 돌아올 때만 데이터 공백을 해제한다. 새 릴리스의 깨끗한 300.037초는 event +29,420·평가 +83,160·queue 최대 28·처리/체결 p95 최대 54.568/152.271ms·critical·비계획 재연결·gap·drop·저장결함·실제주문·인증 0으로 PASS했지만 6시간·24시간과 수익성은 아직 `NOT_RUN`·`NOT_PROVEN`이다.
 - 연결 화면과 저장소 상태 점검이 공개시장 처리 루프를 멈추지 않도록 디스크·archive·ledger 상태 조회를 단일 비동기 worker로 옮기고, 5초 이상 갱신이 늦으면 공개시장 관찰과 기존 포지션 보호는 유지한 채 신규 PAPER 진입만 안전대기한다.
 - 하나의 시장 이벤트에서 생긴 주문·체결·거래·감사·전략계좌·복구 snapshot을 한 SQLite 트랜잭션으로 원자 저장하고, consumer가 10ms 이상 연속 처리하면 다른 제어·화면 작업에 실행권을 양보한다. 부분 실패 시 식별자와 감사 offset도 전진하지 않는다.

@@ -3026,15 +3026,72 @@ commit `3e4e728b7524a53965014f49c526042fb1dc07f5` 불변 릴리스는 이전 PID
 | adaptive trail | `REGRESSION_PASS` | OFI·aggressor flow·microprice·spread 중 두 사유 이상이 건강한 데이터에서 3초 지속돼야 좁아지고 상태를 recovery에 보존하는 회귀를 통과했다. |
 | 초보자 UI | `FIXTURE_BROWSER_PASS_ACTUAL_RELEASE_NOT_RUN` | 진행 거래와 집중 차트 계획 패널에 고정관리·활성화대기·러너 추적·종료대기와 보호선을 쉬운 한국어로 연결했다. 거래 상세에는 추적 조건 활성과 실제 runner 시작을 따로 표시한다. Playwright desktop·tablet·mobile 3종은 PASS했고 실제 신규 릴리스 브라우저는 아직 `NOT_RUN`이다. |
 | 새 코드 정적검사 | `PASS` | 변경 Python의 Ruff·Ruff format·`py_compile`, frontend ESLint·TypeScript typecheck, 생성 JSON 문법, `git diff --check`를 이번 작업에서 통과했다. |
-| 새 단위·통합·frontend | `PASS` | 최종 source에서 backend 전체 642건, frontend 14 files·72건, fixture backend 19건, Playwright desktop·tablet·mobile 3건, Ruff 변경파일·mypy 106 source·ESLint·TypeScript·Vite build·PAPER safety·security 142 source·repository hygiene·`git diff --check`를 통과했다. 전체 기존 Python format check의 과거 미포맷 41개는 이번 변경과 분리했고 변경 Python 58개는 format PASS다. 실제 신규 릴리스 브라우저는 아직 `NOT_RUN`이다. |
+| 새 단위·통합·frontend | `PASS` | 최종 source에서 backend 전체 647건, frontend 14 files·72건, fixture backend 19건, Playwright desktop·tablet·mobile 3건, Ruff·mypy 106 source·ESLint·TypeScript·Vite build·PAPER safety·security 142 source·repository hygiene·`git diff --check`를 통과했다. Vite JS 530.08kB·gzip 162.81kB의 기존 500kB 경고는 남겼다. 전체 기존 Python format check의 과거 미포맷 41개는 이번 변경과 분리했고 변경 Python 58개는 format PASS다. |
 | dataset freeze | `PASS_HISTORICAL_FORWARD_PENDING` | 13개 Run·2,690,582 events의 범위·건수·symbol·archive SHA를 다시 검증했다. Train 6·Validation 2·봉인 Final OOS 5이며 manifest SHA-256은 `61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20`이다. 미래 LIVE_PUBLIC Forward는 아직 없다. |
 | 200,000-event 자원 benchmark | `PASS_WITH_LIMITS` | 최종 소스 90 trial·180 독립 PAPER 계좌를 단독으로 234.054764초에 처리했다. 854.501 events/s·484.331 후보평가/s, 종료 RSS 673.688MiB·peak 687.734MiB, 완료거래 0이다. queue·persistence·dashboard·replay를 계측하지 않은 동기 benchmark이며 수익성 증거가 아니다. manifest SHA-256은 `0f24ce545e910a222da65f027e69dad89fa42451400bcde951515f0f48ed0910`이다. |
 | screening·ablation·walk-forward | `EXECUTED_NO_SELECTION` | screening manifest `cdbee9dbcd6b402192d8a09e8b3cb936d7c6f9c7b17271ca74a0b9a00f436ad9`, audit `2793d7bc9d73994ac3cdc3418712fb132105f6739eca0877eedc317b7698b2db`, trailing ablation `6996ca9444246d02b7518a4871f53dcd4ffd7759e1b5c3658e5212db218c201c`, walk-forward `b6db01731b599d5d2ab3b870a2be6fc5718d67407418747505b67ba47a7a03e3`, multiple-testing `a55688c313065503245b2656e1a5a71b99e7303d579477ecc40f015f3bd42236`다. recursive 982,240회 중 mismatch 1,080, point-in-time instrument metadata 없음, Validation gate PASS 0, PBO 조합 0으로 선택·ACTIVE·LIVE SHADOW 0, 수익성 `NOT_PROVEN`이다. |
 | 장시간 안정성 | `FAIL_BASELINE_PRESERVED` | 수정 전 immutable release `6caad216…`에서 21,600.025초·720표본·probe 오류 0을 채웠다. event +1,806,796·전략평가 +5,834,040, queue 최대 31, 메모리 +44.141MB, 비계획 reconnect·drop·critical lag·persistence fault·buffer drop·실제주문·인증 0이었다. 그러나 최종 `SAFETY_WAITING`·잠금 true, 처리 p95 최대 604.303ms, event-loop 최대 1,199ms·500ms 초과 21회, WAL checkpoint 최대 34.426초, sequence gap·resync 각 +1로 `FAIL`이다. 원본은 `evidence/WAVE99_POST_QUARANTINE_CLEAN_6H.json`이며 수정 후 6시간과 24시간은 `NOT_RUN`이다. |
 | 자금 준비 | `NOT_READY` | 충분한 Final OOS·LIVE_PUBLIC·BASE/STRESS·bootstrap·PBO·DSR·drawdown·집중도·24h 근거가 없다. 최대 상태도 독립검토 전에는 올리지 않는다. |
 
-현재 작업트리 구현은 실행 중인 immutable release `6caad216…`에 반영된 것으로 간주하지
-않는다. 전체 회귀와 fixture 브라우저는 PASS했지만 실제 신규 릴리스 배포·자동복구·자연 PAPER
-표본·30분·6시간·24시간은 별도 검증이 남아 있다. screening 선택 0이므로 event replay·full
-PAPER replay·LIVE SHADOW는 `NOT_RUN/BLOCKED_GATE`, Final OOS는 봉인, 자금 준비는
-`NOT_READY`다.
+### 실제 불변 릴리스·브라우저·30분 수용 결과
+
+commit `7d58a1c2df31e21fba0a8bea75f2306f825050cd`를 불변 release로 설치했다.
+LaunchAgent `kr.robom.flowscalper`는 실제 release 디렉토리에서 기동했고 동일 Run
+`run-2b7135a972dd`를 복구했다. 이전 release에서 fresh depth가 모두 복구됐어도
+남던 data-health 잠금은 신규 release에서 자동 해제됐다. 실제 API 샘플의
+`RUNNING`, `entry_locked=false`, `storage_entry_allowed=true`, event 전진과 재기동·유지관리
+후의 동일 상태로 확인했다.
+
+| 항목 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 불변 릴리스 | `PASS` | `7d58a1c…`, isolated release, LIVE 공개시장·PAPER, 실제 주문 false·인증 false, 11전략·22독립계좌 |
+| 시작·정지·재개 | `PASS` | 실제 일시정지로 `RUNNING → MANUALLY_PAUSED`, revision 12→13, 재개로 `RUNNING`, 유지관리 종료 후 revision 16·`ENTRY_ENABLED`를 확인 |
+| 실제 상단 화면 | `PASS` | 시장·전략·기록·분석·설정을 직접 열었다. 전략 화면는 SHADOW 6개·OFF/RETIRED 5개·문제 0·실제 주문 0을 표시했다 |
+| 기록 화면 | `PASS` | 표시 91건·공동계좌 1건·전략계좌 90건, 과거 버전 63건 보존을 실제 화면에서 확인 |
+| 과거 재생 | `PASS_SMALL_SCOPE` | `demo-7f9159e59d01` 240 events 중 ADAUSDT 24건을 정밀 로드하고 1→2, 재생 24/24, 동일조건 backend 전략검증을 완료했다. input checksum은 `ee0445256ab8bd6d72c861e47f974e4ae7d62213cfdd54c26ac381281f233366`, 후보·main·strategy·실제 주문·인증은 0이다 |
+| 차트 | `PASS` | 실제 봉·거래량·MA5/10/20·RSI·KST, 4시간→1분→4시간, 전체화면 열기·닫기, MA60 켜기·MA5 끄기·원복을 실제 조작 |
+| 실제 화면 스크린샷 | `PASS` | `wave100-actual-market-desktop.jpg` SHA-256 `a892f0bf…87f0`, history `cfb38a18…7537`, replay `7aaf78dd…40e` |
+| 실제 브라우저 runtime error 수집 | `NOT_RUN_LIMITATION` | 실제 window가 non-extensible라 임시 collector 주입을 완료하지 못했다. 화면에 표시된 오류는 없었고 OFFLINE FIXTURE Playwright 3종은 PASS지만, 이를 실제 console 수집 PASS로 대체하지 않는다 |
+| 최종 회귀 | `PASS_WITH_WARNING` | backend 647·frontend 72·fixture 19·Playwright 3, Ruff·mypy 106 source·ESLint·TypeScript·PAPER safety·security 142 source·hygiene·diff check PASS. Vite JS 530.08kB 기존 size 경고 유지 |
+
+30분 무간섭 관찰 `evidence/WAVE100_RUNNING_SERVICE_SOAK_30M.json`은
+1,800.028초·181표본을 완료해 `PASS`했다. 같은 Run·process를 유지했고 event
++148,304, 전략평가 +483,036, consumer +148,303이다. queue 최대 16/4096,
+처리·체결 p95 최대 95.911/137.366ms, local loop 최대 341ms·500ms 초과 0,
+LIVE 단일 event 최대 234ms다. wide p95 관찰치 최대 1,789.060ms는 실행경로
+p95와 분리해 보존했다. 계획 회전·재연결 2/2, 비계획 재연결·gap·resync·drop·
+persistence fault·buffer drop·critical lag 사건·실제 주문·인증은 0이다.
+RSS는 241.812→251.531MiB, +9.719MiB이다. 이 구간의 적격신호·main·league 거래
+증가는 0으로 자연 신호 기준을 낮추지 않았다.
+
+### 원장 전수검사 시도와 안전 중단
+
+| 시도 | 상태 | 근거와 판정 |
+|---|---|---|
+| 활성 writer online snapshot 1 | `FAIL` | 31.284초 무진행·backup restart 6회로 중단. active ledger direct quick-check 0, 임시 사본 제거 |
+| 활성 writer online snapshot 2 | `FAIL` | page step을 키웠지만 61.680초 무진행·restart 4회로 중단. 상한을 더 느슨하지 않음 |
+| 닫힌 clone·일반 운영 | `ABORTED_RUNTIME_SAFETY` | 3,690,582,016 byte·원본/검증본 SHA-256 `b9a1b871…40c` 일치·동일 Run 복구는 PASS. 검사 중 자연 PAPER 포지션 2건이 열려 `POSITION_OPENED`로 전수검사 중단 |
+| 느린 대체 검증 volume | `ABORTED_OPERATOR` | 20초에 약 100MB만 전송되어 localhost 장시간 중단을 피하기 위해 안전 취소·서비스 복구·임시 사본 제거 |
+| 검증된 수동 진입 일시정지 | `ABORTED_RUNTIME_SAFETY` | 3,706,220,544 byte를 206.206초에 전송하고 SHA-256 `ea91529d…565c` 일치·동일 Run·243.307초 복구·수동 일시정지 전후 검증 PASS. event +142,428·queue 최대 23·lag p95 최대 490.5ms·포지션 0이었지만 critical lag incident +1으로 중단 |
+| `quick_check`·foreign key | `NOT_RUN` | 네 번째 재시도나 critical 상한 완화를 하지 않음. active ledger에 직접 검사 0 |
+
+수동 일시정지 계약은 `ADR-083`으로 고정했다. 실제 시도는 포지션 0을
+유지했고 계획 회전도 정상 구분했지만 critical 사건은 허용하지 않았다.
+검사 종료 후 revision 15→16으로 새 진입을 다시 켰고 `RUNNING`·포지션 0·
+`entry_locked=false`·실제 주문 false·인증 false를 확인했다. 원본은
+`WAVE100_LEDGER_SNAPSHOT_INTEGRITY.json`, `WAVE100_MACOS_LEDGER_MAINTENANCE.json`,
+`WAVE100_MACOS_LEDGER_MAINTENANCE_FAST.json`,
+`WAVE100_MACOS_LEDGER_MAINTENANCE_PAUSED.json`에 실패를 포함해 보존한다.
+
+### 최종 수용 경계
+
+- 실제 불변 release·실제 브라우저·30분 무간섭 관찰은 `PASS`다.
+- 원장 전수 `quick_check`·foreign key는 `ABORTED_RUNTIME_SAFETY / NOT_RUN`이다.
+- 신규 release의 6시간·24시간은 실제 시간을 채우지 않아 `NOT_RUN`이다.
+- 신규 trailing·TP1·runner의 실제 자연 종단 표본은 30분에 포지션·거래 증가가 0이어서 `NOT_RUN/NOT_OBSERVED`다.
+- screening 선택 0이므로 Final OOS는 봉인했고 event replay·full PAPER replay·LIVE SHADOW는 `NOT_RUN/BLOCKED_GATE`다.
+- 현재버전 BASE/STRESS는 각 14건·net -10.512252272/-17.957519704 USDT로 작은 과거 표본이며, 선택된 신규 후보는 0이다. 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+- GitHub main·Actions는 이 증거 commit을 올린 뒤 별도 확인하며, 현재 문서 작성 시점에는 `NOT_RUN`이다.
+
+현 수용상태는
+`ACTUAL_RELEASE_BROWSER_30M_PASS_LEDGER_FULL_CHECK_ABORTED_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

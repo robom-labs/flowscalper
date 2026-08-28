@@ -65,6 +65,14 @@ uv run python scripts/verify_macos_ledger_maintenance.py \
 
 유지관리는 localhost를 잠시 내린다. 실제 Wave 48에서 동일 Run은 16.912초 후 복구됐고 전송·검사 동안은 작동 중이었다. 안전선을 넘으면 fail-closed하며, PASS 후 외장 clone과 검증 device의 임시 사본을 제거한다. 세부 계약은 `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`에 있습니다.
 
+전수검사가 길어 검사 중 자연 PAPER 진입이 열릴 수 있다면 먼저 화면에서
+`새 진입 잠시 멈추기`를 누르고 포지션 0건을 확인한 뒤 `--require-manual-pause`를
+추가한다. 이 옵션은 사용자 일시정지·시장 관찰 유지·새 진입 비활성을 재기동
+전후와 검사 샘플링마다 다시 확인한다. 검사가 성공하거나 중단된 뒤에는 화면에서
+`새 진입 다시 시작`을 눌러야 한다. 포지션·critical lag·실제 주문·인증·저장·재연결
+안전 상한은 느슨하지 않는다. 세부 결정은
+`docs/adr/ADR-083-verified-manual-pause-ledger-maintenance.md`에 있다.
+
 ## Windows 첫 실행
 
 ```powershell

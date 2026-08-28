@@ -15,7 +15,10 @@ import pytest
 from backend.app.api.dashboard import release_identity
 from backend.app.storage.integrity import RuntimeSafetyViolation
 from scripts.stage_macos_release import activate_release, stage_release
-from scripts.verify_macos_ledger_maintenance import _validate_initial_runtime
+from scripts.verify_macos_ledger_maintenance import (
+    _require_manual_pause_contract,
+    _validate_initial_runtime,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -33,9 +36,7 @@ def test_launch_agent_allows_graceful_paper_persistence_shutdown() -> None:
 
 
 def test_installer_uses_launchd_graceful_bootout_before_new_bootstrap() -> None:
-    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
-        encoding="utf-8"
-    )
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
 
     bootout_at = installer.index('launchctl bootout "$SERVICE_TARGET"')
     bootstrap_at = installer.index('launchctl bootstrap "gui/$USER_ID" "$TARGET_PLIST"')
@@ -44,12 +45,8 @@ def test_installer_uses_launchd_graceful_bootout_before_new_bootstrap() -> None:
 
 
 def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> None:
-    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
-        encoding="utf-8"
-    )
-    stage = (PROJECT_ROOT / "scripts" / "stage_macos_release.py").read_text(
-        encoding="utf-8"
-    )
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
+    stage = (PROJECT_ROOT / "scripts" / "stage_macos_release.py").read_text(encoding="utf-8")
 
     assert "for attempt in 1 2 3" in installer
     assert 'service_pid="$(printf' in installer
@@ -63,15 +60,11 @@ def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> N
 
 
 def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> None:
-    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
-        encoding="utf-8"
-    )
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
 
     kickstart_at = installer.index('launchctl kickstart "$SERVICE_TARGET"')
     readiness_at = installer.index("for readiness_wait in {1..180}")
-    pass_at = installer.index(
-        'echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"'
-    )
+    pass_at = installer.index('echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"')
     assert kickstart_at < readiness_at < pass_at
     readiness = installer[readiness_at:pass_at]
     assert "http://127.0.0.1:8870/api/dashboard" in readiness
@@ -87,9 +80,7 @@ def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> Non
 
 
 def test_installer_can_prepare_release_without_restarting_loaded_service() -> None:
-    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
-        encoding="utf-8"
-    )
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
 
     assert '"${1:-}" == "--prepare-only"' in installer
     prepare_only_at = installer.index('if [[ "$PREPARE_ONLY" == "true" ]]')
@@ -116,14 +107,48 @@ def test_maintenance_recovery_override_rejects_live_safety_expansion() -> None:
         )
 
 
-def test_closed_snapshot_transfer_finishes_before_live_release_restart() -> None:
-    maintenance = (
-        PROJECT_ROOT / "scripts" / "verify_macos_ledger_maintenance.py"
-    ).read_text(encoding="utf-8")
-    verification = maintenance[
-        maintenance.index("def verify_with_maintenance") : maintenance.index(
-            "def parse_arguments"
+def test_maintenance_verified_manual_pause_allows_only_pause_state_codes() -> None:
+    result = _validate_initial_runtime(
+        ("OPERATION_NOT_RUNNING", "ENTRY_LOCKED"),
+        allow_failed_runtime_recovery=False,
+        verified_manual_pause=True,
+    )
+
+    assert result["override_applied"] is True
+    assert result["reason"] == "VERIFIED_USER_ENTRY_PAUSE"
+    with pytest.raises(RuntimeSafetyViolation, match="POSITION_OPENED"):
+        _validate_initial_runtime(
+            ("OPERATION_NOT_RUNNING", "ENTRY_LOCKED", "POSITION_OPENED"),
+            allow_failed_runtime_recovery=False,
+            verified_manual_pause=True,
         )
+
+
+def test_maintenance_manual_pause_contract_requires_live_observation() -> None:
+    payload = {
+        "paper_entry_intent": {
+            "state": "USER_PAUSED",
+            "manual_pause_requested": True,
+        },
+        "operation_status": {
+            "state": "MANUALLY_PAUSED",
+            "market_observation_active": True,
+            "paper_entry_active": False,
+        },
+    }
+
+    _require_manual_pause_contract(payload)
+    payload["operation_status"]["market_observation_active"] = False  # type: ignore[index]
+    with pytest.raises(RuntimeSafetyViolation, match="시장 관찰"):
+        _require_manual_pause_contract(payload)
+
+
+def test_closed_snapshot_transfer_finishes_before_live_release_restart() -> None:
+    maintenance = (PROJECT_ROOT / "scripts" / "verify_macos_ledger_maintenance.py").read_text(
+        encoding="utf-8"
+    )
+    verification = maintenance[
+        maintenance.index("def verify_with_maintenance") : maintenance.index("def parse_arguments")
     ]
 
     clone_at = verification.index("create_closed_ledger_clone(")
@@ -136,12 +161,8 @@ def test_closed_snapshot_transfer_finishes_before_live_release_restart() -> None
 
 
 def test_service_uses_immutable_current_release_and_manifest_paths() -> None:
-    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
-        encoding="utf-8"
-    )
-    runner = (PROJECT_ROOT / "scripts" / "run_macos_service.sh").read_text(
-        encoding="utf-8"
-    )
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
+    runner = (PROJECT_ROOT / "scripts" / "run_macos_service.sh").read_text(encoding="utf-8")
 
     assert "scripts/stage_macos_release.py" in installer
     assert '--activate > "$STAGE_RESULT"' in installer
@@ -151,8 +172,8 @@ def test_service_uses_immutable_current_release_and_manifest_paths() -> None:
     assert 'export ROBOM_RELEASE_ISOLATED="true"' in runner
     assert 'export ROBOM_MARKET_ARCHIVE_PATH="$MARKET_ARCHIVE_PATH"' in runner
     assert 'export PYTHONPATH="$PROJECT_DIR"' in runner
-    assert 'import backend' in runner
-    assert 'BACKEND_PACKAGE_ROOT' in runner
+    assert "import backend" in runner
+    assert "BACKEND_PACKAGE_ROOT" in runner
     assert 'ROBOM_MARKET_ARCHIVE_PATH="$PROJECT_DIR/data/market-parquet-v6"' not in runner
 
 
@@ -173,9 +194,7 @@ def test_service_runner_pins_backend_import_to_physical_release(tmp_path: Path) 
     runtime_python.parent.mkdir(parents=True)
     market_archive.mkdir()
     active_ledger.mkdir()
-    (release / "frontend" / "dist" / "index.html").write_text(
-        "<html></html>", encoding="utf-8"
-    )
+    (release / "frontend" / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
     (release / "scripts" / "run_server.py").write_text("# fixture\n", encoding="utf-8")
     (release / "release-manifest.json").write_text(
         json.dumps(
@@ -316,9 +335,12 @@ def test_staged_release_is_unchanged_when_worktree_assets_and_source_change(
 
     assert release_index.read_bytes() == index_before
     assert release_backend.read_bytes() == backend_before
-    assert json.loads((release / "release-manifest.json").read_text(encoding="utf-8"))[
-        "real_orders_enabled"
-    ] is False
+    assert (
+        json.loads((release / "release-manifest.json").read_text(encoding="utf-8"))[
+            "real_orders_enabled"
+        ]
+        is False
+    )
 
 
 def test_release_pointer_switch_records_rollback_and_can_restore_previous_release(
