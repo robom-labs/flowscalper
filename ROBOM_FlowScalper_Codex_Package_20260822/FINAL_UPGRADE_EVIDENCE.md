@@ -3119,3 +3119,56 @@ frontend 72건·build·PAPER safety를 PASS했다. security 142 source·저장�
 
 현 수용상태는
 `ACTUAL_RELEASE_BROWSER_30M_PASS_LEDGER_FULL_CHECK_ABORTED_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 76. Wave 102 비용확인 관리청산·쉬운 결과 화면 증거
+
+사용자 문제제기대로 배포 전 같은 Run의 현재 전략버전 `LIVE_PUBLIC` 독립계좌 30건을
+고정해 다시 집계했다. 30건 모두 `EDGE_DECAY`, 보유 13.622~46.368초였고 가격손익
+합계는 +1.532780 USDT였지만 수수료·슬리피지가 33.260573416 USDT라 순손익은
+-31.727793416 USDT였다. 16건은 가격손익 양수인데 비용후 손실, 8건은 가격이 사실상
+평탄했다. 기존 10초·복수근거·3초만으로는 1~3초 종료를 막아도 비용만 확정하는 반복을
+막지 못한 것이 직접 원인이다.
+
+일반 관리청산은 체결 후 30초, 서로 다른 불리 근거 2개, LONG best bid·SHORT best ask로
+계산한 가격손실이 `max(0.25R, 계획 왕복비용 R)` 이상, 3초 지속을 모두 요구하도록
+변경했다. 가격이 비용대 안으로 회복하면 확인을 초기화한다. 초기 손절·TP1·TP2·데이터와
+시스템 안전종료·최대보유는 그대로 즉시 작동한다. MFE +0.8R 이익보호는 30초와 손실대
+확인만 생략할 수 있고 복수 근거·3초는 유지한다. 전략 구현 개정은
+`2026-08-28-wave102`로 올려 과거 거래와 새 표본을 섞지 않았다.
+
+거래기록 기본 10열은 거래·전략/계좌·최종 결과·종료·보유·보기 6개 핵심으로 줄였다.
+전략·진행거래·성과·종목별 성과·안전설정·과거재생도 쉬운 한국어 핵심을 먼저 보여주고
+원시 전략코드, Run/trade ID, checksum, 연구 지표와 내부 개정은 접힌 기술 정보에
+보존했다. 과거 `EDGE_DECAY`는 `진입 근거 약화(과거 기준)`, 새 계약은
+`가격·근거 동시 악화`로 구분해 과거 행이 현재 비용확인 규칙을 통과한 것처럼 설명하지
+않는다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 관리청산·체결 회귀 | `PASS` | 30초 전 HOLD, 비용대 안 HOLD·확인 초기화, 비용대 밖 복수근거 3초 뒤 종료, 실제 bid/ask, MFE 이익보호, 초기 TP/SL 회귀를 포함한 표적 103건 PASS |
+| backend 전체 | `PASS` | 650건 47.27초, Ruff, mypy 106 source, PAPER safety, security 142 source, repository hygiene, diff check PASS |
+| frontend 전체 | `PASS_WITH_WARNING` | Vitest 14 files·74건, ESLint, TypeScript, 51 modules build PASS. 535.64kB·gzip 164.13kB의 기존 500kB 경고는 남김 |
+| 반응형 fixture | `PASS` | Playwright desktop·tablet·mobile 3건 25.7초 PASS |
+| 실제 브라우저 | `PASS` | 실제 불변 release `ef146de…`, 같은 `run-2b7135a972dd`, 작동 중·실제 주문 0·11전략·22계좌, 기록 필터·상세·과거재생·진입/종료 이동·entry/TP1/TP2/SL·모바일 닫기·console warning/error 0을 직접 확인 |
+| 쉬운 기본 문구 | `PASS` | 기본 DOM에서 raw `STRESS`, `EDGE_DECAY`, checksum, Run ID, `TRADE REPLAY`, `TP1/SL` 기술문구가 노출되지 않고 비용조건·1차/2차 목표·한국어 종료이유를 확인 |
+| 60초 서비스 관찰 | `PASS` | 60.046초·13표본, event +4,285·전략평가 +15,900, queue 최대 0, 처리/체결 p95 최대 37.955/46.233ms, local loop 최대 74ms, 비계획 reconnect·gap·resync·drop·fault·critical·실제주문·인증 0 |
+| 새 개정 자연표본 | `NOT_PROVEN` | 관찰 중 적격신호·main·독립계좌 거래 증가 0, 현재개정 BASE/STRESS 0/0. 신호 기준을 낮추지 않음 |
+| 6시간·24시간 | `NOT_RUN` | 실제 시간을 채우지 않음 |
+
+### 활성 원장 전수검사 경계
+
+활성 3.5GB writer에 직접 `quick_check`하지 않고 Online Backup API 별도 사본만 시도했다.
+64페이지·10ms 시도는 30.197초 무진행·restart 6회·남은 924,220페이지, 4,096페이지·
+0ms 재시도는 60.405초 무진행·restart 5회·남은 880,820페이지에서 안전 중단했다.
+임시 사본은 모두 제거했다. 두 구간 모두 같은 Run의 event는 +5,318과 +5,602 전진했고
+두 번째 최대 queue 3·p95 42.893ms·runtime 위반 0이었다. 이는 계속 쓰이는 활성 원장을
+사본 생성이 따라가지 못한 증거이며 원장 손상 증거가 아니다. 닫힌 불변 사본 또는
+localhost 중단이 명시적으로 허용된 유지관리 시간 전까지 full `quick_check`와 foreign key는
+`NOT_RUN`이다.
+
+원시 근거는 `evidence/WAVE102_COST_AWARE_EXIT_BEGINNER_UI.json`,
+`WAVE102_RUNNING_SERVICE_SMOKE_60S.json`, 두 `WAVE102_LEDGER_SNAPSHOT_INTEGRITY*.json`과
+`evidence/screenshots/WAVE102_*`에 보존했다. 결정은 `ADR-084`에 고정했다.
+
+현 수용상태는
+`COST_AWARE_EXIT_REGRESSION_PASS_BEGINNER_UI_ACTUAL_BROWSER_PASS_LEDGER_FULL_CHECK_NOT_RUN_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

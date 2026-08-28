@@ -1,0 +1,229 @@
+{
+  "schema": "flowscalper.wave102.cost_aware_exit_beginner_ui.v1",
+  "wave": 102,
+  "recorded_at_kst": "2026-08-28",
+  "implementation_commit": "ef146de47ccaea941a1b28516301f299ad1d5a92",
+  "strategy_implementation_revision": "2026-08-28-wave102",
+  "paper_boundary": {
+    "public_market_data_only": true,
+    "paper_execution_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_requested": false,
+    "api_key_requested": false,
+    "wallet_requested": false
+  },
+  "pre_change_root_cause": {
+    "source": "배포 전 같은 Run의 /api/history 현재 전략버전 LIVE_PUBLIC 독립계좌 고정 조회",
+    "fixed_audit_cohort_trades": 30,
+    "exit_reason_counts": {
+      "EDGE_DECAY": 30
+    },
+    "holding_time_ms": {
+      "minimum": 13622,
+      "median": 26968,
+      "maximum": 46368,
+      "at_or_below_15_seconds": 12,
+      "at_or_below_20_seconds": 14,
+      "at_or_below_30_seconds": 18
+    },
+    "gross_pnl_usdt": "1.532780",
+    "fees_and_slippage_usdt": "33.260573416",
+    "net_pnl_usdt": "-31.727793416",
+    "positive_gross_but_negative_net_count": 16,
+    "effectively_flat_gross_count": 8,
+    "finding": "기존 10초 유예·복수 근거·3초 지속은 가격과 왕복비용 확인이 없어 평탄하거나 비용대 안의 거래도 관리청산해 비용만 확정할 수 있었다.",
+    "profitability_claim": "NOT_PROVEN"
+  },
+  "implemented_exit_contract": {
+    "ordinary_edge_decay_grace_ms": 30000,
+    "minimum_distinct_adverse_reasons": 2,
+    "minimum_adverse_r": "0.25",
+    "required_adverse_r": "max(0.25R, planned_round_trip_cost_r)",
+    "required_persistence_ms": 3000,
+    "long_executable_mark": "best_bid",
+    "short_executable_mark": "best_ask",
+    "price_recovers_inside_cost_band": "clear_persistence_and_hold",
+    "profit_protection_mfe_r": "0.8",
+    "profit_protection_exception": "30초 유예와 가격손실 확인만 생략할 수 있고 복수 근거와 3초 지속은 유지",
+    "unchanged_immediate_paths": [
+      "INITIAL_STOP",
+      "TP1",
+      "TP2",
+      "DATA_SAFETY_EXIT",
+      "SYSTEM_SAFETY_EXIT",
+      "MAX_HOLD"
+    ]
+  },
+  "implemented_beginner_ui_contract": {
+    "default_language": "쉬운 한국어",
+    "history_default_columns": [
+      "거래",
+      "전략·계좌",
+      "최종 결과",
+      "종료",
+      "보유",
+      "보기"
+    ],
+    "default_hidden_technical_items": [
+      "trade_id",
+      "run_id",
+      "raw_strategy_id",
+      "raw_exit_reason",
+      "config_hash",
+      "internal_revision",
+      "technical_timing",
+      "raw_replay_checksum"
+    ],
+    "advanced_details_preserved": true,
+    "past_edge_decay_label": "진입 근거 약화(과거 기준)",
+    "current_edge_decay_label": "가격·근거 동시 악화",
+    "responsive_card_layout_max_width_px": 900,
+    "normal_pages_simplified": [
+      "거래 기록",
+      "전략",
+      "진행 거래",
+      "성과",
+      "안전 설정",
+      "종목별 성과",
+      "과거 재생",
+      "차트 포지션 정보"
+    ]
+  },
+  "deterministic_verification": {
+    "backend": {
+      "status": "PASS",
+      "tests_passed": 650,
+      "duration_seconds": 47.27,
+      "targeted_exit_and_portfolio_tests_passed": 103,
+      "ruff": "PASS",
+      "mypy": "PASS_106_SOURCE_FILES"
+    },
+    "frontend": {
+      "status": "PASS_WITH_EXISTING_BUNDLE_WARNING",
+      "test_files_passed": 14,
+      "tests_passed": 74,
+      "typecheck": "PASS",
+      "lint": "PASS",
+      "build": "PASS_51_MODULES",
+      "bundle_minified_kib": 535.64,
+      "bundle_gzip_kib": 164.13,
+      "existing_bundle_warning": "500kB 초과 경고가 남아 있으나 build는 성공"
+    },
+    "browser_fixture": {
+      "status": "PASS",
+      "desktop_tablet_mobile": 3,
+      "duration_seconds": 25.7
+    },
+    "paper_safety": "PASS",
+    "security_scan": "PASS_142_SOURCE_FILES",
+    "repository_hygiene": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "actual_browser_verification": {
+    "status": "PASS",
+    "url": "http://127.0.0.1:8870/",
+    "release_commit": "ef146de47ccaea941a1b28516301f299ad1d5a92",
+    "run_id": "run-2b7135a972dd",
+    "checks": [
+      "작동 중·LIVE 공개시장·PAPER·실제 주문 0",
+      "11전략·22독립계좌와 현재 개정 표본 0/30",
+      "거래 기록 기본 현재 버전 0건과 전체 버전 전환",
+      "과거 EDGE_DECAY를 현재 규칙처럼 오표시하지 않음",
+      "거래 상세 열기와 선택 거래 과거 재생 로딩",
+      "진입·실제 종료 이동과 entry·TP1·TP2·SL·손익·종료 표시",
+      "기본 화면에서 raw STRESS·EDGE_DECAY·checksum·Run ID 미노출",
+      "모바일 거래 상세 닫기 버튼과 카드 배치",
+      "브라우저 console warning·error 0"
+    ],
+    "screenshots": [
+      "evidence/screenshots/WAVE102_HISTORY_AFTER.png",
+      "evidence/screenshots/WAVE102_HISTORY_AFTER_DESKTOP.png",
+      "evidence/screenshots/WAVE102_STRATEGIES_AFTER.png",
+      "evidence/screenshots/WAVE102_STRATEGIES_AFTER_DESKTOP.png",
+      "evidence/screenshots/WAVE102_PERFORMANCE_AFTER.png",
+      "evidence/screenshots/WAVE102_STRATEGY_SYMBOL_AFTER.png",
+      "evidence/screenshots/WAVE102_REPLAY_AFTER.png"
+    ]
+  },
+  "running_service_observation": {
+    "status": "PASS",
+    "evidence": "evidence/WAVE102_RUNNING_SERVICE_SMOKE_60S.json",
+    "observed_duration_seconds": 60.046,
+    "samples": 13,
+    "same_run": true,
+    "event_delta": 4285,
+    "strategy_evaluation_delta": 15900,
+    "qualified_signal_delta": 0,
+    "main_trade_delta": 0,
+    "league_trade_delta": 0,
+    "current_version_base_sample_delta": 0,
+    "current_version_stress_sample_delta": 0,
+    "maximum_queue_depth": 0,
+    "maximum_processing_lag_p95_ms": 37.954833984375,
+    "maximum_trade_lag_p95_ms": 46.23291015625,
+    "maximum_wide_lag_p95_ms_observational": 1822.61181640625,
+    "maximum_event_loop_lag_ms": 74.0,
+    "event_loop_over_100ms_delta": 0,
+    "event_loop_over_500ms_delta": 0,
+    "memory_growth_mib": 31.657,
+    "maximum_market_persistence_buffer": 997,
+    "maximum_persistence_backlog_peak": 1029,
+    "maximum_persistence_flush_last_ms": 1844.0,
+    "maximum_wal_checkpoint_last_ms": 963.0,
+    "reconnect_or_gap_drop_fault_delta": 0,
+    "maximum_open_positions": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "ledger_integrity_boundary": {
+    "status": "NOT_RUN_ACTIVE_WRITER_SNAPSHOT_STALLED",
+    "direct_active_ledger_quick_check_requested": false,
+    "source_mutation_requested": false,
+    "temporary_snapshots_removed": true,
+    "attempts": [
+      {
+        "evidence": "evidence/WAVE102_LEDGER_SNAPSHOT_INTEGRITY.json",
+        "status": "FAIL",
+        "duration_seconds": 72.557,
+        "backup_pages": 64,
+        "backup_sleep_ms": 10.0,
+        "stall_seconds": 30.197,
+        "backup_restarts": 6,
+        "remaining_pages": 924220,
+        "runtime_event_delta": 5318,
+        "runtime_violations": []
+      },
+      {
+        "evidence": "evidence/WAVE102_LEDGER_SNAPSHOT_INTEGRITY_RETRY.json",
+        "status": "FAIL",
+        "duration_seconds": 73.531,
+        "backup_pages": 4096,
+        "backup_sleep_ms": 0.0,
+        "stall_seconds": 60.405,
+        "backup_restarts": 5,
+        "remaining_pages": 880820,
+        "runtime_event_delta": 5602,
+        "runtime_maximum_queue_depth": 3,
+        "runtime_maximum_lag_p95_ms": 42.89306640625,
+        "runtime_violations": []
+      }
+    ],
+    "interpretation": "두 실패는 계속 증가하는 활성 writer를 Online Backup API 사본이 따라가지 못한 증거다. 원장 손상 증거가 아니며 quick_check PASS로도 해석하지 않는다.",
+    "next_allowed_full_check": "localhost 중단이 허용된 명시적 유지관리 시간 또는 더 빠른 별도 장치의 닫힌 불변 사본"
+  },
+  "acceptance": {
+    "cost_aware_edge_decay_regression": "PASS",
+    "beginner_first_ui": "PASS",
+    "actual_browser": "PASS",
+    "running_service_60s": "PASS",
+    "ledger_full_quick_check": "NOT_RUN",
+    "new_revision_natural_trade_sample": "0_BASE_0_STRESS",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY",
+    "six_hour_observation": "NOT_RUN",
+    "twenty_four_hour_observation": "NOT_RUN",
+    "github_main": "PENDING",
+    "github_actions": "PENDING"
+  }
+}

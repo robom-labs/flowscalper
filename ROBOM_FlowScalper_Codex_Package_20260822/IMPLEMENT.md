@@ -628,6 +628,19 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 9. Never run a full SQLite integrity scan against the growing active writer. A mistakenly started scan must be terminated, marked `NOT_RUN` and followed by runtime-safety checks; only ADR-049's closed immutable-copy procedure can yield a full integrity PASS.
 10. Synchronize code, raw failures, passing evidence and documentation to GitHub main, confirm Actions, then start the clean six-hour observer without replay, tests, build or ledger maintenance.
 
+## Cost-aware ordinary exit and beginner-first results Wave
+
+1. Freeze and audit the pre-change current-revision `LIVE_PUBLIC` cohort before changing policy. Preserve every immutable trade and separate gross movement, fees, slippage and net PnL.
+2. Ordinary `EDGE_DECAY` requires a 30,000ms post-fill grace, at least two distinct adverse reasons, executable best bid for LONG or best ask for SHORT, a loss of at least `max(0.25R, planned round-trip cost R)`, and 3,000ms event-time persistence.
+3. Clear ordinary edge-decay persistence when executable price recovers inside the cost band. A weak reason code by itself must never crystallize a round trip.
+4. Preserve immediate initial STOP, TP1, TP2, data/system safety and explicit maximum-hold paths. Profit protection after MFE +0.8R may bypass only the grace and loss-band checks; it still requires two adverse reasons and 3,000ms persistence.
+5. Increment the strategy implementation revision and restart natural BASE/STRESS evidence at zero. Do not relabel or delete earlier trades, and do not claim higher win rate or profitability from deterministic tests.
+6. Make normal History, Strategy, Open Position, Performance, Risk, Strategy-Symbol and Replay views beginner-first. Show easy Korean outcome, protection and next-action information by default; retain raw ids, checksums, reason codes, revisions and research statistics inside collapsed advanced details.
+7. Distinguish prior `EDGE_DECAY` rows from the new contract in visible copy. A prior row must not be explained as if it passed the current price-and-cost confirmation.
+8. Verify desktop, tablet and mobile layouts, actual trade-detail/replay controls, entry/TP1/TP2/SL/exit annotations and browser console output. Screenshots supplement interaction checks but do not replace them.
+9. Run the complete backend and frontend suites, lint, typecheck, build, PAPER safety, security, repository hygiene and immutable-release service observation. Keep actual orders, auth, private APIs, credentials and wallets at zero.
+10. A growing active ledger that cannot complete an online snapshot is `NOT_RUN`, not corrupt and not PASS. Stop bounded retries, remove temporary copies and reserve full integrity for a closed immutable copy or an explicitly approved maintenance window.
+
 ## Executable-lag quarantine Wave
 
 1. Preserve the first Wave 98 six-hour attempt as `ABORTED_OPERATOR`; it stopped after 1,141.869 seconds with 30 critical executable-lag events and one incident. Never reuse its initial normal samples as a six-hour PASS.
