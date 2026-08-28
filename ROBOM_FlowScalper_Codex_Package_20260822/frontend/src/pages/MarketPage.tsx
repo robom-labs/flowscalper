@@ -4,7 +4,7 @@ import { fetchJson } from '../api/client'
 import { PositionFocusWorkspace } from '../components/PositionFocusWorkspace'
 import { PriceChart, type ChartOverlay } from '../components/PriceChart'
 import { OperationStatusPanel } from '../components/OperationStatusPanel'
-import { formatUsdt, paperAccountLabel } from '../format'
+import { costProfileLabel, formatUsdt, paperAccountLabel, sideLabel } from '../format'
 import { strategyLabel } from '../strategyPresentation'
 import type { ChartData, ControlOperation, DashboardData, FocusPosition, MarketCatalog, MarketCatalogRow } from '../types'
 
@@ -46,7 +46,7 @@ function preferredFocus(rows: FocusPosition[], profile: 'BASE' | 'STRESS') {
 function positionOverlay(position: FocusPosition, strategies: DashboardData['strategies']): ChartOverlay {
   return {
     key: position.focus_key,
-    label: `${strategyLabel(strategies.find((strategy) => strategy.strategy_id === position.strategy), position.strategy)} · ${position.profile} · ${paperAccountLabel(position.account_id)}`,
+    label: `${strategyLabel(strategies.find((strategy) => strategy.strategy_id === position.strategy), position.strategy)} · ${costProfileLabel(position.profile)} · ${paperAccountLabel(position.account_id)}`,
     symbol: position.symbol,
     side: position.side,
     signalTime: position.signal_time,
@@ -185,7 +185,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
       setClosedReview(null)
       setSelectedMarket({ source: 'BINANCE_USDM', symbol: newPosition.symbol })
       onChartChange(newPosition.symbol, interval)
-      setFocusNotice(arrivals.length > 1 ? `새 PAPER 진입 ${arrivals.length}건 · BASE 우선 표시` : `새 PAPER 진입 · ${newPosition.symbol} · ${newPosition.strategy_display_name_ko} · ${newPosition.profile} · ${paperAccountLabel(newPosition.account_id)}`)
+      setFocusNotice(arrivals.length > 1 ? `새 PAPER 진입 ${arrivals.length}건 · 기본 비용 우선 표시` : `새 PAPER 진입 · ${newPosition.symbol} · ${newPosition.strategy_display_name_ko} · ${costProfileLabel(newPosition.profile)} · ${paperAccountLabel(newPosition.account_id)}`)
     } else if (newPosition) {
       setFocusNotice(arrivals.length > 1 ? `새 PAPER 진입 ${arrivals.length}건 · 포지션 선택에서 확인하세요.` : `새 PAPER 진입 · ${newPosition.symbol} · 거래 보기를 선택하세요.`)
     }
@@ -203,7 +203,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
     const completed = { ...lastFocus.current, stage: 'CLOSED', stage_ko: '거래 종료', management_reason: '최종 PAPER 결과 확인', management_reason_ko: '최종 PAPER 결과 확인', remaining_quantity: '0' }
     const reviewTimer = window.setTimeout(() => {
       setClosedReview(completed)
-      setFocusNotice(`PAPER 거래 종료 · ${completed.symbol} · ${completed.strategy_display_name_ko} · ${completed.profile} · ${paperAccountLabel(completed.account_id)} · 기록에서 확인`)
+      setFocusNotice(`PAPER 거래 종료 · ${completed.symbol} · ${completed.strategy_display_name_ko} · ${costProfileLabel(completed.profile)} · ${paperAccountLabel(completed.account_id)} · 기록에서 확인`)
     }, 0)
     return () => window.clearTimeout(reviewTimer)
   }, [closedReview, focus, focusKey])
@@ -247,15 +247,15 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, onPa
   return <section className={displayedFocus ? 'market-workspace focus-mode' : 'market-workspace'} aria-labelledby="market-heading">
     {fixture ? <p className="mode-truth-banner" role="status">샘플 PAPER 데이터 · LIVE 아님 · 실제 주문 0</p> : null}
     <header className={data.status.mode === 'READY' ? 'market-toolbar ready-mode' : 'market-toolbar'}>
-      <div><h2 id="market-heading">{displayedFocus ? `${displayedFocus.symbol} 포지션 집중` : `${selectedMarket.symbol} 시장`}</h2><span>{displayedFocus ? `${displayedFocus.side} · ${displayedFocus.strategy_display_name_ko} · ${displayedFocus.profile} · ${paperAccountLabel(displayedFocus.account_id)} · PAPER` : selectedMarket.source === 'UPBIT_KRW' ? '관찰 전용 · KRW 현물' : data.status.market_data_state === 'LIVE' ? '실제 공개시장 · PAPER만' : data.status.mode === 'DEMO_FIXTURE' ? '샘플 · LIVE 아님' : '공개시장 연결 대기'}</span></div>
+      <div><h2 id="market-heading">{displayedFocus ? `${displayedFocus.symbol} 포지션 집중` : `${selectedMarket.symbol} 시장`}</h2><span>{displayedFocus ? `${sideLabel(displayedFocus.side)} · ${displayedFocus.strategy_display_name_ko} · ${costProfileLabel(displayedFocus.profile)} · ${paperAccountLabel(displayedFocus.account_id)} · PAPER` : selectedMarket.source === 'UPBIT_KRW' ? '관찰 전용 · KRW 현물' : data.status.market_data_state === 'LIVE' ? '실시간 공개시장 · PAPER만' : data.status.mode === 'DEMO_FIXTURE' ? '연습용 샘플 · 실시간 아님' : '공개시장 연결 대기'}</span></div>
       <label>시간<select aria-label="차트 시간" value={interval} onChange={(event) => { const next = Number(event.target.value); setSelectedInterval(next); if (selectedMarket.source === 'BINANCE_USDM') onChartChange(selectedMarket.symbol, next) }}>{data.timeframes.map((row) => <option key={row.interval_seconds} value={row.interval_seconds}>{row.label_ko}</option>)}</select></label>
-      {data.focus_positions.length ? <label>포지션<select aria-label="집중 포지션" value={focusKey ?? ''} onChange={(event) => { const position = data.focus_positions.find((row) => row.focus_key === event.target.value); if (position) openPosition(position); else setFocusKey(null) }}><option value="">시장 보기</option>{data.focus_positions.map((position) => <option value={position.focus_key} key={position.focus_key}>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'} · {position.strategy_display_name_ko} · {position.profile} · {paperAccountLabel(position.account_id)}</option>)}</select></label> : null}
+      {data.focus_positions.length ? <label>포지션<select aria-label="집중 포지션" value={focusKey ?? ''} onChange={(event) => { const position = data.focus_positions.find((row) => row.focus_key === event.target.value); if (position) openPosition(position); else setFocusKey(null) }}><option value="">시장 보기</option>{data.focus_positions.map((position) => <option value={position.focus_key} key={position.focus_key}>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'} · {position.strategy_display_name_ko} · {costProfileLabel(position.profile)} · {paperAccountLabel(position.account_id)}</option>)}</select></label> : null}
       {displayedFocus ? <><button type="button" className={focusLocked ? 'workspace-button selected' : 'workspace-button'} aria-pressed={focusLocked} onClick={() => setFocusLocked((value) => !value)}>{focusLocked ? '현재 거래 고정됨' : '현재 거래 고정'}</button><button type="button" className="workspace-button" onClick={() => { setFocusKey(null); setClosedReview(null); setFocusNotice('') }}>시장으로</button></> : null}
       <button type="button" className="workspace-button market-drawer-button" onClick={() => setMarketDrawer(true)}>종목</button>
     </header>
     {focusNotice ? <p className="market-notice focus-toast" role="status">{focusNotice}<button type="button" onClick={() => setFocusNotice('')}>닫기</button></p> : catalogError ? <p className="market-notice" role="status">{catalogError}</p> : null}
     <OperationStatusPanel data={data} busy={busy} immediateAction={immediateAction} operation={operation} onStartLive={onStartLive} onStartDemo={onStartDemo} onPauseToggle={onPauseToggle} onCancel={onCancel} onRetry={onRetry} />
-    {data.focus_positions.length ? <section className="open-position-strip" aria-label="현재 PAPER 진입 목록"><strong>진행 중 {data.focus_positions.length}건</strong><div>{data.focus_positions.map((position) => <button type="button" className={position.side === 'LONG' ? 'long' : 'short'} aria-pressed={focusKey === position.focus_key} key={position.focus_key} onClick={() => openPosition(position)}><b>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'}</b><span>{position.strategy_display_name_ko} · {position.profile} · {paperAccountLabel(position.account_id)} · {position.stage_ko}</span><small>{formatUsdt(position.net_pnl_usdt, { signed: true })}</small></button>)}</div></section> : null}
+    {data.focus_positions.length ? <section className="open-position-strip" aria-label="현재 PAPER 진입 목록"><strong>진행 중 {data.focus_positions.length}건</strong><div>{data.focus_positions.map((position) => <button type="button" className={position.side === 'LONG' ? 'long' : 'short'} aria-pressed={focusKey === position.focus_key} key={position.focus_key} onClick={() => openPosition(position)}><b>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'}</b><span>{position.strategy_display_name_ko} · {costProfileLabel(position.profile)} · {paperAccountLabel(position.account_id)} · {position.stage_ko}</span><small>{formatUsdt(position.net_pnl_usdt, { signed: true })}</small></button>)}</div></section> : null}
     {displayedFocus && overlay ? <PositionFocusWorkspace mode={focus ? 'LIVE' : 'CLOSED_REVIEW'} position={displayedFocus} chart={chart} overlay={overlay} history={data.history.filter((row) => row.run_id === data.status.run_id)} /> : <div className="market-grid"><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={selectMarket} /><PriceChart chart={chart} overlay={marketOverlay} activePositionCount={selectedSymbolPositions.length} history={selectedMarket.source === 'BINANCE_USDM' && data.status.market_data_state === 'LIVE' ? data.history.filter((row) => row.run_id === data.status.run_id) : []} compact /></div>}
     {marketDrawer ? <div className="market-drawer-layer" role="dialog" aria-label="종목 목록"><button type="button" className="drawer-backdrop" aria-label="종목 목록 바깥 닫기" onClick={() => setMarketDrawer(false)} /><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={(row) => { selectMarket(row); setMarketDrawer(false) }} onClose={() => setMarketDrawer(false)} /></div> : null}
   </section>

@@ -502,8 +502,8 @@ test('distinguishes shared and independent BASE positions in the live list', () 
     focus_positions: [shared, independent],
   }} {...handlers} />)
 
-  expect(screen.getByRole('button', { name: /XRPUSDT.*BASE.*공동계좌/ })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: /XRPUSDT.*BASE.*전략 독립계좌/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /XRPUSDT.*기본 비용.*공동계좌/ })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: /XRPUSDT.*기본 비용.*전략 독립계좌/ })).toBeInTheDocument()
 })
 
 test('clears a PAPER entry notice when READY reuses the same run id', async () => {
@@ -570,7 +570,7 @@ test('relabels a PAPER entry notice when the position closes in the same live ru
   expect(await screen.findByText(/새 PAPER 진입 · BTCUSDT/)).toBeInTheDocument()
 
   rerender(<MarketPage data={{ ...liveDashboard, focus_positions: [] }} {...handlers} />)
-  expect(await screen.findByText(/PAPER 거래 종료 · BTCUSDT · 급락·급등 쓸기 반전 · BASE/)).toBeInTheDocument()
+  expect(await screen.findByText(/PAPER 거래 종료 · BTCUSDT · 급락·급등 쓸기 반전 · 기본 비용/)).toBeInTheDocument()
   expect(screen.queryByText(/새 PAPER 진입 · BTCUSDT/)).not.toBeInTheDocument()
 })
 

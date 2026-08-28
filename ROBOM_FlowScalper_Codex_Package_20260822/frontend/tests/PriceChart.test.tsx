@@ -173,6 +173,6 @@ test('shows the current PAPER direction and protection prices directly on the ch
   expect(banner).toHaveTextContent('PAPER 진입 중 · 상승')
   expect(banner).toHaveTextContent('같은 종목 외 1건')
   expect(banner).toHaveTextContent('진입 100')
-  expect(banner).toHaveTextContent('TP1 101')
-  expect(banner).toHaveTextContent('SL 99')
+  expect(banner).toHaveTextContent('1차 목표 101')
+  expect(banner).toHaveTextContent('손절 99')
 })

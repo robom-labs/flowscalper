@@ -1,6 +1,7 @@
 // 화면 숫자와 종료 사유가 과도한 소수점 없이 일관되게 보이는지 검증한다.
 import { describe, expect, test } from 'vitest'
 import {
+  costProfileLabel,
   exitReasonLabel,
   formatCompactNumber,
   formatDurationMs,
@@ -9,6 +10,8 @@ import {
   formatQuantity,
   formatUsdt,
   paperAccountLabel,
+  sampleTypeLabel,
+  sideLabel,
 } from '../src/format'
 
 describe('beginner-facing number formatting', () => {
@@ -29,8 +32,11 @@ describe('beginner-facing number formatting', () => {
   })
 
   test('translates known exit reasons for non-experts', () => {
-    expect(exitReasonLabel('EDGE_DECAY')).toBe('진입 근거 약화')
+    expect(exitReasonLabel('EDGE_DECAY')).toBe('가격·근거 동시 악화')
     expect(exitReasonLabel('TP2')).toBe('2차 익절')
+    expect(sideLabel('LONG')).toBe('상승 방향')
+    expect(costProfileLabel('STRESS')).toBe('보수 비용')
+    expect(sampleTypeLabel('LIVE_PUBLIC')).toBe('공개시장 모의거래')
   })
 
   test('distinguishes shared and independent PAPER accounts', () => {

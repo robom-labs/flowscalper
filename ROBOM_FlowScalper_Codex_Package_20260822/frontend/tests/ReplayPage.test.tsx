@@ -209,6 +209,11 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
   expect(screen.getByText('진입 수수료').parentElement).toHaveTextContent('0.3 USDT')
   expect(screen.getByText('종료 수수료').parentElement).toHaveTextContent('0.2 USDT')
   expect(screen.getByText('예상 종료비').parentElement).toHaveTextContent('0.00 USDT')
+  expect(screen.getByText('거래 다시보기')).toBeInTheDocument()
+  expect(screen.getByText('종료 이유 · 가격·근거 동시 악화')).toBeInTheDocument()
+  expect(screen.queryByText('TRADE REPLAY')).not.toBeInTheDocument()
+  expect(screen.queryByText('EDGE_DECAY')).not.toBeInTheDocument()
+  expect(screen.queryByText('BASE')).not.toBeInTheDocument()
 })
 
 test('shows a replay result only for the selected run and symbol scope', async () => {
@@ -246,9 +251,12 @@ test('shows a replay result only for the selected run and symbol scope', async (
 
   render(<ReplayPage />)
 
-  expect(await screen.findByText('검증 완료 · BTCUSDT · replay-btc')).toBeInTheDocument()
-  expect(screen.getByText(checksum)).toBeInTheDocument()
-  expect(screen.getByText(inputChecksum)).toBeInTheDocument()
+  expect(await screen.findByText('검증 완료 · BTCUSDT')).toBeInTheDocument()
+  expect(screen.getByText(checksum)).not.toBeVisible()
+  expect(screen.getByText(inputChecksum)).not.toBeVisible()
+  fireEvent.click(screen.getByText('고급 검증 정보 보기'))
+  expect(screen.getByText(checksum)).toBeVisible()
+  expect(screen.getByText(inputChecksum)).toBeVisible()
 
   fireEvent.change(screen.getByRole('combobox', { name: '종목' }), {
     target: { value: 'ETHUSDT' },

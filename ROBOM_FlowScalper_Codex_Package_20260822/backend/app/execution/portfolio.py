@@ -393,6 +393,7 @@ class PaperPortfolioEngine:
         regime: Regime,
         *,
         now_ms: int,
+        book: BookSnapshot | None = None,
         recovered_gap_duration_ms: int = 0,
     ) -> None:
         """고정시간 대신 실제 근거·흐름·유동성 건강으로 종료를 결정한다."""
@@ -404,11 +405,19 @@ class PaperPortfolioEngine:
             plan = managed.plan
             direction = Decimal(1) if plan.direction is Side.LONG else Decimal(-1)
             mark = Decimal(str(snapshot.mid))
+            if book is not None and book.symbol == snapshot.symbol:
+                mark = book.bids[0][0] if plan.direction is Side.LONG else book.asks[0][0]
             entry = managed.protected.entry_fill.average_price
             initial_risk = abs(entry - plan.initial_stop)
             if initial_risk <= 0:
                 continue
             current_r = (mark - entry) * direction / initial_risk
+            planned_risk = initial_risk * max(plan.position_size, plan.minimum_quantity)
+            round_trip_cost_r = (
+                (plan.expected_fees_usdt + plan.expected_slippage_usdt) / planned_risk
+                if planned_risk > 0
+                else Decimal(0)
+            )
             managed.mfe_r = max(managed.mfe_r, current_r)
             managed.mae_r = min(managed.mae_r, current_r)
             next_target = managed.next_target() or plan.take_profit_targets[-1]
@@ -460,6 +469,7 @@ class PaperPortfolioEngine:
                 current_r=current_r,
                 mfe_r=managed.mfe_r,
                 mae_r=managed.mae_r,
+                round_trip_cost_r=round_trip_cost_r,
             )
             decision = self.position_manager.evaluate(
                 managed.protected,
@@ -497,6 +507,8 @@ class PaperPortfolioEngine:
                     account_id=account.account_id,
                     action=decision.action.value,
                     reason_codes=list(decision.reason_codes),
+                    current_r=str(current_r),
+                    round_trip_cost_r=str(round_trip_cost_r),
                 )
 
     def drain_new_main_trades(self) -> tuple[PaperTrade, ...]:

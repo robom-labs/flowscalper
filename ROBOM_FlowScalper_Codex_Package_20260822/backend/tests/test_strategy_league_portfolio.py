@@ -330,13 +330,19 @@ def test_exit_styles_have_exact_fractions_and_trend_tp1_never_widens_stop() -> N
         trade_imbalance_3s=-0.8,
         microprice=99.8,
     )
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=3_000)
+    adverse_book = league_book(
+        "ETHUSDT",
+        31_250,
+        bids=(("99.5", "100"),),
+        asks=(("99.6", "100"),),
+    )
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=31_249, book=adverse_book)
     assert managed.pending_exit is None
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=11_999)
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=31_250, book=adverse_book)
     assert managed.pending_exit is None
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=12_000)
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=34_249, book=adverse_book)
     assert managed.pending_exit is None
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=14_999)
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=34_250, book=adverse_book)
     assert managed.pending_exit is not None
     assert managed.pending_exit.label == "EXIT_EDGE_DECAY"
 

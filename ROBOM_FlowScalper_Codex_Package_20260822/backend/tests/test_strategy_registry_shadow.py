@@ -99,7 +99,7 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
         assert row["entry_hypothesis_ko"]
         assert row["falsification_conditions_ko"]
         assert row["edge_decay_policy_ko"] == (
-            "진입 후 10초 grace·불리한 근거 2개·3초 지속 뒤 PAPER 관리청산"
+            "진입 후 30초 유예·불리한 근거 2개·비용 이상의 가격 악화·3초 지속 뒤 PAPER 관리청산"
         )
         assert row["risk_budget_rule_ko"] == (
             "공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산"

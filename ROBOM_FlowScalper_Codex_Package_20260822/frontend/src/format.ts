@@ -100,8 +100,8 @@ export function formatCompactNumber(value: Numeric) {
 }
 
 const exitReasonLabels: Record<string, string> = {
-  EDGE_DECAY: '진입 근거 약화',
-  EXIT_EDGE_DECAY: '진입 근거 약화',
+  EDGE_DECAY: '가격·근거 동시 악화',
+  EXIT_EDGE_DECAY: '가격·근거 동시 악화',
   EXIT_PROFIT_PROTECTION: '이익 보호 종료',
   TAKE_PROFIT: '익절',
   TAKE_PROFIT_1: '1차 익절',
@@ -117,4 +117,22 @@ const exitReasonLabels: Record<string, string> = {
 
 export function exitReasonLabel(value: string) {
   return exitReasonLabels[value] ?? value.replaceAll('_', ' ')
+}
+
+export function sideLabel(value: string) {
+  if (value === 'LONG') return '상승 방향'
+  if (value === 'SHORT') return '하락 방향'
+  return value
+}
+
+export function costProfileLabel(value: string) {
+  if (value === 'BASE') return '기본 비용'
+  if (value === 'STRESS') return '보수 비용'
+  return value
+}
+
+export function sampleTypeLabel(value: string) {
+  if (value === 'LIVE_PUBLIC') return '공개시장 모의거래'
+  if (value === 'OFFLINE_FIXTURE') return '연습용 샘플'
+  return value
 }

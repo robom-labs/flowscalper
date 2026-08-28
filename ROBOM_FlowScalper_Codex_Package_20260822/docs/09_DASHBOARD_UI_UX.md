@@ -6,6 +6,10 @@ Create a polished, modern dark trading dashboard with original visual design. It
 
 Korean is the default UI language.
 
+일반 화면은 초보자가 바로 판단해야 하는 핵심 정보만 펼쳐서 보여준다. Run ID, trade ID,
+strategy ID, 원시 종료 코드, BASE/STRESS 같은 내부 용어와 연구 통계는 쉬운 한국어로
+번역하거나 접힌 `기술 정보`·`고급 통계`에 둔다. 원장 정밀도와 원시 코드는 삭제하지 않는다.
+
 ## 9.2 Permanent safety banner
 
 Every trading screen must prominently show:
@@ -138,7 +142,15 @@ For rejection:
 
 ## 9.6 Trade history
 
-Fields:
+기본 목록에 펼쳐서 표시할 필드:
+
+- symbol and Korean side;
+- Korean strategy/account label;
+- net PnL with gross PnL and total cost summary;
+- Korean exit reason and short explanation;
+- holding time and replay action.
+
+다음 원장 필드는 거래 상세의 접힌 `기술 정보`에 보존한다:
 
 - Run;
 - venue;
@@ -159,6 +171,8 @@ Fields:
 - holding time;
 - replay link.
 
+작은 화면에서는 가로 스크롤로 잘린 표 대신 행별 카드로 재배치한다.
+
 ## 9.7 Replay
 
 Replay controls:
@@ -172,6 +186,10 @@ Replay controls:
 - compare expected and actual simulated fill.
 
 ## 9.8 Performance
+
+기본 화면은 현재 자산·이번 실행 순손익·완료 표본·승률·거래당 기대값·총비용·낙폭·
+표본상태를 먼저 보여준다. Profit Factor, R/bp 기대값, Omega, Sortino, Calmar, MAE/MFE와
+추적 익절 상세는 접힌 고급 통계에서 제공한다.
 
 Charts and metrics:
 

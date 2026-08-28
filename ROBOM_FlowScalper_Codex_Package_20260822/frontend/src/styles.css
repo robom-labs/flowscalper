@@ -67,7 +67,10 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .chart-toolbar { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #09151c; }
 .chart-toolbar label, .inline-filter, .replay-runbar label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
 .chart-toolbar select, .inline-filter select, .replay-runbar select { min-width: 150px; min-height: 48px; border: 1px solid #31505f; border-radius: 8px; padding: 0 34px 0 11px; color: #d9e5eb; background: #0e2029; }
-.history-heading-filters { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.history-heading-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.history-filter-details { margin-bottom: 8px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; background: #09151c; }
+.history-filter-details summary { display: flex; min-height: 48px; align-items: center; color: #b8cbd4; cursor: pointer; font-size: 10px; font-weight: 800; }
+.history-filter-details[open] { padding-bottom: 12px; }
 .chart-toolbar > span { margin-left: auto; padding-bottom: 14px; color: #829aa7; font-size: 10px; }
 .terminal-grid { display: grid; grid-template-columns: 326px minmax(0, 1fr); grid-template-areas: "scanner chart" "scanner position" "log log"; gap: 8px; align-items: start; }
 .scanner-panel { grid-area: scanner; width: 100%; align-self: start; contain: layout paint; }
@@ -98,6 +101,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .scanner-title-actions button { min-height: 48px; border: 1px solid #31505f; border-radius: 8px; padding: 0 10px; color: #b9cbd5; background: #10212a; cursor: pointer; font-size: 9px; font-weight: 800; }
 .table-scroll { overflow-x: auto; }
 .history-table, .performance-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.performance-table { min-width: 920px; }
 .history-table th, .history-table td, .performance-table th, .performance-table td { padding: 11px 8px; border-bottom: 1px solid #152a35; text-align: left; vertical-align: middle; }
 .history-table th, .performance-table th { position: sticky; top: 0; z-index: 1; color: #6f8998; background: #0b171e; font-size: 9px; letter-spacing: .05em; white-space: nowrap; }
 .history-table td small, .performance-table td small { display: block; margin-top: 3px; color: #698392; font-size: 9px; }
@@ -164,7 +168,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .log-list p { margin: 0; }
 
 .strategy-compact-panel { padding: 0; }
-.strategy-compact-table { min-width: 1080px; }
+.strategy-compact-table { width: 100%; min-width: 920px; border-collapse: collapse; }
 .strategy-compact-table th, .strategy-compact-table td { padding: 9px 8px; border-bottom: 1px solid #152a35; text-align: left; vertical-align: middle; }
 .strategy-compact-table th { color: #718a98; font-size: 8px; }
 .strategy-compact-table td { font-size: 9px; }
@@ -200,9 +204,12 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .drawer-detail-list dd { margin: 0; max-width: 60%; text-align: right; font-size: 9px; overflow-wrap: anywhere; }
 .window-summary { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .window-summary span { border: 1px solid #294957; border-radius: 999px; padding: 5px 7px; color: #8da4af; font-size: 8px; }
+.row-advanced-details { margin-top: 6px; color: #7893a2; font-size: 8px; font-weight: 500; }
+.row-advanced-details summary { min-height: 34px; padding-top: 8px; color: #9ab0ba; cursor: pointer; font-weight: 750; }
+.row-advanced-details span { display: block; margin-top: 5px; line-height: 1.45; }
 
 .wide-panel { min-height: 480px; }
-.league-position-table { width: 100%; min-width: 1460px; border-collapse: collapse; font-size: 10px; }
+.league-position-table { width: 100%; min-width: 920px; border-collapse: collapse; font-size: 10px; }
 .league-position-table th, .league-position-table td { padding: 10px 8px; border-bottom: 1px solid #152a35; text-align: left; vertical-align: middle; }
 .league-position-table th { position: sticky; z-index: 1; top: 0; color: #6f8998; background: #0b171e; font-size: 8px; white-space: nowrap; }
 .league-position-table small { display: block; margin-top: 4px; color: #698392; font-size: 8px; }
@@ -212,13 +219,17 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .segmented-control { display: flex; gap: 4px; }
 .segmented-control button { min-height: 48px; border: 1px solid #294957; border-radius: 8px; padding: 0 12px; color: #a8bcc5; background: #0b1b23; cursor: pointer; }
 .segmented-control button.selected { color: #07110f; border-color: var(--mint); background: var(--mint); font-weight: 800; }
-.history-table { min-width: 1080px; }
+.history-table { min-width: 860px; }
 .positive { color: #79e2bc; font-weight: 800; }
 .negative { color: var(--red); font-weight: 800; }
 .warning { color: var(--amber); }
 .history-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .history-layout.drawer-open { grid-template-columns: minmax(0, 1fr) 320px; }
 .trade-drawer { position: sticky; top: 8px; align-self: start; }
+.trade-result-lead { display: grid; gap: 4px; margin: 14px 0 4px; border: 1px solid #21434c; border-radius: 9px; padding: 12px; background: #0a1b22; }
+.trade-result-lead strong { font-size: 18px; }
+.trade-result-lead span { color: #8ca4af; font-size: 10px; }
+.detail-list dd small { display: block; margin-top: 4px; color: #7893a2; line-height: 1.45; }
 .close-button { min-width: 48px; min-height: 48px; border: 1px solid #31505f; border-radius: 8px; color: #b9cbd5; background: #10212a; cursor: pointer; }
 .table-actions { display: flex; gap: 5px; }
 .table-actions .table-button { min-width: 56px; padding-inline: 9px; }
@@ -327,7 +338,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .chart-wrap { height: 440px; min-height: 440px; }
   .scanner-list { height: 420px; }
   .risk-layout .panel { min-height: auto; }
-  .trade-drawer { position: static; }
+  .trade-drawer { position: fixed; z-index: 90; inset: 0; overflow-y: auto; margin: 0; border-radius: 0; }
   .replay-runbar { grid-template-columns: 1fr 1fr; }
   .replay-runbar button { grid-column: 1 / -1; }
   .shadow-grid, .diagnostic-grid { grid-template-columns: repeat(2, 1fr); }
@@ -537,6 +548,23 @@ h3 { font-size: 14px; color: #d5e4ec; }
 }
 
 @media (max-width: 900px) {
+  main { padding: 12px; }
+  .page-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .history-heading-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-heading-filters .inline-filter select { width: 100%; min-width: 0; }
+  .history-layout.drawer-open { grid-template-columns: minmax(0, 1fr); }
+  .trade-drawer { position: fixed; z-index: 90; inset: 0; overflow-y: auto; margin: 0; border-radius: 0; }
+  .history-table, .strategy-compact-table, .performance-table, .league-position-table { display: block; min-width: 0; }
+  .history-table thead, .strategy-compact-table thead, .performance-table thead, .league-position-table thead { display: none; }
+  .history-table tbody, .strategy-compact-table tbody, .performance-table tbody, .league-position-table tbody { display: grid; gap: 8px; padding: 8px; }
+  .history-table tr, .strategy-compact-table tr, .performance-table tr, .league-position-table tr { display: block; overflow: hidden; border: 1px solid #203b48; border-radius: 9px; background: #0a1820; }
+  .history-table td, .strategy-compact-table td, .performance-table td, .league-position-table td { display: grid; min-height: 48px; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 10px; border-bottom: 1px solid #152a35; padding: 9px 10px; font-size: 10px; }
+  .history-table td:last-child, .strategy-compact-table td:last-child, .performance-table td:last-child, .league-position-table td:last-child { border-bottom: 0; }
+  .history-table td::before, .strategy-compact-table td::before, .performance-table td::before, .league-position-table td::before { content: attr(data-label); color: #718a98; font-size: 8px; font-weight: 800; }
+  .history-table td > *, .strategy-compact-table td > *, .performance-table td > *, .league-position-table td > * { grid-column: 2; }
+  .history-table td::before, .strategy-compact-table td::before, .performance-table td::before, .league-position-table td::before { grid-column: 1; grid-row: 1 / span 4; }
+  .strategy-inline-modes, .strategy-inline-directions { flex-wrap: wrap; }
+  .strategy-inline-modes button, .strategy-inline-directions button { min-height: 42px; }
   .topbar { height: 48px; }
   .brand-lockup { width: auto; }
   .brand-lockup span, .header-status > span:not(.paper-lock) { display: none; }
@@ -573,6 +601,11 @@ h3 { font-size: 14px; color: #d5e4ec; }
 }
 
 @media (max-width: 560px) {
+  main { padding: 8px; }
+  .history-heading-filters { grid-template-columns: 1fr; }
+  .history-table tbody, .strategy-compact-table tbody, .performance-table tbody, .league-position-table tbody { padding: 5px; }
+  .history-table td, .strategy-compact-table td, .performance-table td, .league-position-table td { grid-template-columns: 74px minmax(0, 1fr); padding-inline: 8px; }
+  .table-actions { flex-wrap: wrap; }
   .brand-lockup h1 { font-size: 16px; }
   .header-status { gap: 6px; font-size: 8px; }
   .navigation-shell, .navigation { height: 48px; }

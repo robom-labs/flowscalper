@@ -20,7 +20,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import { bollinger, ema, macd, rsi, sma, vwap, type IndicatorCandle, type IndicatorPoint } from '../chart/indicators'
 import { seriesUpdateMode } from '../chart/seriesUpdate'
 import { formatChartKstTime, formatKstDateTime } from '../time'
-import { formatCompactNumber, formatPrice } from '../format'
+import { exitReasonLabel, formatCompactNumber, formatPrice } from '../format'
 import type { ChartData, HistoryRow, ReplayFocusFrame } from '../types'
 
 export type ChartOverlay = {
@@ -326,8 +326,8 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
       entry: [lineValues.entry, '진입', '#69bff8', LineStyle.Solid],
       initialStop: [lineValues.initialStop, '초기 손절', '#ff7e87', LineStyle.Dashed],
       currentStop: [separateCurrentStop ? lineValues.currentStop : null, '현재 손절', '#f1c96d', LineStyle.Solid],
-      tp1: [lineValues.tp1, 'TP1', '#7bd1ff', LineStyle.Dashed],
-      tp2: [lineValues.tp2, 'TP2', '#64d9be', LineStyle.Dashed],
+      tp1: [lineValues.tp1, '1차 목표', '#7bd1ff', LineStyle.Dashed],
+      tp2: [lineValues.tp2, '2차 목표', '#64d9be', LineStyle.Dashed],
     } as const
     for (const [key, [value, title, color, lineStyle]] of Object.entries(definitions)) {
       const current = priceLinesRef.current[key]
@@ -370,12 +370,19 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
         : milestone.kind === 'STOP_HIT'
         ? { color: '#ff7e87', shape: 'square' as const }
         : { color: '#f1c96d', shape: 'circle' as const }
-      markers.push({ time, position: isBelow ? 'belowBar' : 'aboveBar', color: presentation.color, shape: presentation.shape, text: `${milestone.label ?? milestone.kind} ${formatPrice(milestone.price)}` })
+      const markerLabel = milestone.kind === 'SIGNAL' ? '신호'
+        : milestone.kind === 'ENTRY' ? '진입'
+        : milestone.kind === 'TP1_HIT' ? '1차 목표'
+        : milestone.kind === 'TP2_HIT' ? '2차 목표'
+        : milestone.kind === 'STOP_HIT' ? '손절'
+        : milestone.kind === 'EXIT' ? '실제 종료'
+        : milestone.label ?? '핵심 지점'
+      markers.push({ time, position: isBelow ? 'belowBar' : 'aboveBar', color: presentation.color, shape: presentation.shape, text: `${markerLabel} ${formatPrice(milestone.price)}` })
     }
     for (const trade of replayMilestones.length === 0 ? relevantHistory : []) {
       const entryTime = closestTime(times, trade.entry_ts_ms); const exitTime = closestTime(times, trade.exit_ts_ms)
       if (entryTime !== undefined) markers.push({ time: entryTime, position: trade.side === 'LONG' ? 'belowBar' : 'aboveBar', color: '#64d9be', shape: trade.side === 'LONG' ? 'arrowUp' : 'arrowDown', text: `모의 진입 ${trade.entry}` })
-      if (exitTime !== undefined) markers.push({ time: exitTime, position: trade.side === 'LONG' ? 'aboveBar' : 'belowBar', color: '#f1c96d', shape: 'circle', text: `종료 · ${trade.exit_reason} ${trade.exit}` })
+      if (exitTime !== undefined) markers.push({ time: exitTime, position: trade.side === 'LONG' ? 'aboveBar' : 'belowBar', color: '#f1c96d', shape: 'circle', text: `종료 · ${exitReasonLabel(trade.exit_reason)} ${trade.exit}` })
     }
     markers.sort((left, right) => Number(left.time) - Number(right.time))
     candleMarkers.setMarkers(candleData.length ? markers : []); microMarkers.setMarkers(candleData.length ? [] : markers); markerSignatureRef.current = signature
@@ -403,11 +410,11 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
   ]
   return (
     <section ref={panelRef} className={`panel chart-panel${compact ? ' compact-chart' : ''}${fullWindow ? ' chart-full-window' : ''}`} aria-labelledby={replay ? 'replay-chart-title' : 'chart-title'}>
-      <div className="panel-title chart-title-row"><div>{!compact ? <p className="section-kicker">{replay ? 'PAST PLAYBACK' : '시장 차트'}</p> : null}<h2 id={replay ? 'replay-chart-title' : 'chart-title'}>{chart.symbol} · {chart.interval}</h2></div><div className="chart-title-actions"><span className="fixture-note">{chart.fixture ? '샘플 · LIVE 아님' : '공개시장'} · 한국시간</span><details className="indicator-popover"><summary>지표</summary><div className="indicator-controls" aria-label="차트 보조지표 선택">{groups.map((group) => <div className="indicator-group" key={group.label}><span>{group.label}</span>{group.items.map(([key, label, help]) => <button type="button" key={key} className={visible[key] ? 'selected' : ''} aria-pressed={visible[key]} title={help} style={{ '--line-color': colors[key] } as CSSProperties} onClick={() => toggle(key)}>{label}</button>)}</div>)}</div><p className="indicator-notice">화면 표시만 바뀌며 전략 기준은 바뀌지 않습니다.</p></details><button type="button" className="secondary-button" onClick={() => void toggleFullscreen()}>{fullWindow ? '전체화면 닫기' : '전체화면'}</button></div></div>
+      <div className="panel-title chart-title-row"><div>{!compact ? <p className="section-kicker">{replay ? '과거 재생' : '시장 차트'}</p> : null}<h2 id={replay ? 'replay-chart-title' : 'chart-title'}>{chart.symbol} · {chart.interval}</h2></div><div className="chart-title-actions"><span className="fixture-note">{chart.fixture ? '샘플 · 실시간 아님' : '공개시장'} · 한국시간</span><details className="indicator-popover"><summary>지표</summary><div className="indicator-controls" aria-label="차트 보조지표 선택">{groups.map((group) => <div className="indicator-group" key={group.label}><span>{group.label}</span>{group.items.map(([key, label, help]) => <button type="button" key={key} className={visible[key] ? 'selected' : ''} aria-pressed={visible[key]} title={help} style={{ '--line-color': colors[key] } as CSSProperties} onClick={() => toggle(key)}>{label}</button>)}</div>)}</div><p className="indicator-notice">화면 표시만 바뀌며 전략 기준은 바뀌지 않습니다.</p></details><button type="button" className="secondary-button" onClick={() => void toggleFullscreen()}>{fullWindow ? '전체화면 닫기' : '전체화면'}</button></div></div>
       {latestCandle ? <dl className="chart-stats"><div><dt>현재</dt><dd>{formatPrice(latestCandle.close)}</dd></div><div><dt>시가</dt><dd>{formatPrice(latestCandle.open)}</dd></div><div><dt>고가</dt><dd>{formatPrice(latestCandle.high)}</dd></div><div><dt>저가</dt><dd>{formatPrice(latestCandle.low)}</dd></div><div><dt>거래량</dt><dd>{formatCompactNumber(latestCandle.volume)}</dd></div></dl> : null}
       <div ref={containerRef} className="chart-wrap" role="img" aria-label={`${chart.symbol} 실제 캔들·거래량·전문 보조지표 PAPER 차트`}>
         {!hasData ? <div className="chart-empty"><b>시장 캔들을 기다리고 있습니다.</b><span>실제 공개시장 데이터가 도착하면 자동으로 표시됩니다.</span></div> : null}
-        {overlay?.symbol === chart.symbol ? <div className={`chart-position-banner ${overlay.side.toLowerCase()}`} aria-label={overlay.status === 'CLOSED' ? '종료된 PAPER 거래' : '현재 PAPER 진입'}><b>{overlay.status === 'CLOSED' ? 'PAPER 거래 종료' : 'PAPER 진입 중'} · {overlay.side === 'LONG' ? '상승' : '하락'}</b><span>{overlay.label}{activePositionCount > 1 ? ` · 같은 종목 외 ${activePositionCount - 1}건` : ''}</span><small>진입 {formatPrice(overlay.entry)} · TP1 {formatPrice(overlay.tp1)} · SL {formatPrice(overlay.currentStop ?? overlay.stop)}</small></div> : null}
+        {overlay?.symbol === chart.symbol ? <div className={`chart-position-banner ${overlay.side.toLowerCase()}`} aria-label={overlay.status === 'CLOSED' ? '종료된 PAPER 거래' : '현재 PAPER 진입'}><b>{overlay.status === 'CLOSED' ? 'PAPER 거래 종료' : 'PAPER 진입 중'} · {overlay.side === 'LONG' ? '상승' : '하락'}</b><span>{overlay.label}{activePositionCount > 1 ? ` · 같은 종목 외 ${activePositionCount - 1}건` : ''}</span><small>진입 {formatPrice(overlay.entry)} · 1차 목표 {formatPrice(overlay.tp1)} · 손절 {formatPrice(overlay.currentStop ?? overlay.stop)}</small></div> : null}
         <div ref={tooltipRef} className="chart-tooltip" hidden />
         {showReturn ? <button type="button" className="return-realtime" onClick={() => chartApiRef.current?.timeScale().scrollToRealTime()}>현재로 돌아가기</button> : null}
       </div>

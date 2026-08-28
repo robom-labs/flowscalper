@@ -56,6 +56,7 @@ def health(**overrides: object) -> PositionHealth:
         "current_r": Decimal("0.2"),
         "mfe_r": Decimal("0.4"),
         "mae_r": Decimal("-0.1"),
+        "round_trip_cost_r": Decimal("0.2"),
     }
     values.update(overrides)
     return PositionHealth(**values)  # type: ignore[arg-type]
@@ -73,10 +74,14 @@ def test_healthy_thesis_holds_beyond_120_seconds() -> None:
     assert decision.reason_codes == ("ENTRY_THESIS_HEALTHY",)
 
 
-def test_edge_decay_cannot_exit_during_ten_second_grace() -> None:
+def test_edge_decay_cannot_exit_during_thirty_second_grace() -> None:
     position = opened_position()
     manager = PositionManager()
-    adverse = health(flow_health=0.1, remaining_edge=Decimal("-0.1"))
+    adverse = health(
+        flow_health=0.1,
+        remaining_edge=Decimal("-0.1"),
+        current_r=Decimal("-0.35"),
+    )
     first = manager.evaluate(position, adverse, now_ms=position.opened_ts_ms + 1_000)
     second = manager.evaluate(position, adverse, now_ms=position.opened_ts_ms + 2_000)
     assert first.action is ManagementAction.HOLD
@@ -88,28 +93,84 @@ def test_edge_decay_cannot_exit_during_ten_second_grace() -> None:
 def test_edge_decay_exits_only_after_grace_and_multi_signal_persistence() -> None:
     position = opened_position()
     manager = PositionManager()
-    adverse = health(flow_health=0.1, remaining_edge=Decimal("-0.1"))
+    adverse = health(
+        flow_health=0.1,
+        remaining_edge=Decimal("-0.1"),
+        current_r=Decimal("-0.35"),
+    )
     grace_end = manager.evaluate(
         position,
         adverse,
-        now_ms=position.opened_ts_ms + 10_000,
+        now_ms=position.opened_ts_ms + 30_000,
     )
     confirming = manager.evaluate(
         position,
         adverse,
-        now_ms=position.opened_ts_ms + 12_999,
+        now_ms=position.opened_ts_ms + 32_999,
     )
     exit_decision = manager.evaluate(
         position,
         adverse,
-        now_ms=position.opened_ts_ms + 13_000,
+        now_ms=position.opened_ts_ms + 33_000,
     )
     assert grace_end.action is ManagementAction.HOLD
     assert grace_end.reason_codes == ("EDGE_DECAY_CONFIRMING",)
     assert confirming.action is ManagementAction.HOLD
     assert exit_decision.action is ManagementAction.EXIT_EDGE_DECAY
-    assert exit_decision.holding_ms == 13_000
-    assert exit_decision.reason_codes == ("FLOW_DECAY", "REMAINING_EDGE_NON_POSITIVE")
+    assert exit_decision.holding_ms == 33_000
+    assert exit_decision.reason_codes == (
+        "ADVERSE_PRICE_EXCEEDS_COST_BAND",
+        "FLOW_DECAY",
+        "REMAINING_EDGE_NON_POSITIVE",
+    )
+
+
+def test_edge_decay_does_not_crystallize_costs_while_price_is_flat() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    adverse = health(
+        flow_health=0.1,
+        remaining_edge=Decimal("-0.1"),
+        current_r=Decimal("0"),
+        round_trip_cost_r=Decimal("0.45"),
+    )
+    decision = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 120_000,
+    )
+    assert decision.action is ManagementAction.HOLD
+    assert decision.reason_codes[0] == "EDGE_DECAY_PRICE_COST_CONFIRMATION_WAIT"
+
+
+def test_edge_decay_requires_price_loss_to_exceed_the_round_trip_cost_band() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    above_cost_band = health(
+        flow_health=0.1,
+        remaining_edge=Decimal("-0.1"),
+        current_r=Decimal("-0.5"),
+        round_trip_cost_r=Decimal("0.8"),
+    )
+    below_cost_band = replace(above_cost_band, current_r=Decimal("-0.8"))
+    waiting = manager.evaluate(
+        position,
+        above_cost_band,
+        now_ms=position.opened_ts_ms + 60_000,
+    )
+    confirming = manager.evaluate(
+        position,
+        below_cost_band,
+        now_ms=position.opened_ts_ms + 61_000,
+    )
+    exiting = manager.evaluate(
+        position,
+        below_cost_band,
+        now_ms=position.opened_ts_ms + 64_000,
+    )
+    assert waiting.reason_codes[0] == "EDGE_DECAY_PRICE_COST_CONFIRMATION_WAIT"
+    assert confirming.reason_codes == ("EDGE_DECAY_CONFIRMING",)
+    assert exiting.action is ManagementAction.EXIT_EDGE_DECAY
 
 
 def test_single_adverse_signal_does_not_force_soft_exit() -> None:
@@ -119,7 +180,7 @@ def test_single_adverse_signal_does_not_force_soft_exit() -> None:
     first = manager.evaluate(
         position,
         adverse,
-        now_ms=position.opened_ts_ms + 10_000,
+        now_ms=position.opened_ts_ms + 30_000,
     )
     much_later = manager.evaluate(
         position,

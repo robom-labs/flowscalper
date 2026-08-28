@@ -1539,6 +1539,7 @@ class PaperRuntime:
             snapshot,
             regime,
             now_ms=event.venue_ts_ms,
+            book=book,
             recovered_gap_duration_ms=(
                 max(0, event.venue_ts_ms - gap_started) if gap_started is not None else 0
             ),

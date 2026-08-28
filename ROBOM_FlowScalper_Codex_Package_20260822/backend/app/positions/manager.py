@@ -37,6 +37,7 @@ class PositionHealth:
     current_r: Decimal
     mfe_r: Decimal
     mae_r: Decimal
+    round_trip_cost_r: Decimal = Decimal("0")
 
     def validate(self) -> None:
         bounded = (
@@ -50,16 +51,25 @@ class PositionHealth:
         )
         if any(not math.isfinite(value) or not 0 <= value <= 1 for value in bounded):
             raise ValueError("건강 벡터 구성요소는 0..1 범위의 유한값이어야 합니다.")
-        for value in (self.remaining_edge, self.current_r, self.mfe_r, self.mae_r):
+        for value in (
+            self.remaining_edge,
+            self.current_r,
+            self.mfe_r,
+            self.mae_r,
+            self.round_trip_cost_r,
+        ):
             if not value.is_finite():
                 raise ValueError("R/edge 값은 유한해야 합니다.")
+        if self.round_trip_cost_r < 0:
+            raise ValueError("왕복 비용 R은 음수일 수 없습니다.")
 
 
 @dataclass(frozen=True, slots=True)
 class PositionManagerConfig:
-    edge_decay_grace_ms: int = 10_000
+    edge_decay_grace_ms: int = 30_000
     edge_decay_persistence_ms: int = 3_000
     edge_decay_minimum_adverse_signals: int = 2
+    edge_decay_minimum_adverse_r: Decimal = Decimal("0.25")
     emergency_stale_absolute_ms: int = 15 * 60 * 1000
     profit_protection_monitor_r: Decimal = Decimal("0.8")
     breakeven_tighten_r: Decimal = Decimal("1.0")
@@ -127,14 +137,34 @@ class PositionManager:
                 holding_ms,
             )
         if len(adverse_reasons) >= self.config.edge_decay_minimum_adverse_signals:
+            profit_protection_active = (
+                health.mfe_r >= self.config.profit_protection_monitor_r
+            )
+            required_adverse_r = max(
+                self.config.edge_decay_minimum_adverse_r,
+                health.round_trip_cost_r,
+            )
+            if not profit_protection_active and health.current_r > -required_adverse_r:
+                self._edge_adverse_since_ms.pop(position.trade_id, None)
+                return ManagementDecision(
+                    ManagementAction.HOLD,
+                    ("EDGE_DECAY_PRICE_COST_CONFIRMATION_WAIT", *adverse_reasons),
+                    proposed_stop,
+                    holding_ms,
+                )
             adverse_since = self._edge_adverse_since_ms.setdefault(position.trade_id, now_ms)
             if now_ms - adverse_since >= self.config.edge_decay_persistence_ms:
                 action = (
                     ManagementAction.EXIT_PROFIT_PROTECTION
-                    if health.mfe_r >= self.config.profit_protection_monitor_r
+                    if profit_protection_active
                     else ManagementAction.EXIT_EDGE_DECAY
                 )
-                return ManagementDecision(action, adverse_reasons, proposed_stop, holding_ms)
+                reason_codes = (
+                    adverse_reasons
+                    if profit_protection_active
+                    else ("ADVERSE_PRICE_EXCEEDS_COST_BAND", *adverse_reasons)
+                )
+                return ManagementDecision(action, reason_codes, proposed_stop, holding_ms)
             return ManagementDecision(
                 ManagementAction.HOLD,
                 ("EDGE_DECAY_CONFIRMING",),

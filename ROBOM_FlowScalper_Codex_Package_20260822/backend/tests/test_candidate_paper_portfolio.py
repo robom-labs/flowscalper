@@ -437,11 +437,16 @@ def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exi
         trade_imbalance_3s=-0.8,
         microprice=99.8,
     )
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=123_000)
+    adverse_book = book(
+        123_000,
+        bids=(("99.5", "100"),),
+        asks=(("99.6", "100"),),
+    )
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=123_000, book=adverse_book)
     assert engine.main.position.pending_exit is None
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=125_999)
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=125_999, book=adverse_book)
     assert engine.main.position.pending_exit is None
-    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=126_000)
+    engine.evaluate_health(adverse, Regime.SHOCK, now_ms=126_000, book=adverse_book)
     assert engine.main.position.pending_exit is not None
     assert engine.main.position.pending_exit.label == "EXIT_EDGE_DECAY"
     assert any(

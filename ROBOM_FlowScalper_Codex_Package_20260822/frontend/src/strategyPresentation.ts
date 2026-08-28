@@ -18,6 +18,7 @@ const fallbackLabels: Record<string, string> = {
   DEPTH_ADJUSTED_OFI_IMPULSE_V1: '깊이 OFI · 깊이보정 OFI 충격',
   OFI_RETURN_CONFLUENCE_V1: 'OFI·가격동행 · OFI·단기수익률 동행',
   BOOK_SLOPE_ASYMMETRY_V1: '호가 기울기 · 10단계 호가 비대칭',
+  HOURLY_MOMENTUM_BREAKOUT_V1: '시간봉 돌파 · 장기 모멘텀 돌파',
 }
 
 export function strategyLabel(strategy: StrategyRow | undefined, strategyId: string) {

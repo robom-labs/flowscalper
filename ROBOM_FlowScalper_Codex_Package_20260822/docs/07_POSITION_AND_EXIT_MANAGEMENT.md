@@ -51,15 +51,16 @@ An early exit may occur before TP/SL when all configured persistence requirement
 - spread widens and remaining target no longer covers cost;
 - empirical/calibrated remaining edge falls to zero or below.
 
-The PAPER default uses three separate guards against single-update churn:
+The PAPER default uses four separate guards against fee-only churn:
 
-- a 10,000 ms grace period after the fill for ordinary edge-decay exits;
+- a 30,000 ms grace period after the fill for ordinary edge-decay exits;
 - at least two simultaneous adverse health reasons;
+- executable bid/ask loss must be at least the greater of 0.25R and the planned round-trip cost in R;
 - 3,000 ms of continuous event-time persistence after the grace period.
 
 Initial SL/TP and data/system safety policies remain active during the grace period. Once MFE
 reaches +0.8R, profit protection may bypass the grace period, but it still requires two adverse
-reasons and 3,000 ms persistence. See `ADR-014`.
+reasons and 3,000 ms persistence. See `ADR-014` and its cost-aware successor `ADR-084`.
 
 ## 7.6 Profit protection
 

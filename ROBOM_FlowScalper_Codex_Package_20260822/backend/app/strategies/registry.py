@@ -145,7 +145,9 @@ _MICRO_REQUIRED_MARKET_DATA = (
 )
 _MICRO_MINIMUM_WARMUP_KO = "건전한 종목별 공개시장 10초 이상과 현재 이전 prefix 통계"
 _RISK_BUDGET_RULE_KO = "공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산"
-_EDGE_DECAY_POLICY_KO = "진입 후 10초 grace·불리한 근거 2개·3초 지속 뒤 PAPER 관리청산"
+_EDGE_DECAY_POLICY_KO = (
+    "진입 후 30초 유예·불리한 근거 2개·비용 이상의 가격 악화·3초 지속 뒤 PAPER 관리청산"
+)
 _MICRO_TARGET_UNIVERSE_KO = "동적 정밀분석 종목 중 지원 레짐·유동성·비용 gate 통과 종목"
 _MICRO_DATA_LEAKAGE_GUARDS_KO = (
     "현재 event timestamp 이전의 동일 종목 이력만 사용",

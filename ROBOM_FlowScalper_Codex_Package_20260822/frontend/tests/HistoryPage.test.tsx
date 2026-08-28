@@ -68,28 +68,27 @@ test('clears stale trade detail when the current history no longer contains it',
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
   expect(screen.getByText('1.7초')).toBeInTheDocument()
   expect(screen.getByText('2차 익절')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '상세' }))
-  expect(screen.getByRole('complementary', { name: '거래 상세' })).toBeInTheDocument()
-  expect(screen.getByText('TP1까지')).toBeInTheDocument()
-  expect(screen.getByText('TP2까지')).toBeInTheDocument()
-  expect(screen.getByText('TP1 목표가')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '자세히' }))
+  expect(screen.getByRole('complementary', { name: 'BTCUSDT 거래 결과' })).toBeInTheDocument()
+  expect(screen.getByText('1차 목표까지')).toBeInTheDocument()
+  expect(screen.getByText('2차 목표까지')).toBeInTheDocument()
+  expect(screen.getByText('1차 목표')).toBeInTheDocument()
   expect(screen.getByText('102')).toBeInTheDocument()
-  expect(screen.getByText('TP2 목표가')).toBeInTheDocument()
+  expect(screen.getByText('2차 목표')).toBeInTheDocument()
   expect(screen.getByText('103')).toBeInTheDocument()
   expect(screen.getByText('손절까지')).toBeInTheDocument()
   expect(screen.getByText('해당 없음')).toBeInTheDocument()
-  expect(screen.getByText('추적 익절 활성화')).toBeInTheDocument()
-  expect(screen.getByText('러너 추적 시작')).toBeInTheDocument()
+  expect(screen.getByText('추적 익절 자세히')).toBeInTheDocument()
+  expect(screen.getByText('남은 수량 추적')).toBeInTheDocument()
   expect(screen.getByText('0.7초 뒤')).toBeInTheDocument()
   expect(screen.getByText('최고 미실현 손익')).toBeInTheDocument()
   expect(screen.getByText('고점 대비 되돌림')).toBeInTheDocument()
-  expect(screen.getByText('러너 순기여')).toBeInTheDocument()
-  expect(screen.getByText('추적 종료 가격차이 비용')).toBeInTheDocument()
+  expect(screen.getByText('남은 수량 순기여')).toBeInTheDocument()
 
   view.rerender(<HistoryPage rows={[]} currentRunId="run-history" onReplay={vi.fn()} />)
 
   await waitFor(() => {
-    expect(screen.queryByRole('complementary', { name: '거래 상세' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('complementary', { name: 'BTCUSDT 거래 결과' })).not.toBeInTheDocument()
   })
 })
 
@@ -104,11 +103,11 @@ test('labels a legacy single target without pretending it is TP1 or TP2', () => 
 
   fireEvent.change(screen.getByLabelText('전략 버전'), { target: { value: 'CURRENT' } })
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
-  fireEvent.click(screen.getByRole('button', { name: '상세' }))
+  fireEvent.click(screen.getByRole('button', { name: '자세히' }))
 
   expect(screen.getByText('목표가(과거 기록)')).toBeInTheDocument()
-  expect(screen.queryByText('TP1 목표가')).not.toBeInTheDocument()
-  expect(screen.queryByText('TP2 목표가')).not.toBeInTheDocument()
+  expect(screen.queryByText('1차 목표')).not.toBeInTheDocument()
+  expect(screen.queryByText('2차 목표')).not.toBeInTheDocument()
 })
 
 test('shows only the current Run by default and can reveal immutable history', () => {
@@ -117,10 +116,10 @@ test('shows only the current Run by default and can reveal immutable history', (
   fireEvent.change(screen.getByLabelText('전략 버전'), { target: { value: 'CURRENT' } })
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
 
-  expect(screen.getByText('paper-history-1')).toBeInTheDocument()
-  expect(screen.queryByText('paper-history-past')).not.toBeInTheDocument()
+  expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1)
+  expect(screen.queryByText('paper-history-1')).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Run 범위'), { target: { value: 'ALL' } })
-  expect(screen.getByText('paper-history-past')).toBeInTheDocument()
+  expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2)
 })
 
 test('explains that prior strategy-version trades stay archived outside the current list', () => {
@@ -133,7 +132,7 @@ test('explains that prior strategy-version trades stay archived outside the curr
     />,
   )
 
-  expect(screen.getByText(/과거 버전 4건은 원장에 보관/)).toBeInTheDocument()
+  expect(screen.getByText(/과거 버전 4건은 안전하게 보관/)).toBeInTheDocument()
 })
 
 test('loads independent strategy accounts and marks rows without replay events', async () => {
@@ -160,14 +159,14 @@ test('loads independent strategy accounts and marks rows without replay events',
 
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'LEAGUE' } })
 
-  expect(await screen.findByText('shadow-history-1')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '재생 자료 없음' })).toBeDisabled()
+  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1))
+  expect(screen.getByRole('button', { name: '다시보기 없음' })).toBeDisabled()
   expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining('account_scope=LEAGUE'),
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
   expect(fetchMock).toHaveBeenCalledWith(
-    expect.stringContaining('version_scope=ALL'),
+    expect.stringContaining('version_scope=CURRENT'),
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
 })
@@ -184,7 +183,39 @@ test('shows all PAPER accounts by default with a visible loading and count summa
   render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
 
   expect(screen.getByLabelText('계좌 범위')).toHaveValue('ALL')
-  expect(screen.getByLabelText('전략 버전')).toHaveValue('ALL')
-  expect(await screen.findByText('shadow-history-default')).toBeInTheDocument()
-  expect(screen.getByRole('status')).toHaveTextContent('표시 2건 · 공동계좌 1건 · 전략별 계좌 1건')
+  expect(screen.getByLabelText('전략 버전')).toHaveValue('CURRENT')
+  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2))
+  expect(screen.getByRole('status')).toHaveTextContent('현재 조건 2건 · 공동 1건 · 전략별 1건')
+})
+
+test('keeps raw ledger identifiers and exit codes out of the normal table', () => {
+  const edgeTrade = { ...trade, exit_reason: 'EDGE_DECAY', trade_id: 'paper-secret-technical-id' }
+  render(<HistoryPage rows={[edgeTrade]} currentRunId="run-history" onReplay={vi.fn()} />)
+  fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
+
+  const table = document.querySelector('.history-table')
+  expect(table).toHaveTextContent('가격·근거 동시 악화')
+  expect(table).not.toHaveTextContent('EDGE_DECAY')
+  expect(table).not.toHaveTextContent('paper-secret-technical-id')
+
+  fireEvent.click(screen.getByRole('button', { name: '자세히' }))
+  expect(screen.getByText('기술 정보')).toBeInTheDocument()
+  expect(screen.getByText('paper-secret-technical-id')).not.toBeVisible()
+})
+
+test('does not describe prior EDGE_DECAY records as if they used the current cost gate', () => {
+  const priorTrade = { ...trade, exit_reason: 'EDGE_DECAY', strategy_version: 'prior-v1' }
+  render(
+    <HistoryPage
+      rows={[priorTrade]}
+      currentRunId="run-history"
+      historyScope={{ strategy_version: 'current-v2', excluded_prior_version_samples: 1 }}
+      onReplay={vi.fn()}
+    />,
+  )
+  fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
+
+  expect(document.querySelector('.history-table')).toHaveTextContent('진입 근거 약화(과거 기준)')
+  expect(document.querySelector('.history-table')).toHaveTextContent('현재 버전은 비용 이상의 가격 악화도 함께 확인합니다.')
+  expect(document.querySelector('.history-table')).not.toHaveTextContent('가격이 왕복 비용 구간보다 불리하게 움직이고')
 })
