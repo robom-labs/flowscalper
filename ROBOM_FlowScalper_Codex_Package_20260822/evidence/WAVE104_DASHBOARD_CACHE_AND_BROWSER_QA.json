@@ -120,6 +120,18 @@
     "authentication_required": false,
     "strategy_thresholds_lowered": false
   },
+  "github": {
+    "evidence_commit": "8fdf14f5a818294679d06c111aab8de4792fa816",
+    "main_synchronized": true,
+    "actions_run_id": 33221372546,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/33221372546",
+    "actions_status": "PASS",
+    "validate_duration_seconds": 76,
+    "browser_duration_seconds": 81,
+    "browser_evidence_uploaded": true,
+    "existing_release_tag": "v0.2.0-paper-wave10",
+    "wave104_release_created": false
+  },
   "remaining": {
     "post_fix_six_hour": "NOT_RUN",
     "post_fix_twenty_four_hour": "NOT_RUN",

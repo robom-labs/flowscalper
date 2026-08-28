@@ -3247,5 +3247,11 @@ TP1·TP2·SL·Governor와 실제 주문 경로는 바꾸지 않았다. 결정은
 `evidence/WAVE104_POST_DASHBOARD_CACHE_CLEAN_5M.json`과
 `evidence/WAVE104_DASHBOARD_CACHE_AND_BROWSER_QA.json`에 보존했다.
 
+구현·문서·원시 증거는 GitHub main
+`8fdf14f5a818294679d06c111aab8de4792fa816`에 동기화했다. Actions
+`33221372546`은 validate 1분 16초, browser 1분 21초와 브라우저 증거 업로드까지
+모두 `PASS`했다. 기존 GitHub Release는 `v0.2.0-paper-wave10`이며 Wave 104용 새
+Release는 만들지 않았다.
+
 현 수용상태는
 `DASHBOARD_CACHE_ACTUAL_BROWSER_PASS_5M_PASS_BASELINE_6H_FAIL_POSTFIX_6H_24H_NOT_RUN_LEDGER_FULL_CHECK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
