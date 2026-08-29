@@ -126,7 +126,13 @@ assert status["auth_required"] is False
 assert operation["market_observation_active"] is True
 assert operation["automatic_recovery"] is True
 assert float(system["lag_p95_ms"]) <= 500.0
-assert float(system["trade_lag_p95_ms"]) <= 1000.0' \
+assert float(system["trade_lag_p95_ms"]) <= 1000.0
+assert system["persistence_worker_warmed"] is True
+assert int(system["persistence_flush_count"]) >= 4
+assert float(system["persistence_flush_last_ms"]) <= 20000.0
+assert int(system["persistence_fault_count"]) == 0
+assert int(system["persistence_buffer_dropped"]) == 0
+assert system["storage_entry_allowed"] is True' \
       "$EXPECTED_RELEASE_COMMIT" 2>/dev/null; then
       service_ready="true"
       break

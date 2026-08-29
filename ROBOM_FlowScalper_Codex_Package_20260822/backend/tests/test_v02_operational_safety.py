@@ -1003,7 +1003,7 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
         market_event_archive=archive,
     )
     runtime._wal_checkpoint_next_flush = 1
-    for index in range(2_000):
+    for index in range(1_000):
         runtime.ingest_live_event(
             MarketEvent(
                 event_id=f"wide-parquet-{index}",
@@ -1037,12 +1037,12 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     assert heartbeat_ticks >= 10
     assert ledger.count("market_event_archives") == 4
     assert ledger.market_event_symbols(runtime.run_id) == [
-        {"symbol": "BTCUSDT", "event_count": 2_000}
+        {"symbol": "BTCUSDT", "event_count": 1_000}
     ]
     assert runtime._persistence_flush_count >= 1
     assert runtime._persistence_flush_last_completed_ts_ms == runtime.clock.utc_ms()
     assert runtime._persistence_flush_max_ts_ms == runtime.clock.utc_ms()
-    assert runtime._persistence_flush_slowest_market_events == 500
+    assert runtime._persistence_flush_slowest_market_events == 250
     assert runtime._persistence_flush_slowest_candles >= 0
     assert runtime._persistence_flush_slowest_archive_batches == 1
     assert runtime._persistence_flush_slowest_archive_ms >= 0
@@ -1249,11 +1249,14 @@ def test_market_persistence_batch_is_bounded_on_slow_storage(tmp_path: Path) -> 
         for index in range(600)
     ]
 
-    runtime._flush_persistence(500)
+    runtime._flush_persistence(250)
 
+    assert ledger.count("market_events") == 250
+    assert len(runtime._market_event_buffer) == 350
+    runtime._flush_persistence(250)
     assert ledger.count("market_events") == 500
     assert len(runtime._market_event_buffer) == 100
-    runtime._flush_persistence(500)
+    runtime._flush_persistence(250)
     assert ledger.count("market_events") == 600
     assert runtime._market_event_buffer == []
     ledger.close()
@@ -1334,9 +1337,9 @@ async def test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists(
     await worker
 
     assert runtime._market_event_buffer == []
-    assert runtime._persistence_flush_count == 6
-    assert runtime._wal_checkpoint_deferred_count == 2
-    assert runtime._wal_checkpoint_count == 1
+    assert runtime._persistence_flush_count == 12
+    assert runtime._wal_checkpoint_deferred_count == 4
+    assert runtime._wal_checkpoint_count == 2
     assert runtime._wal_checkpoint_last_wal_bytes < 16 * 1024 * 1024
     assert runtime._wal_checkpoint_fault_count == 0
     ledger.close()

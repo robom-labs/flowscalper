@@ -96,8 +96,8 @@ def _dashboard_performance_report(report: Mapping[str, object]) -> dict[str, obj
     return dict(report) | {"windows": compact_windows}
 
 
-_MARKET_PERSISTENCE_FLUSH_THRESHOLD = 500
-_MARKET_PERSISTENCE_BATCH_SIZE = 500
+_MARKET_PERSISTENCE_FLUSH_THRESHOLD = 250
+_MARKET_PERSISTENCE_BATCH_SIZE = 250
 _SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
 _STORAGE_HEALTH_REFRESH_SECONDS = 1.0
 _STORAGE_HEALTH_STALE_NS = 5_000_000_000

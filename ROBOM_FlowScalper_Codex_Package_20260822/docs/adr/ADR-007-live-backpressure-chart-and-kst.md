@@ -15,7 +15,7 @@
 1. Binance wide 50개는 1초 `24hrTicker`, deep 10개는 기본 250ms diff-depth, 실제 체결은 `aggTrade`로 서로 다른 WebSocket에서 수신한다.
 2. PAPER 진입 잠금에 쓰는 `processing_lag_p95_ms`는 실행 경로인 depth·trade만 산정한다. 1초 wide scan age는 `wide_lag_p95_ms`로 별도 표시한다.
 3. sequence가 없는 wide event ID는 거래소 event time과 수신 monotonic nanosecond를 결합해 수신 단위로 고유하게 만든다.
-4. SQLite canonical JSON·checksum·transaction·fsync는 500건 bounded batch를 `asyncio.to_thread` worker에서 실행한다. 저장 실패는 종전처럼 fail-closed하되 동일 실패 배치를 이벤트 루프에서 무한 재시도하지 않는다.
+4. SQLite canonical JSON·checksum·transaction·fsync는 현재 250건 bounded batch를 격리 worker에서 실행한다. 저장 실패는 종전처럼 fail-closed하되 동일 실패 배치를 이벤트 루프에서 무한 재시도하지 않는다. 500건에서 250건으로 줄인 후속 근거는 ADR-107에 보존한다.
 5. 대시보드 WebSocket은 연결된 브라우저 수와 무관하게 0.5초마다 snapshot과 JSON을 한 번만 생성해 broadcast한다.
 6. Lightweight Charts는 component mount/data-ready 전환에서만 생성하고, 이후에는 series·marker·price line만 갱신한다. chart panel은 scanner와 stretch하지 않고 viewport 기반 360~560px 높이를 쓴다.
 7. 차트 시간축, event log, replay, 시스템 시각은 모두 `Asia/Seoul` KST로 표시하고 서버 snapshot과 UI 수신 시각 차이를 시스템 화면에 보여준다.

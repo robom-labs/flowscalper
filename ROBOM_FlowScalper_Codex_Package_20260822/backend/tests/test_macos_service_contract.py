@@ -78,6 +78,12 @@ def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> Non
     assert 'operation["automatic_recovery"] is True' in readiness
     assert 'float(system["lag_p95_ms"]) <= 500.0' in readiness
     assert 'float(system["trade_lag_p95_ms"]) <= 1000.0' in readiness
+    assert 'system["persistence_worker_warmed"] is True' in readiness
+    assert 'int(system["persistence_flush_count"]) >= 4' in readiness
+    assert 'float(system["persistence_flush_last_ms"]) <= 20000.0' in readiness
+    assert 'int(system["persistence_fault_count"]) == 0' in readiness
+    assert 'int(system["persistence_buffer_dropped"]) == 0' in readiness
+    assert 'system["storage_entry_allowed"] is True' in readiness
     assert "exit 6" in readiness
 
 
