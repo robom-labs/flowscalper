@@ -78,6 +78,8 @@ def test_research_command_forces_all_strategies_and_archive_verification(
         signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
         strategy_logic=STRATEGY_LOGIC_CURRENT,
         target_cpu_ratio=0.25,
+        target_archive_read_mib_per_second=16.0,
+        live_ledger_path=tmp_path / "run-ledger.sqlite3",
     )
 
     command = _research_arguments(arguments, tmp_path / "partial.json")
@@ -92,6 +94,10 @@ def test_research_command_forces_all_strategies_and_archive_verification(
     )
     assert command[command.index("--strategy-logic") + 1] == STRATEGY_LOGIC_CURRENT
     assert command[command.index("--target-cpu-ratio") + 1] == "0.25"
+    assert command[command.index("--target-archive-read-mib-per-second") + 1] == "16.0"
+    assert command[command.index("--live-ledger-path") + 1].endswith(
+        "run-ledger.sqlite3"
+    )
 
 
 def test_research_command_accepts_all_strategy_gate_target(tmp_path: Path) -> None:
@@ -105,6 +111,8 @@ def test_research_command_accepts_all_strategy_gate_target(tmp_path: Path) -> No
         signal_gate_target_strategy_id=SIGNAL_GATE_TARGET_ALL,
         strategy_logic=STRATEGY_LOGIC_CURRENT,
         target_cpu_ratio=0.25,
+        target_archive_read_mib_per_second=16.0,
+        live_ledger_path=tmp_path / "run-ledger.sqlite3",
     )
 
     command = _research_arguments(arguments, tmp_path / "partial.json")
@@ -137,6 +145,8 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
             "current_archive_byte_reverification": {
                 "status": "PASS",
                 "run_count": 13,
+                "live_writer_io_priority_gate": True,
+                "target_read_mib_per_second": 16.0,
             },
         },
     }
@@ -149,6 +159,7 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
             signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
             strategy_logic=STRATEGY_LOGIC_CURRENT,
             target_cpu_ratio=0.25,
+            target_archive_read_mib_per_second=16.0,
         )
         is payload
     )
@@ -162,6 +173,7 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
             signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
             strategy_logic=STRATEGY_LOGIC_CURRENT,
             target_cpu_ratio=0.25,
+            target_archive_read_mib_per_second=16.0,
         )
 
 
@@ -188,6 +200,8 @@ def test_result_validation_rejects_a_different_strategy_trial() -> None:
             "current_archive_byte_reverification": {
                 "status": "PASS",
                 "run_count": 13,
+                "live_writer_io_priority_gate": True,
+                "target_read_mib_per_second": 16.0,
             },
         },
     }
@@ -200,6 +214,7 @@ def test_result_validation_rejects_a_different_strategy_trial() -> None:
             signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
             strategy_logic=STRATEGY_LOGIC_CURRENT,
             target_cpu_ratio=0.25,
+            target_archive_read_mib_per_second=16.0,
         )
 
 

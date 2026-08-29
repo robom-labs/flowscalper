@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 from dataclasses import asdict, replace
 from decimal import Decimal
 from pathlib import Path
@@ -954,16 +955,29 @@ def test_frozen_archive_byte_verification_recomputes_and_rejects_mismatch(
         run_dir=run_dir,
     )
 
+    yielded_bytes: list[int] = []
+    guard_entries: list[int] = []
+
+    @contextmanager
+    def archive_guard():
+        guard_entries.append(1)
+        yield
+
     verified = verify_frozen_archive_bytes(
         tmp_path,
         manifest_path,
         (run_id,),
+        archive_batch_yield=yielded_bytes.append,
+        archive_batch_guard=archive_guard,
     )
 
     assert verified["status"] == "PASS"
     assert verified["run_count"] == 1
     assert verified["event_count"] == 2
     assert verified["mismatch_count"] == 0
+    assert verified["live_writer_io_priority_gate"] is True
+    assert sum(yielded_bytes) > 0
+    assert guard_entries
 
     payload = json.loads(manifest_path.read_text())
     payload["runs"][0]["event_count"] = 3

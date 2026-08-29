@@ -128,7 +128,7 @@
     {
       "contract_id": "LIVE_REPLAY_AUTO_ABORT",
       "symptom_ko": "대형 저장 리플레이가 현재 공개시장 처리와 PAPER 안전 경로를 느리게 만든다.",
-      "fixed_by": "ADR-059 and ADR-096",
+      "fixed_by": "ADR-059, ADR-096 and ADR-101",
       "test_anchors": [
         {
           "path": "backend/tests/test_replay_live_safety.py",
@@ -148,7 +148,8 @@
         {
           "path": "backend/tests/test_runtime_strategy_research_replay.py",
           "contains": [
-            "test_runtime_strategy_replay_cooperatively_yields_every_fixed_event_batch"
+            "test_runtime_strategy_replay_cooperatively_yields_every_fixed_event_batch",
+            "test_frozen_archive_byte_verification_recomputes_and_rejects_mismatch"
           ]
         }
       ]
