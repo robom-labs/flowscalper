@@ -36,7 +36,10 @@ describe('beginner-facing number formatting', () => {
 
   test('translates known exit reasons for non-experts', () => {
     expect(exitReasonLabel('EDGE_DECAY')).toBe('가격·근거 동시 악화')
+    expect(exitReasonLabel('PROFIT_PROTECTION')).toBe('이익 보호 종료')
     expect(exitReasonLabel('TP2')).toBe('2차 익절')
+    expect(exitReasonLabel('TRAILING_STOP')).toBe('추적 손절')
+    expect(exitReasonLabel('DATA_GAP')).toBe('데이터 누락 안전 종료')
     expect(sideLabel('LONG')).toBe('상승 방향')
     expect(costProfileLabel('STRESS')).toBe('보수 비용')
     expect(sampleTypeLabel('LIVE_PUBLIC')).toBe('공개시장 모의거래')

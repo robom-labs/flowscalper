@@ -163,6 +163,54 @@ async def test_market_catalog_and_candles_remain_public_and_role_separated() -> 
     assert upbit_history["real_orders_enabled"] is False
 
 
+def test_unicode_public_symbol_can_load_candles_and_be_selected() -> None:
+    calls: list[tuple[str, int, int]] = []
+
+    async def candles(symbol: str, interval: int, limit: int) -> list[dict[str, object]]:
+        calls.append((symbol, interval, limit))
+        return [
+            {
+                "time": 1,
+                "open_ts_ms": 1_000,
+                "open": 0.0635,
+                "high": 0.0636,
+                "low": 0.0634,
+                "close": 0.06355,
+                "volume": 1_000,
+                "trade_count": 10,
+            }
+        ]
+
+    service = MarketExplorerService(binance_candle_loader=candles)
+    client = TestClient(create_app(PaperRuntime(mode=RuntimeMode.READY), market_explorer=service))
+
+    history = client.get(
+        "/api/markets/candles?symbol=龙虾USDT&interval_seconds=14400&limit=200"
+    )
+    selected = client.post(
+        "/api/markets/select",
+        json={
+            "source": "BINANCE_USDM",
+            "symbol": "龙虾USDT",
+            "interval_seconds": 14_400,
+            "pin_for_analysis": True,
+        },
+    )
+    chart = client.post(
+        "/api/control/chart",
+        json={"symbol": "龙虾USDT", "interval_seconds": 14_400},
+    )
+
+    assert history.status_code == 200
+    assert history.json()["candles"][0]["close"] == 0.06355
+    assert calls == [("龙虾USDT", 14_400, 200)]
+    assert selected.status_code == 200
+    assert selected.json()["symbol"] == "龙虾USDT"
+    assert chart.status_code == 200
+    assert chart.json()["chart"]["symbol"] == "龙虾USDT"
+    assert client.get("/api/markets/candles?symbol=BTC%2FUSDT").status_code == 422
+
+
 async def test_every_ui_timeframe_is_supported_by_both_public_chart_sources() -> None:
     calls: list[tuple[str, int, int]] = []
 

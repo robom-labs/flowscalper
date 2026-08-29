@@ -214,7 +214,7 @@ async def _await_shutdown_task(task: asyncio.Task[None]) -> None:
 class ChartSelectionRequest(BaseModel):
     """사용자가 볼 공개 종목과 로컬 캔들 시간구간을 제한한다."""
 
-    symbol: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9]+$")
+    symbol: str = Field(min_length=3, max_length=30, pattern=r"^[\w-]+$")
     interval_seconds: int
 
 
@@ -222,7 +222,7 @@ class MarketSelectionRequest(BaseModel):
     """공개 시장 보기 선택만 바꾸고 거래 action을 만들지 않는다."""
 
     source: str = Field(pattern=r"^(BINANCE_USDM|UPBIT_KRW)$")
-    symbol: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9-]+$")
+    symbol: str = Field(min_length=3, max_length=30, pattern=r"^[\w-]+$")
     interval_seconds: int = 180
     pin_for_analysis: bool = False
 
@@ -831,7 +831,7 @@ def create_app(
     @app.get("/api/markets/candles")
     async def market_candles(
         source: str = Query(default="BINANCE_USDM", pattern=r"^(BINANCE_USDM|UPBIT_KRW)$"),
-        symbol: str = Query(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9-]+$"),
+        symbol: str = Query(min_length=3, max_length=30, pattern=r"^[\w-]+$"),
         interval_seconds: int = Query(default=180),
         limit: int = Query(default=200, ge=1, le=500),
     ) -> dict[str, object]:

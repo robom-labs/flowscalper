@@ -107,6 +107,7 @@ export function formatCompactNumber(value: Numeric) {
 const exitReasonLabels: Record<string, string> = {
   EDGE_DECAY: '가격·근거 동시 악화',
   EXIT_EDGE_DECAY: '가격·근거 동시 악화',
+  PROFIT_PROTECTION: '이익 보호 종료',
   EXIT_PROFIT_PROTECTION: '이익 보호 종료',
   TAKE_PROFIT: '익절',
   TAKE_PROFIT_1: '1차 익절',
@@ -118,6 +119,10 @@ const exitReasonLabels: Record<string, string> = {
   EXIT_MAX_HOLD: '최대 보유시간 도달',
   MAX_HOLD: '최대 보유시간 도달',
   EMERGENCY_STALE: '데이터 안전 종료',
+  TRAILING_STOP: '추적 손절',
+  DATA_GAP: '데이터 누락 안전 종료',
+  MANUAL_PAPER_EXIT: '사용자 PAPER 종료',
+  FAULT: '시스템 안전 종료',
 }
 
 export function exitReasonLabel(value: string) {
