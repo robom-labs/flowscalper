@@ -49,6 +49,9 @@
   `(receive_ts_ms, receive_monotonic_ns, venue_ts_ms, symbol, payload_json)` 순서를 고정한다.
 - 실제 복원 호가의 LONG ask 진입·bid 종료, SHORT bid 진입·ask 종료를 사용한다.
 - BASE 13bps, STRESS 25bps를 그대로 사용한다.
+- 고정 horizon 결과와 별도로 `scripts/research_runtime_strategy_replay.py`를 실행해 같은
+  수신순 이벤트를 실제 PAPER 진입·호가깊이 체결·TP1·TP2·SL·관리종료 경로에 넣는다.
+  archive 끝의 열린 포지션과 대기 진입은 강제 청산하지 않고 `censored`로 기록한다.
 - 결과를 본 뒤 조건이나 horizon을 다시 조정해 같은 입력을 재선택하지 않는다.
 
 ## 유지·폐기 기준
@@ -61,13 +64,16 @@
 4. 같은 split·horizon의 비교 가능한 OOS BASE 또는 STRESS 기대값이 악화되면 배포하지 않고
    원인을 조사한다. 표본이 사라지거나 30건 미만이면 개선으로 주장하지 않고
    `NOT_PROVEN`으로 둔다.
-5. 기준과 후보는 동일한 archive checksum과 수신순 reader source checksum을 사용해야 한다.
+5. 실제 PAPER 경로 결과는 종료사유, 15초 이하 보유, TP1·TP2·SL 도달과 censored 수를
+   분리해야 한다. 15초 이하 결과가 있으면 TP·SL·데이터 안전종료인지 감사하고 일반
+   근거약화 청산이면 배포하지 않는다.
+6. 기준과 후보는 동일한 archive checksum과 수신순 reader source checksum을 사용해야 한다.
    하나라도 다르면 직접 비교를 `BLOCKED`로 기록한다.
-6. 저장 replay 결과가 양수여도 Registry 승격에는 사용하지 않는다. 새 revision의 독립 미래
+7. 저장 replay 결과가 양수여도 Registry 승격에는 사용하지 않는다. 새 revision의 독립 미래
    `LIVE_PUBLIC` 표본을 다시 모으고 30건 전에는 순위를 매기지 않는다.
-7. 현재 실행 중인 Wave 104 수정 후 6시간 관찰을 실제로 끝내기 전에는 서비스를 교체하지
+8. 현재 실행 중인 Wave 104 수정 후 6시간 관찰을 실제로 끝내기 전에는 서비스를 교체하지
    않는다. 24시간을 채우지 않았으면 계속 `NOT_RUN`이다.
-8. 자연신호가 적다는 이유로 진입·비용·TP·SL 기준을 낮추지 않는다.
+9. 자연신호가 적다는 이유로 진입·비용·TP·SL 기준을 낮추지 않는다.
 
 ## 별도 후속 연구
 

@@ -24,6 +24,17 @@
     "historical_reference_only": "evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json",
     "baseline_and_candidate_must_be_rerun": true,
     "runner": "scripts/research_strategy_revision.py",
+    "actual_paper_path_runner": "scripts/research_runtime_strategy_replay.py",
+    "actual_paper_path": [
+      "strategy_signal",
+      "candidate_plan",
+      "depth_walk_fill",
+      "TP1",
+      "TP2",
+      "SL",
+      "management_exit"
+    ],
+    "force_close_open_positions_at_archive_end": false,
     "event_order": [
       "receive_ts_ms",
       "receive_monotonic_ns",
