@@ -3411,6 +3411,9 @@ consumer·supervisor 정상, 진입잠금·실제주문·인증은 false였다. 
 전환되는 것을 대용량 원장 재스캔 없이 확인했다. backend 표적 2건, Ruff, frontend Vitest
 15 files·79건, TypeScript와 ESLint는 모두 PASS했다. E06를 중단하지 않기 위해 이 화면 변경도
 아직 8870에 설치하지 않았으므로 새 표시의 실제 브라우저 확인은 계속 `NOT_RUN`이다.
+수정 source commit은 `a067a832370b51858ce732986adb425a20d680a0`이며 GitHub main과
+일치한다. Actions `33258250538`의 validate 1분 10초와 browser 1분 22초는 모두 PASS했고
+브라우저 증거 업로드도 완료됐다.
 
 고정 Train 6·Validation 2 Run에 같은 BASE 13bp·STRESS 25bp 비용을 적용하는 E06 후보 4개는
 15% hard duty-cycle로 계속 계산 중이다. 이 시점에는 `RUN-B987D1D386C6` archive를 읽고 있고

@@ -92,6 +92,7 @@
   },
   "live_history_lifecycle_fix": {
     "status": "SOURCE_AND_REGRESSION_PASS_NOT_INSTALLED",
+    "source_commit": "a067a832370b51858ce732986adb425a20d680a0",
     "actual_service_two_point_observation": {
       "interval_seconds": 6,
       "event_count": [
@@ -129,7 +130,12 @@
     "frontend_typecheck": "PASS",
     "frontend_lint": "PASS",
     "ruff": "PASS",
-    "github_actions": "PENDING_AFTER_COMMIT",
+    "github_main_synced": true,
+    "github_actions": "PASS",
+    "github_actions_run": 33258250538,
+    "github_actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/33258250538",
+    "github_validate_job": "PASS_1M10S",
+    "github_browser_job": "PASS_1M22S_WITH_EVIDENCE_UPLOAD",
     "installed_browser": "NOT_RUN_UNTIL_E06_COMPLETES_AND_RELEASE_IS_INSTALLED"
   },
   "beginner_activity_ui_source": {
