@@ -572,6 +572,7 @@
           "path": "backend/tests/test_v02_operational_safety.py",
           "contains": [
             "test_parquet_persistence_worker_keeps_event_loop_responsive",
+            "test_wal_checkpoint_runs_without_blocking_live_persistence_flushes",
             "test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists",
             "test_incomplete_oversized_wal_checkpoint_fails_closed"
           ]

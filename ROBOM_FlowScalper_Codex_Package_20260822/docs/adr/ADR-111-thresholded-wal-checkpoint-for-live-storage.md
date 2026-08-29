@@ -13,20 +13,30 @@ Wave 116L 연구 뒤 실행 서비스를 관찰한 결과 이벤트와 전략평
 `BEGIN IMMEDIATE` 대기가 0.043ms인 반면 SQLite 쓰기가 10.507초였다. 다른 원장 writer와의
 잠금 충돌보다 외장 저장소의 반복 체크포인트와 후속 쓰기 증폭이 원인이었다.
 
+첫 16MB 기준 적용 뒤 실제 WAL이 기준을 넘은 체크포인트는 25.679초 걸렸다. 이때 시장
+이벤트는 계속 들어왔지만 persistence flush 수가 체크포인트 종료 전까지 증가하지 않았다.
+별도 process만으로는 충분하지 않고 worker가 그 process를 기다리는 구조도 제거해야 했다.
+
 ## 결정
 
 1. 네 번의 flush마다 WAL 상태를 확인하는 주기는 유지한다.
 2. WAL이 기존 소프트 기준인 16MB보다 작으면 실제 체크포인트를 실행하지 않고 다음 네 번의
    flush 뒤 다시 확인한다.
 3. 작은 WAL을 건너뛴 횟수와 확인 당시 WAL 크기는 기존 deferred 진단에 기록한다.
-4. WAL이 16MB 이상이면 기존 별도 process의 `PASSIVE` 체크포인트를 실행한다.
-5. 체크포인트 실패, 64MB 초과, 미완료 16,384 frame과 저장 적체 fail-closed 경로는 유지한다.
-6. soak의 `wal_checkpoint_continued`는 실제 체크포인트 전진뿐 아니라 16MB 미만 WAL을
+4. WAL이 16MB 이상이면 별도 process의 `PASSIVE` 체크포인트를 백그라운드 task로 실행하고
+   persistence worker는 그 결과를 기다리지 않은 채 다음 flush를 계속한다.
+5. 체크포인트 process는 LIVE persistence 우선순위 잠금을 선점하지 않고 background I/O
+   우선순위를 사용한다. SQLite `PASSIVE` 결과의 busy·미완료 수치로 경쟁 상태를 판정한다.
+6. 체크포인트가 진행되는 동안 완료된 flush 수를 현재·최근·최대 진단값으로 기록한다.
+7. 체크포인트 실패, 64MB 초과, 미완료 16,384 frame과 저장 적체 fail-closed 경로는 유지한다.
+8. soak의 `wal_checkpoint_continued`는 실제 체크포인트 전진뿐 아니라 16MB 미만 WAL을
    명시적으로 확인하고 미룬 경우도 정상 worker 전진으로 판정한다.
 
 ## 검증 계약
 
 - 작은 WAL은 체크포인트 없이 deferred 수치가 전진해야 한다.
+- 느린 체크포인트가 끝나지 않은 동안에도 LIVE persistence flush와 원장 event 수가
+  전진해야 한다.
 - 16MB 기준을 넘긴 경로의 미완료 체크포인트는 기존처럼 신규 PAPER 진입을 잠가야 한다.
 - 실제 설치 서비스에서 이벤트·전략평가·flush가 전진하고 queue·drop·저장 오류가 0이어야
   한다.

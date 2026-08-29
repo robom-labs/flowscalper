@@ -89,9 +89,7 @@ def _dashboard_performance_report(report: Mapping[str, object]) -> dict[str, obj
     if isinstance(windows, Mapping):
         for label, window in windows.items():
             compact_windows[str(label)] = {
-                "sample_size": window.get("sample_size", 0)
-                if isinstance(window, Mapping)
-                else 0
+                "sample_size": window.get("sample_size", 0) if isinstance(window, Mapping) else 0
             }
     return dict(report) | {"windows": compact_windows}
 
@@ -179,9 +177,7 @@ class PaperRuntime:
     unrealized_pnl_usdt: float = 0.0
     candle_builder: CandleBuilder = field(default_factory=CandleBuilder)
     hourly_public_history: dict[str, tuple[Candle, ...]] = field(default_factory=dict)
-    strategy_public_history: dict[tuple[str, int], tuple[Candle, ...]] = field(
-        default_factory=dict
-    )
+    strategy_public_history: dict[tuple[str, int], tuple[Candle, ...]] = field(default_factory=dict)
     _strategy_candle_cache: dict[
         tuple[str, int], tuple[tuple[int, int | None, int, int | None], tuple[Candle, ...]]
     ] = field(default_factory=dict, repr=False)
@@ -287,6 +283,15 @@ class PaperRuntime:
     _wal_checkpoint_last_error: str | None = None
     _wal_checkpoint_deferred_count: int = 0
     _wal_checkpoint_last_wal_bytes: int = 0
+    _wal_checkpoint_task: asyncio.Task[tuple[int, int, int]] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _wal_checkpoint_task_started_at: float | None = None
+    _wal_checkpoint_task_started_flush_count: int = 0
+    _wal_checkpoint_last_concurrent_flush_delta: int = 0
+    _wal_checkpoint_max_concurrent_flush_delta: int = 0
     _persistence_worker_warmed: bool = False
     _persistence_worker_warm_ms: float = 0.0
     _universe_snapshot_persisted_count: int = 0
@@ -519,9 +524,7 @@ class PaperRuntime:
         self._refresh_storage_safety()
         telemetry = self._supervisor.telemetry if self._supervisor is not None else None
         status = self.status()
-        started_monotonic_ns = (
-            telemetry.started_monotonic_ns if telemetry is not None else None
-        )
+        started_monotonic_ns = telemetry.started_monotonic_ns if telemetry is not None else None
         position_count = len(self.paper_portfolio.main.positions) + sum(
             len(account.positions) for account in self.paper_portfolio.shadows.values()
         )
@@ -1010,6 +1013,23 @@ class PaperRuntime:
             "wal_checkpoint_deferred_count": self._wal_checkpoint_deferred_count,
             "wal_checkpoint_last_wal_bytes": self._wal_checkpoint_last_wal_bytes,
             "wal_checkpoint_soft_bytes": _WAL_CHECKPOINT_SOFT_BYTES,
+            "wal_checkpoint_running": (
+                self._wal_checkpoint_task is not None and not self._wal_checkpoint_task.done()
+            ),
+            "wal_checkpoint_current_concurrent_flush_delta": (
+                max(
+                    0,
+                    self._persistence_flush_count - self._wal_checkpoint_task_started_flush_count,
+                )
+                if self._wal_checkpoint_task is not None
+                else 0
+            ),
+            "wal_checkpoint_last_concurrent_flush_delta": (
+                self._wal_checkpoint_last_concurrent_flush_delta
+            ),
+            "wal_checkpoint_max_concurrent_flush_delta": (
+                self._wal_checkpoint_max_concurrent_flush_delta
+            ),
             "persistence_worker_warmed": self._persistence_worker_warmed,
             "persistence_worker_warm_ms": round(self._persistence_worker_warm_ms, 3),
             "event_memory_count": len(self._events),
@@ -1789,9 +1809,7 @@ class PaperRuntime:
                     # 후보 SQLite FULL 커밋은 LIVE 판단 이벤트 루프에서 실행하지 않는다.
                     # 같은 이벤트의 주문·감사·복구 상태와 worker thread의 원자 배치로 저장한다.
                     with self._persistence_lock:
-                        self._candidate_plan_buffer.append(
-                            self._candidate_plan_row(result.plan)
-                        )
+                        self._candidate_plan_buffer.append(self._candidate_plan_row(result.plan))
             elif result.rejection_codes != ("STRATEGY_NOT_QUALIFIED",):
                 self.plan_rejections.append(
                     {
@@ -1957,9 +1975,7 @@ class PaperRuntime:
             recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
             stress_windows = stress.get("windows")
             stress_recent = (
-                stress_windows.get("recent_50", {})
-                if isinstance(stress_windows, Mapping)
-                else {}
+                stress_windows.get("recent_50", {}) if isinstance(stress_windows, Mapping) else {}
             )
             sample_size = min(
                 int(str(base["sample_size"])),
@@ -1980,14 +1996,11 @@ class PaperRuntime:
                     and recent.get("profit_factor") is not None
                     and Decimal(str(recent["profit_factor"])) < Decimal("0.90")
                 )
-                full_low_win = (
-                    sample_size >= 30
-                    and (
-                        base.get("win_rate") is None
-                        or Decimal(str(base["win_rate"])) < Decimal("0.70")
-                        or stress.get("win_rate") is None
-                        or Decimal(str(stress["win_rate"])) < Decimal("0.70")
-                    )
+                full_low_win = sample_size >= 30 and (
+                    base.get("win_rate") is None
+                    or Decimal(str(base["win_rate"])) < Decimal("0.70")
+                    or stress.get("win_rate") is None
+                    or Decimal(str(stress["win_rate"])) < Decimal("0.70")
                 )
                 recent_low_win = (
                     sample_size >= 30
@@ -2113,9 +2126,7 @@ class PaperRuntime:
             recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
             stress_windows = stress.get("windows")
             stress_recent = (
-                stress_windows.get("recent_50", {})
-                if isinstance(stress_windows, Mapping)
-                else {}
+                stress_windows.get("recent_50", {}) if isinstance(stress_windows, Mapping) else {}
             )
             faulted = any(
                 bool(account["faulted"])
@@ -4368,34 +4379,28 @@ class PaperRuntime:
                 elapsed_ms,
             )
 
-        async def checkpoint_wal_if_due() -> None:
-            if self.ledger is None:
+        async def finish_wal_checkpoint(*, wait: bool = False) -> None:
+            task = self._wal_checkpoint_task
+            if task is None or (not wait and not task.done()):
                 return
-            if self._persistence_flush_count < self._wal_checkpoint_next_flush:
-                return
-            wal_path = self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
-            wal_size = wal_path.stat().st_size if wal_path.exists() else 0
-            self._wal_checkpoint_last_wal_bytes = wal_size
-            if wal_size < _WAL_CHECKPOINT_SOFT_BYTES:
-                self._wal_checkpoint_deferred_count += 1
-                self._wal_checkpoint_next_flush = (
-                    self._persistence_flush_count + _WAL_CHECKPOINT_FLUSH_INTERVAL
-                )
-                return
-            started = asyncio.get_running_loop().time()
+            started = self._wal_checkpoint_task_started_at
+            started_flush_count = self._wal_checkpoint_task_started_flush_count
+            wal_path = (
+                self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
+                if self.ledger is not None
+                else None
+            )
             try:
-                busy, log_frames, checkpointed_frames = await to_process.run_sync(
-                    run_passive_wal_checkpoint_in_process,
-                    str(self.ledger.path),
-                    True,
-                )
+                busy, log_frames, checkpointed_frames = await task
             except Exception as error:
                 self._wal_checkpoint_fault_count += 1
                 self._wal_checkpoint_last_error = f"{type(error).__name__}: {error}"
                 if "WAL_CHECKPOINT_DEGRADED" not in self.runtime_health_flags:
                     self.runtime_health_flags.append("WAL_CHECKPOINT_DEGRADED")
                 self._wal_checkpoint_next_flush = self._persistence_flush_count + 1
-                wal_size = wal_path.stat().st_size if wal_path.exists() else 0
+                wal_size = (
+                    wal_path.stat().st_size if wal_path is not None and wal_path.exists() else 0
+                )
                 self._wal_checkpoint_last_wal_bytes = wal_size
                 if wal_size >= _MAX_WAL_BYTES_WITHOUT_CHECKPOINT:
                     self._handle_persistence_fault(
@@ -4405,7 +4410,24 @@ class PaperRuntime:
                         )
                     )
                 return
-            elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+            finally:
+                self._wal_checkpoint_task = None
+                self._wal_checkpoint_task_started_at = None
+
+            elapsed_ms = (
+                (asyncio.get_running_loop().time() - started) * 1_000
+                if started is not None
+                else 0.0
+            )
+            concurrent_flush_delta = max(
+                0,
+                self._persistence_flush_count - started_flush_count,
+            )
+            self._wal_checkpoint_last_concurrent_flush_delta = concurrent_flush_delta
+            self._wal_checkpoint_max_concurrent_flush_delta = max(
+                self._wal_checkpoint_max_concurrent_flush_delta,
+                concurrent_flush_delta,
+            )
             self._wal_checkpoint_count += 1
             self._wal_checkpoint_last_ms = elapsed_ms
             self._wal_checkpoint_max_ms = max(self._wal_checkpoint_max_ms, elapsed_ms)
@@ -4434,6 +4456,33 @@ class PaperRuntime:
                     self._persistence_flush_count + _WAL_CHECKPOINT_FLUSH_INTERVAL
                 )
 
+        async def checkpoint_wal_if_due() -> None:
+            await finish_wal_checkpoint()
+            if self.ledger is None:
+                return
+            if self._wal_checkpoint_task is not None:
+                return
+            if self._persistence_flush_count < self._wal_checkpoint_next_flush:
+                return
+            wal_path = self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
+            wal_size = wal_path.stat().st_size if wal_path.exists() else 0
+            self._wal_checkpoint_last_wal_bytes = wal_size
+            if wal_size < _WAL_CHECKPOINT_SOFT_BYTES:
+                self._wal_checkpoint_deferred_count += 1
+                self._wal_checkpoint_next_flush = (
+                    self._persistence_flush_count + _WAL_CHECKPOINT_FLUSH_INTERVAL
+                )
+                return
+            self._wal_checkpoint_task_started_at = asyncio.get_running_loop().time()
+            self._wal_checkpoint_task_started_flush_count = self._persistence_flush_count
+            self._wal_checkpoint_task = asyncio.create_task(
+                to_process.run_sync(
+                    run_passive_wal_checkpoint_in_process,
+                    str(self.ledger.path),
+                    True,
+                )
+            )
+
         async def flush(limit: int | None) -> None:
             started = asyncio.get_running_loop().time()
             timings = await self._flush_persistence_isolated(limit)
@@ -4445,9 +4494,7 @@ class PaperRuntime:
             if elapsed_ms > self._persistence_flush_max_ms:
                 self._persistence_flush_max_ms = elapsed_ms
                 self._persistence_flush_max_ts_ms = completed_ts_ms
-                self._persistence_flush_slowest_gate_wait_ms = float(
-                    timings["gate_wait_ms"]
-                )
+                self._persistence_flush_slowest_gate_wait_ms = float(timings["gate_wait_ms"])
                 self._persistence_flush_slowest_archive_ms = float(timings["archive_ms"])
                 self._persistence_flush_slowest_ledger_ms = float(timings["ledger_ms"])
                 self._persistence_flush_slowest_ledger_connect_ms = float(
@@ -4456,15 +4503,11 @@ class PaperRuntime:
                 self._persistence_flush_slowest_ledger_begin_wait_ms = float(
                     timings["ledger_begin_wait_ms"]
                 )
-                self._persistence_flush_slowest_ledger_write_ms = float(
-                    timings["ledger_write_ms"]
-                )
+                self._persistence_flush_slowest_ledger_write_ms = float(timings["ledger_write_ms"])
                 self._persistence_flush_slowest_ledger_commit_ms = float(
                     timings["ledger_commit_ms"]
                 )
-                self._persistence_flush_slowest_ledger_close_ms = float(
-                    timings["ledger_close_ms"]
-                )
+                self._persistence_flush_slowest_ledger_close_ms = float(timings["ledger_close_ms"])
                 self._persistence_flush_slowest_market_events = int(timings["market_events"])
                 self._persistence_flush_slowest_candles = int(timings["candles"])
                 self._persistence_flush_slowest_archive_batches = int(timings["archive_batches"])
@@ -4474,6 +4517,7 @@ class PaperRuntime:
             await checkpoint_wal_if_due()
 
         while not stop.is_set():
+            await finish_wal_checkpoint()
             with self._persistence_lock:
                 should_flush = (
                     len(self._market_event_buffer) >= _MARKET_PERSISTENCE_FLUSH_THRESHOLD
@@ -4497,6 +4541,7 @@ class PaperRuntime:
             await flush_universe_snapshots()
         if has_pending and self._persistence_fault_count == 0:
             await flush(None)
+        await finish_wal_checkpoint(wait=True)
 
     def _persist_universe_snapshot_batch(
         self,

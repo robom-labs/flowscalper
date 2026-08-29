@@ -38,9 +38,7 @@ def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: P
         "CURRENT_RSS_PROCFS",
         "CURRENT_WORKING_SET",
     }
-    assert float(str(first["process_memory_peak_mb"])) >= float(
-        str(first["process_memory_mb"])
-    )
+    assert float(str(first["process_memory_peak_mb"])) >= float(str(first["process_memory_mb"]))
     assert str(first["process_memory_peak_source"]).startswith("PEAK_")
     assert float(str(second["process_cpu_percent"])) >= 0
     assert int(str(second["process_threads"])) >= 1
@@ -745,9 +743,7 @@ def test_runtime_checks_active_ledger_volume_as_well_as_archive(
 
     assert runtime._refresh_storage_safety(force=True) is False
     dashboard = runtime.dashboard()
-    assert dashboard["system"]["storage_lock_reason"] == (
-        "LEDGER_FREE_BYTES_BELOW_LIMIT"
-    )
+    assert dashboard["system"]["storage_lock_reason"] == ("LEDGER_FREE_BYTES_BELOW_LIMIT")
     assert dashboard["system"]["archive_storage_free_bytes"] == 900
     assert dashboard["system"]["ledger_storage_free_bytes"] == 40
     assert runtime.paused is True
@@ -919,9 +915,7 @@ def test_sqlite_write_fault_fails_closed_and_bounds_retry_buffer(
         raise OSError("simulated disk full")
 
     monkeypatch.setattr(ledger, "record_market_events", fail_write)
-    runtime._market_event_buffer = [
-        {"event_id": f"event-{index}"} for index in range(12_000)
-    ]
+    runtime._market_event_buffer = [{"event_id": f"event-{index}"} for index in range(12_000)]
     runtime._flush_persistence()
 
     assert runtime.paused is True
@@ -1064,6 +1058,85 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     ledger.close()
 
 
+async def test_wal_checkpoint_runs_without_blocking_live_persistence_flushes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "nonblocking-checkpoint.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-nonblocking-checkpoint",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime._wal_checkpoint_next_flush = 1
+    monkeypatch.setattr(runtime_module, "_WAL_CHECKPOINT_SOFT_BYTES", 0)
+    for index in range(1_000):
+        runtime.ingest_live_event(
+            MarketEvent(
+                event_id=f"nonblocking-checkpoint-{index}",
+                run_id=runtime.run_id,
+                venue=runtime.venue,
+                symbol="BTCUSDT",
+                event_type="WIDE_TICKER",
+                venue_ts_ms=index,
+                receive_monotonic_ns=index,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=False,
+                    sequence_valid=True,
+                    lag_ms=0,
+                ),
+                data={"last_price": "100"},
+            )
+        )
+
+    checkpoint_started = asyncio.Event()
+    release_checkpoint = asyncio.Event()
+
+    async def slow_checkpoint(function, *arguments):
+        assert function is runtime_module.run_passive_wal_checkpoint_in_process
+        assert arguments == (str(ledger.path), True)
+        checkpoint_started.set()
+        await release_checkpoint.wait()
+        return (0, 10, 10)
+
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", slow_checkpoint)
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    await asyncio.wait_for(checkpoint_started.wait(), timeout=2.0)
+    for _ in range(200):
+        if runtime._persistence_flush_count >= 4:
+            break
+        await asyncio.sleep(0.01)
+
+    assert runtime._wal_checkpoint_task is not None
+    assert runtime._wal_checkpoint_task.done() is False
+    assert runtime._persistence_flush_count == 4
+    assert runtime._market_event_buffer == []
+    diagnostics = runtime.dashboard()["system"]
+    assert isinstance(diagnostics, dict)
+    assert diagnostics["wal_checkpoint_running"] is True
+    assert diagnostics["wal_checkpoint_current_concurrent_flush_delta"] == 3
+
+    release_checkpoint.set()
+    for _ in range(100):
+        if runtime._wal_checkpoint_count == 1:
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert runtime._wal_checkpoint_count == 1
+    assert runtime._wal_checkpoint_last_concurrent_flush_delta == 3
+    assert runtime._wal_checkpoint_max_concurrent_flush_delta == 3
+    assert runtime._wal_checkpoint_fault_count == 0
+    assert runtime._persistence_fault_count == 0
+    assert ledger.count("market_events") == 1_000
+    ledger.close()
+
+
 async def test_parquet_process_fault_restores_batch_and_fails_closed(
     tmp_path: Path,
     monkeypatch,
@@ -1104,9 +1177,7 @@ async def test_parquet_process_fault_restores_batch_and_fails_closed(
     monkeypatch.setattr(runtime_module.to_process, "run_sync", fail_process)
     await runtime._flush_persistence_isolated(None)
 
-    assert [row["event_id"] for row in runtime._market_event_buffer] == [
-        "event-process-fault"
-    ]
+    assert [row["event_id"] for row in runtime._market_event_buffer] == ["event-process-fault"]
     assert runtime._persistence_fault_count == 1
     assert runtime._persistence_buffer_dropped == 0
     assert runtime.paused is True
@@ -1220,9 +1291,7 @@ async def test_atomic_ledger_fault_restores_market_and_candle_batches(
     monkeypatch.setattr(runtime_module.to_process, "run_sync", fail_ledger_commit)
     await runtime._flush_persistence_isolated(None)
 
-    assert [row["event_id"] for row in runtime._market_event_buffer] == [
-        "event-ledger-fault"
-    ]
+    assert [row["event_id"] for row in runtime._market_event_buffer] == ["event-ledger-fault"]
     assert [row["open_ts_ms"] for row in runtime._candle_buffer] == [1_000]
     assert ledger.count("market_event_archives") == 0
     assert ledger.count("candles") == 0
