@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "status": "PASS_CONTRACT_FULL_ARCHIVE_REVERIFY_NOT_RUN",
+  "git_commit": "63a3c167bfec013938111411575520796ed7f0a7",
+  "scope": "FROZEN_13_RUN_ARCHIVE_BYTE_REVERIFICATION_GATE",
+  "implemented": {
+    "full_frozen_cli_requires_verify_archive_bytes": true,
+    "recomputed_fields": [
+      "run_id",
+      "venue",
+      "symbols",
+      "start_ts_ms",
+      "end_ts_ms",
+      "event_count",
+      "checksum"
+    ],
+    "checksum_method": "RUN_RELATIVE_FILE_NAME_AND_SIZE_AND_COMPLETE_FILE_BYTES_SHA256",
+    "mismatch_is_fail_closed": true,
+    "partial_smoke_may_remain_not_run": true
+  },
+  "verification": {
+    "targeted_and_related_pytest": {
+      "status": "PASS",
+      "passed": 194,
+      "command": ".venv/bin/pytest -q backend/tests/test_runtime_strategy_research_replay.py backend/tests/test_research_protocol.py backend/tests/test_strategy_100_dataset_freeze.py backend/tests/test_strategy_league_portfolio.py backend/tests/test_strategy_league_signals.py backend/tests/test_strategy_registry_shadow.py backend/tests/test_storage_replay_analytics.py backend/tests/test_strategy_100_screening.py"
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS",
+    "fixture_current_bytes_match": "PASS",
+    "fixture_manifest_mismatch_rejected": "PASS",
+    "full_cli_without_verify_flag_rejected": "PASS"
+  },
+  "current_frozen_13_run_archive_byte_reverification": {
+    "status": "NOT_RUN",
+    "reason": "WAVE104_POST_DASHBOARD_CACHE_CLEAN_6H observer is still running; heavy archive hashing is deferred to avoid contaminating the live performance observation."
+  },
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "profitability_status": "NOT_PROVEN",
+  "ranking_eligible_strategy_ids": []
+}
