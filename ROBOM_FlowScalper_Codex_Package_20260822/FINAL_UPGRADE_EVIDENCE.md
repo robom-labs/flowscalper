@@ -3547,3 +3547,68 @@ E06 비용포함 후보 실험은 과거 안전중단 시점의 직전 표본과
 `evidence/WAVE116G_HISTORY_REFRESH_AND_E06_ATTRIBUTION_QA.json`이고 실제 모바일 화면은
 `evidence/screenshots/WAVE116G_HISTORY_REFRESH_QA.jpg`에 보존했다. 현 수용상태는
 `LIVE_RUNNING_HISTORY_REFRESH_PASS_E06_ATTRIBUTION_READY_NEW_INCIDENT_NOT_OBSERVED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 84. Wave 116H 거래기록 최종 점검과 네 화면·계획회전 런타임 증거
+
+Wave 116G 뒤 무거운 replay가 없는 설치 서비스에서도 독립적인 792ms event-loop 지연이
+관찰됐다. 당시 네 localhost WebSocket 화면은 약 160KB 상태를 초당 한 번 받았고 변경 전
+연결은 `PerMessageDeflate`를 협상했다. main-loop 표본에 zlib·WebSocket·SSL 전송 작업이
+함께 나타났지만 이는 반복 부하 경로의 증거일 뿐 792ms 지연의 단독 원인 증명은 아니다.
+
+지원 실행기에서 정상 HTTP 접근 로그와 localhost WebSocket per-message 압축을 끄고, E06의
+구현 지문에 설치 런처와 LIVE-safe 연구 제어 소스를 포함했다. 전략 신호·비용·bid/ask 체결,
+수량·위험·TP1·TP2·SL과 종료 규칙은 바꾸지 않았다. source commit과 GitHub main,
+불변 설치 release는 모두 `baf43d056b1852d49cea2ad44258d41011fde6fd`로 일치한다.
+LaunchAgent는 PID 30211, running, `never exited` 상태에서 같은 Run
+`run-2b7135a972dd`를 복구했다.
+
+실제 브라우저 한 화면과 추가 읽기 전용 WebSocket 세 화면을 동시에 연결했다. 추가 세 화면은
+각각 900초 동안 879개 상태를 받았고 각 연결에서 공개시장 event가 70,058건 전진했다. 세
+연결 모두 WebSocket 협상 확장과 `Sec-WebSocket-Extensions` 응답이 없었다. 실제 브라우저는
+계획회전 뒤에도 `작동 중`, `PAPER · 실제 주문 0`, `화면 연결됨`을 유지했다.
+
+설치 서비스의 1,050.016초·522표본 관찰은 `PASS`했다. event +81,431,
+전략평가 +280,140이 전진했고 계획회전 1회와 reconnect 1회가 정확히 일치했다. 최대 queue는
+19/4096, 처리 p95 67.682ms, 실제 체결입력 p95 92.143ms, 최대 event-loop 지연 291ms,
+메모리 증가 27.781MB였다. 비계획 reconnect, sequence gap, resync, drop, persistence fault,
+buffer drop과 신규 500ms 초과 지연은 모두 0이었다.
+
+같은 구간의 적격신호, 진행 포지션과 신규 완료거래는 모두 0이었다. 따라서 완료행이 늘지 않은
+원인은 최신화 정지가 아니라 비용·호가·전략 조건을 통과한 새 자연신호가 없었기 때문이다.
+현재 Run·현재 버전 API와 실제 브라우저는 모두 33건, 현재 Run 모든 버전은 128건, 전체 보관
+이력은 853건으로 일치했다. 현재 범위 API 응답은 관측 0.012417초였다. 브라우저 5초 자동
+확인은 01:06:55→01:07:05 KST, 첫 수동 확인은 01:07:06 KST로 전진했고, 계획회전 뒤
+01:26:24 KST, 관찰 종료 후 다시 누른 수동 확인은 01:26:59 KST로 전진했다. 마지막에도
+진행 0건·완료 33건이었다.
+
+최신 ZECUSDT STRESS 거래의 다시보기도 실제로 조작했다. 진입 799.99, TP1 792.208,
+TP2 779.515, SL 806.395, 실제 종료 802.65, 보유 222.462초, 비용 0.7962 USDT,
+순손익 -1.897431552 USDT와 저장 이벤트 로드를 확인했다. 자연 공개시장 구간에는 비영 진행
+포지션이 없어 실제 화면의 open-to-close 전환은 `NOT_OBSERVED`다. 대신 backend 회귀는 같은
+PAPER 기회의 진행 3→1→0과 완료 0→2→3 전환을 활성 원장 전체 재스캔 없이 검증한다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 설치·GitHub 일치 | `PASS` | source = origin/main = release `baf43d056...`, same Run, release isolated |
+| 거래기록 자동·수동 최신화 | `PASS` | 브라우저 33 = API 33, 자동·수동 확인 시각 전진, 최신 행 일치 |
+| 진행·완료 상태 | `PASS_WITH_NO_NATURAL_ENTRY` | 적격신호 0·진행 0·신규 완료 0, event·전략평가는 계속 전진 |
+| 다시보기 | `PASS` | 실제 ZEC 진입·TP1·TP2·SL·종료·비용·순손익 직접 조작 |
+| 네 화면 WebSocket | `PASS_SHORT_SCOPE` | 총 4화면, 추가 3화면 각 900초·879상태·event +70,058, 압축 협상 0 |
+| 계획회전 포함 런타임 | `PASS_PLANNED_ROTATION_MULTI_CLIENT` | 1,050.016초, event +81,431·평가 +280,140, 계획 1 = reconnect 1 |
+| 오류·성능 안전 | `PASS_SHORT_SCOPE` | queue 최대 19, 처리 p95 67.682ms, 체결 p95 92.143ms, loop 최대 291ms·500ms 초과 0 |
+| PAPER 안전 | `PASS` | 실제 주문·private API·인증·API Key·wallet 0 |
+| 전체 회귀 | `PASS` | backend 757, frontend 79, Ruff·mypy·ESLint·TypeScript·build·security·repository hygiene·responsive Playwright PASS |
+| 자연 진행→종료 화면 | `NOT_OBSERVED` | 관찰 구간 자연 적격신호 0. 전략 기준 완화 없음 |
+| 6시간·24시간 | `NOT_RUN` | 실제 경과시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 30개 고유 기회와 BASE/STRESS·OOS·bootstrap·DSR·PBO·forward gate 미충족 |
+
+원시 근거는 `evidence/WAVE116H_WS_COMPRESSION_RUNTIME_QA.json`,
+`evidence/WAVE116H_HISTORY_AND_WS_RUNTIME_QA.json`과
+`evidence/screenshots/WAVE116H_HISTORY_LIVE_QA.jpg`,
+`evidence/screenshots/WAVE116H_HISTORY_REPLAY_QA.jpg`,
+`evidence/screenshots/WAVE116H_HISTORY_POST_ROTATION_QA.jpg`에 보존했다. 설계 결정은
+`docs/adr/ADR-103-local-websocket-compression-and-research-infrastructure-fingerprint.md`에
+고정했다. GitHub Actions `33261920351`의 validate와 browser job은 모두 PASS했다.
+
+현 수용상태는
+`LIVE_RUNNING_HISTORY_REFRESH_PASS_WS_COMPRESSION_DISABLED_PLANNED_ROTATION_MULTI_CLIENT_PASS_NATURAL_POSITION_NOT_OBSERVED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

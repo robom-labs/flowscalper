@@ -759,3 +759,28 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
    lag timestamp is not a new replay-window incident.
 8. Do not restart the heavy replay until an implementation, parameter or dataset change creates a new
    trial fingerprint. Keep partial performance unpublished and profitability `NOT_PROVEN`.
+
+## Local WebSocket and installed history verification Wave 116H
+
+1. Treat a new event-loop incident without archive replay as evidence that research is not the sole
+   proven cause. Preserve timing correlation as `NOT_PROVEN_TIMING_CORRELATION_ONLY`.
+2. Measure the real WebSocket payload and negotiated extensions with the actual browser and multiple
+   read-only clients before changing transport behavior.
+3. Disable per-message compression only in the supported localhost launcher. Preserve the shared
+   one-second dashboard snapshot, strategy semantics, costs, bid/ask fills, risk, TP1, TP2 and SL.
+4. Bind the E06 implementation fingerprint to runtime and research-infrastructure source as well as
+   strategy/replay source. Keep parameter, dataset and cost fingerprints independently auditable.
+5. Deploy only the committed immutable release and recover the same Run. Confirm LIVE public data,
+   PAPER execution, isolated release, zero actual orders and zero authentication.
+6. Hold four local dashboard clients through at least one planned public-market rotation. Require all
+   clients to receive advancing state with no WebSocket compression negotiation.
+7. Run a bounded post-deploy observer across the same rotation. Require event and strategy evaluation
+   progress, bounded queue and lag, zero new 500ms event-loop delay, unplanned reconnect, gap, resync,
+   drop, persistence fault and buffer drop.
+8. Recheck current-version, current-Run all-version and all-Run history counts through the API. Exercise
+   five-second automatic refresh and `지금 새로고침` in the actual browser after the rotation.
+9. Do not classify an unchanged completed-row count as a refresh defect when qualified signals, open
+   positions and completed trades all remain unchanged while market events and evaluations advance.
+10. Keep natural nonzero open-to-close visibility `NOT_OBSERVED` until it occurs. Deterministic lifecycle
+    tests supplement but do not replace natural evidence. Keep 6h·24h `NOT_RUN`, profitability
+    `NOT_PROVEN` and real-money readiness `NOT_READY` until their independent gates pass.
