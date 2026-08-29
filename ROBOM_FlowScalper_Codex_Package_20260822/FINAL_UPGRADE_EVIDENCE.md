@@ -3423,3 +3423,75 @@ BASE·STRESS·Validation·walk-forward·multiple-testing을 함께 판정한다.
 기계판독 시점 증거는 `evidence/WAVE116E_LIVE_ACTIVITY_AND_BEGINNER_VISIBILITY_QA.json`이다.
 현재 수용상태는
 `LIVE_RUNNING_HISTORY_LIFECYCLE_REGRESSION_PASS_UI_NOT_INSTALLED_E06_IN_PROGRESS_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 82. Wave 116F 거래 수명주기 실제 설치·브라우저·원장 증거
+
+기록 최신화 개선이 source와 GitHub에는 있었지만 실제 8870 서비스에는 아직 설치되지 않은 차이를
+확인했다. E06 연구 작업이 안전중단된 뒤 불변 release
+`ce5b6499844bd0b4cb48e14789c3ab5f1f45d186`을 설치했고 LaunchAgent
+`kr.robom.flowscalper`는 PID 22977, `running`, `never exited` 상태로 같은 Run
+`run-2b7135a972dd`를 복구했다. 설치 뒤 `RUNNING`, 공개시장 `LIVE`, 내부 `PAPER`,
+신규 PAPER 진입 활성, 진입잠금 false, consumer·supervisor true, 실제 주문·인증 false를
+확인했다.
+
+8초 두 시점에서 event는 42,253에서 42,848로 595건, 전략 평가는 128,196에서
+130,080으로 1,884건 전진했다. queue는 0, 실행경로 p95는 28.023→27.715ms,
+실제 체결 입력 p95는 71.231→70.198ms였으며 비계획 재연결·gap·resync·drop·저장결함·
+buffer drop은 모두 0이었다. 같은 구간의 적격신호와 진행 포지션은 0건이었다. 따라서 새 완료
+행이 생기지 않은 직접 원인은 기록 화면 정지가 아니라 새 자연 진입·종료가 없었던 것이다.
+진입 기준은 낮추지 않았다.
+
+현재 전략 버전 기록은 API와 실제 브라우저가 모두 33건으로 일치했다. BASE 17건·STRESS
+16건이고 보유시간 104~901초, 1~3초 거래는 0건이다. 현재 Run의 모든 버전을 query-only
+인덱스 조회한 활성 원장은 공동계좌 1건·전략별계좌 127건으로 합계 128건이었고 같은 API도
+128건이었다. 모든 Run·모든 버전은 API와 브라우저가 모두 853건이며 공동 63건·전략별
+790건, 현재 버전 33건·과거 버전 820건이다. 4.2GB 활성 writer에 대한 full
+`quick_check`는 안전경계상 실행하지 않아 `NOT_RUN`으로 남겼다.
+
+실제 설치 브라우저에서 거래기록 화면을 직접 조작했다. 진행 포지션은 `0건`, 현재 범위는
+`33건 · 공동 0건 · 전략별 33건`으로 표시됐다. `지금 새로고침`을 눌러 마지막 확인 시각과
+33행이 유지·갱신되는 것을 확인했고, 별도 6.2초 관찰에서는 마지막 확인이 00:04:19에서
+00:04:24 KST로 전진해 5초 자동 확인을 검증했다. 공동 필터 0건, 전략별 33건, 전체 33건,
+모든 Run·과거버전 포함 853건, 현재 범위 복귀 33건을 차례로 확인했다. desktop 1440×900,
+tablet 1024×768, phone 390×844에서 진행건수·새로고침·세 필터와 거래행이 유지됐고
+console 오류는 0이었다.
+
+최신 ZECUSDT 거래의 집중 재생도 다시 열었다. `진입`을 눌렀을 때 SHORT PAPER 진입,
+entry 799.99, TP1 792.208, TP2 779.515, SL 806.395가 표시됐고 `실제 종료`를
+눌렀을 때 종료 802.65, 222초 보유, 순손익 -1.897 USDT와 거래 종료 상태가 표시됐다.
+현재 QA 구간에는 자연 진행 포지션이 0건이어서 실제 공개시장 비영(非零) 진행건수 화면은
+`NOT_OBSERVED`다. 대신 backend 회귀가 같은 기회의 공동·BASE·STRESS 3개 포지션을 열고
+부분 종료 시 진행 1·완료 2, 전부 종료 시 진행 0·완료 3으로 즉시 전환하는 계약을 대형 원장
+재스캔 없이 검증했고, frontend도 진행건수·수동 새로고침·5초 자동 확인을 검증했다.
+
+E06 비용포함 후보 계산은 5,134.8초 동안 LIVE event 383,584건이 전진했지만 신규
+500ms 초과 event-loop 지연 1회를 감지해 `ABORTED_RUNTIME_SAFETY`로 종료됐다. child는
+SIGTERM으로 정리했고 부분 성과 파일은 발행하지 않았으며 append-only 시험 이력은 보존했다.
+같은 구현·파라미터·데이터의 무변경 재시도는 하지 않는다. 이 중단은 수익성 증거가 아니며
+현재 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 설치 서비스 작동 | `PASS` | same Run, event +595·전략평가 +1,884, queue 0, consumer·supervisor true |
+| PAPER 안전 | `PASS` | 실제 주문·private API·인증·wallet·runtime AI 주문판단 0 |
+| 현재버전 거래기록 | `PASS` | API 33 = 브라우저 33, BASE 17·STRESS 16, 1~3초 거래 0 |
+| 현재 Run 원장 일치 | `PASS_INDEXED_READ_ONLY` | SQLite 공동 1 + 전략별 127 = API 128 |
+| 전체 보관 기록 | `PASS` | API 853 = 브라우저 853, 과거 버전 820 보존 |
+| 수동·자동 최신화 | `PASS` | 수동 버튼 직접 클릭, 5초 자동 확인 00:04:19→00:04:24 KST |
+| 필터 | `PASS` | 공동 0·전략별 33·전체 33·모든 이력 853·현재 복귀 33 |
+| 실제 replay | `PASS` | ZEC 진입·TP1·TP2·SL·실제 종료·순손익 직접 조작 확인 |
+| 반응형·console | `PASS` | desktop·tablet·phone 핵심 제어 유지, 오류 0 |
+| 자연 진행 포지션 비영 화면 | `NOT_OBSERVED` | QA 구간 적격신호 0·진행 포지션 0. 신호 기준 완화 없음 |
+| backend 수명주기 회귀 | `PASS` | 표적 2건 최초 1.15초·최종 재실행 5.65초, 진행 3→1→0·완료 0→2→3, 원장 재스캔 없음 |
+| frontend 회귀 | `PASS` | Vitest 15 files·79건 최초 7.16초·최종 재실행 4.74초 |
+| E06 후보 계산 | `ABORTED_RUNTIME_SAFETY` | 5,134.8초 뒤 loop 500ms 초과 1회, 결과 미발행·이력 보존 |
+| 6시간·24시간 | `NOT_RUN` | 설치 뒤 실제 경과시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 30개 고유 기회와 BASE/STRESS·OOS·bootstrap·DSR·PBO·forward gate 미충족 |
+
+기계판독 증거는 `evidence/WAVE116F_HISTORY_LIFECYCLE_LIVE_QA.json`이다. 실제 화면은
+`evidence/screenshots/WAVE116F_HISTORY_DESKTOP_QA.jpg`,
+`evidence/screenshots/WAVE116F_HISTORY_LIFECYCLE_LIVE_QA.jpg`와
+`evidence/screenshots/WAVE116F_HISTORY_REPLAY_EXIT_QA.jpg`에 보존했다.
+
+현 수용상태는
+`LIVE_RUNNING_HISTORY_LIFECYCLE_INSTALLED_BROWSER_PASS_E06_ABORTED_RUNTIME_SAFETY_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

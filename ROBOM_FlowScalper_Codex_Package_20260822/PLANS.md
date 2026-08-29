@@ -402,3 +402,21 @@ Wave 95 코드·문서·기계판독 증거는 GitHub main `3c5e4a9fc8cdeb8e7ae1
 Wave 96 코드·문서·기계판독 증거는 GitHub main `fa8fc09f47d7530beae774ae198c93e756b0c232`에 동기화했고 Actions `33059333016`의 validate 1분 15초, browser 1분 23초와 브라우저 증거 업로드가 모두 PASS했다.
 
 Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `33071478970`이 PASS했다. 문서·원시 관찰·실제 브라우저 증거는 GitHub main 증거 커밋 `fa8f526a3f6c84de0c6f78abc3b937b552ad0300`에 동기화했고 그 커밋의 validate 1분 10초·browser 1분 42초와 증거 업로드도 Actions `33075575481`에서 모두 PASS했다.
+
+## Wave 116F 거래 수명주기 설치 검증
+
+- 상태는 `COMPLETE_WITH_LIMITS`다. 기록 수명주기 source를 포함한 불변 release
+  `ce5b6499844bd0b4cb48e14789c3ab5f1f45d186`을 실제 8870 서비스에 설치했다.
+- 현재 Run의 현재버전 33건은 API와 브라우저가 일치하고, 모든 버전 128건은 query-only
+  SQLite 공동 1건·전략별 127건과 일치한다. 모든 Run·모든 버전 853건도 API와 브라우저가
+  일치하며 과거 버전 820건을 보존한다.
+- 실제 브라우저에서 진행 포지션 0건, 수동 새로고침, 5초 자동 확인, 공동·전략별·전체·과거
+  필터와 ZECUSDT 진입·TP1·TP2·SL·실제 종료 replay를 확인했다. desktop·tablet·phone
+  console 오류는 0이다.
+- 현재 공개시장 이벤트와 전략 평가는 전진하지만 적격신호와 진행 포지션은 0이다. 따라서 새
+  거래행 부재를 최신화 오류로 분류하지 않으며 신호 기준을 낮추지 않는다.
+- E06 후보 계산은 LIVE 안전감시가 신규 500ms 초과 loop 지연 1회를 감지해 결과 미발행으로
+  중단했다. 같은 지문의 재시도 전에 원인분리와 실제 구현·파라미터·데이터 변경이 필요하다.
+- 남은 gate는 자연 비영 진행 포지션의 실제 화면 관찰, 설치 뒤 6시간·24시간, 안전한 닫힌
+  원장 전수검사와 30개 고유 기회·BASE/STRESS·OOS·bootstrap·DSR·PBO·독립 forward다.
+  수익성은 `NOT_PROVEN`, 실자금은 `NOT_READY`다.

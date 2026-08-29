@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-29T15:14:03Z",
+  "generated_at_kst": "2026-08-30T00:14:03+09:00",
+  "scope": "현재 설치 서비스의 진행 PAPER 포지션, 완료 거래 최신화, 필터, replay, 원장/API/브라우저 일치와 E06 안전중단",
+  "status": "LIVE_RUNNING_HISTORY_LIFECYCLE_INSTALLED_BROWSER_PASS_E06_ABORTED_RUNTIME_SAFETY_PROFITABILITY_NOT_PROVEN_NOT_READY",
+  "installed_runtime": {
+    "url": "http://127.0.0.1:8870/",
+    "release_commit": "ce5b6499844bd0b4cb48e14789c3ab5f1f45d186",
+    "release_isolated": true,
+    "launch_agent_label": "kr.robom.flowscalper",
+    "launch_agent_state": "running",
+    "launch_agent_pid": 22977,
+    "launch_agent_last_exit": "never exited",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "paper_entry_state": "ENTRY_ENABLED",
+    "paper_entry_revision": 16,
+    "entry_locked": false,
+    "consumer_running": true,
+    "supervisor_running": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "wallet_paths_enabled": false
+  },
+  "live_advancement_observation": {
+    "interval_seconds": 8,
+    "event_count": [
+      42253,
+      42848
+    ],
+    "event_delta": 595,
+    "strategy_evaluation_count": [
+      128196,
+      130080
+    ],
+    "strategy_evaluation_delta": 1884,
+    "qualified_signal_count": [
+      0,
+      0
+    ],
+    "focus_position_count": [
+      0,
+      0
+    ],
+    "league_position_count": [
+      0,
+      0
+    ],
+    "queue_depth": [
+      0,
+      0
+    ],
+    "lag_p95_ms": [
+      28.023193359375,
+      27.71533203125
+    ],
+    "trade_lag_p95_ms": [
+      71.231201171875,
+      70.197509765625
+    ],
+    "wide_lag_p95_ms": [
+      1614.578125,
+      1614.578125
+    ],
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "diagnosis": "공개시장 이벤트와 11개 전략 평가는 계속 전진했다. 현재 새 적격신호와 진행 포지션이 0이므로 완료 기록 수가 늘지 않은 직접 원인은 최신화 정지가 아니라 새 거래 부재다.",
+    "signal_thresholds_lowered": false
+  },
+  "history_api_and_ledger_parity": {
+    "current_strategy_version": {
+      "api_rows": 33,
+      "browser_rows": 33,
+      "main_rows": 0,
+      "league_rows": 33,
+      "base_rows": 17,
+      "stress_rows": 16,
+      "minimum_holding_seconds": 104,
+      "maximum_holding_seconds": 901,
+      "one_to_three_second_rows": 0,
+      "exit_reasons": {
+        "EDGE_DECAY": 14,
+        "MAX_HOLD": 15,
+        "PROFIT_PROTECTION": 4
+      }
+    },
+    "current_run_all_versions": {
+      "api_rows": 128,
+      "sqlite_query_only_rows": 128,
+      "sqlite_main_rows": 1,
+      "sqlite_league_rows": 127,
+      "sqlite_main_latest_exit_ts_ms": 1787701484348,
+      "sqlite_league_latest_exit_ts_ms": 1787982045814,
+      "parity": "PASS"
+    },
+    "all_runs_all_versions": {
+      "api_rows": 853,
+      "browser_rows": 853,
+      "main_rows": 63,
+      "league_rows": 790,
+      "current_version_rows": 33,
+      "older_version_rows": 820,
+      "parity": "PASS"
+    },
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "active_ledger_full_quick_check": "NOT_RUN_LIVE_4_2GB_WRITER_SAFETY_BOUNDARY"
+  },
+  "actual_browser_history_lifecycle": {
+    "status": "PASS_WITH_NATURAL_OPEN_POSITION_NOT_OBSERVED",
+    "release_commit": "ce5b6499844bd0b4cb48e14789c3ab5f1f45d186",
+    "open_position_banner": "현재 진행 중인 모의 포지션 0건",
+    "current_scope_status": "현재 조건 33건 · 공동 0건 · 전략별 33건",
+    "manual_refresh": {
+      "button": "지금 새로고침",
+      "click": "PASS",
+      "before_last_check_kst": "00:03:49",
+      "after_last_check_kst": "00:04:09",
+      "rows_after": 33
+    },
+    "automatic_refresh": {
+      "interval_seconds": 5,
+      "before_last_check_kst": "00:04:19",
+      "after_last_check_kst": "00:04:24",
+      "rows_after": 33,
+      "status": "PASS"
+    },
+    "account_filters": {
+      "MAIN": {
+        "rows": 0,
+        "status": "현재 조건 0건 · 공동 0건 · 전략별 0건 · 과거 버전 53건은 안전하게 보관 중"
+      },
+      "LEAGUE": {
+        "rows": 33,
+        "status": "현재 조건 33건 · 공동 0건 · 전략별 33건"
+      },
+      "ALL": {
+        "rows": 33,
+        "status": "현재 조건 33건 · 공동 0건 · 전략별 33건"
+      }
+    },
+    "all_history_filter": {
+      "rows": 853,
+      "status": "현재 조건 853건 · 공동 63건 · 전략별 790건 · 과거 버전 820건은 안전하게 보관 중",
+      "reset_to_current_rows": 33
+    },
+    "responsive": {
+      "desktop_1440x900": "PASS",
+      "tablet_1024x768": {
+        "rows": 33,
+        "open_position_banner": true,
+        "manual_refresh_button": true,
+        "filters": 3,
+        "console_errors": 0
+      },
+      "phone_390x844": {
+        "rows": 33,
+        "open_position_banner": true,
+        "manual_refresh_button": true,
+        "filters": 3,
+        "navigation_buttons": 6,
+        "console_errors": 0
+      }
+    },
+    "market_screen": {
+      "operation_label": "작동 중",
+      "open_positions": "보유 중 0건",
+      "paper_label": "PAPER · 실제 주문 0",
+      "console_errors": 0
+    },
+    "natural_live_public_nonzero_open_position_browser": "NOT_OBSERVED_NO_QUALIFIED_SIGNAL_DURING_QA"
+  },
+  "actual_browser_replay": {
+    "status": "PASS",
+    "symbol": "ZECUSDT",
+    "timeframe": "3m",
+    "side": "SHORT",
+    "entry": 799.99,
+    "take_profit_1": 792.208,
+    "take_profit_2": 779.515,
+    "stop": 806.395,
+    "actual_exit": 802.65,
+    "net_pnl_usdt": -1.897,
+    "holding_seconds": 222,
+    "entry_jump": "PASS_PAPER_ENTRY_IN_PROGRESS",
+    "actual_exit_jump": "PASS_PAPER_TRADE_CLOSED",
+    "console_errors": 0
+  },
+  "source_and_regression": {
+    "history_page": "frontend/src/pages/HistoryPage.tsx",
+    "app_open_position_source": "frontend/src/App.tsx",
+    "backend_history_cache": "backend/app/runtime.py",
+    "backend_tests": [
+      "backend/tests/test_v02_storage_market_replay.py::test_live_history_uses_warmed_trade_cache_without_rescanning_active_ledger",
+      "backend/tests/test_v02_storage_market_replay.py::test_live_position_moves_to_completed_history_without_waiting_for_ledger_rescan"
+    ],
+    "backend_targeted_result": "PASS_2_INITIAL_1_15S_RERUN_5_65S",
+    "frontend_test": "frontend/tests/HistoryPage.test.tsx",
+    "frontend_result": "PASS_15_FILES_79_TESTS_INITIAL_7_16S_RERUN_4_74S",
+    "lifecycle_contract": "OPEN_3_TO_PARTIAL_CLOSE_OPEN_1_COMPLETED_2_TO_FULL_CLOSE_OPEN_0_COMPLETED_3_WITHOUT_ACTIVE_LEDGER_RESCAN",
+    "installed_fix_source_commit": "a067a832370b51858ce732986adb425a20d680a0",
+    "installed_release_commit": "ce5b6499844bd0b4cb48e14789c3ab5f1f45d186"
+  },
+  "e06_cost_covered_screening": {
+    "status": "ABORTED_RUNTIME_SAFETY",
+    "guard_evidence": "evidence/WAVE116D_E06_COST_COVERED_SCREENING_LIVE_GUARD.json",
+    "duration_seconds": 5134.8,
+    "error": "EVENT_LOOP_LAG_OVER_500MS",
+    "event_delta": 383584,
+    "event_loop_lag_over_500ms_delta": 1,
+    "maximum_lag_p95_ms": 90.265625,
+    "maximum_queue_depth": 31,
+    "child_return_code": -15,
+    "terminated_by_guard": true,
+    "partial_output_published": false,
+    "trial_history_preserved": true,
+    "unchanged_retry_allowed": false,
+    "profitability": "NOT_PROVEN"
+  },
+  "screenshots": [
+    {
+      "path": "evidence/screenshots/WAVE116F_HISTORY_DESKTOP_QA.jpg",
+      "sha256": "7d9ef1847d248dbeb534a77fdd466e341a40fc5439f9e6a292911f9018432fa4",
+      "dimensions": "1440x900",
+      "shows": "진행 포지션 0건, 5초 자동 확인, 수동 새로고침, 현재버전 33건과 거래행"
+    },
+    {
+      "path": "evidence/screenshots/WAVE116F_HISTORY_LIFECYCLE_LIVE_QA.jpg",
+      "sha256": "4efbf9a67991a65847602e22f13f49b0ff409c316ef93a1105587701927212ff",
+      "dimensions": "415x734",
+      "shows": "모바일 거래기록 진행건수와 최신화 제어"
+    },
+    {
+      "path": "evidence/screenshots/WAVE116F_HISTORY_REPLAY_EXIT_QA.jpg",
+      "sha256": "8d0e972f30c47a3acef513b3aa7227280724a045fa58fa359f8d5445836a9cd6",
+      "dimensions": "415x734",
+      "shows": "ZECUSDT replay의 진입, TP1, TP2, SL, 실제 종료와 순손익"
+    }
+  ],
+  "evidence_boundaries": {
+    "history_refresh_defect_after_install": "NOT_REPRODUCED",
+    "natural_live_public_new_trade_during_qa": "NOT_OBSERVED",
+    "natural_live_public_nonzero_open_position_browser": "NOT_OBSERVED",
+    "six_hour_post_install": "NOT_RUN",
+    "twenty_four_hour_post_install": "NOT_RUN",
+    "active_ledger_full_integrity": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_ready": "NOT_READY"
+  }
+}

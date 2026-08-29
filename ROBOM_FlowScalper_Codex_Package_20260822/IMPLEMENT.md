@@ -718,3 +718,24 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Do not salvage partial Run 7 data from a 13-Run safety abort. Baseline and candidate must restart from the same committed implementation and complete all frozen Runs.
 9. Do not overlap the new baseline with build, tests, ledger inspection, another replay or deployment. Monitor LIVE event progress and every safety counter while it runs.
 10. A completed comparison is still `NOT_PROVEN` until the 30-opportunity, cost, OOS, bootstrap, DSR, PBO, drawdown, concentration and independent forward gates pass.
+
+## Installed history lifecycle verification Wave 116F
+
+1. Verify the physical release commit, LaunchAgent, current Run, operation state, PAPER intent,
+   consumer, supervisor, entry lock, actual-order and auth flags before interpreting an empty history.
+2. Observe event and strategy-evaluation counters at two times. Classify an unchanged completed-row
+   count as a refresh defect only when eligible position closure or ledger advancement occurred.
+3. Compare the current-version history across API and actual browser, then compare the current Run's
+   all-version API count with indexed query-only `trades` and `shadow_trades` counts. Do not run a
+   full integrity scan on the active multi-gigabyte writer.
+4. Exercise the actual history page's manual refresh, 5-second automatic refresh, MAIN, LEAGUE, ALL,
+   all-Run and all-version filters, then restore the current Run/current version/default account scope.
+5. Exercise one completed PAPER trade replay through entry and actual close and verify entry, TP1,
+   TP2, SL, exit, holding time, costs and net result on the chart.
+6. Validate desktop, tablet and phone controls and console errors. Preserve screenshots and hashes in
+   machine-readable evidence.
+7. A deterministic open-to-partial-close-to-all-closed regression can prove lifecycle wiring, but a
+   nonzero natural LIVE_PUBLIC position on the installed browser remains `NOT_OBSERVED` until it
+   actually occurs.
+8. If a research replay trips a LIVE runtime safety gate, terminate the child, publish no partial
+   performance result, preserve append-only trial history and do not retry the identical fingerprint.
