@@ -18,7 +18,7 @@ Accepted. 다만 전체 13-Run 재검증이 실제 LIVE 안전감시를 끝까�
 1. archive byte 검증은 1MiB 단위로 읽는다.
 2. 각 읽기 전에 활성 PAPER 원장의 I/O priority 공유 잠금을 잡고, 1MiB 읽기 직후 잠금을 해제한다. LIVE 영속화는 같은 잠금의 배타 구간을 사용하므로 원장 쓰기가 우선된다.
 3. 잠금을 해제한 뒤 CPU 협조 예산과 16MiB/s 목표 읽기 예산을 적용한다. 대기 중 공유 잠금을 유지하지 않는다.
-4. Run 범위·건수는 DuckDB 전체 집계 대신 Parquet row-group metadata로 검증한다. metadata 통계가 없는 파일만 필요한 열을 읽는다. 종목 집합은 작은 `symbol` 열만 읽어 재검증한다.
+4. Run 범위·건수는 DuckDB 전체 집계 대신 Parquet row-group metadata로 검증한다. metadata 통계가 없는 파일만 필요한 열을 읽는다. 종목 집합은 기존 DuckDB hive partition 계약과 같게 `symbol=` partition에서 읽고, partition이 없는 테스트·이전 파일만 작은 `symbol` 열을 읽는다.
 5. 자식 stdout에 `ARCHIVE_BYTE_VERIFICATION_STARTED`, `ARCHIVE_BYTE_VERIFICATION_COMPLETED`, `PAPER_STRATEGY_REPLAY_STARTED`, `PAPER_STRATEGY_REPLAY_COMPLETED`, `RESULT_WRITTEN` 단계를 한 줄 JSON으로 남긴다. 안전 중단 제어 증거는 stdout tail로 마지막 단계를 보존한다.
 6. LIVE-safe 전체 실행은 활성 원장 경로를 찾지 못하면 시작하지 않는다. 이 경계는 실제 주문이나 private API를 추가하지 않는다.
 7. 같은 연구 가설·파라미터·데이터의 안전 중단 재시도는 구현 지문이 달라졌을 때만 허용한다. 안전 중단 기록은 append-only 이력에 보존한다.

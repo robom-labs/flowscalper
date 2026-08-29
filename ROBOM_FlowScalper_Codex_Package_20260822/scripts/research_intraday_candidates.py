@@ -876,6 +876,14 @@ def _dataset_slice(
     end_ts_ms: int | None = None
     for path in files:
         relative = path.relative_to(run_dir).as_posix()
+        partition_symbol = next(
+            (
+                part.name.partition("=")[2]
+                for part in path.parents
+                if part != run_dir and part.name.startswith("symbol=")
+            ),
+            None,
+        )
         digest.update(relative.encode())
         digest.update(str(path.stat().st_size).encode())
         with path.open("rb") as stream:
@@ -906,16 +914,21 @@ def _dataset_slice(
                     metadata_bounds_complete = False
                     break
                 metadata_bounds.append((int(statistics.min), int(statistics.max)))
-            columns = ["symbol"]
+            columns = [] if partition_symbol is not None else ["symbol"]
             if not metadata_bounds_complete:
                 columns.append("venue_ts_ms")
-            table = parquet.read(columns=columns, use_threads=False)
+            table = parquet.read(columns=columns, use_threads=False) if columns else None
 
-        symbols.update(str(value) for value in table.column("symbol").to_pylist())
+        if partition_symbol is not None:
+            symbols.add(partition_symbol)
+        elif table is not None:
+            symbols.update(str(value) for value in table.column("symbol").to_pylist())
         if metadata_bounds_complete and metadata_bounds:
             file_start_ts_ms = min(lower for lower, _ in metadata_bounds)
             file_end_ts_ms = max(upper for _, upper in metadata_bounds)
         else:
+            if table is None:
+                raise ValueError(f"시장 archive timestamp 열을 읽지 못했습니다: {path}")
             timestamps = [int(value) for value in table.column("venue_ts_ms").to_pylist()]
             if not timestamps:
                 continue
