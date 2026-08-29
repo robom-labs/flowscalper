@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "status": "PRE_REGISTERED_NOT_RUN",
+  "hypothesis_id": "HYP-W105-VWAP-FULL-CONFLUENCE-PERSISTENCE-V1",
+  "baseline": {
+    "git_commit": "ff2f5e0cde45e069969e96387b09ac96529a0a40",
+    "release_commit": "0f09703ea973361c3f8d1c52c55dd0437d671f6f",
+    "run_id": "run-2b7135a972dd",
+    "strategy_revision": "2026-08-28-wave102",
+    "current_version_live_public_trade_count": 27,
+    "current_version_net_win_count": 3,
+    "current_version_hold_le_15_seconds": 0,
+    "current_version_net_pnl_usdt": "-40.5326140660"
+  },
+  "candidate": {
+    "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+    "change": "ACCUMULATE_300MS_ONLY_WHILE_ALL_EXISTING_ENTRY_CONDITIONS_ARE_TRUE",
+    "thresholds_changed": false,
+    "costs_changed": false,
+    "position_management_changed": false,
+    "registry_mode_changed": false
+  },
+  "frozen_evaluation": {
+    "baseline_evidence": "evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json",
+    "runner": "scripts/research_strategy_revision.py",
+    "horizon_seconds": [15, 30, 60, 180],
+    "base_cost_bps": 13,
+    "stress_cost_bps": 25,
+    "splits": ["train", "validation", "oos"],
+    "same_13_run_checksums_required": true,
+    "result_seen_before_registration": false
+  },
+  "gates": {
+    "first_full_confluence_snapshot_must_still_reject": true,
+    "full_confluence_300ms_must_qualify": true,
+    "signal_count_must_not_increase_per_split_horizon": true,
+    "comparable_oos_cost_after_expectancy_must_not_worsen": true,
+    "minimum_live_public_trades_before_ranking": 30,
+    "profitability_claim_allowed": false,
+    "deployment_before_wave104_six_hour_observation": false
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "runtime_ai_order_decision": false
+  }
+}

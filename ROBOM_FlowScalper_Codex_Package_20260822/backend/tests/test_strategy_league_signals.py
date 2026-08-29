@@ -23,6 +23,7 @@ from backend.app.strategies import (
     OfiReturnConfluenceStrategy,
     QueueMicropriceContext,
     QueueMicropriceStrategy,
+    VwapExhaustionStrategy,
 )
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
@@ -96,6 +97,45 @@ def test_runtime_reuses_four_side_and_exit_style_plans(monkeypatch) -> None:
     assert len(rows) == 12
     assert len(calls) == 4
     assert len(set(calls)) == 4
+
+
+def test_vwap_reentry_confirmation_requires_every_entry_condition_to_persist() -> None:
+    strategy_id = VwapExhaustionStrategy.strategy_id
+    evaluator = StrategySignalEvaluator()
+    registry = only_strategy(strategy_id)
+    for index, (signed, deviation_bps) in enumerate(
+        ((100, 1), (110, 2), (120, 3), (130, 4), (140, 5)),
+        start=1,
+    ):
+        weak = replace(
+            aligned_features(Side.LONG, ts_ms=index * 200, signed=signed),
+            micro_vwap_10s=100 + deviation_bps / 100,
+            ofi_3s=3.0,
+            price_response_efficiency=0.80,
+        )
+        evaluator.evaluate(registry, weak, Regime.RANGE)
+
+    full_confluence = replace(
+        aligned_features(Side.LONG, ts_ms=1_500, signed=1_000),
+        micro_vwap_10s=100.10,
+        ofi_250ms=2.0,
+        ofi_3s=-3.0,
+        refill_ratio=0.70,
+        price_response_efficiency=0.10,
+    )
+    first_full = evaluator.evaluate(registry, full_confluence, Regime.RANGE)
+    persisted = evaluator.evaluate(
+        registry,
+        replace(full_confluence, ts_ms=1_800, signed_notional_3s=1_100),
+        Regime.RANGE,
+    )
+
+    assert "STRUCTURE_REENTRY_NOT_CONFIRMED" in decision_for(
+        first_full,
+        strategy_id,
+        Side.LONG,
+    ).rejection_codes
+    assert decision_for(persisted, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED
 
 
 @pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])

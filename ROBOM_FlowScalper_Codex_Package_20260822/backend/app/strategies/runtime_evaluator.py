@@ -334,6 +334,22 @@ class StrategySignalEvaluator:
                 8.0,
                 snapshot.spread_bps * 8,
             )
+            price_progress_stalled = history_statistics.price_response_percentile <= 0.30
+            opposite_depth_refilled = snapshot.refill_ratio >= 0.55
+            ofi_reversed = ofi_short > 0 and ofi_medium < 0
+            reentry_ready = (
+                snapshot.data_healthy
+                and regime is Regime.RANGE
+                and snapshot.spread_bps <= 12
+                and history_statistics.deviation_z >= 2.0
+                and excursion_valid
+                and history_statistics.flow_z >= 1.5
+                and price_progress_stalled
+                and opposite_depth_refilled
+                and ofi_reversed
+                and microprice_alignment
+                and structure_reentered
+            )
             vwap_context = VwapExhaustionContext(
                 side=side,
                 features=snapshot,
@@ -342,9 +358,9 @@ class StrategySignalEvaluator:
                 vwap_deviation_robust_z=history_statistics.deviation_z,
                 excursion_direction_valid=excursion_valid,
                 aggressive_flow_robust_z=history_statistics.flow_z,
-                price_progress_stalled=(history_statistics.price_response_percentile <= 0.30),
-                opposite_depth_refilled=snapshot.refill_ratio >= 0.55,
-                ofi_reversed=ofi_short > 0 and ofi_medium < 0,
+                price_progress_stalled=price_progress_stalled,
+                opposite_depth_refilled=opposite_depth_refilled,
+                ofi_reversed=ofi_reversed,
                 microprice_reversed=microprice_alignment,
                 structure_reentered=structure_reentered,
                 confirmation_ms=self._confirmation_ms(
@@ -352,10 +368,7 @@ class StrategySignalEvaluator:
                     snapshot.symbol,
                     side,
                     snapshot.ts_ms,
-                    aligned=snapshot.data_healthy
-                    and regime is Regime.RANGE
-                    and structure_reentered
-                    and microprice_alignment,
+                    aligned=reentry_ready,
                 ),
             )
             return evaluator.evaluate(vwap_context)
