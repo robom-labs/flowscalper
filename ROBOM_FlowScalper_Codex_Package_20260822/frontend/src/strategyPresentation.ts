@@ -4,7 +4,7 @@ import type { StrategyRow } from './types'
 export const modeLabels: Record<StrategyRow['mode'], string> = {
   ACTIVE: '공동·독립 모의 중',
   SHADOW: '독립 모의 중',
-  OFF: '꺼짐',
+  OFF: '검증 중지',
 }
 
 const fallbackLabels: Record<string, string> = {

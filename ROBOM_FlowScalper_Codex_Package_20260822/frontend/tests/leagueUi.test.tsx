@@ -172,6 +172,7 @@ test('blocks policy-retired reactivation but keeps ordinary user OFF reversible'
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
 
   expect(screen.getByRole('button', { name: 'LSA 반전 공동·독립 모의 중' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'LSA 반전 검증 중지' })).toHaveAttribute('aria-pressed', 'true')
   const reversible = screen.getByRole('button', { name: 'VWAP 소진 독립 모의 중' })
   expect(reversible).toBeEnabled()
   fireEvent.click(reversible)
@@ -187,6 +188,8 @@ test('confirms mode changes and sends the visible settings revision', async () =
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
 
+  expect(screen.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'CBR 돌파 검증 중지' })).toHaveAttribute('aria-pressed', 'false')
   fireEvent.click(screen.getByRole('button', { name: 'CBR 돌파 공동·독립 모의 중' }))
 
   await waitFor(() => expect(onConfigure).toHaveBeenCalledWith(

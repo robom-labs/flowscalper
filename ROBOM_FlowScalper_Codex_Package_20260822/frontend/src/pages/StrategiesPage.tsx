@@ -76,7 +76,7 @@ function sampleStatusLabel(sampleSize: number, status: string) {
 
 function monitorState(strategy: StrategyRow, accounts: LeagueAccount[]) {
   if (strategy.mode === 'OFF' || (!strategy.long_enabled && !strategy.short_enabled)) {
-    return { tone: 'off', label: '꺼짐', detail: '설정에서 사용하지 않음' }
+    return { tone: 'off', label: '검증 종료', detail: '비용후 결과 미달 · 과거 기록 보존' }
   }
   if (accounts.some((account) => account.faulted)) return { tone: 'fault', label: '확인 필요', detail: '전략 가상계좌 오류' }
   if (accounts.some((account) => account.paused)) return { tone: 'waiting', label: '안전 대기', detail: '새 진입만 잠시 차단' }
@@ -185,7 +185,7 @@ export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = tr
         return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}>
           <td data-label="전략"><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td>
           <td data-label="지금 상태"><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail} · {strategy.evaluated_paths}개 조건 확인</small></td>
-          <td data-label="사용 방식"><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving || (strategy.policy_reactivation_locked && mode !== 'OFF')} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.policy_reactivation_locked ? '검증 실패로 다시 켤 수 없음' : strategy.manual_lock ? '사용자가 고정함' : '검증 결과에 따라 자동 관리'}</small></td>
+          <td data-label="사용 방식"><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving || (strategy.policy_reactivation_locked && mode !== 'OFF')} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.policy_reactivation_locked ? '비용후 검증 탈락 · 기록 보존' : strategy.manual_lock ? '사용자가 고정함' : '검증 결과에 따라 자동 관리'}</small></td>
           <td data-label="거래 방향"><div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div></td>
           <td data-label="이번 실행 결과"><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>현재 자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })} · 보유 {account?.open_positions ?? 0}건</small></td>
           <td data-label="검증 결과"><strong>{analyticsReady ? sampleStatusLabel(report.sample_size, report.sample_status) : '불러오는 중'}</strong><small>{analyticsReady ? `현재 승률 ${winRate}` : '통계를 확인하고 있습니다.'}</small></td>
