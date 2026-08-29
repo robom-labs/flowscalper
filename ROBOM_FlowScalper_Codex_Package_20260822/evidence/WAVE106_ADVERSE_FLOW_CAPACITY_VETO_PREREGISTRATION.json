@@ -1,0 +1,59 @@
+{
+  "schema_version": "flowscalper-evidence-v1",
+  "wave": "WAVE106",
+  "generated_at_utc": "2026-08-29T03:53:48Z",
+  "status": "PRE_REGISTERED_NOT_RUN",
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "baseline_commit": "1ec2e59463870f2dc68c761c4cfe71cd4511fcb4",
+  "hypothesis_id": "HYP-W106-ADVERSE-FLOW-CAPACITY-VETO-V1",
+  "candidate_kind": "EXISTING_QUALIFIED_ENTRY_VETO_ONLY",
+  "fixed_contract": {
+    "train_quantile": 0.75,
+    "event_time_persistence_ms": 1000,
+    "long_adverse_pressure_to_capacity": "max(0,-signed_notional_3s)/depth_bid_10",
+    "short_adverse_pressure_to_capacity": "max(0,signed_notional_3s)/depth_ask_10",
+    "long_support_fragility": "bid_cancel_ratio_3s-bid_refill_ratio_3s",
+    "short_support_fragility": "ask_cancel_ratio_3s-ask_refill_ratio_3s",
+    "veto_logic": "BOTH_MET_CONTINUOUSLY",
+    "may_create_signals": false,
+    "may_change_direction": false,
+    "may_increase_trades": false
+  },
+  "evidence_boundary": {
+    "implementation": "NOT_RUN",
+    "frozen_13_run_replay": "NOT_RUN",
+    "deployment": "NOT_RUN",
+    "browser_verification": "NOT_RUN",
+    "independent_future_oos": "NOT_RUN",
+    "already_opened_final_oos_is_independent_for_this_hypothesis": false,
+    "future_oos_earliest_start_utc": "2026-08-29T03:53:48Z"
+  },
+  "promotion_gates": {
+    "minimum_unique_opportunities": 30,
+    "base_win_rate_minimum": 0.7,
+    "stress_win_rate_minimum": 0.7,
+    "base_expectancy_positive": true,
+    "stress_expectancy_positive": true,
+    "base_net_pnl_positive": true,
+    "stress_net_pnl_positive": true,
+    "profit_factor_minimum": 1.0,
+    "bootstrap_expectancy_lower_positive": true,
+    "dsr_minimum": 0.95,
+    "pbo_maximum": 0.2,
+    "drawdown_gate_required": true,
+    "concentration_gates_required": true,
+    "independent_live_public_shadow_required": true
+  },
+  "paper_safety": {
+    "real_orders": false,
+    "private_api": false,
+    "auth": false,
+    "api_keys": false,
+    "wallet": false
+  },
+  "notes": [
+    "This file freezes a research hypothesis; it does not record a backtest or deployment pass.",
+    "The reported 71% DeepLOB classification accuracy is explicitly not treated as a 70% cost-aware trading win rate."
+  ]
+}
