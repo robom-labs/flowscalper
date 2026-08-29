@@ -30,6 +30,14 @@ Accepted. 다만 전체 13-Run 재검증이 실제 LIVE 안전감시를 끝까�
 - 저장된 13-Run 재실행 동안 LIVE event가 전진하고 신규 500ms 초과 지연, unplanned reconnect, gap, resync, drop, persistence fault, buffer drop이 0이어야 한다.
 - 위 전체 실행을 실제로 마치지 못하면 `PASS`가 아니라 `NOT_RUN` 또는 안전 중단 상태로 기록한다.
 
+## 실제 수용 증거
+
+- `WAVE111_ALL_TP1`은 808.772초·LIVE event +52,915 뒤 신규 500ms 초과 1건을 감지해 자식을 종료하고 부분 결과를 제거했다.
+- CPU 25% 협조 예산을 추가한 `WAVE112_ALL_TP1_CPU25`도 archive 시작구간 52.953초·LIVE event +3,380 뒤 신규 500ms 초과 1건으로 같은 방식으로 중단했다. 이 결과는 전략 성과가 아니다.
+- LIVE 원장 우선 gate와 단계 로그를 추가한 첫 `WAVE113` 1-Run smoke는 신규 500ms 초과 없이 LIVE event +555를 유지했지만, hive `symbol=MULTI`와 파일 내부 개별 symbol을 다르게 해석해 manifest 대조가 실패했다. 실패 기록과 원본은 삭제하지 않았다.
+- hive partition 식별을 기존 동결 dataset 계약과 같게 고친 `WAVE113B`는 23.025초 동안 RUN-72EB83B350A7의 26,876개 archive event를 다시 검증하고 100개 event를 전 전략에 전달했다. 다섯 단계 로그가 모두 남았고 LIVE event +1,487, 최대 queue 9, 실행지연 p95 최대 29.417ms, 신규 500ms 초과·비계획 reconnect·gap·resync·drop·persistence fault·buffer drop 0으로 PASS했다.
+- 위 smoke의 전략 11개·독립계좌 22개·실제 주문 false·인증 false는 확인했지만, 전체 동결 13-Run TP1 후보 재실행은 아직 `NOT_RUN`이고 수익성은 `NOT_PROVEN`이다.
+
 ## 제외
 
 - 자연신호를 늘리기 위한 전략 기준 완화.

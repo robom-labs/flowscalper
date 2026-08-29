@@ -1,0 +1,140 @@
+{
+  "schema": "flowscalper.external_research_triage.v2",
+  "status": "PRIMARY_SOURCE_TRIAGE_COMPLETE_CANDIDATES_PREREGISTERED_NOT_PROMOTED",
+  "reviewed_at": "2026-08-29",
+  "research_boundary": {
+    "source_results_are_not_robom_results": true,
+    "abstract_or_paper_claims_are_not_profitability_proof": true,
+    "exact_source_thresholds_not_visible_are_not_invented": true,
+    "registry_strategies_added": 0,
+    "live_thresholds_changed": 0,
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "runtime_ai_order_decision": false
+  },
+  "primary_sources": [
+    {
+      "source_id": "SRC-W114-RISK-CONTROL-DURABLE-EDGE",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7345542",
+      "directly_observed_claim": "변동성 극단 구간의 진입 거부를 방향 예측이 아닌 손실 필터로 평가하고 실패 조건과 permutation 검증을 함께 제시한다.",
+      "robom_interpretation": "독립 전략을 복제하지 않고 기존 후보에 적용하는 사전등록 위험 veto로만 시험한다. 논문의 성과 수치를 ROBOM 성과로 이전하지 않는다."
+    },
+    {
+      "source_id": "SRC-W114-SLIPPAGE-AT-RISK",
+      "url": "https://arxiv.org/abs/2603.09164",
+      "directly_observed_claim": "현재 호가장을 실제로 걸어 계산한 slippage 분포의 quantile과 tail mean으로 실행 유동성 위험을 측정한다.",
+      "robom_interpretation": "현재 top-depth와 계획수량으로 계산하는 신규진입 veto 후보이며, Hyperliquid 결과가 Binance로 전이된다고 가정하지 않는다. 호가 제공자 식별자가 없어 HHI 보정은 구현 대상에서 제외한다."
+    },
+    {
+      "source_id": "SRC-W114-EXPLAINABLE-MICROSTRUCTURE",
+      "url": "https://arxiv.org/abs/2602.00776",
+      "directly_observed_claim": "OFI, spread, VWAP-mid 편차와 거래흐름의 상대적 표현이 여러 코인에서 비슷한 중요도와 비선형 포화 형태를 보였다고 보고한다.",
+      "robom_interpretation": "기존 B/F/G/I/J 피처와 중복을 먼저 측정한다. 극단 OFI를 선형으로 계속 확대하지 않고 spread가 넓은 구간의 신호 신뢰도를 낮추는 ablation 후보로만 다룬다."
+    },
+    {
+      "source_id": "SRC-W114-DIRECTIONAL-LIQUIDITY-NEGATIVE-CONTROL",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6673705",
+      "directly_observed_claim": "BTC와 ETH의 directional liquidity가 mid-price drift와 대체로 분리되어 있다고 보고한다.",
+      "robom_interpretation": "호가 비대칭만으로 새 방향 전략을 만들지 않는 음성 근거로 사용한다."
+    },
+    {
+      "source_id": "SRC-W114-AUDITABLE-DYNAMIC-ENSEMBLES",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6071928",
+      "directly_observed_claim": "compact factor pool, 엄격한 다음시점 실행, 비용·펀딩, walk-forward와 기계판독 artifact를 함께 요구한다.",
+      "robom_interpretation": "전략 복제가 아니라 dynamic trial batch와 append-only trial ledger의 연구절차 근거로 사용한다."
+    },
+    {
+      "source_id": "SRC-W114-CRYPTO-BACKTEST-OVERFIT",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7350238",
+      "directly_observed_claim": "full-sample·무비용 평가가 nested walk-forward·명시 비용·Deflated Sharpe보다 Sharpe를 크게 부풀릴 수 있다고 보고한다.",
+      "robom_interpretation": "시도 수를 숨기지 않고 DSR·PBO·시간순 OOS를 통과하기 전 높은 승률을 채택하지 않는 기존 회귀계약을 유지한다."
+    },
+    {
+      "source_id": "SRC-W114-MASSIVE-SEARCH-NULL-TRANSFER",
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7085378",
+      "directly_observed_claim": "대규모 과거 탐색의 선택 성과가 독립 forward 구간으로 거의 전이되지 않는 음성 결과를 보고한다.",
+      "robom_interpretation": "전략 수를 빨리 늘리는 것보다 동일 입력 one-pass·사전등록·봉인 OOS·독립 forward를 우선한다."
+    }
+  ],
+  "preregistered_candidates": [
+    {
+      "hypothesis_id": "HYP-W114-VOLATILITY-EXTREME-ENTRY-REFUSAL-V1",
+      "candidate_kind": "SHARED_ENTRY_RISK_VETO",
+      "status": "PREREGISTERED_OFFLINE_ONLY",
+      "source_id": "SRC-W114-RISK-CONTROL-DURABLE-EDGE",
+      "project_authored_parameter_grid_not_source_threshold": {
+        "completed_hourly_bollinger_z_abs_minimum": [
+          2.0,
+          2.5,
+          3.0
+        ],
+        "parameter_variant_count": 3
+      },
+      "no_lookahead": "직전 완성 1시간봉까지만 사용",
+      "comparison": "같은 고유 후보의 gate 전후를 BASE와 STRESS에서 비교",
+      "minimum_unique_oos_opportunities": 30,
+      "can_change_live_registry": false,
+      "can_weaken_entry_thresholds": false
+    },
+    {
+      "hypothesis_id": "HYP-W114-CROSS_SECTIONAL_SAR_ENTRY_VETO_V1",
+      "candidate_kind": "SHARED_EXECUTION_LIQUIDITY_VETO",
+      "status": "PREREGISTERED_DATA_CONTRACT_REQUIRED",
+      "source_id": "SRC-W114-SLIPPAGE-AT-RISK",
+      "project_authored_parameter_grid_not_source_threshold": {
+        "cross_sectional_tail_quantile": [
+          0.9,
+          0.95
+        ],
+        "parameter_variant_count": 2
+      },
+      "planned_quantity_book_walk_required": true,
+      "minimum_simultaneous_deep_symbols": 8,
+      "liquidity_provider_hhi_available": false,
+      "minimum_unique_oos_opportunities": 30,
+      "can_change_live_registry": false,
+      "can_reduce_execution_costs": false
+    },
+    {
+      "hypothesis_id": "HYP-W114-ABSORPTION-CAPACITY-CONFIRMATION-V1",
+      "candidate_kind": "AGGRESSOR_FLOW_CONFIRMATION_ABLATION",
+      "status": "DEFERRED_EVENT_LINKAGE_REQUIRED",
+      "source_id": "SRC-W114-EXPLAINABLE-MICROSTRUCTURE",
+      "requires_pretrade_depth_to_trade_impact_linkage": true,
+      "existing_feature_overlap_must_be_measured": true,
+      "can_change_live_registry": false
+    }
+  ],
+  "rejected_or_deferred_before_compute": [
+    {
+      "hypothesis_id": "HYP-W114-DIRECTIONAL-LIQUIDITY-STANDALONE-V1",
+      "status": "REJECTED_NEGATIVE_DIRECTIONAL_EVIDENCE",
+      "source_id": "SRC-W114-DIRECTIONAL-LIQUIDITY-NEGATIVE-CONTROL",
+      "registry_strategy_added": false
+    },
+    {
+      "hypothesis_id": "HYP-W114-CATBOOST-MICROSTRUCTURE-V1",
+      "status": "DEFERRED_EXISTING_FEATURE_OVERLAP_AND_MODEL_LIFECYCLE",
+      "source_id": "SRC-W114-EXPLAINABLE-MICROSTRUCTURE",
+      "requires_frozen_model_artifact": true,
+      "requires_purged_walk_forward": true,
+      "runtime_ai_order_decision": false,
+      "registry_strategy_added": false
+    }
+  ],
+  "execution_order": [
+    "COMPLETE_WAVE114_ALL_TP1_SAME_INPUT_REPLAY_WITH_LIVE_GUARD",
+    "MEASURE_EXISTING_FEATURE_OVERLAP",
+    "RUN_VOLATILITY_EXTREME_VETO_THREE_PREREGISTERED_VARIANTS_ONE_PASS",
+    "BUILD_SAR_DATA_CONTRACT_WITHOUT_HHI",
+    "RUN_SAR_TWO_PREREGISTERED_VARIANTS_ONE_PASS",
+    "REQUIRE_NEW_FORWARD_LIVE_PUBLIC_BEFORE_WATCHLIST_CHANGE"
+  ],
+  "target_win_rate_is_gate_not_claim": true,
+  "minimum_unique_opportunities_before_ranking": 30,
+  "maximum_survivor_watchlist_size": 10,
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY"
+}
