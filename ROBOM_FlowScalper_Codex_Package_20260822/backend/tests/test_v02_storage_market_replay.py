@@ -1159,7 +1159,7 @@ def test_recent_timeline_reads_only_the_newest_archive_batches(
     )
 
     assert [row["event_id"] for row in recent] == ["recent-9", "recent-10", "recent-11"]
-    assert len(read_paths) == 3
+    assert len(read_paths) == 2
     ledger.close()
 
 

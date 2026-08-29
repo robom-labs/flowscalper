@@ -1075,7 +1075,7 @@ class SQLiteLedger:
 
         if limit <= 0:
             raise ValueError("최근 시장 이벤트 개수는 양수여야 합니다.")
-        read_target = limit * 2
+        read_target = limit
         with self._replay_read_lock:
             stored_rows = self._replay_read_connection.execute(
                 """
