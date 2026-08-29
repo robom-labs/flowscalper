@@ -40,6 +40,20 @@ class ReplayLiveSafetySnapshot:
     real_orders_enabled: bool
     auth_required: bool
     last_error: str | None
+    server_time_ms: int | None = None
+    event_loop_lag_max_ms: float | None = None
+    event_loop_lag_last_over_500ms_ts_ms: int | None = None
+    event_loop_lag_last_over_500ms_ms: float | None = None
+    event_gap_last_over_500ms_ts_ms: int | None = None
+    live_event_phase_max_ts_ms: int | None = None
+    live_event_phase_max_ms: float | None = None
+    live_event_phase_max_name: str | None = None
+    dashboard_build_max_ts_ms: int | None = None
+    dashboard_build_max_ms: float | None = None
+    persistence_flush_max_ts_ms: int | None = None
+    persistence_flush_max_ms: float | None = None
+    wal_checkpoint_last_completed_ts_ms: int | None = None
+    wal_checkpoint_max_ms: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +103,31 @@ def replay_live_safety_snapshot_from_dashboard(
         raise ValueError("대시보드 status.mode가 올바르지 않습니다.")
     if isinstance(event_loop_lag_count, bool) or not isinstance(event_loop_lag_count, int):
         raise ValueError("대시보드 system.event_loop_lag_over_500ms_count가 올바르지 않습니다.")
+
+    def optional_integer(key: str) -> int | None:
+        value = system.get(key)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"대시보드 system.{key}가 올바르지 않습니다.")
+        return int(value)
+
+    def optional_number(key: str) -> float | None:
+        value = system.get(key)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"대시보드 system.{key}가 올바르지 않습니다.")
+        return float(value)
+
+    def optional_string(key: str) -> str | None:
+        value = system.get(key)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"대시보드 system.{key}가 올바르지 않습니다.")
+        return value
+
     sample = parse_runtime_safety_sample(payload)
     return ReplayLiveSafetySnapshot(
         run_id=sample.run_id,
@@ -117,6 +156,22 @@ def replay_live_safety_snapshot_from_dashboard(
         real_orders_enabled=sample.real_orders_enabled,
         auth_required=sample.auth_required,
         last_error=sample.last_error,
+        server_time_ms=optional_integer("server_time_ms"),
+        event_loop_lag_max_ms=optional_number("event_loop_lag_max_ms"),
+        event_loop_lag_last_over_500ms_ts_ms=optional_integer(
+            "event_loop_lag_last_over_500ms_ts_ms"
+        ),
+        event_loop_lag_last_over_500ms_ms=optional_number("event_loop_lag_last_over_500ms_ms"),
+        event_gap_last_over_500ms_ts_ms=optional_integer("event_gap_last_over_500ms_ts_ms"),
+        live_event_phase_max_ts_ms=optional_integer("live_event_phase_max_ts_ms"),
+        live_event_phase_max_ms=optional_number("live_event_phase_max_ms"),
+        live_event_phase_max_name=optional_string("live_event_phase_max_name"),
+        dashboard_build_max_ts_ms=optional_integer("dashboard_build_max_ts_ms"),
+        dashboard_build_max_ms=optional_number("dashboard_build_max_ms"),
+        persistence_flush_max_ts_ms=optional_integer("persistence_flush_max_ts_ms"),
+        persistence_flush_max_ms=optional_number("persistence_flush_max_ms"),
+        wal_checkpoint_last_completed_ts_ms=optional_integer("wal_checkpoint_last_completed_ts_ms"),
+        wal_checkpoint_max_ms=optional_number("wal_checkpoint_max_ms"),
     )
 
 

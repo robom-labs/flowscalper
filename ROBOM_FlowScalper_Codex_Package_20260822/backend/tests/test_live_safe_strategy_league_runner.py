@@ -226,7 +226,21 @@ def test_safety_observations_report_event_and_stall_counter_deltas() -> None:
             event_count=150,
             queue_depth=4,
             lag_p95_ms=120.0,
-            event_loop_lag_over_500ms_count=3,
+            reconnects=3,
+            planned_rotations=3,
+            event_loop_lag_over_500ms_count=4,
+            server_time_ms=1_010,
+            event_loop_lag_last_over_500ms_ts_ms=1_000,
+            event_loop_lag_last_over_500ms_ms=620.0,
+            live_event_phase_max_ts_ms=995,
+            live_event_phase_max_ms=48.0,
+            live_event_phase_max_name="STRATEGY_EVALUATION",
+            dashboard_build_max_ts_ms=1_002,
+            dashboard_build_max_ms=180.0,
+            persistence_flush_max_ts_ms=900,
+            persistence_flush_max_ms=400.0,
+            wal_checkpoint_last_completed_ts_ms=700,
+            wal_checkpoint_max_ms=300.0,
         )
     )
 
@@ -234,9 +248,46 @@ def test_safety_observations_report_event_and_stall_counter_deltas() -> None:
 
     assert report["sample_count"] == 2
     assert report["event_delta"] == 50
-    assert report["event_loop_lag_over_500ms_delta"] == 0
+    assert report["event_loop_lag_over_500ms_delta"] == 1
     assert report["maximum_queue_depth"] == 4
     assert report["maximum_lag_p95_ms"] == 120.0
+    assert report["previous"]["event_count"] == 100
+    assert report["latest_sample_counter_deltas"]["planned_rotations"] == 1
+    assert report["latest_sample_counter_deltas"]["event_loop_lag_over_500ms_count"] == 1
+    incident = report["event_loop_incident_context"]
+    assert incident["same_sample_planned_rotation_incremented"] is True
+    assert incident["same_sample_reconnect_incremented"] is True
+    assert incident["lag_timestamp_ms"] == 1_000
+    assert incident["timing_distance_ms"] == {
+        "live_event_phase_max": 5,
+        "dashboard_build_max": 2,
+        "persistence_flush_max": 100,
+        "wal_checkpoint_last_completed": 300,
+    }
+    assert incident["causality"] == "NOT_PROVEN_TIMING_CORRELATION_ONLY"
+
+
+def test_safety_observations_do_not_attribute_a_stale_lag_incident() -> None:
+    observations = SafetyObservations()
+    observations.record(
+        _snapshot(
+            event_loop_lag_last_over_500ms_ts_ms=900,
+            event_loop_lag_last_over_500ms_ms=620.0,
+        )
+    )
+    observations.record(
+        _snapshot(
+            event_count=125,
+            event_loop_lag_last_over_500ms_ts_ms=900,
+            event_loop_lag_last_over_500ms_ms=620.0,
+        )
+    )
+
+    report = observations.report()
+
+    assert report["event_loop_lag_over_500ms_delta"] == 0
+    assert report["latest_sample_counter_deltas"]["event_loop_lag_over_500ms_count"] == 0
+    assert report["event_loop_incident_context"] is None
 
 
 def test_live_safe_runner_persists_append_only_trial_history(tmp_path: Path) -> None:

@@ -76,6 +76,20 @@ def _dashboard_payload() -> dict[str, object]:
             "persistence_fault_count": 0,
             "persistence_buffer_dropped": 0,
             "event_loop_lag_over_500ms_count": 3,
+            "server_time_ms": 1_000,
+            "event_loop_lag_max_ms": 612.5,
+            "event_loop_lag_last_over_500ms_ts_ms": 990,
+            "event_loop_lag_last_over_500ms_ms": 612.5,
+            "event_gap_last_over_500ms_ts_ms": 980,
+            "live_event_phase_max_ts_ms": 985,
+            "live_event_phase_max_ms": 42.5,
+            "live_event_phase_max_name": "STRATEGY_EVALUATION",
+            "dashboard_build_max_ts_ms": 970,
+            "dashboard_build_max_ms": 120.0,
+            "persistence_flush_max_ts_ms": 960,
+            "persistence_flush_max_ms": 340.0,
+            "wal_checkpoint_last_completed_ts_ms": 950,
+            "wal_checkpoint_max_ms": 280.0,
             "critical_lag_incident_count": 0,
             "critical_lag_active": False,
             "entry_locked": False,
@@ -97,6 +111,13 @@ def test_dashboard_snapshot_includes_event_loop_stall_counter() -> None:
     assert snapshot.execution_state == "PAPER"
     assert snapshot.process_uptime_seconds == 1_000.0
     assert snapshot.event_loop_lag_over_500ms_count == 3
+    assert snapshot.server_time_ms == 1_000
+    assert snapshot.event_loop_lag_last_over_500ms_ts_ms == 990
+    assert snapshot.event_loop_lag_last_over_500ms_ms == 612.5
+    assert snapshot.live_event_phase_max_name == "STRATEGY_EVALUATION"
+    assert snapshot.dashboard_build_max_ms == 120.0
+    assert snapshot.persistence_flush_max_ms == 340.0
+    assert snapshot.wal_checkpoint_max_ms == 280.0
     assert snapshot.real_orders_enabled is False
     assert snapshot.auth_required is False
 

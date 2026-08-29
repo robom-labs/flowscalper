@@ -133,6 +133,7 @@ class SafetyObservations:
 
     sample_count: int = 0
     baseline: ReplayLiveSafetySnapshot | None = None
+    previous: ReplayLiveSafetySnapshot | None = None
     latest: ReplayLiveSafetySnapshot | None = None
     maximum_queue_depth: int = 0
     maximum_lag_p95_ms: float = 0.0
@@ -141,6 +142,7 @@ class SafetyObservations:
     def record(self, sample: ReplayLiveSafetySnapshot) -> None:
         if self.baseline is None:
             self.baseline = sample
+        self.previous = self.latest
         self.latest = sample
         self.sample_count += 1
         self.maximum_queue_depth = max(self.maximum_queue_depth, sample.queue_depth)
@@ -152,11 +154,74 @@ class SafetyObservations:
 
     def report(self) -> dict[str, object]:
         baseline = self.baseline
+        previous = self.previous
         latest = self.latest
+        latest_sample_counter_deltas = (
+            {
+                "event_count": latest.event_count - previous.event_count,
+                "queue_depth": latest.queue_depth - previous.queue_depth,
+                "reconnects": latest.reconnects - previous.reconnects,
+                "planned_rotations": (latest.planned_rotations - previous.planned_rotations),
+                "unplanned_reconnects": (
+                    latest.unplanned_reconnects - previous.unplanned_reconnects
+                ),
+                "sequence_gaps": latest.sequence_gaps - previous.sequence_gaps,
+                "resyncs": latest.resyncs - previous.resyncs,
+                "dropped_events": latest.dropped_events - previous.dropped_events,
+                "persistence_fault_count": (
+                    latest.persistence_fault_count - previous.persistence_fault_count
+                ),
+                "persistence_buffer_dropped": (
+                    latest.persistence_buffer_dropped - previous.persistence_buffer_dropped
+                ),
+                "event_loop_lag_over_500ms_count": (
+                    latest.event_loop_lag_over_500ms_count
+                    - previous.event_loop_lag_over_500ms_count
+                ),
+            }
+            if previous is not None and latest is not None
+            else None
+        )
+        event_loop_incident_context: dict[str, object] | None = None
+        if (
+            previous is not None
+            and latest is not None
+            and latest.event_loop_lag_over_500ms_count > previous.event_loop_lag_over_500ms_count
+        ):
+            lag_ts_ms = latest.event_loop_lag_last_over_500ms_ts_ms
+            timing_distance_ms: dict[str, int] = {}
+            if lag_ts_ms is not None:
+                timing_candidates = {
+                    "event_gap_over_500ms": latest.event_gap_last_over_500ms_ts_ms,
+                    "live_event_phase_max": latest.live_event_phase_max_ts_ms,
+                    "dashboard_build_max": latest.dashboard_build_max_ts_ms,
+                    "persistence_flush_max": latest.persistence_flush_max_ts_ms,
+                    "wal_checkpoint_last_completed": (latest.wal_checkpoint_last_completed_ts_ms),
+                }
+                timing_distance_ms = {
+                    name: abs(lag_ts_ms - timestamp)
+                    for name, timestamp in timing_candidates.items()
+                    if timestamp is not None
+                }
+            event_loop_incident_context = {
+                "previous_sample": asdict(previous),
+                "incident_sample": asdict(latest),
+                "same_sample_planned_rotation_incremented": (
+                    latest.planned_rotations > previous.planned_rotations
+                ),
+                "same_sample_reconnect_incremented": (latest.reconnects > previous.reconnects),
+                "lag_timestamp_ms": lag_ts_ms,
+                "lag_ms": latest.event_loop_lag_last_over_500ms_ms,
+                "timing_distance_ms": timing_distance_ms,
+                "causality": "NOT_PROVEN_TIMING_CORRELATION_ONLY",
+            }
         return {
             "sample_count": self.sample_count,
             "baseline": asdict(baseline) if baseline is not None else None,
+            "previous": asdict(previous) if previous is not None else None,
             "latest": asdict(latest) if latest is not None else None,
+            "latest_sample_counter_deltas": latest_sample_counter_deltas,
+            "event_loop_incident_context": event_loop_incident_context,
             "event_delta": (
                 latest.event_count - baseline.event_count
                 if baseline is not None and latest is not None
