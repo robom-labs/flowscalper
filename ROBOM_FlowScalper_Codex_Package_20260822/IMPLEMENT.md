@@ -739,3 +739,23 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
    actually occurs.
 8. If a research replay trips a LIVE runtime safety gate, terminate the child, publish no partial
    performance result, preserve append-only trial history and do not retry the identical fingerprint.
+
+## E06 incident attribution and history refresh verification Wave 116G
+
+1. Prove service activity with event and strategy-evaluation deltas before treating an unchanged
+   completed-trade count as a history refresh defect.
+2. Compare open positions, qualified signals and completed rows over the same observation window.
+   No new row is expected when no eligible position opens and closes.
+3. Recheck the current-version, current-Run all-version and all-Run history scopes through the API,
+   then exercise manual and five-second automatic refresh in the actual browser.
+4. Keep the last sample before a new replay safety violation as well as the violating sample. Record
+   latest-sample deltas instead of only baseline-to-final totals.
+5. On a new 500ms event-loop incident, record same-sample planned-rotation and reconnect deltas, the
+   lag timestamp and duration, and timing distances to event gap, live phase maximum, dashboard build,
+   persistence flush and WAL checkpoint completion.
+6. Label timing proximity as `NOT_PROVEN_TIMING_CORRELATION_ONLY`. Never name a cause without an
+   independently reproduced mechanism.
+7. Do not create incident context when the process-lifetime lag counter is unchanged. A stale historical
+   lag timestamp is not a new replay-window incident.
+8. Do not restart the heavy replay until an implementation, parameter or dataset change creates a new
+   trial fingerprint. Keep partial performance unpublished and profitability `NOT_PROVEN`.

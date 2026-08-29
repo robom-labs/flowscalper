@@ -3495,3 +3495,55 @@ SIGTERM으로 정리했고 부분 성과 파일은 발행하지 않았으며 app
 
 현 수용상태는
 `LIVE_RUNNING_HISTORY_LIFECYCLE_INSTALLED_BROWSER_PASS_E06_ABORTED_RUNTIME_SAFETY_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 83. Wave 116G 거래내역 재점검과 E06 사고 귀속 증거
+
+사용자 지적에 따라 설치 서비스와 실제 브라우저의 거래 진행·완료·최신화 경로를 다시 확인했다.
+불변 설치 release `ce5b6499844bd0b4cb48e14789c3ab5f1f45d186`, 같은 Run
+`run-2b7135a972dd`는 `RUNNING`, 공개시장 관찰과 PAPER 신규진입 활성, 실제 주문·인증
+false였다. 75.024초·16표본 동안 event는 154,983→160,746으로 5,763건, 전략 평가는
+510,156→530,292로 20,136회 전진했다. queue 최대 0, 처리 p95 최대 27.288ms,
+실제 체결 입력 p95 최대 79.256ms였고 비계획 재연결·gap·resync·drop·저장결함·buffer
+drop·신규 500ms 초과 loop 지연은 모두 0이었다.
+
+같은 관찰에서 적격신호, 진행 포지션과 신규 완료거래는 모두 0이었다. 이는 매매 경로 정지가
+아니라 이번 공개시장 구간에 비용·호가·전략 조건을 모두 통과한 자연신호가 없었다는 뜻이다.
+신호 기준은 낮추지 않았다. 현재 Run·현재 버전 API는 33건으로 공동 0·전략별 33,
+BASE 17·STRESS 16이었다. 현재 Run 모든 버전은 128건, 모든 Run·모든 버전은 853건으로
+Wave 116F 원장 대조 결과와 변함없이 일치했다. 최신 행은 ZECUSDT STRESS 222.462초
+거래이며 replay 가능 상태다.
+
+실제 브라우저 거래기록 화면에는 `현재 진행 중인 모의 포지션 0건`과
+`현재 조건 33건 · 공동 0건 · 전략별 33건`이 표시됐다. `지금 새로고침`을 직접 눌러
+마지막 확인이 00:35:17 KST로 갱신되는 것을 확인했고, 별도 조작 없이 00:35:22 KST로
+전진해 5초 자동 확인도 다시 검증했다. API·화면 행 수와 최신 행이 일치하므로 이번 점검에서
+거래내역 최신화 결함은 재현되지 않았다. 자연 진입이 없었기 때문에 실제 공개시장의
+진행 1건→종료→새 완료행 전환은 `NOT_OBSERVED`이며, 그 수명주기 wiring은 Wave 116F의
+결정적 backend 회귀로 계속 보호한다.
+
+E06 비용포함 후보 실험은 과거 안전중단 시점의 직전 표본과 단계별 시각을 남기지 않아
+500ms 초과 원인을 계획 회전이라고 단정할 수 없었다. source commit
+`be4d9b9f7ef8219c7ca0a093230afffe4be8d7ea`에서 LIVE-safe guard가 직전 표본, 사고 표본,
+최신 카운터 변화, 같은 표본의 계획 회전·재연결 변화, loop 지연 시각·크기와 event gap,
+시장 처리 단계, dashboard build, 저장 flush, WAL checkpoint의 시간거리를 함께 보존하도록
+보강했다. 시간 근접성은 항상 `NOT_PROVEN_TIMING_CORRELATION_ONLY`로 기록하며, 누적 과거
+사고가 새 사고처럼 잘못 귀속되지 않는 회귀도 추가했다. 같은 구현·파라미터·동결 데이터의
+무변경 무거운 replay는 다시 실행하지 않았다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 실행 서비스 전진 | `PASS` | 75.024초, event +5,763·전략평가 +20,136, queue 최대 0 |
+| 진행·완료 상태 | `PASS_WITH_NO_NATURAL_ENTRY` | 진행 0·적격신호 0·신규 완료 0, 시장·평가는 계속 전진 |
+| 현재버전 거래기록 | `PASS` | API 33 = 실제 브라우저 33, 공동 0·전략별 33 |
+| 전체 보관 범위 | `PASS` | 현재 Run 128, 전체 853 유지 |
+| 수동·자동 최신화 | `PASS` | 직접 클릭 00:35:17, 자동 확인 00:35:22 KST |
+| 자연 진행→종료 화면 | `NOT_OBSERVED` | QA 구간 자연 적격신호 0. 전략 기준 완화 없음 |
+| E06 사고 귀속 구현 | `PASS_SOURCE_AND_TESTS` | Ruff, mypy 109 source, backend 757·frontend 79, 표적 22건, security 145 source, 회귀 20 contracts PASS |
+| 새 진단으로 포착한 500ms 사고 | `NOT_OBSERVED` | 무거운 동일지문 replay를 재시작하지 않음 |
+| 6시간·24시간 | `NOT_RUN` | 이번 설치 release 연속 경과시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 충분한 자연표본과 강건성 gate 미충족 |
+
+기계판독 증거는
+`evidence/WAVE116G_HISTORY_REFRESH_AND_E06_ATTRIBUTION_QA.json`이고 실제 모바일 화면은
+`evidence/screenshots/WAVE116G_HISTORY_REFRESH_QA.jpg`에 보존했다. 현 수용상태는
+`LIVE_RUNNING_HISTORY_REFRESH_PASS_E06_ATTRIBUTION_READY_NEW_INCIDENT_NOT_OBSERVED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

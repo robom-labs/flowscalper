@@ -1,0 +1,166 @@
+{
+  "schema": "flowscalper.wave116g.history_refresh_and_e06_attribution_qa.v1",
+  "status": "PASS_WITH_LIMITS",
+  "source_commit": "be4d9b9f7ef8219c7ca0a093230afffe4be8d7ea",
+  "installed_release_commit": "ce5b6499844bd0b4cb48e14789c3ab5f1f45d186",
+  "runtime": {
+    "url": "http://127.0.0.1:8870",
+    "run_id": "run-2b7135a972dd",
+    "release_isolated": true,
+    "operation_state": "RUNNING",
+    "market_observation_active": true,
+    "paper_entry_active": true,
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "observed_started_at": "2026-08-29T15:32:44.698152+00:00",
+    "observed_completed_at": "2026-08-29T15:33:59.722395+00:00",
+    "wall_duration_seconds": 75.024,
+    "sample_count": 16,
+    "status": "PASS",
+    "event_count": {
+      "before": 154983,
+      "after": 160746,
+      "delta": 5763
+    },
+    "strategy_evaluation_count": {
+      "before": 510156,
+      "after": 530292,
+      "delta": 20136
+    },
+    "qualified_signal_count": {
+      "before": 0,
+      "after": 0,
+      "delta": 0
+    },
+    "position_count": {
+      "before": 0,
+      "after": 0,
+      "maximum": 0
+    },
+    "completed_trade_count": {
+      "main_before": 1,
+      "main_after": 1,
+      "league_before": 127,
+      "league_after": 127
+    },
+    "maximum_queue_depth": 0,
+    "maximum_processing_lag_p95_ms": 27.288330078125,
+    "maximum_trade_lag_p95_ms": 79.25634765625,
+    "maximum_wide_lag_p95_ms_observational": 1701.1611328125,
+    "memory_growth_mb": 0.0,
+    "maximum_persistence_flush_last_ms": 943.0,
+    "maximum_wal_checkpoint_last_ms": 157.0,
+    "new_event_loop_lag_over_500ms": 0,
+    "new_critical_lag_incidents": 0,
+    "new_unplanned_reconnects": 0,
+    "new_sequence_gaps": 0,
+    "new_resyncs": 0,
+    "new_dropped_events": 0,
+    "new_persistence_faults": 0,
+    "new_persistence_buffer_drops": 0,
+    "failures": []
+  },
+  "history_api": {
+    "current_run_current_version": {
+      "total": 33,
+      "main": 0,
+      "league": 33,
+      "base": 17,
+      "stress": 16
+    },
+    "current_run_all_versions": {
+      "total": 128,
+      "main": 1,
+      "league": 127
+    },
+    "all_runs_all_versions": {
+      "total": 853,
+      "main": 63,
+      "league": 790
+    },
+    "latest_trade": {
+      "trade_id": "paper-candidate-f03d03a64bfc4289-vwap_exhaustion_reversion_v1-stress",
+      "symbol": "ZECUSDT",
+      "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+      "profile": "STRESS",
+      "holding_ms": 222462,
+      "exit_reason": "EDGE_DECAY",
+      "net_pnl_usdt": "-1.897431552",
+      "replay_available": true
+    },
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "actual_browser": {
+    "page": "거래 기록",
+    "paper_actual_orders_text": "PAPER · 실제 주문 0",
+    "open_position_text": "현재 진행 중인 모의 포지션 0건",
+    "visible_scope_text": "현재 조건 33건 · 공동 0건 · 전략별 33건",
+    "manual_refresh_clicked": true,
+    "manual_refresh_confirmed_at_kst": "00:35:17",
+    "automatic_refresh_confirmed_at_kst": "00:35:22",
+    "automatic_refresh_interval_seconds": 5,
+    "latest_row_visible": true,
+    "screenshot": {
+      "path": "evidence/screenshots/WAVE116G_HISTORY_REFRESH_QA.jpg",
+      "width": 415,
+      "height": 734,
+      "sha256": "5c0756afa7fe22dcf148416f5686f5c7fb91494890312f23c3a4d29152470be3"
+    }
+  },
+  "history_refresh_assessment": {
+    "status": "PASS_NO_REFRESH_DEFECT_REPRODUCED",
+    "reason": "시장 이벤트와 전략 평가는 전진했지만 적격신호, 진행 포지션, 종료 거래가 모두 0이어서 완료 행 수가 유지됐다. 수동·자동 갱신 시각과 API·화면 행 수는 일치했다.",
+    "natural_open_to_close_transition": "NOT_OBSERVED_NO_NATURAL_ENTRY_DURING_QA",
+    "deterministic_lifecycle_regression": "PASS_PREVIOUS_WAVE116F"
+  },
+  "e06_incident_attribution": {
+    "historical_trial_status": "ABORTED_RUNTIME_SAFETY",
+    "historical_causality": "NOT_PROVEN_OLD_GUARD_DID_NOT_CAPTURE_INCIDENT_WINDOW",
+    "new_guard_contract": {
+      "previous_sample_preserved": true,
+      "incident_sample_preserved": true,
+      "latest_counter_deltas_preserved": true,
+      "same_sample_planned_rotation_increment_preserved": true,
+      "same_sample_reconnect_increment_preserved": true,
+      "lag_timestamp_and_duration_preserved": true,
+      "phase_dashboard_flush_wal_timing_distances_preserved": true,
+      "causality_label": "NOT_PROVEN_TIMING_CORRELATION_ONLY",
+      "stale_incident_false_attribution_blocked": true
+    },
+    "heavy_replay_restarted": false,
+    "reason_not_restarted": "같은 구현·파라미터·데이터 지문을 변경 없이 반복하지 않고 원인 귀속 증거를 먼저 보강했다.",
+    "new_incident_with_instrumentation": "NOT_OBSERVED"
+  },
+  "verification": {
+    "ruff": "PASS",
+    "mypy_targeted": "PASS_2_SOURCE_FILES",
+    "pytest_targeted": "PASS_22_TESTS",
+    "pytest_backend_full": "PASS_757_TESTS",
+    "vitest_frontend_full": "PASS_15_FILES_79_TESTS",
+    "mypy_full": "PASS_109_SOURCE_FILES",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "frontend_build": "PASS_WITH_EXISTING_500KB_CHUNK_WARNING",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS_145_SOURCE_FILES_REAL_ORDER_PATH_FALSE",
+    "repository_hygiene": "PASS",
+    "regression_contracts": "PASS_20_CONTRACTS_41_ANCHORS",
+    "actual_runtime_parser": "PASS",
+    "actual_browser_manual_refresh": "PASS",
+    "actual_browser_automatic_refresh": "PASS",
+    "six_hour": "NOT_RUN",
+    "twenty_four_hour": "NOT_RUN"
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_requested": false,
+    "api_key_requested": false,
+    "wallet_requested": false,
+    "additional_market_connection_started": false
+  },
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY"
+}
