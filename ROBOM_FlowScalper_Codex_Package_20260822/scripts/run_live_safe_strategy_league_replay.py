@@ -61,6 +61,7 @@ _IMPLEMENTATION_BOUND_PATHS = (
     "backend/app/strategies",
     "scripts/research_runtime_strategy_replay.py",
 )
+_DEFAULT_RESEARCH_TARGET_CPU_RATIO = 0.25
 
 
 class ResearchTrialHistoryBlocked(Exception):
@@ -359,6 +360,8 @@ def _research_arguments(
         str(arguments.signal_gate_target_strategy_id),
         "--strategy-logic",
         str(arguments.strategy_logic),
+        "--target-cpu-ratio",
+        str(arguments.target_cpu_ratio),
     ]
     for run_id in arguments.run_id or ():
         command.extend(("--run-id", run_id))
@@ -436,6 +439,7 @@ def _validate_result_payload(
     signal_gate: str,
     signal_gate_target_strategy_id: str,
     strategy_logic: str,
+    target_cpu_ratio: float,
 ) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("전략리그 결과가 JSON 객체가 아닙니다.")
@@ -452,6 +456,7 @@ def _validate_result_payload(
         "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
         "signal_gate_trial_id": f"{signal_gate}:{signal_gate_target_strategy_id}",
         "strategy_logic": strategy_logic,
+        "cooperative_cpu_target_ratio": target_cpu_ratio,
     }
     mismatches = {
         key: {"expected": expected, "actual": payload.get(key)}
@@ -524,6 +529,7 @@ async def _execute(
         signal_gate=str(arguments.signal_gate),
         signal_gate_target_strategy_id=str(arguments.signal_gate_target_strategy_id),
         strategy_logic=str(arguments.strategy_logic),
+        target_cpu_ratio=float(arguments.target_cpu_ratio),
     )
 
 
@@ -601,6 +607,10 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
             ),
             "signal_gate_trial_id": result.get("signal_gate_trial_id"),
             "strategy_logic": result.get("strategy_logic"),
+            "cooperative_cpu_target_ratio": result.get("cooperative_cpu_target_ratio"),
+            "cooperative_cpu_checkpoint_events": result.get(
+                "cooperative_cpu_checkpoint_events"
+            ),
             "run_count": len(run_rows) if isinstance(run_rows, list) else 0,
             "ranking_eligible_strategy_ids": result.get("ranking_eligible_strategy_ids"),
             "profitability_status": result.get("profitability_status"),
@@ -689,6 +699,7 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
                 f"{arguments.signal_gate}:{arguments.signal_gate_target_strategy_id}"
             ),
             "strategy_logic": str(arguments.strategy_logic),
+            "cooperative_cpu_target_ratio": float(arguments.target_cpu_ratio),
             "history_catalog": str(arguments.trial_history_catalog),
             "history_decision": trial_history_decision,
             "history_record_id": trial_record_id,
@@ -737,6 +748,12 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--run-id", action="append")
     parser.add_argument("--maximum-events", type=int)
+    parser.add_argument(
+        "--target-cpu-ratio",
+        type=float,
+        default=_DEFAULT_RESEARCH_TARGET_CPU_RATIO,
+        help="LIVE 우선을 위해 연구 자식 프로세스에 허용할 협조 CPU 목표 비율입니다.",
+    )
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
     parser.add_argument(
         "--signal-gate-target-strategy-id",
@@ -791,6 +808,7 @@ def parse_arguments() -> argparse.Namespace:
         or arguments.max_event_stall_seconds <= 0
         or arguments.planned_rotation_lock_grace_seconds <= 0
         or arguments.max_duration_seconds <= 0
+        or not 0 < arguments.target_cpu_ratio <= 1
         or (arguments.maximum_events is not None and arguments.maximum_events <= 0)
     ):
         parser.error("시간·감시·대기열·이벤트 상한은 올바른 양수여야 합니다.")

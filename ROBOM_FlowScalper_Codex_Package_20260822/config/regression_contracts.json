@@ -140,8 +140,15 @@
         {
           "path": "backend/tests/test_live_safe_strategy_league_runner.py",
           "contains": [
+            "test_research_command_forces_all_strategies_and_archive_verification",
             "test_result_validation_requires_paper_safety_and_current_archive_pass",
             "test_live_safe_runner_allows_only_one_archive_replay_process"
+          ]
+        },
+        {
+          "path": "backend/tests/test_runtime_strategy_research_replay.py",
+          "contains": [
+            "test_runtime_strategy_replay_cooperatively_yields_every_fixed_event_batch"
           ]
         }
       ]

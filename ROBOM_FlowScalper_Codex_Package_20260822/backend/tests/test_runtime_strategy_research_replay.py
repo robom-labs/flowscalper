@@ -25,6 +25,7 @@ from backend.tests.test_strategy_league_signals import (
     only_strategy,
 )
 from scripts.research_runtime_strategy_replay import (
+    RESEARCH_CPU_CHECKPOINT_EVENTS,
     SIGNAL_GATE_TARGET_ALL,
     SIGNAL_GATE_TP1_FEASIBILITY,
     STRATEGY_LOGIC_CURRENT,
@@ -322,6 +323,36 @@ def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_22_accounts(
     assert result["auth_required"] is False
     assert result["ledger_attached"] is False
     assert result["trade_count"] == 0
+
+
+def test_runtime_strategy_replay_cooperatively_yields_every_fixed_event_batch(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-research-cooperative-budget-test"
+    event_count = RESEARCH_CPU_CHECKPOINT_EVENTS * 2 + 1
+    _write_events(
+        tmp_path,
+        [
+            _event(
+                run_id,
+                event_id=f"depth-{index}",
+                ts_ms=1_000 + index,
+                event_type="DEPTH_UPDATE",
+            )
+            for index in range(event_count)
+        ],
+    )
+    checkpoints: list[int] = []
+
+    result = replay_strategy_league_archive_run(
+        "RUN-RESEARCH-COOPERATIVE-BUDGET-TEST",
+        tmp_path,
+        cooperative_yield=lambda: checkpoints.append(1),
+    )
+
+    assert result["event_count"] == event_count
+    assert checkpoints == [1, 1, 1]
+    assert result["real_orders_enabled"] is False
 
 
 def test_runtime_strategy_league_replay_targets_tp1_gate_to_aggressor_only(
@@ -718,6 +749,8 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     assert result["ranking_eligible_strategy_ids"] == []
     assert result["profitability_status"] == "NOT_PROVEN"
     assert result["schema_version"] == 4
+    assert result["cooperative_cpu_target_ratio"] == 1.0
+    assert result["cooperative_cpu_checkpoint_events"] == RESEARCH_CPU_CHECKPOINT_EVENTS
     assert result["robustness_evaluation"]["status"] == "INCOMPLETE_REQUIRED_RUNS"
     assert result["robustness_evaluation"]["final_oos"]["opened_for_this_result"] is False
     assert len(result["overall_by_strategy"]) == 11
@@ -986,6 +1019,8 @@ def test_all_strategy_cli_passes_explicit_gate_target(tmp_path: Path) -> None:
                 SIGNAL_GATE_TP1_FEASIBILITY,
                 "--signal-gate-target-strategy-id",
                 target_strategy_id,
+                "--target-cpu-ratio",
+                "0.25",
                 "--output",
                 str(output_path),
             ],
@@ -1001,6 +1036,7 @@ def test_all_strategy_cli_passes_explicit_gate_target(tmp_path: Path) -> None:
     assert build_league.call_args.kwargs["signal_gate_target_strategy_id"] == (
         target_strategy_id
     )
+    assert build_league.call_args.kwargs["target_cpu_ratio"] == 0.25
 
 
 def test_single_strategy_cli_rejects_a_different_gate_target(tmp_path: Path) -> None:

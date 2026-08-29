@@ -77,6 +77,7 @@ def test_research_command_forces_all_strategies_and_archive_verification(
         signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
         signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
         strategy_logic=STRATEGY_LOGIC_CURRENT,
+        target_cpu_ratio=0.25,
     )
 
     command = _research_arguments(arguments, tmp_path / "partial.json")
@@ -90,6 +91,7 @@ def test_research_command_forces_all_strategies_and_archive_verification(
         "AGGRESSOR_FLOW_CONTINUATION_V1"
     )
     assert command[command.index("--strategy-logic") + 1] == STRATEGY_LOGIC_CURRENT
+    assert command[command.index("--target-cpu-ratio") + 1] == "0.25"
 
 
 def test_research_command_accepts_all_strategy_gate_target(tmp_path: Path) -> None:
@@ -102,6 +104,7 @@ def test_research_command_accepts_all_strategy_gate_target(tmp_path: Path) -> No
         signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
         signal_gate_target_strategy_id=SIGNAL_GATE_TARGET_ALL,
         strategy_logic=STRATEGY_LOGIC_CURRENT,
+        target_cpu_ratio=0.25,
     )
 
     command = _research_arguments(arguments, tmp_path / "partial.json")
@@ -127,6 +130,7 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
             f"{SIGNAL_GATE_TP1_FEASIBILITY}:AGGRESSOR_FLOW_CONTINUATION_V1"
         ),
         "strategy_logic": STRATEGY_LOGIC_CURRENT,
+        "cooperative_cpu_target_ratio": 0.25,
         "runs": [{} for _ in range(13)],
         "frozen_dataset": {
             "selected_run_count": 13,
@@ -144,6 +148,7 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
             signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
             signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
             strategy_logic=STRATEGY_LOGIC_CURRENT,
+            target_cpu_ratio=0.25,
         )
         is payload
     )
@@ -156,6 +161,7 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
             signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
             signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
             strategy_logic=STRATEGY_LOGIC_CURRENT,
+            target_cpu_ratio=0.25,
         )
 
 
@@ -175,6 +181,7 @@ def test_result_validation_rejects_a_different_strategy_trial() -> None:
             f"{SIGNAL_GATE_TP1_FEASIBILITY}:VWAP_EXHAUSTION_REVERSION_V1"
         ),
         "strategy_logic": STRATEGY_LOGIC_CURRENT,
+        "cooperative_cpu_target_ratio": 0.25,
         "runs": [{} for _ in range(13)],
         "frozen_dataset": {
             "selected_run_count": 13,
@@ -192,6 +199,7 @@ def test_result_validation_rejects_a_different_strategy_trial() -> None:
             signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
             signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
             strategy_logic=STRATEGY_LOGIC_CURRENT,
+            target_cpu_ratio=0.25,
         )
 
 

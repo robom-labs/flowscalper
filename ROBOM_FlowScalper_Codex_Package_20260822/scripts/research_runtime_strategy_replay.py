@@ -7,7 +7,7 @@ import hashlib
 import json
 import math
 from collections import Counter, defaultdict, deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal
 from itertools import chain
@@ -20,6 +20,7 @@ from backend.app.domain.models import MarketDataState, MarketEvent, RuntimeMode,
 from backend.app.features import FeatureSnapshot
 from backend.app.market_data import Candle
 from backend.app.regime import Regime
+from backend.app.replay.process import ReplayCpuBudget
 from backend.app.research.protocol import (
     bootstrap_mean_interval,
     deflated_sharpe_ratio,
@@ -63,6 +64,7 @@ MAXIMUM_SINGLE_RUN_OPPORTUNITY_SHARE = 0.50
 MINIMUM_MULTI_REGIME_COUNT = 2
 MAXIMUM_SINGLE_REGIME_OPPORTUNITY_SHARE = 0.80
 PAPER_STARTING_EQUITY_USDT = Decimal("1000")
+RESEARCH_CPU_CHECKPOINT_EVENTS = 16
 _CANDIDATE_EVENTS = {
     "MAIN_CANDIDATE_SELECTED",
     "LEAGUE_CANDIDATE_ARMED",
@@ -608,6 +610,7 @@ def _replay_archive_run_for_strategies(
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
+    cooperative_yield: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """선택 전략을 한 신규 무원장 PAPER 런타임에서 동시에 수신순 재생한다."""
 
@@ -687,6 +690,11 @@ def _replay_archive_run_for_strategies(
         event_count += 1
         event_types[event.event_type] += 1
         runtime.ingest_live_event(event)
+        if cooperative_yield is not None and event_count % RESEARCH_CPU_CHECKPOINT_EVENTS == 0:
+            cooperative_yield()
+
+    if cooperative_yield is not None:
+        cooperative_yield()
 
     trades = _strategy_trade_rows(runtime, selected_strategy_ids)
     reports = TradeAnalytics().strategy_reports(
@@ -790,6 +798,7 @@ def replay_archive_run(
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
+    cooperative_yield: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """한 전략을 신규 무원장 PAPER 런타임에서 수신순으로 재생한다."""
 
@@ -801,6 +810,7 @@ def replay_archive_run(
         signal_gate=signal_gate,
         strategy_logic=strategy_logic,
         maximum_events=maximum_events,
+        cooperative_yield=cooperative_yield,
     )
 
 
@@ -812,6 +822,7 @@ def replay_strategy_league_archive_run(
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
+    cooperative_yield: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """등록 전략 전체를 22개 독립계좌의 한 무원장 PAPER 런타임에서 재생한다."""
 
@@ -823,6 +834,7 @@ def replay_strategy_league_archive_run(
         signal_gate=signal_gate,
         strategy_logic=strategy_logic,
         maximum_events=maximum_events,
+        cooperative_yield=cooperative_yield,
     )
 
 
@@ -1463,12 +1475,14 @@ def build_result(
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     dataset_manifest: Path | None = None,
     maximum_events: int | None = None,
+    target_cpu_ratio: float = 1.0,
 ) -> dict[str, object]:
     dataset_reference = (
         frozen_dataset_reference(dataset_manifest, run_ids)
         if dataset_manifest is not None
         else {"status": "NOT_PROVIDED"}
     )
+    cpu_budget = ReplayCpuBudget(target_cpu_ratio=target_cpu_ratio)
     runs = [
         replay_archive_run(
             run_id,
@@ -1477,6 +1491,7 @@ def build_result(
             signal_gate=signal_gate,
             strategy_logic=strategy_logic,
             maximum_events=maximum_events,
+            cooperative_yield=cpu_budget.checkpoint,
         )
         for run_id in run_ids
     ]
@@ -1510,6 +1525,8 @@ def build_result(
         "real_orders_enabled": False,
         "auth_required": False,
         "runtime_ai_order_decision": False,
+        "cooperative_cpu_target_ratio": target_cpu_ratio,
+        "cooperative_cpu_checkpoint_events": RESEARCH_CPU_CHECKPOINT_EVENTS,
         "runs": runs,
         "splits": split_summaries,
         "overall": _summary(runs, strategy_id=strategy_id),
@@ -1525,6 +1542,7 @@ def build_strategy_league_result(
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     dataset_manifest: Path | None = None,
     maximum_events: int | None = None,
+    target_cpu_ratio: float = 1.0,
 ) -> dict[str, object]:
     """등록 전략 전체를 각 Run당 한 번만 읽어 동일 PAPER 입력으로 비교한다."""
 
@@ -1535,6 +1553,7 @@ def build_strategy_league_result(
         if dataset_manifest is not None
         else {"status": "NOT_PROVIDED"}
     )
+    cpu_budget = ReplayCpuBudget(target_cpu_ratio=target_cpu_ratio)
     runs = [
         replay_strategy_league_archive_run(
             run_id,
@@ -1543,6 +1562,7 @@ def build_strategy_league_result(
             signal_gate=signal_gate,
             strategy_logic=strategy_logic,
             maximum_events=maximum_events,
+            cooperative_yield=cpu_budget.checkpoint,
         )
         for run_id in run_ids
     ]
@@ -1635,6 +1655,8 @@ def build_strategy_league_result(
         "real_orders_enabled": False,
         "auth_required": False,
         "runtime_ai_order_decision": False,
+        "cooperative_cpu_target_ratio": target_cpu_ratio,
+        "cooperative_cpu_checkpoint_events": RESEARCH_CPU_CHECKPOINT_EVENTS,
         "retired_strategy_reactivation_scope": "EPHEMERAL_RESEARCH_REPLAY_ONLY",
         "ranking_eligible_strategy_ids": [],
         "profitability_status": "NOT_PROVEN",
@@ -1677,12 +1699,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", action="append")
     parser.add_argument("--maximum-events", type=int)
     parser.add_argument(
+        "--target-cpu-ratio",
+        type=float,
+        default=1.0,
+        help="연구 replay 자식 프로세스가 사용할 협조 CPU 목표 비율입니다.",
+    )
+    parser.add_argument(
         "--verify-archive-bytes",
         action="store_true",
         help="리플레이 전에 선택 Run의 현재 parquet bytes를 동결 manifest와 다시 대조합니다.",
     )
     parser.add_argument("--output", type=Path, required=True)
-    return parser.parse_args()
+    arguments = parser.parse_args()
+    if not 0 < arguments.target_cpu_ratio <= 1:
+        parser.error("--target-cpu-ratio는 0 초과 1 이하여야 합니다.")
+    return arguments
 
 
 def main() -> None:
@@ -1721,6 +1752,7 @@ def main() -> None:
             strategy_logic=str(args.strategy_logic),
             dataset_manifest=args.dataset_manifest,
             maximum_events=args.maximum_events,
+            target_cpu_ratio=args.target_cpu_ratio,
         )
     else:
         if args.signal_gate_target_strategy_id == SIGNAL_GATE_TARGET_ALL:
@@ -1740,6 +1772,7 @@ def main() -> None:
             strategy_logic=str(args.strategy_logic),
             dataset_manifest=args.dataset_manifest,
             maximum_events=args.maximum_events,
+            target_cpu_ratio=args.target_cpu_ratio,
         )
     if archive_verification is not None:
         frozen_dataset = result.get("frozen_dataset")
