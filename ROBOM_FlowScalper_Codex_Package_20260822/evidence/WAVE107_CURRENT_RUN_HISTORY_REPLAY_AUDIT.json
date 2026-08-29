@@ -1,0 +1,191 @@
+{
+  "schema_version": "flowscalper-evidence-v1",
+  "wave": "WAVE107",
+  "generated_at_utc": "2026-08-29T04:29:33Z",
+  "status": "PARTIAL_PASS_PROFITABILITY_NOT_PROVEN",
+  "source": {
+    "service": "http://127.0.0.1:8870",
+    "run_id": "run-2b7135a972dd",
+    "runtime_mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "strategy_version": "LSA_REVERSAL_V1+CBR_CONTINUATION_V1+VWAP_EXHAUSTION_REVERSION_V1+OFI_CONTINUATION_PULLBACK_V1+QUEUE_MICROPRICE_MOMENTUM_V1+AGGRESSOR_FLOW_CONTINUATION_V1+MULTILEVEL_MICROPRICE_MOMENTUM_V1+DEPTH_ADJUSTED_OFI_IMPULSE_V1+OFI_RETURN_CONFLUENCE_V1+BOOK_SLOPE_ASYMMETRY_V1+HOURLY_MOMENTUM_BREAKOUT_V1@2026-08-28-wave102",
+    "history_query": {
+      "run_scope": "CURRENT",
+      "account_scope": "LEAGUE",
+      "profile": "ALL",
+      "version_scope": "CURRENT",
+      "sample_type": "LIVE_PUBLIC",
+      "limit": 1000
+    }
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api": false,
+    "wallet": false
+  },
+  "runtime_snapshot": {
+    "operation_state": "RUNNING",
+    "event_count": 1186455,
+    "processing_lag_p95_ms": 29.130615234375,
+    "trade_lag_p95_ms": 63.713623046875,
+    "wide_lag_p95_ms": 1898.677734375,
+    "queue_depth": 0,
+    "reconnects": 19,
+    "planned_rotations": 19,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "open_position_count": 0,
+    "event_loop_lag_over_500ms_count": 8,
+    "wave104_observer_state": "RUNNING_RESULT_PENDING",
+    "wave104_observer_elapsed": "04:41:02"
+  },
+  "current_version_trade_audit": {
+    "returned_profile_rows": 31,
+    "unique_market_opportunities": 17,
+    "holding_time_at_or_below_15_seconds": 0,
+    "holding_time_at_or_below_30_seconds": 0,
+    "minimum_holding_time_ms": 104478,
+    "ranking_eligible": false,
+    "ranking_blocker": "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30",
+    "strategies": [
+      {
+        "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+        "profile": "BASE",
+        "sample_size": 6,
+        "wins": 1,
+        "win_rate": 0.16666666666666666,
+        "gross_pnl_usdt": 1.7346,
+        "total_cost_usdt": 8.01974348,
+        "net_pnl_usdt": -6.28514348,
+        "median_holding_ms": 900848,
+        "exit_reasons": {
+          "EDGE_DECAY": 1,
+          "MAX_HOLD": 5
+        }
+      },
+      {
+        "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+        "profile": "STRESS",
+        "sample_size": 5,
+        "wins": 0,
+        "win_rate": 0.0,
+        "gross_pnl_usdt": 1.5448,
+        "total_cost_usdt": 10.07657656,
+        "net_pnl_usdt": -8.53177656,
+        "median_holding_ms": 900900,
+        "exit_reasons": {
+          "MAX_HOLD": 5
+        }
+      },
+      {
+        "strategy_id": "CBR_CONTINUATION_V1",
+        "profile": "BASE",
+        "sample_size": 1,
+        "wins": 1,
+        "win_rate": 1.0,
+        "gross_pnl_usdt": 0.11407,
+        "total_cost_usdt": 0.058730922,
+        "net_pnl_usdt": 0.055339078,
+        "median_holding_ms": 808906,
+        "exit_reasons": {
+          "PROFIT_PROTECTION": 1
+        }
+      },
+      {
+        "strategy_id": "CBR_CONTINUATION_V1",
+        "profile": "STRESS",
+        "sample_size": 1,
+        "wins": 1,
+        "win_rate": 1.0,
+        "gross_pnl_usdt": 0.12078,
+        "total_cost_usdt": 0.117469896,
+        "net_pnl_usdt": 0.003310104,
+        "median_holding_ms": 804514,
+        "exit_reasons": {
+          "PROFIT_PROTECTION": 1
+        }
+      },
+      {
+        "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+        "profile": "BASE",
+        "sample_size": 9,
+        "wins": 1,
+        "win_rate": 0.1111111111111111,
+        "gross_pnl_usdt": -7.205726,
+        "total_cost_usdt": 4.4883715136,
+        "net_pnl_usdt": -11.6940975136,
+        "median_holding_ms": 435516,
+        "exit_reasons": {
+          "EDGE_DECAY": 6,
+          "MAX_HOLD": 2,
+          "PROFIT_PROTECTION": 1
+        }
+      },
+      {
+        "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+        "profile": "STRESS",
+        "sample_size": 9,
+        "wins": 1,
+        "win_rate": 0.1111111111111111,
+        "gross_pnl_usdt": -7.056798,
+        "total_cost_usdt": 7.8210604224,
+        "net_pnl_usdt": -14.8778584224,
+        "median_holding_ms": 445166,
+        "exit_reasons": {
+          "EDGE_DECAY": 5,
+          "MAX_HOLD": 3,
+          "PROFIT_PROTECTION": 1
+        }
+      }
+    ]
+  },
+  "browser_verification": {
+    "browser": "Codex In-app Browser",
+    "initial_state": {
+      "status": "PAPER_SAFETY_LOCK",
+      "frontend_commit": "ef146de47cca",
+      "backend_commit": "0f09703ea973",
+      "cause": "FRONTEND_BACKEND_RELEASE_MISMATCH"
+    },
+    "recovery_action": "CLICKED_REFRESH_ONCE",
+    "post_recovery": {
+      "operation_label": "작동 중",
+      "paper_label": "PAPER · 실제 주문 0",
+      "history_visible_rows": 31,
+      "history_main_rows": 0,
+      "history_league_rows": 31,
+      "replay_button_count": 31,
+      "console_warning_or_error_count": 0
+    },
+    "selected_trade_replay": {
+      "trade_id": "paper-candidate-a355f1ab3ca04d83-vwap_exhaustion_reversion_v1-base",
+      "symbol": "龙虾USDT",
+      "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+      "profile": "BASE",
+      "side": "SHORT",
+      "frame_count": 9,
+      "end_frame_reached": true,
+      "entry": "0.063559",
+      "take_profit_1": "0.062889",
+      "initial_stop": "0.06408",
+      "exit": "0.062992",
+      "net_pnl_usdt": "0.3440324664",
+      "holding_ms": 129000,
+      "reconciliation_label": "FULL_STRATEGY_REPLAY_NOT_RUN"
+    }
+  },
+  "conclusion": {
+    "history_and_focus_replay": "PASS_AFTER_SINGLE_RELEASE_REFRESH",
+    "fifteen_second_exit_regression": "NOT_OBSERVED_IN_CURRENT_VERSION_CURRENT_RUN",
+    "profitability": "NOT_PROVEN",
+    "seventy_percent_strategy": "NOT_PROVEN",
+    "full_frozen_13_run_replay": "NOT_RUN",
+    "independent_future_oos": "NOT_RUN"
+  }
+}
