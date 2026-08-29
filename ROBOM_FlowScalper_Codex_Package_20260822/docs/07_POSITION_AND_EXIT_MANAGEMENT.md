@@ -67,7 +67,7 @@ reasons and 3,000 ms persistence. See `ADR-014` and its cost-aware successor `AD
 Optional initial logic:
 
 - after MFE reaches approximately +0.8R, monitor edge decay more aggressively;
-- after +1.0R and sufficient persistence, stop may move to cost-adjusted breakeven or a structure-protecting level;
+- after executable current price, not a past wick alone, remains at least +1.0R for the 3,000 ms activation floor, stop may move to the greater of the configured cost buffer and the planned round-trip-cost-adjusted breakeven or a structure-protecting level;
 - never tighten so aggressively that normal one-tick noise guarantees exit;
 - initial version uses one full-position exit, not complex multi-level scaling.
 

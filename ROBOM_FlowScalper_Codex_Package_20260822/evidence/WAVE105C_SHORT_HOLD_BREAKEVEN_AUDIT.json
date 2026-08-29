@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "generated_date_kst": "2026-08-29",
+  "status": "REGRESSION_PASS_NOT_DEPLOYED",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "private_api_enabled": false,
+  "profitability_claim": "NOT_PROVEN",
+  "source_revision_before_change": "2f36db9d8a56070e7678d4b17c66a847394419ab",
+  "historical_source_evidence": {
+    "screening_path": "evidence/STRATEGY_100_SCREENING.json",
+    "screening_file_sha256": "3e62afe0518396272e9f3b0e94b5f5c8ae116f398ad92389cc03e1a527c90469",
+    "trades_path": "evidence/STRATEGY_100_SCREENING_TRADES.jsonl",
+    "trades_file_sha256": "52ec22b258c38a10bad227d5a97f206057314e5dde0c8baffb7bfefa4d4a4c67",
+    "audit_path": "evidence/STRATEGY_100_SCREENING_AUDIT.json",
+    "audit_file_sha256": "725d3e83528f3b8e29a10fa1cafd7062a027b376cf8aa61dabcd9f3495955f74",
+    "registered_trial_count": 100,
+    "executed_trial_count": 20,
+    "failed_trial_count": 70,
+    "blocked_trial_count": 10,
+    "completed_trade_row_count": 77,
+    "unique_signal_event_count": 14,
+    "unique_run_symbol_entry_count": 20,
+    "run_count_with_trades": 4,
+    "symbol_count_with_trades": 2,
+    "maximum_completed_trades_per_independent_account": 4,
+    "maximum_validation_sample_per_independent_account": 2,
+    "independent_accounts_with_30_or_more_completed_trades": 0,
+    "final_oos_processed": false,
+    "exit_reason_rows": {
+      "STOP": 52,
+      "PROFIT_PROTECTION": 13,
+      "TRAILING_STOP": 12
+    },
+    "hold_seconds": {
+      "minimum": 0.504,
+      "median": 14.79,
+      "maximum": 65.05,
+      "at_most_3_seconds_rows": 6,
+      "at_most_15_seconds_rows": 46,
+      "at_most_30_seconds_rows": 58
+    },
+    "tp1_hit_row_count": 4,
+    "net_positive_row_count": 21,
+    "row_level_win_rate_is_selection_evidence": false
+  },
+  "short_hold_root_cause": {
+    "at_most_3_seconds_rows": 6,
+    "unique_market_cases_after_exit_variant_deduplication": 2,
+    "initial_stop_crossed_case_count": 1,
+    "transient_mfe_breakeven_tighten_case_count": 1,
+    "transient_case": {
+      "family_id": "F19",
+      "profile": "BASE",
+      "symbol": "VELVETUSDT",
+      "side": "LONG",
+      "duplicated_exit_variants": [
+        "E03",
+        "E04",
+        "E05"
+      ],
+      "holding_seconds": 2.802,
+      "mfe_r": 1.0714285714285714,
+      "mae_r": -0.07142857142857142,
+      "exit_reason": "STOP",
+      "net_return_bps_per_duplicate_row": -50.748873148744366,
+      "cause": "PAST_MFE_ONLY_BREAKEVEN_STOP_TIGHTENED_WITHOUT_PERSISTENCE_OR_CURRENT_PRICE_CONFIRMATION"
+    }
+  },
+  "implemented_contract": {
+    "signal_thresholds_changed": false,
+    "take_profit_or_initial_stop_changed": false,
+    "position_size_changed": false,
+    "can_create_new_signals": false,
+    "breakeven_activation_persistence_ms": 3000,
+    "requires_current_r_at_or_above_activation": true,
+    "resets_persistence_when_current_r_retraces": true,
+    "activation_r_formula": "max(1.0R, planned_round_trip_cost_r)",
+    "protected_cost_distance_formula": "max(configured_13bp, initial_price_risk * planned_round_trip_cost_r)",
+    "closed_trade_transient_state_cleanup": true
+  },
+  "verification": {
+    "position_and_portfolio_targeted_pytest": {
+      "status": "PASS",
+      "passed": 52,
+      "failed": 0
+    },
+    "ruff": "PASS",
+    "mypy_changed_sources": "PASS",
+    "git_diff_check": "PASS",
+    "full_backend": "NOT_RUN",
+    "historical_13_run_same_input_replay": "NOT_RUN",
+    "actual_release_deployment": "NOT_RUN",
+    "actual_browser": "NOT_RUN",
+    "new_live_public_natural_sample": "NOT_RUN",
+    "wave104_postfix_6h": "IN_PROGRESS"
+  },
+  "selection_decision": {
+    "selected_strategy_count": 0,
+    "strategy_at_or_above_70_percent_admitted": false,
+    "reason": "NO_INDEPENDENT_ACCOUNT_HAS_30_UNIQUE_MARKET_OPPORTUNITIES_AND_FINAL_OOS_IS_SEALED_NOT_PROCESSED"
+  }
+}

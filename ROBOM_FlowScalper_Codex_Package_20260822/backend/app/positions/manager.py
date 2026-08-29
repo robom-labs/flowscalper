@@ -73,6 +73,7 @@ class PositionManagerConfig:
     emergency_stale_absolute_ms: int = 15 * 60 * 1000
     profit_protection_monitor_r: Decimal = Decimal("0.8")
     breakeven_tighten_r: Decimal = Decimal("1.0")
+    breakeven_tighten_persistence_ms: int = 3_000
     breakeven_cost_bps: Decimal = Decimal("13")
 
 
@@ -88,6 +89,7 @@ class ManagementDecision:
 class PositionManager:
     config: PositionManagerConfig = field(default_factory=PositionManagerConfig)
     _edge_adverse_since_ms: dict[str, int] = field(default_factory=dict)
+    _breakeven_eligible_since_ms: dict[str, int] = field(default_factory=dict)
 
     def evaluate(
         self,
@@ -101,7 +103,11 @@ class PositionManager:
     ) -> ManagementDecision:
         health.validate()
         holding_ms = max(0, now_ms - position.opened_ts_ms)
-        proposed_stop = self._profit_protection_stop(position, health)
+        proposed_stop = self._profit_protection_stop(
+            position,
+            health,
+            now_ms=now_ms,
+        )
         if data_stale:
             return ManagementDecision(
                 ManagementAction.HOLD_DATA_GAP,
@@ -202,15 +208,38 @@ class PositionManager:
         self,
         position: ProtectedPosition,
         health: PositionHealth,
+        *,
+        now_ms: int,
     ) -> Decimal | None:
-        if health.mfe_r < self.config.breakeven_tighten_r:
+        required_r = max(
+            self.config.breakeven_tighten_r,
+            health.round_trip_cost_r,
+        )
+        if health.mfe_r < required_r or health.current_r < required_r:
+            self._breakeven_eligible_since_ms.pop(position.trade_id, None)
             return None
-        adjustment = (
+        eligible_since_ms = self._breakeven_eligible_since_ms.setdefault(
+            position.trade_id,
+            now_ms,
+        )
+        if now_ms - eligible_since_ms < self.config.breakeven_tighten_persistence_ms:
+            return None
+        configured_adjustment = (
             position.entry_fill.average_price * self.config.breakeven_cost_bps / Decimal(10_000)
         )
+        planned_cost_adjustment = abs(
+            position.entry_fill.average_price - position.initial_stop
+        ) * health.round_trip_cost_r
+        adjustment = max(configured_adjustment, planned_cost_adjustment)
         if position.side is Side.LONG:
             return max(position.current_stop, position.entry_fill.average_price + adjustment)
         return min(position.current_stop, position.entry_fill.average_price - adjustment)
+
+    def forget(self, trade_id: str) -> None:
+        """종료된 포지션의 일시적인 관리 확인 상태를 제거한다."""
+
+        self._edge_adverse_since_ms.pop(trade_id, None)
+        self._breakeven_eligible_since_ms.pop(trade_id, None)
 
     @staticmethod
     def _adverse_reasons(health: PositionHealth) -> tuple[str, ...]:

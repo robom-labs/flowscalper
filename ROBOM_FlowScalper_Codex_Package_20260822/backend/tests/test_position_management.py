@@ -195,20 +195,121 @@ def test_single_adverse_signal_does_not_force_soft_exit() -> None:
     )
 
 
-def test_profit_protection_tightens_and_uses_early_exit() -> None:
+def test_profit_protection_exit_can_confirm_early_without_tightening_on_transient_mfe() -> None:
     position = opened_position()
     manager = PositionManager()
     protected = health(
         flow_health=0.1,
         remaining_edge=Decimal("-0.1"),
+        current_r=Decimal("0.1"),
         mfe_r=Decimal("1.1"),
     )
     first = manager.evaluate(position, protected, now_ms=position.opened_ts_ms + 1_000)
     second = manager.evaluate(position, protected, now_ms=position.opened_ts_ms + 4_000)
-    assert first.proposed_stop is not None and first.proposed_stop > position.current_stop
+    assert first.proposed_stop is None
+    assert second.proposed_stop is None
     assert second.action is ManagementAction.EXIT_PROFIT_PROTECTION
-    tightened = manager.tighten_stop(position, first.proposed_stop)
-    assert tightened.current_stop == first.proposed_stop
+
+
+def test_breakeven_stop_requires_three_seconds_and_current_price_confirmation() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    protected = health(
+        current_r=Decimal("1.1"),
+        mfe_r=Decimal("1.1"),
+        round_trip_cost_r=Decimal("0.2"),
+    )
+    activation_started = manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 1_000,
+    )
+    too_early = manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 3_999,
+    )
+    confirmed = manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 4_000,
+    )
+    assert activation_started.proposed_stop is None
+    assert too_early.proposed_stop is None
+    assert confirmed.proposed_stop == Decimal("100.32")
+    tightened = manager.tighten_stop(position, confirmed.proposed_stop)
+    assert tightened.current_stop == confirmed.proposed_stop
+
+
+def test_breakeven_stop_uses_planned_round_trip_cost_when_larger_than_static_buffer() -> None:
+    position = opened_position(Side.SHORT)
+    manager = PositionManager()
+    protected = health(
+        current_r=Decimal("1.1"),
+        mfe_r=Decimal("1.1"),
+        round_trip_cost_r=Decimal("0.4"),
+    )
+    manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 1_000,
+    )
+    decision = manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 4_000,
+    )
+    assert decision.proposed_stop == Decimal("99.46")
+
+
+def test_breakeven_stop_waits_when_planned_cost_exceeds_current_favorable_move() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    decision = manager.evaluate(
+        position,
+        health(
+            current_r=Decimal("1.1"),
+            mfe_r=Decimal("1.1"),
+            round_trip_cost_r=Decimal("1.2"),
+        ),
+        now_ms=position.opened_ts_ms + 30_000,
+    )
+    assert decision.proposed_stop is None
+
+
+def test_breakeven_stop_persistence_resets_when_current_price_retraces() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    protected = health(current_r=Decimal("1.1"), mfe_r=Decimal("1.1"))
+    manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 1_000,
+    )
+    retraced = manager.evaluate(
+        position,
+        replace(protected, current_r=Decimal("0.9")),
+        now_ms=position.opened_ts_ms + 3_000,
+    )
+    restarted = manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 4_000,
+    )
+    still_confirming = manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 6_999,
+    )
+    confirmed = manager.evaluate(
+        position,
+        protected,
+        now_ms=position.opened_ts_ms + 7_000,
+    )
+    assert retraced.proposed_stop is None
+    assert restarted.proposed_stop is None
+    assert still_confirming.proposed_stop is None
+    assert confirmed.proposed_stop is not None
 
 
 def test_initial_stop_never_widens_for_long_or_short() -> None:

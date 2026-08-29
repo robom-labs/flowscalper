@@ -1785,6 +1785,7 @@ class PaperPortfolioEngine:
                 trail_trigger_slippage_usdt=trade.trail_trigger_slippage_usdt,
                 trailing_state_checksum=trade.trailing_state_checksum,
             )
+        self.position_manager.forget(managed.protected.trade_id)
         account.positions.pop(managed.plan.symbol, None)
 
     def _restore_trailing_after_unfilled_exit(

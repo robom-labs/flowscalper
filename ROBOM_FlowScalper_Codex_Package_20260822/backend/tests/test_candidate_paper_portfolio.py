@@ -466,6 +466,31 @@ def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exi
     )
 
 
+def test_transient_one_r_spike_does_not_create_a_three_second_breakeven_stop() -> None:
+    plan = candidate_plan()
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    engine.offer((plan,), entries_paused=False)
+    engine.on_book(book(1_250))
+    managed = engine.main.position
+    assert managed is not None
+
+    favorable = replace(features(), mid=101.31, microprice=101.32)
+    engine.evaluate_health(favorable, Regime.RANGE, now_ms=2_000)
+    assert managed.protected.current_stop == plan.initial_stop
+
+    retraced = replace(features(), mid=101.09, microprice=101.10)
+    engine.evaluate_health(retraced, Regime.RANGE, now_ms=2_800)
+    assert managed.protected.current_stop == plan.initial_stop
+
+    engine.on_book(book(3_000, bids=(("100.0", "100"),), asks=(("100.1", "100"),)))
+    assert engine.main.position is managed
+    assert managed.pending_exit is None
+
+
 def test_stop_trade_records_entry_to_stop_duration_without_inventing_targets() -> None:
     plan = candidate_plan()
     engine = PaperPortfolioEngine(
