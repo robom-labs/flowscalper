@@ -2,7 +2,7 @@
   "schema": "flowscalper.wave105n.natural_max_hold_and_phase_diagnostics.v1",
   "status": "NOT_RUN",
   "status_reason": "자연 PAPER 거래와 개발 회귀검증은 확인했지만 단계별 계측이 포함된 서비스 배포 및 새 6시간 관찰은 아직 실행하지 않았다.",
-  "captured_ts_ms": 1787975203648,
+  "captured_ts_ms": 1787976760751,
   "source": "http://127.0.0.1:8870/api/dashboard 및 /api/history의 읽기 전용 응답",
   "run": {
     "run_id": "run-2b7135a972dd",
@@ -48,6 +48,60 @@
     ],
     "interpretation": "방향성 총손익은 양수였지만 비용 후 두 계좌 모두 순손실이었다. 조기종료 결함은 재발하지 않았으며 수익성 증거도 아니다."
   },
+  "subsequent_natural_trade_audit": {
+    "status": "PASS",
+    "candidate_id": "candidate-a355f1ab3ca04d83",
+    "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+    "symbol": "龙虾USDT",
+    "side": "SHORT",
+    "candidate_armed_ts_ms": 1787976631499,
+    "under_3_seconds": false,
+    "under_15_seconds": false,
+    "exit_reason": "PROFIT_PROTECTION",
+    "exit_reasons": [
+      "FLOW_DECAY",
+      "REMAINING_EDGE_NON_POSITIVE"
+    ],
+    "accounts": [
+      {
+        "account_id": "VWAP_EXHAUSTION_REVERSION_V1:BASE",
+        "profile": "BASE",
+        "entry_ts_ms": 1787976631751,
+        "exit_ts_ms": 1787976760751,
+        "holding_ms": 129000,
+        "entry_fill": "0.0635590",
+        "initial_stop": "0.06408007200",
+        "take_profit_1": "0.062888713600",
+        "take_profit_2": "0.061944069600",
+        "exit_fill": "0.0629920",
+        "current_r_at_exit_arm": "1.157229711057205146313753186",
+        "round_trip_cost_r": "0.2531820789449442687382933644",
+        "gross_pnl_usdt": "0.4286520",
+        "fees_usdt": "0.0574035336",
+        "slippage_usdt": "0.0272160",
+        "net_pnl_usdt": "0.3440324664"
+      },
+      {
+        "account_id": "VWAP_EXHAUSTION_REVERSION_V1:STRESS",
+        "profile": "STRESS",
+        "entry_ts_ms": 1787976632279,
+        "exit_ts_ms": 1787976736757,
+        "holding_ms": 104478,
+        "entry_fill": "0.06355815608465608465608465608",
+        "initial_stop": "0.06408007200",
+        "take_profit_1": "0.062888713600",
+        "take_profit_2": "0.061944069600",
+        "exit_fill": "0.06306176719576719576719576720",
+        "current_r_at_exit_arm": "0.9544757498491415045590874668",
+        "round_trip_cost_r": "0.5055453890616368417430819661",
+        "gross_pnl_usdt": "0.37527000000000000000000000",
+        "fees_usdt": "0.1148695944",
+        "slippage_usdt": "0.0039480",
+        "net_pnl_usdt": "0.25645240560000000000000000"
+      }
+    ],
+    "interpretation": "두 비용 프로필 모두 104초 이상 보유했고 비용 후 순이익으로 이익보호 종료했다. 1~3초 또는 15초 조기종료 재발이 아니지만 VWAP 누적 9기회 중 첫 승리이므로 70%나 수익성을 입증하지 않는다."
+  },
   "current_strategy_evidence": {
     "status": "NOT_PROVEN",
     "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
@@ -69,15 +123,37 @@
     },
     "decision": "30건 미만이므로 순위를 매기지 않고 SHADOW 및 NOT_PROVEN을 유지한다."
   },
+  "subsequent_strategy_evidence": {
+    "status": "NOT_PROVEN",
+    "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+    "base": {
+      "sample_size": 9,
+      "wins": 1,
+      "losses": 8,
+      "win_rate": "0.1111111111111111111111111111",
+      "expectancy_usdt": "-1.299344168177777777777777778",
+      "profit_factor": "0.02857856386096273069149897981"
+    },
+    "stress": {
+      "sample_size": 9,
+      "wins": 1,
+      "losses": 8,
+      "win_rate": "0.1111111111111111111111111111",
+      "expectancy_usdt": "-1.653095380266666666666666667",
+      "profit_factor": "0.01694509968207717849311241858"
+    },
+    "decision": "새 양수 표본을 불변 보존하지만 30건 미만이고 양쪽 기대값과 Profit Factor가 음성 gate이므로 SHADOW 및 NOT_PROVEN을 유지한다."
+  },
   "observed_event_loop_incident": {
     "status": "FAIL",
-    "event_loop_lag_over_500ms_count": 7,
+    "event_loop_lag_over_500ms_count": 8,
     "event_loop_lag_max_ms": 1505.0,
-    "event_loop_lag_last_over_500ms_ts_ms": 1787973946099,
+    "event_loop_lag_last_over_500ms_ts_ms": 1787976632178,
+    "event_loop_lag_last_over_500ms_ms": 506.0,
     "live_event_processing_max_ms": 1504.0,
     "live_event_processing_max_ts_ms": 1787973946092,
-    "event_type": "DEPTH_UPDATE",
-    "symbol": "BTCUSDT",
+    "live_event_processing_max_event_type": "DEPTH_UPDATE",
+    "live_event_processing_max_symbol": "BTCUSDT",
     "queue_depth": 0,
     "unplanned_reconnects": 0,
     "sequence_gaps": 0,
@@ -86,7 +162,36 @@
     "persistence_fault_count": 0,
     "persistence_buffer_dropped": 0,
     "critical_lag_event_count": 0,
-    "root_cause": "UNATTRIBUTED_PENDING_PHASE_TELEMETRY_DEPLOYMENT"
+    "root_cause": "UNATTRIBUTED_PENDING_PHASE_TELEMETRY_DEPLOYMENT",
+    "incidents": [
+      {
+        "event_loop_lag_ms": 1505.0,
+        "event_loop_lag_ts_ms": 1787973946099,
+        "nearest_candidate_id": "candidate-80fdf4847034461f",
+        "nearest_entry_fill_ts_ms": 1787973944938,
+        "installed_live_event_processing_max_ms": 1504.0,
+        "installed_live_event_processing_max_ts_ms": 1787973946092,
+        "event_type": "DEPTH_UPDATE",
+        "symbol": "BTCUSDT"
+      },
+      {
+        "event_loop_lag_ms": 506.0,
+        "event_loop_lag_ts_ms": 1787976632178,
+        "nearest_candidate_id": "candidate-a355f1ab3ca04d83",
+        "base_entry_fill_ts_ms": 1787976631751,
+        "stress_entry_fill_ts_ms": 1787976632279,
+        "relative_to_base_entry_fill_ms": 427,
+        "relative_to_stress_entry_fill_ms": -101,
+        "event_type": "NOT_ATTRIBUTED_BY_INSTALLED_RELEASE",
+        "symbol": "龙虾USDT",
+        "queue_peak_observed_after_incident": 951,
+        "queue_recovered_to_zero": true,
+        "unplanned_reconnects": 0,
+        "sequence_gaps": 0,
+        "dropped_events": 0,
+        "persistence_fault_count": 0
+      }
+    ]
   },
   "development_verification": {
     "status": "PASS",

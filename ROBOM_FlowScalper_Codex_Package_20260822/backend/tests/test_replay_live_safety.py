@@ -13,6 +13,7 @@ from backend.app.replay.safety import (
     ReplayLiveSafetySnapshot,
     ReplayLiveSafetyThresholds,
     ReplayLiveSafetyViolation,
+    replay_live_safety_snapshot_from_dashboard,
     run_with_live_safety,
 )
 
@@ -21,7 +22,10 @@ def _snapshot(**overrides: object) -> ReplayLiveSafetySnapshot:
     baseline = ReplayLiveSafetySnapshot(
         run_id="run-live-safe",
         runtime_mode="LIVE_SHADOW_PAPER",
+        operation_state="RUNNING",
         market_data_state="LIVE",
+        execution_state="PAPER",
+        process_uptime_seconds=100.0,
         event_count=100,
         queue_depth=0,
         lag_p95_ms=50.0,
@@ -33,6 +37,7 @@ def _snapshot(**overrides: object) -> ReplayLiveSafetySnapshot:
         dropped_events=0,
         persistence_fault_count=0,
         persistence_buffer_dropped=0,
+        event_loop_lag_over_500ms_count=0,
         critical_lag_incident_count=0,
         critical_lag_active=False,
         entry_locked=False,
@@ -45,6 +50,57 @@ def _snapshot(**overrides: object) -> ReplayLiveSafetySnapshot:
     return replace(baseline, **overrides)
 
 
+def _dashboard_payload() -> dict[str, object]:
+    return {
+        "status": {
+            "run_id": "run-live-safe",
+            "mode": "LIVE_SHADOW_PAPER",
+            "market_data_state": "LIVE",
+            "execution_state": "PAPER",
+            "real_orders_enabled": False,
+            "auth_required": False,
+        },
+        "operation_status": {"state": "RUNNING"},
+        "system": {
+            "event_count": 100,
+            "queue_depth": 0,
+            "queue_capacity": 20_000,
+            "lag_p95_ms": 50.0,
+            "critical_lag_threshold_ms": 5_000.0,
+            "reconnects": 2,
+            "planned_rotations": 2,
+            "unplanned_reconnects": 0,
+            "sequence_gaps": 0,
+            "resyncs": 0,
+            "dropped_events": 0,
+            "persistence_fault_count": 0,
+            "persistence_buffer_dropped": 0,
+            "event_loop_lag_over_500ms_count": 3,
+            "critical_lag_incident_count": 0,
+            "critical_lag_active": False,
+            "entry_locked": False,
+            "storage_entry_allowed": True,
+            "process_uptime_seconds": 1_000.0,
+            "last_error": None,
+        },
+        "position": None,
+        "league_positions": [],
+    }
+
+
+def test_dashboard_snapshot_includes_event_loop_stall_counter() -> None:
+    snapshot = replay_live_safety_snapshot_from_dashboard(_dashboard_payload())
+
+    assert snapshot.run_id == "run-live-safe"
+    assert snapshot.runtime_mode == "LIVE_SHADOW_PAPER"
+    assert snapshot.operation_state == "RUNNING"
+    assert snapshot.execution_state == "PAPER"
+    assert snapshot.process_uptime_seconds == 1_000.0
+    assert snapshot.event_loop_lag_over_500ms_count == 3
+    assert snapshot.real_orders_enabled is False
+    assert snapshot.auth_required is False
+
+
 def test_replay_guard_allows_only_planned_rotation_lock_grace() -> None:
     now = 0.0
     guard = ReplayLiveSafetyGuard(_snapshot(), monotonic=lambda: now)
@@ -55,6 +111,7 @@ def test_replay_guard_allows_only_planned_rotation_lock_grace() -> None:
         event_count=110,
         planned_rotations=3,
         reconnects=2,
+        operation_state="SAFETY_WAITING",
         entry_locked=True,
     )
     assert guard.observe(rotation_started) == ()
@@ -64,6 +121,7 @@ def test_replay_guard_allows_only_planned_rotation_lock_grace() -> None:
         rotation_started,
         event_count=120,
         reconnects=3,
+        operation_state="RUNNING",
         entry_locked=False,
     )
     assert guard.observe(rotation_completed) == ()
@@ -93,6 +151,7 @@ def test_replay_guard_rejects_stall_lag_and_new_critical_incident() -> None:
     violations = guard.observe(
         _snapshot(
             lag_p95_ms=501.0,
+            event_loop_lag_over_500ms_count=1,
             critical_lag_active=True,
             critical_lag_incident_count=1,
         )
@@ -102,8 +161,26 @@ def test_replay_guard_rejects_stall_lag_and_new_critical_incident() -> None:
         "EVENT_STREAM_STALLED",
         "LAG_LIMIT_EXCEEDED",
         "CRITICAL_LAG_ACTIVE",
+        "EVENT_LOOP_LAG_OVER_500MS",
         "CRITICAL_LAG_INCIDENT",
     )
+
+
+def test_replay_guard_rejects_stopped_non_paper_or_restarted_runtime() -> None:
+    guard = ReplayLiveSafetyGuard(_snapshot())
+
+    violations = guard.observe(
+        _snapshot(
+            event_count=101,
+            operation_state="READY",
+            execution_state="LIVE",
+            process_uptime_seconds=10.0,
+        )
+    )
+
+    assert "PROCESS_RESTARTED" in violations
+    assert "OPERATION_NOT_RUNNING" in violations
+    assert "EXECUTION_NOT_PAPER" in violations
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,447 @@
+# 11개 전략 전체 연구 리플레이를 LIVE PAPER 안전감시 아래 저우선순위로 실행한다.
+"""동결 archive 전수 비교가 현재 공개시장 수신을 침범하면 즉시 중단하는 CLI다."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+import time
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+from backend.app.replay.safety import (
+    ReplayLiveSafetySnapshot,
+    ReplayLiveSafetyThresholds,
+    ReplayLiveSafetyViolation,
+    replay_live_safety_snapshot_from_dashboard,
+    run_with_live_safety,
+)
+from backend.app.storage.integrity import fetch_dashboard_payload
+
+_SINGLE_THREAD_ENVIRONMENT = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+
+
+@dataclass(slots=True)
+class ChildState:
+    """자식 종료와 출력 꼬리를 제어 증거에 남긴다."""
+
+    command: tuple[str, ...] = ()
+    return_code: int | None = None
+    terminated_by_guard: bool = False
+    stdout_tail: str = ""
+    stderr_tail: str = ""
+
+
+@dataclass(slots=True)
+class SafetyObservations:
+    """전체 표본을 저장하지 않고 LIVE 안전감시의 경계값만 집계한다."""
+
+    sample_count: int = 0
+    baseline: ReplayLiveSafetySnapshot | None = None
+    latest: ReplayLiveSafetySnapshot | None = None
+    maximum_queue_depth: int = 0
+    maximum_lag_p95_ms: float = 0.0
+    maximum_event_loop_lag_over_500ms_count: int = 0
+
+    def record(self, sample: ReplayLiveSafetySnapshot) -> None:
+        if self.baseline is None:
+            self.baseline = sample
+        self.latest = sample
+        self.sample_count += 1
+        self.maximum_queue_depth = max(self.maximum_queue_depth, sample.queue_depth)
+        self.maximum_lag_p95_ms = max(self.maximum_lag_p95_ms, sample.lag_p95_ms)
+        self.maximum_event_loop_lag_over_500ms_count = max(
+            self.maximum_event_loop_lag_over_500ms_count,
+            sample.event_loop_lag_over_500ms_count,
+        )
+
+    def report(self) -> dict[str, object]:
+        baseline = self.baseline
+        latest = self.latest
+        return {
+            "sample_count": self.sample_count,
+            "baseline": asdict(baseline) if baseline is not None else None,
+            "latest": asdict(latest) if latest is not None else None,
+            "event_delta": (
+                latest.event_count - baseline.event_count
+                if baseline is not None and latest is not None
+                else 0
+            ),
+            "event_loop_lag_over_500ms_delta": (
+                latest.event_loop_lag_over_500ms_count - baseline.event_loop_lag_over_500ms_count
+                if baseline is not None and latest is not None
+                else 0
+            ),
+            "maximum_queue_depth": self.maximum_queue_depth,
+            "maximum_lag_p95_ms": self.maximum_lag_p95_ms,
+            "maximum_event_loop_lag_over_500ms_count": (
+                self.maximum_event_loop_lag_over_500ms_count
+            ),
+        }
+
+
+def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+
+
+def _child_environment() -> dict[str, str]:
+    environment = dict(os.environ)
+    for variable in _SINGLE_THREAD_ENVIRONMENT:
+        environment[variable] = "1"
+    environment["PYTHONUNBUFFERED"] = "1"
+    return environment
+
+
+def _research_arguments(
+    arguments: argparse.Namespace,
+    partial_output: Path,
+) -> tuple[str, ...]:
+    command = [
+        sys.executable,
+        str(arguments.project_root / "scripts" / "research_runtime_strategy_replay.py"),
+        "--all-strategies",
+        "--verify-archive-bytes",
+        "--archive",
+        str(arguments.archive),
+        "--dataset-manifest",
+        str(arguments.dataset_manifest),
+        "--output",
+        str(partial_output),
+    ]
+    for run_id in arguments.run_id or ():
+        command.extend(("--run-id", run_id))
+    if arguments.maximum_events is not None:
+        command.extend(("--maximum-events", str(arguments.maximum_events)))
+    return tuple(command)
+
+
+def _low_priority_command(command: tuple[str, ...]) -> tuple[str, ...]:
+    nice = Path("/usr/bin/nice")
+    taskpolicy = Path("/usr/sbin/taskpolicy")
+    if sys.platform == "darwin" and nice.is_file() and taskpolicy.is_file():
+        return (str(nice), "-n", "19", str(taskpolicy), "-b", *command)
+    if os.name != "nt" and nice.is_file():
+        return (str(nice), "-n", "19", *command)
+    return command
+
+
+async def _terminate_child(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is not None:
+        return
+    process.terminate()
+    try:
+        await asyncio.wait_for(process.wait(), timeout=5.0)
+    except TimeoutError:
+        process.kill()
+        await process.wait()
+
+
+def _tail(raw: bytes, *, limit: int = 4_000) -> str:
+    return raw.decode(errors="replace").strip()[-limit:]
+
+
+async def _run_child(
+    command: tuple[str, ...],
+    *,
+    project_root: Path,
+    state: ChildState,
+) -> None:
+    state.command = command
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        cwd=str(project_root),
+        env=_child_environment(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await process.communicate()
+    except asyncio.CancelledError:
+        state.terminated_by_guard = True
+        await _terminate_child(process)
+        try:
+            stdout, stderr = await process.communicate()
+        except BaseException:
+            stdout, stderr = b"", b""
+        state.return_code = process.returncode
+        state.stdout_tail = _tail(stdout)
+        state.stderr_tail = _tail(stderr)
+        raise
+    state.return_code = process.returncode
+    state.stdout_tail = _tail(stdout)
+    state.stderr_tail = _tail(stderr)
+    if process.returncode != 0:
+        raise RuntimeError(
+            "전략리그 연구 자식 프로세스가 실패했습니다. "
+            f"exit={process.returncode}; stderr={state.stderr_tail}"
+        )
+
+
+def _validate_result_payload(
+    payload: object,
+    *,
+    full_frozen_replay: bool,
+) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        raise ValueError("전략리그 결과가 JSON 객체가 아닙니다.")
+    required = {
+        "status": "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE",
+        "method": "ONE_PASS_ALL_REGISTERED_ACTUAL_PAPER_RUNTIME_PATH",
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+        "runtime_ai_order_decision": False,
+        "strategy_count": 11,
+        "strategy_account_count": 22,
+    }
+    mismatches = {
+        key: {"expected": expected, "actual": payload.get(key)}
+        for key, expected in required.items()
+        if payload.get(key) != expected
+    }
+    if mismatches:
+        raise ValueError(f"전략리그 결과 불변조건이 다릅니다: {mismatches}")
+    if not isinstance(payload.get("runs"), list):
+        raise ValueError("전략리그 결과의 Run 목록이 올바르지 않습니다.")
+    frozen_dataset = payload.get("frozen_dataset")
+    if not isinstance(frozen_dataset, dict):
+        raise ValueError("전략리그 결과에 동결 dataset 증거가 없습니다.")
+    byte_verification = frozen_dataset.get("current_archive_byte_reverification")
+    if not isinstance(byte_verification, dict) or byte_verification.get("status") != "PASS":
+        raise ValueError("현재 archive byte 재검증이 PASS가 아닙니다.")
+    if full_frozen_replay:
+        if (
+            frozen_dataset.get("selected_run_count") != 13
+            or byte_verification.get("run_count") != 13
+        ):
+            raise ValueError("동결 13-Run 전수 범위가 완전하지 않습니다.")
+    return payload
+
+
+async def _execute(
+    arguments: argparse.Namespace,
+    *,
+    partial_output: Path,
+    observations: SafetyObservations,
+    child_state: ChildState,
+) -> dict[str, object]:
+    dashboard_url = arguments.runtime_url.rstrip("/") + "/api/dashboard"
+
+    def probe() -> ReplayLiveSafetySnapshot:
+        payload = fetch_dashboard_payload(
+            dashboard_url,
+            timeout_seconds=arguments.request_timeout_seconds,
+        )
+        snapshot = replay_live_safety_snapshot_from_dashboard(payload)
+        observations.record(snapshot)
+        return snapshot
+
+    research_command = _research_arguments(arguments, partial_output)
+    command = _low_priority_command(research_command)
+    thresholds = ReplayLiveSafetyThresholds(
+        max_queue_depth=arguments.max_queue_depth,
+        max_lag_p95_ms=arguments.max_lag_p95_ms,
+        max_event_stall_seconds=arguments.max_event_stall_seconds,
+        poll_seconds=arguments.poll_seconds,
+        max_consecutive_probe_errors=arguments.max_consecutive_probe_errors,
+        planned_rotation_lock_grace_seconds=(arguments.planned_rotation_lock_grace_seconds),
+    )
+    await asyncio.wait_for(
+        run_with_live_safety(
+            lambda: _run_child(
+                command,
+                project_root=arguments.project_root,
+                state=child_state,
+            ),
+            probe=probe,
+            thresholds=thresholds,
+        ),
+        timeout=arguments.max_duration_seconds,
+    )
+    raw_result: Any = json.loads(partial_output.read_text(encoding="utf-8"))
+    return _validate_result_payload(
+        raw_result,
+        full_frozen_replay=(arguments.maximum_events is None and not arguments.run_id),
+    )
+
+
+def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
+    started_at = datetime.now(UTC)
+    started_monotonic = time.monotonic()
+    output = arguments.output.resolve()
+    control_output = arguments.control_output.resolve()
+    if output == control_output:
+        raise ValueError("전략 결과와 제어 증거는 서로 다른 경로여야 합니다.")
+    if output.exists():
+        raise FileExistsError(f"기존 전략 결과를 덮어쓰지 않습니다: {output}")
+    if control_output.exists():
+        raise FileExistsError(f"기존 제어 증거를 덮어쓰지 않습니다: {control_output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    partial_output = output.with_name(f".{output.name}.{uuid4().hex}.partial")
+    observations = SafetyObservations()
+    child_state = ChildState()
+    status = "FAIL"
+    exit_code = 1
+    error: dict[str, object] | None = None
+    result_summary: dict[str, object] | None = None
+    try:
+        result = asyncio.run(
+            _execute(
+                arguments,
+                partial_output=partial_output,
+                observations=observations,
+                child_state=child_state,
+            )
+        )
+        os.replace(partial_output, output)
+        status = "PASS"
+        exit_code = 0
+        run_rows = result.get("runs")
+        result_summary = {
+            "git_commit": result.get("git_commit"),
+            "strategy_version": result.get("strategy_version"),
+            "strategy_count": result.get("strategy_count"),
+            "strategy_account_count": result.get("strategy_account_count"),
+            "run_count": len(run_rows) if isinstance(run_rows, list) else 0,
+            "ranking_eligible_strategy_ids": result.get("ranking_eligible_strategy_ids"),
+            "profitability_status": result.get("profitability_status"),
+        }
+    except ReplayLiveSafetyViolation as caught:
+        status = "ABORTED_RUNTIME_SAFETY"
+        exit_code = 2
+        error = {
+            "type": type(caught).__name__,
+            "message": str(caught),
+            "violation_codes": list(caught.violations),
+        }
+    except TimeoutError as caught:
+        status = "ABORTED_TIMEOUT"
+        exit_code = 3
+        error = {
+            "type": type(caught).__name__,
+            "message": "전략리그 전체 연구가 실행시간 상한을 넘었습니다.",
+        }
+    except KeyboardInterrupt as caught:
+        status = "ABORTED_OPERATOR"
+        exit_code = 130
+        error = {
+            "type": type(caught).__name__,
+            "message": "사용자 또는 운영자가 중단했습니다.",
+        }
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as caught:
+        error = {"type": type(caught).__name__, "message": str(caught)}
+    finally:
+        partial_output.unlink(missing_ok=True)
+    completed_at = datetime.now(UTC)
+    evidence = {
+        "schema_version": 1,
+        "status": status,
+        "started_at": started_at.isoformat(),
+        "completed_at": completed_at.isoformat(),
+        "duration_seconds": round(time.monotonic() - started_monotonic, 3),
+        "runtime_url": arguments.runtime_url,
+        "output_path": str(output),
+        "output_written": output.is_file(),
+        "partial_output_removed": not partial_output.exists(),
+        "child": asdict(child_state),
+        "runtime_safety": observations.report(),
+        "result_summary": result_summary,
+        "error": error,
+        "paper_safety": {
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+            "private_api_enabled": False,
+            "wallet_paths_enabled": False,
+            "runtime_ai_order_decision": False,
+        },
+    }
+    _atomic_write_json(control_output, evidence)
+    return exit_code, evidence
+
+
+def parse_arguments() -> argparse.Namespace:
+    project_root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(
+        description=(
+            "11개 전략·22개 독립 PAPER 계좌의 동결 archive 전수 replay를 "
+            "LIVE 안전감시 아래 실행합니다."
+        )
+    )
+    parser.add_argument("--project-root", type=Path, default=project_root)
+    parser.add_argument(
+        "--archive",
+        type=Path,
+        default=project_root / "data" / "market-parquet-v6" / "venue=BINANCE_USDM",
+    )
+    parser.add_argument(
+        "--dataset-manifest",
+        type=Path,
+        default=project_root / "evidence" / "STRATEGY_100_DATASET_MANIFEST.json",
+    )
+    parser.add_argument("--run-id", action="append")
+    parser.add_argument("--maximum-events", type=int)
+    parser.add_argument("--runtime-url", default="http://127.0.0.1:8870")
+    parser.add_argument("--request-timeout-seconds", type=float, default=2.0)
+    parser.add_argument("--poll-seconds", type=float, default=1.0)
+    parser.add_argument("--max-consecutive-probe-errors", type=int, default=3)
+    parser.add_argument("--max-queue-depth", type=int, default=64)
+    parser.add_argument("--max-lag-p95-ms", type=float, default=500.0)
+    parser.add_argument("--max-event-stall-seconds", type=float, default=30.0)
+    parser.add_argument(
+        "--planned-rotation-lock-grace-seconds",
+        type=float,
+        default=15.0,
+    )
+    parser.add_argument("--max-duration-seconds", type=float, default=28_800.0)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--control-output", type=Path)
+    arguments = parser.parse_args()
+    arguments.project_root = arguments.project_root.resolve(strict=True)
+    arguments.archive = arguments.archive.resolve(strict=True)
+    arguments.dataset_manifest = arguments.dataset_manifest.resolve(strict=True)
+    arguments.control_output = arguments.control_output or arguments.output.with_name(
+        arguments.output.stem + "_LIVE_GUARD.json"
+    )
+    if (
+        arguments.request_timeout_seconds <= 0
+        or arguments.poll_seconds <= 0
+        or arguments.max_consecutive_probe_errors <= 0
+        or arguments.max_queue_depth < 0
+        or arguments.max_lag_p95_ms <= 0
+        or arguments.max_event_stall_seconds <= 0
+        or arguments.planned_rotation_lock_grace_seconds <= 0
+        or arguments.max_duration_seconds <= 0
+        or (arguments.maximum_events is not None and arguments.maximum_events <= 0)
+    ):
+        parser.error("시간·감시·대기열·이벤트 상한은 올바른 양수여야 합니다.")
+    return arguments
+
+
+def main() -> None:
+    arguments = parse_arguments()
+    exit_code, evidence = run(arguments)
+    print(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True))
+    raise SystemExit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,7 +16,10 @@ class ReplayLiveSafetySnapshot:
 
     run_id: str
     runtime_mode: str
+    operation_state: str
     market_data_state: str
+    execution_state: str
+    process_uptime_seconds: float
     event_count: int
     queue_depth: int
     lag_p95_ms: float
@@ -28,6 +31,7 @@ class ReplayLiveSafetySnapshot:
     dropped_events: int
     persistence_fault_count: int
     persistence_buffer_dropped: int
+    event_loop_lag_over_500ms_count: int
     critical_lag_incident_count: int
     critical_lag_active: bool
     entry_locked: bool
@@ -66,6 +70,54 @@ class ReplayLiveSafetyViolation(RuntimeError):
     def __init__(self, violations: tuple[str, ...]) -> None:
         self.violations = violations
         super().__init__(", ".join(violations))
+
+
+def replay_live_safety_snapshot_from_dashboard(
+    payload: Mapping[str, object],
+) -> ReplayLiveSafetySnapshot:
+    """localhost 대시보드를 replay 자동중단용 최소 snapshot으로 엄격히 변환한다."""
+
+    from backend.app.storage.integrity import parse_runtime_safety_sample
+
+    status = payload.get("status")
+    system = payload.get("system")
+    if not isinstance(status, Mapping) or not isinstance(system, Mapping):
+        raise ValueError("대시보드 status 또는 system이 없습니다.")
+    runtime_mode = status.get("mode")
+    event_loop_lag_count = system.get("event_loop_lag_over_500ms_count")
+    if not isinstance(runtime_mode, str) or not runtime_mode:
+        raise ValueError("대시보드 status.mode가 올바르지 않습니다.")
+    if isinstance(event_loop_lag_count, bool) or not isinstance(event_loop_lag_count, int):
+        raise ValueError("대시보드 system.event_loop_lag_over_500ms_count가 올바르지 않습니다.")
+    sample = parse_runtime_safety_sample(payload)
+    return ReplayLiveSafetySnapshot(
+        run_id=sample.run_id,
+        runtime_mode=runtime_mode,
+        operation_state=sample.operation_state,
+        market_data_state=sample.market_data_state,
+        execution_state=sample.execution_state,
+        process_uptime_seconds=sample.process_uptime_seconds,
+        event_count=sample.event_count,
+        queue_depth=sample.queue_depth,
+        lag_p95_ms=sample.lag_p95_ms,
+        reconnects=sample.reconnects,
+        planned_rotations=sample.planned_rotations,
+        unplanned_reconnects=sample.unplanned_reconnects,
+        sequence_gaps=sample.sequence_gaps,
+        resyncs=sample.resyncs,
+        dropped_events=sample.dropped_events,
+        persistence_fault_count=sample.persistence_fault_count,
+        persistence_buffer_dropped=sample.persistence_buffer_dropped,
+        event_loop_lag_over_500ms_count=event_loop_lag_count,
+        critical_lag_incident_count=sample.critical_lag_incident_count,
+        critical_lag_active=sample.critical_lag_active,
+        entry_locked=sample.entry_locked,
+        position_count=sample.position_count,
+        storage_entry_allowed=sample.storage_entry_allowed,
+        real_orders_enabled=sample.real_orders_enabled,
+        auth_required=sample.auth_required,
+        last_error=sample.last_error,
+    )
 
 
 class ReplayLiveSafetyGuard:
@@ -143,6 +195,11 @@ class ReplayLiveSafetyGuard:
                 sample.persistence_buffer_dropped,
             ),
             (
+                "EVENT_LOOP_LAG_OVER_500MS",
+                self.baseline.event_loop_lag_over_500ms_count,
+                sample.event_loop_lag_over_500ms_count,
+            ),
+            (
                 "CRITICAL_LAG_INCIDENT",
                 self.baseline.critical_lag_incident_count,
                 sample.critical_lag_incident_count,
@@ -176,10 +233,16 @@ class ReplayLiveSafetyGuard:
         violations: list[str] = []
         if sample.run_id != self.baseline.run_id:
             violations.append("RUN_CHANGED")
+        if sample.process_uptime_seconds < self.baseline.process_uptime_seconds:
+            violations.append("PROCESS_RESTARTED")
         if sample.runtime_mode != "LIVE_SHADOW_PAPER":
             violations.append("RUNTIME_NOT_LIVE_PAPER")
+        if sample.operation_state != "RUNNING" and not allow_planned_transition:
+            violations.append("OPERATION_NOT_RUNNING")
         if sample.market_data_state != "LIVE":
             violations.append("MARKET_NOT_LIVE")
+        if sample.execution_state != "PAPER":
+            violations.append("EXECUTION_NOT_PAPER")
         if sample.real_orders_enabled:
             violations.append("REAL_ORDERS_ENABLED")
         if sample.auth_required:

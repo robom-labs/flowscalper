@@ -491,13 +491,23 @@ class PaperRuntime:
         self._refresh_storage_safety()
         telemetry = self._supervisor.telemetry if self._supervisor is not None else None
         status = self.status()
+        started_monotonic_ns = (
+            telemetry.started_monotonic_ns if telemetry is not None else None
+        )
         position_count = len(self.paper_portfolio.main.positions) + sum(
             len(account.positions) for account in self.paper_portfolio.shadows.values()
         )
         return ReplayLiveSafetySnapshot(
             run_id=self.run_id,
             runtime_mode=self.mode.value,
+            operation_state="SAFETY_WAITING" if self.paused else "RUNNING",
             market_data_state=self.market_data_state.value,
+            execution_state=status.execution_state.value,
+            process_uptime_seconds=(
+                max(0.0, (self.clock.monotonic_ns() - started_monotonic_ns) / 1_000_000_000)
+                if started_monotonic_ns is not None
+                else 0.0
+            ),
             event_count=telemetry.event_count if telemetry is not None else len(self._events),
             queue_depth=telemetry.queue_depth if telemetry is not None else 0,
             lag_p95_ms=float(
@@ -517,6 +527,9 @@ class PaperRuntime:
             dropped_events=(telemetry.dropped_event_count if telemetry is not None else 0),
             persistence_fault_count=self._persistence_fault_count,
             persistence_buffer_dropped=self._persistence_buffer_dropped,
+            event_loop_lag_over_500ms_count=(
+                telemetry.event_loop_lag_over_500ms_count if telemetry is not None else 0
+            ),
             critical_lag_incident_count=(
                 telemetry.critical_lag_incident_count if telemetry is not None else 0
             ),

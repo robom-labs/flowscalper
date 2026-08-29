@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "status": "IMPLEMENTED_NOT_RUN",
+  "recorded_at": "2026-08-29T04:22:10Z",
+  "purpose": "동결 13-Run을 11전략 22계좌의 실제 PAPER 런타임 경로로 비교하되 현재 LIVE 공개시장 수신을 우선한다.",
+  "runner": "scripts/run_live_safe_strategy_league_replay.py",
+  "planned_result": "evidence/WAVE105_FULL_STRATEGY_LEAGUE_REPLAY.json",
+  "planned_control_evidence": "evidence/WAVE105_FULL_STRATEGY_LEAGUE_REPLAY_LIVE_GUARD.json",
+  "frozen_dataset": {
+    "manifest_path": "evidence/STRATEGY_100_DATASET_MANIFEST.json",
+    "manifest_file_sha256": "c3ee4a0818c65486b074f03a18691dc8c96a688c9e8fef565e9a7b5f3e5382af",
+    "manifest_sha256": "61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20",
+    "run_count": 13,
+    "event_count": 2690582,
+    "historical_archive_verification": "PASS",
+    "current_archive_byte_reverification": "NOT_RUN"
+  },
+  "research_contract": {
+    "strategy_count": 11,
+    "strategy_account_count": 22,
+    "profiles": [
+      "BASE",
+      "STRESS"
+    ],
+    "all_strategies_same_public_input": true,
+    "retired_reactivation_scope": "EPHEMERAL_RESEARCH_REPLAY_ONLY",
+    "minimum_unique_opportunities_before_ranking": 30,
+    "minimum_win_rate_per_profile": 0.7,
+    "requires_cost_positive_expectancy": true,
+    "requires_profit_factor": true,
+    "requires_drawdown_gate": true,
+    "requires_time_ordered_oos": true,
+    "requires_bootstrap_lower_bound": true,
+    "requires_dsr": true,
+    "requires_pbo": true,
+    "requires_opportunity_concentration_gate": true,
+    "profitability_status": "NOT_PROVEN"
+  },
+  "live_guard": {
+    "process_niceness": 19,
+    "darwin_background_taskpolicy": true,
+    "single_thread_numeric_libraries": true,
+    "poll_seconds": 1.0,
+    "maximum_queue_depth": 64,
+    "maximum_processing_lag_p95_ms": 500.0,
+    "maximum_event_stall_seconds": 30.0,
+    "planned_rotation_lock_grace_seconds": 15.0,
+    "maximum_duration_seconds": 28800.0,
+    "abort_on_new_event_loop_lag_over_500ms": true,
+    "abort_on_process_restart": true,
+    "requires_operation_running": true,
+    "requires_paper_execution": true,
+    "abort_on_open_position": true,
+    "abort_on_unplanned_reconnect_gap_resync_drop_fault": true,
+    "partial_result_published": false
+  },
+  "verification": {
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "targeted_tests": {
+      "status": "PASS",
+      "passed": 11
+    },
+    "actual_dashboard_parser": {
+      "status": "PASS",
+      "run_id": "run-2b7135a972dd",
+      "mode": "LIVE_SHADOW_PAPER",
+      "operation_state": "RUNNING",
+      "execution_state": "PAPER",
+      "position_count": 0,
+      "real_orders_enabled": false,
+      "auth_required": false
+    },
+    "full_archive_replay": "NOT_RUN",
+    "reason": "Wave104 무간섭 6시간 observer가 진행 중이므로 archive 읽기와 전체 replay를 겹치지 않는다."
+  },
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_keys_required": false,
+    "wallet_paths_enabled": false,
+    "runtime_ai_order_decision": false
+  }
+}

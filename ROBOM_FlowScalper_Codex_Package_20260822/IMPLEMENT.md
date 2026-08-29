@@ -679,3 +679,16 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Deploy only a committed immutable release while every PAPER account is flat. Require same-Run recovery, LIVE public data, PAPER execution, isolated commit and zero actual orders or authentication.
 9. Verify the real History rows, focused Replay entry and exit jumps, Strategy sample state, Performance 30-sample warning, System safety and browser console after deployment.
 10. Treat the passing 60-second load comparison and five-minute observer as short evidence only. Start a fresh six-hour observer before any 24-hour observer and keep profitability `NOT_PROVEN` until its separate gates pass.
+
+## LIVE-safe full Strategy League replay Wave
+
+1. Compare all 11 registered strategies against the same frozen public-market input with 22 independent BASE and STRESS PAPER accounts.
+2. Recompute the current filenames, sizes, time ranges, event counts and full archive byte checksums for all 13 frozen Runs before accepting any result.
+3. Run the research child at niceness 19, Darwin background I/O priority and one numeric-library thread so the installed LIVE PAPER service always has priority.
+4. Fix a runtime baseline before the child starts and poll process uptime, operation state, PAPER execution, event progress, queue, processing p95, reconnects, gaps, resyncs, drops, persistence faults, critical lag, positions, actual-order safety and authentication every second.
+5. Abort the child on any new local event-loop delay above 500ms. Judge the counter delta inside this replay window rather than the process-lifetime historical maximum.
+6. Abort if any PAPER position opens, because the installed runtime must protect and exit the position without archive-replay competition. Allow only the existing bounded planned-rotation transition.
+7. Write the research result to a unique partial path. Publish it atomically only after exit zero, a final safe runtime sample, current archive verification PASS, 11 strategies, 22 accounts and all PAPER-only invariants pass.
+8. Delete partial output after safety abort, timeout or failure and preserve the exact violation codes in separate machine-readable control evidence. Never interpret an incomplete result as performance evidence.
+9. Keep the 30-opportunity, 70% BASE and STRESS win-rate, positive cost-adjusted expectancy, Profit Factor, drawdown, time-ordered OOS, bootstrap, DSR, PBO and concentration gates unchanged.
+10. Do not overlap the full replay with the in-progress uncontaminated six-hour observer, full build, full ledger scan or deployment. Actual orders, private APIs, credentials, wallets and runtime AI order decisions remain zero.
