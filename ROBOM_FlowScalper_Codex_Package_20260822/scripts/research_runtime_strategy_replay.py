@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from collections import Counter, defaultdict, deque
@@ -38,11 +39,78 @@ SIGNAL_GATE_NONE = "NONE"
 SIGNAL_GATE_TP1_FEASIBILITY = "TP1_FEASIBILITY_CONFLUENCE_V1"
 SIGNAL_GATES = (SIGNAL_GATE_NONE, SIGNAL_GATE_TP1_FEASIBILITY)
 TP1_FEASIBILITY_LOOKBACK_MS = 120_000
+DEFAULT_DATASET_MANIFEST = Path("evidence/STRATEGY_100_DATASET_MANIFEST.json")
 _CANDIDATE_EVENTS = {
     "MAIN_CANDIDATE_SELECTED",
     "LEAGUE_CANDIDATE_ARMED",
     "SHADOW_CANDIDATE_ARMED",
 }
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def frozen_dataset_reference(
+    path: Path,
+    run_ids: Sequence[str],
+) -> dict[str, object]:
+    """동결 manifest 자체와 선택 Run의 checksum 계약을 검증해 결과에 고정한다."""
+
+    raw = path.read_bytes()
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("동결 dataset manifest는 JSON object여야 합니다.")
+    material = dict(payload)
+    claimed_manifest_sha256 = material.pop("manifest_sha256", None)
+    actual_manifest_sha256 = hashlib.sha256(_canonical_json(material).encode()).hexdigest()
+    if claimed_manifest_sha256 != actual_manifest_sha256:
+        raise ValueError("동결 dataset manifest 내부 checksum이 다릅니다.")
+    if (
+        payload.get("status") != "FROZEN_HISTORICAL_FORWARD_PENDING"
+        or payload.get("paper_only") is not True
+        or payload.get("real_orders_enabled") is not False
+        or payload.get("private_api_enabled") is not False
+        or payload.get("runtime_ai_enabled") is not False
+    ):
+        raise ValueError("동결 dataset manifest의 PAPER·미래표본 경계가 잘못됐습니다.")
+    rows = payload.get("runs")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("동결 dataset manifest의 Run 목록이 없습니다.")
+    run_by_id: dict[str, Mapping[str, object]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("run_id"), str):
+            raise ValueError("동결 dataset manifest의 Run 행이 잘못됐습니다.")
+        run_id = str(row["run_id"])
+        checksum = row.get("checksum")
+        if (
+            run_id in run_by_id
+            or not isinstance(checksum, str)
+            or len(checksum) != 64
+        ):
+            raise ValueError("동결 dataset manifest의 Run ID 또는 checksum이 잘못됐습니다.")
+        run_by_id[run_id] = row
+    missing = [run_id for run_id in run_ids if run_id not in run_by_id]
+    if missing:
+        raise ValueError(f"동결 dataset manifest에 선택 Run이 없습니다: {missing}")
+    selected = [dict(run_by_id[run_id]) for run_id in run_ids]
+    archive_verification = payload.get("archive_verification")
+    if (
+        not isinstance(archive_verification, Mapping)
+        or archive_verification.get("status") != "PASS"
+    ):
+        raise ValueError("동결 dataset manifest의 archive 검증상태가 PASS가 아닙니다.")
+    return {
+        "path": path.as_posix(),
+        "file_sha256": hashlib.sha256(raw).hexdigest(),
+        "manifest_sha256": actual_manifest_sha256,
+        "manifest_status": payload["status"],
+        "historical_archive_verification": dict(archive_verification),
+        "current_archive_byte_reverification": "NOT_RUN",
+        "selected_run_count": len(selected),
+        "selected_event_count": sum(int(str(row["event_count"])) for row in selected),
+        "selected_runs": selected,
+    }
 
 
 def tp1_feasibility_gate_rejections(
@@ -509,8 +577,14 @@ def build_result(
     strategy_id: str,
     run_ids: Sequence[str],
     signal_gate: str = SIGNAL_GATE_NONE,
+    dataset_manifest: Path | None = None,
     maximum_events: int | None = None,
 ) -> dict[str, object]:
+    dataset_reference = (
+        frozen_dataset_reference(dataset_manifest, run_ids)
+        if dataset_manifest is not None
+        else {"status": "NOT_PROVIDED"}
+    )
     runs = [
         replay_archive_run(
             run_id,
@@ -543,6 +617,7 @@ def build_result(
         "signal_gate": signal_gate,
         "strategy_version": STRATEGY_VERSION,
         "event_order": "OBSERVED_RECEIVE_ORDER_ADR_080",
+        "frozen_dataset": dataset_reference,
         "paper_only": True,
         "real_orders_enabled": False,
         "auth_required": False,
@@ -562,6 +637,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--strategy-id", default=DEFAULT_STRATEGY_ID)
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
+    parser.add_argument(
+        "--dataset-manifest",
+        type=Path,
+        default=DEFAULT_DATASET_MANIFEST,
+    )
     parser.add_argument("--run-id", action="append")
     parser.add_argument("--maximum-events", type=int)
     parser.add_argument("--output", type=Path, required=True)
@@ -583,6 +663,7 @@ def main() -> None:
         strategy_id=str(args.strategy_id),
         run_ids=run_ids,
         signal_gate=str(args.signal_gate),
+        dataset_manifest=args.dataset_manifest,
         maximum_events=args.maximum_events,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

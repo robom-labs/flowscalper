@@ -87,6 +87,9 @@
       "baseline_qualified_signals": 0,
       "candidate_accepted_signals": 0,
       "completed_trades": 0,
+      "frozen_dataset_manifest_sha256": "61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20",
+      "selected_run_frozen_event_count": 26876,
+      "current_archive_byte_reverification": "NOT_RUN",
       "real_orders_enabled": false,
       "auth_required": false,
       "performance_evidence": false

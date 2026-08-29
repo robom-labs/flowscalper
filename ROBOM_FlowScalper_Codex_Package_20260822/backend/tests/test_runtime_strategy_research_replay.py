@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from decimal import Decimal
@@ -19,6 +20,7 @@ from backend.app.strategies.runtime_evaluator import EvaluatedSignal
 from scripts.research_runtime_strategy_replay import (
     ResearchSignalGateEvaluator,
     build_result,
+    frozen_dataset_reference,
     replay_archive_run,
     tp1_feasibility_gate_rejections,
 )
@@ -76,6 +78,35 @@ def _write_events(path: Path, events: list[MarketEvent]) -> None:
             }
         )
     pq.write_table(pa.Table.from_pylist(rows), path / "events.parquet")
+
+
+def _write_dataset_manifest(path: Path, run_id: str) -> None:
+    payload: dict[str, object] = {
+        "status": "FROZEN_HISTORICAL_FORWARD_PENDING",
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "private_api_enabled": False,
+        "runtime_ai_enabled": False,
+        "archive_verification": {"status": "PASS", "run_count": 1, "event_count": 1},
+        "runs": [
+            {
+                "run_id": run_id,
+                "role": "FINAL_OOS",
+                "event_count": 1,
+                "start_ts_ms": 1_000,
+                "end_ts_ms": 1_000,
+                "checksum": "a" * 64,
+            }
+        ],
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    payload["manifest_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
+    path.write_text(json.dumps(payload))
 
 
 def _feature(side: Side = Side.LONG) -> FeatureSnapshot:
@@ -221,6 +252,48 @@ def test_runtime_strategy_replay_builds_not_proven_empty_summary(tmp_path: Path)
     assert result["overall"]["profitability_status"] == "NOT_PROVEN"
     assert result["signal_gate"] == "NONE"
     assert result["overall"]["signal_gate_diagnostics"]["can_create_signals"] is False
+
+
+def test_runtime_strategy_replay_binds_the_selected_frozen_dataset_manifest(
+    tmp_path: Path,
+) -> None:
+    run_id = "RUN-FROZEN-REFERENCE"
+    run_dir = tmp_path / f"run={run_id}"
+    run_dir.mkdir()
+    _write_events(
+        run_dir,
+        [_event(run_id, event_id="depth-1", ts_ms=1_000, event_type="DEPTH_UPDATE")],
+    )
+    manifest_path = tmp_path / "dataset.json"
+    _write_dataset_manifest(manifest_path, run_id)
+
+    result = build_result(
+        tmp_path,
+        strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
+        run_ids=(run_id,),
+        dataset_manifest=manifest_path,
+    )
+
+    frozen = result["frozen_dataset"]
+    assert frozen["manifest_status"] == "FROZEN_HISTORICAL_FORWARD_PENDING"
+    assert frozen["selected_run_count"] == 1
+    assert frozen["selected_event_count"] == 1
+    assert frozen["current_archive_byte_reverification"] == "NOT_RUN"
+
+
+def test_frozen_dataset_reference_rejects_tamper_and_unknown_run(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "dataset.json"
+    _write_dataset_manifest(manifest_path, "RUN-KNOWN")
+    payload = json.loads(manifest_path.read_text())
+    payload["runs"][0]["event_count"] = 2
+    manifest_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="내부 checksum"):
+        frozen_dataset_reference(manifest_path, ("RUN-KNOWN",))
+
+    _write_dataset_manifest(manifest_path, "RUN-KNOWN")
+    with pytest.raises(ValueError, match="선택 Run"):
+        frozen_dataset_reference(manifest_path, ("RUN-UNKNOWN",))
 
 
 @pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])

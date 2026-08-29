@@ -99,6 +99,10 @@
 - Ruff, mypy와 `git diff --check`가 통과했다.
 - `RUN-72EB83B350A7`의 첫 5,000개 저장 이벤트를 baseline과 후보에서 각각 실행했다. 두
   경로 모두 5,000개를 처리했고 실제 주문·인증은 0이었다.
+- 후보 smoke 출력은 `STRATEGY_100_DATASET_MANIFEST.json`의 내부 manifest checksum
+  `61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20`과 선택 Run의
+  동결 checksum·전체 이벤트 수를 함께 고정했다. 실행 중인 장시간 관찰을 방해하지 않도록
+  현재 archive byte 재해시는 아직 `NOT_RUN`이며 관찰 종료 후 본 비교 전에 실행한다.
 - 이 짧은 구간에는 기존 `QUALIFIED` 신호와 거래가 0건이었다. 따라서 이 결과는 입력형식과
   PAPER 경로 smoke일 뿐 후보 성과 검증이 아니며 전체 상태는 계속 `PRE_REGISTERED_NOT_RUN`,
   수익성은 `NOT_PROVEN`이다.
