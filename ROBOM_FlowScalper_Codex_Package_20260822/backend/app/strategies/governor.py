@@ -178,6 +178,11 @@ class StrategyGovernor:
     ) -> GovernanceAssessment:
         setting = registry.setting(strategy_id)
         current = setting.lifecycle
+        supported_regime_count = len(
+            registry.descriptor(strategy_id).supported_regimes
+        )
+        shadow_required_regime_count = min(2, supported_regime_count)
+        active_required_regime_count = min(3, supported_regime_count)
         champion_id = next(
             (
                 row_id
@@ -245,7 +250,10 @@ class StrategyGovernor:
                 champion_id,
             )
         if current in {StrategyLifecycle.SHADOW, StrategyLifecycle.CHALLENGER}:
-            retirement_reasons = self._minimum_evidence_win_rate_failures(evidence)
+            retirement_reasons = self._minimum_evidence_win_rate_failures(
+                evidence,
+                required_regime_count=shadow_required_regime_count,
+            )
             if retirement_reasons:
                 return GovernanceAssessment(
                     strategy_id,
@@ -336,7 +344,10 @@ class StrategyGovernor:
                 champion_id,
             )
         if current is StrategyLifecycle.SHADOW:
-            shadow_failures = self._shadow_gate_failures(evidence)
+            shadow_failures = self._shadow_gate_failures(
+                evidence,
+                required_regime_count=shadow_required_regime_count,
+            )
             if shadow_failures:
                 return GovernanceAssessment(
                     strategy_id,
@@ -355,8 +366,14 @@ class StrategyGovernor:
                 champion_id,
             )
         active_failures = (
-            *self._shadow_gate_failures(evidence),
-            *self._active_gate_failures(evidence),
+            *self._shadow_gate_failures(
+                evidence,
+                required_regime_count=shadow_required_regime_count,
+            ),
+            *self._active_gate_failures(
+                evidence,
+                required_regime_count=active_required_regime_count,
+            ),
         )
         if active_failures:
             return GovernanceAssessment(
@@ -476,6 +493,8 @@ class StrategyGovernor:
     @staticmethod
     def _minimum_evidence_win_rate_failures(
         evidence: GovernanceEvidence,
+        *,
+        required_regime_count: int,
     ) -> tuple[str, ...]:
         """충분한 자연표본에서 70% 미만인 SHADOW·CHALLENGER만 퇴역시킨다."""
 
@@ -485,7 +504,7 @@ class StrategyGovernor:
                 evidence.stress_sample_size >= 30,
                 evidence.live_public_sample_size >= 30,
                 evidence.sample_span_days >= 7,
-                evidence.regime_count >= 2,
+                evidence.regime_count >= required_regime_count,
             )
         )
         if not minimum_evidence_ready:
@@ -505,23 +524,37 @@ class StrategyGovernor:
         return tuple(reason for passed, reason in failures if not passed)
 
     @staticmethod
-    def _shadow_gate_failures(evidence: GovernanceEvidence) -> tuple[str, ...]:
+    def _shadow_gate_failures(
+        evidence: GovernanceEvidence,
+        *,
+        required_regime_count: int,
+    ) -> tuple[str, ...]:
         gates = (
             (evidence.live_public_sample_size >= 30, "LIVE_PUBLIC_SAMPLE_LT_30"),
             (evidence.sample_span_days >= 7, "SPAN_LT_7_DAYS"),
-            (evidence.regime_count >= 2, "REGIME_COUNT_LT_2"),
+            (
+                evidence.regime_count >= required_regime_count,
+                f"REGIME_COUNT_LT_{required_regime_count}",
+            ),
             (evidence.cooldown_elapsed, "COOLDOWN_NOT_ELAPSED"),
         )
         return tuple(reason for passed, reason in gates if not passed)
 
     @staticmethod
-    def _active_gate_failures(evidence: GovernanceEvidence) -> tuple[str, ...]:
+    def _active_gate_failures(
+        evidence: GovernanceEvidence,
+        *,
+        required_regime_count: int,
+    ) -> tuple[str, ...]:
         gates = (
             (evidence.live_public_sample_size >= 100, "LIVE_PUBLIC_SAMPLE_LT_100"),
             (evidence.base_sample_size >= 100, "BASE_SAMPLE_LT_100"),
             (evidence.stress_sample_size >= 100, "STRESS_SAMPLE_LT_100"),
             (evidence.sample_span_days >= 21, "SPAN_LT_21_DAYS"),
-            (evidence.regime_count >= 3, "REGIME_COUNT_LT_3"),
+            (
+                evidence.regime_count >= required_regime_count,
+                f"REGIME_COUNT_LT_{required_regime_count}",
+            ),
             (
                 evidence.base_profit_factor is not None
                 and evidence.base_profit_factor >= Decimal("1.10"),

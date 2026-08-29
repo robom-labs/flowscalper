@@ -356,7 +356,7 @@ def test_governor_requires_multiple_testing_then_swaps_champion_atomically() -> 
     shadow_pass = replace(
         insufficient,
         sample_span_days=8,
-        regime_count=2,
+        regime_count=1,
         dsr_probability=0.90,
         pbo=0.30,
         oos_expectancy_lower_bound_usdt=Decimal("0.01"),
@@ -381,7 +381,7 @@ def test_governor_requires_multiple_testing_then_swaps_champion_atomically() -> 
         base_profit_factor=Decimal("1.30"),
         stress_profit_factor=Decimal("1.10"),
         sample_span_days=30,
-        regime_count=3,
+        regime_count=1,
         dsr_probability=0.98,
         pbo=0.20,
         champion_expectancy_usdt=Decimal("0.10"),
@@ -453,7 +453,7 @@ def test_governor_retires_only_mature_shadow_below_70_percent_win_rate() -> None
         base_profit_factor=Decimal("1.20"),
         stress_profit_factor=Decimal("1.05"),
         sample_span_days=8,
-        regime_count=2,
+        regime_count=1,
         dsr_probability=0.90,
         pbo=0.30,
         oos_expectancy_lower_bound_usdt=Decimal("0.01"),
@@ -478,6 +478,37 @@ def test_governor_retires_only_mature_shadow_below_70_percent_win_rate() -> None
         "VWAP_EXHAUSTION_REVERSION_V1"
     )
     assert len(registry.revision_history("VWAP_EXHAUSTION_REVERSION_V1")) == 2
+
+
+def test_governor_still_requires_two_regimes_for_multi_regime_strategy() -> None:
+    governor = StrategyGovernor()
+    registry = StrategyRegistry()
+    one_regime = GovernanceEvidence(
+        base_sample_size=35,
+        stress_sample_size=35,
+        base_expectancy_usdt=Decimal("0.10"),
+        stress_expectancy_usdt=Decimal("0.03"),
+        base_profit_factor=Decimal("1.20"),
+        stress_profit_factor=Decimal("1.05"),
+        sample_span_days=8,
+        regime_count=1,
+        dsr_probability=0.90,
+        pbo=0.30,
+        oos_expectancy_lower_bound_usdt=Decimal("0.01"),
+        parameter_robustness_passed=True,
+        risk_contract_passed=True,
+        independent_period_count=2,
+        live_public_sample_size=35,
+        cooldown_elapsed=True,
+        base_win_rate=Decimal("0.72"),
+        stress_win_rate=Decimal("0.70"),
+    )
+
+    assessment = governor.assess(registry, "CBR_CONTINUATION_V1", one_regime)
+
+    assert assessment.recommended_lifecycle is StrategyLifecycle.SHADOW
+    assert assessment.reason_codes == ("REGIME_COUNT_LT_2",)
+    assert assessment.automatic_action_allowed is False
 
 
 def test_governor_does_not_retire_or_promote_sparse_100_percent_sample() -> None:

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "tested_parent_commit": "e4ff28e6c9fa7872098f0b4dfbb5aa3e34f23d63",
+  "scope": "REGISTRY_SUPPORTED_REGIME_COUNT_GOVERNOR",
+  "policy": {
+    "shadow_and_retirement_required_regimes": "min(2, supported_regime_count)",
+    "active_required_regimes": "min(3, supported_regime_count)",
+    "minimum_live_public_samples_unchanged": 30,
+    "minimum_shadow_days_unchanged": 7,
+    "minimum_active_samples_unchanged": 100,
+    "minimum_active_days_unchanged": 21,
+    "minimum_base_stress_win_rate_unchanged": 0.7
+  },
+  "verification": {
+    "targeted_governor_tests": {
+      "passed": 8,
+      "failed": 0
+    },
+    "full_registry_shadow_module": {
+      "command": ".venv/bin/pytest -q backend/tests/test_strategy_registry_shadow.py --disable-warnings --maxfail=1",
+      "passed": 24,
+      "failed": 0
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "boundaries": {
+    "installed_release_contains_change": false,
+    "full_13_run_replay": "NOT_RUN_PENDING_WAVE104_6H_OBSERVER",
+    "profitability": "NOT_PROVEN",
+    "ranking_allowed": false,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false
+  }
+}
