@@ -542,6 +542,26 @@
           ]
         }
       ]
+    },
+    {
+      "contract_id": "ALL_STRATEGIES_STRUCTURE_TP_SL_NO_TIME_EXIT",
+      "symptom_ko": "기존 미시구조 또는 시간봉 전략이 Registry 기본값의 900초·36시간 종료나 일반 근거약화 종료를 다시 물려받아 구조가 유효한 포지션의 비용을 확정한다.",
+      "fixed_by": "ADR-110 all-strategy structural TP and SL without runtime time exit",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_strategy_registry_shadow.py",
+          "contains": [
+            "test_all_registered_strategies_default_to_structure_tp_sl_without_time_exit"
+          ]
+        },
+        {
+          "path": "backend/tests/test_candidate_paper_portfolio.py",
+          "contains": [
+            "NO_TIME_BASED_EXIT_TP_SL_ONLY",
+            "NO_GENERAL_EDGE_DECAY_TP_SL_ONLY"
+          ]
+        }
+      ]
     }
   ]
 }

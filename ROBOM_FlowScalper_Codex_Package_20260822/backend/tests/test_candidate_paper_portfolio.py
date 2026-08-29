@@ -106,7 +106,11 @@ def test_book_receive_time_cannot_precede_exchange_event_time() -> None:
         book(2_000, receive_ts_ms=1_999).validate()
 
 
-def candidate_plan(*, strategy_id: str = "LSA_REVERSAL_V1") -> CandidatePlan:
+def candidate_plan(
+    *,
+    strategy_id: str = "LSA_REVERSAL_V1",
+    edge_decay_enabled: bool = False,
+) -> CandidatePlan:
     result = CandidatePlanner().build(
         signal_event_id="depth-signal-1",
         run_id="run-live-1",
@@ -120,6 +124,7 @@ def candidate_plan(*, strategy_id: str = "LSA_REVERSAL_V1") -> CandidatePlan:
         risk_state=RiskState(),
         main_eligible=True,
         shadow_eligible=True,
+        edge_decay_enabled=edge_decay_enabled,
     )
     assert result.rejection_codes == ()
     assert result.plan is not None
@@ -244,8 +249,9 @@ def test_candidate_plan_is_complete_immutable_and_risk_bounded() -> None:
     assert sum(target.quantity_fraction for target in plan.take_profit_targets) == 1
     assert plan.max_planned_loss <= plan.risk_budget == Decimal("1.000")
     assert plan.net_reward_risk >= Decimal("1.20")
-    assert "SAFETY_MAX_HOLD_900S" in plan.management_policy
-    assert plan.maximum_holding_ms == 900_000
+    assert "NO_TIME_BASED_EXIT_TP_SL_ONLY" in plan.management_policy
+    assert "NO_GENERAL_EDGE_DECAY_TP_SL_ONLY" in plan.management_policy
+    assert plan.maximum_holding_ms is None
     with pytest.raises(FrozenInstanceError):
         plan.position_size = Decimal("999")  # type: ignore[misc]
 
@@ -505,7 +511,7 @@ def test_main_max_one_and_partial_entry_only_protects_actual_fill() -> None:
 
 
 def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exit() -> None:
-    plan = candidate_plan()
+    plan = candidate_plan(edge_decay_enabled=True)
     shadows = ShadowLedger((plan.strategy_id,))
     engine = PaperPortfolioEngine(
         run_id=plan.run_id,

@@ -2340,7 +2340,9 @@ def persist_archives_and_candles_in_process(
 
     if apply_low_cpu_priority:
         _apply_storage_worker_cpu_priority()
+    gate_started = time.perf_counter()
     with storage_io_priority_gate(ledger_path, exclusive=True):
+        gate_wait_ms = (time.perf_counter() - gate_started) * 1_000
         _apply_persistence_background_io_policy()
         archive_started = time.perf_counter()
         store = ParquetEventStore(
@@ -2363,8 +2365,14 @@ def persist_archives_and_candles_in_process(
             run_ids.add(prepared_candles[0])
         if not run_ids:
             return {
+                "gate_wait_ms": gate_wait_ms,
                 "archive_ms": archive_ms,
                 "ledger_ms": 0.0,
+                "ledger_connect_ms": 0.0,
+                "ledger_begin_wait_ms": 0.0,
+                "ledger_write_ms": 0.0,
+                "ledger_commit_ms": 0.0,
+                "ledger_close_ms": 0.0,
                 "archive_batches": len(archive_records),
             }
         if len(run_ids) != 1:
@@ -2372,8 +2380,14 @@ def persist_archives_and_candles_in_process(
         run_id = next(iter(run_ids))
 
         ledger_started = time.perf_counter()
+        ledger_connect_ms = 0.0
+        ledger_begin_wait_ms = 0.0
+        ledger_write_ms = 0.0
+        ledger_commit_ms = 0.0
+        ledger_close_ms = 0.0
         foreground_commit = _set_persistence_background_io_policy(False)
         try:
+            connect_started = time.perf_counter()
             connection = sqlite3.connect(ledger_path, timeout=60.0, isolation_level=None)
             connection.row_factory = sqlite3.Row
             try:
@@ -2388,8 +2402,12 @@ def persist_archives_and_candles_in_process(
                 mode = connection.execute("PRAGMA journal_mode").fetchone()
                 if mode is None or str(mode[0]).lower() != "wal":
                     raise LedgerInvariantError("분리 영속화 연결의 journal_mode가 WAL이 아닙니다.")
+                ledger_connect_ms = (time.perf_counter() - connect_started) * 1_000
+                begin_started = time.perf_counter()
                 connection.execute("BEGIN IMMEDIATE")
+                ledger_begin_wait_ms = (time.perf_counter() - begin_started) * 1_000
                 try:
+                    write_started = time.perf_counter()
                     run = connection.execute(
                         "SELECT finalized_ts_ms FROM runs WHERE run_id = ?",
                         (run_id,),
@@ -2404,18 +2422,29 @@ def persist_archives_and_candles_in_process(
                         )
                     if prepared_candles is not None:
                         SQLiteLedger._insert_candles(connection, prepared_candles[1])
+                    ledger_write_ms = (time.perf_counter() - write_started) * 1_000
+                    commit_started = time.perf_counter()
                     connection.execute("COMMIT")
+                    ledger_commit_ms = (time.perf_counter() - commit_started) * 1_000
                 except BaseException:
                     connection.execute("ROLLBACK")
                     raise
             finally:
+                close_started = time.perf_counter()
                 connection.close()
+                ledger_close_ms = (time.perf_counter() - close_started) * 1_000
         finally:
             if foreground_commit:
                 _set_persistence_background_io_policy(True)
         return {
+            "gate_wait_ms": gate_wait_ms,
             "archive_ms": archive_ms,
             "ledger_ms": (time.perf_counter() - ledger_started) * 1_000,
+            "ledger_connect_ms": ledger_connect_ms,
+            "ledger_begin_wait_ms": ledger_begin_wait_ms,
+            "ledger_write_ms": ledger_write_ms,
+            "ledger_commit_ms": ledger_commit_ms,
+            "ledger_close_ms": ledger_close_ms,
             "archive_batches": len(archive_records),
         }
 

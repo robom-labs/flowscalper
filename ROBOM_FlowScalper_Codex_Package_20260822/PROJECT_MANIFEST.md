@@ -90,6 +90,7 @@ Detailed specifications:
 - `docs/adr/ADR-107-bounded-persistence-batches-and-observation-window.md`
 - `docs/adr/ADR-108-replay-preview-live-reader-isolation.md`
 - `docs/adr/ADR-109-parallel-trend-tournament-and-preserved-retirement.md`
+- `docs/adr/ADR-110-structural-tp-sl-without-runtime-time-exit.md`
 
 ## Supporting contracts
 

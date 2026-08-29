@@ -126,7 +126,9 @@ def test_registry_exposes_fifteen_strategies_and_honors_mode_and_direction() -> 
     assert all(row["horizon_class"] == "MICRO_SCALP" for row in micro_rows)
     assert all(row["expected_holding_seconds"] == [10, 180] for row in micro_rows)
     assert all(row["signal_half_life_seconds"] == 30 for row in micro_rows)
-    assert all(row["max_hold_seconds"] == 900 for row in micro_rows)
+    assert all(row["max_hold_seconds"] is None for row in micro_rows)
+    assert all(not row["edge_decay_enabled"] for row in micro_rows)
+    assert all(row["exit_model"].endswith("NO_TIME_EXIT") for row in micro_rows)
     hourly = registry.rows()[10]
     assert hourly["strategy_id"] == "HOURLY_MOMENTUM_BREAKOUT_V1"
     assert hourly["change_reason"] == "FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46"
@@ -135,7 +137,9 @@ def test_registry_exposes_fifteen_strategies_and_honors_mode_and_direction() -> 
     assert hourly["signal_half_life_seconds"] == 5
     assert hourly["take_profit_1_r"] == "2.2"
     assert hourly["take_profit_2_r"] == "4.5"
-    assert hourly["max_hold_seconds"] == 129_600
+    assert hourly["max_hold_seconds"] is None
+    assert not hourly["edge_decay_enabled"]
+    assert hourly["exit_model"].endswith("NO_TIME_EXIT")
     assert hourly["minimum_warmup_ko"] == "완성 1시간봉 200개 이상"
     assert "SRC-CRYPTO-MOMENTUM-2018" in hourly["research_source_ids"]
     intraday_rows = registry.rows()[11:]
@@ -189,6 +193,15 @@ def test_registry_exposes_fifteen_strategies_and_honors_mode_and_direction() -> 
         }
         for item in decisions
     )
+
+
+def test_all_registered_strategies_default_to_structure_tp_sl_without_time_exit() -> None:
+    rows = StrategyRegistry().rows()
+
+    assert rows
+    assert all(row["max_hold_seconds"] is None for row in rows)
+    assert all(not row["edge_decay_enabled"] for row in rows)
+    assert all(row["exit_model"].endswith("NO_TIME_EXIT") for row in rows)
 
 
 def test_legacy_manual_setting_cannot_revive_policy_retired_strategy() -> None:

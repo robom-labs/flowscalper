@@ -1002,6 +1002,7 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
         ledger=ledger,
         market_event_archive=archive,
     )
+    assert await runtime._warm_market_archive_worker()
     runtime._wal_checkpoint_next_flush = 1
     for index in range(1_000):
         runtime.ingest_live_event(
@@ -1045,8 +1046,14 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     assert runtime._persistence_flush_slowest_market_events == 250
     assert runtime._persistence_flush_slowest_candles >= 0
     assert runtime._persistence_flush_slowest_archive_batches == 1
+    assert runtime._persistence_flush_slowest_gate_wait_ms >= 0
     assert runtime._persistence_flush_slowest_archive_ms >= 0
     assert runtime._persistence_flush_slowest_ledger_ms >= 0
+    assert runtime._persistence_flush_slowest_ledger_connect_ms >= 0
+    assert runtime._persistence_flush_slowest_ledger_begin_wait_ms >= 0
+    assert runtime._persistence_flush_slowest_ledger_write_ms >= 0
+    assert runtime._persistence_flush_slowest_ledger_commit_ms >= 0
+    assert runtime._persistence_flush_slowest_ledger_close_ms >= 0
     assert runtime._wal_checkpoint_count == 1
     assert runtime._wal_checkpoint_log_frames >= 0
     assert runtime._wal_checkpointed_frames == runtime._wal_checkpoint_log_frames

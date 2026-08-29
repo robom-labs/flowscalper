@@ -133,13 +133,13 @@ class StrategyDescriptor:
     expected_holding_seconds: tuple[int, int] = (10, 180)
     signal_half_life_seconds: int = 30
     required_timeframes: tuple[str, ...] = ("250ms", "1s", "3s", "10s", "30s", "120s")
-    exit_model: str = "STRUCTURE_TP1_TP2_EDGE_DECAY"
+    exit_model: str = "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT"
     take_profit_1_r: Decimal = Decimal("1.5")
     take_profit_2_r: Decimal = Decimal("3.0")
     entry_rules_ko: tuple[str, ...] = ()
     exit_rules_ko: tuple[str, ...] = ()
-    max_hold_seconds: int | None = 900
-    edge_decay_enabled: bool = True
+    max_hold_seconds: int | None = None
+    edge_decay_enabled: bool = False
     cost_model_version: str = "TOP_OF_BOOK_BASE13_STRESS25_V1"
     paper_only: bool = True
 
@@ -152,7 +152,7 @@ _MICRO_REQUIRED_MARKET_DATA = (
 _MICRO_MINIMUM_WARMUP_KO = "건전한 종목별 공개시장 10초 이상과 현재 이전 prefix 통계"
 _RISK_BUDGET_RULE_KO = "공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산"
 _EDGE_DECAY_POLICY_KO = (
-    "진입 후 30초 유예·불리한 근거 2개·비용 이상의 가격 악화·3초 지속 뒤 PAPER 관리청산"
+    "일반 근거약화·시간청산 없이 TP1·TP2·구조 손절·데이터/시스템 안전종료만 적용"
 )
 _MICRO_TARGET_UNIVERSE_KO = "동적 정밀분석 종목 중 지원 레짐·유동성·비용 gate 통과 종목"
 _MICRO_DATA_LEAKAGE_GUARDS_KO = (
@@ -733,7 +733,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(3_600, 129_600),
                 signal_half_life_seconds=5,
                 required_timeframes=("1h", "4h EMA", "24h momentum"),
-                exit_model="ATR_TP1_TP2_SL_MAX36H",
+                exit_model="ATR_TP1_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("2.2"),
                 take_profit_2_r=Decimal("4.5"),
                 entry_rules_ko=(
@@ -749,9 +749,10 @@ class StrategyRegistry:
                     "TP1에서 2.2R·40% 분할 익절",
                     "TP2에서 4.5R은 60% 잔량 익절",
                     "손절은 넓히지 않고 TP1 후 비용 보전 방향으로만 조임",
-                    "36시간에서 안전 최대보유 종료",
+                    "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
-                max_hold_seconds=129_600,
+                max_hold_seconds=None,
+                edge_decay_enabled=False,
             ),
             StrategyDescriptor(
                 strategy_id="TREND_PULLBACK_RECLAIM_15M_V2",

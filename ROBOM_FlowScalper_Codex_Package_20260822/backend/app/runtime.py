@@ -244,8 +244,14 @@ class PaperRuntime:
     _persistence_flush_max_ts_ms: int | None = None
     _persistence_flush_slow_count: int = 0
     _persistence_flush_last_slow_ts_ms: int | None = None
+    _persistence_flush_slowest_gate_wait_ms: float = 0.0
     _persistence_flush_slowest_archive_ms: float = 0.0
     _persistence_flush_slowest_ledger_ms: float = 0.0
+    _persistence_flush_slowest_ledger_connect_ms: float = 0.0
+    _persistence_flush_slowest_ledger_begin_wait_ms: float = 0.0
+    _persistence_flush_slowest_ledger_write_ms: float = 0.0
+    _persistence_flush_slowest_ledger_commit_ms: float = 0.0
+    _persistence_flush_slowest_ledger_close_ms: float = 0.0
     _persistence_flush_slowest_market_events: int = 0
     _persistence_flush_slowest_candles: int = 0
     _persistence_flush_slowest_archive_batches: int = 0
@@ -912,12 +918,36 @@ class PaperRuntime:
             "persistence_flush_max_ts_ms": self._persistence_flush_max_ts_ms,
             "persistence_flush_slow_count": self._persistence_flush_slow_count,
             "persistence_flush_last_slow_ts_ms": self._persistence_flush_last_slow_ts_ms,
+            "persistence_flush_slowest_gate_wait_ms": round(
+                self._persistence_flush_slowest_gate_wait_ms,
+                3,
+            ),
             "persistence_flush_slowest_archive_ms": round(
                 self._persistence_flush_slowest_archive_ms,
                 3,
             ),
             "persistence_flush_slowest_ledger_ms": round(
                 self._persistence_flush_slowest_ledger_ms,
+                3,
+            ),
+            "persistence_flush_slowest_ledger_connect_ms": round(
+                self._persistence_flush_slowest_ledger_connect_ms,
+                3,
+            ),
+            "persistence_flush_slowest_ledger_begin_wait_ms": round(
+                self._persistence_flush_slowest_ledger_begin_wait_ms,
+                3,
+            ),
+            "persistence_flush_slowest_ledger_write_ms": round(
+                self._persistence_flush_slowest_ledger_write_ms,
+                3,
+            ),
+            "persistence_flush_slowest_ledger_commit_ms": round(
+                self._persistence_flush_slowest_ledger_commit_ms,
+                3,
+            ),
+            "persistence_flush_slowest_ledger_close_ms": round(
+                self._persistence_flush_slowest_ledger_close_ms,
                 3,
             ),
             "persistence_flush_slowest_market_events": (
@@ -4246,8 +4276,14 @@ class PaperRuntime:
 
         market_batch, candle_batch = self._take_persistence_batch(market_limit)
         timings: dict[str, float | int] = {
+            "gate_wait_ms": 0.0,
             "archive_ms": 0.0,
             "ledger_ms": 0.0,
+            "ledger_connect_ms": 0.0,
+            "ledger_begin_wait_ms": 0.0,
+            "ledger_write_ms": 0.0,
+            "ledger_commit_ms": 0.0,
+            "ledger_close_ms": 0.0,
             "market_events": len(market_batch),
             "candles": len(candle_batch),
             "archive_batches": 0,
@@ -4413,8 +4449,26 @@ class PaperRuntime:
             if elapsed_ms > self._persistence_flush_max_ms:
                 self._persistence_flush_max_ms = elapsed_ms
                 self._persistence_flush_max_ts_ms = completed_ts_ms
+                self._persistence_flush_slowest_gate_wait_ms = float(
+                    timings["gate_wait_ms"]
+                )
                 self._persistence_flush_slowest_archive_ms = float(timings["archive_ms"])
                 self._persistence_flush_slowest_ledger_ms = float(timings["ledger_ms"])
+                self._persistence_flush_slowest_ledger_connect_ms = float(
+                    timings["ledger_connect_ms"]
+                )
+                self._persistence_flush_slowest_ledger_begin_wait_ms = float(
+                    timings["ledger_begin_wait_ms"]
+                )
+                self._persistence_flush_slowest_ledger_write_ms = float(
+                    timings["ledger_write_ms"]
+                )
+                self._persistence_flush_slowest_ledger_commit_ms = float(
+                    timings["ledger_commit_ms"]
+                )
+                self._persistence_flush_slowest_ledger_close_ms = float(
+                    timings["ledger_close_ms"]
+                )
                 self._persistence_flush_slowest_market_events = int(timings["market_events"])
                 self._persistence_flush_slowest_candles = int(timings["candles"])
                 self._persistence_flush_slowest_archive_batches = int(timings["archive_batches"])
