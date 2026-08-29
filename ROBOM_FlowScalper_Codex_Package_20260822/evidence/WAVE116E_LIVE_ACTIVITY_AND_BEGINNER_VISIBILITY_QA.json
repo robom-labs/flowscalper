@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-08-29T14:39:50Z",
+  "scope": "현재 설치 서비스 작동·진행거래·완료기록 최신화·GitHub 검증과 E06 연구 진행상태",
+  "status": "LIVE_RUNNING_HISTORY_LIFECYCLE_REGRESSION_PASS_E06_IN_PROGRESS",
+  "installed_runtime": {
+    "url": "http://127.0.0.1:8870/",
+    "release_commit": "194987e3becd19beb15f8ac2efa8a87a98671748",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "paper_entry_active": true,
+    "entry_locked": false,
+    "manual_pause_requested": false,
+    "event_count": 314136,
+    "strategy_evaluation_count": 1180812,
+    "qualified_signal_count": 0,
+    "queue_depth": 0,
+    "queue_capacity": 4096,
+    "consumer_running": true,
+    "supervisor_running": true,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "wide_symbols": 50,
+    "deep_symbols": 12,
+    "lag_p50_ms": 19.4354248046875,
+    "lag_p95_ms": 29.169189453125,
+    "trade_lag_p95_ms": 87.083251953125,
+    "wide_lag_p95_ms": 1804.66015625,
+    "main_trade_count": 1,
+    "main_current_equity_usdt": 999.71571008,
+    "main_realized_pnl_usdt": -0.28428992,
+    "open_position_count": 0
+  },
+  "current_strategy_version_history": {
+    "sample_type": "LIVE_PUBLIC",
+    "league_record_count": 33,
+    "base_record_count": 17,
+    "stress_record_count": 16,
+    "minimum_holding_seconds": 104,
+    "maximum_holding_seconds": 901,
+    "exit_reasons": {
+      "EDGE_DECAY": 14,
+      "MAX_HOLD": 15,
+      "PROFIT_PROTECTION": 4
+    },
+    "two_to_three_second_exit_recurrence": false,
+    "profitability": "NOT_PROVEN"
+  },
+  "entry_wait_diagnosis": {
+    "scanner_rows": 12,
+    "scanner_status": "ALL_REJECTED",
+    "direct_cause": "엄격한 진입조건을 통과한 신호가 0건이며 잠금·정지·저장장애 때문이 아님",
+    "reason_counts": {
+      "PRICE_PROGRESS_NOT_STALLED": 10,
+      "STRUCTURE_REENTRY_NOT_CONFIRMED": 12,
+      "OPPOSITE_DEPTH_NOT_REFILLED": 10,
+      "OFI_NOT_REVERSED": 10,
+      "AGGRESSIVE_FLOW_WEAK": 10,
+      "VWAP_DEVIATION_NOT_EXTREME": 11,
+      "EXCURSION_DIRECTION_MISMATCH": 5,
+      "MICROPRICE_NOT_REVERSED": 5,
+      "REGIME_NOT_RANGE": 1
+    },
+    "signal_thresholds_lowered": false
+  },
+  "strategy_registry": {
+    "registered_strategies": 11,
+    "independent_base_stress_accounts": 22,
+    "shadow_strategies": 6,
+    "retired_off_strategies": 5,
+    "long_short_enabled_for_all_registered_strategies": true,
+    "qualified_survivor_watchlist_count": 0,
+    "maximum_survivor_watchlist_count": 10
+  },
+  "actual_browser_installed_release": {
+    "status": "PASS_CURRENT_INSTALLED_RELEASE_ONLY",
+    "verified": [
+      "새로고침 뒤 작동 중·PAPER 실제 주문 0 표시",
+      "현재 전략 버전 전략리그 기록 33건 표시",
+      "ZECUSDT 거래 집중 재생 로드",
+      "진입·TP1·SL·실제 종료·순손익 표시"
+    ],
+    "new_beginner_activity_card_installed": false
+  },
+  "live_history_lifecycle_fix": {
+    "status": "SOURCE_AND_REGRESSION_PASS_NOT_INSTALLED",
+    "actual_service_two_point_observation": {
+      "interval_seconds": 6,
+      "event_count": [
+        307580,
+        308067
+      ],
+      "strategy_evaluation_count": [
+        1157832,
+        1159464
+      ],
+      "qualified_signal_count": [
+        0,
+        0
+      ],
+      "open_position_count": [
+        0,
+        0
+      ],
+      "current_version_history_count": [
+        33,
+        33
+      ],
+      "diagnosis": "서비스와 전략 판정은 전진했지만 새 적격신호·진행 포지션·완료 거래가 없어 기록 수가 그대로 유지됨"
+    },
+    "implemented": [
+      "현재 진행 중인 모의 포지션 수 표시",
+      "진행 중 거래는 종료 뒤 완료 기록에 자동 추가된다는 쉬운 설명",
+      "5초 자동 확인 상태와 마지막 확인 KST 표시",
+      "지금 새로고침 버튼",
+      "겹친 조회를 차단해 오래된 응답이 최신 기록을 덮지 못하게 함"
+    ],
+    "backend_lifecycle_contract": "PASS_OPEN_3_TO_PARTIAL_CLOSE_1_TO_ALL_CLOSED_HISTORY_3_WITHOUT_LEDGER_RESCAN",
+    "backend_targeted_tests": "PASS_2",
+    "frontend_vitest": "PASS_15_FILES_79_TESTS",
+    "frontend_typecheck": "PASS",
+    "frontend_lint": "PASS",
+    "ruff": "PASS",
+    "github_actions": "PENDING_AFTER_COMMIT",
+    "installed_browser": "NOT_RUN_UNTIL_E06_COMPLETES_AND_RELEASE_IS_INSTALLED"
+  },
+  "beginner_activity_ui_source": {
+    "commit": "0c2ed176774a1fecd9536017430e1f9abb2727a9",
+    "github_main_synced": true,
+    "github_actions_run": 33257187741,
+    "github_actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/33257187741",
+    "validate_job": "PASS",
+    "browser_job": "PASS",
+    "installed_runtime": "NOT_INSTALLED_TO_AVOID_INTERRUPTING_LIVE_SAFE_E06"
+  },
+  "e06_cost_covered_screening": {
+    "status": "IN_PROGRESS",
+    "wrapper_pid_at_snapshot": 14458,
+    "child_pid_at_snapshot": 14465,
+    "elapsed_at_snapshot": "01:06:31",
+    "child_cpu_time_at_snapshot": "00:09:17.15",
+    "target_cpu_ratio": 0.15,
+    "current_archive_run_at_snapshot": "RUN-B987D1D386C6",
+    "candidate_count": 4,
+    "candidate_ids": [
+      "ALPHA_F17_EXIT_E06_V1",
+      "ALPHA_F18_EXIT_E06_V1",
+      "ALPHA_F19_EXIT_E06_V1",
+      "ALPHA_F20_EXIT_E06_V1"
+    ],
+    "result_files_published": false,
+    "profitability": "NOT_PROVEN"
+  },
+  "evidence_boundaries": {
+    "new_ui_actual_browser": "NOT_RUN_UNTIL_E06_COMPLETES_AND_RELEASE_IS_INSTALLED",
+    "e06_result": "IN_PROGRESS",
+    "six_hour_post_change": "NOT_RUN",
+    "twenty_four_hour_post_change": "NOT_RUN",
+    "active_ledger_full_integrity": "NOT_RUN",
+    "real_money_ready": "NOT_READY"
+  }
+}

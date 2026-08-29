@@ -3366,3 +3366,57 @@ CPU 예산, 16MiB/s 읽기 상한과 활성 LIVE 원장 우선 I/O gate를 적�
 
 현 수용상태는
 `BASELINE_PASS_TP1_REPLAYS_ABORTED_LIVE_PRIORITY_SMOKE_PASS_FULL_13RUN_TP1_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 81. Wave 116E 작동·거래 가시성 및 비용포함 후보 진행 증거
+
+사용자가 `거래가 없어서 작동 여부를 알 수 없다`고 지적한 상태를 실제 설치 서비스와 브라우저에서
+다시 확인했다. 설치 release `194987e3becd19beb15f8ac2efa8a87a98671748`의 같은 Run
+`run-2b7135a972dd`는 `RUNNING`, 공개시장 관찰과 PAPER 신규진입 활성, queue 0,
+consumer·supervisor 작동, 비계획 재연결·gap·resync·drop·저장결함·buffer drop 0이었다.
+실제 주문과 인증 경로도 계속 false였다. 관찰 사이 event는 231,154에서 240,564로,
+전략 평가는 893,700에서 926,004로 전진했다. 따라서 이번 무거래 구간은 정지나 안전잠금이
+아니라 12개 정밀 종목에서 적격신호가 0건이었던 결과다. 진입 기준은 낮추지 않았다.
+
+현재 전략 버전의 독립 `LIVE_PUBLIC` 기록은 BASE 17건·STRESS 16건으로 총 33행이다.
+최단 보유는 104초, 최장은 901초였고 이번 범위에서 1~3초 종료 재발은 없었다. 공동 PAPER
+계좌 완료거래는 1건·현재자산 999.71571008 USDT이며, 전략별 독립계좌 기록과 공동계좌
+거래를 같은 숫자로 혼동하면 안 된다. 모든 전략의 표본이 30개 고유 기회 미만이므로
+승률 순위와 수익성은 계속 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+실제 설치 브라우저를 새로고침한 뒤 `작동 중`, PAPER 실제 주문 0, 현재 전략 버전의 전략리그
+기록 33건을 확인했다. ZECUSDT 거래를 직접 열어 정밀 이벤트 로드가 끝난 뒤 실제 종료를 눌렀고,
+진입 799.99, TP1 792.208, SL 806.395, 실제 종료 802.65, 순손익 -1.897 USDT가 차트와
+상세에 표시됐다. 이는 현재 설치 release의 기록·집중재생 확인이며 새 가시성 카드의 설치 증거는
+아니다.
+
+요약 화면에는 공동계좌 완료거래, 현재 전략 버전 BASE·STRESS 연구거래, 시장 판정 횟수,
+진입조건 통과 건수와 거래기록 바로가기를 분리했다. source commit은
+`0c2ed176774a1fecd9536017430e1f9abb2727a9`이며 GitHub main과 일치한다. Actions
+`33257187741`에서 validate와 browser job, 브라우저 증거 업로드가 모두 PASS했다. 다만
+LIVE-safe E06 계산을 중단하지 않기 위해 이 commit을 실제 8870 release로 전환하지 않았으므로
+새 카드의 실제 설치 브라우저 검증은 `NOT_RUN`이다.
+
+이어 진행거래와 완료기록의 최신화 경로를 별도로 점검했다. 실제 서비스의 6초 두 시점에서
+event는 307,580→308,067, 전략 평가는 1,157,832→1,159,464로 전진했고 queue 0,
+consumer·supervisor 정상, 진입잠금·실제주문·인증은 false였다. 진행 포지션은 두 시점 모두
+0건이고 현재버전 `LIVE_PUBLIC` 기록은 두 시점 모두 33건이었다. 따라서 이 구간에 기록이
+늘지 않은 직접 원인은 기록 갱신 정지가 아니라 새 적격신호와 종료 거래가 없었기 때문이다.
+실제 설치 브라우저의 기록 화면에서도 같은 33행과 최신 ZECUSDT 행을 확인했다.
+
+다만 기록 화면의 기존 5초 조회는 겹친 요청을 허용해 늦은 이전 응답이 최신 행을 덮을 수 있었고,
+진행 중 포지션이 완료 기록과 왜 분리되는지 사용자에게 보이지 않았다. 이를 수정해 진행 중 모의
+포지션 수, 종료 뒤 자동 추가 설명, 5초 자동 확인·마지막 확인 KST와 `지금 새로고침`을 추가하고,
+한 번에 하나의 원장 조회만 허용했다. 백엔드 회귀에서는 같은 PAPER 기회의 공동·BASE·STRESS
+3개 포지션이 열린 뒤 BASE 종료 시 진행 1·완료 2, STRESS 종료 시 진행 0·완료 3으로 즉시
+전환되는 것을 대용량 원장 재스캔 없이 확인했다. backend 표적 2건, Ruff, frontend Vitest
+15 files·79건, TypeScript와 ESLint는 모두 PASS했다. E06를 중단하지 않기 위해 이 화면 변경도
+아직 8870에 설치하지 않았으므로 새 표시의 실제 브라우저 확인은 계속 `NOT_RUN`이다.
+
+고정 Train 6·Validation 2 Run에 같은 BASE 13bp·STRESS 25bp 비용을 적용하는 E06 후보 4개는
+15% hard duty-cycle로 계속 계산 중이다. 이 시점에는 `RUN-B987D1D386C6` archive를 읽고 있고
+완성 결과 파일은 아직 발행되지 않았다. 부분 계산을 성과로 해석하지 않으며 완료 후에만
+BASE·STRESS·Validation·walk-forward·multiple-testing을 함께 판정한다.
+
+기계판독 시점 증거는 `evidence/WAVE116E_LIVE_ACTIVITY_AND_BEGINNER_VISIBILITY_QA.json`이다.
+현재 수용상태는
+`LIVE_RUNNING_HISTORY_LIFECYCLE_REGRESSION_PASS_UI_NOT_INSTALLED_E06_IN_PROGRESS_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

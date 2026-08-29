@@ -12,11 +12,13 @@ import {
   sideLabel,
 } from '../format'
 import { strategyLabel } from '../strategyPresentation'
+import { formatKstTime } from '../time'
 import type { HistoryResponse, HistoryRow } from '../types'
 
 type Props = {
   rows: HistoryRow[]
   currentRunId: string
+  openPositionCount?: number
   historyScope?: { strategy_version: string; excluded_prior_version_samples: number }
   onReplay: (trade: HistoryRow) => void
 }
@@ -54,7 +56,13 @@ function exitExplanation(reason: string, priorVersion = false) {
   return '저장된 PAPER 종료 규칙에 따라 종료했습니다.'
 }
 
-export function HistoryPage({ rows, currentRunId, historyScope, onReplay }: Props) {
+export function HistoryPage({
+  rows,
+  currentRunId,
+  openPositionCount = 0,
+  historyScope,
+  onReplay,
+}: Props) {
   const [filter, setFilter] = useState<Filter>('ALL')
   const [runFilter, setRunFilter] = useState<RunFilter>('CURRENT')
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('ALL')
@@ -62,18 +70,25 @@ export function HistoryPage({ rows, currentRunId, historyScope, onReplay }: Prop
   const [versionFilter, setVersionFilter] = useState<VersionFilter>('CURRENT')
   const [queriedRows, setQueriedRows] = useState<HistoryRow[] | null>(null)
   const [queryLoading, setQueryLoading] = useState(true)
+  const [queryRefreshing, setQueryRefreshing] = useState(false)
   const [queryError, setQueryError] = useState('')
+  const [lastQueryUpdateMs, setLastQueryUpdateMs] = useState<number | null>(null)
+  const [refreshRevision, setRefreshRevision] = useState(0)
   const [selectedTrade, setSelected] = useState<HistoryRow | null>(null)
   const needsLedgerQuery = accountFilter !== 'MAIN' || versionFilter !== 'CURRENT'
   const beginQuery = () => {
     setQueriedRows(null)
     setQueryLoading(true)
+    setQueryRefreshing(false)
     setQueryError('')
+    setLastQueryUpdateMs(null)
   }
 
   useEffect(() => {
     if (!needsLedgerQuery) return
-    const controller = new AbortController()
+    let disposed = false
+    let inFlight = false
+    let controller: AbortController | null = null
     const query = new URLSearchParams({
       run_scope: runFilter,
       account_scope: accountFilter,
@@ -83,15 +98,38 @@ export function HistoryPage({ rows, currentRunId, historyScope, onReplay }: Prop
       limit: '1000',
     })
     const load = () => {
+      if (inFlight) return
+      inFlight = true
+      controller = new AbortController()
+      setQueryRefreshing(true)
       void fetchJson<HistoryResponse>(`/api/history?${query}`, { signal: controller.signal }, 12_000)
-        .then((response) => { setQueriedRows(response.rows); setQueryError('') })
-        .catch(() => { if (!controller.signal.aborted) setQueryError('거래 기록을 불러오지 못했습니다. 연결을 확인하세요.') })
-        .finally(() => { if (!controller.signal.aborted) setQueryLoading(false) })
+        .then((response) => {
+          if (disposed) return
+          setQueriedRows(response.rows)
+          setQueryError('')
+          setLastQueryUpdateMs(Date.now())
+        })
+        .catch(() => {
+          if (!disposed && !controller?.signal.aborted) {
+            setQueryError('거래 기록을 불러오지 못했습니다. 연결을 확인하세요.')
+          }
+        })
+        .finally(() => {
+          inFlight = false
+          if (!disposed) {
+            setQueryLoading(false)
+            setQueryRefreshing(false)
+          }
+        })
     }
     load()
     const timer = window.setInterval(load, 5_000)
-    return () => { controller.abort(); window.clearInterval(timer) }
-  }, [accountFilter, filter, needsLedgerQuery, profileFilter, runFilter, versionFilter])
+    return () => {
+      disposed = true
+      controller?.abort()
+      window.clearInterval(timer)
+    }
+  }, [accountFilter, filter, needsLedgerQuery, profileFilter, refreshRevision, runFilter, versionFilter])
 
   const sourceRows = useMemo(
     () => needsLedgerQuery ? queriedRows ?? [] : rows,
@@ -145,6 +183,29 @@ export function HistoryPage({ rows, currentRunId, historyScope, onReplay }: Prop
         </div>
       </details>
       {queryError ? <p className="error-banner" role="alert">{queryError}</p> : null}
+      <div className={openPositionCount > 0 ? 'history-live-status active' : 'history-live-status'} aria-live="polite">
+        <div className="history-live-copy">
+          <strong>현재 진행 중인 모의 포지션 {openPositionCount}건</strong>
+          <small>{openPositionCount > 0
+            ? '아래에는 종료된 기록만 표시됩니다. 종료되면 자동으로 완료 기록에 추가됩니다.'
+            : '현재는 새 진입을 기다리는 중입니다. 아래에서 이미 끝난 기록을 확인할 수 있습니다.'}</small>
+        </div>
+        {needsLedgerQuery ? (
+          <div className="history-refresh-control">
+            <small>{queryRefreshing
+              ? '거래 기록 확인 중'
+              : lastQueryUpdateMs
+                ? `5초마다 자동 확인 · 마지막 확인 ${formatKstTime(lastQueryUpdateMs)} KST`
+                : '거래 기록 확인 대기'}</small>
+            <button
+              type="button"
+              className="table-button"
+              disabled={queryRefreshing}
+              onClick={() => setRefreshRevision((revision) => revision + 1)}
+            >지금 새로고침</button>
+          </div>
+        ) : <small className="history-stream-note">공동 가상계좌 기록은 실시간 화면 상태로 자동 반영됩니다.</small>}
+      </div>
       <p className="history-result-summary" role="status">
         {visibleQueryLoading ? '거래 기록을 불러오는 중입니다.' : `현재 조건 ${filtered.length}건 · 공동 ${mainCount}건 · 전략별 ${leagueCount}건`}
         {visiblePriorVersionCount ? ` · 과거 버전 ${visiblePriorVersionCount}건은 안전하게 보관 중` : ''}

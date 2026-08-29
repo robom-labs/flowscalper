@@ -633,6 +633,128 @@ def test_live_history_uses_warmed_trade_cache_without_rescanning_active_ledger(
     ledger.close()
 
 
+def test_live_position_moves_to_completed_history_without_waiting_for_ledger_rescan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """열린 PAPER 포지션은 종료 즉시 현재 목록에서 빠지고 완료 기록에 들어가야 한다."""
+
+    plan = replace(candidate_plan(), venue=Venue.BINANCE_USDM)
+    ledger = SQLiteLedger(tmp_path / "live-position-history-lifecycle.sqlite3")
+    ledger.start_run(
+        plan.run_id,
+        mode=RuntimeMode.LIVE_SHADOW_PAPER.value,
+        venue=Venue.BINANCE_USDM.value,
+        config={"strategy_version": STRATEGY_VERSION},
+        started_ts_ms=1,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id=plan.run_id,
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    runtime._refresh_dashboard_trade_cache()
+
+    def unexpected_scan(*_args: object, **_kwargs: object) -> list[dict[str, object]]:
+        raise AssertionError("거래 종료 직후 활성 원장을 다시 전체 스캔하면 안 됩니다.")
+
+    monkeypatch.setattr(ledger, "list_trades", unexpected_scan)
+    monkeypatch.setattr(ledger, "list_shadow_trades", unexpected_scan)
+    monkeypatch.setattr(ledger, "list_replayable_run_summaries", unexpected_scan)
+
+    runtime.paper_portfolio.offer((plan,), entries_paused=False)
+    runtime.paper_portfolio.on_book(replace(book(1_249), venue=Venue.BINANCE_USDM))
+    opened_book = replace(book(1_250), venue=Venue.BINANCE_USDM)
+    runtime.paper_portfolio.on_book(opened_book)
+    stress_opened_book = replace(book(1_500), venue=Venue.BINANCE_USDM)
+    runtime.paper_portfolio.on_book(stress_opened_book)
+    runtime.latest_books[plan.symbol] = stress_opened_book
+
+    open_accounts = {str(row["account_id"]) for row in runtime.focus_positions()}
+    assert open_accounts == {
+        "SHARED_PAPER",
+        f"{plan.strategy_id}:BASE",
+        f"{plan.strategy_id}:STRESS",
+    }
+    assert runtime.history_records(
+        account_scope="ALL",
+        version_scope="CURRENT",
+        sample_type="LIVE_PUBLIC",
+    )["rows"] == []
+
+    tp1 = plan.take_profit_targets[0].price
+    runtime.paper_portfolio.on_book(
+        replace(
+            book(2_000, bids=((str(tp1 + Decimal("0.1")), "100"),), asks=(("107", "100"),)),
+            venue=Venue.BINANCE_USDM,
+        )
+    )
+    runtime.paper_portfolio.on_book(
+        replace(
+            book(2_250, bids=((str(tp1 + Decimal("0.05")), "100"),), asks=(("107", "100"),)),
+            venue=Venue.BINANCE_USDM,
+        )
+    )
+    tp2 = plan.take_profit_targets[1].price
+    runtime.paper_portfolio.on_book(
+        replace(
+            book(3_000, bids=((str(tp2 + Decimal("0.1")), "100"),), asks=(("107", "100"),)),
+            venue=Venue.BINANCE_USDM,
+        )
+    )
+    base_closed_book = replace(
+        book(
+            3_250,
+            bids=((str(tp2 + Decimal("0.05")), "100"),),
+            asks=(("107", "100"),),
+        ),
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime.paper_portfolio.on_book(base_closed_book)
+    runtime.latest_books[plan.symbol] = base_closed_book
+
+    assert {str(row["account_id"]) for row in runtime.focus_positions()} == {
+        f"{plan.strategy_id}:STRESS"
+    }
+    partially_completed = runtime.history_records(
+        account_scope="ALL",
+        version_scope="CURRENT",
+        sample_type="LIVE_PUBLIC",
+    )
+    assert {str(row["account_scope"]) for row in partially_completed["rows"]} == {
+        "MAIN",
+        "LEAGUE",
+    }
+    assert {str(row["profile"]) for row in partially_completed["rows"]} == {"BASE"}
+
+    all_closed_book = replace(
+        book(
+            3_750,
+            bids=((str(tp2 + Decimal("0.05")), "100"),),
+            asks=(("107", "100"),),
+        ),
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime.paper_portfolio.on_book(all_closed_book)
+    runtime.latest_books[plan.symbol] = all_closed_book
+
+    assert runtime.focus_positions() == []
+    completed = runtime.history_records(
+        account_scope="ALL",
+        version_scope="CURRENT",
+        sample_type="LIVE_PUBLIC",
+    )
+    assert len(completed["rows"]) == 3
+    assert {str(row["account_scope"]) for row in completed["rows"]} == {"MAIN", "LEAGUE"}
+    assert {str(row["profile"]) for row in completed["rows"]} == {"BASE", "STRESS"}
+    assert completed["paper_only"] is True
+    assert completed["real_orders_enabled"] is False
+    assert completed["auth_required"] is False
+    ledger.close()
+
+
 def test_recovered_trade_does_not_overwrite_persisted_strategy_version(
     tmp_path: Path,
 ) -> None:

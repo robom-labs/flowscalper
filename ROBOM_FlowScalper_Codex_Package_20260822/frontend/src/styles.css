@@ -244,6 +244,14 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .replay-operation .operation-dot { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 4px #65d6c31f; animation: operation-pulse 1.4s ease-in-out infinite; }
 .history-result-summary, .replay-preview-note, .replay-load-status { margin: 0 0 8px; color: #9bb1bd; font-size: 11px; }
 .history-result-summary, .replay-preview-note { padding: 9px 12px; border: 1px solid #1e3b49; border-radius: 8px; background: #0b1b23; }
+.history-live-status { display: flex; min-height: 62px; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; border: 1px solid #1e3b49; border-radius: 9px; padding: 10px 12px; background: #091820; }
+.history-live-status.active { border-color: #2c7169; background: #0a201f; }
+.history-live-copy { display: grid; gap: 4px; min-width: 0; }
+.history-live-copy strong { color: #d9e5eb; font-size: 12px; }
+.history-live-status.active .history-live-copy strong { color: #abf4e5; }
+.history-live-copy small, .history-refresh-control small, .history-stream-note { color: #8fa7b3; font-size: 10px; line-height: 1.45; }
+.history-refresh-control { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+.history-refresh-control .table-button { min-width: 92px; min-height: 40px; }
 .replay-load-status { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; }
 .replay-layout { display: grid; grid-template-columns: minmax(0, 2fr) minmax(280px, .7fr); gap: 8px; }
 .replay-controls label { display: grid; gap: 6px; margin: 16px 0; color: var(--muted); font-size: 10px; }
@@ -560,6 +568,9 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .page-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .history-heading-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .history-heading-filters .inline-filter select { width: 100%; min-width: 0; }
+  .history-live-status, .history-refresh-control { align-items: stretch; flex-direction: column; }
+  .history-refresh-control { gap: 6px; }
+  .history-refresh-control .table-button { width: 100%; }
   .history-layout.drawer-open { grid-template-columns: minmax(0, 1fr); }
   .trade-drawer { position: fixed; z-index: 90; inset: 0; overflow-y: auto; margin: 0; border-radius: 0; }
   .history-table, .strategy-compact-table, .performance-table, .league-position-table { display: block; min-width: 0; }

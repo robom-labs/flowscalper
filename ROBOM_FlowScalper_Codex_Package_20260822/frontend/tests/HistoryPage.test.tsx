@@ -7,6 +7,7 @@ import type { HistoryRow } from '../src/types'
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -186,6 +187,74 @@ test('shows all PAPER accounts by default with a visible loading and count summa
   expect(screen.getByLabelText('전략 버전')).toHaveValue('CURRENT')
   await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2))
   expect(screen.getByRole('status')).toHaveTextContent('현재 조건 2건 · 공동 1건 · 전략별 1건')
+})
+
+test('shows an open PAPER position and moves the completed trade into refreshed history', async () => {
+  const completedTrade: HistoryRow = {
+    ...trade,
+    trade_id: 'paper-history-2',
+    symbol: 'ETHUSDT',
+    exit_ts_ms: 3_000,
+  }
+  let requestCount = 0
+  const fetchMock = vi.fn(async () => {
+    requestCount += 1
+    return historyResponse(requestCount === 1 ? [trade] : [completedTrade, trade])
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  const view = render(
+    <HistoryPage
+      rows={[trade]}
+      currentRunId="run-history"
+      openPositionCount={1}
+      onReplay={vi.fn()}
+    />,
+  )
+
+  expect(screen.getByText('현재 진행 중인 모의 포지션 1건')).toBeInTheDocument()
+  expect(screen.getByText(/종료되면 자동으로 완료 기록에 추가/)).toBeInTheDocument()
+  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1))
+
+  view.rerender(
+    <HistoryPage
+      rows={[trade]}
+      currentRunId="run-history"
+      openPositionCount={0}
+      onReplay={vi.fn()}
+    />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: '지금 새로고침' }))
+
+  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2))
+  expect(screen.getByText('ETHUSDT')).toBeInTheDocument()
+  expect(screen.getByText('현재 진행 중인 모의 포지션 0건')).toBeInTheDocument()
+  expect(screen.getByText(/5초마다 자동 확인/)).toBeInTheDocument()
+})
+
+test('automatically refreshes completed PAPER history every five seconds', async () => {
+  vi.useFakeTimers()
+  const completedTrade: HistoryRow = {
+    ...trade,
+    trade_id: 'paper-history-auto-refresh',
+    symbol: 'SOLUSDT',
+    exit_ts_ms: 4_000,
+  }
+  let requestCount = 0
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    requestCount += 1
+    return historyResponse(requestCount === 1 ? [trade] : [completedTrade, trade])
+  }))
+
+  render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
+
+  await vi.waitFor(() => {
+    expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1)
+  })
+  await vi.advanceTimersByTimeAsync(5_000)
+  await vi.waitFor(() => {
+    expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2)
+  })
+  expect(screen.getByText('SOLUSDT')).toBeInTheDocument()
 })
 
 test('keeps raw ledger identifiers and exit codes out of the normal table', () => {
