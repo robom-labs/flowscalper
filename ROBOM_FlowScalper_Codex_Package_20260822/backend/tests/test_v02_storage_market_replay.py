@@ -1904,6 +1904,52 @@ def test_replay_and_strategy_analytics_are_connected_to_http_api(tmp_path: Path)
     ledger.close()
 
 
+def test_http_replay_preview_reuses_recent_identical_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "preview-cache.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id="run-preview-cache",
+        venue=Venue.BINANCE_USDM,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    runtime.ingest_live_event(
+        market_event(runtime.run_id, event_id="preview-cache-depth", ts_ms=1_000)
+    )
+    original_replay_preview = PaperRuntime.replay_preview
+    call_count = 0
+
+    def counted_replay_preview(
+        instance: PaperRuntime,
+        run_id: str,
+        *,
+        symbol: str | None = None,
+        candle_limit: int = 500,
+    ) -> dict[str, object]:
+        nonlocal call_count
+        call_count += 1
+        return original_replay_preview(
+            instance,
+            run_id,
+            symbol=symbol,
+            candle_limit=candle_limit,
+        )
+
+    monkeypatch.setattr(PaperRuntime, "replay_preview", counted_replay_preview)
+    with TestClient(create_app(runtime)) as client:
+        first = client.get(f"/api/replay/{runtime.run_id}/preview?candle_limit=500")
+        second = client.get(f"/api/replay/{runtime.run_id}/preview?candle_limit=500")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert call_count == 1
+    ledger.close()
+
+
 def test_http_replay_fails_closed_when_input_scope_count_is_unknown(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

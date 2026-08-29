@@ -120,6 +120,87 @@ test('shows the run selector while the first candle preview is still loading', a
   expect(await screen.findByText(/빠른 미리보기 · BTCUSDT 최근 캔들 0개/)).toBeInTheDocument()
 })
 
+test('aborts an obsolete preview when the user selects another saved run', async () => {
+  const pendingFirstPreview = new Promise<Response>(() => undefined)
+  let firstPreviewSignal: AbortSignal | undefined
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url === '/api/replay/runs') {
+      return new Response(JSON.stringify([
+        {
+          run_id: 'run-first', mode: 'LIVE_SHADOW_PAPER', venue: 'BINANCE_USDM',
+          started_ts_ms: 2_000, finalized_ts_ms: null, market_event_count: 100,
+          events_saved: true, trade_count: 0, shadow_trade_count: 0,
+        },
+        {
+          run_id: 'run-second', mode: 'LIVE_SHADOW_PAPER', venue: 'BINANCE_USDM',
+          started_ts_ms: 1_000, finalized_ts_ms: null, market_event_count: 200,
+          events_saved: true, trade_count: 0, shadow_trade_count: 0,
+        },
+      ]), { status: 200 })
+    }
+    if (url === '/api/replay/results') return new Response('[]', { status: 200 })
+    if (url === '/api/replay/operations/current') return new Response('null', { status: 200 })
+    if (url.includes('/api/replay/run-first/preview?')) {
+      firstPreviewSignal = init?.signal ?? undefined
+      return pendingFirstPreview
+    }
+    if (url.includes('/api/replay/run-second/preview?')) {
+      return new Response(JSON.stringify({
+        run_id: 'run-second', symbol: 'ETHUSDT', total_events: 200,
+        truncated: true, available_symbols: [{ symbol: 'ETHUSDT', event_count: 200 }],
+        events: [], candles: [], preview_only: true,
+      }), { status: 200 })
+    }
+    throw new Error(`unexpected request: ${url}`)
+  }))
+
+  render(<ReplayPage />)
+
+  const runSelector = await screen.findByRole('combobox', { name: '저장 기록' })
+  await waitFor(() => expect(firstPreviewSignal).toBeDefined())
+  fireEvent.change(runSelector, { target: { value: 'run-second' } })
+
+  await waitFor(() => expect(firstPreviewSignal?.aborted).toBe(true))
+  expect(await screen.findByText(/빠른 미리보기 · ETHUSDT 최근 캔들 0개/)).toBeInTheDocument()
+})
+
+test('offers one clear retry action when the saved-run preview fails', async () => {
+  let previewAttempts = 0
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url === '/api/replay/runs') return new Response(JSON.stringify([{
+      run_id: 'run-retry', mode: 'LIVE_SHADOW_PAPER', venue: 'BINANCE_USDM',
+      started_ts_ms: 1_000, finalized_ts_ms: null, market_event_count: 300,
+      events_saved: true, trade_count: 0, shadow_trade_count: 0,
+    }]), { status: 200 })
+    if (url === '/api/replay/results') return new Response('[]', { status: 200 })
+    if (url === '/api/replay/operations/current') return new Response('null', { status: 200 })
+    if (url.includes('/preview?')) {
+      previewAttempts += 1
+      if (previewAttempts === 1) {
+        return new Response(JSON.stringify({
+          detail: { error_message_ko: '저장 화면 준비가 지연됐습니다. 다시 시도해 주세요.' },
+        }), { status: 503 })
+      }
+      return new Response(JSON.stringify({
+        run_id: 'run-retry', symbol: 'SOLUSDT', total_events: 300,
+        truncated: true, available_symbols: [{ symbol: 'SOLUSDT', event_count: 300 }],
+        events: [], candles: [], preview_only: true,
+      }), { status: 200 })
+    }
+    throw new Error(`unexpected request: ${url}`)
+  }))
+
+  render(<ReplayPage />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('저장 화면 준비가 지연됐습니다.')
+  fireEvent.click(screen.getByRole('button', { name: '미리보기 다시 시도' }))
+
+  expect(await screen.findByText(/빠른 미리보기 · SOLUSDT 최근 캔들 0개/)).toBeInTheDocument()
+  expect(previewAttempts).toBe(2)
+})
+
 test('restores an active strategy verification and exposes a real cancel control', async () => {
   const operation = {
     operation_id: 'replay-operation-active', source_run_id: 'run-active', symbol: 'ETHUSDT',

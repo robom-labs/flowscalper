@@ -461,6 +461,8 @@ def create_app(
         audit=audit_replay_transition,
     )
     replay_process_lock = asyncio.Lock()
+    replay_preview_lock = asyncio.Lock()
+    replay_preview_cache: dict[tuple[str, str | None, int], tuple[float, dict[str, object]]] = {}
     replay_results_cache_lock = asyncio.Lock()
     replay_results_cache: list[dict[str, object]] | None = None
 
@@ -1365,13 +1367,33 @@ def create_app(
         ),
         candle_limit: int = Query(default=500, ge=1, le=2_000),
     ) -> dict[str, object]:
+        normalized_symbol = symbol.upper() if symbol else None
+        cache_key = (run_id, normalized_symbol, candle_limit)
+        now = time.monotonic()
+        cached = replay_preview_cache.get(cache_key)
+        if cached is not None and now - cached[0] <= 10.0:
+            return dict(cached[1])
         try:
-            return await asyncio.to_thread(
-                active_runtime.replay_preview,
-                run_id,
-                symbol=symbol,
-                candle_limit=candle_limit,
-            )
+            async with replay_preview_lock:
+                now = time.monotonic()
+                cached = replay_preview_cache.get(cache_key)
+                if cached is not None and now - cached[0] <= 10.0:
+                    return dict(cached[1])
+                preview = await asyncio.to_thread(
+                    active_runtime.replay_preview,
+                    run_id,
+                    symbol=normalized_symbol,
+                    candle_limit=candle_limit,
+                )
+                completed_at = time.monotonic()
+                replay_preview_cache[cache_key] = (completed_at, preview)
+                if len(replay_preview_cache) > 16:
+                    oldest_key = min(
+                        replay_preview_cache,
+                        key=lambda key: replay_preview_cache[key][0],
+                    )
+                    replay_preview_cache.pop(oldest_key, None)
+                return dict(preview)
         except ValueError as error:
             raise HTTPException(
                 status_code=404,

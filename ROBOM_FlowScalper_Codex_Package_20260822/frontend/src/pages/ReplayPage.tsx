@@ -26,6 +26,7 @@ const ACTIVE_REPLAY_STATES = new Set<ReplayOperation['state']>([
   'REQUESTED', 'PREPARING', 'PROCESSING', 'CANCELLING',
 ])
 const INTERACTIVE_TIMELINE_LIMIT = 100
+const PREVIEW_TIMEOUT_MS = 20_000
 
 function replayOperationActive(operation: ReplayOperation | null) {
   return operation !== null && ACTIVE_REPLAY_STATES.has(operation.state)
@@ -113,6 +114,7 @@ export function ReplayPage({ trade }: Props) {
   const [focusAttempt, setFocusAttempt] = useState(0)
   const clockRef = useRef<ReplayClock<ReplayFocusFrame> | null>(null)
   const previewRequestRef = useRef(0)
+  const previewAbortRef = useRef<AbortController | null>(null)
   const result = useMemo(
     () => running
       ? null
@@ -122,13 +124,24 @@ export function ReplayPage({ trade }: Props) {
 
   const loadPreview = useCallback(async (runId: string, symbol = '') => {
     if (!runId) return
+    previewAbortRef.current?.abort()
+    const controller = new AbortController()
+    previewAbortRef.current = controller
     const requestId = previewRequestRef.current + 1
     previewRequestRef.current = requestId
+    let timedOut = false
+    const timeout = window.setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, PREVIEW_TIMEOUT_MS)
     setPreviewLoading(true)
     try {
       const query = new URLSearchParams({ candle_limit: '500' })
       if (symbol) query.set('symbol', symbol)
-      const response = await fetch(`/api/replay/${encodeURIComponent(runId)}/preview?${query}`)
+      const response = await fetch(
+        `/api/replay/${encodeURIComponent(runId)}/preview?${query}`,
+        { signal: controller.signal },
+      )
       if (!response.ok) throw new Error(await replayErrorMessage(response, '저장 데이터 미리보기를 불러오지 못했습니다.'))
       const next = (await response.json()) as ReplayTimeline
       if (requestId !== previewRequestRef.current) return
@@ -136,7 +149,18 @@ export function ReplayPage({ trade }: Props) {
       setSelectedSymbol(next.symbol ?? '')
       setCursor(0)
       setPlaying(false)
+    } catch (reason: unknown) {
+      if (requestId !== previewRequestRef.current) return
+      if (timedOut) {
+        throw new Error('저장 화면 준비가 지연됐습니다. 다시 시도해 주세요.', {
+          cause: reason,
+        })
+      }
+      if (controller.signal.aborted) return
+      throw reason
     } finally {
+      window.clearTimeout(timeout)
+      if (previewAbortRef.current === controller) previewAbortRef.current = null
       if (requestId === previewRequestRef.current) setPreviewLoading(false)
     }
   }, [])
@@ -203,6 +227,7 @@ export function ReplayPage({ trade }: Props) {
     return () => {
       cancelled = true
       previewRequestRef.current += 1
+      previewAbortRef.current?.abort()
     }
   }, [loadPreview, trade])
 
@@ -312,6 +337,15 @@ export function ReplayPage({ trade }: Props) {
     setError('')
     try {
       await loadPreview(runId)
+    } catch (reason: unknown) {
+      setError(errorMessage(reason, '저장 데이터 미리보기를 불러오지 못했습니다.'))
+    }
+  }
+
+  const retryPreview = async () => {
+    setError('')
+    try {
+      await loadPreview(selectedRun, selectedSymbol)
     } catch (reason: unknown) {
       setError(errorMessage(reason, '저장 데이터 미리보기를 불러오지 못했습니다.'))
     }
@@ -532,6 +566,7 @@ export function ReplayPage({ trade }: Props) {
       {!loading && previewLoading ? <div className="panel replay-load-status" role="status"><b>저장된 최근 캔들을 불러오는 중입니다.</b><span>공개시장 관찰과 PAPER 관리는 계속 작동합니다.</span></div> : null}
       {!loading && timelineLoading ? <div className="panel replay-load-status" role="status"><b>최근 검증 이벤트를 불러오는 중입니다.</b><span>화면에는 선택 종목의 최근 100건만 표시하며, 전략 검증은 저장 범위 전체를 그대로 사용합니다.</span></div> : null}
       {!loading && runs.length === 0 ? <div className="panel empty-state"><b>다시 볼 저장 기록이 없습니다</b><p>공개시장 모의운영에서 시장 데이터를 먼저 기록하세요.</p></div> : null}
+      {!loading && runs.length > 0 && !timeline && !previewLoading ? <div className="panel empty-state"><b>저장 화면을 아직 준비하지 못했습니다</b><p>공개시장 PAPER 관찰은 계속됩니다. 아래 버튼으로 화면만 다시 불러오세요.</p><button type="button" className="primary-button" onClick={() => void retryPreview()}>미리보기 다시 시도</button></div> : null}
       {timeline ? <>
         <p className="replay-preview-note" role="status">{timeline.preview_only ? `빠른 미리보기 · ${timeline.symbol ?? '종목 없음'} 최근 캔들 ${timeline.candles.length.toLocaleString()}개 · 정밀 이벤트는 버튼을 눌러 불러옵니다.` : `최근 정밀 이벤트 ${timeline.events.length.toLocaleString()}개를 불러왔습니다. 화면 재생은 최근 구간이며, 같은 조건 전략 검증은 저장 범위 전체를 사용합니다.`}</p>
         <div className="replay-layout">
