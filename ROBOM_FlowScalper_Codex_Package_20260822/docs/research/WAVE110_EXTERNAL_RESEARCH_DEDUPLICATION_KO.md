@@ -73,6 +73,49 @@ Hawkes event-intensity와 딥러닝 LOB 연구도 추가 확인했지만 현재 
 단순 결합전략이 같은 입력에서 비용 후 gate를 통과하기 전에는 새 Registry 전략으로 추가하지
 않는다.
 
+### 유동성 상태 우선 모델은 Wave 106의 검증계층으로 흡수
+
+Jeon은 Binance BTCUSDT·ETHUSDT의 top-20 L2와 trade flow를 월별 rolling OOS·event-clustered
+validation·blocked permutation으로 대조했을 때, 먼저 거친 유동성 상태를 분류하고 그 위에 order
+flow를 추가하는 순서가 중요하며 order-flow 증분은 종목 사이에서 일관되지 않았다고 보고했다.
+이는 가격 방향이나 비용 후 수익성을 입증한 결과가 아니다.
+
+현재 Wave 106은 역방향 체결압력 대비 지지호가 흡수여력과 cancel/refill 취약성을 함께 보는
+거부필터를 이미 사전등록했다. 따라서 `LIQUIDITY_STATE_*`라는 이름으로 새 방향전략을 복제하지
+않고 다음 검증조건을 Wave 106의 baseline 계층으로 추가한다.
+
+- 기존 `RegimeClassifier`만 사용한 baseline을 먼저 고정한다.
+- Train에서만 L2 상태경계를 정하고 Validation·OOS를 본 뒤 상태 수나 경계를 바꾸지 않는다.
+- order flow는 L2 상태 baseline 위의 증분으로만 평가한다.
+- BTC·ETH 및 여러 알트에서 같은 방향의 증분이 재현되지 않으면 종목별 예외를 숨겨 합치지 않는다.
+- 후보는 기존 `QUALIFIED` 진입을 거부할 수만 있고 신호·방향·거래 수를 만들지 못한다.
+
+상태는 `MERGED_INTO_HYP_W106_VALIDATION_DESIGN`이며 별도 전략·별도 다중시험을 만들지 않는다.
+
+### HYP-W110-BTC-LEADER-ALT-CONFIRMATION-V1
+
+Aleti·Mizrach는 과거 BTC spot·futures 미시구조 자료에서 BTC가 ETH 가격조정을 선행했다고
+보고했다. 다른 시기·venue의 결과이므로 현재 Binance USDⓈ-M 알트 거래수익으로 옮기지 않는다.
+다만 현재 Registry에는 같은 venue의 BTC event-time 움직임이 기존 알트 신호와 일치하는지를
+확인하는 독립 입력이 없다. 이를 새 방향전략이 아니라 기존 알트 진입의 확인 거부필터로만
+사전등록한다.
+
+- BTC 자체 진입에는 적용하지 않고 ETH 및 Train에서 충분한 동시 자료가 있는 deep 알트만 대상이다.
+- BTC 기준수익률 horizon, 최소 움직임, 최대 event-time 정렬오차와 지속시간은 Train에서 한 번만
+  동결한다. 여러 horizon을 비교하면 모두 같은 다중시험 family에 기록한다.
+- BTC 방향이 기존 알트 신호와 다르거나 정렬·clock·freshness가 불확실하면 그 알트 진입만
+  거부한다. 이 후보가 신호를 만들거나 LONG·SHORT를 뒤집거나 baseline보다 거래 수를 늘리면
+  즉시 `REJECTED`다.
+- 동일 알트 신호를 BTC 확인 유무 두 개의 독립 기회로 세지 않는다. BASE·STRESS도 한 시장기회다.
+- 실제 bid·ask 깊이, BASE 13bp·STRESS 25bp, TP1·TP2·SL·최대보유와 기존 관리청산 경로를
+  그대로 사용한다.
+- 최소 30개 독립 OOS 기회, 여러 알트·레짐·날짜, 양의 비용 후 기대값·Profit Factor와 독립
+  forward 전에는 `NOT_PROVEN`이다.
+
+현재 상태는 `PREREGISTERED_EVENT_TIME_ALIGNMENT_AND_BASELINE_REQUIRED`다. 현재 실행 중인 E06
+변형과 섞지 않고, E06 완료 뒤 동일 입력 순서 cache와 baseline이 고정된 다음 별도 trial ID로만
+실행한다.
+
 ## 추가 신속 탐색과 계산 절약
 
 2026-08-29에 검색된 최근 1차 연구도 현재 100후보와 대조했다. 전략 수를 늘리는 것보다 동일 가설과 비용에서
@@ -239,6 +282,10 @@ cross-venue 전략이다. 단일 공개 Binance USDⓈ-M 입력과 내부 PAPER 
   [Explainable Patterns in Cryptocurrency Microstructure](https://arxiv.org/abs/2602.00776)
 - Li,
   [Order Flow Imbalance and the Decay of Price Impact in CME Ether Future](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6772279)
+- Jeon,
+  [When Does Order Flow Matter? State-Dependent L2 Liquidity-State Transitions in Crypto Futures](https://arxiv.org/abs/2607.09230)
+- Aleti, Mizrach,
+  [Bitcoin Spot and Futures Market Microstructure](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3459111)
 - Vafin,
   [Order-Flow Imbalance and Short-Horizon Return Predictability in Cryptocurrency Markets](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6938742)
 - Zhang,
