@@ -3612,3 +3612,89 @@ PAPER 기회의 진행 3→1→0과 완료 0→2→3 전환을 활성 원장 전
 
 현 수용상태는
 `LIVE_RUNNING_HISTORY_REFRESH_PASS_WS_COMPRESSION_DISABLED_PLANNED_ROTATION_MULTI_CLIENT_PASS_NATURAL_POSITION_NOT_OBSERVED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 85. Wave 116J~116K 추세 V2·TP/SL 결판·저장 재생 최종 설치 증거
+
+사용자의 `진입 뒤 900초가 되면 무조건 끝내지 말고 사전에 정한 익절 또는 손절 구조로
+판정하라`는 방향을 기존 프로젝트에 적용했다. 완성 15분 눌림 재돌파, 완성 15분·30분 돌파
+후 재확인, 완성 30분과 1시간 방향이 일치하는 재합류 전략을 각각 독립 V2로 등록했다.
+Registry는 총 15전략·BASE/STRESS 30독립계좌이며, 검증 중 6개와 신규 4개를 합친
+10개 SHADOW가 같은 공개시장 입력에서 LONG·SHORT 20경로를 동시에 평가한다. 실패한
+5개는 삭제하지 않고 RETIRED/OFF로 거래·판단·계좌 기록을 보존한다.
+
+신규 네 전략은 `max_hold_seconds=null`이다. 일반 `EDGE_DECAY`, 900초 종료와 8~18시간
+강제 시간청산을 사용하지 않는다. 진입 전에 구조 손절과 TP1·TP2를 확정하고, 눌림 전략은
+1.4R·2.8R, 두 돌파 재확인 전략은 1.6R·3.2R, 다중시간 재합류는 1.5R·3.0R을 사용한다.
+TP1 40%·TP2 60%이며 stop은 이익보호 방향으로만 줄일 수 있다. 가격과 무관한 데이터·시스템
+안전종료는 유지하고 손절 확대, 무손절 보유와 자연신호를 만들기 위한 기준 완화는 허용하지 않는다.
+
+실제 브라우저 점검 중 저장 Run 미리보기를 여러 화면·필터에서 연속 요청하면 이전 HTTP
+클라이언트가 끝났어도 서버 원장 읽기가 남아 다음 화면이 단일 replay read lock 뒤에 줄을 서는
+문제를 추가로 재현했다. 같은 Run·종목·캔들 범위의 미리보기는 10초 동안 한 번만 읽어 공유하고,
+화면은 Run 변경 때 이전 요청을 취소하도록 수정했다. 20초 안에 끝나지 않으면 무한 로딩 대신
+`저장 화면 준비가 지연됐습니다`와 `미리보기 다시 시도`를 표시한다. 정밀 타임라인 화면은 선택
+종목의 최근 100개 검증 이벤트만 읽고, 전체 전략 검증 범위와는 분리한다.
+
+브라우저·런타임을 검증한 구현 source와 당시 불변 설치 release는
+`5ed7e4c0b9fd6e2af61fefa493dbdc0aa22193b4`로 일치했다. 설치는 기존 Run
+`run-2b7135a972dd`를 보존해 `RUNNING`, 공개시장 `LIVE`, 내부 `PAPER`, 실제 주문 false,
+인증 false로 복구했다. 시작 직후 기존 거래·통계 cache 준비는 42.667초가 걸렸으므로
+`PASS_BUT_SLOW` 한계로 남긴다. 이 수치를 정상적인 즉시응답으로 과장하지 않는다.
+
+새 실제 브라우저에서 `기록 → 과거 재생`을 직접 눌렀다. 25,684,419-event Run 목록 뒤
+BTCUSDT 최근 캔들 500개 미리보기는 3.342초, `정밀 이벤트 불러오기`의 최근 100개는
+3.399초에 표시됐다. `다음 이벤트`를 눌러 `1 / 100`에서 `2 / 100`으로 이동했고 console
+오류는 0이었다. 거래기록의 기본 현재버전·현재 Run 필터는 완료거래 0건을 정확히 표시했다.
+`과거 버전 포함`을 선택하자 보존된 공동 1건·전략별 129건, 합계 130건이 나타났다.
+
+첫 BTCUSDT 과거 거래를 `자세히 → 이 거래 다시보기`로 열었다. 진입 77,910.1,
+TP1 78,272.46, TP2 78,634.81, SL 77,676.32, 실제 종료 78,016.1과 순손익
+-0.8111 USDT를 확인했다. `진입`과 `실제 종료`를 직접 눌러 13개 저장 이벤트의 처음과
+끝이 차트에 표시되는 것도 확인했다. 이 행은 과거 전략 버전의 보존 거래이며 신규 V2의
+수익성 증거로 사용하지 않는다.
+
+120.011초·25표본 설치 서비스 관찰은 `PASS`했다. event +7,759건, 전략평가 +52,620회가
+전진했고 queue 최대 1, 처리 p95 최대 23.210ms, 실제 체결 입력 p95 최대 55.960ms,
+event-loop 최대 156ms, 메모리 증가 6.922MB였다. persistence buffer 최대 868건,
+flush 최대 10.622초이며 비계획 reconnect·sequence gap·resync·drop·저장 fault·buffer
+drop·신규진입 잠금은 0이었다. 넓은 종목 관찰 지연 p95 최대 1.891초는 실행 호가 경로와
+격리된 관찰값이지만 남은 성능 지표로 그대로 기록한다.
+
+이번 120초에는 적격 자연신호, 진행 포지션과 신규 완료거래가 모두 0이었다. 이벤트와 15전략
+평가는 계속 전진했으므로 정지로 판정하지 않지만, 신규 V2의 BASE/STRESS 자연표본도 0/0이다.
+따라서 승률, 기대값, Profit Factor와 70% 목표는 `NOT_PROVEN`, 실자금은 `NOT_READY`다.
+30개 고유 기회 전에는 순위를 매기지 않고, OOS·bootstrap·DSR·PBO·drawdown·집중도와
+독립 forward gate를 통과하기 전에는 ACTIVE나 실거래로 전환하지 않는다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 추세 전략 다양화 | `PASS` | 신규 V2 4개, 총 15전략·30계좌, 10 SHADOW 동시평가·5 RETIRED 보존 |
+| 900초 제거 | `PASS_SOURCE_AND_TESTS` | 신규 네 전략 max hold null, 일반 EDGE_DECAY·시간청산 없음, 구조 TP1·TP2·SL |
+| 전체 backend | `PASS` | 798건, 41.05초 |
+| frontend | `PASS` | Vitest 15 files·83건, ESLint·TypeScript·build PASS |
+| 반응형 브라우저 | `PASS` | Playwright desktop·tablet·mobile 3건 |
+| PAPER·보안 | `PASS` | build safety, security 146 source, 위반·secret-like·실제 주문경로 0 |
+| 검증 구현 불변 설치 | `PASS` | 검증 당시 source = release `5ed7e4c...`, same Run, LIVE 공개시장·PAPER 내부계좌 |
+| 과거 Run 미리보기 | `PASS_ACTUAL_BROWSER` | 500캔들 3.342초, 정밀 100이벤트 3.399초, 다음 이벤트 1→2, console 0 |
+| 거래기록 필터 | `PASS_ACTUAL_BROWSER` | 현재버전 0건과 과거버전 포함 130건을 분리 표시 |
+| 저장 거래 집중재생 | `PASS_ACTUAL_BROWSER` | BTC 진입·TP1·TP2·SL·실제 종료·순손익, 13 frame 직접 조작 |
+| 120초 런타임 | `PASS` | event +7,759·평가 +52,620, queue 1, 처리/체결 p95 23.210/55.960ms, fault 0 |
+| 콜드스타트 거래 cache | `PASS_BUT_SLOW` | 42.667초. 후속 최적화 필요 |
+| 넓은 관찰 지연 | `PASS_EXECUTION_ISOLATED_WITH_OBSERVATIONAL_LIMIT` | wide p95 최대 1.891초, critical incident 0 |
+| 자연 V2 진입·TP/SL 종료 | `NOT_OBSERVED` | 적격신호·진행·신규거래 0. 기준 완화 없음 |
+| 6시간·24시간 | `NOT_RUN` | 이 설치 release의 실제 연속 경과시간 미충족 |
+| 활성 writer full SQLite 검사 | `NOT_RUN_SAFETY_BOUNDARY` | LIVE 4GB대 원장 전수검사는 유지관리 시간 또는 닫힌 사본 필요 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 신규 BASE/STRESS 0/0, 통계·강건성·forward gate 미충족 |
+
+수정 전 실패와 수정 후 PASS를 삭제하지 않았다.
+`evidence/WAVE116K_NO_TIME_EXIT_RUNTIME_QA.json`은 flush 21.719초 때문에 `FAIL`,
+`evidence/WAVE116K_POST_250_RUNTIME_QA.json`과
+`evidence/WAVE116K_POST_REPLAY_RUNTIME_QA.json`은 각각 `PASS`다. 종합 기계판독 증거는
+`evidence/WAVE116K_INTRADAY_TREND_AND_REPLAY_QA.json`이며 실제 화면은
+`evidence/screenshots/WAVE116K_ACTUAL_STRATEGY_DETAIL.png`,
+`evidence/screenshots/WAVE116K_ACTUAL_HISTORY_130.png`,
+`evidence/screenshots/WAVE116K_ACTUAL_REPLAY_TIMELINE.png`과
+`evidence/screenshots/WAVE116K_ACTUAL_TRADE_REPLAY_EXIT.png`에 보존했다.
+
+현 수용상태는
+`TREND_V2_STRUCTURAL_TP_SL_INSTALLED_REPLAY_BROWSER_PASS_RUNTIME_120S_PASS_NATURAL_ENTRY_NOT_OBSERVED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

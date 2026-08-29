@@ -472,8 +472,9 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 116J~116K 완성봉 추세 V2와 TP·SL 결판 청산
 
-- 상태는 `SOURCE_VALIDATION_PASS_FINAL_INSTALL_PENDING`이다. 완성 15분 눌림, 15분·30분 돌파 후
-  재확인, 30분·1시간 재합류 네 전략을 SHADOW PAPER V2로 사전등록했다.
+- 상태는 `COMPLETE_WITH_LIMITS`다. 완성 15분 눌림, 15분·30분 돌파 후 재확인,
+  30분·1시간 재합류 네 전략을 SHADOW PAPER V2로 사전등록했다. 브라우저·런타임을
+  검증한 구현 source와 당시 불변 release는 `5ed7e4c0...`로 일치했다.
 - Registry는 15개·BASE/STRESS 30계좌다. 기존 검증 중 6개와 신규 4개, 총 10개 SHADOW를
   같은 공개시장 입력에서 LONG·SHORT 20경로로 동시에 평가한다. 실패 5개는 RETIRED/OFF로
   거래·근거·계좌를 보존한다.
@@ -482,11 +483,16 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 진행 중 봉, 최근 100봉 또는 1시간 50봉 gap, stale·sequence invalid 호가, 12bp 초과
   spread, 1초 공개흐름 미확인, 0.65~3.0 ATR 밖 구조 손절과 비용후 순손익비 1.20 미만을
   fail-closed한다.
-- 표적 전략·포지션·계좌·운영 회귀 180건과 전체 backend 793건, frontend 79건, Ruff,
-  정식 mypy 110 source, ESLint, TypeScript, build, PAPER safety, security 146 source,
-  repository hygiene, 24개 누적 회귀계약과 desktop·tablet·mobile Playwright 3건은 PASS했다.
-  중간 불변 릴리스의 120.017초 관찰은 event +7,923·전략평가 +51,880, 최대 처리·체결 p95
-  36.839·75.606ms, queue 0, flush·checkpoint 1.680·1.440초, 재연결·gap·drop·저장결함·실제주문
-  0으로 PASS했다. 시간청산 제거 최종 릴리스의 실제 브라우저와 GitHub 동기화는 아직 `NOT_RUN`이다.
+- 최종 전체 backend 798건, frontend 83건, Ruff, 정식 mypy 110 source, ESLint,
+  TypeScript, build, PAPER safety, security 146 source와 desktop·tablet·mobile Playwright
+  3건은 PASS했다. 저장 미리보기 중복 읽기를 10초 공유하고 이전 화면 요청 취소·20초 안내·재시도를
+  추가했다.
+- 실제 설치 브라우저에서 500캔들 미리보기 3.342초, 정밀 100이벤트 3.399초, 다음 이벤트
+  `1 / 100→2 / 100`, console 0을 확인했다. 현재버전 0건과 보존 과거 130건을 필터로 분리했고
+  BTC 과거 거래의 진입·TP1·TP2·SL·실제 종료와 13-frame replay를 직접 조작했다.
+- 최종 release의 120.011초 관찰은 event +7,759·전략평가 +52,620, queue 최대 1,
+  처리·체결 p95 최대 23.210·55.960ms, loop 최대 156ms, fault·drop·gap·실제주문·인증 0으로
+  PASS했다. 시작 거래 cache 42.667초와 wide 관찰 p95 1.891초는 후속 성능 한계다.
 - 70%는 보장값이 아니다. 현재버전 자연표본 30개 전 순위 금지, BASE·STRESS·OOS·bootstrap,
-  DSR·PBO·drawdown·집중도 전 수익성 `NOT_PROVEN`, 실자금 `NOT_READY`를 유지한다.
+  DSR·PBO·drawdown·집중도 전 수익성 `NOT_PROVEN`, 실자금 `NOT_READY`를 유지한다. 이번
+  관찰의 신규 V2 자연표본은 BASE/STRESS 0/0, 6시간·24시간은 `NOT_RUN`이다.

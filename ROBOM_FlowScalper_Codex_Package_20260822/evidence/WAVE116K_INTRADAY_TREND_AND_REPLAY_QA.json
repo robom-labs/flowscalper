@@ -1,0 +1,198 @@
+{
+  "schema": "flowscalper.wave116k_intraday_trend_and_replay_qa.v1",
+  "status": "PASS_WITH_LIMITS",
+  "recorded_at_kst": "2026-08-30T07:17:00+09:00",
+  "implementation_commit": "5ed7e4c0b9fd6e2af61fefa493dbdc0aa22193b4",
+  "installed_release_commit": "5ed7e4c0b9fd6e2af61fefa493dbdc0aa22193b4",
+  "run_id": "run-2b7135a972dd",
+  "product_boundary": {
+    "mode": "LIVE_SHADOW_PAPER",
+    "public_market_data_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_requested": false,
+    "api_key_requested": false,
+    "wallet_requested": false,
+    "starting_equity_per_paper_account_usdt": "1000"
+  },
+  "strategy_shape": {
+    "registered_strategies": 15,
+    "independent_base_stress_accounts": 30,
+    "simultaneous_shadow_strategies": 10,
+    "retired_off_strategies_with_history_preserved": 5,
+    "long_short_paths_for_shadow_strategies": 20,
+    "new_intraday_trend_strategies": [
+      {
+        "strategy_id": "TREND_PULLBACK_RECLAIM_15M_V2",
+        "entry_hypothesis_ko": "완성 15분 추세에서 짧은 눌림 뒤 기준선을 재돌파",
+        "take_profit_1_r": "1.4",
+        "take_profit_2_r": "2.8",
+        "take_profit_fractions": ["0.4", "0.6"],
+        "max_hold_seconds": null
+      },
+      {
+        "strategy_id": "BREAKOUT_RETEST_15M_V2",
+        "entry_hypothesis_ko": "완성 15분 돌파 뒤 지지·저항 재확인",
+        "take_profit_1_r": "1.6",
+        "take_profit_2_r": "3.2",
+        "take_profit_fractions": ["0.4", "0.6"],
+        "max_hold_seconds": null
+      },
+      {
+        "strategy_id": "BREAKOUT_RETEST_30M_V2",
+        "entry_hypothesis_ko": "완성 30분 돌파 뒤 지지·저항 재확인",
+        "take_profit_1_r": "1.6",
+        "take_profit_2_r": "3.2",
+        "take_profit_fractions": ["0.4", "0.6"],
+        "max_hold_seconds": null
+      },
+      {
+        "strategy_id": "MULTISPEED_TREND_RECLAIM_30M_V2",
+        "entry_hypothesis_ko": "완성 30분 추세와 1시간 방향이 맞을 때 재합류",
+        "take_profit_1_r": "1.5",
+        "take_profit_2_r": "3.0",
+        "take_profit_fractions": ["0.4", "0.6"],
+        "max_hold_seconds": null
+      }
+    ]
+  },
+  "exit_contract": {
+    "generic_edge_decay": false,
+    "fixed_900_second_exit": false,
+    "fixed_8_to_18_hour_exit": false,
+    "structural_stop_at_entry": true,
+    "tp1_tp2_at_entry": true,
+    "stop_can_only_tighten_for_profit_protection": true,
+    "data_or_system_safety_exit_remains": true,
+    "unbounded_loss_or_stop_widening": false
+  },
+  "source_validation": {
+    "backend_pytest": {
+      "status": "PASS",
+      "passed": 798,
+      "duration_seconds": 41.05
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 15,
+      "passed": 83
+    },
+    "responsive_playwright": {
+      "status": "PASS",
+      "passed": 3,
+      "projects": ["desktop", "tablet", "mobile"]
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 110
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "production_build": "PASS_WITH_EXISTING_CHUNK_SIZE_WARNING",
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 146,
+      "real_order_path": false,
+      "violations": 0
+    }
+  },
+  "runtime_progression": [
+    {
+      "evidence": "WAVE116K_NO_TIME_EXIT_RUNTIME_QA.json",
+      "status": "FAIL",
+      "reason": "persistence_flush_latency_bounded",
+      "maximum_persistence_flush_last_ms": 21719.0
+    },
+    {
+      "evidence": "WAVE116K_POST_250_RUNTIME_QA.json",
+      "status": "PASS",
+      "event_delta": 7237,
+      "strategy_evaluation_delta": 51380,
+      "maximum_persistence_flush_last_ms": 6067.0
+    },
+    {
+      "evidence": "WAVE116K_POST_REPLAY_RUNTIME_QA.json",
+      "status": "PASS",
+      "duration_seconds": 120.011,
+      "sample_count": 25,
+      "event_delta": 7759,
+      "strategy_evaluation_delta": 52620,
+      "qualified_signal_delta": 0,
+      "main_trade_delta": 0,
+      "league_trade_delta": 0,
+      "maximum_queue_depth": 1,
+      "maximum_processing_lag_p95_ms": 23.209716796875,
+      "maximum_trade_lag_p95_ms": 55.960205078125,
+      "maximum_wide_lag_p95_ms_observational": 1891.233642578125,
+      "maximum_event_loop_lag_ms": 156.0,
+      "memory_growth_mb": 6.922,
+      "maximum_market_persistence_buffer": 868,
+      "maximum_persistence_flush_last_ms": 10622.0,
+      "unplanned_reconnect_delta": 0,
+      "sequence_gap_delta": 0,
+      "resync_delta": 0,
+      "drop_delta": 0,
+      "persistence_fault_delta": 0,
+      "persistence_buffer_drop_delta": 0,
+      "real_orders_enabled": false,
+      "auth_required": false
+    }
+  ],
+  "actual_browser": {
+    "status": "PASS",
+    "console_error_count": 0,
+    "market_screen": "작동 중 · PAPER 실제 주문 0",
+    "replay_preview_elapsed_ms": 3342,
+    "precise_timeline_elapsed_ms": 3399,
+    "precise_event_count": 100,
+    "next_event_position_before": "1 / 100",
+    "next_event_position_after": "2 / 100",
+    "trade_focus_elapsed_ms": 2311,
+    "current_version_current_run_completed_trades": 0,
+    "prior_versions_current_run_completed_trades": 130,
+    "historical_trade_checked": {
+      "symbol": "BTCUSDT",
+      "side": "LONG",
+      "entry": "77910.1",
+      "take_profit_1": "78272.46",
+      "take_profit_2": "78634.81",
+      "stop": "77676.32",
+      "exit": "78016.1",
+      "net_pnl_usdt": "-0.8111",
+      "replay_frames": 13,
+      "scope_note": "과거 전략 버전의 보존 거래이며 신규 V2 수익성 근거가 아님"
+    },
+    "screenshots": [
+      "screenshots/WAVE116K_ACTUAL_STRATEGY_DETAIL.png",
+      "screenshots/WAVE116K_ACTUAL_HISTORY_130.png",
+      "screenshots/WAVE116K_ACTUAL_REPLAY_TIMELINE.png",
+      "screenshots/WAVE116K_ACTUAL_TRADE_REPLAY_EXIT.png"
+    ]
+  },
+  "known_limits": {
+    "startup_trade_cache_elapsed_ms": 42667.116,
+    "startup_trade_cache_status": "PASS_BUT_SLOW",
+    "natural_current_version_signal": "NOT_OBSERVED",
+    "natural_current_version_trade": "NOT_OBSERVED",
+    "current_version_base_samples": 0,
+    "current_version_stress_samples": 0,
+    "strategy_ranking": "NOT_ALLOWED_BELOW_30_UNIQUE_OPPORTUNITIES",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "active_writer_full_sqlite_quick_check": "NOT_RUN_SAFETY_BOUNDARY"
+  },
+  "acceptance": {
+    "simultaneous_diverse_strategy_evaluation": "PASS",
+    "new_trend_entries_registered": "PASS",
+    "structural_tp_sl_without_900_second_exit": "PASS_SOURCE_TEST_RUNTIME_SHAPE",
+    "replay_preview_no_indefinite_spinner": "PASS_TEST_AND_ACTUAL_BROWSER",
+    "history_filter_and_saved_trade_replay": "PASS_ACTUAL_BROWSER",
+    "natural_entry_to_tp_or_stop": "NOT_OBSERVED",
+    "seventy_percent_win_rate": "NOT_PROVEN",
+    "safe_for_real_money": "NOT_READY"
+  }
+}
