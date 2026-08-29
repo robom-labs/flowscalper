@@ -253,6 +253,12 @@ def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_22_accounts(
     }
     assert result["research_shadow_reactivation_is_ephemeral"] is True
     assert len(result["reports"]) == 22
+    decision_diagnostics = result["strategy_decision_diagnostics"]
+    assert set(decision_diagnostics) == set(strategy_ids)
+    assert sum(
+        int(row["evaluated"]) for row in decision_diagnostics.values()
+    ) == int(result["strategy_evaluation_count"])
+    assert all(set(row["sides"]) == {"LONG", "SHORT"} for row in decision_diagnostics.values())
     assert result["real_orders_enabled"] is False
     assert result["auth_required"] is False
     assert result["ledger_attached"] is False

@@ -191,6 +191,21 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
     accepted_qualified_count: int = 0
     rejected_qualified_count: int = 0
     rejection_counts: Counter[str] = field(default_factory=Counter)
+    strategy_evaluation_counts: Counter[str] = field(default_factory=Counter)
+    strategy_baseline_qualified_counts: Counter[str] = field(default_factory=Counter)
+    strategy_post_gate_qualified_counts: Counter[str] = field(default_factory=Counter)
+    strategy_side_evaluation_counts: Counter[tuple[str, str]] = field(
+        default_factory=Counter
+    )
+    strategy_side_baseline_qualified_counts: Counter[tuple[str, str]] = field(
+        default_factory=Counter
+    )
+    strategy_side_post_gate_qualified_counts: Counter[tuple[str, str]] = field(
+        default_factory=Counter
+    )
+    strategy_rejection_counts: dict[str, Counter[str]] = field(
+        default_factory=lambda: defaultdict(Counter)
+    )
     _mid_history: dict[str, deque[tuple[int, float]]] = field(
         default_factory=lambda: defaultdict(deque),
         repr=False,
@@ -220,6 +235,18 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
             tick_size=tick_size,
             hourly_candles=hourly_candles,
         )
+        for signal in signals:
+            strategy_id = signal.decision.strategy_id
+            side = signal.decision.side.value
+            self.strategy_evaluation_counts[strategy_id] += 1
+            self.strategy_side_evaluation_counts[(strategy_id, side)] += 1
+            if signal.decision.status is CandidateStatus.QUALIFIED:
+                self.strategy_baseline_qualified_counts[strategy_id] += 1
+                self.strategy_side_baseline_qualified_counts[(strategy_id, side)] += 1
+            else:
+                self.strategy_rejection_counts[strategy_id].update(
+                    signal.decision.rejection_codes
+                )
         recent_range_bps = self._recent_range_bps(snapshot)
         filtered: list[EvaluatedSignal] = []
         for signal in signals:
@@ -259,9 +286,17 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
                 )
             )
         self._append_mid(snapshot)
+        for signal in filtered:
+            if signal.decision.status is not CandidateStatus.QUALIFIED:
+                continue
+            strategy_id = signal.decision.strategy_id
+            side = signal.decision.side.value
+            self.strategy_post_gate_qualified_counts[strategy_id] += 1
+            self.strategy_side_post_gate_qualified_counts[(strategy_id, side)] += 1
         return tuple(filtered)
 
     def diagnostics(self) -> dict[str, object]:
+        strategy_ids = sorted(self.strategy_evaluation_counts)
         return {
             "signal_gate": self.signal_gate,
             "strategy_logic": self.strategy_logic,
@@ -271,6 +306,39 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
             "rejection_counts": dict(sorted(self.rejection_counts.items())),
             "can_create_signals": False,
             "signal_gate_can_create_signals": False,
+            "strategies": {
+                strategy_id: {
+                    "evaluated": self.strategy_evaluation_counts[strategy_id],
+                    "baseline_qualified": self.strategy_baseline_qualified_counts[
+                        strategy_id
+                    ],
+                    "post_gate_qualified": self.strategy_post_gate_qualified_counts[
+                        strategy_id
+                    ],
+                    "rejection_counts": dict(
+                        sorted(self.strategy_rejection_counts[strategy_id].items())
+                    ),
+                    "sides": {
+                        side.value: {
+                            "evaluated": self.strategy_side_evaluation_counts[
+                                (strategy_id, side.value)
+                            ],
+                            "baseline_qualified": (
+                                self.strategy_side_baseline_qualified_counts[
+                                    (strategy_id, side.value)
+                                ]
+                            ),
+                            "post_gate_qualified": (
+                                self.strategy_side_post_gate_qualified_counts[
+                                    (strategy_id, side.value)
+                                ]
+                            ),
+                        }
+                        for side in Side
+                    },
+                }
+                for strategy_id in strategy_ids
+            },
         }
 
     def _vwap_reentry_confirmation_aligned(
@@ -540,6 +608,7 @@ def _replay_archive_run_for_strategies(
         strategy_id: runtime.strategy_registry.setting(strategy_id).mode.value
         for strategy_id in selected_strategy_ids
     }
+    research_diagnostics = gated_evaluator.diagnostics()
     return {
         "run_id": run_id,
         "runtime_run_id": runtime_run_id,
@@ -555,7 +624,8 @@ def _replay_archive_run_for_strategies(
         "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
         "signal_gate": signal_gate,
         "strategy_logic": strategy_logic,
-        "signal_gate_diagnostics": gated_evaluator.diagnostics(),
+        "signal_gate_diagnostics": research_diagnostics,
+        "strategy_decision_diagnostics": research_diagnostics["strategies"],
         "strategy_version": STRATEGY_VERSION,
         "event_order": [
             "receive_ts_ms",

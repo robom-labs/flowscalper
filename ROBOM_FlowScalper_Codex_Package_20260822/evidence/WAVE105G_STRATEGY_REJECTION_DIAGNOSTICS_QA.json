@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "status": "PASS_PATH_ONLY",
+  "profitability_status": "NOT_PROVEN",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "ledger_attached": false,
+  "purpose": "거래가 없는 전략의 정상 대기와 결정경로 결함을 구분할 전략별 진단 계약 검증",
+  "diagnostic_contract": {
+    "strategy_evaluation_count": true,
+    "strategy_baseline_qualified_count": true,
+    "strategy_post_gate_qualified_count": true,
+    "strategy_rejection_reason_counts": true,
+    "long_short_separation": true,
+    "changes_strategy_thresholds": false,
+    "can_create_signals": false
+  },
+  "verification": {
+    "targeted_tests": {
+      "status": "PASS",
+      "count": 15,
+      "command": ".venv/bin/python -m pytest backend/tests/test_runtime_strategy_research_replay.py -q"
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS",
+    "stored_event_smoke": {
+      "status": "PASS_PATH_ONLY",
+      "run_id": "RUN-B987D1D386C6",
+      "event_count": 1000,
+      "strategy_count": 11,
+      "total_strategy_evaluations": 7062,
+      "evaluations_per_strategy": 642,
+      "all_strategies_have_long_short_diagnostics": true,
+      "qualified_signal_count": 0,
+      "candidate_plan_count": 0,
+      "completed_trade_count": 0,
+      "open_position_count": 0,
+      "real_orders_enabled": false,
+      "auth_required": false,
+      "ledger_attached": false,
+      "dominant_boundary": "EARLY_RUN_REGIME_AND_STATISTICS_WARMUP"
+    },
+    "full_frozen_run_rejection_distribution": "NOT_RUN",
+    "implementation_fault_classification": "NOT_RUN",
+    "wave104_six_hour_observer": "IN_PROGRESS"
+  },
+  "interpretation": [
+    "rejection count는 한 평가에 여러 사유가 함께 붙으므로 평가 수보다 클 수 있다.",
+    "앞 1,000 이벤트의 warmup 거절은 전략 실패 또는 조건 결함 증거가 아니다.",
+    "전체 Run에서 warmup 이후 필수조건 만족 빈도와 실제 후보·체결을 함께 대조해야 한다.",
+    "진단 추가는 진입 기준, TP, SL, 비용 또는 거래 빈도를 변경하지 않는다."
+  ]
+}
