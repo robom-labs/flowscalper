@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "status": "PRE_REGISTERED_NOT_RUN",
+  "hypothesis_id": "HYP-W105B-COST-AWARE-TP1-FEASIBILITY-CONFLUENCE-V1",
+  "result_seen_before_registration": false,
+  "candidate": {
+    "signal_gate": "TP1_FEASIBILITY_CONFLUENCE_V1",
+    "can_create_signals": false,
+    "can_change_direction": false,
+    "entry_thresholds_changed": false,
+    "costs_changed": false,
+    "position_management_changed": false,
+    "registry_mode_changed": false,
+    "runtime_ai_order_decision": false
+  },
+  "fixed_formula": {
+    "lookback_ms": 120000,
+    "risk_bps": "abs(planned_entry-initial_stop)/planned_entry*10000",
+    "tp1_required_bps": "risk_bps*strategy_take_profit_1_r",
+    "range_bps": "(max(prefix_mid)-min(prefix_mid))/current_mid*10000",
+    "minimum_range_bps": "max(tp1_required_bps,expected_cost_bps*2)",
+    "directional_votes_required": 4,
+    "directional_votes_available": 6,
+    "top5_imbalance_minimum": 0.05,
+    "top10_imbalance_minimum": 0.03,
+    "trade_imbalance_1s_minimum": 0.10,
+    "trade_imbalance_3s_minimum": 0.05,
+    "fail_closed_on_missing_or_non_finite_input": true
+  },
+  "frozen_evaluation": {
+    "baseline_signal_gate": "NONE",
+    "candidate_signal_gate": "TP1_FEASIBILITY_CONFLUENCE_V1",
+    "runner": "scripts/research_runtime_strategy_replay.py",
+    "event_order": [
+      "receive_ts_ms",
+      "receive_monotonic_ns",
+      "venue_ts_ms",
+      "symbol",
+      "payload_json"
+    ],
+    "run_count": 13,
+    "split_run_counts": {
+      "train": 6,
+      "validation": 2,
+      "oos": 5
+    },
+    "base_cost_bps": 13,
+    "stress_cost_bps": 25,
+    "force_close_open_positions_at_archive_end": false,
+    "same_archive_reader_and_event_counts_required": true,
+    "post_oos_parameter_tuning_allowed": false
+  },
+  "promotion_gates": {
+    "minimum_unique_market_opportunities_per_profile": 30,
+    "minimum_base_win_rate": 0.70,
+    "minimum_stress_win_rate": 0.70,
+    "positive_cost_after_expectancy_required": true,
+    "profit_factor_above_one_required": true,
+    "chronological_oos_required": true,
+    "bootstrap_expectancy_lower_bound_above_zero_required": true,
+    "dsr_required": true,
+    "pbo_required": true,
+    "deployment_before_wave104_six_hour_observation": false,
+    "profitability_claim_allowed": false
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "api_keys_required": false,
+    "wallet_paths_enabled": false
+  },
+  "implementation_verification": {
+    "status": "PASS_PATH_ONLY_PERFORMANCE_NOT_EVALUATED",
+    "targeted_pytest": {
+      "passed": 133,
+      "failed": 0
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS",
+    "stored_event_smoke": {
+      "run_id": "RUN-72EB83B350A7",
+      "events_per_path": 5000,
+      "baseline_signal_gate": "NONE",
+      "candidate_signal_gate": "TP1_FEASIBILITY_CONFLUENCE_V1",
+      "baseline_qualified_signals": 0,
+      "candidate_accepted_signals": 0,
+      "completed_trades": 0,
+      "real_orders_enabled": false,
+      "auth_required": false,
+      "performance_evidence": false
+    }
+  }
+}
