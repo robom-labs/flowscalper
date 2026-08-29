@@ -311,6 +311,13 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .operation-card p { grid-column: 1 / -1; margin: 0; color: #ffc2c7; font-size: 10px; }
 .operation-state { border: 1px solid #31505f; border-radius: 999px; padding: 6px 8px; }
 .league-home-summary small { display: block; margin-top: 6px; color: #6f8998; font-size: 8px; line-height: 1.4; }
+.live-activity-card { display: grid; grid-template-columns: minmax(210px, 1.2fr) minmax(360px, 1.6fr) auto; gap: 18px; align-items: center; margin-bottom: 8px; }
+.live-activity-card h3 { margin: 4px 0; }
+.live-activity-card p { margin: 0; color: #9bb0bc; font-size: 10px; line-height: 1.55; }
+.live-activity-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.live-activity-card dl > div { padding: 8px 12px; border-left: 1px solid #18313c; }
+.live-activity-card dt { color: var(--muted); font-size: 8px; }
+.live-activity-card dd { margin: 5px 0 0; font-size: 11px; font-weight: 800; }
 .shared-benchmark-card { display: grid; grid-template-columns: 1fr 1.3fr; gap: 18px; align-items: center; }
 .shared-benchmark-card p { margin: 0; color: #839ca9; font-size: 10px; }
 .shared-benchmark-card dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; }
@@ -342,7 +349,8 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .replay-runbar { grid-template-columns: 1fr 1fr; }
   .replay-runbar button { grid-column: 1 / -1; }
   .shadow-grid, .diagnostic-grid { grid-template-columns: repeat(2, 1fr); }
-  .risk-contract-grid, .shared-benchmark-card { grid-template-columns: 1fr; }
+  .risk-contract-grid, .live-activity-card, .shared-benchmark-card { grid-template-columns: 1fr; }
+  .live-activity-card dl > div:first-child { border-left: 0; }
   .shared-benchmark-card dl > div:first-child { border-left: 0; }
 }
 
@@ -374,7 +382,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .table-actions { flex-direction: column; }
   .chart-title-actions, .home-shortcuts { align-items: stretch; flex-direction: column; }
   .indicator-group { width: 100%; }
-  .shared-benchmark-card dl, .benchmark-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .live-activity-card dl, .shared-benchmark-card dl, .benchmark-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .position-filters { align-items: stretch; flex-direction: column; }
   .position-filters label, .position-filters select, .segmented-control { width: 100%; }
   .segmented-control button { flex: 1; }
