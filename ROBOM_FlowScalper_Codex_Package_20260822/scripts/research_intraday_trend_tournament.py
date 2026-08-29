@@ -1212,6 +1212,17 @@ def _eligible(profile: Mapping[str, object]) -> bool:
     )
 
 
+def _rankable(profile: Mapping[str, object]) -> bool:
+    base = profile["base"]
+    validation_stress = profile["validation_stress"]
+    assert isinstance(base, Mapping)
+    assert isinstance(validation_stress, Mapping)
+    return (
+        int(base["sample_size"]) >= MINIMUM_DEVELOPMENT_SAMPLE
+        and int(validation_stress["sample_size"]) >= MINIMUM_VALIDATION_SAMPLE
+    )
+
+
 def _optional_number(value: object) -> float | None:
     if isinstance(value, int | float):
         return float(value)
@@ -1413,14 +1424,23 @@ def build_report(
     )
     spec_by_id = {spec.candidate_id: spec for spec in specs}
     ranked_ids = sorted(
-        development,
+        (
+            candidate_id
+            for candidate_id, profile in development.items()
+            if _rankable(profile)
+        ),
         key=lambda candidate_id: (*_rank_key(development[candidate_id]), candidate_id),
         reverse=True,
+    )
+    unranked_ids = sorted(
+        candidate_id
+        for candidate_id, profile in development.items()
+        if not _rankable(profile)
     )
     candidate_material = [asdict(spec) for spec in specs]
     dataset_material = list(dataset_manifest)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": (
             "HISTORICAL_DIAGNOSTIC_PASS_FORWARD_REQUIRED"
             if historical_pass
@@ -1473,6 +1493,11 @@ def build_report(
             "thresholds_lowered_after_results": False,
         },
         "development_profiles": development,
+        "ranking_contract": {
+            "minimum_development_closed_trades": MINIMUM_DEVELOPMENT_SAMPLE,
+            "minimum_validation_closed_trades": MINIMUM_VALIDATION_SAMPLE,
+            "sparse_candidates_are_not_ranked": True,
+        },
         "development_ranking_top_10": [
             {
                 "rank": index + 1,
@@ -1497,6 +1522,7 @@ def build_report(
             }
             for index, candidate_id in enumerate(ranked_ids[:10])
         ],
+        "unranked_insufficient_sample": unranked_ids,
         "selected_on_train_validation": list(finalists),
         "selection_bias": {
             "candidate_trials": len(specs),

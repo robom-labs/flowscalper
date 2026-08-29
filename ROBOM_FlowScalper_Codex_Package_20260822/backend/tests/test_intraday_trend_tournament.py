@@ -11,6 +11,7 @@ import pytest
 from scripts.research_intraday_trend_tournament import (
     PREREGISTERED_CANDIDATES,
     TournamentFeatures,
+    _rankable,
     _select_finalists,
     _setup,
     _simulate,
@@ -255,3 +256,15 @@ def test_finalists_are_limited_to_three_distinct_families() -> None:
     assert len(selected) == 3
     assert len(selected_families) == 3
     assert PREREGISTERED_CANDIDATES[1].candidate_id not in selected
+
+
+def test_sparse_candidate_is_not_ranked_even_when_its_average_is_positive() -> None:
+    sparse = _eligible_profile(72.5, 2.0)
+    base = sparse["base"]
+    validation = sparse["validation_stress"]
+    assert isinstance(base, dict)
+    assert isinstance(validation, dict)
+    base["sample_size"] = 5
+    validation["sample_size"] = 1
+
+    assert _rankable(sparse) is False
