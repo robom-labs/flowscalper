@@ -146,12 +146,8 @@ def test_registry_exposes_fifteen_strategies_and_honors_mode_and_direction() -> 
     assert all(row["horizon_class"] == "INTRADAY_SWING" for row in intraday_rows)
     assert all(row["signal_half_life_seconds"] == 5 for row in intraday_rows)
     assert all(not row["edge_decay_enabled"] for row in intraday_rows)
-    assert [row["max_hold_seconds"] for row in intraday_rows] == [
-        28_800,
-        43_200,
-        64_800,
-        57_600,
-    ]
+    assert all(row["max_hold_seconds"] is None for row in intraday_rows)
+    assert all(row["exit_model"].endswith("NO_TIME_EXIT") for row in intraday_rows)
     assert all(
         row["cost_model_version"] == "TOP_OF_BOOK_BASE13_STRESS25_V1" for row in registry.rows()
     )

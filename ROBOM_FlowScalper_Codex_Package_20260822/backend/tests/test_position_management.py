@@ -125,7 +125,7 @@ def test_edge_decay_exits_only_after_grace_and_multi_signal_persistence() -> Non
     )
 
 
-def test_intraday_tp_sl_policy_ignores_general_edge_decay_until_safety_max_hold() -> None:
+def test_intraday_tp_sl_policy_ignores_general_edge_decay_without_time_exit() -> None:
     position = opened_position()
     manager = PositionManager()
     adverse = health(
@@ -138,20 +138,21 @@ def test_intraday_tp_sl_policy_ignores_general_edge_decay_until_safety_max_hold(
         position,
         adverse,
         now_ms=position.opened_ts_ms + 60_000,
-        maximum_holding_ms=28_800_000,
+        maximum_holding_ms=None,
         edge_decay_enabled=False,
     )
-    max_hold = manager.evaluate(
+    held_after_seven_days = manager.evaluate(
         position,
         adverse,
-        now_ms=position.opened_ts_ms + 28_800_000,
-        maximum_holding_ms=28_800_000,
+        now_ms=position.opened_ts_ms + 7 * 24 * 3_600_000,
+        maximum_holding_ms=None,
         edge_decay_enabled=False,
     )
 
     assert held.action is ManagementAction.HOLD
     assert held.reason_codes == ("TP_SL_STRUCTURE_MANAGEMENT_ONLY",)
-    assert max_hold.action is ManagementAction.EXIT_MAX_HOLD
+    assert held_after_seven_days.action is ManagementAction.HOLD
+    assert held_after_seven_days.reason_codes == ("TP_SL_STRUCTURE_MANAGEMENT_ONLY",)
 
 
 def test_edge_decay_does_not_crystallize_costs_while_price_is_flat() -> None:

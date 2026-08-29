@@ -538,7 +538,7 @@
         {
           "path": "backend/tests/test_position_management.py",
           "contains": [
-            "test_intraday_tp_sl_policy_ignores_general_edge_decay_until_safety_max_hold"
+            "test_intraday_tp_sl_policy_ignores_general_edge_decay_without_time_exit"
           ]
         }
       ]

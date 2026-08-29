@@ -262,25 +262,45 @@ def test_intraday_plan_replaces_nine_hundred_second_edge_exit_with_structure_pol
         instrument=instrument(),
         signal_time_ms=1_000,
         risk_state=RiskState(),
-        main_eligible=False,
+        main_eligible=True,
         shadow_eligible=True,
         exit_style=StrategyRegistry()
         .descriptor("TREND_PULLBACK_RECLAIM_15M_V2")
         .exit_style,
         trend_take_profit_1_r=Decimal("1.4"),
         trend_take_profit_2_r=Decimal("2.8"),
-        maximum_holding_ms=28_800_000,
+        maximum_holding_ms=None,
         edge_decay_enabled=False,
     )
 
     assert result.rejection_codes == ()
     assert result.plan is not None
-    assert result.plan.maximum_holding_ms == 28_800_000
-    assert "SAFETY_MAX_HOLD_28800S" in result.plan.management_policy
+    assert result.plan.maximum_holding_ms is None
+    assert "NO_TIME_BASED_EXIT_TP_SL_ONLY" in result.plan.management_policy
+    assert not any(
+        policy.startswith("SAFETY_MAX_HOLD_") for policy in result.plan.management_policy
+    )
     assert "NO_GENERAL_EDGE_DECAY_TP_SL_ONLY" in result.plan.management_policy
     assert "EXIT_ON_PERSISTENT_EDGE_DECAY" not in result.plan.management_policy
     assert result.plan.take_profit_targets[0].quantity_fraction == Decimal("0.4")
     assert result.plan.take_profit_targets[1].quantity_fraction == Decimal("0.6")
+
+    engine = PaperPortfolioEngine(
+        run_id=result.plan.run_id,
+        strategy_ids=(result.plan.strategy_id,),
+        shadow_ledger=ShadowLedger((result.plan.strategy_id,)),
+    )
+    engine.offer((result.plan,), entries_paused=False)
+    recovered_payload = json.loads(json.dumps(engine.recovery_state()))
+    restored = PaperPortfolioEngine(
+        run_id=result.plan.run_id,
+        strategy_ids=(result.plan.strategy_id,),
+        shadow_ledger=ShadowLedger((result.plan.strategy_id,)),
+    )
+    restored.restore_state(recovered_payload)
+    assert restored.main.pending_entry is not None
+    assert restored.main.pending_entry.plan.maximum_holding_ms is None
+    assert restored.recovery_state() == recovered_payload
 
 
 def test_latency_executable_depth_tp1_tp2_and_live_pnl_are_end_to_end() -> None:

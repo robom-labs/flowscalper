@@ -59,7 +59,7 @@ test('shows fifteen compact strategy rows with ten simultaneous paper hypotheses
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[11])
   expect(screen.getByText('30분~8시간')).toBeInTheDocument()
-  expect(screen.getByText(/일반 근거약화 조기청산 없음/)).toBeInTheDocument()
+  expect(screen.getByText(/시간청산 없이 TP1·TP2·구조 손절로 결판/)).toBeInTheDocument()
 })
 
 test('shows lifecycle evidence and restores the prior revision without deleting history', async () => {

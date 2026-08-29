@@ -1746,7 +1746,11 @@ class PaperRuntime:
                 exit_style=descriptor.exit_style,
                 trend_take_profit_1_r=descriptor.take_profit_1_r,
                 trend_take_profit_2_r=descriptor.take_profit_2_r,
-                maximum_holding_ms=descriptor.max_hold_seconds * 1_000,
+                maximum_holding_ms=(
+                    descriptor.max_hold_seconds * 1_000
+                    if descriptor.max_hold_seconds is not None
+                    else None
+                ),
                 edge_decay_enabled=descriptor.edge_decay_enabled,
                 strategy_version=STRATEGY_VERSION,
             )

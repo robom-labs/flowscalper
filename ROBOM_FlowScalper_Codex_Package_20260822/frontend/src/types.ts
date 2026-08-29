@@ -232,7 +232,7 @@ export type StrategyRow = {
   take_profit_2_r: string
   entry_rules_ko: string[]
   exit_rules_ko: string[]
-  max_hold_seconds: number
+  max_hold_seconds: number | null
   cost_model_version: string
   strategy_version: string
   required_market_data: string[]

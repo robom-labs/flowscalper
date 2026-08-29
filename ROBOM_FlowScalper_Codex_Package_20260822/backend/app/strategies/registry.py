@@ -138,7 +138,7 @@ class StrategyDescriptor:
     take_profit_2_r: Decimal = Decimal("3.0")
     entry_rules_ko: tuple[str, ...] = ()
     exit_rules_ko: tuple[str, ...] = ()
-    max_hold_seconds: int = 900
+    max_hold_seconds: int | None = 900
     edge_decay_enabled: bool = True
     cost_model_version: str = "TOP_OF_BOOK_BASE13_STRESS25_V1"
     paper_only: bool = True
@@ -168,7 +168,7 @@ _INTRADAY_REQUIRED_MARKET_DATA = (
 _INTRADAY_MINIMUM_WARMUP_KO = "완성 신호주기 봉 100개 이상과 완성 1시간 봉 50개 이상"
 _INTRADAY_EDGE_POLICY_KO = (
     "일반 미세구조 근거약화 청산 없이 TP1·TP2·구조 손절·데이터/시스템 안전종료·"
-    "전략별 최대보유 안전한도만 적용"
+    "이익보호 방향의 손절 단축만 적용하며 시간만으로 종료하지 않음"
 )
 _INTRADAY_TARGET_UNIVERSE_KO = (
     "동적 정밀분석 종목 중 완성봉·현재 공개호가·유동성·비용 gate를 모두 통과한 종목"
@@ -774,7 +774,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(1_800, 28_800),
                 signal_half_life_seconds=5,
                 required_timeframes=("15m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_MAX8H",
+                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.4"),
                 take_profit_2_r=Decimal("2.8"),
                 entry_rules_ko=(
@@ -788,9 +788,9 @@ class StrategyRegistry:
                     "최근 두 완성봉 구조 밖에 초기 손절 고정",
                     "TP1 1.4R에서 40%·TP2 2.8R에서 60% 익절",
                     "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
-                    "8시간은 장애·무한노출 방지용 안전 최대보유",
+                    "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
-                max_hold_seconds=28_800,
+                max_hold_seconds=None,
                 edge_decay_enabled=False,
             ),
             StrategyDescriptor(
@@ -812,7 +812,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(3_600, 43_200),
                 signal_half_life_seconds=5,
                 required_timeframes=("15m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_MAX12H",
+                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.6"),
                 take_profit_2_r=Decimal("3.2"),
                 entry_rules_ko=(
@@ -825,9 +825,9 @@ class StrategyRegistry:
                     "재확인 구조 밖에 초기 손절 고정",
                     "TP1 1.6R에서 40%·TP2 3.2R에서 60% 익절",
                     "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
-                    "12시간은 장애·무한노출 방지용 안전 최대보유",
+                    "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
-                max_hold_seconds=43_200,
+                max_hold_seconds=None,
                 edge_decay_enabled=False,
             ),
             StrategyDescriptor(
@@ -849,7 +849,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(7_200, 64_800),
                 signal_half_life_seconds=5,
                 required_timeframes=("30m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_MAX18H",
+                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.6"),
                 take_profit_2_r=Decimal("3.2"),
                 entry_rules_ko=(
@@ -862,9 +862,9 @@ class StrategyRegistry:
                     "재확인 구조 밖에 초기 손절 고정",
                     "TP1 1.6R에서 40%·TP2 3.2R에서 60% 익절",
                     "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
-                    "18시간은 장애·무한노출 방지용 안전 최대보유",
+                    "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
-                max_hold_seconds=64_800,
+                max_hold_seconds=None,
                 edge_decay_enabled=False,
             ),
             StrategyDescriptor(
@@ -888,7 +888,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(3_600, 57_600),
                 signal_half_life_seconds=5,
                 required_timeframes=("30m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_MAX16H",
+                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.5"),
                 take_profit_2_r=Decimal("3.0"),
                 entry_rules_ko=(
@@ -901,9 +901,9 @@ class StrategyRegistry:
                     "최근 두 완성봉 구조 밖에 초기 손절 고정",
                     "TP1 1.5R에서 40%·TP2 3.0R에서 60% 익절",
                     "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
-                    "16시간은 장애·무한노출 방지용 안전 최대보유",
+                    "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
-                max_hold_seconds=57_600,
+                max_hold_seconds=None,
                 edge_decay_enabled=False,
             ),
         )

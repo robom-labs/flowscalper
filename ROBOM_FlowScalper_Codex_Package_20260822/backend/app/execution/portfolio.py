@@ -593,9 +593,13 @@ class PaperPortfolioEngine:
                         else "TP·SL 구조 관리 · "
                     )
                     + (
-                        f"안전 최대 {plan.maximum_holding_ms // 3_600_000}시간"
-                        if plan.maximum_holding_ms >= 3_600_000
-                        else f"안전 최대 {plan.maximum_holding_ms // 60_000}분"
+                        "시간청산 없음"
+                        if plan.maximum_holding_ms is None
+                        else (
+                            f"안전 최대 {plan.maximum_holding_ms // 3_600_000}시간"
+                            if plan.maximum_holding_ms >= 3_600_000
+                            else f"안전 최대 {plan.maximum_holding_ms // 60_000}분"
+                        )
                     )
                 )
             ),
@@ -2641,6 +2645,7 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
     )
     if len(targets) != len(target_rows):
         raise ValueError("복구 계획의 TP 행 형식이 잘못됐습니다.")
+    maximum_holding_value = payload.get("maximum_holding_ms", 900_000)
     return CandidatePlan(
         candidate_id=str(payload["candidate_id"]),
         signal_event_id=str(payload["signal_event_id"]),
@@ -2663,7 +2668,11 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         direction=Side(str(payload["direction"])),
         signal_time_ms=int(str(payload["signal_time_ms"])),
         expires_at_ms=int(str(payload["expires_at_ms"])),
-        maximum_holding_ms=int(str(payload.get("maximum_holding_ms", 900_000))),
+        maximum_holding_ms=(
+            None
+            if maximum_holding_value is None
+            else int(str(maximum_holding_value))
+        ),
         regime=Regime(str(payload["regime"])),
         planned_entry=Decimal(str(payload["planned_entry"])),
         worst_allowed_entry=Decimal(str(payload["worst_allowed_entry"])),

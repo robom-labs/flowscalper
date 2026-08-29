@@ -21,11 +21,11 @@ const catalog = [
 ] as const
 
 const retiredIndexes = new Set([0, 3, 4, 7, 10])
-const intradayV2Config: Record<string, { holding: [number, number]; tp1: string; tp2: string; maxHold: number }> = {
-  TREND_PULLBACK_RECLAIM_15M_V2: { holding: [1800, 28800], tp1: '1.4', tp2: '2.8', maxHold: 28800 },
-  BREAKOUT_RETEST_15M_V2: { holding: [3600, 43200], tp1: '1.6', tp2: '3.2', maxHold: 43200 },
-  BREAKOUT_RETEST_30M_V2: { holding: [7200, 64800], tp1: '1.6', tp2: '3.2', maxHold: 64800 },
-  MULTISPEED_TREND_RECLAIM_30M_V2: { holding: [3600, 57600], tp1: '1.5', tp2: '3.0', maxHold: 57600 },
+const intradayV2Config: Record<string, { holding: [number, number]; tp1: string; tp2: string; maxHold: null }> = {
+  TREND_PULLBACK_RECLAIM_15M_V2: { holding: [1800, 28800], tp1: '1.4', tp2: '2.8', maxHold: null },
+  BREAKOUT_RETEST_15M_V2: { holding: [3600, 43200], tp1: '1.6', tp2: '3.2', maxHold: null },
+  BREAKOUT_RETEST_30M_V2: { holding: [7200, 64800], tp1: '1.6', tp2: '3.2', maxHold: null },
+  MULTISPEED_TREND_RECLAIM_30M_V2: { holding: [3600, 57600], tp1: '1.5', tp2: '3.0', maxHold: null },
 }
 
 function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPerformance {
@@ -113,12 +113,12 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
   expected_holding_seconds: intradayV2?.holding ?? (index === 10 ? [3600, 129600] : [10, 180]),
   signal_half_life_seconds: index >= 10 ? 5 : 30,
   required_timeframes: intradayV2 ? ['15m·30m', '1h', 'public book flow'] : index === 10 ? ['1h'] : ['250ms', '1s', '3s', '10s', '30s', '120s'],
-  exit_model: intradayV2 ? 'STRUCTURE_TP1_TP2_THESIS_HORIZON' : 'STRUCTURE_TP1_TP2_EDGE_DECAY',
+  exit_model: intradayV2 ? 'STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT' : 'STRUCTURE_TP1_TP2_EDGE_DECAY',
   take_profit_1_r: intradayV2?.tp1 ?? (index === 10 ? '2.2' : '1.5'),
   take_profit_2_r: intradayV2?.tp2 ?? (index === 10 ? '4.5' : '3.0'),
   entry_rules_ko: intradayV2 ? ['완성 15분·30분봉 100개와 1시간봉 50개 이상', '눌림 회복 또는 돌파 재확인 뒤 현재 공개 흐름 확인'] : index === 10 ? ['완성 1시간봉 200개 이상', 'EMA·모멘텀·돌파·ADX·상대거래량 동시 확인'] : [],
-  exit_rules_ko: intradayV2 ? [`TP1 ${intradayV2.tp1}R·40%`, `TP2 ${intradayV2.tp2}R·60%`, '일반 근거약화 조기청산 없음'] : index === 10 ? ['TP1 2.2R·40%', 'TP2 4.5R·60%'] : [],
-  max_hold_seconds: intradayV2?.maxHold ?? (index === 10 ? 129600 : 900),
+  exit_rules_ko: intradayV2 ? [`TP1 ${intradayV2.tp1}R·40%`, `TP2 ${intradayV2.tp2}R·60%`, '일반 근거약화·시간청산 없음'] : index === 10 ? ['TP1 2.2R·40%', 'TP2 4.5R·60%'] : [],
+  max_hold_seconds: intradayV2 ? intradayV2.maxHold : index === 10 ? 129600 : 900,
   cost_model_version: 'TOP_OF_BOOK_BASE13_STRESS25_V1',
   strategy_version: intradayV2 ? 'V2' : 'V1',
   required_market_data: intradayV2
@@ -129,7 +129,7 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
   minimum_warmup_ko: intradayV2 ? '완성 신호주기 봉 100개 이상과 완성 1시간 봉 50개 이상' : index === 10 ? '완성 1시간봉 200개 이상' : '건전한 종목별 공개시장 10초 이상과 현재 이전 prefix 통계',
   entry_hypothesis_ko: '현재 이전 공개시장 정보가 같은 방향으로 정렬되고 비용 gate를 통과하면 PAPER 후보로 평가합니다.',
   falsification_conditions_ko: ['필수 데이터 또는 방향 정렬 실패', '비용후 순 R:R gate 실패'],
-  edge_decay_policy_ko: intradayV2 ? '일반 근거약화 청산 없이 TP1·TP2·구조 손절과 안전 최대보유만 적용' : '진입 후 30초 유예·불리한 근거 2개·비용보다 큰 가격 악화·3초 지속 뒤 PAPER 관리청산',
+  edge_decay_policy_ko: intradayV2 ? '일반 근거약화·시간청산 없이 TP1·TP2·구조 손절로 결판' : '진입 후 30초 유예·불리한 근거 2개·비용보다 큰 가격 악화·3초 지속 뒤 PAPER 관리청산',
   risk_budget_rule_ko: '공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산',
   target_universe_ko: '동적 정밀분석 종목 중 지원 레짐·유동성·비용 gate 통과 종목',
   data_leakage_guards_ko: ['현재 event timestamp 이전의 동일 종목 이력만 사용', '미래 timestamp 입력 fail-closed'],

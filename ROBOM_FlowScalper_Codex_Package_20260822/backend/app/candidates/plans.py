@@ -57,7 +57,7 @@ class CandidatePlan:
     direction: Side
     signal_time_ms: int
     expires_at_ms: int
-    maximum_holding_ms: int
+    maximum_holding_ms: int | None
     regime: Regime
     planned_entry: Decimal
     worst_allowed_entry: Decimal
@@ -94,7 +94,7 @@ class CandidatePlan:
     def __post_init__(self) -> None:
         if self.expires_at_ms <= self.signal_time_ms:
             raise ValueError("후보 유효시간은 신호 시각보다 뒤여야 합니다.")
-        if self.maximum_holding_ms <= 0:
+        if self.maximum_holding_ms is not None and self.maximum_holding_ms <= 0:
             raise ValueError("최대 보유시간은 양수여야 합니다.")
         if self.position_size <= 0 or self.minimum_quantity <= 0:
             raise ValueError("수량과 최소 수량은 양수여야 합니다.")
@@ -231,7 +231,7 @@ class CandidatePlanner:
         exit_style: ExitStyle = ExitStyle.REVERSION_70_30,
         trend_take_profit_1_r: Decimal = Decimal("1.5"),
         trend_take_profit_2_r: Decimal = Decimal("3.0"),
-        maximum_holding_ms: int = 900_000,
+        maximum_holding_ms: int | None = 900_000,
         edge_decay_enabled: bool = True,
         strategy_version: str = "1",
         trailing_policy: TrailingPolicy | None = None,
@@ -464,7 +464,11 @@ class CandidatePlanner:
             reason_codes=decision.reason_codes,
             plain_korean_explanation=explanation,
             management_policy=(
-                f"SAFETY_MAX_HOLD_{maximum_holding_ms // 1_000}S",
+                (
+                    f"SAFETY_MAX_HOLD_{maximum_holding_ms // 1_000}S"
+                    if maximum_holding_ms is not None
+                    else "NO_TIME_BASED_EXIT_TP_SL_ONLY"
+                ),
                 "FEE_ADJUSTED_BREAKEVEN_AFTER_TP1"
                 if exit_style is ExitStyle.TREND_40_60
                 else "STRUCTURAL_REVERSION_EXIT",
