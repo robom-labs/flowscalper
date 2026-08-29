@@ -181,6 +181,9 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .strategy-inline-modes, .strategy-inline-directions { display: flex; gap: 3px; }
 .strategy-inline-modes button, .strategy-inline-directions button { min-height: 34px; border: 1px solid #294957; border-radius: 6px; padding: 0 7px; color: #91a8b4; background: #0b1b23; cursor: pointer; font-size: 8px; white-space: nowrap; }
 .strategy-inline-modes button[aria-pressed="true"], .strategy-inline-directions button[aria-pressed="true"] { color: #07110f; border-color: var(--mint); background: var(--mint); font-weight: 800; }
+.strategy-retired-note { display: grid; gap: 4px; color: #b7c9d1; }
+.strategy-retired-note strong { color: #dbe7ec; }
+.strategy-retired-note span { color: #8299a4; font-size: 9px; line-height: 1.35; }
 .strategy-latest { margin: 12px 0 0; color: #b5c8d1; font-size: 11px; }
 .strategy-latest small { display: block; margin-top: 5px; color: #7893a2; }
 .profile-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

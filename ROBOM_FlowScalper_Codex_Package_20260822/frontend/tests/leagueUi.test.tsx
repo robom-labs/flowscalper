@@ -18,12 +18,12 @@ afterEach(() => {
 test('shows fifteen compact strategy rows with ten simultaneous paper hypotheses', () => {
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(15)
-  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(15)
+  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(10)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('10개 감시 · 검증 중지 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('10개 동시 검증 · 과거 결과 보존 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getAllByText('준비 중')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(5)
-  expect(screen.getByRole('columnheader', { name: '이번 실행 결과' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '이번 Run 결과' })).toBeInTheDocument()
   expect(screen.getByRole('columnheader', { name: '검증 결과' })).toBeInTheDocument()
   expect(screen.queryByRole('columnheader', { name: '현재버전 승률' })).not.toBeInTheDocument()
 
@@ -171,8 +171,9 @@ test('blocks policy-retired reactivation but keeps ordinary user OFF reversible'
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
 
-  expect(screen.getByRole('button', { name: 'LSA 반전 공동·독립 모의 중' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'LSA 반전 검증 중지' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.queryByRole('button', { name: 'LSA 반전 공동·독립 모의 중' })).not.toBeInTheDocument()
+  expect(screen.getAllByText('새 진입 없음 · 거래기록과 가상계좌 보존')).toHaveLength(5)
+  expect(screen.getAllByText('현재 거래 없음')).toHaveLength(5)
   const reversible = screen.getByRole('button', { name: 'VWAP 소진 독립 모의 중' })
   expect(reversible).toBeEnabled()
   fireEvent.click(reversible)
@@ -181,6 +182,28 @@ test('blocks policy-retired reactivation but keeps ordinary user OFF reversible'
     userOffId,
     expect.objectContaining({ mode: 'SHADOW', expected_revision: 0 }),
   ))
+})
+
+test('translates governor reason codes into beginner Korean', () => {
+  const rows = strategies.map((strategy, index) => index === 11 ? {
+    ...strategy,
+    governance: {
+      ...strategy.governance,
+      reason_codes: [
+        'BASE_SAMPLE_LT_30',
+        'STRESS_SAMPLE_LT_30',
+        'BASE_EXPECTANCY_NOT_POSITIVE',
+        'STRESS_EXPECTANCY_NOT_POSITIVE',
+      ],
+    },
+  } : strategy)
+
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[11])
+
+  expect(screen.getByText(/기본 비용 가상계좌 표본 30건이 필요합니다/)).toBeInTheDocument()
+  expect(screen.getByText(/보수 비용을 뺀 거래당 기대수익이 아직 양수/)).toBeInTheDocument()
+  expect(screen.queryByText(/BASE_SAMPLE_LT_30/)).not.toBeInTheDocument()
 })
 
 test('confirms mode changes and sends the visible settings revision', async () => {
@@ -218,7 +241,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
   expect(screen.getByText('조건 미충족')).toBeInTheDocument()
-  expect(screen.getByText('9개 감시 · 검증 중지 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('9개 동시 검증 · 과거 결과 보존 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 

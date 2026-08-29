@@ -34,6 +34,16 @@ const governanceReasonLabels: Record<string, string> = {
   USER_MANUAL_LOCK: '사용자가 설정을 고정해 자동 변경하지 않습니다.',
   RETIRED_REQUIRES_USER_RESEARCH: '퇴역 전략은 새 연구 검증 전에 자동 재활성화하지 않습니다.',
   LIVE_PUBLIC_SAMPLE_LT_30: '실제 공개시장 PAPER 표본이 30건보다 적습니다.',
+  LIVE_PUBLIC_SAMPLE_LT_100: '현재 대표가 되려면 공개시장 PAPER 표본 100건이 필요합니다.',
+  BASE_SAMPLE_LT_30: '기본 비용 가상계좌 표본 30건이 필요합니다.',
+  STRESS_SAMPLE_LT_30: '보수 비용 가상계좌 표본 30건이 필요합니다.',
+  BASE_SAMPLE_LT_100: '현재 대표가 되려면 기본 비용 표본 100건이 필요합니다.',
+  STRESS_SAMPLE_LT_100: '현재 대표가 되려면 보수 비용 표본 100건이 필요합니다.',
+  BASE_EXPECTANCY_NOT_POSITIVE: '기본 비용을 뺀 거래당 기대수익이 아직 양수로 확인되지 않았습니다.',
+  STRESS_EXPECTANCY_NOT_POSITIVE: '보수 비용을 뺀 거래당 기대수익이 아직 양수로 확인되지 않았습니다.',
+  BASE_PF_LT_1_05: '기본 비용 기준 총이익이 총손실보다 충분히 크지 않습니다.',
+  STRESS_PF_LT_1: '보수 비용 기준 총이익이 총손실보다 크지 않습니다.',
+  BASE_PF_LT_1_10: '현재 대표가 되기 위한 손익 안정성 기준에 미달합니다.',
   BASE_WIN_RATE_LT_0_70_OR_MISSING: '기본 비용 기준 승률이 70% 이상으로 확인되지 않았습니다.',
   STRESS_WIN_RATE_LT_0_70_OR_MISSING: '보수 비용 기준 승률이 70% 이상으로 확인되지 않았습니다.',
   BASE_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE: '충분한 기본 비용 표본에서 승률 70%에 못 미쳐 검증을 종료했습니다.',
@@ -42,6 +52,14 @@ const governanceReasonLabels: Record<string, string> = {
   PBO_GT_0_50_OR_MISSING: '과적합 확률 검증이 없거나 기준에 미달합니다.',
   OOS_EXPECTANCY_LOWER_BOUND_NOT_POSITIVE: '미사용 기간의 비용 후 기대값 하한이 양수로 확인되지 않았습니다.',
   PARAMETER_ROBUSTNESS_NOT_PASSED: '주변 파라미터에서도 재현되는지 검증이 필요합니다.',
+  RISK_CONTRACT_NOT_PASSED: '진입·손절·최대손실 안전규칙 검증이 필요합니다.',
+  INDEPENDENT_PERIODS_LT_2: '서로 겹치지 않는 기간 두 곳 이상의 결과가 필요합니다.',
+  SPAN_LT_7_DAYS: '서로 다른 날짜의 공개시장 검증을 7일 이상 모아야 합니다.',
+  SPAN_LT_21_DAYS: '현재 대표가 되려면 공개시장 검증을 21일 이상 모아야 합니다.',
+  COOLDOWN_NOT_ELAPSED: '직전 변경 뒤 안전 대기기간이 아직 끝나지 않았습니다.',
+  DSR_LT_0_95: '현재 대표가 되기 위한 다중 실험 보정 기준에 미달합니다.',
+  PBO_GT_0_40: '현재 대표가 되기 위한 과적합 방지 기준에 미달합니다.',
+  STRATEGY_CORRELATION_GT_0_80_OR_MISSING: '기존 대표와 너무 비슷하지 않은지 확인이 필요합니다.',
   COST_AFTER_DEGRADATION: '전체와 최근 OOS가 두 평가 주기 연속 비용 후 악화됐습니다.',
   WIN_RATE_BELOW_70_REPEATED: '전체와 최근 BASE·보수 비용 승률이 두 평가 주기 연속 70%에 못 미쳐 안전 격리했습니다.',
   DATA_LEAKAGE: '미래 데이터 누수가 감지돼 즉시 격리했습니다.',
@@ -50,7 +68,9 @@ const governanceReasonLabels: Record<string, string> = {
 }
 
 function governanceReason(reason: string) {
-  return governanceReasonLabels[reason] ?? reason
+  const regimeMatch = reason.match(/^REGIME_COUNT_LT_(\d+)$/)
+  if (regimeMatch) return `서로 다른 시장 흐름 ${regimeMatch[1]}가지 이상의 결과가 필요합니다.`
+  return governanceReasonLabels[reason] ?? '추가 검증 조건을 확인하고 있습니다.'
 }
 
 function evaluationTime(timestamp: number) {
@@ -166,10 +186,10 @@ export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = tr
   const offCount = monitorRows.filter((row) => row.tone === 'off').length
   return (
     <section aria-labelledby="strategies-heading">
-      <div className="page-heading"><div><p className="section-kicker">모의매매 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 지금 무엇을 하는지와 진입하지 못한 핵심 이유를 한 줄로 표시합니다. 실행 오류와 조건 미충족은 따로 판단하며, 장시간 0건이면 전략 적합성을 다시 검증합니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 감시 · 검증 중지 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
+      <div className="page-heading"><div><p className="section-kicker">모의매매 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 지금 무엇을 하는지와 진입하지 못한 핵심 이유를 한 줄로 표시합니다. 실행 오류와 조건 미충족은 따로 판단하며, 장시간 0건이면 전략 적합성을 다시 검증합니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 동시 검증 · 과거 결과 보존 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
       {!analyticsReady ? <p className="profile-scope-note" role="status">과거 거래통계를 전략 버전별로 불러오는 중입니다. 준비 전 숫자는 순위나 승률로 사용하지 않습니다.</p> : null}
       {ordered.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
-      <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>지금 상태</th><th>사용 방식</th><th>거래 방향</th><th>이번 실행 결과</th><th>검증 결과</th><th>보기</th></tr></thead><tbody>{ordered.map((strategy) => {
+      <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>지금 상태</th><th>사용 방식</th><th>거래 방향</th><th>이번 Run 결과</th><th>검증 결과</th><th>보기</th></tr></thead><tbody>{ordered.map((strategy) => {
         const account = leagueAccounts.find((item) => item.strategy_id === strategy.strategy_id && item.profile === 'BASE')
         const report = strategy.performance.BASE
         const pnl = account ? number(account.current_equity_usdt) - number(account.starting_equity_usdt) : 0
@@ -185,9 +205,9 @@ export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = tr
         return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}>
           <td data-label="전략"><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td>
           <td data-label="지금 상태"><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail} · {strategy.evaluated_paths}개 조건 확인</small></td>
-          <td data-label="사용 방식"><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving || (strategy.policy_reactivation_locked && mode !== 'OFF')} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.policy_reactivation_locked ? '비용후 검증 탈락 · 기록 보존' : strategy.manual_lock ? '사용자가 고정함' : '검증 결과에 따라 자동 관리'}</small></td>
-          <td data-label="거래 방향"><div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving || strategy.policy_reactivation_locked} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div></td>
-          <td data-label="이번 실행 결과"><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>현재 자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })} · 보유 {account?.open_positions ?? 0}건</small></td>
+          <td data-label="사용 방식">{strategy.policy_reactivation_locked ? <div className="strategy-retired-note"><strong>검증 종료</strong><span>새 진입 없음 · 거래기록과 가상계좌 보존</span></div> : <><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.manual_lock ? '사용자가 고정함' : '검증 결과에 따라 자동 관리'}</small></>}</td>
+          <td data-label="거래 방향">{strategy.policy_reactivation_locked ? <div className="strategy-retired-note"><strong>현재 거래 없음</strong><span>과거 상승·하락 설정만 보존</span></div> : <div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div>}</td>
+          <td data-label="이번 Run 결과"><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>현재 자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })} · 보유 {account?.open_positions ?? 0}건</small></td>
           <td data-label="검증 결과"><strong>{analyticsReady ? sampleStatusLabel(report.sample_size, report.sample_status) : '불러오는 중'}</strong><small>{analyticsReady ? `현재 승률 ${winRate}` : '통계를 확인하고 있습니다.'}</small></td>
           <td data-label="보기"><button type="button" className="secondary-button" onClick={() => setSelectedId(strategy.strategy_id)}>자세히</button></td>
         </tr>
