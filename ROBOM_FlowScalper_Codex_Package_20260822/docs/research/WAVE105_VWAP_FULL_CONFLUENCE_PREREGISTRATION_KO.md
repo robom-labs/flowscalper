@@ -40,10 +40,13 @@
 
 ## 동결 입력과 실행 방법
 
-- 기준 결과는 `evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json`이다.
+- `evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json`은 과거 기준 참고자료로만 사용한다. 이
+  파일은 거래소 사건시각 우선 reader로 생성됐으므로 후보와 직접 비교하지 않는다.
 - 동일한 13개 저장 Run, 파일 checksum, 종목, 시간순 train·validation·OOS 경계를 그대로
   사용한다.
-- `scripts/research_strategy_revision.py`를 15·30·60·180초 horizon으로 한 번 실행한다.
+- 기준 commit과 후보 commit 양쪽에서 `scripts/research_strategy_revision.py`를 각각 한 번씩
+  15·30·60·180초 horizon으로 실행한다. 양쪽 모두 ADR-080의 공용 수신순 reader를 사용하고
+  `(receive_ts_ms, receive_monotonic_ns, venue_ts_ms, symbol, payload_json)` 순서를 고정한다.
 - 실제 복원 호가의 LONG ask 진입·bid 종료, SHORT bid 진입·ask 종료를 사용한다.
 - BASE 13bps, STRESS 25bps를 그대로 사용한다.
 - 결과를 본 뒤 조건이나 horizon을 다시 조정해 같은 입력을 재선택하지 않는다.
@@ -58,11 +61,13 @@
 4. 같은 split·horizon의 비교 가능한 OOS BASE 또는 STRESS 기대값이 악화되면 배포하지 않고
    원인을 조사한다. 표본이 사라지거나 30건 미만이면 개선으로 주장하지 않고
    `NOT_PROVEN`으로 둔다.
-5. 저장 replay 결과가 양수여도 Registry 승격에는 사용하지 않는다. 새 revision의 독립 미래
+5. 기준과 후보는 동일한 archive checksum과 수신순 reader source checksum을 사용해야 한다.
+   하나라도 다르면 직접 비교를 `BLOCKED`로 기록한다.
+6. 저장 replay 결과가 양수여도 Registry 승격에는 사용하지 않는다. 새 revision의 독립 미래
    `LIVE_PUBLIC` 표본을 다시 모으고 30건 전에는 순위를 매기지 않는다.
-6. 현재 실행 중인 Wave 104 수정 후 6시간 관찰을 실제로 끝내기 전에는 서비스를 교체하지
+7. 현재 실행 중인 Wave 104 수정 후 6시간 관찰을 실제로 끝내기 전에는 서비스를 교체하지
    않는다. 24시간을 채우지 않았으면 계속 `NOT_RUN`이다.
-7. 자연신호가 적다는 이유로 진입·비용·TP·SL 기준을 낮추지 않는다.
+8. 자연신호가 적다는 이유로 진입·비용·TP·SL 기준을 낮추지 않는다.
 
 ## 별도 후속 연구
 

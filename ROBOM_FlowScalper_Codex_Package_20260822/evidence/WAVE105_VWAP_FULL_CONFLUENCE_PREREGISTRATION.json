@@ -21,8 +21,17 @@
     "registry_mode_changed": false
   },
   "frozen_evaluation": {
-    "baseline_evidence": "evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json",
+    "historical_reference_only": "evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json",
+    "baseline_and_candidate_must_be_rerun": true,
     "runner": "scripts/research_strategy_revision.py",
+    "event_order": [
+      "receive_ts_ms",
+      "receive_monotonic_ns",
+      "venue_ts_ms",
+      "symbol",
+      "payload_json"
+    ],
+    "shared_receive_order_reader_required": true,
     "horizon_seconds": [15, 30, 60, 180],
     "base_cost_bps": 13,
     "stress_cost_bps": 25,
@@ -35,6 +44,7 @@
     "full_confluence_300ms_must_qualify": true,
     "signal_count_must_not_increase_per_split_horizon": true,
     "comparable_oos_cost_after_expectancy_must_not_worsen": true,
+    "baseline_candidate_archive_and_reader_checksums_must_match": true,
     "minimum_live_public_trades_before_ranking": 30,
     "profitability_claim_allowed": false,
     "deployment_before_wave104_six_hour_observation": false

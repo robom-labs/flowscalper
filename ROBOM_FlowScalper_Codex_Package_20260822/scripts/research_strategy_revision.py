@@ -9,7 +9,7 @@ import math
 import time
 from bisect import bisect_left, insort
 from collections import defaultdict, deque
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -35,6 +35,7 @@ from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
 from backend.app.strategies.runtime_evaluator import StrategySignalEvaluator
 from backend.app.strategies.statistics import robust_z_from_sorted
+from scripts.research_intraday_candidates import _event_rows
 
 DEFAULT_TRAIN_RUNS = (
     "RUN-94899287D623",
@@ -267,34 +268,6 @@ RUNTIME_VARIANT_NAMES = tuple(
 )
 
 
-def _event_rows(run_dir: Path) -> Iterator[dict[str, Any]]:
-    files = tuple(sorted(run_dir.rglob("*.parquet")))
-    if not files:
-        raise FileNotFoundError(f"시장 archive가 없습니다: {run_dir}")
-    connection = duckdb.connect(":memory:")
-    try:
-        connection.execute("SET memory_limit = '192MB'")
-        connection.execute("SET threads = 1")
-        connection.execute("SET preserve_insertion_order = false")
-        file_names = [str(path) for path in files]
-        reader = connection.execute(
-            """
-            SELECT payload_json
-            FROM read_parquet(?, union_by_name = true)
-            WHERE json_extract_string(payload_json, '$.event_type') IN (
-              'TRADE', 'DEPTH_UPDATE'
-            )
-            ORDER BY ts_ms, venue_ts_ms, symbol, payload_json
-            """,
-            [file_names],
-        ).to_arrow_reader(batch_size=2_048)
-        for batch in reader:
-            for raw in batch.column(0).to_pylist():
-                yield json.loads(raw)
-    finally:
-        connection.close()
-
-
 def _book_frame(payload: dict[str, Any]) -> BookFrame:
     data = payload["data"]
     quality = payload["quality"]
@@ -456,8 +429,13 @@ def research_run_horizons(
                 else frame.bids[0][0]
             )
             for horizon_ms in horizon_ms_values:
-                key = (variant_name, symbol, evaluated.decision.side, horizon_ms)
-                if snapshot.ts_ms < cooldown_until_ms.get(key, 0):
+                runtime_cooldown_key = (
+                    variant_name,
+                    symbol,
+                    evaluated.decision.side,
+                    horizon_ms,
+                )
+                if snapshot.ts_ms < cooldown_until_ms.get(runtime_cooldown_key, 0):
                     continue
                 signal = ResearchSignal(
                     variant=variant_name,
@@ -470,7 +448,7 @@ def research_run_horizons(
                     horizon_ms=horizon_ms,
                 )
                 pending[(run_id, symbol)].append(signal)
-                cooldown_until_ms[key] = signal.target_ts_ms
+                cooldown_until_ms[runtime_cooldown_key] = signal.target_ts_ms
         symbol_history.append(snapshot.depth_adjusted_ofi_3s_bps)
     return outcomes
 

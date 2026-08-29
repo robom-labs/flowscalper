@@ -42,6 +42,7 @@ from scripts.research_strategy_100_candidates import (
     _verify_current_bound_sources,
     _verify_manifest,
 )
+from scripts.research_strategy_revision import _event_rows as revision_event_rows
 
 
 def test_research_archive_reader_uses_observed_receive_order(tmp_path: Path) -> None:
@@ -83,6 +84,7 @@ def test_research_archive_reader_uses_observed_receive_order(tmp_path: Path) -> 
         "received-first",
         "received-second",
     ]
+    assert revision_event_rows is _event_rows
 
 
 def test_research_trade_rejects_nonfinite_input_before_candle_path() -> None:
