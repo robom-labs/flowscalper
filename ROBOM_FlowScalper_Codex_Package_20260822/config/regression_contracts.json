@@ -562,6 +562,27 @@
           ]
         }
       ]
+    },
+    {
+      "contract_id": "SMALL_WAL_CHECKPOINT_WRITE_AMPLIFICATION",
+      "symptom_ko": "작은 WAL도 네 번의 flush마다 체크포인트해 외장 원장 쓰기와 거래기록 최신화를 간헐적으로 늦춘다.",
+      "fixed_by": "ADR-111 thresholded WAL checkpoint for live storage",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_v02_operational_safety.py",
+          "contains": [
+            "test_parquet_persistence_worker_keeps_event_loop_responsive",
+            "test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists",
+            "test_incomplete_oversized_wal_checkpoint_fails_closed"
+          ]
+        },
+        {
+          "path": "backend/tests/test_running_service_soak.py",
+          "contains": [
+            "test_running_service_soak_accepts_small_wal_deferral_without_checkpoint"
+          ]
+        }
+      ]
     }
   ]
 }

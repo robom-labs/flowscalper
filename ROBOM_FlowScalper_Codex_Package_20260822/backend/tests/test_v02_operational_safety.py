@@ -1054,9 +1054,9 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     assert runtime._persistence_flush_slowest_ledger_write_ms >= 0
     assert runtime._persistence_flush_slowest_ledger_commit_ms >= 0
     assert runtime._persistence_flush_slowest_ledger_close_ms >= 0
-    assert runtime._wal_checkpoint_count == 1
-    assert runtime._wal_checkpoint_log_frames >= 0
-    assert runtime._wal_checkpointed_frames == runtime._wal_checkpoint_log_frames
+    assert runtime._wal_checkpoint_count == 0
+    assert runtime._wal_checkpoint_deferred_count == 1
+    assert runtime._wal_checkpoint_last_wal_bytes < 16 * 1024 * 1024
     assert runtime._wal_checkpoint_fault_count == 0
     assert runtime._persistence_fault_count == 0
     assert runtime._persistence_buffer_dropped == 0
@@ -1128,6 +1128,7 @@ async def test_incomplete_oversized_wal_checkpoint_fails_closed(
         ledger=ledger,
     )
     runtime._wal_checkpoint_next_flush = 1
+    monkeypatch.setattr(runtime_module, "_WAL_CHECKPOINT_SOFT_BYTES", 0)
     runtime._market_event_buffer = [
         {
             "event_id": "event-oversized-wal",
@@ -1345,8 +1346,8 @@ async def test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists(
 
     assert runtime._market_event_buffer == []
     assert runtime._persistence_flush_count == 12
-    assert runtime._wal_checkpoint_deferred_count == 4
-    assert runtime._wal_checkpoint_count == 2
+    assert runtime._wal_checkpoint_deferred_count == 3
+    assert runtime._wal_checkpoint_count == 0
     assert runtime._wal_checkpoint_last_wal_bytes < 16 * 1024 * 1024
     assert runtime._wal_checkpoint_fault_count == 0
     ledger.close()

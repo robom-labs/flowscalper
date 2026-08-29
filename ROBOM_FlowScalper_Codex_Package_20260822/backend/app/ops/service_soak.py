@@ -775,6 +775,12 @@ def summarize_running_service_soak(
         <= active_thresholds.max_persistence_flush_last_ms,
         "wal_checkpoint_continued": (
             final.wal_checkpoint_count > baseline.wal_checkpoint_count
+            or (
+                final.wal_checkpoint_deferred_count
+                > baseline.wal_checkpoint_deferred_count
+                and final.wal_checkpoint_last_wal_bytes
+                < 16 * 1024 * 1024
+            )
         ),
         "wal_checkpoint_count_monotonic": all(
             current.wal_checkpoint_count >= previous.wal_checkpoint_count

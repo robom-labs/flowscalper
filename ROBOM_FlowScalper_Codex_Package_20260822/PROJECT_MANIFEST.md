@@ -170,6 +170,8 @@ Detailed specifications:
 - `docs/research/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION_KO.md`
 - `docs/research/HYP-116J-intraday-trend-v2-live-shadow.md`
 - `docs/research/HYP-116L-parallel-trend-tournament.md`
+- `docs/adr/ADR-110-structural-tp-sl-without-runtime-time-exit.md`
+- `docs/adr/ADR-111-thresholded-wal-checkpoint-for-live-storage.md`
 - `evidence/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION.json`
 - `evidence/WAVE110_RESEARCH_ITERATION_GUARD_QA.json`
 - `evidence/WAVE116J_POST_READINESS_RUNTIME_QA.json`

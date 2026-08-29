@@ -121,7 +121,6 @@ class PaperEntryIntentConflict(RuntimeError):
 
 _WAL_CHECKPOINT_FLUSH_INTERVAL = 4
 _SLOW_WAL_CHECKPOINT_MS = 2_000.0
-_WAL_CHECKPOINT_BACKLOG_DEFER_EVENTS = 2_000
 _WAL_CHECKPOINT_SOFT_BYTES = 16 * 1024 * 1024
 _MAX_WAL_BYTES_WITHOUT_CHECKPOINT = 64 * 1024 * 1024
 _MAX_WAL_FRAMES_WITHOUT_CHECKPOINT = _MAX_WAL_BYTES_WITHOUT_CHECKPOINT // 4_096
@@ -4377,14 +4376,11 @@ class PaperRuntime:
             wal_path = self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
             wal_size = wal_path.stat().st_size if wal_path.exists() else 0
             self._wal_checkpoint_last_wal_bytes = wal_size
-            with self._persistence_lock:
-                persistence_backlog = len(self._market_event_buffer)
-            if (
-                persistence_backlog >= _WAL_CHECKPOINT_BACKLOG_DEFER_EVENTS
-                and wal_size < _WAL_CHECKPOINT_SOFT_BYTES
-            ):
+            if wal_size < _WAL_CHECKPOINT_SOFT_BYTES:
                 self._wal_checkpoint_deferred_count += 1
-                self._wal_checkpoint_next_flush = self._persistence_flush_count + 1
+                self._wal_checkpoint_next_flush = (
+                    self._persistence_flush_count + _WAL_CHECKPOINT_FLUSH_INTERVAL
+                )
                 return
             started = asyncio.get_running_loop().time()
             try:

@@ -663,3 +663,24 @@ def test_running_service_soak_preserves_wal_checkpoint_deferral_evidence() -> No
     assert result["status"] == "PASS"
     assert result["wal_checkpoint_deferred_delta"] == 3
     assert result["maximum_wal_checkpoint_observed_bytes"] == 8 * 1024 * 1024
+
+
+def test_running_service_soak_accepts_small_wal_deferral_without_checkpoint() -> None:
+    deferred = _advanced_payload()
+    system = deferred["system"]
+    assert isinstance(system, dict)
+    system.update(
+        {
+            "wal_checkpoint_count": 2,
+            "wal_checkpoint_deferred_count": 1,
+            "wal_checkpoint_last_wal_bytes": 8 * 1024 * 1024,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(deferred, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["checks"]["wal_checkpoint_continued"] is True
