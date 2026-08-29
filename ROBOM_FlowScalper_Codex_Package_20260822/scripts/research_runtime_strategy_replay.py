@@ -8,7 +8,7 @@ import json
 import math
 from collections import Counter, defaultdict, deque
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal
 from itertools import chain
 from pathlib import Path
@@ -34,7 +34,7 @@ from backend.app.strategies.registry import (
     StrategyRegistry,
 )
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal, StrategySignalEvaluator
-from scripts.research_intraday_candidates import _event_rows
+from scripts.research_intraday_candidates import _dataset_slice, _event_rows
 from scripts.research_strategy_revision import (
     DEFAULT_OOS_RUNS,
     DEFAULT_RESEARCH_TRAIN_RUNS,
@@ -126,6 +126,67 @@ def frozen_dataset_reference(
         "selected_run_count": len(selected),
         "selected_event_count": sum(int(str(row["event_count"])) for row in selected),
         "selected_runs": selected,
+    }
+
+
+def verify_frozen_archive_bytes(
+    archive: Path,
+    dataset_manifest: Path,
+    run_ids: Sequence[str],
+) -> dict[str, object]:
+    """동결 manifest의 선택 Run을 현재 parquet bytes와 다시 대조한다."""
+
+    reference = frozen_dataset_reference(dataset_manifest, run_ids)
+    selected_rows = cast(Sequence[Mapping[str, object]], reference["selected_runs"])
+    expected_by_id = {str(row["run_id"]): row for row in selected_rows}
+    recomputed = [
+        asdict(_dataset_slice(run_id, archive / f"run={run_id}"))
+        for run_id in run_ids
+    ]
+    compared_fields = (
+        "run_id",
+        "venue",
+        "symbols",
+        "start_ts_ms",
+        "end_ts_ms",
+        "event_count",
+        "checksum",
+    )
+    mismatches: dict[str, dict[str, object]] = {}
+    for row in recomputed:
+        run_id = str(row["run_id"])
+        expected = expected_by_id[run_id]
+        differences: dict[str, object] = {}
+        for field_name in compared_fields:
+            expected_value = expected[field_name]
+            actual_value = row[field_name]
+            if field_name == "symbols":
+                expected_symbols = cast(Sequence[object], expected_value)
+                actual_symbols = cast(Sequence[object], actual_value)
+                expected_value = [str(value) for value in expected_symbols]
+                actual_value = [str(value) for value in actual_symbols]
+            if expected_value != actual_value:
+                differences[field_name] = {
+                    "expected": expected_value,
+                    "actual": actual_value,
+                }
+        if differences:
+            mismatches[run_id] = differences
+    if mismatches:
+        raise ValueError(
+            "현재 archive bytes가 동결 dataset manifest와 다릅니다: "
+            + ", ".join(sorted(mismatches))
+        )
+    return {
+        "status": "PASS",
+        "method": "RECOMPUTED_RUN_EVENT_RANGE_COUNT_AND_FILE_SHA256",
+        "run_count": len(recomputed),
+        "event_count": sum(int(str(row["event_count"])) for row in recomputed),
+        "run_ids": list(run_ids),
+        "manifest_file_sha256": reference["file_sha256"],
+        "manifest_sha256": reference["manifest_sha256"],
+        "compared_fields": list(compared_fields),
+        "mismatch_count": 0,
     }
 
 
@@ -1416,19 +1477,38 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--run-id", action="append")
     parser.add_argument("--maximum-events", type=int)
+    parser.add_argument(
+        "--verify-archive-bytes",
+        action="store_true",
+        help="리플레이 전에 선택 Run의 현재 parquet bytes를 동결 manifest와 다시 대조합니다.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    default_full_run_ids = (
+        *DEFAULT_RESEARCH_TRAIN_RUNS,
+        *DEFAULT_VALIDATION_RUNS,
+        *DEFAULT_OOS_RUNS,
+    )
     run_ids = tuple(
-        args.run_id
-        or (
-            *DEFAULT_RESEARCH_TRAIN_RUNS,
-            *DEFAULT_VALIDATION_RUNS,
-            *DEFAULT_OOS_RUNS,
+        args.run_id or default_full_run_ids
+    )
+    full_frozen_replay = args.maximum_events is None and run_ids == default_full_run_ids
+    if full_frozen_replay and not args.verify_archive_bytes:
+        raise ValueError(
+            "동결 13-Run 전체 결과는 --verify-archive-bytes 없이는 실행할 수 없습니다."
         )
+    archive_verification = (
+        verify_frozen_archive_bytes(
+            args.archive,
+            args.dataset_manifest,
+            run_ids,
+        )
+        if args.verify_archive_bytes
+        else None
     )
     if args.all_strategies:
         result = build_strategy_league_result(
@@ -1449,6 +1529,11 @@ def main() -> None:
             dataset_manifest=args.dataset_manifest,
             maximum_events=args.maximum_events,
         )
+    if archive_verification is not None:
+        frozen_dataset = result.get("frozen_dataset")
+        if not isinstance(frozen_dataset, dict):
+            raise ValueError("리플레이 결과에 동결 dataset 참조가 없습니다.")
+        frozen_dataset["current_archive_byte_reverification"] = archive_verification
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -28,14 +28,17 @@ from scripts.research_runtime_strategy_replay import (
     STRATEGY_LOGIC_CURRENT,
     STRATEGY_LOGIC_WAVE102,
     ResearchSignalGateEvaluator,
+    _dataset_slice,
     _summary,
     build_result,
     build_strategy_league_result,
     frozen_dataset_reference,
+    main,
     replay_archive_run,
     replay_strategy_league_archive_run,
     strategy_league_robustness,
     tp1_feasibility_gate_rejections,
+    verify_frozen_archive_bytes,
 )
 
 
@@ -111,6 +114,31 @@ def _write_dataset_manifest(path: Path, run_id: str) -> None:
                 "checksum": "a" * 64,
             }
         ],
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    payload["manifest_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
+    path.write_text(json.dumps(payload))
+
+
+def _write_verified_dataset_manifest(
+    path: Path,
+    *,
+    run_id: str,
+    run_dir: Path,
+) -> None:
+    payload: dict[str, object] = {
+        "status": "FROZEN_HISTORICAL_FORWARD_PENDING",
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "private_api_enabled": False,
+        "runtime_ai_enabled": False,
+        "archive_verification": {"status": "PASS", "run_count": 1},
+        "runs": [{**asdict(_dataset_slice(run_id, run_dir)), "role": "TRAIN"}],
     }
     canonical = json.dumps(
         payload,
@@ -689,6 +717,70 @@ def test_frozen_dataset_reference_rejects_tamper_and_unknown_run(tmp_path: Path)
     _write_dataset_manifest(manifest_path, "RUN-KNOWN")
     with pytest.raises(ValueError, match="선택 Run"):
         frozen_dataset_reference(manifest_path, ("RUN-UNKNOWN",))
+
+
+def test_frozen_archive_byte_verification_recomputes_and_rejects_mismatch(
+    tmp_path: Path,
+) -> None:
+    run_id = "RUN-BYTE-VERIFY"
+    run_dir = tmp_path / f"run={run_id}"
+    run_dir.mkdir()
+    _write_events(
+        run_dir,
+        [
+            _event(run_id, event_id="depth-1", ts_ms=1_000, event_type="DEPTH_UPDATE"),
+            _event(run_id, event_id="trade-1", ts_ms=1_100, event_type="TRADE"),
+        ],
+    )
+    manifest_path = tmp_path / "dataset.json"
+    _write_verified_dataset_manifest(
+        manifest_path,
+        run_id=run_id,
+        run_dir=run_dir,
+    )
+
+    verified = verify_frozen_archive_bytes(
+        tmp_path,
+        manifest_path,
+        (run_id,),
+    )
+
+    assert verified["status"] == "PASS"
+    assert verified["run_count"] == 1
+    assert verified["event_count"] == 2
+    assert verified["mismatch_count"] == 0
+
+    payload = json.loads(manifest_path.read_text())
+    payload["runs"][0]["event_count"] = 3
+    payload.pop("manifest_sha256")
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    payload["manifest_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
+    manifest_path.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="현재 archive bytes"):
+        verify_frozen_archive_bytes(tmp_path, manifest_path, (run_id,))
+
+
+def test_full_frozen_cli_refuses_to_run_without_current_archive_byte_verification(
+    tmp_path: Path,
+) -> None:
+    with (
+        patch(
+            "sys.argv",
+            [
+                "research_runtime_strategy_replay.py",
+                "--all-strategies",
+                "--output",
+                str(tmp_path / "result.json"),
+            ],
+        ),
+        pytest.raises(ValueError, match="--verify-archive-bytes"),
+    ):
+        main()
 
 
 @pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])

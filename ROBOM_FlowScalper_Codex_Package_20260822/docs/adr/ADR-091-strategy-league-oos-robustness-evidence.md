@@ -21,6 +21,7 @@ Accepted for research execution only.
 - PBO는 BASE·STRESS 각각 0.20 이하를 요구한다.
 - 전략리그 PAPER 1,000 USDT 계좌의 8% drawdown lock인 80 USDT를 OOS drawdown 상한으로 사용한다.
 - Final OOS의 열린 포지션이나 대기 진입은 강제청산하지 않고 censored blocker로 남긴다.
+- 동결 13-Run 전체 CLI 실행은 `--verify-archive-bytes`를 필수로 요구한다. 실행 전에 각 Run의 파일명·크기·전체 bytes SHA-256, 이벤트 수, 시간범위, 시장과 종목범위를 현재 archive에서 다시 계산해 동결 manifest와 하나라도 다르면 결과 생성을 거부한다.
 
 과거 OOS 계산이 통과하더라도 파라미터 강건성, 종목·레짐 집중도와 사전등록 이후 독립 `FORWARD_LIVE_PUBLIC`이 남으므로 `ranking_eligible`은 자동으로 참이 되지 않는다. 실제 주문, 인증, private API와 원장은 연결하지 않는다.
 
@@ -32,5 +33,6 @@ PBO와 DSR은 선택편향과 표본 불확실성을 줄여 보는 통계량이�
 
 - 강건한 합성 전략과 약한 합성 전략을 같은 8개 선택 fold·5개 OOS Run에 넣어 기회 중복제거, BASE·STRESS PBO, bootstrap, DSR, drawdown과 순위 차단을 함께 검증했다.
 - 실제 저장 `RUN-B987D1D386C6` 앞 1,000개 이벤트 smoke는 11전략·22계좌, 실제 주문·인증 0과 `INCOMPLETE_REQUIRED_RUNS`를 확인했다. 단일 Run이므로 PBO·OOS를 PASS로 만들지 않았다.
+- 작은 실제 parquet fixture에서 현재 bytes 재검증 PASS와 내부 checksum은 유효하지만 event 수가 달라진 manifest의 fail-closed 거부를 함께 확인했다. 전체 13-Run 실행에서 byte 재검증 flag가 없으면 archive를 읽기 전에 중단하는 계약도 검증했다.
 - 관련 연구·전략·원장 회귀 189개, Ruff, mypy와 diff 검사가 통과했다.
 - 동결 13-Run 전체 결과는 Wave104 6시간 관찰이 끝난 뒤 byte 재검증 후 실행한다. 실행 전까지 실제 전략 수익성은 `NOT_PROVEN`이다.
