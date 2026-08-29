@@ -34,11 +34,14 @@
 7. 자식은 임시 결과에만 쓴다. exit 0, 최종 안전 표본, 11전략·22계좌, PAPER-only,
    실제 주문·인증·runtime AI 0, 현재 archive byte 재검증 PASS를 모두 확인한 뒤에만 최종
    결과 경로로 원자 이동한다.
-8. 중단·timeout·오류 결과는 전략 성과로 사용하지 않는다. 임시 파일을 제거하고 별도 제어
+8. baseline과 후보마다 `signal_gate`, `signal_gate_target_strategy_id`, `strategy_logic`을
+   자식 명령에 명시하고, 결과의 `signal_gate_trial_id=<gate>:<target>`까지 요청값과 같아야
+   최종 결과를 게시한다. 대상 전략이 다른 결과는 별도 시험이며 합산하지 않는다.
+9. 중단·timeout·오류 결과는 전략 성과로 사용하지 않는다. 임시 파일을 제거하고 별도 제어
    증거에 `ABORTED_RUNTIME_SAFETY`, `ABORTED_TIMEOUT` 또는 `FAIL`을 기록한다.
-9. 전체 동결 실행의 상한은 8시간이다. 완료보다 LIVE 안정성이 우선이며 자동중단 뒤에는
+10. 전체 동결 실행의 상한은 8시간이다. 완료보다 LIVE 안정성이 우선이며 자동중단 뒤에는
    원인을 수정하거나 안전한 무부하 창에서 다시 실행한다.
-10. 이 보호는 전략 임계값, 비용, fill, TP1, TP2, SL, 위험예산, Governor와 30표본·70%·OOS
+11. 이 보호는 전략 임계값, 비용, fill, TP1, TP2, SL, 위험예산, Governor와 30표본·70%·OOS
     gate를 바꾸지 않는다.
 
 ## 검증 경계
@@ -48,3 +51,7 @@
 포지션 0, 실제 주문 false, 인증 false로 새 parser가 읽었다. 동결 archive 현재 bytes 재검증과
 2,690,582-event 전체 재생은 진행 중인 무간섭 6시간 observer가 끝나기 전이므로 `NOT_RUN`이다.
 그 결과가 나오기 전 전략 순위와 수익성은 `NOT_PROVEN`이다.
+
+2026-08-29 후속 연결 검사에서 안전 래퍼가 대상 전략을 자식에게 전달하지 않던 차이를
+수정했다. gate·대상·로직 전달, 다른 시험 결과 거부와 직접 연구 runner의 대상 분리를 합친
+표적 테스트 27건, Ruff와 diff 검사가 통과했다. 실제 13-Run 성과는 여전히 `NOT_RUN`이다.

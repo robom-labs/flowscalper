@@ -2,6 +2,7 @@
   "schema_version": 1,
   "status": "IMPLEMENTED_NOT_RUN",
   "recorded_at": "2026-08-29T04:22:10Z",
+  "updated_at": "2026-08-29T04:48:20Z",
   "purpose": "동결 13-Run을 11전략 22계좌의 실제 PAPER 런타임 경로로 비교하되 현재 LIVE 공개시장 수신을 우선한다.",
   "runner": "scripts/run_live_safe_strategy_league_replay.py",
   "planned_result": "evidence/WAVE105_FULL_STRATEGY_LEAGUE_REPLAY.json",
@@ -18,6 +19,11 @@
   "research_contract": {
     "strategy_count": 11,
     "strategy_account_count": 22,
+    "explicit_signal_gate_required": true,
+    "explicit_signal_gate_target_strategy_id_required": true,
+    "explicit_strategy_logic_required": true,
+    "result_trial_id_must_match_request": true,
+    "cross_target_result_pooling_allowed": false,
     "profiles": [
       "BASE",
       "STRESS"
@@ -60,6 +66,17 @@
     "targeted_tests": {
       "status": "PASS",
       "passed": 11
+    },
+    "strategy_trial_forwarding": {
+      "status": "PASS_PATH_ONLY_PERFORMANCE_NOT_EVALUATED",
+      "combined_targeted_tests_passed": 27,
+      "child_command_forwards_signal_gate": true,
+      "child_command_forwards_target_strategy_id": true,
+      "child_command_forwards_strategy_logic": true,
+      "result_trial_id_must_match_request": true,
+      "mismatched_target_result_rejected": true,
+      "full_archive_replay": "NOT_RUN",
+      "profitability_status": "NOT_PROVEN"
     },
     "actual_dashboard_parser": {
       "status": "PASS",

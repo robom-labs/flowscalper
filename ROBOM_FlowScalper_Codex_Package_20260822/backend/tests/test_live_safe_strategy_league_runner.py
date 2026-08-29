@@ -9,6 +9,10 @@ from pathlib import Path
 import pytest
 
 from backend.app.replay.safety import ReplayLiveSafetySnapshot
+from scripts.research_runtime_strategy_replay import (
+    SIGNAL_GATE_TP1_FEASIBILITY,
+    STRATEGY_LOGIC_CURRENT,
+)
 from scripts.run_live_safe_strategy_league_replay import (
     SafetyObservations,
     _research_arguments,
@@ -58,6 +62,9 @@ def test_research_command_forces_all_strategies_and_archive_verification(
         dataset_manifest=tmp_path / "manifest.json",
         run_id=["RUN-ONE", "RUN-TWO"],
         maximum_events=12_345,
+        signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+        signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
+        strategy_logic=STRATEGY_LOGIC_CURRENT,
     )
 
     command = _research_arguments(arguments, tmp_path / "partial.json")
@@ -66,6 +73,11 @@ def test_research_command_forces_all_strategies_and_archive_verification(
     assert "--verify-archive-bytes" in command
     assert command.count("--run-id") == 2
     assert command[-2:] == ("--maximum-events", "12345")
+    assert command[command.index("--signal-gate") + 1] == SIGNAL_GATE_TP1_FEASIBILITY
+    assert command[command.index("--signal-gate-target-strategy-id") + 1] == (
+        "AGGRESSOR_FLOW_CONTINUATION_V1"
+    )
+    assert command[command.index("--strategy-logic") + 1] == STRATEGY_LOGIC_CURRENT
 
 
 def test_result_validation_requires_paper_safety_and_current_archive_pass() -> None:
@@ -78,6 +90,12 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
         "runtime_ai_order_decision": False,
         "strategy_count": 11,
         "strategy_account_count": 22,
+        "signal_gate": SIGNAL_GATE_TP1_FEASIBILITY,
+        "signal_gate_target_strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+        "signal_gate_trial_id": (
+            f"{SIGNAL_GATE_TP1_FEASIBILITY}:AGGRESSOR_FLOW_CONTINUATION_V1"
+        ),
+        "strategy_logic": STRATEGY_LOGIC_CURRENT,
         "runs": [{} for _ in range(13)],
         "frozen_dataset": {
             "selected_run_count": 13,
@@ -88,11 +106,62 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
         },
     }
 
-    assert _validate_result_payload(payload, full_frozen_replay=True) is payload
+    assert (
+        _validate_result_payload(
+            payload,
+            full_frozen_replay=True,
+            signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+            signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
+            strategy_logic=STRATEGY_LOGIC_CURRENT,
+        )
+        is payload
+    )
 
     payload["real_orders_enabled"] = True
     with pytest.raises(ValueError, match="불변조건"):
-        _validate_result_payload(payload, full_frozen_replay=True)
+        _validate_result_payload(
+            payload,
+            full_frozen_replay=True,
+            signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+            signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
+            strategy_logic=STRATEGY_LOGIC_CURRENT,
+        )
+
+
+def test_result_validation_rejects_a_different_strategy_trial() -> None:
+    payload = {
+        "status": "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE",
+        "method": "ONE_PASS_ALL_REGISTERED_ACTUAL_PAPER_RUNTIME_PATH",
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+        "runtime_ai_order_decision": False,
+        "strategy_count": 11,
+        "strategy_account_count": 22,
+        "signal_gate": SIGNAL_GATE_TP1_FEASIBILITY,
+        "signal_gate_target_strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+        "signal_gate_trial_id": (
+            f"{SIGNAL_GATE_TP1_FEASIBILITY}:VWAP_EXHAUSTION_REVERSION_V1"
+        ),
+        "strategy_logic": STRATEGY_LOGIC_CURRENT,
+        "runs": [{} for _ in range(13)],
+        "frozen_dataset": {
+            "selected_run_count": 13,
+            "current_archive_byte_reverification": {
+                "status": "PASS",
+                "run_count": 13,
+            },
+        },
+    }
+
+    with pytest.raises(ValueError, match="불변조건"):
+        _validate_result_payload(
+            payload,
+            full_frozen_replay=True,
+            signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+            signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
+            strategy_logic=STRATEGY_LOGIC_CURRENT,
+        )
 
 
 def test_safety_observations_report_event_and_stall_counter_deltas() -> None:

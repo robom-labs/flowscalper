@@ -23,6 +23,14 @@ from backend.app.replay.safety import (
     run_with_live_safety,
 )
 from backend.app.storage.integrity import fetch_dashboard_payload
+from backend.app.strategies.registry import StrategyRegistry
+from scripts.research_runtime_strategy_replay import (
+    DEFAULT_STRATEGY_ID,
+    SIGNAL_GATE_NONE,
+    SIGNAL_GATES,
+    STRATEGY_LOGIC_CURRENT,
+    STRATEGY_LOGICS,
+)
 
 _SINGLE_THREAD_ENVIRONMENT = (
     "OMP_NUM_THREADS",
@@ -125,6 +133,12 @@ def _research_arguments(
         str(arguments.dataset_manifest),
         "--output",
         str(partial_output),
+        "--signal-gate",
+        str(arguments.signal_gate),
+        "--signal-gate-target-strategy-id",
+        str(arguments.signal_gate_target_strategy_id),
+        "--strategy-logic",
+        str(arguments.strategy_logic),
     ]
     for run_id in arguments.run_id or ():
         command.extend(("--run-id", run_id))
@@ -199,6 +213,9 @@ def _validate_result_payload(
     payload: object,
     *,
     full_frozen_replay: bool,
+    signal_gate: str,
+    signal_gate_target_strategy_id: str,
+    strategy_logic: str,
 ) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("전략리그 결과가 JSON 객체가 아닙니다.")
@@ -211,6 +228,10 @@ def _validate_result_payload(
         "runtime_ai_order_decision": False,
         "strategy_count": 11,
         "strategy_account_count": 22,
+        "signal_gate": signal_gate,
+        "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
+        "signal_gate_trial_id": f"{signal_gate}:{signal_gate_target_strategy_id}",
+        "strategy_logic": strategy_logic,
     }
     mismatches = {
         key: {"expected": expected, "actual": payload.get(key)}
@@ -280,6 +301,9 @@ async def _execute(
     return _validate_result_payload(
         raw_result,
         full_frozen_replay=(arguments.maximum_events is None and not arguments.run_id),
+        signal_gate=str(arguments.signal_gate),
+        signal_gate_target_strategy_id=str(arguments.signal_gate_target_strategy_id),
+        strategy_logic=str(arguments.strategy_logic),
     )
 
 
@@ -320,6 +344,12 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
             "strategy_version": result.get("strategy_version"),
             "strategy_count": result.get("strategy_count"),
             "strategy_account_count": result.get("strategy_account_count"),
+            "signal_gate": result.get("signal_gate"),
+            "signal_gate_target_strategy_id": result.get(
+                "signal_gate_target_strategy_id"
+            ),
+            "signal_gate_trial_id": result.get("signal_gate_trial_id"),
+            "strategy_logic": result.get("strategy_logic"),
             "run_count": len(run_rows) if isinstance(run_rows, list) else 0,
             "ranking_eligible_strategy_ids": result.get("ranking_eligible_strategy_ids"),
             "profitability_status": result.get("profitability_status"),
@@ -364,6 +394,16 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
         "child": asdict(child_state),
         "runtime_safety": observations.report(),
         "result_summary": result_summary,
+        "research_trial": {
+            "signal_gate": str(arguments.signal_gate),
+            "signal_gate_target_strategy_id": str(
+                arguments.signal_gate_target_strategy_id
+            ),
+            "signal_gate_trial_id": (
+                f"{arguments.signal_gate}:{arguments.signal_gate_target_strategy_id}"
+            ),
+            "strategy_logic": str(arguments.strategy_logic),
+        },
         "error": error,
         "paper_safety": {
             "paper_only": True,
@@ -399,6 +439,17 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--run-id", action="append")
     parser.add_argument("--maximum-events", type=int)
+    parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
+    parser.add_argument(
+        "--signal-gate-target-strategy-id",
+        choices=StrategyRegistry().strategy_ids,
+        default=DEFAULT_STRATEGY_ID,
+    )
+    parser.add_argument(
+        "--strategy-logic",
+        choices=STRATEGY_LOGICS,
+        default=STRATEGY_LOGIC_CURRENT,
+    )
     parser.add_argument("--runtime-url", default="http://127.0.0.1:8870")
     parser.add_argument("--request-timeout-seconds", type=float, default=2.0)
     parser.add_argument("--poll-seconds", type=float, default=1.0)
