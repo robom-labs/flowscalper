@@ -25,6 +25,7 @@ from backend.tests.test_strategy_league_signals import (
     only_strategy,
 )
 from scripts.research_runtime_strategy_replay import (
+    SIGNAL_GATE_TP1_FEASIBILITY,
     STRATEGY_LOGIC_CURRENT,
     STRATEGY_LOGIC_WAVE102,
     ResearchSignalGateEvaluator,
@@ -322,6 +323,56 @@ def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_22_accounts(
     assert result["trade_count"] == 0
 
 
+def test_runtime_strategy_league_replay_targets_tp1_gate_to_aggressor_only(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-research-aggressor-gate-test"
+    _write_events(
+        tmp_path,
+        [
+            _event(run_id, event_id="depth-1", ts_ms=1_000, event_type="DEPTH_UPDATE"),
+            _event(run_id, event_id="trade-1", ts_ms=1_100, event_type="TRADE"),
+            _event(run_id, event_id="depth-2", ts_ms=1_500, event_type="DEPTH_UPDATE"),
+        ],
+    )
+    target_strategy_id = "AGGRESSOR_FLOW_CONTINUATION_V1"
+
+    baseline = replay_strategy_league_archive_run(
+        "RUN-RESEARCH-AGGRESSOR-GATE-BASELINE",
+        tmp_path,
+    )
+    candidate = replay_strategy_league_archive_run(
+        "RUN-RESEARCH-AGGRESSOR-GATE-CANDIDATE",
+        tmp_path,
+        signal_gate_target_strategy_id=target_strategy_id,
+        signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+    )
+
+    assert candidate["signal_gate_target_strategy_id"] == target_strategy_id
+    assert candidate["signal_gate_trial_id"] == (
+        f"{SIGNAL_GATE_TP1_FEASIBILITY}:{target_strategy_id}"
+    )
+    assert candidate["signal_gate_diagnostics"]["can_create_signals"] is False
+    assert candidate["real_orders_enabled"] is False
+    assert candidate["auth_required"] is False
+    assert candidate["ledger_attached"] is False
+    assert [
+        report
+        for report in candidate["reports"]
+        if report["strategy_id"] != target_strategy_id
+    ] == [
+        report
+        for report in baseline["reports"]
+        if report["strategy_id"] != target_strategy_id
+    ]
+    for strategy_id in StrategyRegistry().strategy_ids:
+        if strategy_id == target_strategy_id:
+            continue
+        assert candidate["candidate_plan_counts"][strategy_id] == baseline[
+            "candidate_plan_counts"
+        ][strategy_id]
+
+
 def test_runtime_strategy_replay_rejects_unknown_strategy_and_bad_limit(
     tmp_path: Path,
 ) -> None:
@@ -347,6 +398,19 @@ def test_runtime_strategy_replay_rejects_unknown_strategy_and_bad_limit(
             tmp_path,
             strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
             strategy_logic="UNKNOWN",
+        )
+    with pytest.raises(ValueError, match="연구 신호 gate 대상 전략"):
+        replay_strategy_league_archive_run(
+            "run",
+            tmp_path,
+            signal_gate_target_strategy_id="UNKNOWN",
+        )
+    with pytest.raises(ValueError, match="Wave102 기준선 대상"):
+        replay_strategy_league_archive_run(
+            "run",
+            tmp_path,
+            signal_gate_target_strategy_id="AGGRESSOR_FLOW_CONTINUATION_V1",
+            strategy_logic=STRATEGY_LOGIC_WAVE102,
         )
 
 
@@ -623,6 +687,31 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     )
 
 
+def test_strategy_league_result_records_explicit_gate_trial_target(tmp_path: Path) -> None:
+    run_id = "RUN-RESEARCH-LEAGUE-TARGET"
+    run_dir = tmp_path / f"run={run_id}"
+    run_dir.mkdir()
+    _write_events(
+        run_dir,
+        [_event(run_id, event_id="depth-1", ts_ms=1_000, event_type="DEPTH_UPDATE")],
+    )
+    target_strategy_id = "AGGRESSOR_FLOW_CONTINUATION_V1"
+
+    result = build_strategy_league_result(
+        tmp_path,
+        run_ids=(run_id,),
+        signal_gate_target_strategy_id=target_strategy_id,
+        signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+    )
+
+    assert result["signal_gate_target_strategy_id"] == target_strategy_id
+    assert result["signal_gate_trial_id"] == (
+        f"{SIGNAL_GATE_TP1_FEASIBILITY}:{target_strategy_id}"
+    )
+    assert result["runs"][0]["signal_gate_target_strategy_id"] == target_strategy_id
+    assert result["profitability_status"] == "NOT_PROVEN"
+
+
 def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_promotion() -> None:
     strategy_ids = ("ROBUST_A", "WEAK_B")
     train_validation_run_ids = tuple(f"TRAIN-{index}" for index in range(8))
@@ -832,6 +921,67 @@ def test_full_frozen_cli_refuses_to_run_without_current_archive_byte_verificatio
             ],
         ),
         pytest.raises(ValueError, match="--verify-archive-bytes"),
+    ):
+        main()
+
+
+def test_all_strategy_cli_passes_explicit_gate_target(tmp_path: Path) -> None:
+    output_path = tmp_path / "result.json"
+    target_strategy_id = "AGGRESSOR_FLOW_CONTINUATION_V1"
+    result = {
+        "status": "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE",
+        "paper_only": True,
+    }
+    with (
+        patch(
+            "sys.argv",
+            [
+                "research_runtime_strategy_replay.py",
+                "--all-strategies",
+                "--run-id",
+                "RUN-ONE",
+                "--maximum-events",
+                "1",
+                "--signal-gate",
+                SIGNAL_GATE_TP1_FEASIBILITY,
+                "--signal-gate-target-strategy-id",
+                target_strategy_id,
+                "--output",
+                str(output_path),
+            ],
+        ),
+        patch(
+            "scripts.research_runtime_strategy_replay.build_strategy_league_result",
+            return_value=result,
+        ) as build_league,
+    ):
+        main()
+
+    assert json.loads(output_path.read_text()) == result
+    assert build_league.call_args.kwargs["signal_gate_target_strategy_id"] == (
+        target_strategy_id
+    )
+
+
+def test_single_strategy_cli_rejects_a_different_gate_target(tmp_path: Path) -> None:
+    with (
+        patch(
+            "sys.argv",
+            [
+                "research_runtime_strategy_replay.py",
+                "--strategy-id",
+                "VWAP_EXHAUSTION_REVERSION_V1",
+                "--signal-gate-target-strategy-id",
+                "AGGRESSOR_FLOW_CONTINUATION_V1",
+                "--run-id",
+                "RUN-ONE",
+                "--maximum-events",
+                "1",
+                "--output",
+                str(tmp_path / "result.json"),
+            ],
+        ),
+        pytest.raises(ValueError, match="--strategy-id와 같아야"),
     ):
         main()
 

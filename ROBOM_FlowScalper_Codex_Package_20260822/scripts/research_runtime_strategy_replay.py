@@ -588,14 +588,9 @@ def _replay_archive_run_for_strategies(
         raise ValueError(f"알 수 없는 연구 전략 로직입니다: {strategy_logic}")
     if (
         strategy_logic == STRATEGY_LOGIC_WAVE102
-        and DEFAULT_STRATEGY_ID not in selected_strategy_ids
-    ):
-        raise ValueError("Wave102 기준선은 VWAP 전략을 포함해야 합니다.")
-    if (
-        signal_gate != SIGNAL_GATE_NONE
         and signal_gate_target_strategy_id != DEFAULT_STRATEGY_ID
     ):
-        raise ValueError("사전등록 TP1 신호 gate 대상은 VWAP 전략이어야 합니다.")
+        raise ValueError("Wave102 기준선 대상은 VWAP 전략이어야 합니다.")
     event_iterator = iter(_event_rows(run_dir, maximum_events=maximum_events))
     first_payload = next(event_iterator, None)
     runtime_run_id = (
@@ -703,6 +698,9 @@ def _replay_archive_run_for_strategies(
         "strategy_account_count": len(selected_strategy_ids) * 2,
         "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
         "signal_gate": signal_gate,
+        "signal_gate_trial_id": (
+            f"{signal_gate}:{signal_gate_target_strategy_id}"
+        ),
         "strategy_logic": strategy_logic,
         "signal_gate_diagnostics": research_diagnostics,
         "strategy_decision_diagnostics": research_diagnostics["strategies"],
@@ -766,6 +764,7 @@ def replay_strategy_league_archive_run(
     run_id: str,
     run_dir: Path,
     *,
+    signal_gate_target_strategy_id: str = DEFAULT_STRATEGY_ID,
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
@@ -776,7 +775,7 @@ def replay_strategy_league_archive_run(
         run_id,
         run_dir,
         strategy_ids=StrategyRegistry().strategy_ids,
-        signal_gate_target_strategy_id=DEFAULT_STRATEGY_ID,
+        signal_gate_target_strategy_id=signal_gate_target_strategy_id,
         signal_gate=signal_gate,
         strategy_logic=strategy_logic,
         maximum_events=maximum_events,
@@ -1437,7 +1436,9 @@ def build_result(
         "method": "ACTUAL_PAPER_RUNTIME_ENTRY_FILL_TP_SL_MANAGEMENT_PATH",
         "git_commit": git_commit(),
         "strategy_id": strategy_id,
+        "signal_gate_target_strategy_id": strategy_id,
         "signal_gate": signal_gate,
+        "signal_gate_trial_id": f"{signal_gate}:{strategy_id}",
         "strategy_logic": strategy_logic,
         "strategy_version": STRATEGY_VERSION,
         "event_order": "OBSERVED_RECEIVE_ORDER_ADR_080",
@@ -1456,6 +1457,7 @@ def build_strategy_league_result(
     archive: Path,
     *,
     run_ids: Sequence[str],
+    signal_gate_target_strategy_id: str = DEFAULT_STRATEGY_ID,
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     dataset_manifest: Path | None = None,
@@ -1474,6 +1476,7 @@ def build_strategy_league_result(
         replay_strategy_league_archive_run(
             run_id,
             archive / f"run={run_id}",
+            signal_gate_target_strategy_id=signal_gate_target_strategy_id,
             signal_gate=signal_gate,
             strategy_logic=strategy_logic,
             maximum_events=maximum_events,
@@ -1556,8 +1559,11 @@ def build_strategy_league_result(
         "strategy_ids": list(strategy_ids),
         "strategy_count": len(strategy_ids),
         "strategy_account_count": len(strategy_ids) * 2,
-        "signal_gate_target_strategy_id": DEFAULT_STRATEGY_ID,
+        "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
         "signal_gate": signal_gate,
+        "signal_gate_trial_id": (
+            f"{signal_gate}:{signal_gate_target_strategy_id}"
+        ),
         "strategy_logic": strategy_logic,
         "strategy_version": STRATEGY_VERSION,
         "event_order": "OBSERVED_RECEIVE_ORDER_ADR_080",
@@ -1587,6 +1593,14 @@ def parse_args() -> argparse.Namespace:
     selection.add_argument("--strategy-id", default=DEFAULT_STRATEGY_ID)
     selection.add_argument("--all-strategies", action="store_true")
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
+    parser.add_argument(
+        "--signal-gate-target-strategy-id",
+        choices=StrategyRegistry().strategy_ids,
+        help=(
+            "전체 전략 replay에서 연구 gate를 적용할 한 전략입니다. "
+            "한 전략 replay에서는 --strategy-id와 같아야 합니다."
+        ),
+    )
     parser.add_argument(
         "--strategy-logic",
         choices=STRATEGY_LOGICS,
@@ -1633,15 +1647,26 @@ def main() -> None:
         else None
     )
     if args.all_strategies:
+        signal_gate_target_strategy_id = str(
+            args.signal_gate_target_strategy_id or DEFAULT_STRATEGY_ID
+        )
         result = build_strategy_league_result(
             args.archive,
             run_ids=run_ids,
+            signal_gate_target_strategy_id=signal_gate_target_strategy_id,
             signal_gate=str(args.signal_gate),
             strategy_logic=str(args.strategy_logic),
             dataset_manifest=args.dataset_manifest,
             maximum_events=args.maximum_events,
         )
     else:
+        if (
+            args.signal_gate_target_strategy_id is not None
+            and args.signal_gate_target_strategy_id != args.strategy_id
+        ):
+            raise ValueError(
+                "한 전략 replay의 연구 gate 대상은 --strategy-id와 같아야 합니다."
+            )
         result = build_result(
             args.archive,
             strategy_id=str(args.strategy_id),

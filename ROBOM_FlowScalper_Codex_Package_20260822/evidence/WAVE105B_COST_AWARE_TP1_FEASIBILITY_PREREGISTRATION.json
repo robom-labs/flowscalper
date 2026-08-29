@@ -5,6 +5,10 @@
   "result_seen_before_registration": false,
   "candidate": {
     "signal_gate": "TP1_FEASIBILITY_CONFLUENCE_V1",
+    "signal_gate_target_strategy_id_required": true,
+    "signal_gate_trial_id_format": "<signal_gate>:<target_strategy_id>",
+    "one_target_strategy_per_trial": true,
+    "cross_target_sample_pooling_allowed": false,
     "can_create_signals": false,
     "can_change_direction": false,
     "entry_thresholds_changed": false,
@@ -50,6 +54,15 @@
     "same_archive_reader_and_event_counts_required": true,
     "post_oos_parameter_tuning_allowed": false
   },
+  "targeting_contract": {
+    "target_must_be_registered": true,
+    "non_target_strategy_behavior_can_change": false,
+    "different_target_is_separate_hypothesis_trial": true,
+    "strategy_logic_wave102_target_strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+    "strategy_logic_wave102_allowed_for_other_targets": false,
+    "full_13_run_target_comparison_status": "NOT_RUN",
+    "performance_evidence": false
+  },
   "promotion_gates": {
     "minimum_unique_market_opportunities_per_profile": 30,
     "minimum_base_win_rate": 0.70,
@@ -81,6 +94,16 @@
     "ruff": "PASS",
     "mypy": "PASS",
     "git_diff_check": "PASS",
+    "explicit_gate_targeting_contract": {
+      "status": "PASS_PATH_ONLY_PERFORMANCE_NOT_EVALUATED",
+      "targeted_test_file_passed": 23,
+      "unknown_target_rejected": true,
+      "wave102_non_vwap_target_rejected": true,
+      "non_target_strategy_gate_application": false,
+      "cli_target_forwarding_verified": true,
+      "full_frozen_replay": "NOT_RUN",
+      "profitability_status": "NOT_PROVEN"
+    },
     "stored_event_smoke": {
       "run_id": "RUN-72EB83B350A7",
       "events_per_path": 5000,

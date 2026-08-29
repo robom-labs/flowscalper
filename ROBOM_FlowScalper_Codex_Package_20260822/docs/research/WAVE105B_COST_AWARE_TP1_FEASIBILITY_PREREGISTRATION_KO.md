@@ -57,6 +57,12 @@
 - baseline은 `signal_gate=NONE`, 후보는
   `signal_gate=TP1_FEASIBILITY_CONFLUENCE_V1`로 실제 PAPER 전략→후보→호가깊이 체결→
   TP1·TP2·SL→관리종료 경로를 각각 실행한다.
+- 전략리그 실행은 `--signal-gate-target-strategy-id`로 등록 전략 하나를 명시한다. gate는 그
+  전략의 기존 `QUALIFIED` 신호에만 적용하고 다른 전략의 신호·후보·체결은 바꾸지 않는다.
+- 결과에는 `signal_gate_trial_id=<gate>:<target_strategy_id>`를 기록한다. 대상 전략이 다르면
+  별도 가설 시험으로 취급하고 표본·승률·기대값·PBO·DSR을 합산하지 않는다.
+- `strategy_logic=WAVE102_VWAP_REENTRY_BASELINE`은 VWAP 전용 과거 기준선이므로 다른 전략을
+  대상으로 지정할 수 없다. 비VWAP 전략의 TP1 필터 시험은 현행 전략 로직만 사용한다.
 - archive 끝의 열린 포지션과 대기 진입은 강제 청산하지 않고 `censored`로 분리한다.
 - OOS 결과를 본 뒤 120초, 2배 비용, 4-of-6 또는 방향 임계값을 바꾸지 않는다.
 
@@ -111,3 +117,8 @@
   Profit Factor를 별도 검사하되, 시간순 OOS·bootstrap·DSR·PBO·drawdown·독립 미래
   `LIVE_PUBLIC`은 이 runner가 계산하지 않으므로 항상 명시적 blocker로 남기고 자동승격하지
   않는다. 관련 replay 표적 테스트 11건과 Ruff·mypy·diff 검사가 통과했다.
+- 전략리그 gate 대상이 VWAP으로 고정되어 있던 실행기 차이를 수정했다. 이제 등록 전략 하나를
+  명시해 같은 고정 필터를 적용할 수 있고, 대상·gate 조합을 별도 `signal_gate_trial_id`로
+  기록한다. 비대상 전략 불변, 알 수 없는 대상 거부, VWAP 전용 Wave102 오용 거부와 CLI 전달을
+  포함한 해당 테스트 파일 23건이 통과했다. 이는 실행경로 검증일 뿐 동결 13-Run 성과 비교는
+  여전히 `NOT_RUN`, 수익성은 `NOT_PROVEN`이다.
