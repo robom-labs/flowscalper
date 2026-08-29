@@ -19,6 +19,10 @@ const fallbackLabels: Record<string, string> = {
   OFI_RETURN_CONFLUENCE_V1: 'OFI·가격동행 · OFI·단기수익률 동행',
   BOOK_SLOPE_ASYMMETRY_V1: '호가 기울기 · 10단계 호가 비대칭',
   HOURLY_MOMENTUM_BREAKOUT_V1: '시간봉 돌파 · 장기 모멘텀 돌파',
+  TREND_PULLBACK_RECLAIM_15M_V2: '15분 눌림 · 추세 눌림 재상승',
+  BREAKOUT_RETEST_15M_V2: '15분 돌파 · 돌파 후 재확인',
+  BREAKOUT_RETEST_30M_V2: '30분 돌파 · 돌파 후 재확인',
+  MULTISPEED_TREND_RECLAIM_30M_V2: '다중추세 · 30분·1시간 재합류',
 }
 
 export function strategyLabel(strategy: StrategyRow | undefined, strategyId: string) {

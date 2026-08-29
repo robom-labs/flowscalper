@@ -494,6 +494,54 @@
           ]
         }
       ]
+    },
+    {
+      "contract_id": "CANDIDATE_PERSISTENCE_OFF_LIVE_LOOP",
+      "symptom_ko": "자연 진입 순간 후보계획 SQLite 커밋이 LIVE 이벤트 루프를 막아 화면과 다음 시장평가를 늦춘다.",
+      "fixed_by": "ADR-104 candidate plan atomic off-loop persistence",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_v02_storage_market_replay.py",
+          "contains": [
+            "test_candidate_sqlite_commit_is_deferred_out_of_live_candidate_planning"
+          ]
+        },
+        {
+          "path": "backend/tests/test_storage_replay_analytics.py",
+          "contains": [
+            "test_execution_state_batch_commits_all_recovery_rows_together",
+            "test_execution_state_batch_rolls_back_every_row_on_failure"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "INTRADAY_TREND_THESIS_EXIT_AND_SIMULTANEOUS_SHADOW",
+      "symptom_ko": "완성봉 추세 진입이 기존 900초 또는 순간 근거약화로 닫히거나 신규 전략이 기본 OFF라서 같은 공개시장 입력에서 비교되지 않는다.",
+      "fixed_by": "ADR-105 intraday trend V2 structure exits and ten simultaneous SHADOW hypotheses",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_intraday_trend_shadow_strategies.py",
+          "contains": [
+            "test_completed_30m_breakout_retest_qualifies_both_sides_after_live_flow_confirmation",
+            "test_pullback_and_multispeed_reclaim_are_symmetric_completed_bar_setups",
+            "test_intraday_state_fails_closed_on_warmup_and_recent_gap",
+            "test_intraday_registry_keeps_ten_simultaneous_shadow_hypotheses"
+          ]
+        },
+        {
+          "path": "backend/tests/test_candidate_paper_portfolio.py",
+          "contains": [
+            "test_intraday_plan_replaces_nine_hundred_second_edge_exit_with_structure_policy"
+          ]
+        },
+        {
+          "path": "backend/tests/test_position_management.py",
+          "contains": [
+            "test_intraday_tp_sl_policy_ignores_general_edge_decay_until_safety_max_hold"
+          ]
+        }
+      ]
     }
   ]
 }

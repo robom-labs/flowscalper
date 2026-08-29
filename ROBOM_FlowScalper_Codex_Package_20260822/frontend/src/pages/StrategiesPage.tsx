@@ -85,7 +85,7 @@ function monitorState(strategy: StrategyRow, accounts: LeagueAccount[]) {
   if (strategy.qualified_paths > 0) return { tone: 'qualified', label: '진입 조건 감지', detail: `${strategy.qualified_paths}개 경로 체결 확인 중` }
   if (strategy.evaluated_paths === 0 || strategy.latest_status === 'WAITING_DATA') return { tone: 'waiting', label: '준비 중', detail: '공개시장 표본을 모으는 중' }
   const reasons = [...new Set(strategy.latest_reasons.map(strategyWaitReasonLabel))].slice(0, 2)
-  return { tone: 'watching', label: '정상 감시 중', detail: reasons.join(' · ') || '진입 조건 대기' }
+  return { tone: 'watching', label: '조건 미충족', detail: reasons.join(' · ') || '진입 조건 대기' }
 }
 
 function ProfileDetails({ report, account, analyticsReady }: { report: StrategyPerformance; account: LeagueAccount | undefined; analyticsReady: boolean }) {
@@ -166,7 +166,7 @@ export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = tr
   const offCount = monitorRows.filter((row) => row.tone === 'off').length
   return (
     <section aria-labelledby="strategies-heading">
-      <div className="page-heading"><div><p className="section-kicker">모의매매 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 지금 무엇을 하는지와 진입을 기다리는 이유를 한 줄로 표시합니다. 조건을 기다리는 것은 오류가 아닙니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 감시 · 검증 중지 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
+      <div className="page-heading"><div><p className="section-kicker">모의매매 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 지금 무엇을 하는지와 진입하지 못한 핵심 이유를 한 줄로 표시합니다. 실행 오류와 조건 미충족은 따로 판단하며, 장시간 0건이면 전략 적합성을 다시 검증합니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 감시 · 검증 중지 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
       {!analyticsReady ? <p className="profile-scope-note" role="status">과거 거래통계를 전략 버전별로 불러오는 중입니다. 준비 전 숫자는 순위나 승률로 사용하지 않습니다.</p> : null}
       {ordered.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
       <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>지금 상태</th><th>사용 방식</th><th>거래 방향</th><th>이번 실행 결과</th><th>검증 결과</th><th>보기</th></tr></thead><tbody>{ordered.map((strategy) => {
@@ -202,7 +202,7 @@ export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = tr
               <div><dt>이익 목표</dt><dd>1차 {selected.take_profit_1_r}R · 2차 {selected.take_profit_2_r}R</dd></div>
               <div><dt>최소 준비</dt><dd>{selected.minimum_warmup_ko}</dd></div>
               <div><dt>무엇을 노리나요?</dt><dd>{selected.entry_hypothesis_ko}</dd></div>
-              <div><dt>가격·근거 동시 악화</dt><dd>{selected.edge_decay_policy_ko}</dd></div>
+              <div><dt>종료 원칙</dt><dd>{selected.edge_decay_policy_ko}</dd></div>
             </dl>
             <details className="advanced-details"><summary>고급 기술 정보</summary><dl className="drawer-detail-list"><div><dt>전략 코드</dt><dd>{selected.strategy_id}</dd></div><div><dt>전략 시간축</dt><dd>{selected.horizon_class}</dd></div><div><dt>신호 반감기</dt><dd>{selected.signal_half_life_seconds}초</dd></div><div><dt>사용 시간구간</dt><dd>{selected.required_timeframes.join(' · ')}</dd></div><div><dt>자동 관리 모델</dt><dd>{selected.exit_model} · 최대 {formatDurationMs(selected.max_hold_seconds * 1_000)}</dd></div><div><dt>비용 모델</dt><dd>{selected.cost_model_version}</dd></div><div><dt>전략 버전</dt><dd>{selected.strategy_version}</dd></div><div><dt>필요 데이터</dt><dd>{selected.required_market_data.join(' · ')}</dd></div><div><dt>반증 조건</dt><dd>{selected.falsification_conditions_ko.join(' · ')}</dd></div><div><dt>위험예산</dt><dd>{selected.risk_budget_rule_ko}</dd></div><div><dt>대상 범위</dt><dd>{selected.target_universe_ko} · {selected.supported_regimes.join(' · ')}</dd></div><div><dt>미래정보 방지</dt><dd>{selected.data_leakage_guards_ko.join(' · ')}</dd></div><div><dt>연구 근거</dt><dd>{selected.research_source_ids.join(' · ')}</dd></div><div><dt>현재 상태 코드</dt><dd>{selected.change_reason}</dd></div><div><dt>설정 개정</dt><dd>rev {selected.settings_revision} · {selected.changed_by}</dd></div></dl></details>
           </section>

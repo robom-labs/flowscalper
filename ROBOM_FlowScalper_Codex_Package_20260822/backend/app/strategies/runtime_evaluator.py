@@ -1,4 +1,4 @@
-"""LIVE 피처를 A/B/C/D/E/F/G/H/I/J/K 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
+"""LIVE 피처를 등록 전략 문맥으로 변환하고 실제 확인 시간을 보존한다."""
 
 from __future__ import annotations
 
@@ -36,6 +36,13 @@ from backend.app.strategies.hourly_momentum_breakout import (
     HourlyMomentumBreakoutStrategy,
     HourlyMomentumState,
     hourly_momentum_state,
+)
+from backend.app.strategies.intraday_trend import (
+    IntradayTrendContext,
+    IntradayTrendState,
+    IntradayTrendStrategy,
+    intraday_flow_confirmation_ready,
+    intraday_trend_state,
 )
 from backend.app.strategies.liquidity_sweep import (
     LiquiditySweepContext,
@@ -171,6 +178,9 @@ class StrategySignalEvaluator:
         self._sorted_history: dict[str, _SortedFeatureHistory] = defaultdict(_SortedFeatureHistory)
         self._confirmation_started_ms: dict[tuple[str, str, Side], int] = {}
         self._hourly_state_cache: dict[str, tuple[int | None, HourlyMomentumState]] = {}
+        self._intraday_state_cache: dict[
+            tuple[str, str], tuple[int | None, IntradayTrendState]
+        ] = {}
 
     def evaluate(
         self,
@@ -179,6 +189,8 @@ class StrategySignalEvaluator:
         regime: Regime,
         *,
         tick_size: Decimal = Decimal("0.00000001"),
+        fifteen_minute_candles: tuple[Candle, ...] = (),
+        thirty_minute_candles: tuple[Candle, ...] = (),
         hourly_candles: tuple[Candle, ...] = (),
     ) -> tuple[EvaluatedSignal, ...]:
         history_window = self._history[snapshot.symbol]
@@ -212,6 +224,8 @@ class StrategySignalEvaluator:
                     history_statistics,
                     trailing_return_3s_bps,
                     plan,
+                    fifteen_minute_candles,
+                    thirty_minute_candles,
                     hourly_candles,
                 )
                 results.append(
@@ -239,6 +253,8 @@ class StrategySignalEvaluator:
         history_statistics: _HistoryStatistics,
         trailing_return_3s_bps: float | None,
         plan: PlanInputs,
+        fifteen_minute_candles: tuple[Candle, ...],
+        thirty_minute_candles: tuple[Candle, ...],
         hourly_candles: tuple[Candle, ...],
     ) -> CandidateDecision:
         deviation_bps = (snapshot.mid - snapshot.micro_vwap_10s) / snapshot.mid * 10_000
@@ -573,20 +589,104 @@ class StrategySignalEvaluator:
                     confirmation_ms=confirmation_ms,
                 )
             )
-        if isinstance(evaluator, HourlyMomentumBreakoutStrategy):
-            latest_open_ts_ms = hourly_candles[-1].open_ts_ms if hourly_candles else None
-            cached = self._hourly_state_cache.get(snapshot.symbol)
-            if cached is None or cached[0] != latest_open_ts_ms:
-                state = hourly_momentum_state(hourly_candles)
-                self._hourly_state_cache[snapshot.symbol] = (latest_open_ts_ms, state)
+        if isinstance(evaluator, IntradayTrendStrategy):
+            candles = (
+                fifteen_minute_candles
+                if evaluator.interval_seconds == 900
+                else thirty_minute_candles
+            )
+            latest_open_ts_ms = candles[-1].open_ts_ms if candles else None
+            cache_key = (snapshot.symbol, evaluator.strategy_id)
+            intraday_cached = self._intraday_state_cache.get(cache_key)
+            if intraday_cached is None or intraday_cached[0] != latest_open_ts_ms:
+                intraday_state = intraday_trend_state(
+                    candles,
+                    hourly_candles,
+                    evaluator.variant,
+                )
+                self._intraday_state_cache[cache_key] = (
+                    latest_open_ts_ms,
+                    intraday_state,
+                )
             else:
-                state = cached[1]
+                intraday_state = intraday_cached[1]
             entry = Decimal(str(snapshot.mid))
             expected_cost_bps = max(
                 Decimal("13"),
                 Decimal(str(snapshot.spread_bps)) + Decimal("12"),
             )
-            if state.atr is None or state.atr <= 0:
+            structural_stop = (
+                Decimal(str(intraday_state.structural_stop))
+                if intraday_state.structural_stop is not None
+                else None
+            )
+            intraday_plan_direction = Decimal(1) if side is Side.LONG else Decimal(-1)
+            risk_distance = (
+                abs(entry - structural_stop) if structural_stop is not None else None
+            )
+            risk_atr = (
+                float(risk_distance) / intraday_state.atr
+                if risk_distance is not None
+                and intraday_state.atr is not None
+                and intraday_state.atr > 0
+                else None
+            )
+            target = (
+                entry
+                + intraday_plan_direction
+                * risk_distance
+                * Decimal(str(evaluator.take_profit_2_r))
+                if risk_distance is not None
+                else None
+            )
+            intraday_plan = PlanInputs(
+                entry=entry,
+                structural_stop=structural_stop,
+                target=target,
+                expected_total_cost_bps=expected_cost_bps,
+            )
+            aligned = intraday_flow_confirmation_ready(side, snapshot, regime)
+            confirmation_ms = self._confirmation_ms(
+                evaluator.strategy_id,
+                snapshot.symbol,
+                side,
+                snapshot.ts_ms,
+                aligned=aligned,
+            )
+            signal_ts_ms = intraday_state.signal_ts_ms
+            return evaluator.evaluate(
+                IntradayTrendContext(
+                    side=side,
+                    features=snapshot,
+                    regime=regime,
+                    plan=intraday_plan,
+                    state=intraday_state,
+                    signal_age_ms=(
+                        snapshot.ts_ms - signal_ts_ms
+                        if signal_ts_ms is not None
+                        else None
+                    ),
+                    confirmation_ms=confirmation_ms,
+                    risk_atr=risk_atr,
+                )
+            )
+        if isinstance(evaluator, HourlyMomentumBreakoutStrategy):
+            latest_open_ts_ms = hourly_candles[-1].open_ts_ms if hourly_candles else None
+            hourly_cached = self._hourly_state_cache.get(snapshot.symbol)
+            if hourly_cached is None or hourly_cached[0] != latest_open_ts_ms:
+                hourly_state = hourly_momentum_state(hourly_candles)
+                self._hourly_state_cache[snapshot.symbol] = (
+                    latest_open_ts_ms,
+                    hourly_state,
+                )
+            else:
+                hourly_state = hourly_cached[1]
+            entry = Decimal(str(snapshot.mid))
+            expected_cost_bps = max(
+                Decimal("13"),
+                Decimal(str(snapshot.spread_bps)) + Decimal("12"),
+            )
+            if hourly_state.atr is None or hourly_state.atr <= 0:
                 hourly_plan = PlanInputs(
                     entry=entry,
                     structural_stop=None,
@@ -594,7 +694,10 @@ class StrategySignalEvaluator:
                     expected_total_cost_bps=expected_cost_bps,
                 )
             else:
-                risk = max(Decimal(str(state.atr)) * Decimal("1.8"), entry * Decimal("0.003"))
+                risk = max(
+                    Decimal(str(hourly_state.atr)) * Decimal("1.8"),
+                    entry * Decimal("0.003"),
+                )
                 plan_direction = Decimal(1) if side is Side.LONG else Decimal(-1)
                 hourly_plan = PlanInputs(
                     entry=entry,
@@ -602,14 +705,14 @@ class StrategySignalEvaluator:
                     target=entry + plan_direction * risk * Decimal("4.5"),
                     expected_total_cost_bps=expected_cost_bps,
                 )
-            signal_ts_ms = state.signal_ts_ms
+            signal_ts_ms = hourly_state.signal_ts_ms
             return evaluator.evaluate(
                 HourlyMomentumBreakoutContext(
                     side=side,
                     features=snapshot,
                     regime=regime,
                     plan=hourly_plan,
-                    state=state,
+                    state=hourly_state,
                     signal_age_ms=(
                         snapshot.ts_ms - signal_ts_ms if signal_ts_ms is not None else None
                     ),

@@ -684,45 +684,62 @@ def create_app(
                         websocket_clients.discard(client)
             await asyncio.sleep(_DASHBOARD_REFRESH_SECONDS)
 
-    async def maintain_hourly_strategy_history() -> None:
-        """새 deep 종목에 인증 없는 완성 1시간 봉을 보충하고 LIVE 입력과 분리한다."""
+    async def maintain_strategy_candle_history() -> None:
+        """새 deep 종목에 인증 없는 15분·30분·1시간 완성봉을 보충한다."""
 
         while True:
             selection = active_runtime.live_selection
             symbols = selection.deep_symbols if selection is not None else ()
             for symbol in symbols:
-                if len(active_runtime.hourly_completed_candles(symbol)) >= 200:
-                    continue
-                try:
-                    payload = await active_market_explorer.candles(
-                        "BINANCE_USDM",
-                        symbol,
-                        3_600,
-                        500,
-                    )
-                    rows = payload.get("candles", [])
-                    if not isinstance(rows, list):
-                        raise ValueError("공개 1시간 봉 응답이 배열이 아닙니다.")
+                for interval_seconds, minimum_bars, label_ko in (
+                    (900, 100, "15분"),
+                    (1_800, 100, "30분"),
+                    (3_600, 200, "1시간"),
+                ):
                     event_now_ms = (
                         active_runtime.events[-1].venue_ts_ms
                         if active_runtime.events
                         else active_runtime.clock.utc_ms()
                     )
-                    count = active_runtime.set_hourly_public_history(
+                    completed = active_runtime.strategy_completed_candles(
                         symbol,
-                        rows,
-                        now_ms=event_now_ms,
+                        interval_seconds,
                     )
-                    active_runtime._log(
-                        "STRATEGY",
-                        f"{symbol} 시간봉 추세 워밍업 · 완성 1시간 봉 {count}개",
-                    )
-                except (OSError, httpx.HTTPError, RuntimeError, ValueError) as error:
-                    active_runtime._log(
-                        "STRATEGY",
-                        f"{symbol} 시간봉 공개 워밍업 대기 · {type(error).__name__}",
-                    )
-                await asyncio.sleep(0.15)
+                    interval_ms = interval_seconds * 1_000
+                    latest_expected_open_ms = (
+                        event_now_ms // interval_ms - 1
+                    ) * interval_ms
+                    if (
+                        len(completed) >= minimum_bars
+                        and completed[-1].open_ts_ms >= latest_expected_open_ms
+                    ):
+                        continue
+                    try:
+                        payload = await active_market_explorer.candles(
+                            "BINANCE_USDM",
+                            symbol,
+                            interval_seconds,
+                            500,
+                        )
+                        rows = payload.get("candles", [])
+                        if not isinstance(rows, list):
+                            raise ValueError("공개 전략 완성봉 응답이 배열이 아닙니다.")
+                        count = active_runtime.set_strategy_public_history(
+                            symbol,
+                            interval_seconds,
+                            rows,
+                            now_ms=event_now_ms,
+                        )
+                        active_runtime._log(
+                            "STRATEGY",
+                            f"{symbol} 추세 봉 보충 · 완성 {label_ko} 봉 {count}개",
+                        )
+                    except (OSError, httpx.HTTPError, RuntimeError, ValueError) as error:
+                        active_runtime._log(
+                            "STRATEGY",
+                            f"{symbol} {label_ko} 공개 워밍업 대기 · {type(error).__name__}",
+                        )
+                    await asyncio.sleep(0.15)
             await asyncio.sleep(60)
 
     async def maintain_strategy_governance() -> None:
@@ -759,7 +776,7 @@ def create_app(
             if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER:
                 await active_runtime.start_persistent_live()
                 hourly_history_task = asyncio.create_task(
-                    maintain_hourly_strategy_history(),
+                    maintain_strategy_candle_history(),
                     name="hourly-strategy-history",
                 )
                 governance_task = asyncio.create_task(

@@ -88,13 +88,18 @@ def test_runtime_reuses_four_side_and_exit_style_plans(monkeypatch) -> None:
         return original(snapshot, side, tick_size, exit_style=exit_style)
 
     monkeypatch.setattr(runtime_evaluator, "_plan", counted_plan)
+    registry = StrategyRegistry()
     rows = StrategySignalEvaluator().evaluate(
-        StrategyRegistry(),
+        registry,
         aligned_features(Side.LONG),
         Regime.RANGE,
     )
 
-    assert len(rows) == 12
+    assert len(rows) == sum(
+        registry.evaluation_enabled(strategy_id, side)
+        for strategy_id in registry.strategy_ids
+        for side in Side
+    )
     assert len(calls) == 4
     assert len(set(calls)) == 4
 

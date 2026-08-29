@@ -180,6 +180,12 @@ class PaperRuntime:
     unrealized_pnl_usdt: float = 0.0
     candle_builder: CandleBuilder = field(default_factory=CandleBuilder)
     hourly_public_history: dict[str, tuple[Candle, ...]] = field(default_factory=dict)
+    strategy_public_history: dict[tuple[str, int], tuple[Candle, ...]] = field(
+        default_factory=dict
+    )
+    _strategy_candle_cache: dict[
+        tuple[str, int], tuple[tuple[int, int | None, int, int | None], tuple[Candle, ...]]
+    ] = field(default_factory=dict, repr=False)
     selected_symbol: str = "BTCUSDT"
     selected_interval_seconds: int = 180
     live_selection: ProviderSelection | None = None
@@ -220,6 +226,7 @@ class PaperRuntime:
     _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
     _market_event_buffer: list[dict[str, object]] = field(default_factory=list)
     _candle_buffer: list[dict[str, object]] = field(default_factory=list)
+    _candidate_plan_buffer: list[dict[str, object]] = field(default_factory=list)
     _universe_snapshot_buffer: list[dict[str, object]] = field(default_factory=list)
     _persisted_main_order_ids: set[str] = field(default_factory=set)
     _persisted_main_trade_ids: set[str] = field(default_factory=set)
@@ -980,6 +987,7 @@ class PaperRuntime:
             "event_memory_limit": self._events.maxlen or 0,
             "market_persistence_buffer": len(self._market_event_buffer),
             "candle_persistence_buffer": len(self._candle_buffer),
+            "candidate_persistence_buffer": len(self._candidate_plan_buffer),
             "universe_snapshot_persistence_buffer": len(self._universe_snapshot_buffer),
             "universe_snapshot_persisted_count": (self._universe_snapshot_persisted_count),
             "universe_snapshot_persistence_last_ms": round(
@@ -1661,6 +1669,8 @@ class PaperRuntime:
             snapshot,
             regime,
             tick_size=tick_size,
+            fifteen_minute_candles=self.strategy_completed_candles(event.symbol, 900),
+            thirty_minute_candles=self.strategy_completed_candles(event.symbol, 1_800),
             hourly_candles=self.hourly_completed_candles(event.symbol),
         )
         self._record_live_event_phase("STRATEGY_EVALUATION", phase_started, event)
@@ -1737,12 +1747,18 @@ class PaperRuntime:
                 trend_take_profit_1_r=descriptor.take_profit_1_r,
                 trend_take_profit_2_r=descriptor.take_profit_2_r,
                 maximum_holding_ms=descriptor.max_hold_seconds * 1_000,
+                edge_decay_enabled=descriptor.edge_decay_enabled,
                 strategy_version=STRATEGY_VERSION,
             )
             if result.plan is not None:
                 plans.append(result.plan)
                 if self.ledger is not None:
-                    self.ledger.record_candidate(self._candidate_plan_row(result.plan))
+                    # 후보 SQLite FULL 커밋은 LIVE 판단 이벤트 루프에서 실행하지 않는다.
+                    # 같은 이벤트의 주문·감사·복구 상태와 worker thread의 원자 배치로 저장한다.
+                    with self._persistence_lock:
+                        self._candidate_plan_buffer.append(
+                            self._candidate_plan_row(result.plan)
+                        )
             elif result.rejection_codes != ("STRATEGY_NOT_QUALIFIED",):
                 self.plan_rejections.append(
                     {
@@ -2867,7 +2883,7 @@ class PaperRuntime:
     ) -> dict[str, object]:
         if self.ledger is None:
             raise ValueError("영속 원장이 없어 리플레이할 수 없습니다.")
-        self._flush_persistence()
+        self.flush_storage()
         from backend.app.replay.market import StoredMarketReplay
 
         result = StoredMarketReplay().run(
@@ -2958,24 +2974,27 @@ class PaperRuntime:
         self.selected_symbol = normalized
         self.selected_interval_seconds = interval_seconds
 
-    def set_hourly_public_history(
+    def set_strategy_public_history(
         self,
         symbol: str,
+        interval_seconds: int,
         rows: Sequence[Mapping[str, object]],
         *,
         now_ms: int,
     ) -> int:
-        """인증 없는 공개 완성 1시간 봉만 SHADOW 추세 워밍업에 보관한다."""
+        """인증 없는 공개 완성봉만 SHADOW 추세 워밍업에 보관한다."""
 
         normalized = symbol.strip().upper()
+        if interval_seconds not in {900, 1_800, 3_600}:
+            raise ValueError("전략 워밍업은 15분·30분·1시간 완성봉만 지원합니다.")
         candles: dict[int, Candle] = {}
         for row in rows:
             open_ts_ms = int(str(row["open_ts_ms"]))
-            if open_ts_ms + 3_600_000 > now_ms:
+            if open_ts_ms + interval_seconds * 1_000 > now_ms:
                 continue
             candle = Candle(
                 symbol=normalized,
-                interval_seconds=3_600,
+                interval_seconds=interval_seconds,
                 open_ts_ms=open_ts_ms,
                 open=Decimal(str(row["open"])),
                 high=Decimal(str(row["high"])),
@@ -2991,24 +3010,59 @@ class PaperRuntime:
                 and candle.low <= min(candle.open, candle.close)
                 and candle.volume >= 0
             ):
-                raise ValueError("공개 1시간 봉 가격·거래량이 올바르지 않습니다.")
+                raise ValueError("공개 전략 완성봉 가격·거래량이 올바르지 않습니다.")
             candles[open_ts_ms] = candle
         ordered = tuple(candles[key] for key in sorted(candles))[-500:]
-        self.hourly_public_history[normalized] = ordered
+        self.strategy_public_history[(normalized, interval_seconds)] = ordered
+        if interval_seconds == 3_600:
+            self.hourly_public_history[normalized] = ordered
+        self._strategy_candle_cache.pop((normalized, interval_seconds), None)
         return len(ordered)
 
-    def hourly_completed_candles(self, symbol: str) -> tuple[Candle, ...]:
-        normalized = symbol.strip().upper()
-        merged = {
-            candle.open_ts_ms: candle for candle in self.hourly_public_history.get(normalized, ())
-        }
-        merged.update(
-            {
-                candle.open_ts_ms: candle
-                for candle in self.candle_builder.completed_series(normalized, 3_600)
-            }
+    def set_hourly_public_history(
+        self,
+        symbol: str,
+        rows: Sequence[Mapping[str, object]],
+        *,
+        now_ms: int,
+    ) -> int:
+        """기존 1시간 전략 워밍업 호출을 일반 완성봉 계약으로 연결한다."""
+
+        return self.set_strategy_public_history(
+            symbol,
+            3_600,
+            rows,
+            now_ms=now_ms,
         )
-        return tuple(merged[key] for key in sorted(merged))[-500:]
+
+    def strategy_completed_candles(
+        self,
+        symbol: str,
+        interval_seconds: int,
+    ) -> tuple[Candle, ...]:
+        normalized = symbol.strip().upper()
+        public_rows = self.strategy_public_history.get((normalized, interval_seconds), ())
+        if interval_seconds == 3_600 and not public_rows:
+            public_rows = self.hourly_public_history.get(normalized, ())
+        local_rows = self.candle_builder.completed_series(normalized, interval_seconds)
+        signature = (
+            len(public_rows),
+            public_rows[-1].open_ts_ms if public_rows else None,
+            len(local_rows),
+            local_rows[-1].open_ts_ms if local_rows else None,
+        )
+        cache_key = (normalized, interval_seconds)
+        cached = self._strategy_candle_cache.get(cache_key)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        merged = {candle.open_ts_ms: candle for candle in public_rows}
+        merged.update({candle.open_ts_ms: candle for candle in local_rows})
+        ordered = tuple(merged[key] for key in sorted(merged))[-500:]
+        self._strategy_candle_cache[cache_key] = (signature, ordered)
+        return ordered
+
+    def hourly_completed_candles(self, symbol: str) -> tuple[Candle, ...]:
+        return self.strategy_completed_candles(symbol, 3_600)
 
     async def shutdown_supervisor(self) -> None:
         supervisor = self._supervisor
@@ -3018,7 +3072,7 @@ class PaperRuntime:
 
     async def shutdown(self) -> None:
         await self.shutdown_supervisor()
-        self._flush_persistence()
+        self.flush_storage()
 
     def _live_scanner_rows(self) -> tuple[dict[str, object], ...]:
         """정밀 분석 종목의 실제 전략 판단과 비용을 확률 없이 UI 행으로 만든다."""
@@ -3630,7 +3684,7 @@ class PaperRuntime:
         if self.mode is RuntimeMode.READY:
             raise ValueError("READY에서는 먼저 LIVE 또는 DEMO를 시작해야 합니다.")
         previous_run_id = self.run_id
-        self._flush_persistence()
+        self.flush_storage()
         self.archived_run_ids.append(self.run_id)
         if self.ledger is not None:
             trades = self.ledger.list_trades(previous_run_id)
@@ -3661,7 +3715,7 @@ class PaperRuntime:
     def _archive_current_run(self, reason: str) -> None:
         if self.mode is RuntimeMode.READY or self.ledger is None:
             return
-        self._flush_persistence()
+        self.flush_storage()
         current = self.ledger.get_run(self.run_id)
         if current is None or current["finalized_ts_ms"] is not None:
             return
@@ -3707,6 +3761,7 @@ class PaperRuntime:
         with self._persistence_lock:
             self._market_event_buffer.clear()
             self._candle_buffer.clear()
+            self._candidate_plan_buffer.clear()
         self._persisted_main_order_ids.clear()
         self._persisted_main_trade_ids.clear()
         self._persisted_shadow_trade_ids.clear()
@@ -3882,8 +3937,11 @@ class PaperRuntime:
         return True
 
     def _has_unpersisted_execution_state(self) -> bool:
-        """감사·주문·거래가 실제로 바뀐 경우에만 외장 SQLite를 호출한다."""
+        """후보·감사·주문·거래가 실제로 바뀐 경우에만 외장 SQLite를 호출한다."""
 
+        with self._persistence_lock:
+            if self._candidate_plan_buffer:
+                return True
         if len(self.paper_portfolio.audit_events) > self._persisted_audit_count:
             return True
         main_orders = (
@@ -3906,6 +3964,8 @@ class PaperRuntime:
     def _persist_execution_state(self, ts_ms: int) -> int:
         if self.ledger is None or self.mode is RuntimeMode.READY:
             return 0
+        with self._persistence_lock:
+            candidate_rows = list(self._candidate_plan_buffer)
         main_orders = (
             *self.paper_portfolio.main.entry_orders,
             *self.paper_portfolio.main.exit_orders,
@@ -4011,6 +4071,7 @@ class PaperRuntime:
         # 식별자 cache는 원자적 커밋이 성공한 뒤에만 전진시킨다.
         self.ledger.record_execution_state_batch(
             run_id=self.run_id,
+            candidates=candidate_rows,
             orders=order_rows,
             fills=fill_rows,
             trades=main_trade_rows,
@@ -4019,12 +4080,23 @@ class PaperRuntime:
             account_snapshots=account_snapshots,
             recovery_snapshot=recovery_snapshot,
         )
+        if candidate_rows:
+            with self._persistence_lock:
+                persisted_candidate_ids = {
+                    str(candidate["candidate_id"]) for candidate in candidate_rows
+                }
+                self._candidate_plan_buffer = [
+                    candidate
+                    for candidate in self._candidate_plan_buffer
+                    if str(candidate["candidate_id"]) not in persisted_candidate_ids
+                ]
         self._persisted_main_order_ids.update(order.order_id for order in new_orders)
         self._persisted_main_trade_ids.update(trade.trade_id for trade in new_main_trades)
         self._persisted_shadow_trade_ids.update(trade.trade_id for trade in new_shadow_trades)
         self._persisted_audit_count = len(self.paper_portfolio.audit_events)
         return (
-            len(order_rows)
+            len(candidate_rows)
+            + len(order_rows)
             + len(fill_rows)
             + len(main_trade_rows)
             + len(shadow_trade_rows)
@@ -4710,7 +4782,7 @@ class PaperRuntime:
 
     def _switch_venue_run(self, venue: Venue) -> None:
         previous_run_id = self.run_id
-        self._flush_persistence()
+        self.flush_storage()
         self.archived_run_ids.append(previous_run_id)
         if self.ledger is not None:
             self.ledger.finalize_run(

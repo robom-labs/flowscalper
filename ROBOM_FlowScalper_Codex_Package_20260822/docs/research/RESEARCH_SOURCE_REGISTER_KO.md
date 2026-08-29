@@ -3,7 +3,7 @@
 기계판독 원본은
 [RESEARCH_SOURCE_REGISTER.json](../../evidence/RESEARCH_SOURCE_REGISTER.json)에 있다.
 
-2026-08-29의 최신 외부 연구와 현재 11전략·100후보 중복 대조, 추가 데이터 수집가설은
+2026-08-29의 최신 외부 연구와 기존 11전략·100후보 중복 대조, 추가 데이터 수집가설은
 [Wave 110 외부 연구 대조](WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION_KO.md)에 분리해 기록했다.
 
 ## 원칙
@@ -27,9 +27,11 @@
 ## 학술 근거
 
 PBO와 DSR은 100개 중 우연히 가장 좋아 보인 후보를 고르는 선택편향을 통제하는 gate로 쓴다.
-Time Series Momentum, OFI, queue imbalance, MLOFI 연구는 각각 F15·F17·F18과 기존
-microstructure 가설의 출처다. 주식·선물 또는 다른 시장에서 관측된 관계를 Binance USDⓈ-M
-수익성으로 일반화하지 않고 동일한 비용·OOS·STRESS 검증을 새로 수행한다.
+Time Series Momentum, 암호화폐 trend-following, OFI, queue imbalance, MLOFI 연구는
+중단기 추세 V2와 기존 microstructure 가설의 출처다. 주식·선물 또는 다른 시장에서 관측된
+관계를 Binance USDⓈ-M 수익성으로 일반화하지 않고 동일한 비용·OOS·STRESS 검증을 새로
+수행한다. 현재 Registry의 V2 네 전략은 이전 V1과 달리 돌파 추격 대신 다음 완성봉 재확인과
+현재 공개 호가·체결 흐름을 함께 요구하며, 충분한 미래 자연표본 전까지 `NOT_PROVEN`이다.
 
 ## GitHub 참고 프로젝트
 

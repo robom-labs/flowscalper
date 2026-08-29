@@ -1,4 +1,4 @@
-# 11개 전략 전체 연구 리플레이를 LIVE PAPER 안전감시 아래 저우선순위로 실행한다.
+# 등록 전략 전체 연구 리플레이를 LIVE PAPER 안전감시 아래 저우선순위로 실행한다.
 """동결 archive 전수 비교가 현재 공개시장 수신을 침범하면 즉시 중단하는 CLI다."""
 
 from __future__ import annotations
@@ -660,6 +660,7 @@ def _validate_result_payload(
 ) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("전략리그 결과가 JSON 객체가 아닙니다.")
+    strategy_count = len(StrategyRegistry().strategy_ids)
     required = {
         "status": "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE",
         "method": "ONE_PASS_ALL_REGISTERED_ACTUAL_PAPER_RUNTIME_PATH",
@@ -667,8 +668,8 @@ def _validate_result_payload(
         "real_orders_enabled": False,
         "auth_required": False,
         "runtime_ai_order_decision": False,
-        "strategy_count": 11,
-        "strategy_account_count": 22,
+        "strategy_count": strategy_count,
+        "strategy_account_count": strategy_count * 2,
         "signal_gate": signal_gate,
         "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
         "signal_gate_trial_id": f"{signal_gate}:{signal_gate_target_strategy_id}",
@@ -972,7 +973,7 @@ def parse_arguments() -> argparse.Namespace:
     project_root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(
         description=(
-            "11개 전략·22개 독립 PAPER 계좌의 동결 archive 전수 replay를 "
+            "등록 전략별 BASE·STRESS 독립 PAPER 계좌의 동결 archive 전수 replay를 "
             "LIVE 안전감시 아래 실행합니다."
         )
     )

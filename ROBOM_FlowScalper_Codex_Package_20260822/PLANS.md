@@ -454,3 +454,38 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 다음 단계는 이번 런타임 인프라 변경으로 달라진 E06 구현 지문을 기록한 뒤 LIVE 안전감시 아래
   비용포함 후보를 재검증하는 것이다. 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`,
   실자금은 `NOT_READY`다.
+
+## Wave 116I 후보 저장 비동기화와 거래화면 진단
+
+- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_PENDING`이다. 적격 후보 한 건마다 LIVE 판단 루프에서
+  SQLite FULL 커밋을 수행하던 경로를 같은 이벤트의 원자 저장 배치로 옮겼다.
+- 후보 저장 실패는 시장 입력을 버리지 않고 persistence fault와 신규진입 잠금으로 보존한다.
+  저장 Run replay 직전에는 후보 buffer까지 명시적으로 flush한다.
+- 요약·전략·거래기록 화면은 현재 진행 포지션, 시장판정, 진입조건 통과, 수동 새로고침과
+  자동 확인시각을 함께 보여 무거래와 화면 정지를 구분한다.
+- 수정 전 자연 `AGGRESSOR_FLOW_CONTINUATION_V1` BTCUSDT LONG 한 건은 약 900초 뒤
+  MAX_HOLD로 종료됐다. BASE 순손익은 양수, STRESS는 비용후 음수였으며 한 건을 수익성으로
+  해석하지 않는다.
+- backend 793건, frontend 79건, Ruff, 정식 mypy 110 source, ESLint, TypeScript, build,
+  PAPER safety, security 146 source, repository hygiene, 24개 누적 회귀계약과 반응형 Playwright
+  3건은 PASS했다. 불변 설치와 실제 서비스·브라우저 검증 전까지 설치 상태는 진행 중이다.
+
+## Wave 116J 완성봉 추세 V2와 진입논리 시간대별 청산
+
+- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_PENDING`이다. 완성 15분 눌림, 15분·30분 돌파 후
+  재확인, 30분·1시간 재합류 네 전략을 SHADOW PAPER V2로 사전등록했다.
+- Registry는 15개·BASE/STRESS 30계좌다. 기존 검증 중 6개와 신규 4개, 총 10개 SHADOW를
+  같은 공개시장 입력에서 LONG·SHORT 20경로로 동시에 평가한다. 실패 5개는 RETIRED/OFF로
+  거래·근거·계좌를 보존한다.
+- 신규 네 전략은 일반 미시구조 `EDGE_DECAY`와 900초 종료를 사용하지 않는다. 구조 손절,
+  TP1·TP2, 이익보호 방향의 stop 단축, 데이터·시스템 안전종료와 8~18시간 무한노출 방지
+  백스톱만 사용한다.
+- 진행 중 봉, 최근 100봉 또는 1시간 50봉 gap, stale·sequence invalid 호가, 12bp 초과
+  spread, 1초 공개흐름 미확인, 0.65~3.0 ATR 밖 구조 손절과 비용후 순손익비 1.20 미만을
+  fail-closed한다.
+- 표적 전략·포지션·계좌·운영 회귀 180건과 전체 backend 793건, frontend 79건, Ruff,
+  정식 mypy 110 source, ESLint, TypeScript, build, PAPER safety, security 146 source,
+  repository hygiene, 24개 누적 회귀계약과 desktop·tablet·mobile Playwright 3건은 PASS했다.
+  실제 설치 서비스 성능·실제 브라우저·GitHub 동기화는 아직 `NOT_RUN`이다.
+- 70%는 보장값이 아니다. 현재버전 자연표본 30개 전 순위 금지, BASE·STRESS·OOS·bootstrap,
+  DSR·PBO·drawdown·집중도 전 수익성 `NOT_PROVEN`, 실자금 `NOT_READY`를 유지한다.

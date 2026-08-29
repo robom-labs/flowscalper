@@ -1367,6 +1367,7 @@ class SQLiteLedger:
         self,
         *,
         run_id: str,
+        candidates: Sequence[Mapping[str, object]] = (),
         orders: Sequence[Mapping[str, object]],
         fills: Sequence[Mapping[str, object]],
         trades: Sequence[Mapping[str, object]],
@@ -1375,9 +1376,10 @@ class SQLiteLedger:
         account_snapshots: Sequence[Mapping[str, object]],
         recovery_snapshot: Mapping[str, object] | None,
     ) -> None:
-        """한 이벤트에서 바뀐 PAPER 실행상태를 단일 FULL 커밋으로 보존한다."""
+        """한 이벤트의 후보계획과 PAPER 실행상태를 단일 FULL 커밋으로 보존한다."""
 
         groups = (
+            ("후보계획", candidates),
             ("주문", orders),
             ("체결", fills),
             ("main 거래", trades),
@@ -1399,6 +1401,17 @@ class SQLiteLedger:
             raise LedgerInvariantError("복구 snapshot에 다른 Run을 섞을 수 없습니다.")
 
         # 손익 불변조건과 JSON 직렬화를 BEGIN 전에 끝내 잠금 보유 시간을 줄인다.
+        candidate_rows = [
+            (
+                str(candidate["candidate_id"]),
+                run_id,
+                int(str(candidate["signal_time_ms"])),
+                str(candidate.get("status", "ARMED")),
+                _canonical_json({"reason_codes": candidate.get("reason_codes", [])}),
+                _canonical_json(candidate),
+            )
+            for candidate in candidates
+        ]
         order_rows = [
             (
                 str(order["order_id"]),
@@ -1501,6 +1514,14 @@ class SQLiteLedger:
 
         with self._transaction() as connection:
             self._assert_open_run(connection, run_id)
+            connection.executemany(
+                """
+                INSERT OR IGNORE INTO candidates (
+                    candidate_id, run_id, ts_ms, status, reason_codes_json, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                candidate_rows,
+            )
             connection.executemany(
                 """
                 INSERT INTO paper_orders (

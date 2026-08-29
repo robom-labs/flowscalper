@@ -107,6 +107,14 @@ def test_execution_state_batch_commits_all_recovery_rows_together(tmp_path: Path
     ledger._connection.set_trace_callback(traced_sql.append)
     ledger.record_execution_state_batch(
         run_id="run-001",
+        candidates=(
+            {
+                "candidate_id": "candidate-batch",
+                "run_id": "run-001",
+                "signal_time_ms": 1_000,
+                "reason_codes": ["STRUCTURE_CONFIRMED"],
+            },
+        ),
         orders=(
             {
                 "order_id": "order-batch",
@@ -156,6 +164,7 @@ def test_execution_state_batch_commits_all_recovery_rows_together(tmp_path: Path
 
     assert sum(statement == "BEGIN IMMEDIATE" for statement in traced_sql) == 1
     assert sum(statement == "COMMIT" for statement in traced_sql) == 1
+    assert ledger.count("candidates") == 1
     assert ledger.count("paper_orders") == 1
     assert ledger.count("fills") == 1
     assert ledger.list_trades("run-001") == [trade]
@@ -175,6 +184,13 @@ def test_execution_state_batch_rolls_back_every_row_on_failure(tmp_path: Path) -
     with pytest.raises(sqlite3.IntegrityError):
         ledger.record_execution_state_batch(
             run_id="run-001",
+            candidates=(
+                {
+                    "candidate_id": "candidate-rolled-back",
+                    "run_id": "run-001",
+                    "signal_time_ms": 1_000,
+                },
+            ),
             orders=(
                 {
                     "order_id": "order-rolled-back",
@@ -199,6 +215,7 @@ def test_execution_state_batch_rolls_back_every_row_on_failure(tmp_path: Path) -
             recovery_snapshot=None,
         )
 
+    assert ledger.count("candidates") == 0
     assert ledger.count("paper_orders") == 0
     assert ledger.count("fills") == 0
     ledger.close()

@@ -478,6 +478,9 @@ class PaperPortfolioEngine:
                 data_stale=not snapshot.data_healthy,
                 recovered_gap_duration_ms=recovered_gap_duration_ms,
                 maximum_holding_ms=plan.maximum_holding_ms,
+                edge_decay_enabled=(
+                    "EXIT_ON_PERSISTENT_EDGE_DECAY" in plan.management_policy
+                ),
             )
             if decision.proposed_stop is not None:
                 managed.protected = self.position_manager.tighten_stop(
@@ -584,7 +587,11 @@ class PaperPortfolioEngine:
                 "종료 체결 지연 대기 중"
                 if managed.pending_exit is not None
                 else (
-                    "TP·SL·근거감쇠 관리 · "
+                    (
+                        "TP·SL·근거감쇠 관리 · "
+                        if "EXIT_ON_PERSISTENT_EDGE_DECAY" in plan.management_policy
+                        else "TP·SL 구조 관리 · "
+                    )
                     + (
                         f"안전 최대 {plan.maximum_holding_ms // 3_600_000}시간"
                         if plan.maximum_holding_ms >= 3_600_000

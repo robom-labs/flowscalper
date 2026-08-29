@@ -21,6 +21,7 @@ import backend.app.main as main_module
 import backend.app.replay.process as replay_process_module
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.build_identity import STRATEGY_IDS, STRATEGY_VERSION
+from backend.app.candidates import PlanBuildResult
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import (
     DataQuality,
@@ -31,6 +32,7 @@ from backend.app.domain.models import (
 )
 from backend.app.main import create_app
 from backend.app.market_data.supervisor import ProviderSelection
+from backend.app.regime import Regime
 from backend.app.replay.engine import ReplayEngine
 from backend.app.replay.market import StoredMarketReplay, _candidate_plan_count
 from backend.app.replay.process import (
@@ -51,8 +53,14 @@ from backend.app.storage.sqlite import (
     persist_archives_and_candles_in_process,
     run_passive_wal_checkpoint_in_process,
 )
-from backend.tests.test_candidate_paper_portfolio import book, candidate_plan
+from backend.app.strategies.runtime_evaluator import EvaluatedSignal
+from backend.tests.test_candidate_paper_portfolio import (
+    book,
+    candidate_plan,
+    qualified_decision,
+)
 from backend.tests.test_storage_replay_analytics import _sample_trade
+from backend.tests.test_strategies import features
 
 
 def market_event(
@@ -953,7 +961,7 @@ def test_runtime_batches_public_events_and_replays_same_pipeline_deterministical
     assert first.as_dict()["scope_symbol"] is None
     assert first.event_count == 4
     assert first.event_type_counts == {"DEPTH_UPDATE": 2, "TRADE": 2}
-    assert first.strategy_evaluation_count == 24
+    assert first.strategy_evaluation_count == runtime.strategy_evaluation_count
     assert first.qualified_signal_count == 0
     assert first.final_state == "OBSERVING_NO_MAIN_TRADE"
     assert first.real_orders_enabled is False
@@ -1455,6 +1463,65 @@ def test_runtime_persists_top10_book_without_mutating_live_event() -> None:
     assert persisted == expected
 
 
+def test_candidate_sqlite_commit_is_deferred_out_of_live_candidate_planning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = candidate_plan()
+    ledger = SQLiteLedger(tmp_path / "candidate-buffer.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.REPLAY,
+        run_id=plan.run_id,
+        venue=Venue.FIXTURE,
+        ledger=ledger,
+        clock=DeterministicClock(),
+    )
+    event = market_event(
+        plan.run_id,
+        event_id="candidate-buffer-event",
+        ts_ms=plan.signal_time_ms,
+    ).model_copy(update={"venue": Venue.FIXTURE})
+    signal = EvaluatedSignal(
+        symbol=plan.symbol,
+        regime=Regime.RANGE,
+        decision=qualified_decision(),
+        main_eligible=True,
+        shadow_eligible=True,
+    )
+    monkeypatch.setattr(
+        runtime.candidate_planner,
+        "build",
+        lambda **_kwargs: PlanBuildResult(plan, ()),
+    )
+    monkeypatch.setattr(
+        ledger,
+        "record_candidate",
+        lambda _candidate: pytest.fail("LIVE 후보계획 단계에서 SQLite를 직접 호출했습니다."),
+    )
+
+    plans = runtime._build_candidate_plans(
+        event,
+        features(),
+        Regime.RANGE,
+        book(plan.signal_time_ms),
+        (signal,),
+    )
+
+    assert plans == (plan,)
+    assert ledger.count("candidates") == 0
+    assert [row["candidate_id"] for row in runtime._candidate_plan_buffer] == [
+        plan.candidate_id
+    ]
+    assert runtime._has_unpersisted_execution_state() is True
+
+    runtime._persist_execution_state(plan.signal_time_ms)
+
+    assert runtime._candidate_plan_buffer == []
+    assert ledger.count("candidates") == 1
+    assert ledger.get_candidate(plan.run_id, plan.candidate_id) is not None
+    ledger.close()
+
+
 def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(
     tmp_path: Path,
 ) -> None:
@@ -1792,6 +1859,8 @@ def test_live_http_replay_uses_isolated_process_path(
         market_event(runtime.run_id, event_id="isolated-buffered-depth", ts_ms=2_000)
     )
     calls: list[tuple[object, ...]] = []
+    flush_calls = 0
+    original_flush_storage = PaperRuntime.flush_storage
 
     async def start_persistent_live_without_network(
         _runtime: PaperRuntime,
@@ -1805,6 +1874,11 @@ def test_live_http_replay_uses_isolated_process_path(
         calls.append(arguments)
         return replay_process_module.replay_stored_run_from_paths(*arguments)
 
+    def track_flush_storage(_runtime: PaperRuntime) -> None:
+        nonlocal flush_calls
+        flush_calls += 1
+        original_flush_storage(_runtime)
+
     monkeypatch.setattr(
         PaperRuntime,
         "start_persistent_live",
@@ -1813,7 +1887,7 @@ def test_live_http_replay_uses_isolated_process_path(
     monkeypatch.setattr(
         PaperRuntime,
         "flush_storage",
-        lambda _runtime: pytest.fail("LIVE replay 요청이 강제 저장 flush를 호출했습니다."),
+        track_flush_storage,
     )
     monkeypatch.setattr(
         main_module,
@@ -1836,6 +1910,8 @@ def test_live_http_replay_uses_isolated_process_path(
         assert len(calls) == 1
         assert calls[0][0] == str(ledger.path)
         assert calls[0][5] == 1
+        assert flush_calls == 0
+    assert flush_calls == 1
     ledger.close()
 
 

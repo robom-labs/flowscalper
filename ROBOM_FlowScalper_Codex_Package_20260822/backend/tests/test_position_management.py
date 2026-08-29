@@ -125,6 +125,35 @@ def test_edge_decay_exits_only_after_grace_and_multi_signal_persistence() -> Non
     )
 
 
+def test_intraday_tp_sl_policy_ignores_general_edge_decay_until_safety_max_hold() -> None:
+    position = opened_position()
+    manager = PositionManager()
+    adverse = health(
+        flow_health=0.1,
+        remaining_edge=Decimal("-0.1"),
+        current_r=Decimal("-0.35"),
+    )
+
+    held = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 60_000,
+        maximum_holding_ms=28_800_000,
+        edge_decay_enabled=False,
+    )
+    max_hold = manager.evaluate(
+        position,
+        adverse,
+        now_ms=position.opened_ts_ms + 28_800_000,
+        maximum_holding_ms=28_800_000,
+        edge_decay_enabled=False,
+    )
+
+    assert held.action is ManagementAction.HOLD
+    assert held.reason_codes == ("TP_SL_STRUCTURE_MANAGEMENT_ONLY",)
+    assert max_hold.action is ManagementAction.EXIT_MAX_HOLD
+
+
 def test_edge_decay_does_not_crystallize_costs_while_price_is_flat() -> None:
     position = opened_position()
     manager = PositionManager()

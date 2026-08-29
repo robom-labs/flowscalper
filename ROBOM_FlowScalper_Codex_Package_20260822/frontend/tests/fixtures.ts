@@ -14,7 +14,19 @@ const catalog = [
   ['OFI_RETURN_CONFLUENCE_V1', 'OFI·가격동행', 'OFI·단기수익률 동행'],
   ['BOOK_SLOPE_ASYMMETRY_V1', '호가 기울기', '호가 기울기 비대칭'],
   ['HOURLY_MOMENTUM_BREAKOUT_V1', '시간봉 추세', '시간봉 추세 돌파'],
+  ['TREND_PULLBACK_RECLAIM_15M_V2', '15분 눌림', '15분 추세 눌림 재상승'],
+  ['BREAKOUT_RETEST_15M_V2', '15분 돌파', '15분 돌파 후 재확인'],
+  ['BREAKOUT_RETEST_30M_V2', '30분 돌파', '30분 돌파 후 재확인'],
+  ['MULTISPEED_TREND_RECLAIM_30M_V2', '다중추세', '30분·1시간 추세 재합류'],
 ] as const
+
+const retiredIndexes = new Set([0, 3, 4, 7, 10])
+const intradayV2Config: Record<string, { holding: [number, number]; tp1: string; tp2: string; maxHold: number }> = {
+  TREND_PULLBACK_RECLAIM_15M_V2: { holding: [1800, 28800], tp1: '1.4', tp2: '2.8', maxHold: 28800 },
+  BREAKOUT_RETEST_15M_V2: { holding: [3600, 43200], tp1: '1.6', tp2: '3.2', maxHold: 43200 },
+  BREAKOUT_RETEST_30M_V2: { holding: [7200, 64800], tp1: '1.6', tp2: '3.2', maxHold: 64800 },
+  MULTISPEED_TREND_RECLAIM_30M_V2: { holding: [3600, 57600], tp1: '1.5', tp2: '3.0', maxHold: 57600 },
+}
 
 function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPerformance {
   return {
@@ -87,7 +99,9 @@ function performance(strategyId: string, profile: 'BASE' | 'STRESS'): StrategyPe
   }
 }
 
-export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, displayName], index) => ({
+export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, displayName], index) => {
+  const intradayV2 = intradayV2Config[strategyId as keyof typeof intradayV2Config]
+  return {
   strategy_id: strategyId,
   short_name: shortName,
   display_name_ko: displayName,
@@ -95,34 +109,38 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
   stability: index === 1 ? 'STABLE' : 'EXPERIMENTAL',
   supported_regimes: ['RANGE'],
   exit_style: index === 0 || index === 2 ? 'REVERSION_70_30' : 'TREND_40_60',
-  horizon_class: index === 10 ? 'INTRADAY_SWING' : 'MICRO_SCALP',
-  expected_holding_seconds: index === 10 ? [3600, 129600] : [10, 180],
-  signal_half_life_seconds: index === 10 ? 5 : 30,
-  required_timeframes: index === 10 ? ['1h'] : ['250ms', '1s', '3s', '10s', '30s', '120s'],
-  exit_model: 'STRUCTURE_TP1_TP2_EDGE_DECAY',
-  take_profit_1_r: index === 10 ? '2.2' : '1.5',
-  take_profit_2_r: index === 10 ? '4.5' : '3.0',
-  entry_rules_ko: index === 10 ? ['완성 1시간봉 200개 이상', 'EMA·모멘텀·돌파·ADX·상대거래량 동시 확인'] : [],
-  exit_rules_ko: index === 10 ? ['TP1 2.2R·40%', 'TP2 4.5R·60%'] : [],
-  max_hold_seconds: index === 10 ? 129600 : 900,
+  horizon_class: index >= 10 ? 'INTRADAY_SWING' : 'MICRO_SCALP',
+  expected_holding_seconds: intradayV2?.holding ?? (index === 10 ? [3600, 129600] : [10, 180]),
+  signal_half_life_seconds: index >= 10 ? 5 : 30,
+  required_timeframes: intradayV2 ? ['15m·30m', '1h', 'public book flow'] : index === 10 ? ['1h'] : ['250ms', '1s', '3s', '10s', '30s', '120s'],
+  exit_model: intradayV2 ? 'STRUCTURE_TP1_TP2_THESIS_HORIZON' : 'STRUCTURE_TP1_TP2_EDGE_DECAY',
+  take_profit_1_r: intradayV2?.tp1 ?? (index === 10 ? '2.2' : '1.5'),
+  take_profit_2_r: intradayV2?.tp2 ?? (index === 10 ? '4.5' : '3.0'),
+  entry_rules_ko: intradayV2 ? ['완성 15분·30분봉 100개와 1시간봉 50개 이상', '눌림 회복 또는 돌파 재확인 뒤 현재 공개 흐름 확인'] : index === 10 ? ['완성 1시간봉 200개 이상', 'EMA·모멘텀·돌파·ADX·상대거래량 동시 확인'] : [],
+  exit_rules_ko: intradayV2 ? [`TP1 ${intradayV2.tp1}R·40%`, `TP2 ${intradayV2.tp2}R·60%`, '일반 근거약화 조기청산 없음'] : index === 10 ? ['TP1 2.2R·40%', 'TP2 4.5R·60%'] : [],
+  max_hold_seconds: intradayV2?.maxHold ?? (index === 10 ? 129600 : 900),
   cost_model_version: 'TOP_OF_BOOK_BASE13_STRESS25_V1',
-  strategy_version: 'V1',
-  required_market_data: index === 10
+  strategy_version: intradayV2 ? 'V2' : 'V1',
+  required_market_data: intradayV2
+    ? ['완성 공개 15분·30분·1시간봉', 'sequence-valid 공개 bid·ask·OFI·체결 흐름']
+    : index === 10
     ? ['완성 공개 1시간봉', 'sequence-valid 공개 bid·ask']
     : ['sequence-valid 공개 top-10 bid·ask', '공개 aggregate trade', '종목별 과거 피처'],
-  minimum_warmup_ko: index === 10 ? '완성 1시간봉 200개 이상' : '건전한 종목별 공개시장 10초 이상과 현재 이전 prefix 통계',
+  minimum_warmup_ko: intradayV2 ? '완성 신호주기 봉 100개 이상과 완성 1시간 봉 50개 이상' : index === 10 ? '완성 1시간봉 200개 이상' : '건전한 종목별 공개시장 10초 이상과 현재 이전 prefix 통계',
   entry_hypothesis_ko: '현재 이전 공개시장 정보가 같은 방향으로 정렬되고 비용 gate를 통과하면 PAPER 후보로 평가합니다.',
   falsification_conditions_ko: ['필수 데이터 또는 방향 정렬 실패', '비용후 순 R:R gate 실패'],
-  edge_decay_policy_ko: '진입 후 10초 grace·불리한 근거 2개·3초 지속 뒤 PAPER 관리청산',
+  edge_decay_policy_ko: intradayV2 ? '일반 근거약화 청산 없이 TP1·TP2·구조 손절과 안전 최대보유만 적용' : '진입 후 30초 유예·불리한 근거 2개·비용보다 큰 가격 악화·3초 지속 뒤 PAPER 관리청산',
   risk_budget_rule_ko: '공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산',
   target_universe_ko: '동적 정밀분석 종목 중 지원 레짐·유동성·비용 gate 통과 종목',
   data_leakage_guards_ko: ['현재 event timestamp 이전의 동일 종목 이력만 사용', '미래 timestamp 입력 fail-closed'],
-  research_source_ids: index === 10
+  research_source_ids: intradayV2
+    ? ['SRC-TSMOM-2012', 'SRC-CRYPTO-TREND-2020', 'SRC-BINANCE-KLINE', 'SRC-BINANCE-DEPTH']
+    : index === 10
     ? ['SRC-CRYPTO-MOMENTUM-2018', 'SRC-BINANCE-KLINE', 'SRC-BINANCE-DEPTH']
     : ['SRC-OFI-2010', 'SRC-BINANCE-DEPTH', 'SRC-BINANCE-AGGTRADE'],
   paper_only: true,
-  mode: [0, 3, 4, 7, 10].includes(index) ? 'OFF' : 'SHADOW',
-  lifecycle: [0, 3, 4, 7, 10].includes(index) ? 'RETIRED' : 'SHADOW',
+  mode: retiredIndexes.has(index) ? 'OFF' : 'SHADOW',
+  lifecycle: retiredIndexes.has(index) ? 'RETIRED' : 'SHADOW',
   long_enabled: true,
   short_enabled: true,
   settings_revision: 0,
@@ -130,15 +148,15 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
   changed_by: 'MIGRATION',
   change_reason: 'SAFE_DEFAULT',
   settings_updated_ts_ms: 0,
-  policy_reactivation_locked: [0, 3, 4, 7, 10].includes(index),
+  policy_reactivation_locked: retiredIndexes.has(index),
   evaluated_paths: 0,
   qualified_paths: 0,
   latest_status: 'WAITING_DATA',
   latest_reasons: [],
   governance: {
     strategy_id: strategyId,
-    current_lifecycle: [0, 3, 4, 7, 10].includes(index) ? 'RETIRED' : 'SHADOW',
-    recommended_lifecycle: [0, 3, 4, 7, 10].includes(index) ? 'RETIRED' : 'SHADOW',
+    current_lifecycle: retiredIndexes.has(index) ? 'RETIRED' : 'SHADOW',
+    recommended_lifecycle: retiredIndexes.has(index) ? 'RETIRED' : 'SHADOW',
     reason_codes: ['LIVE_PUBLIC_SAMPLE_LT_30'],
     automatic_action_allowed: false,
     transition_required: false,
@@ -156,7 +174,8 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
     BASE: performance(strategyId, 'BASE'),
     STRESS: performance(strategyId, 'STRESS'),
   },
-}))
+  }
+})
 
 export const leagueAccounts: LeagueAccount[] = strategies.flatMap((strategy, strategyIndex) => (
   (['BASE', 'STRESS'] as const).map((profile) => ({

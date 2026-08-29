@@ -392,10 +392,10 @@ def test_dashboard_has_registry_derived_accounts_and_split_risk_contract() -> No
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     dashboard = runtime.dashboard()
 
-    assert len(dashboard["league_accounts"]) == 22
+    assert len(dashboard["league_accounts"]) == 30
     assert dashboard["league_positions"] == []
     assert dashboard["risk"]["shared_capital"]["risk_per_position"] == "0.10%"
-    assert dashboard["risk"]["strategy_league"]["account_count"] == 22
+    assert dashboard["risk"]["strategy_league"]["account_count"] == 30
     assert dashboard["risk"]["strategy_league"]["maximum_effective_leverage"] == "5.00x"
     assert dashboard["status"]["real_orders_enabled"] is False
     assert dashboard["status"]["auth_required"] is False

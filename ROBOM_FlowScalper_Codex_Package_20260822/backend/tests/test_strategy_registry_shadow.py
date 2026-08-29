@@ -34,7 +34,7 @@ from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 from backend.tests.test_strategies import features
 
 
-def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> None:
+def test_registry_exposes_fifteen_strategies_and_honors_mode_and_direction() -> None:
     registry = StrategyRegistry()
     assert registry.strategy_ids == (
         "LSA_REVERSAL_V1",
@@ -48,6 +48,10 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
         "OFI_RETURN_CONFLUENCE_V1",
         "BOOK_SLOPE_ASYMMETRY_V1",
         "HOURLY_MOMENTUM_BREAKOUT_V1",
+        "TREND_PULLBACK_RECLAIM_15M_V2",
+        "BREAKOUT_RETEST_15M_V2",
+        "BREAKOUT_RETEST_30M_V2",
+        "MULTISPEED_TREND_RECLAIM_30M_V2",
     )
     assert STRATEGY_IDS == registry.strategy_ids
     assert STRATEGY_VERSION.startswith("+".join(registry.strategy_ids) + "@")
@@ -63,6 +67,10 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
         "SHADOW",
         "SHADOW",
         "OFF",
+        "SHADOW",
+        "SHADOW",
+        "SHADOW",
+        "SHADOW",
     ]
     assert [row["lifecycle"] for row in registry.rows()] == [
         "RETIRED",
@@ -76,6 +84,10 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
         "SHADOW",
         "SHADOW",
         "RETIRED",
+        "SHADOW",
+        "SHADOW",
+        "SHADOW",
+        "SHADOW",
     ]
     assert all(row["long_enabled"] and row["short_enabled"] for row in registry.rows())
     required_descriptor_contract = {
@@ -93,14 +105,12 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
     research_foundations = Path("docs/20_RESEARCH_FOUNDATIONS_AND_ADAPTATION.md").read_text()
     for row in registry.rows():
         assert required_descriptor_contract <= row.keys()
-        assert row["strategy_version"] == "V1"
+        assert row["strategy_version"] in {"V1", "V2"}
         assert row["required_market_data"]
         assert row["minimum_warmup_ko"]
         assert row["entry_hypothesis_ko"]
         assert row["falsification_conditions_ko"]
-        assert row["edge_decay_policy_ko"] == (
-            "진입 후 30초 유예·불리한 근거 2개·비용 이상의 가격 악화·3초 지속 뒤 PAPER 관리청산"
-        )
+        assert row["edge_decay_policy_ko"]
         assert row["risk_budget_rule_ko"] == (
             "공동 PAPER 0.10%·독립 PAPER 0.50% 계좌자산 위험예산"
         )
@@ -112,12 +122,12 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
             for source_id in row["research_source_ids"]
         )
         assert row["change_reason"]
-    micro_rows = registry.rows()[:-1]
+    micro_rows = registry.rows()[:10]
     assert all(row["horizon_class"] == "MICRO_SCALP" for row in micro_rows)
     assert all(row["expected_holding_seconds"] == [10, 180] for row in micro_rows)
     assert all(row["signal_half_life_seconds"] == 30 for row in micro_rows)
     assert all(row["max_hold_seconds"] == 900 for row in micro_rows)
-    hourly = registry.rows()[-1]
+    hourly = registry.rows()[10]
     assert hourly["strategy_id"] == "HOURLY_MOMENTUM_BREAKOUT_V1"
     assert hourly["change_reason"] == "FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46"
     assert hourly["horizon_class"] == "INTRADAY_SWING"
@@ -128,6 +138,20 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
     assert hourly["max_hold_seconds"] == 129_600
     assert hourly["minimum_warmup_ko"] == "완성 1시간봉 200개 이상"
     assert "SRC-CRYPTO-MOMENTUM-2018" in hourly["research_source_ids"]
+    intraday_rows = registry.rows()[11:]
+    assert len(intraday_rows) == 4
+    assert all(row["mode"] == "SHADOW" for row in intraday_rows)
+    assert all(row["lifecycle"] == "SHADOW" for row in intraday_rows)
+    assert all(row["strategy_version"] == "V2" for row in intraday_rows)
+    assert all(row["horizon_class"] == "INTRADAY_SWING" for row in intraday_rows)
+    assert all(row["signal_half_life_seconds"] == 5 for row in intraday_rows)
+    assert all(not row["edge_decay_enabled"] for row in intraday_rows)
+    assert [row["max_hold_seconds"] for row in intraday_rows] == [
+        28_800,
+        43_200,
+        64_800,
+        57_600,
+    ]
     assert all(
         row["cost_model_version"] == "TOP_OF_BOOK_BASE13_STRESS25_V1" for row in registry.rows()
     )
@@ -147,7 +171,11 @@ def test_registry_exposes_eleven_strategies_and_honors_mode_and_direction() -> N
     evaluator = StrategySignalEvaluator()
     decisions = evaluator.evaluate(registry, features(), Regime.WARMUP)
 
-    assert len(decisions) == 11
+    assert len(decisions) == sum(
+        registry.evaluation_enabled(strategy_id, side)
+        for strategy_id in registry.strategy_ids
+        for side in Side
+    )
     assert all(item.decision.status is CandidateStatus.REJECTED for item in decisions)
     lsa = next(item for item in decisions if item.decision.strategy_id == "LSA_REVERSAL_V1")
     assert lsa.decision.side is Side.LONG
@@ -771,7 +799,7 @@ def test_strategy_history_statistics_are_computed_once_per_snapshot(monkeypatch)
         Regime.RANGE,
     )
 
-    assert len(decisions) == 12
+    assert len(decisions) == 20
     assert robust_calls == 4
     assert percentile_calls == 5
 
@@ -933,7 +961,7 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
     )
 
     decisions = runtime.strategy_decisions()
-    assert runtime.strategy_evaluation_count == 12
+    assert runtime.strategy_evaluation_count == 20
     assert {decision.strategy_id for decision in decisions} == set(
         runtime.strategy_registry.strategy_ids
     ) - {
@@ -944,5 +972,5 @@ def test_live_depth_skips_retired_strategies_without_fake_probability() -> None:
         "HOURLY_MOMENTUM_BREAKOUT_V1",
     }
     assert all(decision.tp_probability is None for decision in decisions)
-    assert len(runtime.dashboard()["shadow_accounts"]) == 22
-    assert len(runtime.dashboard()["league_accounts"]) == 22
+    assert len(runtime.dashboard()["shadow_accounts"]) == 30
+    assert len(runtime.dashboard()["league_accounts"]) == 30

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "collected_ts_utc": "2026-08-27T15:06:21Z",
+  "collected_ts_utc": "2026-08-29T18:25:18Z",
   "code_imported": false,
   "dependencies_added": false,
   "official_documents": [
@@ -75,10 +75,19 @@
     },
     {
       "source_id": "MOSKOWITZ_OOI_PEDERSEN_2012_TSMOM",
+      "aliases": ["SRC-TSMOM-2012"],
       "url": "https://doi.org/10.1016/j.jfineco.2011.11.003",
       "title": "Time Series Momentum",
       "publication_status": "peer-reviewed Journal of Financial Economics article",
-      "adoption": "F15 hypothesis source",
+      "adoption": "F15 and completed-bar intraday trend V2 hypothesis source",
+      "crypto_intraday_profitability_proof": false
+    },
+    {
+      "source_id": "SRC-CRYPTO-TREND-2020",
+      "url": "https://arxiv.org/abs/2009.12155",
+      "title": "A Decade of Evidence of Trend Following Investing in Cryptocurrencies",
+      "publication_status": "public research preprint",
+      "adoption": "completed-bar intraday trend V2 hypothesis source only",
       "crypto_intraday_profitability_proof": false
     },
     {

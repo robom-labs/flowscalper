@@ -1,4 +1,4 @@
-# 11전략 연구 CLI가 동결 데이터와 LIVE 안전 경계를 지키는지 검증한다.
+# 등록 전략 연구 CLI가 동결 데이터와 LIVE 안전 경계를 지키는지 검증한다.
 """저우선순위 자식 명령·결과 불변조건·안전 관측 집계 회귀검사다."""
 
 from __future__ import annotations
@@ -130,8 +130,8 @@ def test_result_validation_requires_paper_safety_and_current_archive_pass() -> N
         "real_orders_enabled": False,
         "auth_required": False,
         "runtime_ai_order_decision": False,
-        "strategy_count": 11,
-        "strategy_account_count": 22,
+        "strategy_count": 15,
+        "strategy_account_count": 30,
         "signal_gate": SIGNAL_GATE_TP1_FEASIBILITY,
         "signal_gate_target_strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
         "signal_gate_trial_id": (
@@ -185,8 +185,8 @@ def test_result_validation_rejects_a_different_strategy_trial() -> None:
         "real_orders_enabled": False,
         "auth_required": False,
         "runtime_ai_order_decision": False,
-        "strategy_count": 11,
-        "strategy_account_count": 22,
+        "strategy_count": 15,
+        "strategy_account_count": 30,
         "signal_gate": SIGNAL_GATE_TP1_FEASIBILITY,
         "signal_gate_target_strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
         "signal_gate_trial_id": (

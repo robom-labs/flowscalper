@@ -1,4 +1,4 @@
-"""A/B/C/D/E/F/G/H/I/J/K 전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
+"""전략 메타데이터와 Strategy League 설정을 중앙 관리한다."""
 
 from __future__ import annotations
 
@@ -13,6 +13,10 @@ from backend.app.strategies.book_slope_asymmetry import BookSlopeAsymmetryStrate
 from backend.app.strategies.compression_breakout import CompressionBreakoutStrategy
 from backend.app.strategies.depth_adjusted_ofi import DepthAdjustedOfiStrategy
 from backend.app.strategies.hourly_momentum_breakout import HourlyMomentumBreakoutStrategy
+from backend.app.strategies.intraday_trend import (
+    IntradayTrendStrategy,
+    IntradayTrendVariant,
+)
 from backend.app.strategies.liquidity_sweep import LiquiditySweepStrategy
 from backend.app.strategies.multilevel_microprice import MultilevelMicropriceStrategy
 from backend.app.strategies.ofi_pullback import OfiPullbackStrategy
@@ -75,6 +79,7 @@ StrategyEvaluator = (
     | OfiReturnConfluenceStrategy
     | BookSlopeAsymmetryStrategy
     | HourlyMomentumBreakoutStrategy
+    | IntradayTrendStrategy
 )
 
 
@@ -134,6 +139,7 @@ class StrategyDescriptor:
     entry_rules_ko: tuple[str, ...] = ()
     exit_rules_ko: tuple[str, ...] = ()
     max_hold_seconds: int = 900
+    edge_decay_enabled: bool = True
     cost_model_version: str = "TOP_OF_BOOK_BASE13_STRESS25_V1"
     paper_only: bool = True
 
@@ -153,6 +159,25 @@ _MICRO_DATA_LEAKAGE_GUARDS_KO = (
     "현재 event timestamp 이전의 동일 종목 이력만 사용",
     "현재 snapshot은 모든 전략·방향 평가가 끝난 뒤 과거창에 추가",
     "stale·sequence invalid·미래 timestamp 입력은 fail-closed",
+)
+_INTRADAY_REQUIRED_MARKET_DATA = (
+    "완성 공개 15분·30분·1시간 OHLCV와 aggressor 거래량",
+    "EMA20·EMA80, 24시간 모멘텀, ADX, 상대거래량, 구조 돌파·되돌림",
+    "신호 직후 sequence-valid 공개 bid·ask·OFI·aggressor 체결 흐름",
+)
+_INTRADAY_MINIMUM_WARMUP_KO = "완성 신호주기 봉 100개 이상과 완성 1시간 봉 50개 이상"
+_INTRADAY_EDGE_POLICY_KO = (
+    "일반 미세구조 근거약화 청산 없이 TP1·TP2·구조 손절·데이터/시스템 안전종료·"
+    "전략별 최대보유 안전한도만 적용"
+)
+_INTRADAY_TARGET_UNIVERSE_KO = (
+    "동적 정밀분석 종목 중 완성봉·현재 공개호가·유동성·비용 gate를 모두 통과한 종목"
+)
+_INTRADAY_DATA_LEAKAGE_GUARDS_KO = (
+    "현재 진행 중 봉을 제외하고 신호시각까지 완성된 봉만 사용",
+    "돌파 기준은 신호 봉보다 앞선 봉으로만 계산",
+    "완성봉 신호 뒤 5초 이내 현재 이전 공개호가 흐름만 사용",
+    "같은 공개시장 입력에서 LONG·SHORT와 BASE·STRESS를 독립 평가",
 )
 
 _RESEARCH_CONTRACTS = {
@@ -437,6 +462,106 @@ _RESEARCH_CONTRACTS = {
             "SRC-BINANCE-DEPTH",
         ),
     ),
+    "TREND_PULLBACK_RECLAIM_15M_V2": StrategyResearchContract(
+        strategy_version="V2",
+        required_market_data=_INTRADAY_REQUIRED_MARKET_DATA,
+        minimum_warmup_ko=_INTRADAY_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "완성 1시간 추세와 같은 방향의 15분 EMA20 눌림 뒤 이전 고저를 재돌파하고 "
+            "현재 공개 호가·체결 흐름도 같은 방향이면 추세 재개 가능성이 높아질 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "15분·1시간 추세 불일치 또는 24시간 모멘텀·ADX·상대거래량 gate 실패",
+            "눌림 뒤 EMA20·이전 고저 재돌파와 현재 공개 흐름 확인 실패",
+            "구조 손절 거리·실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_INTRADAY_EDGE_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_INTRADAY_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_INTRADAY_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-TSMOM-2012",
+            "SRC-CRYPTO-TREND-2020",
+            "SRC-BINANCE-KLINE",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "BREAKOUT_RETEST_15M_V2": StrategyResearchContract(
+        strategy_version="V2",
+        required_market_data=_INTRADAY_REQUIRED_MARKET_DATA,
+        minimum_warmup_ko=_INTRADAY_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "15분 32봉 구조 돌파를 즉시 추격하지 않고 다음 완성봉이 돌파선을 되짚은 뒤 "
+            "지지·저항으로 확인하며 공개 흐름이 재정렬될 때만 추세에 합류한다."
+        ),
+        falsification_conditions_ko=(
+            "돌파봉 상대거래량·24시간 모멘텀·ADX 또는 상위 추세 정렬 실패",
+            "돌파선 재확인 봉이 구조 안으로 복귀하거나 현재 공개 흐름 확인 실패",
+            "구조 손절 거리·실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_INTRADAY_EDGE_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_INTRADAY_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_INTRADAY_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-TSMOM-2012",
+            "SRC-CRYPTO-TREND-2020",
+            "SRC-BINANCE-KLINE",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "BREAKOUT_RETEST_30M_V2": StrategyResearchContract(
+        strategy_version="V2",
+        required_market_data=_INTRADAY_REQUIRED_MARKET_DATA,
+        minimum_warmup_ko=_INTRADAY_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "30분 24봉 구조 돌파와 다음 봉의 보수적 재확인, 1시간 추세와 현재 공개 "
+            "호가·체결 흐름이 모두 정렬될 때 더 긴 추세 구간에 합류한다."
+        ),
+        falsification_conditions_ko=(
+            "돌파봉 상대거래량·24시간 모멘텀·ADX 또는 상위 추세 정렬 실패",
+            "돌파선 재확인 봉이 구조 안으로 복귀하거나 현재 공개 흐름 확인 실패",
+            "구조 손절 거리·실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_INTRADAY_EDGE_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_INTRADAY_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_INTRADAY_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-TSMOM-2012",
+            "SRC-CRYPTO-TREND-2020",
+            "SRC-BINANCE-KLINE",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
+    "MULTISPEED_TREND_RECLAIM_30M_V2": StrategyResearchContract(
+        strategy_version="V2",
+        required_market_data=_INTRADAY_REQUIRED_MARKET_DATA,
+        minimum_warmup_ko=_INTRADAY_MINIMUM_WARMUP_KO,
+        entry_hypothesis_ko=(
+            "완성 30분·1시간 추세와 24시간 모멘텀이 같은 방향일 때 30분 EMA20 조정 뒤 "
+            "이전 고저 회복과 현재 공개 흐름을 함께 확인하면 다중속도 추세가 재개될 수 있다."
+        ),
+        falsification_conditions_ko=(
+            "30분·1시간 방향 또는 24시간 모멘텀·ADX·상대거래량 gate 실패",
+            "EMA20 조정 뒤 이전 고저 회복과 현재 공개 흐름 확인 실패",
+            "구조 손절 거리·실행가능 bid·ask 비용후 순 R:R gate 실패",
+        ),
+        edge_decay_policy_ko=_INTRADAY_EDGE_POLICY_KO,
+        risk_budget_rule_ko=_RISK_BUDGET_RULE_KO,
+        target_universe_ko=_INTRADAY_TARGET_UNIVERSE_KO,
+        data_leakage_guards_ko=_INTRADAY_DATA_LEAKAGE_GUARDS_KO,
+        research_source_ids=(
+            "SRC-TSMOM-2012",
+            "SRC-CRYPTO-TREND-2020",
+            "SRC-BINANCE-KLINE",
+            "SRC-BINANCE-DEPTH",
+            "SRC-BINANCE-AGGTRADE",
+        ),
+    ),
 }
 
 
@@ -627,6 +752,159 @@ class StrategyRegistry:
                     "36시간에서 안전 최대보유 종료",
                 ),
                 max_hold_seconds=129_600,
+            ),
+            StrategyDescriptor(
+                strategy_id="TREND_PULLBACK_RECLAIM_15M_V2",
+                display_name_ko="15분 추세 눌림 재상승",
+                short_name="15분 눌림",
+                summary_ko="상위 추세 안에서 EMA20 조정 뒤 이전 고저 회복을 확인합니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=IntradayTrendStrategy(
+                    strategy_id="TREND_PULLBACK_RECLAIM_15M_V2",
+                    variant=IntradayTrendVariant.PULLBACK_RECLAIM_15M,
+                    interval_seconds=900,
+                    take_profit_2_r=2.8,
+                ),
+                exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS[
+                    "TREND_PULLBACK_RECLAIM_15M_V2"
+                ],
+                horizon_class="INTRADAY_SWING",
+                expected_holding_seconds=(1_800, 28_800),
+                signal_half_life_seconds=5,
+                required_timeframes=("15m", "1h", "24h momentum", "public book flow"),
+                exit_model="STRUCTURE_TP1_TP2_SL_MAX8H",
+                take_profit_1_r=Decimal("1.4"),
+                take_profit_2_r=Decimal("2.8"),
+                entry_rules_ko=(
+                    "완성 15분봉 100개와 완성 1시간봉 50개 이상",
+                    "EMA20·EMA80·1시간 추세와 24시간 모멘텀 1% 이상 정렬",
+                    "ADX 18 이상·상대거래량 0.8배 이상",
+                    "EMA20 눌림 뒤 이전 고저 회복",
+                    "신호 후 5초 이내 실제 bid·ask·OFI·체결 흐름 확인",
+                ),
+                exit_rules_ko=(
+                    "최근 두 완성봉 구조 밖에 초기 손절 고정",
+                    "TP1 1.4R에서 40%·TP2 2.8R에서 60% 익절",
+                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "8시간은 장애·무한노출 방지용 안전 최대보유",
+                ),
+                max_hold_seconds=28_800,
+                edge_decay_enabled=False,
+            ),
+            StrategyDescriptor(
+                strategy_id="BREAKOUT_RETEST_15M_V2",
+                display_name_ko="15분 돌파 후 재확인",
+                short_name="15분 돌파",
+                summary_ko="돌파를 추격하지 않고 다음 완성봉의 지지·저항 재확인을 기다립니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=IntradayTrendStrategy(
+                    strategy_id="BREAKOUT_RETEST_15M_V2",
+                    variant=IntradayTrendVariant.BREAKOUT_RETEST_15M,
+                    interval_seconds=900,
+                    take_profit_2_r=3.2,
+                ),
+                exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["BREAKOUT_RETEST_15M_V2"],
+                horizon_class="INTRADAY_SWING",
+                expected_holding_seconds=(3_600, 43_200),
+                signal_half_life_seconds=5,
+                required_timeframes=("15m", "1h", "24h momentum", "public book flow"),
+                exit_model="STRUCTURE_TP1_TP2_SL_MAX12H",
+                take_profit_1_r=Decimal("1.6"),
+                take_profit_2_r=Decimal("3.2"),
+                entry_rules_ko=(
+                    "완성 15분봉의 직전 32봉 고저 돌파",
+                    "돌파봉 상대거래량 1.1배·ADX 20·24시간 모멘텀 1.5% 이상",
+                    "다음 완성봉이 돌파선을 다시 확인하고 구조 밖에서 마감",
+                    "완성 1시간 추세와 실제 bid·ask·OFI·체결 흐름 정렬",
+                ),
+                exit_rules_ko=(
+                    "재확인 구조 밖에 초기 손절 고정",
+                    "TP1 1.6R에서 40%·TP2 3.2R에서 60% 익절",
+                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "12시간은 장애·무한노출 방지용 안전 최대보유",
+                ),
+                max_hold_seconds=43_200,
+                edge_decay_enabled=False,
+            ),
+            StrategyDescriptor(
+                strategy_id="BREAKOUT_RETEST_30M_V2",
+                display_name_ko="30분 돌파 후 재확인",
+                short_name="30분 돌파",
+                summary_ko="더 긴 30분 구조 돌파와 다음 봉 재확인을 함께 봅니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=IntradayTrendStrategy(
+                    strategy_id="BREAKOUT_RETEST_30M_V2",
+                    variant=IntradayTrendVariant.BREAKOUT_RETEST_30M,
+                    interval_seconds=1_800,
+                    take_profit_2_r=3.2,
+                ),
+                exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS["BREAKOUT_RETEST_30M_V2"],
+                horizon_class="INTRADAY_SWING",
+                expected_holding_seconds=(7_200, 64_800),
+                signal_half_life_seconds=5,
+                required_timeframes=("30m", "1h", "24h momentum", "public book flow"),
+                exit_model="STRUCTURE_TP1_TP2_SL_MAX18H",
+                take_profit_1_r=Decimal("1.6"),
+                take_profit_2_r=Decimal("3.2"),
+                entry_rules_ko=(
+                    "완성 30분봉의 직전 24봉 고저 돌파",
+                    "돌파봉 상대거래량 1.0배·ADX 20·24시간 모멘텀 1.5% 이상",
+                    "다음 완성봉이 돌파선을 다시 확인하고 구조 밖에서 마감",
+                    "완성 1시간 추세와 실제 bid·ask·OFI·체결 흐름 정렬",
+                ),
+                exit_rules_ko=(
+                    "재확인 구조 밖에 초기 손절 고정",
+                    "TP1 1.6R에서 40%·TP2 3.2R에서 60% 익절",
+                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "18시간은 장애·무한노출 방지용 안전 최대보유",
+                ),
+                max_hold_seconds=64_800,
+                edge_decay_enabled=False,
+            ),
+            StrategyDescriptor(
+                strategy_id="MULTISPEED_TREND_RECLAIM_30M_V2",
+                display_name_ko="30분·1시간 추세 재합류",
+                short_name="다중추세",
+                summary_ko="30분 조정 뒤 1시간 방향으로 다시 합류하는 구간을 확인합니다.",
+                stability=StrategyStability.EXPERIMENTAL,
+                supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
+                evaluator=IntradayTrendStrategy(
+                    strategy_id="MULTISPEED_TREND_RECLAIM_30M_V2",
+                    variant=IntradayTrendVariant.MULTISPEED_RECLAIM_30M,
+                    interval_seconds=1_800,
+                    take_profit_2_r=3.0,
+                ),
+                exit_style=ExitStyle.TREND_40_60,
+                research_contract=_RESEARCH_CONTRACTS[
+                    "MULTISPEED_TREND_RECLAIM_30M_V2"
+                ],
+                horizon_class="INTRADAY_SWING",
+                expected_holding_seconds=(3_600, 57_600),
+                signal_half_life_seconds=5,
+                required_timeframes=("30m", "1h", "24h momentum", "public book flow"),
+                exit_model="STRUCTURE_TP1_TP2_SL_MAX16H",
+                take_profit_1_r=Decimal("1.5"),
+                take_profit_2_r=Decimal("3.0"),
+                entry_rules_ko=(
+                    "완성 30분 EMA20·EMA80와 완성 1시간 추세 정렬",
+                    "24시간 모멘텀 1.2%·ADX 18·상대거래량 0.9배 이상",
+                    "EMA20 조정 뒤 이전 고저 회복",
+                    "신호 후 5초 이내 실제 bid·ask·OFI·체결 흐름 확인",
+                ),
+                exit_rules_ko=(
+                    "최근 두 완성봉 구조 밖에 초기 손절 고정",
+                    "TP1 1.5R에서 40%·TP2 3.0R에서 60% 익절",
+                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "16시간은 장애·무한노출 방지용 안전 최대보유",
+                ),
+                max_hold_seconds=57_600,
+                edge_decay_enabled=False,
             ),
         )
         self._descriptors = {item.strategy_id: item for item in descriptors}
@@ -907,6 +1185,7 @@ class StrategyRegistry:
                 "entry_rules_ko": list(descriptor.entry_rules_ko),
                 "exit_rules_ko": list(descriptor.exit_rules_ko),
                 "max_hold_seconds": descriptor.max_hold_seconds,
+                "edge_decay_enabled": descriptor.edge_decay_enabled,
                 "cost_model_version": descriptor.cost_model_version,
                 "paper_only": descriptor.paper_only,
                 "strategy_version": descriptor.research_contract.strategy_version,

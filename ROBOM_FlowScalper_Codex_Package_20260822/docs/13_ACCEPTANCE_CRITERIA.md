@@ -75,7 +75,7 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] BASE and STRESS results are distinguishable.
 - [ ] 선택 종목의 열린 PAPER 포지션은 차트 위에 방향, 전략, 비용 프로필, entry, TP1과 SL을 표시한다.
 - [ ] 모든 열린 PAPER 포지션 목록에서 종목을 선택할 수 있고 자연 종료 뒤 목록과 차트 표시가 제거된다.
-- [ ] 전략 A~K는 현재 감시상태, 최근 조건 대기 이유와 평가경로 수를 표시해 정상 대기와 기술 오류를 구분한다. 퇴역 전략은 보존 상태와 재활성화 잠금을 표시한다.
+- [ ] 모든 등록 전략은 현재 감시상태, 최근 조건 대기 이유와 평가경로 수를 표시해 정상 대기와 기술 오류를 구분한다. 현재 동시 감시 중인 SHADOW 전략과 퇴역·보존 전략을 분리하고, 퇴역 전략은 재활성화 잠금을 표시한다.
 
 ## I. Persistence and recovery
 

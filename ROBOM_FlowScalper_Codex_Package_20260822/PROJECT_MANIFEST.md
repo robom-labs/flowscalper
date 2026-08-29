@@ -84,6 +84,7 @@ Detailed specifications:
 - `docs/adr/ADR-097-append-only-regression-contracts-and-candidate-deduplication.md`
 - `docs/adr/ADR-098-evidence-gated-survivor-watchlist.md`
 - `docs/adr/ADR-099-one-pass-all-strategy-gate-replay.md`
+- `docs/adr/ADR-105-intraday-trend-shadow-and-thesis-horizon-exits.md`
 
 ## Supporting contracts
 
@@ -160,6 +161,7 @@ Detailed specifications:
 - `scripts/verify_regression_contracts.py`
 - `config/regression_contracts.json`
 - `docs/research/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION_KO.md`
+- `docs/research/HYP-116J-intraday-trend-v2-live-shadow.md`
 - `evidence/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION.json`
 - `evidence/WAVE110_RESEARCH_ITERATION_GUARD_QA.json`
 - `evidence/RESEARCH_TRIAL_HISTORY.jsonl`

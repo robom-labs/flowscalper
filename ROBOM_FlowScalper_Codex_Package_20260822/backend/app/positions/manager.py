@@ -100,6 +100,7 @@ class PositionManager:
         data_stale: bool = False,
         recovered_gap_duration_ms: int = 0,
         maximum_holding_ms: int | None = None,
+        edge_decay_enabled: bool = True,
     ) -> ManagementDecision:
         health.validate()
         holding_ms = max(0, now_ms - position.opened_ts_ms)
@@ -126,6 +127,14 @@ class PositionManager:
             return ManagementDecision(
                 ManagementAction.EXIT_MAX_HOLD,
                 ("MAXIMUM_HOLDING_TIME_REACHED",),
+                proposed_stop,
+                holding_ms,
+            )
+        if not edge_decay_enabled:
+            self._edge_adverse_since_ms.pop(position.trade_id, None)
+            return ManagementDecision(
+                ManagementAction.HOLD,
+                ("TP_SL_STRUCTURE_MANAGEMENT_ONLY",),
                 proposed_stop,
                 holding_ms,
             )

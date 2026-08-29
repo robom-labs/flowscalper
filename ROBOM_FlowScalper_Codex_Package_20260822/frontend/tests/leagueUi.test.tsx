@@ -15,13 +15,13 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-test('shows eleven compact strategy rows with easy core results and folded technical detail', () => {
+test('shows fifteen compact strategy rows with ten simultaneous paper hypotheses', () => {
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
-  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(11)
-  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(11)
+  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(15)
+  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(15)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('6개 감시 · 검증 중지 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getAllByText('준비 중')).toHaveLength(6)
+  expect(screen.getByText('10개 감시 · 검증 중지 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getAllByText('준비 중')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(5)
   expect(screen.getByRole('columnheader', { name: '이번 실행 결과' })).toBeInTheDocument()
   expect(screen.getByRole('columnheader', { name: '검증 결과' })).toBeInTheDocument()
@@ -43,7 +43,7 @@ test('shows eleven compact strategy rows with easy core results and folded techn
   expect(screen.getByText('최소 준비')).toBeInTheDocument()
   expect(screen.getByText('무엇을 노리나요?')).toBeInTheDocument()
   expect(screen.getByText('반증 조건')).toBeInTheDocument()
-  expect(screen.getByText('가격·근거 동시 악화')).toBeInTheDocument()
+  expect(screen.getByText('종료 원칙')).toBeInTheDocument()
   expect(screen.getByText('위험예산')).toBeInTheDocument()
   expect(screen.getByText('대상 범위')).toBeInTheDocument()
   expect(screen.getByText('미래정보 방지')).toBeInTheDocument()
@@ -56,6 +56,10 @@ test('shows eleven compact strategy rows with easy core results and folded techn
   fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[10])
   expect(screen.getByText('1시간~36시간')).toBeInTheDocument()
   expect(screen.getByText(/TP1 2.2R·40%/)).toBeInTheDocument()
+  fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
+  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[11])
+  expect(screen.getByText('30분~8시간')).toBeInTheDocument()
+  expect(screen.getByText(/일반 근거약화 조기청산 없음/)).toBeInTheDocument()
 })
 
 test('shows lifecycle evidence and restores the prior revision without deleting history', async () => {
@@ -195,9 +199,9 @@ test('confirms mode changes and sends the visible settings revision', async () =
 test('distinguishes healthy condition waiting, open PAPER management and faults', () => {
   const rows = strategies.map((strategy, index) => ({
     ...strategy,
-    evaluated_paths: index === 1 ? 24 : strategy.evaluated_paths,
-    latest_status: index === 1 ? 'REJECTED' : strategy.latest_status,
-    latest_reasons: index === 1 ? ['AGGRESSOR_FLOW_NOT_ALIGNED', 'QUEUE_ALIGNMENT_NOT_PERSISTENT'] : strategy.latest_reasons,
+    evaluated_paths: index === 1 || index === 5 ? 24 : strategy.evaluated_paths,
+    latest_status: index === 1 || index === 5 ? 'REJECTED' : strategy.latest_status,
+    latest_reasons: index === 1 || index === 5 ? ['AGGRESSOR_FLOW_NOT_ALIGNED', 'QUEUE_ALIGNMENT_NOT_PERSISTENT'] : strategy.latest_reasons,
   }))
   const accounts = leagueAccounts.map((account) => ({ ...account }))
   const firstBase = accounts.find((account) => account.strategy_id === rows[1].strategy_id && account.profile === 'BASE')
@@ -210,7 +214,8 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
 
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
-  expect(screen.getByText('5개 감시 · 검증 중지 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('조건 미충족')).toBeInTheDocument()
+  expect(screen.getByText('9개 감시 · 검증 중지 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 

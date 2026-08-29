@@ -284,7 +284,7 @@ def test_runtime_strategy_replay_is_single_strategy_paper_only(tmp_path: Path) -
     assert dict(result["open_state"])["censored_count"] == 0
 
 
-def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_22_accounts(
+def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_30_accounts(
     tmp_path: Path,
 ) -> None:
     run_id = "run-research-league-test"
@@ -305,15 +305,15 @@ def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_22_accounts(
 
     assert result["research_scope"] == "ALL_REGISTERED_STRATEGIES"
     assert result["strategy_ids"] == list(strategy_ids)
-    assert result["strategy_count"] == len(strategy_ids) == 11
-    assert result["strategy_account_count"] == 22
+    assert result["strategy_count"] == len(strategy_ids) == 15
+    assert result["strategy_account_count"] == 30
     assert set(result["strategy_modes"].values()) == {"SHADOW"}
     assert result["source_strategy_settings"]["LSA_REVERSAL_V1"] == {
         "mode": "OFF",
         "lifecycle": "RETIRED",
     }
     assert result["research_shadow_reactivation_is_ephemeral"] is True
-    assert len(result["reports"]) == 22
+    assert len(result["reports"]) == 30
     decision_diagnostics = result["strategy_decision_diagnostics"]
     assert set(decision_diagnostics) == set(strategy_ids)
     assert sum(
@@ -744,8 +744,8 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     )
 
     assert result["status"] == "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE"
-    assert result["strategy_count"] == 11
-    assert result["strategy_account_count"] == 22
+    assert result["strategy_count"] == 15
+    assert result["strategy_account_count"] == 30
     assert result["real_orders_enabled"] is False
     assert result["ranking_eligible_strategy_ids"] == []
     assert result["profitability_status"] == "NOT_PROVEN"
@@ -754,7 +754,7 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     assert result["cooperative_cpu_checkpoint_events"] == RESEARCH_CPU_CHECKPOINT_EVENTS
     assert result["robustness_evaluation"]["status"] == "INCOMPLETE_REQUIRED_RUNS"
     assert result["robustness_evaluation"]["final_oos"]["opened_for_this_result"] is False
-    assert len(result["overall_by_strategy"]) == 11
+    assert len(result["overall_by_strategy"]) == 15
     assert all(
         summary["ranking_eligible"] is False
         for summary in result["overall_by_strategy"].values()

@@ -21,6 +21,10 @@
 | I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | SHADOW | TREND_40_60 |
 | J | `BOOK_SLOPE_ASYMMETRY_V1` | 호가 기울기 비대칭 | SHADOW | TREND_40_60 |
 | K | `HOURLY_MOMENTUM_BREAKOUT_V1` | 시간봉 추세 돌파 | OFF | TREND_40_60 |
+| L | `TREND_PULLBACK_RECLAIM_15M_V2` | 15분 추세 눌림 재상승 | SHADOW | TREND_40_60 |
+| M | `BREAKOUT_RETEST_15M_V2` | 15분 돌파 후 재확인 | SHADOW | TREND_40_60 |
+| N | `BREAKOUT_RETEST_30M_V2` | 30분 돌파 후 재확인 | SHADOW | TREND_40_60 |
+| O | `MULTISPEED_TREND_RECLAIM_30M_V2` | 30분·1시간 추세 재합류 | SHADOW | TREND_40_60 |
 
 - 모든 전략은 LONG·SHORT를 독립적으로 허용하거나 끌 수 있다.
 - OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다.
@@ -30,7 +34,8 @@
 
 ## 3. 독립 계좌
 
-- 11개 전략마다 BASE·STRESS를 두어 총 22개 계좌를 생성한다.
+- 15개 등록 전략마다 BASE·STRESS를 두어 총 30개 계좌를 생성한다.
+- 비용후 재현에 실패한 5개 RETIRED 전략의 계좌·거래는 보존하고, 현재 10개 SHADOW 전략만 같은 공개시장 입력에서 동시에 신규 후보를 평가한다.
 - account ID는 `STRATEGY_ID:PROFILE`이다.
 - 각 계좌는 1,000 USDT로 시작한다.
 - 자산, 손익, 수수료, 슬리피지, 위험, cooldown, fault를 섞지 않는다.
@@ -48,7 +53,7 @@
 - 계좌 총 명목금액은 자산의 5배, 주문은 실행가능 깊이의 2%를 상한으로 둔다.
 - 5배는 강제 레버리지가 아니라 위험기반 수량의 최대 상한이다.
 - partial fill은 실제 수량의 위험·명목금액·fee만 open으로 옮긴다.
-- 시장데이터·저장·복구의 시스템 fault는 22계좌 모두의 신규 진입을 잠근다.
+- 시장데이터·저장·복구의 시스템 fault는 30계좌 모두의 신규 진입을 잠근다.
 
 ## 5. 비용과 체결
 
@@ -66,7 +71,8 @@
 - REVERSION TP2는 전략의 구조 target을 쓴다.
 - TREND는 TP1 40%를 1.5R, TP2 60%를 3.0R에 둔다.
 - TREND TP1 후 stop은 fee-adjusted break-even보다 불리하게 옮기지 않는다.
-- 추세·OFI·microprice edge가 2회 연속 무너지면 runner를 `EDGE_DECAY`로 종료한다.
+- 기존 미시구조 전략은 진입 후 30초 유예, 서로 다른 불리 근거 2개, 비용대보다 큰 실제 가격 악화와 3초 지속을 모두 확인한 뒤에만 `EDGE_DECAY`로 종료한다.
+- 신규 L~O 중단기 추세 전략은 일반 미시구조 `EDGE_DECAY` 청산을 사용하지 않는다. 진입 전에 고정한 구조 손절, TP1·TP2, 데이터·시스템 안전종료와 전략 시간대별 8~18시간 무한노출 방지 백스톱만 사용한다.
 - 최초 stop은 불리한 방향으로 넓히지 않는다.
 
 ## 7. 신규 전략 E·F·G·H·I·J
@@ -99,14 +105,24 @@
 - B/D의 눌림 시간·최대 되돌림·현재 재가속은 현재 이전 가격 prefix만 사용하고, 재가속 정렬이 끊기면 확인시각을 초기화한다.
 - 자세한 근거와 한계는 `docs/adr/ADR-013-cost-viable-event-time-strategy-gates.md`를 따른다.
 
+## 7.3 신규 L~O 완성봉 추세 V2
+
+- L은 완성 15분 EMA20·EMA80와 완성 1시간 추세, 24시간 모멘텀이 정렬된 상태에서 EMA20 눌림과 이전 고저 회복을 기다린다.
+- M과 N은 각각 완성 15분 32봉, 완성 30분 24봉 구조 돌파를 즉시 추격하지 않는다. 다음 완성봉이 돌파선을 지지·저항으로 재확인한 뒤에만 평가한다.
+- O는 완성 30분과 1시간 추세가 같은 방향일 때 30분 EMA20 조정 뒤 이전 고저 회복을 확인한다.
+- 네 전략은 새 완성봉 뒤 5초 이내 sequence-valid 실제 bid·ask에서 1초 이상 OFI·aggressor 체결·microprice가 같은 방향일 때만 후보가 된다.
+- 구조 손절 거리는 0.65~3.0 ATR 범위여야 하고 최종 `CandidatePlanner`의 실제 호가·수수료·슬리피지 후 순손익비 1.20 gate를 다시 통과해야 한다.
+- L은 TP1 1.4R·TP2 2.8R·안전 최대 8시간, M은 1.6R·3.2R·12시간, N은 1.6R·3.2R·18시간, O는 1.5R·3.0R·16시간이다. 최대시간은 목표청산이 아니라 데이터 이상이나 무한노출을 막는 최후 백스톱이다.
+- 이전 V1 연구와 달리 돌파 추격 대신 완성봉 재확인과 현재 공개 주문흐름을 함께 요구한다. 네 전략은 사전등록된 SHADOW PAPER 가설이며 수익성은 `NOT_PROVEN`이다.
+
 ## 8. Recovery와 출력
 
 - recovery schema v4는 Registry, snapshot timestamp, 계좌별 risk, pending map, position map, order·trade, 계획별 최대보유시간과 계좌·종목별 PAPER 생명주기 revision cursor를 보존한다.
 - schema v1~v3는 복구한 pending·position의 실제 상태에서 새 revision cursor를 시작하며, 과거 snapshot에 없던 revision을 추정하지 않는다. schema v4의 cursor·상태·마지막 전환이 불일치하면 fail-closed한다.
 - schema v1의 `pending_entry`, `position`, `SHADOW:` account ID를 새 map과 account ID로 변환한다.
-- 과거 snapshot에 전혀 없던 신규 K의 BASE·STRESS 두 계좌는 Registry의 additive extension으로 1,000 USDT 빈 계좌를 생성한다. 기존 전략의 한 profile만 누락된 불완전 snapshot은 계속 fail-closed한다.
+- 과거 snapshot에 전혀 없던 신규 Registry 전략의 BASE·STRESS 계좌는 additive extension으로 각각 1,000 USDT 빈 계좌를 생성한다. 기존 전략의 한 profile만 누락된 불완전 snapshot은 계속 fail-closed한다.
 - 복구한 모든 open·pending symbol은 fresh public book 재검증 전까지 신규 진입을 잠근다.
-- dashboard backend는 `league_accounts` 22행과 열린 `league_positions`를 제공한다.
+- dashboard backend는 `league_accounts` 30행과 열린 `league_positions`를 제공한다.
 - 전략·profile별 자산, 손익, 비용, 승패, 명목금액, 레버리지, drawdown, 잠금 상태를 출력한다.
 
 ## 9. 검증 명령
@@ -122,17 +138,17 @@ uv run pytest backend/tests -q
 
 ## 10. 2차 UI·제어 연결
 
-- `league_accounts` 22행은 11개 전략 카드와 BASE/STRESS 상세의 계좌 원본이다.
+- `league_accounts` 30행은 15개 등록 전략 카드와 BASE/STRESS 상세의 계좌 원본이다.
 - `league_positions`는 BASE/STRESS 필터, 종목·방향 필터와 차트 계획선의 원본이다.
 - ACTIVE는 main Shared Capital Benchmark와 League, SHADOW는 League만 유지한다.
 - 표시 mode를 바꾸는 UI는 기존 Registry 설정 API를 사용하며 별도 체결 엔진을 만들지 않는다.
-- 차트 지표는 화면 참고용이고 A-K 진입 threshold를 변경하지 않는다.
-- 시작·새 Run은 비동기 operation으로 제어하되 22계좌 위험·복구·원장 경계는 이 문서의 PAPER 계약을 그대로 유지한다.
+- 차트 지표는 화면 참고용이고 등록 전략의 진입 threshold를 변경하지 않는다.
+- 시작·새 Run은 비동기 operation으로 제어하되 30계좌 위험·복구·원장 경계는 이 문서의 PAPER 계약을 그대로 유지한다.
 
 ## 11. 3차 사용자 표현과 종목별 성과
 
 - 사용자 메뉴와 화면에서는 `전략`으로 줄여 표시하고, 내부 Registry·DB·개발문서의 Strategy League 식별자는 호환을 위해 유지한다.
-- 전략 설정은 11개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. A-K threshold와 위험값은 바꾸지 않는다. RETIRED 행의 mode·방향 버튼은 비활성화한다.
+- 전략 설정은 15개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. 현재 10개 SHADOW와 기록 보존용 5개 RETIRED를 구분하고, RETIRED 행의 mode·방향 버튼은 비활성화한다.
 - `전략별 종목 성과`는 BASE/STRESS를 분리하고 실제 완료 PAPER 거래만 집계한다. 30건 미만 조합은 관찰 표본이며 순위에서 제외한다.
 - 전략 통계는 독립 Strategy League 거래만 집계하고 공동계좌 거래를 같은 전략 표본에 중복 합산하지 않는다.
 - 상세 화면은 승·패·보합, 승률 95% 범위, 기대값, Profit Factor, 비용, 낙폭, 보유시간과 진입→TP1·TP2·손절 중앙시간 및 각 표본 수를 표시한다.

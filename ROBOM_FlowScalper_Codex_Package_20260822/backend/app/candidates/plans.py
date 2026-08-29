@@ -232,6 +232,7 @@ class CandidatePlanner:
         trend_take_profit_1_r: Decimal = Decimal("1.5"),
         trend_take_profit_2_r: Decimal = Decimal("3.0"),
         maximum_holding_ms: int = 900_000,
+        edge_decay_enabled: bool = True,
         strategy_version: str = "1",
         trailing_policy: TrailingPolicy | None = None,
         trailing_atr: Decimal | None = None,
@@ -468,7 +469,11 @@ class CandidatePlanner:
                 if exit_style is ExitStyle.TREND_40_60
                 else "STRUCTURAL_REVERSION_EXIT",
                 "STOP_NEVER_WIDENS",
-                "EXIT_ON_PERSISTENT_EDGE_DECAY",
+                (
+                    "EXIT_ON_PERSISTENT_EDGE_DECAY"
+                    if edge_decay_enabled
+                    else "NO_GENERAL_EDGE_DECAY_TP_SL_ONLY"
+                ),
             ),
             main_eligible=main_eligible,
             shadow_eligible=shadow_eligible,

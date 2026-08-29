@@ -349,6 +349,8 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
         regime: Regime,
         *,
         tick_size: Decimal = Decimal("0.00000001"),
+        fifteen_minute_candles: tuple[Candle, ...] = (),
+        thirty_minute_candles: tuple[Candle, ...] = (),
         hourly_candles: tuple[Candle, ...] = (),
     ) -> tuple[EvaluatedSignal, ...]:
         signals = StrategySignalEvaluator.evaluate(
@@ -357,6 +359,8 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
             snapshot,
             regime,
             tick_size=tick_size,
+            fifteen_minute_candles=fifteen_minute_candles,
+            thirty_minute_candles=thirty_minute_candles,
             hourly_candles=hourly_candles,
         )
         for signal in signals:
@@ -853,7 +857,7 @@ def replay_strategy_league_archive_run(
     maximum_events: int | None = None,
     cooperative_yield: Callable[[], None] | None = None,
 ) -> dict[str, object]:
-    """등록 전략 전체를 22개 독립계좌의 한 무원장 PAPER 런타임에서 재생한다."""
+    """등록 전략 전체를 전략별 BASE·STRESS 독립계좌의 한 PAPER 런타임에서 재생한다."""
 
     return _replay_archive_run_for_strategies(
         run_id,

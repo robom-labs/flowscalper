@@ -21,9 +21,14 @@ test('shows running decisions, qualified signals, and current-version research t
 
   expect(screen.getByText('통합계좌 완료')).toBeInTheDocument()
   expect(screen.getByText('시장 판정').nextSibling).toHaveTextContent('648,228회')
-  expect(screen.getByText('진입조건 통과').nextSibling).toHaveTextContent('0건')
+  expect(screen.getByText('이번 작동 후 진입 통과').nextSibling).toHaveTextContent('0건')
   expect(screen.getByText('현재 전략 연구거래').nextSibling).toHaveTextContent('33건')
-  expect(screen.getByText('조건을 낮추지 않고 다음 진입을 기다리는 중입니다.')).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: '진입 조건 검토 필요' })).toBeInTheDocument()
+  expect(screen.getByText(/시장 처리는 정상이나 이번 작동 시작 후/)).toBeInTheDocument()
+  expect(screen.getByText(/현재 주요 대기 이유/)).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: '0건 원인 보기' }))
+  expect(onNavigate).toHaveBeenCalledWith('strategies')
 
   fireEvent.click(screen.getByRole('button', { name: '거래 기록 보기' }))
   expect(onNavigate).toHaveBeenCalledWith('history')
