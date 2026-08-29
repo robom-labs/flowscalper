@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "tested_parent_commit": "655e1fde90efd58bd94396ebccf0d0e808838d92",
+  "scope": "FINAL_OOS_UNIQUE_OPPORTUNITY_SYMBOL_RUN_REGIME_CONCENTRATION",
+  "implementation": {
+    "replay_schema_version": 4,
+    "opportunity_identity": [
+      "run_id",
+      "signal_event_id",
+      "strategy_id",
+      "side"
+    ],
+    "minimum_unique_opportunities": 30,
+    "minimum_distinct_symbols": 3,
+    "minimum_distinct_runs": 3,
+    "maximum_single_symbol_share": 0.5,
+    "maximum_single_run_share": 0.5,
+    "minimum_multi_regime_count": 2,
+    "maximum_single_regime_share": 0.8,
+    "single_regime_registry_contract_supported": true,
+    "base_stress_duplicates_count_once": true
+  },
+  "verification": {
+    "targeted_pytest": {
+      "command": ".venv/bin/pytest -q backend/tests/test_runtime_strategy_research_replay.py -k 'robustness or concentration or strategy_league_result' --disable-warnings --maxfail=1",
+      "passed": 4,
+      "failed": 0
+    },
+    "full_replay_test_module": {
+      "command": ".venv/bin/pytest -q backend/tests/test_runtime_strategy_research_replay.py --disable-warnings --maxfail=1",
+      "passed": 19,
+      "failed": 0
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "boundaries": {
+    "full_13_run_replay": "NOT_RUN_PENDING_WAVE104_6H_OBSERVER",
+    "parameter_robustness": "NOT_EVALUATED",
+    "independent_forward_live_public": "NOT_EVALUATED",
+    "profitability": "NOT_PROVEN",
+    "ranking_allowed": false,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false
+  }
+}

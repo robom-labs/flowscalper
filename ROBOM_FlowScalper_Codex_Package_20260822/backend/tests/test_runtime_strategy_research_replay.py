@@ -29,6 +29,7 @@ from scripts.research_runtime_strategy_replay import (
     STRATEGY_LOGIC_WAVE102,
     ResearchSignalGateEvaluator,
     _dataset_slice,
+    _strategy_oos_concentration,
     _summary,
     build_result,
     build_strategy_league_result,
@@ -158,6 +159,8 @@ def _robustness_trade(
     opportunity_index: int,
     net_pnl_usdt: Decimal,
     exit_ts_ms: int,
+    symbol: str = "BTCUSDT",
+    regime: str = "RANGE",
 ) -> dict[str, object]:
     return {
         "trade_id": f"{run_id}-{strategy_id}-{profile}-{opportunity_index}",
@@ -165,6 +168,8 @@ def _robustness_trade(
         "signal_event_id": f"{run_id}-{strategy_id}-signal-{opportunity_index}",
         "strategy_id": strategy_id,
         "side": "LONG",
+        "symbol": symbol,
+        "regime": regime,
         "profile": profile,
         "entry_price": "100",
         "quantity": "1",
@@ -608,7 +613,7 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     assert result["real_orders_enabled"] is False
     assert result["ranking_eligible_strategy_ids"] == []
     assert result["profitability_status"] == "NOT_PROVEN"
-    assert result["schema_version"] == 3
+    assert result["schema_version"] == 4
     assert result["robustness_evaluation"]["status"] == "INCOMPLETE_REQUIRED_RUNS"
     assert result["robustness_evaluation"]["final_oos"]["opened_for_this_result"] is False
     assert len(result["overall_by_strategy"]) == 11
@@ -671,6 +676,8 @@ def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_p
                             opportunity_index=opportunity_index,
                             net_pnl_usdt=net_pnl,
                             exit_ts_ms=10_000 + opportunity_index,
+                            symbol=("BTCUSDT", "ETHUSDT", "SOLUSDT")[opportunity_index % 3],
+                            regime=("RANGE" if opportunity_index % 2 == 0 else "TREND_UP"),
                         )
                     )
             opportunity_index += 1
@@ -681,6 +688,10 @@ def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_p
         strategy_ids=strategy_ids,
         train_validation_run_ids=train_validation_run_ids,
         oos_run_ids=oos_run_ids,
+        supported_regimes_by_strategy={
+            "ROBUST_A": ("RANGE", "TREND_UP"),
+            "WEAK_B": ("RANGE", "TREND_UP"),
+        },
     )
 
     robust = result["strategies"]["ROBUST_A"]
@@ -698,6 +709,9 @@ def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_p
         >= 0.95
     )
     assert robust["historical_cost_oos_statistical_gates_passed"] is True
+    assert robust["historical_concentration_gate_passed"] is True
+    assert robust["historical_cost_oos_statistical_and_concentration_gates_passed"] is True
+    assert robust["concentration"]["maximum_single_symbol_opportunity_share"] <= 0.50
     assert robust["ranking_eligible"] is False
     assert "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED" in robust[
         "ranking_blockers"
@@ -705,6 +719,42 @@ def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_p
     assert weak["historical_cost_oos_statistical_gates_passed"] is False
     assert result["ranking_eligible_strategy_ids"] == []
     assert result["real_orders_enabled"] is False
+
+
+def test_oos_concentration_allows_single_regime_contract_but_rejects_one_symbol() -> None:
+    diversified = [
+        _robustness_trade(
+            run_id=f"OOS-{opportunity_index % 5}",
+            strategy_id="RANGE_ONLY",
+            profile=profile,
+            opportunity_index=opportunity_index,
+            net_pnl_usdt=Decimal("0.10"),
+            exit_ts_ms=20_000 + opportunity_index,
+            symbol=("BTCUSDT", "ETHUSDT", "SOLUSDT")[opportunity_index % 3],
+            regime="RANGE",
+        )
+        for opportunity_index in range(30)
+        for profile in ("BASE", "STRESS")
+    ]
+    concentrated = [{**row, "symbol": "BTCUSDT", "run_id": "OOS-0"} for row in diversified]
+
+    passed = _strategy_oos_concentration(
+        diversified,
+        supported_regimes=("RANGE",),
+    )
+    failed = _strategy_oos_concentration(
+        concentrated,
+        supported_regimes=("RANGE",),
+    )
+
+    assert passed["single_regime_strategy_contract"] is True
+    assert passed["regime_counts"] == {"RANGE": 30}
+    assert passed["gate_passed"] is True
+    assert failed["gate_passed"] is False
+    assert failed["maximum_single_symbol_opportunity_share"] == 1.0
+    assert failed["maximum_single_run_opportunity_share"] == 1.0
+    assert failed["gates"]["distinct_symbols_at_least_3"] is False
+    assert failed["gates"]["distinct_runs_at_least_3"] is False
 
 
 def test_frozen_dataset_reference_rejects_tamper_and_unknown_run(tmp_path: Path) -> None:

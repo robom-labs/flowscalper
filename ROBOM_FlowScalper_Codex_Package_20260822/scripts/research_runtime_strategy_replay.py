@@ -55,6 +55,12 @@ MINIMUM_RANKING_OPPORTUNITIES = 30
 MINIMUM_RANKING_WIN_RATE = 0.70
 MINIMUM_DSR_PROBABILITY = 0.95
 MAXIMUM_PBO = 0.20
+MINIMUM_CONCENTRATION_SYMBOLS = 3
+MINIMUM_CONCENTRATION_RUNS = 3
+MAXIMUM_SINGLE_SYMBOL_OPPORTUNITY_SHARE = 0.50
+MAXIMUM_SINGLE_RUN_OPPORTUNITY_SHARE = 0.50
+MINIMUM_MULTI_REGIME_COUNT = 2
+MAXIMUM_SINGLE_REGIME_OPPORTUNITY_SHARE = 0.80
 PAPER_STARTING_EQUITY_USDT = Decimal("1000")
 _CANDIDATE_EVENTS = {
     "MAIN_CANDIDATE_SELECTED",
@@ -1097,12 +1103,101 @@ def _strategy_censored_count(
     return censored
 
 
+def _strategy_oos_concentration(
+    trades: Sequence[Mapping[str, object]],
+    *,
+    supported_regimes: Sequence[str] = (),
+) -> dict[str, object]:
+    """BASE·STRESS 중복을 제거한 OOS 기회의 종목·Run·레짐 집중도를 계산한다."""
+
+    opportunity_rows: dict[tuple[str, str, str, str], tuple[str, str]] = {}
+    metadata_conflicts: set[tuple[str, str, str, str]] = set()
+    for row in trades:
+        key = (
+            str(row.get("run_id", "")),
+            str(row.get("signal_event_id", "")),
+            str(row.get("strategy_id", "")),
+            str(row.get("side", "")),
+        )
+        metadata = (
+            str(row.get("symbol", "UNKNOWN")),
+            str(row.get("regime", "UNKNOWN")),
+        )
+        previous = opportunity_rows.setdefault(key, metadata)
+        if previous != metadata:
+            metadata_conflicts.add(key)
+
+    opportunity_count = len(opportunity_rows)
+    symbol_counts = Counter(metadata[0] for metadata in opportunity_rows.values())
+    regime_counts = Counter(metadata[1] for metadata in opportunity_rows.values())
+    run_counts = Counter(key[0] for key in opportunity_rows)
+
+    def maximum_share(counts: Counter[str]) -> float | None:
+        if not opportunity_count or not counts:
+            return None
+        return max(counts.values()) / opportunity_count
+
+    maximum_symbol_share = maximum_share(symbol_counts)
+    maximum_run_share = maximum_share(run_counts)
+    maximum_regime_share = maximum_share(regime_counts)
+    normalized_supported_regimes = tuple(dict.fromkeys(map(str, supported_regimes)))
+    observed_regimes = set(regime_counts)
+    supported_regime_set = set(normalized_supported_regimes)
+    regimes_within_contract = bool(observed_regimes) and (
+        not supported_regime_set or observed_regimes <= supported_regime_set
+    )
+    single_regime_contract = len(normalized_supported_regimes) == 1
+    regime_diversification_passed = (
+        regimes_within_contract
+        if single_regime_contract
+        else (
+            regimes_within_contract
+            and len(regime_counts) >= MINIMUM_MULTI_REGIME_COUNT
+            and maximum_regime_share is not None
+            and maximum_regime_share <= MAXIMUM_SINGLE_REGIME_OPPORTUNITY_SHARE
+        )
+    )
+    gates = {
+        "sample_at_least_30_unique_opportunities": (
+            opportunity_count >= MINIMUM_RANKING_OPPORTUNITIES
+        ),
+        "profile_metadata_consistent": not metadata_conflicts,
+        "distinct_symbols_at_least_3": (len(symbol_counts) >= MINIMUM_CONCENTRATION_SYMBOLS),
+        "maximum_single_symbol_share_at_most_0_50": (
+            maximum_symbol_share is not None
+            and maximum_symbol_share <= MAXIMUM_SINGLE_SYMBOL_OPPORTUNITY_SHARE
+        ),
+        "distinct_runs_at_least_3": len(run_counts) >= MINIMUM_CONCENTRATION_RUNS,
+        "maximum_single_run_share_at_most_0_50": (
+            maximum_run_share is not None
+            and maximum_run_share <= MAXIMUM_SINGLE_RUN_OPPORTUNITY_SHARE
+        ),
+        "regimes_within_strategy_contract": regimes_within_contract,
+        "regime_diversification_matches_strategy_contract": (regime_diversification_passed),
+    }
+    return {
+        "unique_market_opportunity_count": opportunity_count,
+        "symbol_counts": dict(sorted(symbol_counts.items())),
+        "run_counts": dict(sorted(run_counts.items())),
+        "regime_counts": dict(sorted(regime_counts.items())),
+        "maximum_single_symbol_opportunity_share": maximum_symbol_share,
+        "maximum_single_run_opportunity_share": maximum_run_share,
+        "maximum_single_regime_opportunity_share": maximum_regime_share,
+        "supported_regimes": list(normalized_supported_regimes),
+        "single_regime_strategy_contract": single_regime_contract,
+        "metadata_conflict_count": len(metadata_conflicts),
+        "gates": gates,
+        "gate_passed": all(gates.values()),
+    }
+
+
 def strategy_league_robustness(
     runs: Sequence[Mapping[str, object]],
     *,
     strategy_ids: Sequence[str],
     train_validation_run_ids: Sequence[str],
     oos_run_ids: Sequence[str],
+    supported_regimes_by_strategy: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, object]:
     """고정 전략 전체의 시간순 OOS·bootstrap·DSR·PBO를 같은 결과에서 계산한다."""
 
@@ -1170,6 +1265,7 @@ def strategy_league_robustness(
         for profile, report in pbo_by_profile.items()
     }
     strategy_results: dict[str, dict[str, object]] = {}
+    supported_regime_map = supported_regimes_by_strategy or {}
     for strategy_index, strategy_id in enumerate(ordered_strategy_ids):
         trades = _result_strategy_trade_rows(oos_runs, strategy_id=strategy_id)
         opportunities = {
@@ -1191,6 +1287,10 @@ def strategy_league_robustness(
             )
             for profile in ("BASE", "STRESS")
         }
+        concentration = _strategy_oos_concentration(
+            trades,
+            supported_regimes=supported_regime_map.get(strategy_id, ()),
+        )
         censored_count = _strategy_censored_count(
             oos_runs,
             strategy_id=strategy_id,
@@ -1211,6 +1311,10 @@ def strategy_league_robustness(
                 blockers.append(f"{profile}_PBO_ABOVE_0_20_OR_UNAVAILABLE")
         if censored_count:
             blockers.append("FINAL_OOS_CENSORED_POSITIONS_OR_PENDING_ENTRIES")
+        concentration_gates = cast(Mapping[str, object], concentration["gates"])
+        for gate, passed in concentration_gates.items():
+            if not passed:
+                blockers.append(f"OOS_CONCENTRATION_{gate.upper()}")
         historical_gates_passed = (
             not missing_train_validation
             and not missing_oos
@@ -1222,7 +1326,6 @@ def strategy_league_robustness(
         blockers.extend(
             (
                 "PARAMETER_ROBUSTNESS_NOT_EVALUATED",
-                "SYMBOL_REGIME_CONCENTRATION_NOT_EVALUATED",
                 "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED",
             )
         )
@@ -1230,8 +1333,13 @@ def strategy_league_robustness(
             "final_oos_unique_market_opportunity_count": len(opportunities),
             "final_oos_censored_count": censored_count,
             "profiles": profile_results,
+            "concentration": concentration,
             "pbo_gate_by_profile": pbo_gates,
             "historical_cost_oos_statistical_gates_passed": historical_gates_passed,
+            "historical_concentration_gate_passed": concentration["gate_passed"],
+            "historical_cost_oos_statistical_and_concentration_gates_passed": (
+                historical_gates_passed and bool(concentration["gate_passed"])
+            ),
             "ranking_eligible": False,
             "profitability_status": "NOT_PROVEN",
             "ranking_blockers": list(dict.fromkeys(blockers)),
@@ -1265,6 +1373,12 @@ def strategy_league_robustness(
             "minimum_win_rate_per_profile": MINIMUM_RANKING_WIN_RATE,
             "minimum_dsr_probability": MINIMUM_DSR_PROBABILITY,
             "maximum_pbo": MAXIMUM_PBO,
+            "minimum_distinct_symbols": MINIMUM_CONCENTRATION_SYMBOLS,
+            "minimum_distinct_runs": MINIMUM_CONCENTRATION_RUNS,
+            "maximum_single_symbol_opportunity_share": (MAXIMUM_SINGLE_SYMBOL_OPPORTUNITY_SHARE),
+            "maximum_single_run_opportunity_share": (MAXIMUM_SINGLE_RUN_OPPORTUNITY_SHARE),
+            "minimum_multi_regime_count": MINIMUM_MULTI_REGIME_COUNT,
+            "maximum_single_regime_opportunity_share": (MAXIMUM_SINGLE_REGIME_OPPORTUNITY_SHARE),
             "maximum_drawdown_fraction": str(
                 STRATEGY_LEAGUE_RISK_LIMITS.maximum_drawdown_fraction
             ),
@@ -1349,7 +1463,8 @@ def build_strategy_league_result(
 ) -> dict[str, object]:
     """등록 전략 전체를 각 Run당 한 번만 읽어 동일 PAPER 입력으로 비교한다."""
 
-    strategy_ids = StrategyRegistry().strategy_ids
+    registry = StrategyRegistry()
+    strategy_ids = registry.strategy_ids
     dataset_reference = (
         frozen_dataset_reference(dataset_manifest, run_ids)
         if dataset_manifest is not None
@@ -1393,6 +1508,12 @@ def build_strategy_league_result(
             *DEFAULT_VALIDATION_RUNS,
         ),
         oos_run_ids=DEFAULT_OOS_RUNS,
+        supported_regimes_by_strategy={
+            strategy_id: tuple(
+                regime.value for regime in registry.descriptor(strategy_id).supported_regimes
+            )
+            for strategy_id in strategy_ids
+        },
     )
     replaced_robustness_blockers = {
         "TIME_ORDERED_OOS_ROBUSTNESS_NOT_EVALUATED",
@@ -1427,7 +1548,7 @@ def build_strategy_league_result(
             )
         )
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "status": "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE",
         "method": "ONE_PASS_ALL_REGISTERED_ACTUAL_PAPER_RUNTIME_PATH",
         "git_commit": git_commit(),
