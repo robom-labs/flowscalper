@@ -68,6 +68,7 @@ def test_supported_launcher_disables_per_request_access_log(monkeypatch) -> None
         "port": 8870,
         "reload": False,
         "access_log": False,
+        "ws_per_message_deflate": False,
     }
 
 

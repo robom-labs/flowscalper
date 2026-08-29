@@ -36,6 +36,8 @@ def main() -> None:
         port=port,
         reload=os.environ.get("ROBOM_RELOAD", "false").lower() in {"1", "true", "yes"},
         access_log=False,
+        # 큰 localhost 상태를 탭마다 압축하면 메인 이벤트 루프가 반복 점유된다.
+        ws_per_message_deflate=False,
     )
 
 

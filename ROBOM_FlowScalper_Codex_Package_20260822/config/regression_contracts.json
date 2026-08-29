@@ -385,6 +385,45 @@
       ]
     },
     {
+      "contract_id": "LOCAL_WEBSOCKET_COMPRESSION_DISABLED",
+      "symptom_ko": "여러 localhost 화면에 큰 대시보드 상태를 보낼 때 탭마다 압축 작업이 메인 이벤트 루프를 반복 점유한다.",
+      "fixed_by": "Wave 116H localhost WebSocket compression mitigation",
+      "test_anchors": [
+        {
+          "path": "scripts/run_server.py",
+          "contains": [
+            "ws_per_message_deflate=False"
+          ]
+        },
+        {
+          "path": "backend/tests/test_safety.py",
+          "contains": [
+            "ws_per_message_deflate"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "RESEARCH_RUNTIME_INFRASTRUCTURE_FINGERPRINT",
+      "symptom_ko": "LIVE 보호 실행환경이 실질적으로 바뀌어도 전략 구현 지문이 같아 보여 동일 실패 시험과 개선 후 재검증을 구분하지 못한다.",
+      "fixed_by": "Wave 116H research infrastructure fingerprint",
+      "test_anchors": [
+        {
+          "path": "scripts/run_live_safe_strategy_screening.py",
+          "contains": [
+            "_RESEARCH_INFRASTRUCTURE_BOUND_PATHS",
+            "_research_infrastructure_fingerprint"
+          ]
+        },
+        {
+          "path": "backend/tests/test_live_safe_strategy_screening.py",
+          "contains": [
+            "changed.implementation_fingerprint != proposal.implementation_fingerprint"
+          ]
+        }
+      ]
+    },
+    {
       "contract_id": "RECURSIVE_F20_HISTORY_PARITY",
       "symptom_ko": "F20의 정상적인 과거 VWAP 의존성을 서로 다른 피처 보관창이 lookahead 불일치로 잘못 판정해 모든 exit 변형을 차단한다.",
       "fixed_by": "Wave 112 equal past-only feature history windows",

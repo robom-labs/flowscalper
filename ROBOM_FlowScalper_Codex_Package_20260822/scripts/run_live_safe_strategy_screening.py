@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import shutil
@@ -58,6 +59,14 @@ _OUTPUT_FILENAMES = {
     "multiple_testing": "MULTIPLE_TESTING_RESULTS.json",
 }
 
+_RESEARCH_INFRASTRUCTURE_BOUND_PATHS = (
+    "backend/app/replay/safety.py",
+    "scripts/run_live_safe_strategy_screening.py",
+    "scripts/run_live_safe_strategy_league_replay.py",
+    "scripts/research_strategy_100_candidates.py",
+    "scripts/run_server.py",
+)
+
 
 def _read_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -81,6 +90,16 @@ def _selected_dataset_rows(dataset: Mapping[str, object]) -> list[dict[str, obje
         selected,
         key=lambda row: (int(str(row["start_ts_ms"])), str(row["run_id"])),
     )
+
+
+def _research_infrastructure_fingerprint(project_root: Path) -> str:
+    checksums: dict[str, str] = {}
+    for relative_path in _RESEARCH_INFRASTRUCTURE_BOUND_PATHS:
+        path = project_root / relative_path
+        if not path.is_file():
+            raise FileNotFoundError(f"연구 실행 인프라 파일이 없습니다: {path}")
+        checksums[relative_path] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return _canonical_hash(checksums)
 
 
 def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
@@ -140,6 +159,9 @@ def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
             {
                 "manifest_sha256": trial.get("manifest_sha256"),
                 "source_checksums": dict(sorted(source_checksums.items())),
+                "research_infrastructure_fingerprint": (
+                    _research_infrastructure_fingerprint(arguments.project_root)
+                ),
             }
         ),
         cost_model_fingerprint=_canonical_hash(cost_sources),

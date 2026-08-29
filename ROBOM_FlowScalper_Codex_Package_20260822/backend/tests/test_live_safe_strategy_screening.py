@@ -20,6 +20,7 @@ from scripts.run_live_safe_strategy_league_replay import (
 )
 from scripts.run_live_safe_strategy_screening import (
     _OUTPUT_FILENAMES,
+    _RESEARCH_INFRASTRUCTURE_BOUND_PATHS,
     _staged_paths,
     _trial_proposal,
     _validate_result,
@@ -35,9 +36,17 @@ def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
+def _write_research_infrastructure(project_root: Path) -> None:
+    for relative_path in _RESEARCH_INFRASTRUCTURE_BOUND_PATHS:
+        path = project_root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"fixture:{relative_path}\n", encoding="utf-8")
+
+
 def test_e06_live_safe_proposal_binds_parameters_data_code_and_cost(tmp_path: Path) -> None:
     trial_manifest = tmp_path / "trials.json"
     dataset_manifest = tmp_path / "dataset.json"
+    _write_research_infrastructure(tmp_path)
     _write_json(
         trial_manifest,
         {
@@ -94,6 +103,7 @@ def test_e06_live_safe_proposal_binds_parameters_data_code_and_cost(tmp_path: Pa
         argparse.Namespace(
             trial_manifest=trial_manifest,
             dataset_manifest=dataset_manifest,
+            project_root=tmp_path,
         )
     )
 
@@ -107,6 +117,21 @@ def test_e06_live_safe_proposal_binds_parameters_data_code_and_cost(tmp_path: Pa
     assert proposal.parameter_fingerprint
     assert proposal.implementation_fingerprint
     assert proposal.cost_model_fingerprint
+
+    launcher = tmp_path / "scripts" / "run_server.py"
+    launcher.write_text("fixture:runtime-mitigation-v2\n", encoding="utf-8")
+    changed = _trial_proposal(
+        argparse.Namespace(
+            trial_manifest=trial_manifest,
+            dataset_manifest=dataset_manifest,
+            project_root=tmp_path,
+        )
+    )
+
+    assert changed.implementation_fingerprint != proposal.implementation_fingerprint
+    assert changed.parameter_fingerprint == proposal.parameter_fingerprint
+    assert changed.dataset_fingerprint == proposal.dataset_fingerprint
+    assert changed.cost_model_fingerprint == proposal.cost_model_fingerprint
 
 
 def test_e06_live_safe_result_requires_sealed_oos_and_paper_boundaries(
