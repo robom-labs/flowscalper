@@ -3318,5 +3318,10 @@ event가 289,502건 전진했지만, 새 event-loop 500ms 초과가 1회 발생�
 `evidence/WAVE109_POST_ABORT_ROTATION_ISOLATION_12M.json`과
 `evidence/WAVE110_POST_DEPLOY_DASHBOARD_COMPACTION_5M.json`에 보존했다.
 
+구현과 현재까지의 원시 증거는 commit
+`bd60745d7d005262df576585151cfd79ca8a93b8`에 고정했다. 이 commit 이전에 시작한 두 장기
+리플레이 결과는 새 구현과 직접 비교하지 않고, GitHub 동기화 뒤 같은 최종 commit에서 기준선과
+후보를 모두 다시 실행한다.
+
 현 수용상태는
 `REGRESSION_CONTRACT_PASS_RESEARCH_DEDUP_PASS_ONE_PASS_GATE_PASS_LONG_BASELINE_ABORTED_RETRY_REQUIRED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

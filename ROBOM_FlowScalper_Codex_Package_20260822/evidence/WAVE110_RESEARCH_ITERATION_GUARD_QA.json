@@ -5,7 +5,8 @@
   "source_state": {
     "branch": "codex/flowscalper-v0.2-upgrade",
     "base_commit": "276c0478955f57b86aed5957fb3b6f0a7e085ef9",
-    "documentation_commit": "PENDING",
+    "implementation_commit": "bd60745d7d005262df576585151cfd79ca8a93b8",
+    "documentation_commit": "bd60745d7d005262df576585151cfd79ca8a93b8",
     "runtime_release_commit": "276c0478955f57b86aed5957fb3b6f0a7e085ef9"
   },
   "regression_contracts": {
