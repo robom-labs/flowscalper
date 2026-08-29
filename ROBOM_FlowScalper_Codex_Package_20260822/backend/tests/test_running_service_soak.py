@@ -113,6 +113,10 @@ def _payload() -> dict[str, object]:
             "wal_checkpointed_frames": 10,
             "wal_checkpoint_deferred_count": 0,
             "wal_checkpoint_last_wal_bytes": 1_000,
+            "wal_checkpoint_running": False,
+            "wal_checkpoint_current_concurrent_flush_delta": 0,
+            "wal_checkpoint_last_concurrent_flush_delta": 0,
+            "wal_checkpoint_max_concurrent_flush_delta": 0,
             "critical_lag_event_count": 0,
             "critical_lag_incident_count": 0,
             "critical_lag_last_duration_ms": None,
@@ -164,6 +168,8 @@ def _advanced_payload() -> dict[str, object]:
             "consumer_delivery_count": 300,
             "persistence_flush_count": 12,
             "wal_checkpoint_count": 3,
+            "wal_checkpoint_last_concurrent_flush_delta": 2,
+            "wal_checkpoint_max_concurrent_flush_delta": 2,
             "process_memory_mb": 210.0,
             "process_memory_peak_mb": 230.0,
             "process_uptime_seconds": 130.0,
@@ -189,6 +195,9 @@ def test_running_service_soak_passes_only_with_exact_progress_and_dynamic_accoun
     assert result["event_loop_lag_over_500ms_delta"] == 0
     assert result["persistence_backlog_entry_lock_delta"] == 0
     assert result["wal_checkpoint_deferred_delta"] == 0
+    assert result["wal_checkpoint_completed_delta"] == 1
+    assert result["maximum_wal_checkpoint_last_concurrent_flush_delta"] == 2
+    assert result["maximum_wal_checkpoint_concurrent_flush_delta"] == 2
     assert result["failures"] == []
     assert result["paper_safety"]["additional_market_connection_started"] is False
 

@@ -118,6 +118,10 @@ class RunningServiceSample:
     wal_checkpointed_frames: int
     wal_checkpoint_deferred_count: int
     wal_checkpoint_last_wal_bytes: int
+    wal_checkpoint_running: bool
+    wal_checkpoint_current_concurrent_flush_delta: int
+    wal_checkpoint_last_concurrent_flush_delta: int
+    wal_checkpoint_max_concurrent_flush_delta: int
     critical_lag_event_count: int
     critical_lag_incident_count: int
     critical_lag_last_duration_ms: float
@@ -181,9 +185,7 @@ def parse_running_service_sample(
             strategy_id=_string(row.get("strategy_id"), "strategy.strategy_id"),
             mode=_string(row.get("mode"), "strategy.mode"),
             lifecycle=_string(row.get("lifecycle"), "strategy.lifecycle"),
-            settings_revision=_integer(
-                row.get("settings_revision"), "strategy.settings_revision"
-            ),
+            settings_revision=_integer(row.get("settings_revision"), "strategy.settings_revision"),
             manual_lock=_boolean(row.get("manual_lock"), "strategy.manual_lock"),
             changed_by=_string(row.get("changed_by"), "strategy.changed_by"),
             change_reason=_string(row.get("change_reason"), "strategy.change_reason"),
@@ -199,9 +201,7 @@ def parse_running_service_sample(
         for row in league_accounts
     }
     expected_pairs = {
-        (strategy_id, profile)
-        for strategy_id in strategy_ids
-        for profile in ("BASE", "STRESS")
+        (strategy_id, profile) for strategy_id in strategy_ids for profile in ("BASE", "STRESS")
     }
     protected_positions = sum(_position_is_protected(row) for row in focus_positions)
     base_samples, stress_samples, base_net, stress_net = _current_strategy_totals(strategies)
@@ -217,9 +217,7 @@ def parse_running_service_sample(
         paper_entry_active=_boolean(
             operation.get("paper_entry_active"), "operation_status.paper_entry_active"
         ),
-        market_data_state=_string(
-            status.get("market_data_state"), "status.market_data_state"
-        ),
+        market_data_state=_string(status.get("market_data_state"), "status.market_data_state"),
         execution_state=_string(status.get("execution_state"), "status.execution_state"),
         event_count=_integer(system.get("event_count"), "system.event_count"),
         strategy_evaluation_count=_integer(
@@ -230,12 +228,8 @@ def parse_running_service_sample(
         ),
         queue_depth=_integer(system.get("queue_depth"), "system.queue_depth"),
         queue_capacity=_integer(system.get("queue_capacity"), "system.queue_capacity"),
-        supervisor_running=_boolean(
-            system.get("supervisor_running"), "system.supervisor_running"
-        ),
-        consumer_running=_boolean(
-            system.get("consumer_running"), "system.consumer_running"
-        ),
+        supervisor_running=_boolean(system.get("supervisor_running"), "system.supervisor_running"),
+        consumer_running=_boolean(system.get("consumer_running"), "system.consumer_running"),
         consumer_delivery_count=_integer(
             system.get("consumer_delivery_count"), "system.consumer_delivery_count"
         ),
@@ -273,16 +267,10 @@ def parse_running_service_sample(
             "system.queue_overload_drop_count",
         ),
         processing_lag_p95_ms=_number(system.get("lag_p95_ms"), "system.lag_p95_ms"),
-        trade_lag_p95_ms=_number(
-            system.get("trade_lag_p95_ms"), "system.trade_lag_p95_ms"
-        ),
-        wide_lag_p95_ms=_number(
-            system.get("wide_lag_p95_ms"), "system.wide_lag_p95_ms"
-        ),
+        trade_lag_p95_ms=_number(system.get("trade_lag_p95_ms"), "system.trade_lag_p95_ms"),
+        wide_lag_p95_ms=_number(system.get("wide_lag_p95_ms"), "system.wide_lag_p95_ms"),
         reconnects=_integer(system.get("reconnects"), "system.reconnects"),
-        planned_rotations=_integer(
-            system.get("planned_rotations"), "system.planned_rotations"
-        ),
+        planned_rotations=_integer(system.get("planned_rotations"), "system.planned_rotations"),
         unplanned_reconnects=_integer(
             system.get("unplanned_reconnects"), "system.unplanned_reconnects"
         ),
@@ -403,6 +391,22 @@ def parse_running_service_sample(
             system.get("wal_checkpoint_last_wal_bytes"),
             "system.wal_checkpoint_last_wal_bytes",
         ),
+        wal_checkpoint_running=_boolean(
+            system.get("wal_checkpoint_running"),
+            "system.wal_checkpoint_running",
+        ),
+        wal_checkpoint_current_concurrent_flush_delta=_integer(
+            system.get("wal_checkpoint_current_concurrent_flush_delta"),
+            "system.wal_checkpoint_current_concurrent_flush_delta",
+        ),
+        wal_checkpoint_last_concurrent_flush_delta=_integer(
+            system.get("wal_checkpoint_last_concurrent_flush_delta"),
+            "system.wal_checkpoint_last_concurrent_flush_delta",
+        ),
+        wal_checkpoint_max_concurrent_flush_delta=_integer(
+            system.get("wal_checkpoint_max_concurrent_flush_delta"),
+            "system.wal_checkpoint_max_concurrent_flush_delta",
+        ),
         critical_lag_event_count=_integer(
             system.get("critical_lag_event_count"),
             "system.critical_lag_event_count",
@@ -419,9 +423,7 @@ def parse_running_service_sample(
             system.get("critical_lag_max_duration_ms"),
             "system.critical_lag_max_duration_ms",
         ),
-        event_gap_max_ms=_number(
-            system.get("event_gap_max_ms"), "system.event_gap_max_ms"
-        ),
+        event_gap_max_ms=_number(system.get("event_gap_max_ms"), "system.event_gap_max_ms"),
         event_gap_over_500ms_count=_integer(
             system.get("event_gap_over_500ms_count"),
             "system.event_gap_over_500ms_count",
@@ -468,9 +470,7 @@ def parse_running_service_sample(
         process_cpu_percent=_number(
             system.get("process_cpu_percent"), "system.process_cpu_percent"
         ),
-        process_memory_mb=_number(
-            system.get("process_memory_mb"), "system.process_memory_mb"
-        ),
+        process_memory_mb=_number(system.get("process_memory_mb"), "system.process_memory_mb"),
         process_memory_peak_mb=_number(
             system.get("process_memory_peak_mb"), "system.process_memory_peak_mb"
         ),
@@ -493,8 +493,7 @@ def parse_running_service_sample(
         strategy_count=len(strategy_states),
         league_account_count=len(league_accounts),
         independent_account_shape_valid=(
-            profile_pairs == expected_pairs
-            and len(league_accounts) == len(expected_pairs)
+            profile_pairs == expected_pairs and len(league_accounts) == len(expected_pairs)
         ),
         current_version_base_samples=base_samples,
         current_version_stress_samples=stress_samples,
@@ -553,13 +552,9 @@ def summarize_running_service_soak(
     final = samples[-1]
     strategy_transitions = _strategy_transitions(samples)
     longest_event_stall = _longest_event_stall(samples)
-    memory_growth = (
-        max(sample.process_memory_mb for sample in samples)
-        - baseline.process_memory_mb
-    )
+    memory_growth = max(sample.process_memory_mb for sample in samples) - baseline.process_memory_mb
     event_loop_lag_over_500ms_delta = (
-        final.event_loop_lag_over_500ms_count
-        - baseline.event_loop_lag_over_500ms_count
+        final.event_loop_lag_over_500ms_count - baseline.event_loop_lag_over_500ms_count
     )
     if active_thresholds.max_event_loop_lag_ms == 500.0:
         event_loop_lag_bounded = event_loop_lag_over_500ms_delta == 0
@@ -583,8 +578,7 @@ def summarize_running_service_soak(
     baseline_strategy_ids = {state.strategy_id for state in baseline.strategy_states}
     counter_checks = {
         "no_consumer_delivery_failures": (
-            final.consumer_delivery_failure_count
-            == baseline.consumer_delivery_failure_count
+            final.consumer_delivery_failure_count == baseline.consumer_delivery_failure_count
         ),
         "no_consumer_delivery_drops": (
             final.consumer_delivery_drop_count == baseline.consumer_delivery_drop_count
@@ -621,9 +615,7 @@ def summarize_running_service_soak(
     }
     checks = {
         "samples_present": len(samples) >= 2,
-        "requested_duration_completed": (
-            final.elapsed_seconds >= requested_duration_seconds
-        ),
+        "requested_duration_completed": (final.elapsed_seconds >= requested_duration_seconds),
         "same_run": all(sample.run_id == baseline.run_id for sample in samples),
         "process_not_restarted": all(
             current.process_uptime_seconds >= previous.process_uptime_seconds
@@ -639,12 +631,9 @@ def summarize_running_service_soak(
         ),
         "events_continued": final.event_count > baseline.event_count,
         "event_count_monotonic": all(
-            current.event_count >= previous.event_count
-            for previous, current in adjacent_samples
+            current.event_count >= previous.event_count for previous, current in adjacent_samples
         ),
-        "event_stall_bounded": (
-            longest_event_stall <= active_thresholds.max_event_stall_seconds
-        ),
+        "event_stall_bounded": (longest_event_stall <= active_thresholds.max_event_stall_seconds),
         "strategy_evaluations_continued": (
             final.strategy_evaluation_count > baseline.strategy_evaluation_count
         ),
@@ -656,12 +645,8 @@ def summarize_running_service_soak(
             current.qualified_signal_count >= previous.qualified_signal_count
             for previous, current in adjacent_samples
         ),
-        "supervisor_running_throughout": all(
-            sample.supervisor_running for sample in samples
-        ),
-        "consumer_running_throughout": all(
-            sample.consumer_running for sample in samples
-        ),
+        "supervisor_running_throughout": all(sample.supervisor_running for sample in samples),
+        "consumer_running_throughout": all(sample.consumer_running for sample in samples),
         "consumer_deliveries_continued": (
             final.consumer_delivery_count > baseline.consumer_delivery_count
         ),
@@ -670,22 +655,16 @@ def summarize_running_service_soak(
             for previous, current in adjacent_samples
         ),
         "consumer_cooperative_yield_count_monotonic": all(
-            current.consumer_cooperative_yield_count
-            >= previous.consumer_cooperative_yield_count
+            current.consumer_cooperative_yield_count >= previous.consumer_cooperative_yield_count
             for previous, current in adjacent_samples
         ),
-        "consumer_fault_never_active": all(
-            not sample.consumer_fault_active for sample in samples
-        ),
-        "queue_overload_never_active": all(
-            not sample.queue_overload_active for sample in samples
-        ),
+        "consumer_fault_never_active": all(not sample.consumer_fault_active for sample in samples),
+        "queue_overload_never_active": all(not sample.queue_overload_active for sample in samples),
         "strategy_shape_stable": all(
             sample.strategy_count == baseline.strategy_count for sample in samples
         ),
         "strategy_ids_stable": all(
-            {state.strategy_id for state in sample.strategy_states}
-            == baseline_strategy_ids
+            {state.strategy_id for state in sample.strategy_states} == baseline_strategy_ids
             for sample in samples
         ),
         "independent_accounts_complete": all(
@@ -709,9 +688,7 @@ def summarize_running_service_soak(
         ),
         "real_orders_disabled": all(not sample.real_orders_enabled for sample in samples),
         "auth_not_required": all(not sample.auth_required for sample in samples),
-        "manual_pause_not_requested": all(
-            not sample.manual_pause_requested for sample in samples
-        ),
+        "manual_pause_not_requested": all(not sample.manual_pause_requested for sample in samples),
         "storage_entry_allowed": all(sample.storage_entry_allowed for sample in samples),
         "no_runtime_errors": all(
             sample.last_error is None
@@ -724,9 +701,7 @@ def summarize_running_service_soak(
         "queue_never_saturated": all(
             sample.queue_depth < sample.queue_capacity for sample in samples
         ),
-        "processing_lag_bounded": max(
-            sample.processing_lag_p95_ms for sample in samples
-        )
+        "processing_lag_bounded": max(sample.processing_lag_p95_ms for sample in samples)
         <= active_thresholds.max_processing_lag_p95_ms,
         "trade_lag_bounded": max(sample.trade_lag_p95_ms for sample in samples)
         <= active_thresholds.max_trade_lag_p95_ms,
@@ -744,13 +719,11 @@ def summarize_running_service_soak(
             for previous, current in adjacent_samples
         ),
         "execution_persistence_count_monotonic": all(
-            current.execution_persistence_count
-            >= previous.execution_persistence_count
+            current.execution_persistence_count >= previous.execution_persistence_count
             for previous, current in adjacent_samples
         ),
         "live_event_processing_count_monotonic": all(
-            current.live_event_processing_count
-            >= previous.live_event_processing_count
+            current.live_event_processing_count >= previous.live_event_processing_count
             for previous, current in adjacent_samples
         ),
         "live_event_processing_slow_count_monotonic": all(
@@ -759,13 +732,11 @@ def summarize_running_service_soak(
             for previous, current in adjacent_samples
         ),
         "live_event_phase_slow_count_monotonic": all(
-            current.live_event_phase_over_100ms_count
-            >= previous.live_event_phase_over_100ms_count
+            current.live_event_phase_over_100ms_count >= previous.live_event_phase_over_100ms_count
             for previous, current in adjacent_samples
         ),
         "storage_health_refresh_count_monotonic": all(
-            current.storage_health_refresh_count
-            >= previous.storage_health_refresh_count
+            current.storage_health_refresh_count >= previous.storage_health_refresh_count
             for previous, current in adjacent_samples
         ),
         "persistence_flush_latency_bounded": max(
@@ -776,10 +747,8 @@ def summarize_running_service_soak(
         "wal_checkpoint_continued": (
             final.wal_checkpoint_count > baseline.wal_checkpoint_count
             or (
-                final.wal_checkpoint_deferred_count
-                > baseline.wal_checkpoint_deferred_count
-                and final.wal_checkpoint_last_wal_bytes
-                < 16 * 1024 * 1024
+                final.wal_checkpoint_deferred_count > baseline.wal_checkpoint_deferred_count
+                and final.wal_checkpoint_last_wal_bytes < 16 * 1024 * 1024
             )
         ),
         "wal_checkpoint_count_monotonic": all(
@@ -787,8 +756,7 @@ def summarize_running_service_soak(
             for previous, current in adjacent_samples
         ),
         "wal_checkpoint_deferred_count_monotonic": all(
-            current.wal_checkpoint_deferred_count
-            >= previous.wal_checkpoint_deferred_count
+            current.wal_checkpoint_deferred_count >= previous.wal_checkpoint_deferred_count
             for previous, current in adjacent_samples
         ),
         "persistence_backlog_lock_count_monotonic": all(
@@ -815,25 +783,19 @@ def summarize_running_service_soak(
         ),
         "critical_lag_counters_monotonic": all(
             current.critical_lag_event_count >= previous.critical_lag_event_count
-            and current.critical_lag_incident_count
-            >= previous.critical_lag_incident_count
+            and current.critical_lag_incident_count >= previous.critical_lag_incident_count
             for previous, current in adjacent_samples
         ),
         "event_gap_counter_monotonic": all(
-            current.event_gap_over_500ms_count
-            >= previous.event_gap_over_500ms_count
+            current.event_gap_over_500ms_count >= previous.event_gap_over_500ms_count
             for previous, current in adjacent_samples
         ),
         "event_loop_lag_counter_monotonic": all(
-            current.event_loop_lag_over_100ms_count
-            >= previous.event_loop_lag_over_100ms_count
-            and current.event_loop_lag_over_500ms_count
-            >= previous.event_loop_lag_over_500ms_count
+            current.event_loop_lag_over_100ms_count >= previous.event_loop_lag_over_100ms_count
+            and current.event_loop_lag_over_500ms_count >= previous.event_loop_lag_over_500ms_count
             for previous, current in adjacent_samples
         ),
-        "probe_errors_bounded": (
-            maximum_consecutive_probe_errors < max_consecutive_probe_errors
-        ),
+        "probe_errors_bounded": (maximum_consecutive_probe_errors < max_consecutive_probe_errors),
         **counter_checks,
     }
     failures = [name for name, passed in checks.items() if not passed]
@@ -854,15 +816,12 @@ def summarize_running_service_soak(
         "strategy_evaluation_delta": (
             final.strategy_evaluation_count - baseline.strategy_evaluation_count
         ),
-        "qualified_signal_delta": (
-            final.qualified_signal_count - baseline.qualified_signal_count
-        ),
+        "qualified_signal_delta": (final.qualified_signal_count - baseline.qualified_signal_count),
         "consumer_delivery_delta": (
             final.consumer_delivery_count - baseline.consumer_delivery_count
         ),
         "consumer_delivery_failure_delta": (
-            final.consumer_delivery_failure_count
-            - baseline.consumer_delivery_failure_count
+            final.consumer_delivery_failure_count - baseline.consumer_delivery_failure_count
         ),
         "consumer_delivery_drop_delta": (
             final.consumer_delivery_drop_count - baseline.consumer_delivery_drop_count
@@ -871,8 +830,7 @@ def summarize_running_service_soak(
             final.consumer_recovery_count - baseline.consumer_recovery_count
         ),
         "consumer_cooperative_yield_delta": (
-            final.consumer_cooperative_yield_count
-            - baseline.consumer_cooperative_yield_count
+            final.consumer_cooperative_yield_count - baseline.consumer_cooperative_yield_count
         ),
         "queue_overload_incident_delta": (
             final.queue_overload_incident_count - baseline.queue_overload_incident_count
@@ -894,22 +852,14 @@ def summarize_running_service_soak(
         "current_version_base_net_pnl": final.current_version_base_net_pnl,
         "current_version_stress_net_pnl": final.current_version_stress_net_pnl,
         "maximum_queue_depth": max(sample.queue_depth for sample in samples),
-        "maximum_processing_lag_p95_ms": max(
-            sample.processing_lag_p95_ms for sample in samples
-        ),
+        "maximum_processing_lag_p95_ms": max(sample.processing_lag_p95_ms for sample in samples),
         "maximum_trade_lag_p95_ms": max(sample.trade_lag_p95_ms for sample in samples),
-        "maximum_wide_lag_p95_ms_observational": max(
-            sample.wide_lag_p95_ms for sample in samples
-        ),
-        "maximum_process_cpu_percent": max(
-            sample.process_cpu_percent for sample in samples
-        ),
+        "maximum_wide_lag_p95_ms_observational": max(sample.wide_lag_p95_ms for sample in samples),
+        "maximum_process_cpu_percent": max(sample.process_cpu_percent for sample in samples),
         "baseline_process_memory_mb": baseline.process_memory_mb,
         "maximum_process_memory_mb": max(sample.process_memory_mb for sample in samples),
         "memory_growth_mb": round(max(0.0, memory_growth), 3),
-        "maximum_process_memory_peak_mb": max(
-            sample.process_memory_peak_mb for sample in samples
-        ),
+        "maximum_process_memory_peak_mb": max(sample.process_memory_peak_mb for sample in samples),
         "maximum_market_persistence_buffer": max(
             sample.market_persistence_buffer for sample in samples
         ),
@@ -928,8 +878,7 @@ def summarize_running_service_soak(
             default=0.0,
         ),
         "execution_persistence_delta": (
-            final.execution_persistence_count
-            - baseline.execution_persistence_count
+            final.execution_persistence_count - baseline.execution_persistence_count
         ),
         "maximum_execution_persistence_last_ms": max(
             sample.execution_persistence_last_ms for sample in samples
@@ -953,13 +902,10 @@ def summarize_running_service_soak(
         "maximum_live_event_processing_max_ms": max(
             sample.live_event_processing_max_ms for sample in samples
         ),
-        "live_event_processing_max_event_type": (
-            final.live_event_processing_max_event_type
-        ),
+        "live_event_processing_max_event_type": (final.live_event_processing_max_event_type),
         "live_event_processing_max_symbol": final.live_event_processing_max_symbol,
         "live_event_phase_over_100ms_delta": (
-            final.live_event_phase_over_100ms_count
-            - baseline.live_event_phase_over_100ms_count
+            final.live_event_phase_over_100ms_count - baseline.live_event_phase_over_100ms_count
         ),
         "maximum_live_event_phase_max_ms": max(
             sample.live_event_phase_max_ms for sample in samples
@@ -984,11 +930,23 @@ def summarize_running_service_soak(
             final.wal_checkpoint_busy_count - baseline.wal_checkpoint_busy_count
         ),
         "wal_checkpoint_deferred_delta": (
-            final.wal_checkpoint_deferred_count
-            - baseline.wal_checkpoint_deferred_count
+            final.wal_checkpoint_deferred_count - baseline.wal_checkpoint_deferred_count
         ),
         "maximum_wal_checkpoint_observed_bytes": max(
             sample.wal_checkpoint_last_wal_bytes for sample in samples
+        ),
+        "wal_checkpoint_completed_delta": (
+            final.wal_checkpoint_count - baseline.wal_checkpoint_count
+        ),
+        "wal_checkpoint_running_observed": any(sample.wal_checkpoint_running for sample in samples),
+        "maximum_wal_checkpoint_current_concurrent_flush_delta": max(
+            sample.wal_checkpoint_current_concurrent_flush_delta for sample in samples
+        ),
+        "maximum_wal_checkpoint_last_concurrent_flush_delta": max(
+            sample.wal_checkpoint_last_concurrent_flush_delta for sample in samples
+        ),
+        "maximum_wal_checkpoint_concurrent_flush_delta": max(
+            sample.wal_checkpoint_max_concurrent_flush_delta for sample in samples
         ),
         "critical_lag_incident_delta": (
             final.critical_lag_incident_count - baseline.critical_lag_incident_count
@@ -1004,14 +962,11 @@ def summarize_running_service_soak(
         ),
         "maximum_event_gap_ms": max(sample.event_gap_max_ms for sample in samples),
         "event_loop_lag_over_100ms_delta": (
-            final.event_loop_lag_over_100ms_count
-            - baseline.event_loop_lag_over_100ms_count
+            final.event_loop_lag_over_100ms_count - baseline.event_loop_lag_over_100ms_count
         ),
         "event_loop_lag_over_500ms_delta": event_loop_lag_over_500ms_delta,
         "event_loop_lag_last_over_500ms": final.event_loop_lag_last_over_500ms,
-        "maximum_event_loop_lag_ms": max(
-            sample.event_loop_lag_max_ms for sample in samples
-        ),
+        "maximum_event_loop_lag_ms": max(sample.event_loop_lag_max_ms for sample in samples),
         "longest_event_stall_seconds": longest_event_stall,
         "maximum_open_positions": max(sample.position_count for sample in samples),
         "strategy_transitions": strategy_transitions,
