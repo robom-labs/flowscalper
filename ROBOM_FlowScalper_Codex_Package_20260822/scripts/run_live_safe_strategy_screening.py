@@ -264,6 +264,10 @@ async def _execute(
                 _child_command(arguments, paths),
                 project_root=arguments.project_root,
                 state=child_state,
+                hard_duty_cycle_target_ratio=arguments.target_cpu_ratio,
+                maximum_continuous_run_seconds=(
+                    arguments.maximum_continuous_run_seconds
+                ),
             ),
             probe=probe,
             thresholds=thresholds,
@@ -408,6 +412,10 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
         "resource_contract": {
             "target_cpu_ratio": arguments.target_cpu_ratio,
             "cpu_checkpoint_events": arguments.cpu_checkpoint_events,
+            "maximum_continuous_run_seconds": (
+                arguments.maximum_continuous_run_seconds
+            ),
+            "hard_duty_cycle_enforced": child_state.hard_duty_cycle_enabled,
             "resource_lock": str(arguments.resource_lock),
             "resource_lock_acquired": resource_lock_acquired,
             "single_archive_research_enforced": True,
@@ -461,6 +469,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--max-duration-seconds", type=float, default=28_800.0)
     parser.add_argument("--target-cpu-ratio", type=float, default=0.15)
     parser.add_argument("--cpu-checkpoint-events", type=int, default=256)
+    parser.add_argument("--maximum-continuous-run-seconds", type=float, default=0.05)
     parser.add_argument(
         "--trial-history-catalog",
         type=Path,
@@ -495,6 +504,7 @@ def parse_arguments() -> argparse.Namespace:
         or arguments.max_duration_seconds <= 0
         or not 0 < arguments.target_cpu_ratio <= 1
         or arguments.cpu_checkpoint_events <= 0
+        or not 0 < arguments.maximum_continuous_run_seconds <= 0.1
     ):
         parser.error("LIVE 감시·CPU·시간 설정이 잘못됐습니다.")
     return arguments

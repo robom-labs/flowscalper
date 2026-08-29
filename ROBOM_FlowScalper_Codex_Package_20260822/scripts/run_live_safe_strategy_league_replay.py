@@ -9,6 +9,7 @@ import fcntl
 import hashlib
 import json
 import os
+import signal
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -118,6 +119,12 @@ class ChildState:
     terminated_by_guard: bool = False
     stdout_tail: str = ""
     stderr_tail: str = ""
+    hard_duty_cycle_supported: bool = False
+    hard_duty_cycle_enabled: bool = False
+    hard_duty_cycle_run_slice_seconds: float = 0.0
+    hard_duty_cycle_stop_slice_seconds: float = 0.0
+    hard_duty_cycle_stop_count: int = 0
+    hard_duty_cycle_resume_count: int = 0
 
 
 @dataclass(slots=True)
@@ -432,6 +439,86 @@ async def _terminate_child(process: asyncio.subprocess.Process) -> None:
         await process.wait()
 
 
+def _duty_cycle_slices(
+    target_cpu_ratio: float,
+    maximum_continuous_run_seconds: float,
+) -> tuple[float, float]:
+    """첫 archive row 이전의 native scan도 한 번에 짧게만 실행하도록 계산한다."""
+
+    if not 0 < target_cpu_ratio <= 1:
+        raise ValueError("외부 연구 CPU 목표 비율은 0 초과 1 이하여야 합니다.")
+    if maximum_continuous_run_seconds <= 0:
+        raise ValueError("외부 연구 연속 실행시간은 양수여야 합니다.")
+    stopped_seconds = (
+        0.0
+        if target_cpu_ratio == 1
+        else maximum_continuous_run_seconds * (1 - target_cpu_ratio) / target_cpu_ratio
+    )
+    return maximum_continuous_run_seconds, stopped_seconds
+
+
+async def _wait_or_stop(stop_event: asyncio.Event, seconds: float) -> bool:
+    if seconds <= 0:
+        return stop_event.is_set()
+    try:
+        await asyncio.wait_for(stop_event.wait(), timeout=seconds)
+    except TimeoutError:
+        return False
+    return True
+
+
+async def _enforce_hard_duty_cycle(
+    process: asyncio.subprocess.Process,
+    *,
+    target_cpu_ratio: float,
+    maximum_continuous_run_seconds: float,
+    stop_event: asyncio.Event,
+    state: ChildState,
+) -> None:
+    """협조 checkpoint 전후 모두에서 연구 자식을 짧은 SIGSTOP 구간으로 제한한다."""
+
+    supported = os.name != "nt" and hasattr(signal, "SIGSTOP") and hasattr(signal, "SIGCONT")
+    state.hard_duty_cycle_supported = supported
+    run_seconds, stop_seconds = _duty_cycle_slices(
+        target_cpu_ratio,
+        maximum_continuous_run_seconds,
+    )
+    state.hard_duty_cycle_run_slice_seconds = run_seconds
+    state.hard_duty_cycle_stop_slice_seconds = stop_seconds
+    if not supported or stop_seconds <= 0:
+        return
+    state.hard_duty_cycle_enabled = True
+    child_stopped = False
+    try:
+        while process.returncode is None and not stop_event.is_set():
+            if await _wait_or_stop(stop_event, run_seconds):
+                break
+            if process.returncode is not None:
+                break
+            try:
+                os.kill(process.pid, signal.SIGSTOP)
+            except ProcessLookupError:
+                break
+            child_stopped = True
+            state.hard_duty_cycle_stop_count += 1
+            await _wait_or_stop(stop_event, stop_seconds)
+            if process.returncode is None:
+                try:
+                    os.kill(process.pid, signal.SIGCONT)
+                except ProcessLookupError:
+                    break
+                state.hard_duty_cycle_resume_count += 1
+            child_stopped = False
+    finally:
+        if child_stopped and process.returncode is None:
+            try:
+                os.kill(process.pid, signal.SIGCONT)
+            except ProcessLookupError:
+                pass
+            else:
+                state.hard_duty_cycle_resume_count += 1
+
+
 def _tail(raw: bytes, *, limit: int = 4_000) -> str:
     return raw.decode(errors="replace").strip()[-limit:]
 
@@ -441,6 +528,8 @@ async def _run_child(
     *,
     project_root: Path,
     state: ChildState,
+    hard_duty_cycle_target_ratio: float | None = None,
+    maximum_continuous_run_seconds: float = 0.05,
 ) -> None:
     state.command = command
     process = await asyncio.create_subprocess_exec(
@@ -450,10 +539,27 @@ async def _run_child(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+    duty_cycle_stop = asyncio.Event()
+    duty_cycle_task = (
+        asyncio.create_task(
+            _enforce_hard_duty_cycle(
+                process,
+                target_cpu_ratio=hard_duty_cycle_target_ratio,
+                maximum_continuous_run_seconds=maximum_continuous_run_seconds,
+                stop_event=duty_cycle_stop,
+                state=state,
+            )
+        )
+        if hard_duty_cycle_target_ratio is not None
+        else None
+    )
     try:
         stdout, stderr = await process.communicate()
     except asyncio.CancelledError:
         state.terminated_by_guard = True
+        duty_cycle_stop.set()
+        if duty_cycle_task is not None:
+            await duty_cycle_task
         await _terminate_child(process)
         try:
             stdout, stderr = await process.communicate()
@@ -463,6 +569,10 @@ async def _run_child(
         state.stdout_tail = _tail(stdout)
         state.stderr_tail = _tail(stderr)
         raise
+    finally:
+        duty_cycle_stop.set()
+        if duty_cycle_task is not None:
+            await duty_cycle_task
     state.return_code = process.returncode
     state.stdout_tail = _tail(stdout)
     state.stderr_tail = _tail(stderr)
@@ -564,6 +674,10 @@ async def _execute(
                 command,
                 project_root=arguments.project_root,
                 state=child_state,
+                hard_duty_cycle_target_ratio=arguments.target_cpu_ratio,
+                maximum_continuous_run_seconds=(
+                    arguments.maximum_continuous_run_seconds
+                ),
             ),
             probe=probe,
             thresholds=thresholds,
@@ -754,6 +868,10 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
             ),
             "strategy_logic": str(arguments.strategy_logic),
             "cooperative_cpu_target_ratio": float(arguments.target_cpu_ratio),
+            "maximum_continuous_run_seconds": float(
+                arguments.maximum_continuous_run_seconds
+            ),
+            "hard_duty_cycle_enforced": child_state.hard_duty_cycle_enabled,
             "archive_target_read_mib_per_second": float(
                 arguments.target_archive_read_mib_per_second
             ),
@@ -812,6 +930,7 @@ def parse_arguments() -> argparse.Namespace:
         default=_DEFAULT_RESEARCH_TARGET_CPU_RATIO,
         help="LIVE 우선을 위해 연구 자식 프로세스에 허용할 협조 CPU 목표 비율입니다.",
     )
+    parser.add_argument("--maximum-continuous-run-seconds", type=float, default=0.05)
     parser.add_argument(
         "--target-archive-read-mib-per-second",
         type=float,
@@ -879,6 +998,7 @@ def parse_arguments() -> argparse.Namespace:
         or arguments.planned_rotation_lock_grace_seconds <= 0
         or arguments.max_duration_seconds <= 0
         or not 0 < arguments.target_cpu_ratio <= 1
+        or not 0 < arguments.maximum_continuous_run_seconds <= 0.1
         or arguments.target_archive_read_mib_per_second <= 0
         or (arguments.maximum_events is not None and arguments.maximum_events <= 0)
     ):

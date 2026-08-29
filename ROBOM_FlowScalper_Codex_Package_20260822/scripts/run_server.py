@@ -35,6 +35,7 @@ def main() -> None:
         host=host,
         port=port,
         reload=os.environ.get("ROBOM_RELOAD", "false").lower() in {"1", "true", "yes"},
+        access_log=False,
     )
 
 

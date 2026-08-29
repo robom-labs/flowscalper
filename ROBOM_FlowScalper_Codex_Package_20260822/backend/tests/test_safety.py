@@ -10,7 +10,7 @@ import pytest
 from backend.app.domain.models import RuntimeMode
 from backend.app.domain.safety import RealTradingDisabledError, assert_paper_only
 from backend.app.main import _local_browser_origin
-from scripts.run_server import RemoteBindingDisabledError, validate_local_host
+from scripts.run_server import RemoteBindingDisabledError, main, validate_local_host
 from scripts.select_local_port import choose_local_port
 from scripts.select_service_mode import select_service_mode
 
@@ -45,6 +45,30 @@ def test_supported_launcher_rejects_remote_bindings() -> None:
     for host in ("0.0.0.0", "192.168.0.10", "example.com", ""):
         with pytest.raises(RemoteBindingDisabledError):
             validate_local_host(host)
+
+
+def test_supported_launcher_disables_per_request_access_log(monkeypatch) -> None:
+    invocation: dict[str, object] = {}
+    monkeypatch.setenv("ROBOM_HOST", "127.0.0.1")
+    monkeypatch.setenv("ROBOM_PORT", "8870")
+    monkeypatch.setenv("ROBOM_OPEN_BROWSER", "false")
+    monkeypatch.setenv("ROBOM_RELOAD", "false")
+    monkeypatch.setattr(
+        "scripts.run_server.uvicorn.run",
+        lambda application, **options: invocation.update(
+            {"application": application, **options}
+        ),
+    )
+
+    main()
+
+    assert invocation == {
+        "application": "backend.app.main:app",
+        "host": "127.0.0.1",
+        "port": 8870,
+        "reload": False,
+        "access_log": False,
+    }
 
 
 def test_websocket_origin_accepts_only_local_browser_hosts() -> None:

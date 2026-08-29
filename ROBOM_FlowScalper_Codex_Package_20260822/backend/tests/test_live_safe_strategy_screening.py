@@ -3,15 +3,32 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import os
+import signal
+import sys
 from pathlib import Path
 
+import pytest
+
+from scripts.run_live_safe_strategy_league_replay import (
+    ChildState,
+    _duty_cycle_slices,
+    _enforce_hard_duty_cycle,
+    _run_child,
+)
 from scripts.run_live_safe_strategy_screening import (
     _OUTPUT_FILENAMES,
     _staged_paths,
     _trial_proposal,
     _validate_result,
 )
+
+
+class _RunningChild:
+    pid = 12345
+    returncode = None
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -136,3 +153,96 @@ def test_e06_live_safe_result_requires_sealed_oos_and_paper_boundaries(
     assert summary["planned_independent_account_count"] == 8
     assert summary["profitability_claim"] == "NOT_PROVEN_UNTIL_LATER_GATES"
     assert set(path.name for path in paths.values()) == set(_OUTPUT_FILENAMES.values())
+
+
+def test_hard_duty_cycle_caps_native_scan_before_cooperative_checkpoints() -> None:
+    run_seconds, stop_seconds = _duty_cycle_slices(0.2, 0.05)
+
+    assert run_seconds == pytest.approx(0.05)
+    assert stop_seconds == pytest.approx(0.2)
+
+
+@pytest.mark.asyncio
+async def test_hard_duty_cycle_always_resumes_cancelled_child(monkeypatch) -> None:
+    if os.name == "nt" or not hasattr(signal, "SIGSTOP"):
+        pytest.skip("SIGSTOP을 지원하는 운영체제에서만 검증합니다.")
+    signals: list[int] = []
+    monkeypatch.setattr(os, "kill", lambda _pid, value: signals.append(value))
+    stop_event = asyncio.Event()
+    state = ChildState()
+    task = asyncio.create_task(
+        _enforce_hard_duty_cycle(
+            _RunningChild(),
+            target_cpu_ratio=0.2,
+            maximum_continuous_run_seconds=0.001,
+            stop_event=stop_event,
+            state=state,
+        )
+    )
+    await asyncio.sleep(0.003)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert signal.SIGSTOP in signals
+    assert signals[-1] == signal.SIGCONT
+    assert state.hard_duty_cycle_enabled is True
+    assert state.hard_duty_cycle_resume_count == state.hard_duty_cycle_stop_count
+
+
+@pytest.mark.asyncio
+async def test_research_child_process_is_hard_throttled_and_resumed(tmp_path: Path) -> None:
+    if os.name == "nt" or not hasattr(signal, "SIGSTOP"):
+        pytest.skip("SIGSTOP을 지원하는 운영체제에서만 검증합니다.")
+    state = ChildState()
+
+    await _run_child(
+        (
+            sys.executable,
+            "-c",
+            (
+                "import time; end = time.process_time() + 0.03; "
+                "exec('while time.process_time() < end:\\n pass')"
+            ),
+        ),
+        project_root=tmp_path,
+        state=state,
+        hard_duty_cycle_target_ratio=0.2,
+        maximum_continuous_run_seconds=0.01,
+    )
+
+    assert state.return_code == 0
+    assert state.hard_duty_cycle_enabled is True
+    assert state.hard_duty_cycle_stop_count > 0
+    assert state.hard_duty_cycle_stop_count - state.hard_duty_cycle_resume_count in {
+        0,
+        1,
+    }
+
+
+@pytest.mark.asyncio
+async def test_cancelled_research_child_is_resumed_before_termination(
+    tmp_path: Path,
+) -> None:
+    if os.name == "nt" or not hasattr(signal, "SIGSTOP"):
+        pytest.skip("SIGSTOP을 지원하는 운영체제에서만 검증합니다.")
+    state = ChildState()
+    task = asyncio.create_task(
+        _run_child(
+            (sys.executable, "-c", "while True: pass"),
+            project_root=tmp_path,
+            state=state,
+            hard_duty_cycle_target_ratio=0.2,
+            maximum_continuous_run_seconds=0.005,
+        )
+    )
+    await asyncio.sleep(0.03)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=2.0)
+
+    assert state.terminated_by_guard is True
+    assert state.return_code is not None
+    assert state.hard_duty_cycle_stop_count > 0
+    assert state.hard_duty_cycle_resume_count == state.hard_duty_cycle_stop_count
