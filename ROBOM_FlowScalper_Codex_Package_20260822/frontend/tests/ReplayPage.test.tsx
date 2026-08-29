@@ -83,6 +83,43 @@ test('loads recent candles first and defers the expensive event timeline until r
   })
 })
 
+test('shows the run selector while the first candle preview is still loading', async () => {
+  let resolvePreview: ((response: Response) => void) | undefined
+  const pendingPreview = new Promise<Response>((resolve) => {
+    resolvePreview = resolve
+  })
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url === '/api/replay/runs') {
+      return new Response(JSON.stringify([{
+        run_id: 'run-slow-preview', mode: 'LIVE_SHADOW_PAPER', venue: 'BINANCE_USDM',
+        started_ts_ms: 1_000, finalized_ts_ms: null, market_event_count: 25_000_000,
+        events_saved: true, trade_count: 0, shadow_trade_count: 0,
+      }]), { status: 200 })
+    }
+    if (url === '/api/replay/results') return new Response('[]', { status: 200 })
+    if (url === '/api/replay/operations/current') return new Response('null', { status: 200 })
+    if (url.includes('/preview?')) return pendingPreview
+    throw new Error(`unexpected request: ${url}`)
+  }))
+
+  render(<ReplayPage />)
+
+  const runSelector = await screen.findByRole('combobox', { name: '저장 기록' })
+  await waitFor(() => expect(runSelector).toHaveValue('run-slow-preview'))
+  expect(runSelector).toBeEnabled()
+  expect(screen.queryByText('저장 기록 목록을 확인하는 중입니다')).not.toBeInTheDocument()
+  expect(screen.getByText('저장된 최근 캔들을 불러오는 중입니다.')).toBeInTheDocument()
+
+  resolvePreview?.(new Response(JSON.stringify({
+    run_id: 'run-slow-preview', symbol: 'BTCUSDT', total_events: 25_000_000,
+    truncated: true, available_symbols: [{ symbol: 'BTCUSDT', event_count: 25_000_000 }],
+    events: [], candles: [], preview_only: true,
+  }), { status: 200 }))
+
+  expect(await screen.findByText(/빠른 미리보기 · BTCUSDT 최근 캔들 0개/)).toBeInTheDocument()
+})
+
 test('restores an active strategy verification and exposes a real cancel control', async () => {
   const operation = {
     operation_id: 'replay-operation-active', source_run_id: 'run-active', symbol: 'ETHUSDT',

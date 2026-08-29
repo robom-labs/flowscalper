@@ -112,6 +112,7 @@ export function ReplayPage({ trade }: Props) {
   const [focusLoading, setFocusLoading] = useState(Boolean(trade))
   const [focusAttempt, setFocusAttempt] = useState(0)
   const clockRef = useRef<ReplayClock<ReplayFocusFrame> | null>(null)
+  const previewRequestRef = useRef(0)
   const result = useMemo(
     () => running
       ? null
@@ -121,6 +122,8 @@ export function ReplayPage({ trade }: Props) {
 
   const loadPreview = useCallback(async (runId: string, symbol = '') => {
     if (!runId) return
+    const requestId = previewRequestRef.current + 1
+    previewRequestRef.current = requestId
     setPreviewLoading(true)
     try {
       const query = new URLSearchParams({ candle_limit: '500' })
@@ -128,12 +131,13 @@ export function ReplayPage({ trade }: Props) {
       const response = await fetch(`/api/replay/${encodeURIComponent(runId)}/preview?${query}`)
       if (!response.ok) throw new Error(await replayErrorMessage(response, '저장 데이터 미리보기를 불러오지 못했습니다.'))
       const next = (await response.json()) as ReplayTimeline
+      if (requestId !== previewRequestRef.current) return
       setTimeline(next)
       setSelectedSymbol(next.symbol ?? '')
       setCursor(0)
       setPlaying(false)
     } finally {
-      setPreviewLoading(false)
+      if (requestId === previewRequestRef.current) setPreviewLoading(false)
     }
   }, [])
 
@@ -165,7 +169,7 @@ export function ReplayPage({ trade }: Props) {
       fetch('/api/replay/runs').then((response) => response.json() as Promise<ReplayRun[]>),
       fetch('/api/replay/operations/current').then((response) => response.json() as Promise<ReplayOperation | null>),
     ])
-      .then(async ([runRows, currentOperation]) => {
+      .then(([runRows, currentOperation]) => {
         if (cancelled) return
         setRuns(runRows)
         if (replayOperationActive(currentOperation)) {
@@ -175,7 +179,14 @@ export function ReplayPage({ trade }: Props) {
         }
         const runId = runRows[0]?.run_id ?? ''
         setSelectedRun(runId)
-        if (runId) await loadPreview(runId)
+        setLoading(false)
+        if (runId) {
+          void loadPreview(runId).catch((reason: unknown) => {
+            if (!cancelled) {
+              setError(errorMessage(reason, '저장 데이터 미리보기를 불러오지 못했습니다.'))
+            }
+          })
+        }
         void resultRowsPromise.then((resultRows) => {
           if (cancelled) return
           setResults(resultRows)
@@ -184,12 +195,15 @@ export function ReplayPage({ trade }: Props) {
         })
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(errorMessage(reason, '저장 Run 목록을 불러오지 못했습니다. 연결을 확인하세요.'))
+        if (!cancelled) {
+          setError(errorMessage(reason, '저장 Run 목록을 불러오지 못했습니다. 연결을 확인하세요.'))
+          setLoading(false)
+        }
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      previewRequestRef.current += 1
+    }
   }, [loadPreview, trade])
 
   useEffect(() => {
@@ -508,7 +522,7 @@ export function ReplayPage({ trade }: Props) {
       </div>
       {error ? <p className="control-error" role="alert">{error}</p> : null}
       <section className="panel replay-runbar">
-        <label>저장 기록<select value={selectedRun} disabled={loading || previewLoading || timelineLoading || runs.length === 0} onChange={(event) => void changeRun(event.target.value)}>{runs.map((run) => <option value={run.run_id} key={run.run_id}>{new Date(run.started_ts_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} · {run.market_event_count === null ? '시장 데이터 저장됨' : `이벤트 ${run.market_event_count.toLocaleString()}건`}</option>)}</select></label>
+        <label>저장 기록<select value={selectedRun} disabled={loading || timelineLoading || runs.length === 0} onChange={(event) => void changeRun(event.target.value)}>{runs.map((run) => <option value={run.run_id} key={run.run_id}>{new Date(run.started_ts_ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} · {run.market_event_count === null ? '시장 데이터 저장됨' : `이벤트 ${run.market_event_count.toLocaleString()}건`}</option>)}</select></label>
         <label>종목<select value={selectedSymbol} disabled={!timeline || previewLoading || timelineLoading} onChange={(event) => void changeSymbol(event.target.value)}>{timeline?.available_symbols.map((item) => <option value={item.symbol} key={item.symbol}>{item.symbol} · {item.event_count === null ? '저장 데이터 있음' : `${item.event_count.toLocaleString()}건`}</option>)}</select></label>
         <button type="button" className="primary-button" disabled={!selectedRun || !selectedSymbol || timelineLoading || running} onClick={() => void loadSelectedTimeline()}>{timelineLoading ? '정밀 이벤트 불러오는 중' : timeline?.preview_only ? '정밀 이벤트 불러오기' : '정밀 이벤트 다시 불러오기'}</button>
         <button type="button" className="secondary-button" disabled={!selectedRun || !timeline || timeline.preview_only || running || timelineLoading} onClick={() => void runReplay()}>{running ? '전략 검증 중' : '같은 조건으로 전략 검증'}</button>

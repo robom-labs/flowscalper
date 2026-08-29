@@ -44,6 +44,7 @@ from backend.app.replay.safety import (
     ReplayLiveSafetyThresholds,
     run_with_live_safety,
 )
+from backend.app.replay.timeline import build_replay_preview
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.io_priority import storage_io_priority_gate
 from backend.app.storage.parquet import ParquetEventStore
@@ -836,6 +837,51 @@ def test_replayable_run_listing_does_not_wait_for_live_writer_lock(
         writer.join(timeout=1)
 
     assert summaries[0]["run_id"] == "run-readable"
+    ledger.close()
+
+
+def test_replay_preview_does_not_wait_for_live_writer_lock(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "preview-readable.sqlite3")
+    run_id = "run-preview-readable"
+    ledger.start_run(
+        run_id,
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260830},
+        started_ts_ms=1_000,
+    )
+    event = market_event(run_id, event_id="preview-readable", ts_ms=1_000)
+    assert ledger.record_market_events([event.model_dump(mode="json")]) == 1
+    lock_acquired = threading.Event()
+    release_lock = threading.Event()
+    preview_finished = threading.Event()
+    preview_rows: list[dict[str, object]] = []
+
+    def hold_writer_lock() -> None:
+        with ledger._lock:
+            lock_acquired.set()
+            release_lock.wait(timeout=2)
+
+    def read_preview() -> None:
+        preview_rows.append(build_replay_preview(ledger, run_id))
+        preview_finished.set()
+
+    writer = threading.Thread(target=hold_writer_lock)
+    reader = threading.Thread(target=read_preview)
+    writer.start()
+    assert lock_acquired.wait(timeout=1)
+    reader.start()
+    try:
+        assert preview_finished.wait(timeout=1)
+    finally:
+        release_lock.set()
+        writer.join(timeout=1)
+        reader.join(timeout=1)
+
+    assert preview_rows[0]["symbol"] == "BTCUSDT"
+    assert preview_rows[0]["available_symbols"] == [
+        {"symbol": "BTCUSDT", "event_count": 1}
+    ]
     ledger.close()
 
 

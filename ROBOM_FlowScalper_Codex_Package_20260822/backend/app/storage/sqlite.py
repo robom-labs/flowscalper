@@ -1056,8 +1056,8 @@ class SQLiteLedger:
     def market_event_symbols(self, run_id: str) -> list[dict[str, object]]:
         """대용량 본문을 스캔하지 않고 종목별 저장 상태를 반환한다."""
 
-        with self._lock:
-            incomplete = self._connection.execute(
+        with self._read_lock:
+            incomplete = self._read_connection.execute(
                 """
                 SELECT 1 FROM market_event_stats
                 WHERE run_id = ? AND count_complete = 0 LIMIT 1
@@ -1065,7 +1065,7 @@ class SQLiteLedger:
                 (run_id,),
             ).fetchone()
             if incomplete is None:
-                rows = self._connection.execute(
+                rows = self._read_connection.execute(
                     """
                     SELECT symbol, event_count
                     FROM market_event_stats
@@ -1081,7 +1081,7 @@ class SQLiteLedger:
                     }
                     for row in rows
                 ]
-            rows = self._connection.execute(
+            rows = self._read_connection.execute(
                 """
                 SELECT c.symbol, s.event_count
                 FROM (
@@ -1202,8 +1202,8 @@ class SQLiteLedger:
 
         if not 1 <= limit <= 2_000:
             raise ValueError("최근 캔들 개수는 1..2000 범위여야 합니다.")
-        with self._lock:
-            rows = self._connection.execute(
+        with self._read_lock:
+            rows = self._read_connection.execute(
                 """
                 SELECT payload_json, checksum FROM candles
                 WHERE run_id = ? AND symbol = ? AND interval_seconds = ?
@@ -2036,8 +2036,8 @@ class SQLiteLedger:
         return self._list_payloads("fills", run_id, "ts_ms, fill_id")
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
-        with self._lock:
-            row = self._connection.execute(
+        with self._read_lock:
+            row = self._read_connection.execute(
                 "SELECT * FROM runs WHERE run_id = ?", (run_id,)
             ).fetchone()
         return dict(row) if row is not None else None
