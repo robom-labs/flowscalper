@@ -858,7 +858,7 @@ def test_replay_preview_does_not_wait_for_live_writer_lock(tmp_path: Path) -> No
     preview_rows: list[dict[str, object]] = []
 
     def hold_writer_lock() -> None:
-        with ledger._lock:
+        with ledger._lock, ledger._read_lock:
             lock_acquired.set()
             release_lock.wait(timeout=2)
 
