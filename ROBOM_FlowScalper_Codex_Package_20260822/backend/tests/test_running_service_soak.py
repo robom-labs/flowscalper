@@ -193,6 +193,57 @@ def test_running_service_soak_passes_only_with_exact_progress_and_dynamic_accoun
     assert result["paper_safety"]["additional_market_connection_started"] is False
 
 
+def test_running_service_soak_measures_only_storage_work_completed_in_window() -> None:
+    baseline = _payload()
+    baseline_system = baseline["system"]
+    assert isinstance(baseline_system, dict)
+    baseline_system.update(
+        {
+            "persistence_flush_last_ms": 90_000.0,
+            "wal_checkpoint_last_ms": 90_000.0,
+        }
+    )
+    recovered = _advanced_payload()
+    recovered_system = recovered["system"]
+    assert isinstance(recovered_system, dict)
+    recovered_system.update(
+        {
+            "persistence_flush_last_ms": 5_000.0,
+            "wal_checkpoint_last_ms": 3_000.0,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(baseline, 0.0), _sample(recovered, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["maximum_persistence_flush_last_ms"] == 5_000.0
+    assert result["maximum_wal_checkpoint_last_ms"] == 3_000.0
+
+
+def test_running_service_soak_rejects_new_slow_storage_work() -> None:
+    slow = _advanced_payload()
+    slow_system = slow["system"]
+    assert isinstance(slow_system, dict)
+    slow_system.update(
+        {
+            "persistence_flush_last_ms": 20_001.0,
+            "wal_checkpoint_last_ms": 30_001.0,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(slow, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "FAIL"
+    assert "persistence_flush_latency_bounded" in result["failures"]
+    assert "wal_checkpoint_latency_bounded" in result["failures"]
+
+
 def test_running_service_soak_rejects_stalled_strategy_and_new_faults() -> None:
     unsafe = _advanced_payload()
     system = unsafe["system"]

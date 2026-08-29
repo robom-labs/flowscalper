@@ -570,6 +570,16 @@ def summarize_running_service_soak(
         )
     allowed_operation_samples = all(_operation_sample_is_safe(sample) for sample in samples)
     adjacent_samples = tuple(zip(samples, samples[1:], strict=False))
+    observed_persistence_flush_latencies = tuple(
+        current.persistence_flush_last_ms
+        for previous, current in adjacent_samples
+        if current.persistence_flush_count > previous.persistence_flush_count
+    )
+    observed_wal_checkpoint_latencies = tuple(
+        current.wal_checkpoint_last_ms
+        for previous, current in adjacent_samples
+        if current.wal_checkpoint_count > previous.wal_checkpoint_count
+    )
     baseline_strategy_ids = {state.strategy_id for state in baseline.strategy_states}
     counter_checks = {
         "no_consumer_delivery_failures": (
@@ -759,7 +769,8 @@ def summarize_running_service_soak(
             for previous, current in adjacent_samples
         ),
         "persistence_flush_latency_bounded": max(
-            sample.persistence_flush_last_ms for sample in samples
+            observed_persistence_flush_latencies,
+            default=0.0,
         )
         <= active_thresholds.max_persistence_flush_last_ms,
         "wal_checkpoint_continued": (
@@ -780,7 +791,8 @@ def summarize_running_service_soak(
             for previous, current in adjacent_samples
         ),
         "wal_checkpoint_latency_bounded": max(
-            sample.wal_checkpoint_last_ms for sample in samples
+            observed_wal_checkpoint_latencies,
+            default=0.0,
         )
         <= active_thresholds.max_wal_checkpoint_last_ms,
         "wal_checkpoint_complete_at_end": (
@@ -906,7 +918,8 @@ def summarize_running_service_soak(
             sample.candle_persistence_buffer for sample in samples
         ),
         "maximum_persistence_flush_last_ms": max(
-            sample.persistence_flush_last_ms for sample in samples
+            observed_persistence_flush_latencies,
+            default=0.0,
         ),
         "execution_persistence_delta": (
             final.execution_persistence_count
@@ -958,7 +971,8 @@ def summarize_running_service_soak(
             sample.storage_health_refresh_max_ms for sample in samples
         ),
         "maximum_wal_checkpoint_last_ms": max(
-            sample.wal_checkpoint_last_ms for sample in samples
+            observed_wal_checkpoint_latencies,
+            default=0.0,
         ),
         "wal_checkpoint_busy_delta": (
             final.wal_checkpoint_busy_count - baseline.wal_checkpoint_busy_count
