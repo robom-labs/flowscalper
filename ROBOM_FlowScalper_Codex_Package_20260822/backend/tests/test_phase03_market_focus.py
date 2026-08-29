@@ -433,6 +433,29 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     assert [fill["intent"] for fill in session["fills"]] == ["ENTRY", "EXIT"]
     assert session["reconciliation"]["replay_final_state"] == "NOT_RUN"
 
+    class GeneralReadLockBusy:
+        def acquire(self, *, blocking: bool) -> bool:
+            assert blocking is False
+            return False
+
+        def release(self) -> None:
+            raise AssertionError("획득하지 않은 일반 분석 읽기 잠금을 해제했습니다.")
+
+    shared_read_lock = ledger._read_lock  # noqa: SLF001 - 경합 격리 회귀 계약
+    with ledger._focus_read_lock:  # noqa: SLF001 - SQLite fallback 회귀 계약
+        ledger._focus_memory_cache.clear()  # noqa: SLF001
+    ledger._read_lock = GeneralReadLockBusy()  # type: ignore[assignment]  # noqa: SLF001
+    try:
+        cached = ledger.get_replay_focus_session(
+            runtime.run_id,
+            str(trade["trade_id"]),
+            "BASE",
+            session_version=7,
+        )
+    finally:
+        ledger._read_lock = shared_read_lock  # noqa: SLF001
+    assert cached == session
+
 
 def test_trade_focus_replay_returns_session_when_optional_cache_is_busy(
     tmp_path: Path,
@@ -461,6 +484,13 @@ def test_trade_focus_replay_returns_session_when_optional_cache_is_busy(
     assert response.status_code == 200
     assert response.json()["trade_id"] == trade["trade_id"]
     assert ledger.count("replay_focus_cache") == 0
+    remembered = ledger.get_replay_focus_session(
+        runtime.run_id,
+        str(trade["trade_id"]),
+        "BASE",
+        session_version=7,
+    )
+    assert remembered == response.json()
 
 
 def test_trade_focus_reuses_verified_replay_covering_trade_window(tmp_path: Path) -> None:

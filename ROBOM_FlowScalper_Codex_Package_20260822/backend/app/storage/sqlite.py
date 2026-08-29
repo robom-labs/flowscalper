@@ -63,12 +63,38 @@ class SQLiteLedger:
         )
         self._read_connection.row_factory = sqlite3.Row
         self._read_connection.execute("PRAGMA query_only = ON")
+        self._focus_read_lock = RLock()
+        self._focus_read_connection = sqlite3.connect(
+            path,
+            check_same_thread=False,
+            isolation_level=None,
+        )
+        self._focus_read_connection.row_factory = sqlite3.Row
+        self._focus_read_connection.execute("PRAGMA query_only = ON")
+        cached_focus_rows = self._focus_read_connection.execute(
+            """
+            SELECT source_run_id, trade_id, profile, session_version,
+                   checksum, payload_zlib
+            FROM replay_focus_cache
+            """
+        ).fetchall()
+        self._focus_memory_cache = {
+            (
+                str(row["source_run_id"]),
+                str(row["trade_id"]),
+                str(row["profile"]),
+                int(str(row["session_version"])),
+            ): (str(row["checksum"]), bytes(row["payload_zlib"]))
+            for row in cached_focus_rows
+        }
 
     def close(self) -> None:
         with self._lock:
             self._connection.close()
         with self._read_lock:
             self._read_connection.close()
+        with self._focus_read_lock:
+            self._focus_read_connection.close()
 
     def _initialize(self) -> None:
         with self._lock:
@@ -1643,22 +1669,46 @@ class SQLiteLedger:
     ) -> dict[str, Any] | None:
         """완성된 거래 집중 재생 캐시를 checksum 검증 후 반환한다."""
 
-        with self._read_lock:
-            row = self._read_connection.execute(
-                """
-                SELECT checksum, payload_zlib FROM replay_focus_cache
-                WHERE source_run_id = ? AND trade_id = ? AND profile = ?
-                  AND session_version = ?
-                """,
-                (source_run_id, trade_id, profile, session_version),
-            ).fetchone()
+        key = (source_run_id, trade_id, profile, session_version)
+        with self._focus_read_lock:
+            cached = self._focus_memory_cache.get(key)
+        if cached is not None:
+            checksum, payload_zlib = cached
+            return self._decode_replay_focus_session(checksum, payload_zlib)
+        query = """
+            SELECT checksum, payload_zlib FROM replay_focus_cache
+            WHERE source_run_id = ? AND trade_id = ? AND profile = ?
+              AND session_version = ?
+        """
+        parameters = (source_run_id, trade_id, profile, session_version)
+        if self._read_lock.acquire(blocking=False):
+            try:
+                row = self._read_connection.execute(query, parameters).fetchone()
+            finally:
+                self._read_lock.release()
+        else:
+            with self._focus_read_lock:
+                row = self._focus_read_connection.execute(query, parameters).fetchone()
         if row is None:
             return None
+        checksum = str(row["checksum"])
+        payload_zlib = bytes(row["payload_zlib"])
+        with self._focus_read_lock:
+            self._focus_memory_cache[key] = (checksum, payload_zlib)
+        return self._decode_replay_focus_session(checksum, payload_zlib)
+
+    @staticmethod
+    def _decode_replay_focus_session(
+        checksum: str,
+        payload_zlib: bytes,
+    ) -> dict[str, Any]:
+        """검증된 압축 집중 재생 캐시를 메모리 또는 SQLite에서 동일하게 해제한다."""
+
         try:
-            payload = zlib.decompress(bytes(row["payload_zlib"]))
+            payload = zlib.decompress(payload_zlib)
         except zlib.error as error:
             raise LedgerInvariantError("거래 집중 재생 캐시 압축이 손상되었습니다.") from error
-        if hashlib.sha256(payload).hexdigest() != str(row["checksum"]):
+        if hashlib.sha256(payload).hexdigest() != checksum:
             raise LedgerInvariantError("거래 집중 재생 캐시 checksum이 일치하지 않습니다.")
         decoded = json.loads(payload)
         if not isinstance(decoded, dict):
@@ -1712,7 +1762,29 @@ class SQLiteLedger:
                 ).fetchone()
                 if existing is None or str(existing["checksum"]) != checksum:
                     raise LedgerInvariantError("거래 집중 재생 캐시가 기존 결과와 다릅니다.")
-            return inserted
+        with self._focus_read_lock:
+            self._focus_memory_cache[
+                (source_run_id, trade_id, profile, session_version)
+            ] = (checksum, compressed)
+        return inserted
+
+    def remember_replay_focus_session(
+        self,
+        session: Mapping[str, object],
+    ) -> None:
+        """선택적 SQLite 캐시가 잠겨도 완성된 세션을 현재 실행 동안 재사용한다."""
+
+        source_run_id = str(session["run_id"])
+        trade_id = str(session["trade_id"])
+        profile = str(session["profile"])
+        session_version = int(str(session["session_version"]))
+        payload = _canonical_json(session).encode()
+        checksum = hashlib.sha256(payload).hexdigest()
+        compressed = zlib.compress(payload, level=6)
+        with self._focus_read_lock:
+            self._focus_memory_cache[
+                (source_run_id, trade_id, profile, session_version)
+            ] = (checksum, compressed)
 
     def list_runs(self) -> list[dict[str, Any]]:
         with self._lock:

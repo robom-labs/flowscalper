@@ -217,9 +217,10 @@ class ReplayFocusSessionBuilder:
             except sqlite3.OperationalError as error:
                 # 집중 차트는 원장 읽기 결과가 본체이고 캐시는 선택적 가속 계층이다.
                 # 분리 영속화 프로세스가 쓰기 잠금을 가진 짧은 구간에도 차트 응답은
-                # 성공시켜 다음 클릭에서 다시 캐시할 수 있게 한다.
+                # 성공시키고, 이미 만든 결과는 현재 실행 동안 다시 계산하지 않는다.
                 if "locked" not in str(error).lower() and "busy" not in str(error).lower():
                     raise
+                ledger.remember_replay_focus_session(session)
         return session
 
     @staticmethod
