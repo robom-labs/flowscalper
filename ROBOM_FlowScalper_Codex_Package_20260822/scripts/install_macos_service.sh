@@ -124,7 +124,9 @@ assert status["execution_state"] == "PAPER"
 assert status["real_orders_enabled"] is False
 assert status["auth_required"] is False
 assert operation["market_observation_active"] is True
-assert operation["automatic_recovery"] is True' \
+assert operation["automatic_recovery"] is True
+assert float(system["lag_p95_ms"]) <= 500.0
+assert float(system["trade_lag_p95_ms"]) <= 1000.0' \
       "$EXPECTED_RELEASE_COMMIT" 2>/dev/null; then
       service_ready="true"
       break

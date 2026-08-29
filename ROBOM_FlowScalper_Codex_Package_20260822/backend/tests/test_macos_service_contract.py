@@ -76,6 +76,8 @@ def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> Non
     assert 'status["auth_required"] is False' in readiness
     assert 'operation["market_observation_active"] is True' in readiness
     assert 'operation["automatic_recovery"] is True' in readiness
+    assert 'float(system["lag_p95_ms"]) <= 500.0' in readiness
+    assert 'float(system["trade_lag_p95_ms"]) <= 1000.0' in readiness
     assert "exit 6" in readiness
 
 
