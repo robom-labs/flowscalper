@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from itertools import chain
 from pathlib import Path
+from typing import cast
 
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.build_identity import STRATEGY_VERSION, git_commit
@@ -19,6 +20,12 @@ from backend.app.domain.models import MarketDataState, MarketEvent, RuntimeMode,
 from backend.app.features import FeatureSnapshot
 from backend.app.market_data import Candle
 from backend.app.regime import Regime
+from backend.app.research.protocol import (
+    bootstrap_mean_interval,
+    deflated_sharpe_ratio,
+    probability_of_backtest_overfitting,
+)
+from backend.app.risk.manager import STRATEGY_LEAGUE_RISK_LIMITS
 from backend.app.runtime import PaperRuntime
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.registry import (
@@ -43,6 +50,12 @@ STRATEGY_LOGIC_WAVE102 = "WAVE102_PARTIAL_CONFIRMATION_BASELINE"
 STRATEGY_LOGICS = (STRATEGY_LOGIC_CURRENT, STRATEGY_LOGIC_WAVE102)
 TP1_FEASIBILITY_LOOKBACK_MS = 120_000
 DEFAULT_DATASET_MANIFEST = Path("evidence/STRATEGY_100_DATASET_MANIFEST.json")
+ROBUSTNESS_BOOTSTRAP_SEED = 105_070
+MINIMUM_RANKING_OPPORTUNITIES = 30
+MINIMUM_RANKING_WIN_RATE = 0.70
+MINIMUM_DSR_PROBABILITY = 0.95
+MAXIMUM_PBO = 0.20
+PAPER_STARTING_EQUITY_USDT = Decimal("1000")
 _CANDIDATE_EVENTS = {
     "MAIN_CANDIDATE_SELECTED",
     "LEAGUE_CANDIDATE_ARMED",
@@ -885,6 +898,324 @@ def _summary(
     }
 
 
+def _result_strategy_trade_rows(
+    runs: Sequence[Mapping[str, object]],
+    *,
+    strategy_id: str,
+    profile: str | None = None,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for run in runs:
+        raw_rows = run.get("trade_rows")
+        if not isinstance(raw_rows, Sequence) or isinstance(raw_rows, str | bytes):
+            continue
+        rows.extend(
+            dict(row)
+            for row in raw_rows
+            if isinstance(row, Mapping)
+            and str(row.get("strategy_id")) == strategy_id
+            and (profile is None or str(row.get("profile")) == profile)
+        )
+    return rows
+
+
+def _trade_net_bps(row: Mapping[str, object]) -> float:
+    entry = Decimal(str(row["entry_price"]))
+    quantity = Decimal(str(row["quantity"]))
+    net_pnl = Decimal(str(row["net_pnl_usdt"]))
+    if not all(value.is_finite() for value in (entry, quantity, net_pnl)):
+        raise ValueError("전략 replay 거래 수익률 입력은 유한해야 합니다.")
+    notional = entry * quantity
+    if notional <= 0:
+        raise ValueError("전략 replay 거래 진입명목은 양수여야 합니다.")
+    return float(net_pnl / notional * Decimal(10_000))
+
+
+def _profile_oos_robustness(
+    trades: Sequence[Mapping[str, object]],
+    *,
+    trials: int,
+    seed: int,
+) -> dict[str, object]:
+    ordered = sorted(
+        trades,
+        key=lambda row: (
+            int(str(row.get("exit_ts_ms", 0))),
+            str(row.get("trade_id", "")),
+        ),
+    )
+    returns_bps = [_trade_net_bps(row) for row in ordered]
+    pnl = [Decimal(str(row["net_pnl_usdt"])) for row in ordered]
+    wins = [value for value in pnl if value > 0]
+    losses = [value for value in pnl if value < 0]
+    net_pnl = sum(pnl, Decimal(0))
+    expectancy_bps = (
+        sum(returns_bps) / len(returns_bps) if returns_bps else None
+    )
+    profit_factor = (
+        sum(wins, Decimal(0)) / abs(sum(losses, Decimal(0))) if losses else None
+    )
+    equity = PAPER_STARTING_EQUITY_USDT
+    peak = equity
+    maximum_drawdown = Decimal(0)
+    for value in pnl:
+        equity += value
+        peak = max(peak, equity)
+        maximum_drawdown = max(maximum_drawdown, peak - equity)
+    drawdown_limit = (
+        PAPER_STARTING_EQUITY_USDT
+        * STRATEGY_LEAGUE_RISK_LIMITS.maximum_drawdown_fraction
+    )
+    bootstrap = bootstrap_mean_interval(returns_bps, seed=seed)
+    dsr = deflated_sharpe_ratio(returns_bps, trials=trials)
+    win_rate = len(wins) / len(pnl) if pnl else None
+    no_loss_positive_sample = not losses and bool(wins)
+    gates = {
+        "sample_at_least_30": len(pnl) >= MINIMUM_RANKING_OPPORTUNITIES,
+        "win_rate_at_least_70_percent": (
+            win_rate is not None and win_rate >= MINIMUM_RANKING_WIN_RATE
+        ),
+        "expectancy_bps_positive": (
+            expectancy_bps is not None and expectancy_bps > 0
+        ),
+        "net_pnl_positive": net_pnl > 0,
+        "profit_factor_above_one": (
+            no_loss_positive_sample
+            or (profit_factor is not None and profit_factor > Decimal(1))
+        ),
+        "bootstrap_lower_positive": (
+            bootstrap.get("lower") is not None
+            and float(str(bootstrap["lower"])) > 0
+        ),
+        "dsr_at_least_0_95": (
+            dsr.get("dsr_probability") is not None
+            and float(str(dsr["dsr_probability"])) >= MINIMUM_DSR_PROBABILITY
+        ),
+        "maximum_drawdown_within_league_8_percent_limit": (
+            maximum_drawdown <= drawdown_limit
+        ),
+    }
+    return {
+        "sample_size": len(pnl),
+        "wins": len(wins),
+        "losses": len(losses),
+        "win_rate": win_rate,
+        "expectancy_bps": expectancy_bps,
+        "net_pnl_usdt": str(net_pnl),
+        "profit_factor": str(profit_factor) if profit_factor is not None else None,
+        "maximum_drawdown_usdt": str(maximum_drawdown),
+        "maximum_drawdown_limit_usdt": str(drawdown_limit),
+        "expectancy_bootstrap_95": bootstrap,
+        "deflated_sharpe_ratio": dsr,
+        "gates": gates,
+        "gate_passed": all(gates.values()),
+        "returns_are_nonannualized_net_bps": True,
+    }
+
+
+def _strategy_censored_count(
+    runs: Sequence[Mapping[str, object]],
+    *,
+    strategy_id: str,
+) -> int:
+    censored = 0
+    for run in runs:
+        open_state = run.get("open_state")
+        if not isinstance(open_state, Mapping):
+            continue
+        positions = open_state.get("positions")
+        if isinstance(positions, Sequence) and not isinstance(positions, str | bytes):
+            censored += sum(
+                isinstance(position, Mapping)
+                and str(position.get("strategy_id")) == strategy_id
+                for position in positions
+            )
+        pending = open_state.get("pending_entry_counts")
+        if isinstance(pending, Mapping):
+            censored += int(str(pending.get(strategy_id, 0)))
+    return censored
+
+
+def strategy_league_robustness(
+    runs: Sequence[Mapping[str, object]],
+    *,
+    strategy_ids: Sequence[str],
+    train_validation_run_ids: Sequence[str],
+    oos_run_ids: Sequence[str],
+) -> dict[str, object]:
+    """고정 전략 전체의 시간순 OOS·bootstrap·DSR·PBO를 같은 결과에서 계산한다."""
+
+    ordered_strategy_ids = tuple(dict.fromkeys(strategy_ids))
+    if not ordered_strategy_ids:
+        raise ValueError("전략 강건성 평가에는 전략이 필요합니다.")
+    run_by_id = {str(run.get("run_id")): run for run in runs}
+    missing_train_validation = [
+        run_id for run_id in train_validation_run_ids if run_id not in run_by_id
+    ]
+    missing_oos = [run_id for run_id in oos_run_ids if run_id not in run_by_id]
+    train_validation_runs = [
+        run_by_id[run_id]
+        for run_id in train_validation_run_ids
+        if run_id in run_by_id
+    ]
+    oos_runs = [run_by_id[run_id] for run_id in oos_run_ids if run_id in run_by_id]
+    complete_pbo_input = (
+        not missing_train_validation
+        and len(train_validation_runs) >= 4
+        and len(train_validation_runs) % 2 == 0
+        and len(ordered_strategy_ids) >= 2
+    )
+    pbo_by_profile: dict[str, dict[str, object]] = {}
+    fold_returns_by_profile: dict[str, dict[str, list[float]]] = {}
+    for profile in ("BASE", "STRESS"):
+        fold_returns = {
+            strategy_id: [
+                (
+                    sum(values) / len(values)
+                    if (
+                        values := [
+                            _trade_net_bps(row)
+                            for row in _result_strategy_trade_rows(
+                                (run,),
+                                strategy_id=strategy_id,
+                                profile=profile,
+                            )
+                        ]
+                    )
+                    else 0.0
+                )
+                for run in train_validation_runs
+            ]
+            for strategy_id in ordered_strategy_ids
+        }
+        fold_returns_by_profile[profile] = fold_returns
+        if complete_pbo_input:
+            pbo_by_profile[profile] = probability_of_backtest_overfitting(
+                fold_returns
+            )
+        else:
+            pbo_by_profile[profile] = {
+                "pbo": None,
+                "combinations": 0,
+                "logits": [],
+                "status": "REQUIRED_RUN_FOLDS_MISSING_OR_INSUFFICIENT",
+            }
+
+    pbo_gates = {
+        profile: (
+            report.get("pbo") is not None
+            and float(str(report["pbo"])) <= MAXIMUM_PBO
+        )
+        for profile, report in pbo_by_profile.items()
+    }
+    strategy_results: dict[str, dict[str, object]] = {}
+    for strategy_index, strategy_id in enumerate(ordered_strategy_ids):
+        trades = _result_strategy_trade_rows(oos_runs, strategy_id=strategy_id)
+        opportunities = {
+            (
+                str(row.get("run_id")),
+                str(row.get("signal_event_id")),
+                str(row.get("strategy_id")),
+                str(row.get("side")),
+            )
+            for row in trades
+        }
+        profile_results = {
+            profile: _profile_oos_robustness(
+                [row for row in trades if str(row.get("profile")) == profile],
+                trials=len(ordered_strategy_ids),
+                seed=ROBUSTNESS_BOOTSTRAP_SEED
+                + strategy_index * 10
+                + (0 if profile == "BASE" else 1),
+            )
+            for profile in ("BASE", "STRESS")
+        }
+        censored_count = _strategy_censored_count(
+            oos_runs,
+            strategy_id=strategy_id,
+        )
+        blockers: list[str] = []
+        if missing_train_validation:
+            blockers.append("TRAIN_VALIDATION_RUNS_MISSING")
+        if missing_oos:
+            blockers.append("FINAL_OOS_RUNS_MISSING")
+        if len(opportunities) < MINIMUM_RANKING_OPPORTUNITIES:
+            blockers.append("OOS_UNIQUE_MARKET_OPPORTUNITIES_BELOW_30")
+        for profile, result in profile_results.items():
+            gates = cast(Mapping[str, object], result["gates"])
+            for gate, passed in gates.items():
+                if not passed:
+                    blockers.append(f"{profile}_OOS_{gate.upper()}")
+            if not pbo_gates[profile]:
+                blockers.append(f"{profile}_PBO_ABOVE_0_20_OR_UNAVAILABLE")
+        if censored_count:
+            blockers.append("FINAL_OOS_CENSORED_POSITIONS_OR_PENDING_ENTRIES")
+        historical_gates_passed = (
+            not missing_train_validation
+            and not missing_oos
+            and len(opportunities) >= MINIMUM_RANKING_OPPORTUNITIES
+            and censored_count == 0
+            and all(result["gate_passed"] for result in profile_results.values())
+            and all(pbo_gates.values())
+        )
+        blockers.extend(
+            (
+                "PARAMETER_ROBUSTNESS_NOT_EVALUATED",
+                "SYMBOL_REGIME_CONCENTRATION_NOT_EVALUATED",
+                "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED",
+            )
+        )
+        strategy_results[strategy_id] = {
+            "final_oos_unique_market_opportunity_count": len(opportunities),
+            "final_oos_censored_count": censored_count,
+            "profiles": profile_results,
+            "pbo_gate_by_profile": pbo_gates,
+            "historical_cost_oos_statistical_gates_passed": historical_gates_passed,
+            "ranking_eligible": False,
+            "profitability_status": "NOT_PROVEN",
+            "ranking_blockers": list(dict.fromkeys(blockers)),
+        }
+    return {
+        "status": (
+            "HISTORICAL_METRICS_CALCULATED_FORWARD_PENDING"
+            if not missing_train_validation and not missing_oos
+            else "INCOMPLETE_REQUIRED_RUNS"
+        ),
+        "trial_count": len(ordered_strategy_ids),
+        "trial_strategy_ids": list(ordered_strategy_ids),
+        "selection_folds": {
+            "method": "TIME_ORDERED_TRAIN_PLUS_VALIDATION_RUN_MEAN_NET_BPS",
+            "missing_trade_fold_score_bps": 0.0,
+            "run_ids": list(train_validation_run_ids),
+            "missing_run_ids": missing_train_validation,
+            "returns_by_profile_and_strategy": fold_returns_by_profile,
+        },
+        "final_oos": {
+            "run_ids": list(oos_run_ids),
+            "missing_run_ids": missing_oos,
+            "opened_once_no_retuning": True,
+        },
+        "pbo_by_profile": pbo_by_profile,
+        "pbo_gate_by_profile": pbo_gates,
+        "thresholds": {
+            "minimum_unique_market_opportunities": MINIMUM_RANKING_OPPORTUNITIES,
+            "minimum_samples_per_profile": MINIMUM_RANKING_OPPORTUNITIES,
+            "minimum_win_rate_per_profile": MINIMUM_RANKING_WIN_RATE,
+            "minimum_dsr_probability": MINIMUM_DSR_PROBABILITY,
+            "maximum_pbo": MAXIMUM_PBO,
+            "maximum_drawdown_fraction": str(
+                STRATEGY_LEAGUE_RISK_LIMITS.maximum_drawdown_fraction
+            ),
+        },
+        "strategies": strategy_results,
+        "ranking_eligible_strategy_ids": [],
+        "profitability_status": "NOT_PROVEN",
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+    }
+
+
 def build_result(
     archive: Path,
     *,
@@ -992,8 +1323,49 @@ def build_strategy_league_result(
         strategy_id: _summary(runs, strategy_id=strategy_id)
         for strategy_id in strategy_ids
     }
+    robustness = strategy_league_robustness(
+        runs,
+        strategy_ids=strategy_ids,
+        train_validation_run_ids=(
+            *DEFAULT_RESEARCH_TRAIN_RUNS,
+            *DEFAULT_VALIDATION_RUNS,
+        ),
+        oos_run_ids=DEFAULT_OOS_RUNS,
+    )
+    replaced_robustness_blockers = {
+        "TIME_ORDERED_OOS_ROBUSTNESS_NOT_EVALUATED",
+        "BOOTSTRAP_EXPECTANCY_LOWER_BOUND_NOT_EVALUATED",
+        "DSR_NOT_EVALUATED",
+        "PBO_NOT_EVALUATED",
+        "DRAWDOWN_GATE_NOT_EVALUATED",
+    }
+    robustness_by_strategy = cast(
+        Mapping[str, Mapping[str, object]],
+        robustness["strategies"],
+    )
+    for strategy_id, summary in overall_by_strategy.items():
+        strategy_robustness = robustness_by_strategy[strategy_id]
+        existing_blockers = cast(Sequence[str], summary["ranking_blockers"])
+        robustness_blockers = cast(
+            Sequence[str],
+            strategy_robustness["ranking_blockers"],
+        )
+        summary["robustness_evaluation"] = strategy_robustness
+        summary["historical_cost_oos_statistical_gates_passed"] = strategy_robustness[
+            "historical_cost_oos_statistical_gates_passed"
+        ]
+        summary["ranking_blockers"] = list(
+            dict.fromkeys(
+                [
+                    blocker
+                    for blocker in existing_blockers
+                    if blocker not in replaced_robustness_blockers
+                ]
+                + list(robustness_blockers)
+            )
+        )
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE",
         "method": "ONE_PASS_ALL_REGISTERED_ACTUAL_PAPER_RUNTIME_PATH",
         "git_commit": git_commit(),
@@ -1017,6 +1389,7 @@ def build_strategy_league_result(
         "runs": runs,
         "splits": split_summaries,
         "overall_by_strategy": overall_by_strategy,
+        "robustness_evaluation": robustness,
     }
 
 

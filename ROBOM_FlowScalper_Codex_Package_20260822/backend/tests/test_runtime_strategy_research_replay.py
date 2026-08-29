@@ -34,6 +34,7 @@ from scripts.research_runtime_strategy_replay import (
     frozen_dataset_reference,
     replay_archive_run,
     replay_strategy_league_archive_run,
+    strategy_league_robustness,
     tp1_feasibility_gate_rejections,
 )
 
@@ -119,6 +120,29 @@ def _write_dataset_manifest(path: Path, run_id: str) -> None:
     )
     payload["manifest_sha256"] = hashlib.sha256(canonical.encode()).hexdigest()
     path.write_text(json.dumps(payload))
+
+
+def _robustness_trade(
+    *,
+    run_id: str,
+    strategy_id: str,
+    profile: str,
+    opportunity_index: int,
+    net_pnl_usdt: Decimal,
+    exit_ts_ms: int,
+) -> dict[str, object]:
+    return {
+        "trade_id": f"{run_id}-{strategy_id}-{profile}-{opportunity_index}",
+        "run_id": run_id,
+        "signal_event_id": f"{run_id}-{strategy_id}-signal-{opportunity_index}",
+        "strategy_id": strategy_id,
+        "side": "LONG",
+        "profile": profile,
+        "entry_price": "100",
+        "quantity": "1",
+        "net_pnl_usdt": str(net_pnl_usdt),
+        "exit_ts_ms": exit_ts_ms,
+    }
 
 
 def _feature(side: Side = Side.LONG) -> FeatureSnapshot:
@@ -556,11 +580,100 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     assert result["real_orders_enabled"] is False
     assert result["ranking_eligible_strategy_ids"] == []
     assert result["profitability_status"] == "NOT_PROVEN"
+    assert result["schema_version"] == 3
+    assert result["robustness_evaluation"]["status"] == "INCOMPLETE_REQUIRED_RUNS"
     assert len(result["overall_by_strategy"]) == 11
     assert all(
         summary["ranking_eligible"] is False
         for summary in result["overall_by_strategy"].values()
     )
+
+
+def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_promotion() -> None:
+    strategy_ids = ("ROBUST_A", "WEAK_B")
+    train_validation_run_ids = tuple(f"TRAIN-{index}" for index in range(8))
+    oos_run_ids = tuple(f"OOS-{index}" for index in range(5))
+    runs: list[dict[str, object]] = []
+    for run_index, run_id in enumerate(train_validation_run_ids):
+        rows = [
+            _robustness_trade(
+                run_id=run_id,
+                strategy_id=strategy_id,
+                profile=profile,
+                opportunity_index=run_index,
+                net_pnl_usdt=(
+                    Decimal("0.20") + Decimal(run_index) / Decimal("100")
+                    if strategy_id == "ROBUST_A" and profile == "BASE"
+                    else Decimal("0.15") + Decimal(run_index) / Decimal("100")
+                    if strategy_id == "ROBUST_A"
+                    else Decimal("-0.10") - Decimal(run_index) / Decimal("100")
+                ),
+                exit_ts_ms=1_000 + run_index,
+            )
+            for strategy_id in strategy_ids
+            for profile in ("BASE", "STRESS")
+        ]
+        runs.append({"run_id": run_id, "trade_rows": rows, "open_state": {}})
+    opportunity_index = 0
+    for run_id in oos_run_ids:
+        rows = []
+        for _ in range(6):
+            for strategy_id in strategy_ids:
+                for profile in ("BASE", "STRESS"):
+                    if strategy_id == "ROBUST_A":
+                        net_pnl = (
+                            Decimal("-0.05")
+                            if opportunity_index % 5 == 0
+                            else Decimal("0.20")
+                            if profile == "BASE"
+                            else Decimal("0.15")
+                        )
+                    else:
+                        net_pnl = (
+                            Decimal("0.10")
+                            if opportunity_index % 3 == 0
+                            else Decimal("-0.10")
+                        )
+                    rows.append(
+                        _robustness_trade(
+                            run_id=run_id,
+                            strategy_id=strategy_id,
+                            profile=profile,
+                            opportunity_index=opportunity_index,
+                            net_pnl_usdt=net_pnl,
+                            exit_ts_ms=10_000 + opportunity_index,
+                        )
+                    )
+            opportunity_index += 1
+        runs.append({"run_id": run_id, "trade_rows": rows, "open_state": {}})
+
+    result = strategy_league_robustness(
+        runs,
+        strategy_ids=strategy_ids,
+        train_validation_run_ids=train_validation_run_ids,
+        oos_run_ids=oos_run_ids,
+    )
+
+    robust = result["strategies"]["ROBUST_A"]
+    weak = result["strategies"]["WEAK_B"]
+    assert result["status"] == "HISTORICAL_METRICS_CALCULATED_FORWARD_PENDING"
+    assert result["pbo_gate_by_profile"] == {"BASE": True, "STRESS": True}
+    assert robust["final_oos_unique_market_opportunity_count"] == 30
+    assert robust["profiles"]["BASE"]["sample_size"] == 30
+    assert robust["profiles"]["STRESS"]["win_rate"] == pytest.approx(0.8)
+    assert robust["profiles"]["BASE"]["expectancy_bootstrap_95"]["lower"] > 0
+    assert (
+        robust["profiles"]["BASE"]["deflated_sharpe_ratio"]["dsr_probability"]
+        >= 0.95
+    )
+    assert robust["historical_cost_oos_statistical_gates_passed"] is True
+    assert robust["ranking_eligible"] is False
+    assert "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED" in robust[
+        "ranking_blockers"
+    ]
+    assert weak["historical_cost_oos_statistical_gates_passed"] is False
+    assert result["ranking_eligible_strategy_ids"] == []
+    assert result["real_orders_enabled"] is False
 
 
 def test_frozen_dataset_reference_rejects_tamper_and_unknown_run(tmp_path: Path) -> None:

@@ -40,3 +40,5 @@ Accepted for research execution only.
 단순히 거래가 0건이라는 사실은 정상적인 조건 대기와 구현 결함을 구분하지 못한다. 연구 evaluator는 전략별·LONG/SHORT별 전체 평가 수, 원래 전략에서 통과한 수, 사전등록 gate 이후 통과한 수와 rejection code 빈도를 누적한다. 이 진단은 기준을 완화하지 않고 이미 계산된 결정 사유만 집계한다.
 
 실제 저장 Run의 앞 1,000개 이벤트 진단 smoke에서 11개 전략은 각각 642회, 합계 7,062회 평가됐다. 모든 전략의 LONG·SHORT 경로가 결과에 존재했고 실제 주문·인증·원장은 0이었다. 이 구간은 통계와 레짐 warmup이 지배적이므로 거래 0건과 rejection 빈도로 전략 성과를 판단하지 않는다. 전체 동결 Run에서 warmup 이후에도 특정 필수조건이 논리상 한 번도 만족되지 않는 경우에만 구현 또는 조건계약 감사를 시작한다.
+
+시간순 Final OOS, bootstrap, DSR, PBO와 drawdown 계산 및 독립 forward 차단 계약은 [ADR-091](ADR-091-strategy-league-oos-robustness-evidence.md)에 고정한다.
