@@ -500,6 +500,11 @@ def test_running_service_soak_rejects_local_event_loop_stall() -> None:
             "event_loop_lag_over_100ms_count": 1,
             "event_loop_lag_over_500ms_count": 1,
             "event_loop_lag_last_over_500ms_ms": 510.0,
+            "live_event_phase_max_ms": 505.0,
+            "live_event_phase_max_name": "STRATEGY_EVALUATION",
+            "live_event_phase_max_event_type": "DEPTH_UPDATE",
+            "live_event_phase_max_symbol": "BTCUSDT",
+            "live_event_phase_over_100ms_count": 1,
         }
     )
 
@@ -513,6 +518,11 @@ def test_running_service_soak_rejects_local_event_loop_stall() -> None:
     assert result["thresholds"]["max_event_loop_lag_ms"] == 500.0
     assert result["maximum_event_loop_lag_ms"] == 510.0
     assert result["event_loop_lag_over_500ms_delta"] == 1
+    assert result["live_event_phase_over_100ms_delta"] == 1
+    assert result["maximum_live_event_phase_max_ms"] == 505.0
+    assert result["live_event_phase_max_name"] == "STRATEGY_EVALUATION"
+    assert result["live_event_phase_max_event_type"] == "DEPTH_UPDATE"
+    assert result["live_event_phase_max_symbol"] == "BTCUSDT"
 
 
 def test_running_service_soak_ignores_process_lifetime_event_loop_max_before_baseline() -> None:

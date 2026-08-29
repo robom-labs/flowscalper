@@ -336,6 +336,47 @@ async def test_live_sink_defers_changed_execution_persistence_to_worker(monkeypa
     assert runtime._live_event_processing_max_symbol == "BTCUSDT"
 
 
+def test_live_book_event_reports_slowest_processing_phase(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-live-phase-diagnostics",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    event = MarketEvent(
+        event_id="depth-live-phase-diagnostics",
+        run_id=runtime.run_id,
+        venue=runtime.venue,
+        symbol="BTCUSDT",
+        event_type="DEPTH_UPDATE",
+        venue_ts_ms=1_000,
+        receive_monotonic_ns=1_000,
+        quality=DataQuality(
+            is_live=True,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+    )
+    original_on_book = runtime.paper_portfolio.on_book
+
+    def slow_on_book(book) -> None:
+        time.sleep(0.03)
+        original_on_book(book)
+
+    monkeypatch.setattr(runtime.paper_portfolio, "on_book", slow_on_book)
+
+    runtime.ingest_live_event(event, defer_execution_persistence=True)
+    diagnostics = runtime._operational_diagnostics()
+
+    assert diagnostics["live_event_phase_max_name"] == "PAPER_PORTFOLIO_ON_BOOK"
+    assert float(str(diagnostics["live_event_phase_max_ms"])) >= 25
+    assert diagnostics["live_event_phase_max_event_type"] == "DEPTH_UPDATE"
+    assert diagnostics["live_event_phase_max_symbol"] == "BTCUSDT"
+    assert "STRATEGY_EVALUATION" in diagnostics["live_event_phase_last_ms"]
+
+
 def test_unchanged_execution_state_skips_sqlite_persistence(monkeypatch) -> None:
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,

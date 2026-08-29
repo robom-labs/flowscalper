@@ -1,0 +1,116 @@
+{
+  "schema": "flowscalper.wave105n.natural_max_hold_and_phase_diagnostics.v1",
+  "status": "NOT_RUN",
+  "status_reason": "자연 PAPER 거래와 개발 회귀검증은 확인했지만 단계별 계측이 포함된 서비스 배포 및 새 6시간 관찰은 아직 실행하지 않았다.",
+  "captured_ts_ms": 1787975203648,
+  "source": "http://127.0.0.1:8870/api/dashboard 및 /api/history의 읽기 전용 응답",
+  "run": {
+    "run_id": "run-2b7135a972dd",
+    "mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "natural_trade_audit": {
+    "status": "PASS",
+    "candidate_id": "candidate-80fdf4847034461f",
+    "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+    "symbol": "BTCUSDT",
+    "side": "SHORT",
+    "entry_ts_ms": 1787973944938,
+    "exit_ts_ms": 1787974845838,
+    "holding_ms": 900900,
+    "exit_reason": "MAX_HOLD",
+    "under_3_seconds": false,
+    "under_15_seconds": false,
+    "accounts": [
+      {
+        "account_id": "AGGRESSOR_FLOW_CONTINUATION_V1:BASE",
+        "profile": "BASE",
+        "entry_fill": "77657.10",
+        "exit_fill": "77578.90",
+        "gross_pnl_usdt": "1.09480",
+        "fees_usdt": "1.30398240",
+        "slippage_usdt": "0",
+        "net_pnl_usdt": "-0.20918240"
+      },
+      {
+        "account_id": "AGGRESSOR_FLOW_CONTINUATION_V1:STRESS",
+        "profile": "STRESS",
+        "entry_fill": "77657.10",
+        "exit_fill": "77578.90",
+        "gross_pnl_usdt": "0.86020",
+        "fees_usdt": "2.04911520",
+        "slippage_usdt": "0",
+        "net_pnl_usdt": "-1.18891520"
+      }
+    ],
+    "interpretation": "방향성 총손익은 양수였지만 비용 후 두 계좌 모두 순손실이었다. 조기종료 결함은 재발하지 않았으며 수익성 증거도 아니다."
+  },
+  "current_strategy_evidence": {
+    "status": "NOT_PROVEN",
+    "strategy_id": "AGGRESSOR_FLOW_CONTINUATION_V1",
+    "base": {
+      "sample_size": 6,
+      "wins": 1,
+      "losses": 5,
+      "win_rate": "0.1666666666666666666666666667",
+      "expectancy_usdt": "-1.047523913333333333333333333",
+      "profit_factor": "0.04665385964985301179091004767"
+    },
+    "stress": {
+      "sample_size": 5,
+      "wins": 0,
+      "losses": 5,
+      "win_rate": "0",
+      "expectancy_usdt": "-1.706355312",
+      "profit_factor": "0E+8"
+    },
+    "decision": "30건 미만이므로 순위를 매기지 않고 SHADOW 및 NOT_PROVEN을 유지한다."
+  },
+  "observed_event_loop_incident": {
+    "status": "FAIL",
+    "event_loop_lag_over_500ms_count": 7,
+    "event_loop_lag_max_ms": 1505.0,
+    "event_loop_lag_last_over_500ms_ts_ms": 1787973946099,
+    "live_event_processing_max_ms": 1504.0,
+    "live_event_processing_max_ts_ms": 1787973946092,
+    "event_type": "DEPTH_UPDATE",
+    "symbol": "BTCUSDT",
+    "queue_depth": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "critical_lag_event_count": 0,
+    "root_cause": "UNATTRIBUTED_PENDING_PHASE_TELEMETRY_DEPLOYMENT"
+  },
+  "development_verification": {
+    "status": "PASS",
+    "changes": [
+      "호가 처리 12단계의 최근·최장 경과시간 계측",
+      "최장 단계의 시각·이벤트 종류·종목 기록",
+      "100ms 이상 단계 누적값 기록",
+      "running-service soak 결과에 단계 진단 보존"
+    ],
+    "tests": {
+      "backend/tests/test_v02_operational_safety.py": "39 passed",
+      "backend/tests/test_v02_operational_safety.py + backend/tests/test_running_service_soak.py": "55 passed",
+      "ruff": "PASS",
+      "git_diff_check": "PASS"
+    }
+  },
+  "deployment_verification": {
+    "status": "NOT_RUN",
+    "reason": "진행 중인 Wave104 6시간 관찰을 재시작으로 훼손하지 않기 위해 보류했다.",
+    "required_next": [
+      "Wave104 종료와 결과 판정",
+      "단계별 계측 포함 release 배포",
+      "실제 브라우저와 API에서 단계 필드 확인",
+      "새 6시간 관찰에서 500ms 초과 신규 사건과 최장 단계 판정"
+    ]
+  }
+}

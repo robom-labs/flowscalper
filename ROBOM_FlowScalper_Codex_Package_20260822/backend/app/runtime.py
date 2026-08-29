@@ -239,6 +239,13 @@ class PaperRuntime:
     _live_event_processing_max_ts_ms: int | None = None
     _live_event_processing_max_event_type: str = "NONE"
     _live_event_processing_max_symbol: str = "NONE"
+    _live_event_phase_last_ms: dict[str, float] = field(default_factory=dict)
+    _live_event_phase_max_ms: float = 0.0
+    _live_event_phase_max_name: str = "NONE"
+    _live_event_phase_max_ts_ms: int | None = None
+    _live_event_phase_max_event_type: str = "NONE"
+    _live_event_phase_max_symbol: str = "NONE"
+    _live_event_phase_over_100ms_count: int = 0
     _wal_checkpoint_next_flush: int = _WAL_CHECKPOINT_FLUSH_INTERVAL
     _wal_checkpoint_count: int = 0
     _wal_checkpoint_last_ms: float = 0.0
@@ -913,6 +920,16 @@ class PaperRuntime:
             "live_event_processing_max_ts_ms": self._live_event_processing_max_ts_ms,
             "live_event_processing_max_event_type": (self._live_event_processing_max_event_type),
             "live_event_processing_max_symbol": self._live_event_processing_max_symbol,
+            "live_event_phase_last_ms": {
+                name: round(elapsed_ms, 3)
+                for name, elapsed_ms in self._live_event_phase_last_ms.items()
+            },
+            "live_event_phase_max_ms": round(self._live_event_phase_max_ms, 3),
+            "live_event_phase_max_name": self._live_event_phase_max_name,
+            "live_event_phase_max_ts_ms": self._live_event_phase_max_ts_ms,
+            "live_event_phase_max_event_type": self._live_event_phase_max_event_type,
+            "live_event_phase_max_symbol": self._live_event_phase_max_symbol,
+            "live_event_phase_over_100ms_count": self._live_event_phase_over_100ms_count,
             "wal_autocheckpoint_pages": 0,
             "wal_checkpoint_flush_interval": _WAL_CHECKPOINT_FLUSH_INTERVAL,
             "wal_checkpoint_count": self._wal_checkpoint_count,
@@ -1196,6 +1213,10 @@ class PaperRuntime:
     ) -> None:
         if event.run_id != self.run_id or event.venue is not self.venue:
             raise ValueError("다른 Run 또는 거래소 이벤트를 LIVE 런타임에 섞을 수 없습니다.")
+        depth_event = event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}
+        pre_dispatch_started = time.perf_counter()
+        if depth_event:
+            self._live_event_phase_last_ms.clear()
         self._refresh_supervisor_entry_safety()
         self._events.append(event)
         if self.ledger is not None and self.mode is not RuntimeMode.READY:
@@ -1205,6 +1226,12 @@ class PaperRuntime:
             self._refresh_persistence_backlog_safety(persistence_backlog)
         if event.quality.is_stale or not event.quality.sequence_valid:
             self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
+        if depth_event:
+            self._record_live_event_phase(
+                "INGEST_PRE_DISPATCH",
+                pre_dispatch_started,
+                event,
+            )
         if event.event_type == "TRADE":
             if event.quality.is_stale or not event.quality.sequence_valid:
                 self._stale_trade_symbols.add(event.symbol)
@@ -1246,12 +1273,39 @@ class PaperRuntime:
                 event,
                 persist_execution=not defer_execution_persistence,
             )
+        post_dispatch_started = time.perf_counter()
         if event.event_type == "HEALTH" or not event.quality.sequence_valid:
             self.paused = True
             if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
                 self.runtime_health_flags.append("ENTRY_LOCK_DATA_HEALTH")
         if self._supervisor is not None:
             self.processing_lag_p95_ms = self._supervisor.telemetry.lag_p95_ms
+        if depth_event:
+            self._record_live_event_phase(
+                "INGEST_POST_DISPATCH",
+                post_dispatch_started,
+                event,
+            )
+
+    def _record_live_event_phase(
+        self,
+        name: str,
+        started: float,
+        event: MarketEvent,
+    ) -> None:
+        """호가 처리의 가장 느린 동기 단계를 낮은 비용으로 식별한다."""
+
+        elapsed_ms = (time.perf_counter() - started) * 1_000
+        self._live_event_phase_last_ms[name] = elapsed_ms
+        if elapsed_ms >= 100:
+            self._live_event_phase_over_100ms_count += 1
+        if elapsed_ms <= self._live_event_phase_max_ms:
+            return
+        self._live_event_phase_max_ms = elapsed_ms
+        self._live_event_phase_max_name = name
+        self._live_event_phase_max_ts_ms = self.clock.utc_ms()
+        self._live_event_phase_max_event_type = event.event_type
+        self._live_event_phase_max_symbol = event.symbol
 
     @staticmethod
     def _persistable_market_event(event: MarketEvent) -> dict[str, object]:
@@ -1443,6 +1497,7 @@ class PaperRuntime:
             # 원본 이벤트와 data-gap 시작점은 보존하지만, 오래되거나 끊긴 호가로
             # 최신 체결호가·피처 이력·전략 후보·포지션 관리를 갱신하지 않는다.
             return
+        phase_started = time.perf_counter()
         try:
             bids_value = event.data.get("bids")
             asks_value = event.data.get("asks")
@@ -1489,12 +1544,19 @@ class PaperRuntime:
             TypeError,
             ValueError,
         ) as error:
+            self._record_live_event_phase("BOOK_BUILD", phase_started, event)
             self._record_feature_input_fault(event.symbol, error)
             return
+        self._record_live_event_phase("BOOK_BUILD", phase_started, event)
+        phase_started = time.perf_counter()
         self.latest_books[event.symbol] = book
         self.paper_portfolio.on_book(book)
+        self._record_live_event_phase("PAPER_PORTFOLIO_ON_BOOK", phase_started, event)
         if persist_execution:
+            phase_started = time.perf_counter()
             self._persist_execution_state_safely(event.venue_ts_ms)
+            self._record_live_event_phase("EXECUTION_PERSISTENCE", phase_started, event)
+        phase_started = time.perf_counter()
         if (
             event.symbol in self._recovery_revalidation_symbols
             and event.quality.sequence_valid
@@ -1520,6 +1582,8 @@ class PaperRuntime:
         self.position_visible = self.paper_portfolio.main.position is not None
         portfolio_summary = self.paper_portfolio.main_summary(self._current_main_book())
         self.unrealized_pnl_usdt = float(portfolio_summary["unrealized"])
+        self._record_live_event_phase("POSITION_STATE", phase_started, event)
+        phase_started = time.perf_counter()
         engine = self.feature_engines.setdefault(event.symbol, FeatureEngine())
         try:
             engine.ingest_book(frame)
@@ -1528,6 +1592,7 @@ class PaperRuntime:
                 last_evaluation is not None
                 and event.venue_ts_ms - last_evaluation < self.strategy_evaluation_interval_ms
             ):
+                self._record_live_event_phase("FEATURE_SNAPSHOT", phase_started, event)
                 return
             self._last_strategy_evaluation_ms[event.symbol] = event.venue_ts_ms
             snapshot = engine.snapshot()
@@ -1535,8 +1600,11 @@ class PaperRuntime:
                 snapshot = replace(snapshot, data_healthy=False)
             regime = self.regime_classifier.classify(snapshot)
         except (FeatureInputError, KeyError, IndexError, ValueError) as error:
+            self._record_live_event_phase("FEATURE_SNAPSHOT", phase_started, event)
             self._record_feature_input_fault(event.symbol, error)
             return
+        self._record_live_event_phase("FEATURE_SNAPSHOT", phase_started, event)
+        phase_started = time.perf_counter()
         self._refresh_feature_input_entry_safety(event.symbol)
         self.latest_features[event.symbol] = snapshot
         self.latest_regimes[event.symbol] = regime
@@ -1551,6 +1619,8 @@ class PaperRuntime:
             ),
         )
         self._refresh_data_health_entry_safety()
+        self._record_live_event_phase("HEALTH_EVALUATION", phase_started, event)
+        phase_started = time.perf_counter()
         instrument = (
             self.live_selection.instruments.get(event.symbol)
             if self.live_selection is not None
@@ -1564,6 +1634,7 @@ class PaperRuntime:
             tick_size=tick_size,
             hourly_candles=self.hourly_completed_candles(event.symbol),
         )
+        self._record_live_event_phase("STRATEGY_EVALUATION", phase_started, event)
         self.strategy_evaluation_count += len(signals)
         self.qualified_signal_count += sum(
             signal.decision.status.value == "QUALIFIED" for signal in signals
@@ -1575,14 +1646,22 @@ class PaperRuntime:
                 signal.decision.side.value,
             )
             self.strategy_signals[key] = signal
+        phase_started = time.perf_counter()
         plans = self._build_candidate_plans(event, snapshot, regime, book, signals)
+        self._record_live_event_phase("CANDIDATE_PLANNING", phase_started, event)
+        phase_started = time.perf_counter()
         storage_ready = self._refresh_storage_safety()
+        self._record_live_event_phase("STORAGE_SAFETY", phase_started, event)
+        phase_started = time.perf_counter()
         self.paper_portfolio.offer(
             plans,
             entries_paused=self.paused or not storage_ready,
         )
+        self._record_live_event_phase("PORTFOLIO_OFFER", phase_started, event)
         if persist_execution:
+            phase_started = time.perf_counter()
             self._persist_execution_state_safely(event.venue_ts_ms)
+            self._record_live_event_phase("EXECUTION_PERSISTENCE", phase_started, event)
 
     def _build_candidate_plans(
         self,
