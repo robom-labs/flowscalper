@@ -368,7 +368,13 @@ class StrategySignalEvaluator:
                     snapshot.symbol,
                     side,
                     snapshot.ts_ms,
-                    aligned=reentry_ready,
+                    aligned=self._vwap_reentry_confirmation_aligned(
+                        full_confluence_ready=reentry_ready,
+                        data_healthy=snapshot.data_healthy,
+                        regime=regime,
+                        structure_reentered=structure_reentered,
+                        microprice_alignment=microprice_alignment,
+                    ),
                 ),
             )
             return evaluator.evaluate(vwap_context)
@@ -677,6 +683,20 @@ class StrategySignalEvaluator:
             self._confirmation_started_ms[key] = timestamp_ms
             return 0
         return timestamp_ms - started
+
+    def _vwap_reentry_confirmation_aligned(
+        self,
+        *,
+        full_confluence_ready: bool,
+        data_healthy: bool,
+        regime: Regime,
+        structure_reentered: bool,
+        microprice_alignment: bool,
+    ) -> bool:
+        """운영에서는 모든 VWAP 진입조건이 동시에 유지될 때만 확인 시간을 누적한다."""
+
+        del data_healthy, regime, structure_reentered, microprice_alignment
+        return full_confluence_ready
 
 
 def _pullback_metrics(

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "status": "PASS_CONTRACT_ONLY",
+  "profitability_status": "NOT_PROVEN",
+  "ranking_eligible": false,
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "runtime_ai_order_decision": false,
+  "purpose": "Wave102와 현재 VWAP 확인 계약을 동일 PAPER 런타임에서 비교할 수 있는지 검증",
+  "contracts": {
+    "operational_default": "CURRENT_FULL_CONFLUENCE",
+    "historical_research_baseline": "WAVE102_PARTIAL_CONFIRMATION_BASELINE",
+    "historical_baseline_live_selectable": false,
+    "event_order": "OBSERVED_RECEIVE_ORDER_ADR_080",
+    "same_strategy_registry": true,
+    "same_paper_fill_path": true,
+    "same_base_stress_cost_path": true,
+    "same_tp_sl_management_path": true
+  },
+  "verification": {
+    "targeted_tests": {
+      "status": "PASS",
+      "count": 80,
+      "command": ".venv/bin/python -m pytest backend/tests/test_runtime_strategy_research_replay.py backend/tests/test_strategy_league_signals.py -q"
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS",
+    "stored_event_smoke": {
+      "status": "PASS_PATH_ONLY",
+      "run_id": "RUN-B987D1D386C6",
+      "events_per_variant": 5000,
+      "variants": [
+        {
+          "strategy_logic": "WAVE102_PARTIAL_CONFIRMATION_BASELINE",
+          "signal_gate": "NONE",
+          "trade_count": 0,
+          "real_orders_enabled": false,
+          "auth_required": false,
+          "ledger_attached": false
+        },
+        {
+          "strategy_logic": "CURRENT_FULL_CONFLUENCE",
+          "signal_gate": "NONE",
+          "trade_count": 0,
+          "real_orders_enabled": false,
+          "auth_required": false,
+          "ledger_attached": false
+        }
+      ]
+    },
+    "frozen_13_run_baseline_current_candidate_comparison": "NOT_RUN",
+    "current_archive_byte_reverification": "NOT_RUN",
+    "wave104_six_hour_observer": "IN_PROGRESS"
+  },
+  "interpretation": [
+    "테스트와 smoke는 비교 경로 계약만 검증한다.",
+    "거래 0건은 승률 또는 수익성 증거가 아니다.",
+    "30개 이상의 중복 제거 기회와 모든 강건성 gate 전에는 전략을 순위화하지 않는다."
+  ]
+}

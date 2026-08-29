@@ -38,6 +38,9 @@ DEFAULT_STRATEGY_ID = "VWAP_EXHAUSTION_REVERSION_V1"
 SIGNAL_GATE_NONE = "NONE"
 SIGNAL_GATE_TP1_FEASIBILITY = "TP1_FEASIBILITY_CONFLUENCE_V1"
 SIGNAL_GATES = (SIGNAL_GATE_NONE, SIGNAL_GATE_TP1_FEASIBILITY)
+STRATEGY_LOGIC_CURRENT = "CURRENT_FULL_CONFLUENCE"
+STRATEGY_LOGIC_WAVE102 = "WAVE102_PARTIAL_CONFIRMATION_BASELINE"
+STRATEGY_LOGICS = (STRATEGY_LOGIC_CURRENT, STRATEGY_LOGIC_WAVE102)
 TP1_FEASIBILITY_LOOKBACK_MS = 120_000
 DEFAULT_DATASET_MANIFEST = Path("evidence/STRATEGY_100_DATASET_MANIFEST.json")
 _CANDIDATE_EVENTS = {
@@ -183,6 +186,7 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
 
     target_strategy_id: str = DEFAULT_STRATEGY_ID
     signal_gate: str = SIGNAL_GATE_NONE
+    strategy_logic: str = STRATEGY_LOGIC_CURRENT
     baseline_qualified_count: int = 0
     accepted_qualified_count: int = 0
     rejected_qualified_count: int = 0
@@ -196,6 +200,8 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
         StrategySignalEvaluator.__init__(self)
         if self.signal_gate not in SIGNAL_GATES:
             raise ValueError(f"알 수 없는 연구 신호 gate입니다: {self.signal_gate}")
+        if self.strategy_logic not in STRATEGY_LOGICS:
+            raise ValueError(f"알 수 없는 연구 전략 로직입니다: {self.strategy_logic}")
 
     def evaluate(
         self,
@@ -258,12 +264,41 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
     def diagnostics(self) -> dict[str, object]:
         return {
             "signal_gate": self.signal_gate,
+            "strategy_logic": self.strategy_logic,
             "baseline_qualified_count": self.baseline_qualified_count,
             "accepted_qualified_count": self.accepted_qualified_count,
             "rejected_qualified_count": self.rejected_qualified_count,
             "rejection_counts": dict(sorted(self.rejection_counts.items())),
             "can_create_signals": False,
+            "signal_gate_can_create_signals": False,
         }
+
+    def _vwap_reentry_confirmation_aligned(
+        self,
+        *,
+        full_confluence_ready: bool,
+        data_healthy: bool,
+        regime: Regime,
+        structure_reentered: bool,
+        microprice_alignment: bool,
+    ) -> bool:
+        """동일 현행 런타임에서 Wave102의 부분 확인 계약만 연구 기준선으로 재현한다."""
+
+        if self.strategy_logic == STRATEGY_LOGIC_WAVE102:
+            return (
+                data_healthy
+                and regime is Regime.RANGE
+                and structure_reentered
+                and microprice_alignment
+            )
+        return StrategySignalEvaluator._vwap_reentry_confirmation_aligned(
+            self,
+            full_confluence_ready=full_confluence_ready,
+            data_healthy=data_healthy,
+            regime=regime,
+            structure_reentered=structure_reentered,
+            microprice_alignment=microprice_alignment,
+        )
 
     def _recent_range_bps(self, snapshot: FeatureSnapshot) -> float | None:
         history = self._mid_history[snapshot.symbol]
@@ -356,6 +391,7 @@ def replay_archive_run(
     *,
     strategy_id: str = DEFAULT_STRATEGY_ID,
     signal_gate: str = SIGNAL_GATE_NONE,
+    strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
 ) -> dict[str, object]:
     """한 저장 Run을 신규 무원장 PAPER 런타임에서 수신순으로 재생한다."""
@@ -366,6 +402,8 @@ def replay_archive_run(
         raise ValueError(f"알 수 없는 전략입니다: {strategy_id}")
     if signal_gate not in SIGNAL_GATES:
         raise ValueError(f"알 수 없는 연구 신호 gate입니다: {signal_gate}")
+    if strategy_logic not in STRATEGY_LOGICS:
+        raise ValueError(f"알 수 없는 연구 전략 로직입니다: {strategy_logic}")
     event_iterator = iter(_event_rows(run_dir, maximum_events=maximum_events))
     first_payload = next(event_iterator, None)
     runtime_run_id = (
@@ -376,6 +414,7 @@ def replay_archive_run(
     gated_evaluator = ResearchSignalGateEvaluator(
         target_strategy_id=strategy_id,
         signal_gate=signal_gate,
+        strategy_logic=strategy_logic,
     )
     runtime = PaperRuntime(
         mode=RuntimeMode.REPLAY,
@@ -443,6 +482,7 @@ def replay_archive_run(
         "runtime_run_id": runtime_run_id,
         "strategy_id": strategy_id,
         "signal_gate": signal_gate,
+        "strategy_logic": strategy_logic,
         "signal_gate_diagnostics": gated_evaluator.diagnostics(),
         "strategy_version": STRATEGY_VERSION,
         "event_order": [
@@ -641,6 +681,7 @@ def build_result(
     strategy_id: str,
     run_ids: Sequence[str],
     signal_gate: str = SIGNAL_GATE_NONE,
+    strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     dataset_manifest: Path | None = None,
     maximum_events: int | None = None,
 ) -> dict[str, object]:
@@ -655,6 +696,7 @@ def build_result(
             archive / f"run={run_id}",
             strategy_id=strategy_id,
             signal_gate=signal_gate,
+            strategy_logic=strategy_logic,
             maximum_events=maximum_events,
         )
         for run_id in run_ids
@@ -673,12 +715,13 @@ def build_result(
         for split, ids in split_ids.items()
     }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "RESEARCH_REPLAY_COMPLETE",
         "method": "ACTUAL_PAPER_RUNTIME_ENTRY_FILL_TP_SL_MANAGEMENT_PATH",
         "git_commit": git_commit(),
         "strategy_id": strategy_id,
         "signal_gate": signal_gate,
+        "strategy_logic": strategy_logic,
         "strategy_version": STRATEGY_VERSION,
         "event_order": "OBSERVED_RECEIVE_ORDER_ADR_080",
         "frozen_dataset": dataset_reference,
@@ -701,6 +744,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--strategy-id", default=DEFAULT_STRATEGY_ID)
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
+    parser.add_argument(
+        "--strategy-logic",
+        choices=STRATEGY_LOGICS,
+        default=STRATEGY_LOGIC_CURRENT,
+    )
     parser.add_argument(
         "--dataset-manifest",
         type=Path,
@@ -727,6 +775,7 @@ def main() -> None:
         strategy_id=str(args.strategy_id),
         run_ids=run_ids,
         signal_gate=str(args.signal_gate),
+        strategy_logic=str(args.strategy_logic),
         dataset_manifest=args.dataset_manifest,
         maximum_events=args.maximum_events,
     )

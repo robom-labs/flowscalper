@@ -18,7 +18,14 @@ from backend.app.features import FeatureSnapshot
 from backend.app.regime import Regime
 from backend.app.strategies.base import CandidateDecision, CandidateStatus
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal
+from backend.tests.test_strategy_league_signals import (
+    aligned_features,
+    decision_for,
+    only_strategy,
+)
 from scripts.research_runtime_strategy_replay import (
+    STRATEGY_LOGIC_CURRENT,
+    STRATEGY_LOGIC_WAVE102,
     ResearchSignalGateEvaluator,
     _summary,
     build_result,
@@ -208,6 +215,7 @@ def test_runtime_strategy_replay_is_single_strategy_paper_only(tmp_path: Path) -
     assert result["real_orders_enabled"] is False
     assert result["auth_required"] is False
     assert result["ledger_attached"] is False
+    assert result["strategy_logic"] == STRATEGY_LOGIC_CURRENT
     assert result["trade_count"] == 0
     assert dict(result["open_state"])["censored_count"] == 0
 
@@ -231,6 +239,57 @@ def test_runtime_strategy_replay_rejects_unknown_strategy_and_bad_limit(
             strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
             signal_gate="UNKNOWN",
         )
+    with pytest.raises(ValueError, match="연구 전략 로직"):
+        replay_archive_run(
+            "run",
+            tmp_path,
+            strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
+            strategy_logic="UNKNOWN",
+        )
+
+
+def test_wave102_baseline_and_current_logic_share_the_evaluator_but_not_confirmation() -> None:
+    strategy_id = "VWAP_EXHAUSTION_REVERSION_V1"
+    registry = only_strategy(strategy_id)
+    current = ResearchSignalGateEvaluator(strategy_logic=STRATEGY_LOGIC_CURRENT)
+    wave102 = ResearchSignalGateEvaluator(strategy_logic=STRATEGY_LOGIC_WAVE102)
+    for index, (signed, deviation_bps) in enumerate(
+        ((100, 1), (110, 2), (120, 3), (130, 4), (140, 5)),
+        start=1,
+    ):
+        weak = replace(
+            aligned_features(Side.LONG, ts_ms=index * 200, signed=signed),
+            micro_vwap_10s=100 + deviation_bps / 100,
+            ofi_3s=3.0,
+            price_response_efficiency=0.80,
+        )
+        current.evaluate(registry, weak, Regime.RANGE)
+        wave102.evaluate(registry, weak, Regime.RANGE)
+
+    full_confluence = replace(
+        aligned_features(Side.LONG, ts_ms=1_500, signed=1_000),
+        micro_vwap_10s=100.10,
+        ofi_250ms=2.0,
+        ofi_3s=-3.0,
+        refill_ratio=0.70,
+        price_response_efficiency=0.10,
+    )
+    current_decision = decision_for(
+        current.evaluate(registry, full_confluence, Regime.RANGE),
+        strategy_id,
+        Side.LONG,
+    )
+    wave102_decision = decision_for(
+        wave102.evaluate(registry, full_confluence, Regime.RANGE),
+        strategy_id,
+        Side.LONG,
+    )
+
+    assert current_decision.status is CandidateStatus.REJECTED
+    assert "STRUCTURE_REENTRY_NOT_CONFIRMED" in current_decision.rejection_codes
+    assert wave102_decision.status is CandidateStatus.QUALIFIED
+    assert current.diagnostics()["strategy_logic"] == STRATEGY_LOGIC_CURRENT
+    assert wave102.diagnostics()["strategy_logic"] == STRATEGY_LOGIC_WAVE102
 
 
 def test_runtime_strategy_replay_builds_not_proven_empty_summary(tmp_path: Path) -> None:
@@ -257,6 +316,8 @@ def test_runtime_strategy_replay_builds_not_proven_empty_summary(tmp_path: Path)
     ]
     assert result["overall"]["profitability_status"] == "NOT_PROVEN"
     assert result["signal_gate"] == "NONE"
+    assert result["strategy_logic"] == STRATEGY_LOGIC_CURRENT
+    assert result["schema_version"] == 2
     assert result["overall"]["signal_gate_diagnostics"]["can_create_signals"] is False
 
 
