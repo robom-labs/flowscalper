@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "status": "PRE_REGISTERED_NOT_RUN",
+  "recorded_at": "2026-08-29T00:51:17Z",
+  "result_seen_before_registration": false,
+  "scope": "FIXED_STRATEGY_GATE_BASELINE_CANDIDATE_COMPARISON",
+  "comparator": "scripts/compare_strategy_gate_trials.py",
+  "baseline_contract": {
+    "signal_gate": "NONE",
+    "all_registered_strategies_same_public_input": true,
+    "one_verified_baseline_reusable_across_targets": true,
+    "reuse_requires_same_git_commit": true,
+    "reuse_requires_same_frozen_manifest_and_current_byte_verification": true,
+    "reuse_requires_same_13_runs_and_event_order": true,
+    "baseline_reuse_reduces_live_runtime_io_load_only": true
+  },
+  "candidate_contract": {
+    "signal_gate": "TP1_FEASIBILITY_CONFLUENCE_V1",
+    "one_target_strategy_per_trial": true,
+    "trial_id_format": "<signal_gate>:<target_strategy_id>",
+    "cross_target_sample_pooling_allowed": false,
+    "can_create_signals": false,
+    "can_increase_target_candidate_plans": false,
+    "non_target_strategy_behavior_can_change": false
+  },
+  "frozen_evaluation": {
+    "manifest_path": "evidence/STRATEGY_100_DATASET_MANIFEST.json",
+    "manifest_file_sha256": "c3ee4a0818c65486b074f03a18691dc8c96a688c9e8fef565e9a7b5f3e5382af",
+    "manifest_sha256": "61765a668d29b950e50fd8c6bccc372b7e747885e0a0870206411b0e46165e20",
+    "run_count": 13,
+    "event_count": 2690582,
+    "train_run_count": 6,
+    "validation_run_count": 2,
+    "final_oos_run_count": 5,
+    "current_archive_byte_reverification_required": true,
+    "full_baseline_status": "NOT_RUN",
+    "full_candidate_status": "NOT_RUN"
+  },
+  "integrity_contract": {
+    "same_code_registry_strategy_version_required": true,
+    "same_run_inputs_and_event_scope_required": true,
+    "same_target_pre_gate_qualified_count_required": true,
+    "non_target_decisions_plans_and_trades_invariant": true,
+    "random_trade_identity_fields_ignored": [
+      "candidate_id",
+      "trade_id",
+      "trailing_state_checksum"
+    ],
+    "candidate_signal_or_plan_growth_invalid": true,
+    "gate_accounting_must_balance": true,
+    "complete_time_ordered_oos_required": true,
+    "failure_status": "INVALID_DO_NOT_USE"
+  },
+  "absolute_historical_gates": {
+    "minimum_unique_market_opportunities": 30,
+    "base_and_stress_pair_counts_as_one_opportunity": true,
+    "minimum_base_sample": 30,
+    "minimum_stress_sample": 30,
+    "minimum_base_win_rate": 0.7,
+    "minimum_stress_win_rate": 0.7,
+    "positive_cost_after_expectancy_required": true,
+    "positive_net_pnl_required": true,
+    "profit_factor_above_one_required": true,
+    "bootstrap_expectancy_lower_bound_above_zero_required": true,
+    "minimum_dsr_probability": 0.95,
+    "pbo_required": true,
+    "drawdown_gate_required": true,
+    "opportunity_concentration_gate_required": true,
+    "zero_final_oos_censored_state_required": true,
+    "embedded_summary_flag_alone_is_sufficient": false
+  },
+  "comparative_gates_per_profile": {
+    "win_rate_not_lower_than_baseline": true,
+    "expectancy_bps_not_lower_than_baseline": true,
+    "maximum_drawdown_usdt_not_higher_than_baseline": true
+  },
+  "decision_order": [
+    "INVALID_DO_NOT_USE",
+    "NOT_PROVEN_INSUFFICIENT_OOS_SAMPLE",
+    "REJECTED_HISTORICAL_GATES",
+    "REJECTED_NO_BASELINE_IMPROVEMENT",
+    "HISTORICAL_CANDIDATE_FORWARD_SHADOW_PENDING"
+  ],
+  "promotion_boundary": {
+    "ranking_eligible": false,
+    "promotion_allowed": false,
+    "profitability_status": "NOT_PROVEN",
+    "independent_forward_live_public_required": true,
+    "governor_gates_still_required": true
+  },
+  "verification": {
+    "targeted_pytest": {
+      "status": "PASS",
+      "passed": 8
+    },
+    "combined_comparator_research_runner_and_live_safe_wrapper_pytest": {
+      "status": "PASS",
+      "passed": 35
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 106
+    },
+    "git_diff_check": "PASS",
+    "full_frozen_replay": "NOT_RUN",
+    "performance_evidence": false
+  },
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "api_keys_required": false,
+    "wallet_paths_enabled": false,
+    "runtime_ai_order_decision": false
+  }
+}

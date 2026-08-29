@@ -61,6 +61,10 @@
   전략의 기존 `QUALIFIED` 신호에만 적용하고 다른 전략의 신호·후보·체결은 바꾸지 않는다.
 - 결과에는 `signal_gate_trial_id=<gate>:<target_strategy_id>`를 기록한다. 대상 전략이 다르면
   별도 가설 시험으로 취급하고 표본·승률·기대값·PBO·DSR을 합산하지 않는다.
+- `signal_gate=NONE`은 등록 전략 모두를 같은 입력에서 평가하며 어떤 신호도 바꾸지 않는다.
+  따라서 commit·manifest·현재 archive byte 재검증·13개 Run과 이벤트 순서가 같으면 검증된
+  `NONE` 전체전략 결과 하나를 여러 target 후보의 공용 baseline으로 재사용할 수 있다. 후보
+  target별 결과는 계속 별도 시험이며 합산하지 않는다.
 - `strategy_logic=WAVE102_VWAP_REENTRY_BASELINE`은 VWAP 전용 과거 기준선이므로 다른 전략을
   대상으로 지정할 수 없다. 비VWAP 전략의 TP1 필터 시험은 현행 전략 로직만 사용한다.
 - archive 끝의 열린 포지션과 대기 진입은 강제 청산하지 않고 `censored`로 분리한다.
