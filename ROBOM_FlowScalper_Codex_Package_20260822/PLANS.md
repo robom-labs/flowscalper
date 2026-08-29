@@ -470,22 +470,23 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   PAPER safety, security 146 source, repository hygiene, 24개 누적 회귀계약과 반응형 Playwright
   3건은 PASS했다. 불변 설치와 실제 서비스·브라우저 검증 전까지 설치 상태는 진행 중이다.
 
-## Wave 116J 완성봉 추세 V2와 진입논리 시간대별 청산
+## Wave 116J~116K 완성봉 추세 V2와 TP·SL 결판 청산
 
-- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_PENDING`이다. 완성 15분 눌림, 15분·30분 돌파 후
+- 상태는 `SOURCE_VALIDATION_PASS_FINAL_INSTALL_PENDING`이다. 완성 15분 눌림, 15분·30분 돌파 후
   재확인, 30분·1시간 재합류 네 전략을 SHADOW PAPER V2로 사전등록했다.
 - Registry는 15개·BASE/STRESS 30계좌다. 기존 검증 중 6개와 신규 4개, 총 10개 SHADOW를
   같은 공개시장 입력에서 LONG·SHORT 20경로로 동시에 평가한다. 실패 5개는 RETIRED/OFF로
   거래·근거·계좌를 보존한다.
-- 신규 네 전략은 일반 미시구조 `EDGE_DECAY`와 900초 종료를 사용하지 않는다. 구조 손절,
-  TP1·TP2, 이익보호 방향의 stop 단축, 데이터·시스템 안전종료와 8~18시간 무한노출 방지
-  백스톱만 사용한다.
+- 신규 네 전략은 일반 미시구조 `EDGE_DECAY`, 900초 종료와 8~18시간 시간청산을 사용하지
+  않는다. 구조 손절, TP1·TP2, 이익보호 방향의 stop 단축과 데이터·시스템 안전종료만 사용한다.
 - 진행 중 봉, 최근 100봉 또는 1시간 50봉 gap, stale·sequence invalid 호가, 12bp 초과
   spread, 1초 공개흐름 미확인, 0.65~3.0 ATR 밖 구조 손절과 비용후 순손익비 1.20 미만을
   fail-closed한다.
 - 표적 전략·포지션·계좌·운영 회귀 180건과 전체 backend 793건, frontend 79건, Ruff,
   정식 mypy 110 source, ESLint, TypeScript, build, PAPER safety, security 146 source,
   repository hygiene, 24개 누적 회귀계약과 desktop·tablet·mobile Playwright 3건은 PASS했다.
-  실제 설치 서비스 성능·실제 브라우저·GitHub 동기화는 아직 `NOT_RUN`이다.
+  중간 불변 릴리스의 120.017초 관찰은 event +7,923·전략평가 +51,880, 최대 처리·체결 p95
+  36.839·75.606ms, queue 0, flush·checkpoint 1.680·1.440초, 재연결·gap·drop·저장결함·실제주문
+  0으로 PASS했다. 시간청산 제거 최종 릴리스의 실제 브라우저와 GitHub 동기화는 아직 `NOT_RUN`이다.
 - 70%는 보장값이 아니다. 현재버전 자연표본 30개 전 순위 금지, BASE·STRESS·OOS·bootstrap,
   DSR·PBO·drawdown·집중도 전 수익성 `NOT_PROVEN`, 실자금 `NOT_READY`를 유지한다.

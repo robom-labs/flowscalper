@@ -84,7 +84,10 @@ Detailed specifications:
 - `docs/adr/ADR-097-append-only-regression-contracts-and-candidate-deduplication.md`
 - `docs/adr/ADR-098-evidence-gated-survivor-watchlist.md`
 - `docs/adr/ADR-099-one-pass-all-strategy-gate-replay.md`
+- `docs/adr/ADR-104-candidate-plan-offloop-atomic-persistence.md`
 - `docs/adr/ADR-105-intraday-trend-shadow-and-thesis-horizon-exits.md`
+- `docs/adr/ADR-106-focused-replay-memory-cache-and-request-isolation.md`
+- `docs/adr/ADR-107-bounded-persistence-batches-and-observation-window.md`
 
 ## Supporting contracts
 
@@ -164,6 +167,8 @@ Detailed specifications:
 - `docs/research/HYP-116J-intraday-trend-v2-live-shadow.md`
 - `evidence/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION.json`
 - `evidence/WAVE110_RESEARCH_ITERATION_GUARD_QA.json`
+- `evidence/WAVE116J_POST_READINESS_RUNTIME_QA.json`
+- `evidence/WAVE116K_INTRADAY_TREND_AND_REPLAY_QA.json`
 - `evidence/RESEARCH_TRIAL_HISTORY.jsonl`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
