@@ -513,14 +513,20 @@ def create_app(
     dashboard_build_count = 0
     dashboard_build_last_ms = 0.0
     dashboard_build_max_ms = 0.0
+    dashboard_build_last_completed_ts_ms = 0
+    dashboard_build_max_ts_ms = 0
     dashboard_serialize_count = 0
     dashboard_serialize_last_ms = 0.0
     dashboard_serialize_max_ms = 0.0
+    dashboard_serialize_last_completed_ts_ms = 0
+    dashboard_serialize_max_ts_ms = 0
 
     def dashboard_snapshot() -> dict[str, object]:
         nonlocal dashboard_build_count
         nonlocal dashboard_build_last_ms
         nonlocal dashboard_build_max_ms
+        nonlocal dashboard_build_last_completed_ts_ms
+        nonlocal dashboard_build_max_ts_ms
         started = time.monotonic()
         snapshot = {
             **active_runtime.dashboard(),
@@ -528,9 +534,13 @@ def create_app(
             "control_revision": operation_manager.revision,
         }
         elapsed_ms = (time.monotonic() - started) * 1_000
+        completed_ts_ms = active_runtime.clock.utc_ms()
         dashboard_build_count += 1
         dashboard_build_last_ms = elapsed_ms
-        dashboard_build_max_ms = max(dashboard_build_max_ms, elapsed_ms)
+        dashboard_build_last_completed_ts_ms = completed_ts_ms
+        if elapsed_ms > dashboard_build_max_ms:
+            dashboard_build_max_ms = elapsed_ms
+            dashboard_build_max_ts_ms = completed_ts_ms
         system = snapshot.get("system")
         if isinstance(system, dict):
             system.update(
@@ -539,9 +549,17 @@ def create_app(
                     "dashboard_build_count": dashboard_build_count,
                     "dashboard_build_last_ms": round(dashboard_build_last_ms, 3),
                     "dashboard_build_max_ms": round(dashboard_build_max_ms, 3),
+                    "dashboard_build_last_completed_ts_ms": (
+                        dashboard_build_last_completed_ts_ms
+                    ),
+                    "dashboard_build_max_ts_ms": dashboard_build_max_ts_ms,
                     "dashboard_serialize_count": dashboard_serialize_count,
                     "dashboard_serialize_last_ms": round(dashboard_serialize_last_ms, 3),
                     "dashboard_serialize_max_ms": round(dashboard_serialize_max_ms, 3),
+                    "dashboard_serialize_last_completed_ts_ms": (
+                        dashboard_serialize_last_completed_ts_ms
+                    ),
+                    "dashboard_serialize_max_ts_ms": dashboard_serialize_max_ts_ms,
                 }
             )
         return snapshot
@@ -561,6 +579,8 @@ def create_app(
         nonlocal dashboard_serialize_count
         nonlocal dashboard_serialize_last_ms
         nonlocal dashboard_serialize_max_ms
+        nonlocal dashboard_serialize_last_completed_ts_ms
+        nonlocal dashboard_serialize_max_ts_ms
         async with dashboard_build_lock:
             now = asyncio.get_running_loop().time()
             current_identity = (
@@ -620,9 +640,13 @@ def create_app(
                 else:
                     raise ValueError("unsupported dashboard serialization")
                 elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
+                completed_ts_ms = active_runtime.clock.utc_ms()
                 dashboard_serialize_count += 1
                 dashboard_serialize_last_ms = elapsed_ms
-                dashboard_serialize_max_ms = max(dashboard_serialize_max_ms, elapsed_ms)
+                dashboard_serialize_last_completed_ts_ms = completed_ts_ms
+                if elapsed_ms > dashboard_serialize_max_ms:
+                    dashboard_serialize_max_ms = elapsed_ms
+                    dashboard_serialize_max_ts_ms = completed_ts_ms
             if dashboard_snapshot_cache is None:
                 raise RuntimeError("dashboard snapshot cache was not initialized")
             return dashboard_snapshot_cache, payload

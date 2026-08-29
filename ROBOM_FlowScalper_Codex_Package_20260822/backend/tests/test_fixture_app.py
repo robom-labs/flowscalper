@@ -547,6 +547,26 @@ async def test_dashboard_snapshot_and_json_are_shared_within_one_refresh(monkeyp
     assert build_count == 1
 
 
+def test_dashboard_compacts_window_metrics_without_changing_analytics_api() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    with TestClient(create_app(runtime)) as client:
+        dashboard = client.get("/api/dashboard")
+        analytics = client.get("/api/analytics/strategies")
+
+    assert dashboard.status_code == 200
+    assert analytics.status_code == 200
+    dashboard_report = dashboard.json()["strategies"][0]["performance"]["BASE"]
+    analytics_report = analytics.json()[0]
+    assert dashboard_report["windows"] == {
+        "recent_50": {"sample_size": 0},
+        "recent_100": {"sample_size": 0},
+        "recent_300": {"sample_size": 0},
+        "all": {"sample_size": 0},
+    }
+    assert "wins" in analytics_report["windows"]["recent_50"]
+    assert "expectancy_usdt" in analytics_report["windows"]["all"]
+
+
 async def test_dashboard_mutation_forces_immediate_cache_refresh(monkeypatch) -> None:
     runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
     original_dashboard = PaperRuntime.dashboard
@@ -567,6 +587,11 @@ async def test_dashboard_mutation_forces_immediate_cache_refresh(monkeypatch) ->
     assert after.status_code == 200
     assert after.json()["paused"] is True
     assert build_count == 2
+    system = after.json()["system"]
+    assert system["dashboard_build_last_completed_ts_ms"] == runtime.clock.utc_ms()
+    assert system["dashboard_build_max_ts_ms"] == runtime.clock.utc_ms()
+    assert system["dashboard_serialize_last_completed_ts_ms"] == runtime.clock.utc_ms()
+    assert system["dashboard_serialize_max_ts_ms"] == runtime.clock.utc_ms()
 
 
 def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_path: Path) -> None:

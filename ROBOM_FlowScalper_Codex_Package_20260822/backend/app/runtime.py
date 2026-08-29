@@ -80,6 +80,22 @@ from backend.app.strategies.shadow import ShadowLedger
 if TYPE_CHECKING:
     from backend.app.replay.safety import ReplayLiveSafetySnapshot
 
+
+def _dashboard_performance_report(report: Mapping[str, object]) -> dict[str, object]:
+    """실시간 화면에는 구간별 표본 수만 남기고 정밀 통계 중복을 제거한다."""
+
+    compact_windows: dict[str, object] = {}
+    windows = report.get("windows")
+    if isinstance(windows, Mapping):
+        for label, window in windows.items():
+            compact_windows[str(label)] = {
+                "sample_size": window.get("sample_size", 0)
+                if isinstance(window, Mapping)
+                else 0
+            }
+    return dict(report) | {"windows": compact_windows}
+
+
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 1_000
 _MARKET_PERSISTENCE_BATCH_SIZE = 1_000
 _SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
@@ -3201,7 +3217,9 @@ class PaperRuntime:
                     if latest
                     else [],
                     "performance": {
-                        profile: performance_by_key[(strategy_id, profile)]
+                        profile: _dashboard_performance_report(
+                            performance_by_key[(strategy_id, profile)]
+                        )
                         for profile in ("BASE", "STRESS")
                     },
                     "governance": dict(governance_by_id[strategy_id])

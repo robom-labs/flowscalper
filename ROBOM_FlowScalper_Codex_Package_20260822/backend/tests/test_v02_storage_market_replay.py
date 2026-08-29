@@ -1894,6 +1894,14 @@ def test_live_replay_returns_busy_instead_of_hanging_other_ui_requests(
     started = threading.Event()
     release = threading.Event()
 
+    async def start_persistent_live_without_network(
+        _runtime: PaperRuntime,
+        _progress=None,
+    ) -> bool:
+        _runtime.market_data_state = MarketDataState.LIVE
+        _runtime.paused = False
+        return True
+
     def timeline_stub(*_arguments: object) -> dict[str, object]:
         return {
             "run_id": runtime.run_id,
@@ -1912,6 +1920,11 @@ def test_live_replay_returns_busy_instead_of_hanging_other_ui_requests(
 
     monkeypatch.setattr(main_module, "replay_timeline_from_paths", timeline_stub)
     monkeypatch.setattr(main_module.to_process, "run_sync", blocking_run_sync)
+    monkeypatch.setattr(
+        PaperRuntime,
+        "start_persistent_live",
+        start_persistent_live_without_network,
+    )
     responses: list[object] = []
 
     with TestClient(create_app(runtime)) as client:
