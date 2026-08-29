@@ -2,7 +2,7 @@
   "alpha_family_count": 4,
   "batch_id": "COST_COVERED_EARLY_TP_RUNNER_V1",
   "blocked_count": 0,
-  "code_version": "155ac8faddb2954603619022d7f179ef36d69755+research-bundle-sha256:4d239013e472b7ece69c75e04b2e88215f29292e2f708d3909e368c3482f2b37",
+  "code_version": "38b9f44c3f920d80809548526a970625c6301eef+research-bundle-sha256:909b6e5326f349b49e8dac682a3b4299f6eca4d526e31841cef9d34e42de3ba3",
   "cost_contract": {
     "base_expected_total_cost_bps": 13,
     "depth_slippage": "EXECUTABLE_BOOK_WALK",
@@ -10,10 +10,10 @@
     "stress_expected_total_cost_bps": 25
   },
   "exit_module_count": 1,
-  "generated_ts_utc": "2026-08-29T12:46:28.810446Z",
+  "generated_ts_utc": "2026-08-29T12:48:09.277898Z",
   "live_shadow_count": 0,
   "manifest_kind": "COST_COVERED_EXIT_VARIANT_BATCH",
-  "manifest_sha256": "b93df61f88f4ef0df5e5d2d09fa44293bc190e168adba13e4cb41ed460f41160",
+  "manifest_sha256": "6ae9964e8fd17a629c979ba5f7ec1c60757e3beaa8570ee730d2ef3ed1e7eaf7",
   "paper_only": true,
   "parent_trial_manifest": {
     "file_sha256": "b1add8601f3d93a63d25a9eef5024d281619c0b2fc6be6b62714a595b8b5346f",
@@ -59,7 +59,7 @@
     "backend/app/risk/manager.py": "3e3314e0290c8ba73b87700528ed31266623d761406b1b2735dc2c4c6e0c898e",
     "backend/app/strategies/shadow.py": "553373aabf9fccfd42ecbfcb0b12545692c22f4d9d4fd31837fa5ae8c0f94985",
     "scripts/export_cost_covered_exit_variant_manifest.py": "4f46632b46502e4d65430f78a9f6bd65bbab7db4d3ca6112afaed691f426d05d",
-    "scripts/research_intraday_candidates.py": "46ebf63ec499f6356895aa650f4b078586d7755cdab949afa8764f592f16f222",
+    "scripts/research_intraday_candidates.py": "ea66a6a59da90aa7283c907384b1c2e5feeb3a8c45e38b9506889a319622d5ef",
     "scripts/research_strategy_100_candidates.py": "efda055bbfc44d8e005b79e54db44e359edf7846bc8b3c131c1ff5756f8c2620",
     "scripts/run_live_safe_strategy_screening.py": "3a2b93ed1d9d7bb95e8e885068e290fe5a7a76424cd877c43180f05ae1268bea"
   },
