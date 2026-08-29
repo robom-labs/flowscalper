@@ -25,7 +25,8 @@
 - 모든 전략은 LONG·SHORT를 독립적으로 허용하거나 끌 수 있다.
 - OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다.
 - 모든 전략은 LONG·SHORT 제어를 유지한다. 검증되지 않은 B/C/F/G/I/J는 SHADOW다. 비용후 시간순 검증에 실패한 A/D/E/H와 고정된 독립 과거구간 147일·166거래에서 재현에 실패한 K는 RETIRED·OFF다. RETIRED 전략은 과거 원장과 계좌를 보존하지만 별도 사전등록 연구와 코드 변경 없이는 다시 켤 수 없다.
-- 공동계좌 ACTIVE 대표 전략은 기본값으로 두지 않는다. Strategy Governor의 비용후 OOS·강건성·표본 gate를 통과한 전략만 ACTIVE 후보가 되며 작은 승률 표본이나 거래 빈도만으로 자동 승격하지 않는다.
+- 공동계좌 ACTIVE 대표 전략은 기본값으로 두지 않는다. Strategy Governor의 비용후 OOS·강건성·표본 gate와 BASE·STRESS 양쪽의 관측 승률 70% gate를 모두 통과한 전략만 ACTIVE 후보가 된다. 현재 전략 버전의 자연 `LIVE_PUBLIC` 기회가 각 비용 프로필 30건보다 적으면 100%로 보이는 작은 표본도 자동 승격하지 않는다.
+- SHADOW·CHALLENGER는 현재 버전 자연표본 각 30건·7일·2개 레짐이 쌓인 뒤 BASE 또는 STRESS 승률이 70% 미만이면 거래와 근거를 보존한 채 RETIRED·OFF로 전환한다. ACTIVE는 전체와 최근 비용 프로필 승률이 새 표본이 생긴 두 평가 주기 연속 70% 미만일 때 QUARANTINED·OFF로 안전 격리한다.
 
 ## 3. 독립 계좌
 

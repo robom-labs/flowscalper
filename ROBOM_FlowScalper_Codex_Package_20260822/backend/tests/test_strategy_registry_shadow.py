@@ -365,6 +365,8 @@ def test_governor_requires_multiple_testing_then_swaps_champion_atomically() -> 
         independent_period_count=2,
         live_public_sample_size=35,
         cooldown_elapsed=True,
+        base_win_rate=Decimal("0.70"),
+        stress_win_rate=Decimal("0.70"),
     )
     challenger = governor.assess(registry, strategy_id, shadow_pass)
     assert challenger.recommended_lifecycle is StrategyLifecycle.CHALLENGER
@@ -390,6 +392,8 @@ def test_governor_requires_multiple_testing_then_swaps_champion_atomically() -> 
         live_public_sample_size=120,
         cooldown_elapsed=True,
         strategy_correlation_abs=0.40,
+        base_win_rate=Decimal("0.74"),
+        stress_win_rate=Decimal("0.72"),
     )
     promotion = governor.assess(registry, strategy_id, active_pass)
     assert promotion.champion_id == "CBR_CONTINUATION_V1"
@@ -436,6 +440,102 @@ def test_governor_quarantines_fault_but_never_overrides_user_lock() -> None:
     blocked = governor.assess(locked, "CBR_CONTINUATION_V1", evidence)
     assert blocked.reason_codes == ("USER_MANUAL_LOCK",)
     assert blocked.automatic_action_allowed is False
+
+
+def test_governor_retires_only_mature_shadow_below_70_percent_win_rate() -> None:
+    governor = StrategyGovernor()
+    registry = StrategyRegistry()
+    mature = GovernanceEvidence(
+        base_sample_size=35,
+        stress_sample_size=35,
+        base_expectancy_usdt=Decimal("0.10"),
+        stress_expectancy_usdt=Decimal("0.03"),
+        base_profit_factor=Decimal("1.20"),
+        stress_profit_factor=Decimal("1.05"),
+        sample_span_days=8,
+        regime_count=2,
+        dsr_probability=0.90,
+        pbo=0.30,
+        oos_expectancy_lower_bound_usdt=Decimal("0.01"),
+        parameter_robustness_passed=True,
+        risk_contract_passed=True,
+        independent_period_count=2,
+        live_public_sample_size=35,
+        cooldown_elapsed=True,
+        base_win_rate=Decimal("0.69"),
+        stress_win_rate=Decimal("0.74"),
+    )
+
+    assessment = governor.assess(registry, "VWAP_EXHAUSTION_REVERSION_V1", mature)
+
+    assert assessment.recommended_lifecycle is StrategyLifecycle.RETIRED
+    assert assessment.reason_codes == (
+        "BASE_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE",
+    )
+    changed = governor.apply(registry, assessment, expected_revision=0, updated_ts_ms=1_000)
+    assert changed[0]["mode"] == "OFF"
+    assert registry.descriptor("VWAP_EXHAUSTION_REVERSION_V1").strategy_id == (
+        "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert len(registry.revision_history("VWAP_EXHAUSTION_REVERSION_V1")) == 2
+
+
+def test_governor_does_not_retire_or_promote_sparse_100_percent_sample() -> None:
+    governor = StrategyGovernor()
+    registry = StrategyRegistry()
+    sparse = GovernanceEvidence(
+        base_sample_size=1,
+        stress_sample_size=1,
+        base_expectancy_usdt=Decimal("0.05"),
+        stress_expectancy_usdt=Decimal("0.01"),
+        base_profit_factor=None,
+        stress_profit_factor=None,
+        sample_span_days=0,
+        regime_count=1,
+        dsr_probability=None,
+        pbo=None,
+        live_public_sample_size=1,
+        base_win_rate=Decimal("1"),
+        stress_win_rate=Decimal("1"),
+    )
+
+    assessment = governor.assess(registry, "CBR_CONTINUATION_V1", sparse)
+
+    assert assessment.recommended_lifecycle is StrategyLifecycle.SHADOW
+    assert "BASE_SAMPLE_LT_30" in assessment.reason_codes
+    assert assessment.automatic_action_allowed is False
+
+
+def test_governance_evidence_reads_full_and_recent_base_stress_win_rates() -> None:
+    evidence = GovernanceEvidence.from_reports(
+        {
+            "sample_size": 30,
+            "expectancy_usdt": "0.10",
+            "profit_factor": "1.20",
+            "win_rate": "0.70",
+            "sample_span_days": 8,
+            "regime_count": 2,
+        },
+        {
+            "sample_size": 30,
+            "expectancy_usdt": "0.03",
+            "profit_factor": "1.05",
+            "win_rate": "0.73",
+        },
+        multiple_testing={
+            "recent_base_win_rate": "0.71",
+            "recent_stress_win_rate": "0.72",
+            "full_win_rate_degraded_evaluations": 1,
+            "recent_win_rate_degraded_evaluations": 1,
+        },
+    )
+
+    assert evidence.base_win_rate == Decimal("0.70")
+    assert evidence.stress_win_rate == Decimal("0.73")
+    assert evidence.recent_base_win_rate == Decimal("0.71")
+    assert evidence.recent_stress_win_rate == Decimal("0.72")
+    assert evidence.full_win_rate_degraded_evaluations == 1
+    assert evidence.recent_win_rate_degraded_evaluations == 1
 
 
 def test_runtime_governance_cycle_quarantines_fault_but_does_not_promote_empty_sample() -> None:
@@ -501,6 +601,52 @@ def test_governor_never_quarantines_active_strategy_from_one_bad_evaluation() ->
     assert assessment.reason_codes == ("COST_AFTER_DEGRADATION",)
 
 
+def test_governor_quarantines_active_only_after_repeated_low_win_rate() -> None:
+    registry = StrategyRegistry()
+    governor = StrategyGovernor()
+    registry.configure(
+        "CBR_CONTINUATION_V1",
+        mode=StrategyMode.ACTIVE,
+        lifecycle=StrategyLifecycle.ACTIVE,
+        long_enabled=True,
+        short_enabled=True,
+        expected_revision=0,
+        source=StrategyChangeSource.AUTO_GOVERNOR,
+        reason="TEST_PROVEN_CHAMPION",
+    )
+    one_low_cycle = GovernanceEvidence(
+        base_sample_size=120,
+        stress_sample_size=120,
+        base_expectancy_usdt=Decimal("0.10"),
+        stress_expectancy_usdt=Decimal("0.03"),
+        base_profit_factor=Decimal("1.20"),
+        stress_profit_factor=Decimal("1.05"),
+        sample_span_days=30,
+        regime_count=3,
+        dsr_probability=0.95,
+        pbo=0.30,
+        base_win_rate=Decimal("0.69"),
+        stress_win_rate=Decimal("0.72"),
+        recent_base_win_rate=Decimal("0.68"),
+        recent_stress_win_rate=Decimal("0.71"),
+        full_win_rate_degraded_evaluations=1,
+        recent_win_rate_degraded_evaluations=1,
+    )
+
+    first = governor.assess(registry, "CBR_CONTINUATION_V1", one_low_cycle)
+    assert first.recommended_lifecycle is StrategyLifecycle.ACTIVE
+    assert first.reason_codes == ("ACTIVE_GATES_HEALTHY",)
+
+    repeated = replace(
+        one_low_cycle,
+        full_win_rate_degraded_evaluations=2,
+        recent_win_rate_degraded_evaluations=2,
+    )
+    second = governor.assess(registry, "CBR_CONTINUATION_V1", repeated)
+    assert second.recommended_lifecycle is StrategyLifecycle.QUARANTINED
+    assert second.reason_codes == ("WIN_RATE_BELOW_70_REPEATED",)
+
+
 def test_runtime_persists_auto_governor_evidence_and_audit(tmp_path: Path) -> None:
     ledger = SQLiteLedger(tmp_path / "governor.sqlite3")
     runtime = PaperRuntime(
@@ -527,6 +673,8 @@ def test_runtime_persists_auto_governor_evidence_and_audit(tmp_path: Path) -> No
         independent_period_count=2,
         live_public_sample_size=35,
         cooldown_elapsed=True,
+        base_win_rate=Decimal("0.72"),
+        stress_win_rate=Decimal("0.70"),
         evaluation_period="WALK_FORWARD_OOS_2026Q3",
         evaluated_ts_ms=1_000,
     )

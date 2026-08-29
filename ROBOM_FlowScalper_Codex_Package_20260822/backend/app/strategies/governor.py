@@ -54,6 +54,12 @@ class GovernanceEvidence:
     data_fault: bool = False
     operational_fault: bool = False
     drawdown_breach: bool = False
+    base_win_rate: Decimal | None = None
+    stress_win_rate: Decimal | None = None
+    recent_base_win_rate: Decimal | None = None
+    recent_stress_win_rate: Decimal | None = None
+    full_win_rate_degraded_evaluations: int = 0
+    recent_win_rate_degraded_evaluations: int = 0
 
     def as_dict(self) -> dict[str, object]:
         """원장과 증거 파일에 그대로 저장할 JSON 계약을 만든다."""
@@ -123,6 +129,16 @@ class GovernanceEvidence:
             data_fault=bool(health.get("data_fault", False)),
             operational_fault=bool(health.get("operational_fault", False)),
             drawdown_breach=bool(health.get("drawdown_breach", False)),
+            base_win_rate=_decimal(base.get("win_rate")),
+            stress_win_rate=_decimal(stress.get("win_rate")),
+            recent_base_win_rate=_decimal(testing.get("recent_base_win_rate")),
+            recent_stress_win_rate=_decimal(testing.get("recent_stress_win_rate")),
+            full_win_rate_degraded_evaluations=int(
+                str(testing.get("full_win_rate_degraded_evaluations", 0))
+            ),
+            recent_win_rate_degraded_evaluations=int(
+                str(testing.get("recent_win_rate_degraded_evaluations", 0))
+            ),
         )
 
 
@@ -228,31 +244,75 @@ class StrategyGovernor:
                 False,
                 champion_id,
             )
+        if current in {StrategyLifecycle.SHADOW, StrategyLifecycle.CHALLENGER}:
+            retirement_reasons = self._minimum_evidence_win_rate_failures(evidence)
+            if retirement_reasons:
+                return GovernanceAssessment(
+                    strategy_id,
+                    current,
+                    StrategyLifecycle.RETIRED,
+                    retirement_reasons,
+                    True,
+                    champion_id,
+                )
         if current is StrategyLifecycle.ACTIVE:
-            full_degraded = (
+            full_cost_degraded = (
                 evidence.base_sample_size >= 30
                 and evidence.base_expectancy_usdt is not None
                 and evidence.base_expectancy_usdt < 0
                 and evidence.base_profit_factor is not None
                 and evidence.base_profit_factor < Decimal("0.90")
             )
-            recent_degraded = (
+            recent_cost_degraded = (
                 evidence.recent_expectancy_usdt is not None
                 and evidence.recent_expectancy_usdt < 0
                 and evidence.recent_profit_factor is not None
                 and evidence.recent_profit_factor < Decimal("0.90")
             )
-            degraded = (
-                full_degraded
-                and recent_degraded
+            cost_degraded = (
+                full_cost_degraded
+                and recent_cost_degraded
                 and evidence.full_oos_degraded_evaluations >= 2
                 and evidence.recent_oos_degraded_evaluations >= 2
+            )
+            full_win_rate_degraded = (
+                evidence.base_sample_size >= 30
+                and evidence.stress_sample_size >= 30
+                and (
+                    evidence.base_win_rate is None
+                    or evidence.base_win_rate < Decimal("0.70")
+                    or evidence.stress_win_rate is None
+                    or evidence.stress_win_rate < Decimal("0.70")
+                )
+            )
+            recent_win_rate_degraded = (
+                evidence.recent_base_win_rate is not None
+                and evidence.recent_stress_win_rate is not None
+                and (
+                    evidence.recent_base_win_rate < Decimal("0.70")
+                    or evidence.recent_stress_win_rate < Decimal("0.70")
+                )
+            )
+            win_rate_degraded = (
+                full_win_rate_degraded
+                and recent_win_rate_degraded
+                and evidence.full_win_rate_degraded_evaluations >= 2
+                and evidence.recent_win_rate_degraded_evaluations >= 2
+            )
+            degraded = cost_degraded or win_rate_degraded
+            reason_codes = tuple(
+                reason
+                for active, reason in (
+                    (cost_degraded, "COST_AFTER_DEGRADATION"),
+                    (win_rate_degraded, "WIN_RATE_BELOW_70_REPEATED"),
+                )
+                if active
             )
             return GovernanceAssessment(
                 strategy_id,
                 current,
                 StrategyLifecycle.QUARANTINED if degraded else current,
-                ("COST_AFTER_DEGRADATION",) if degraded else ("ACTIVE_GATES_HEALTHY",),
+                reason_codes if degraded else ("ACTIVE_GATES_HEALTHY",),
                 degraded,
                 champion_id,
             )
@@ -387,6 +447,16 @@ class StrategyGovernor:
                 "STRESS_PF_LT_1",
             ),
             (
+                evidence.base_win_rate is not None
+                and evidence.base_win_rate >= Decimal("0.70"),
+                "BASE_WIN_RATE_LT_0_70_OR_MISSING",
+            ),
+            (
+                evidence.stress_win_rate is not None
+                and evidence.stress_win_rate >= Decimal("0.70"),
+                "STRESS_WIN_RATE_LT_0_70_OR_MISSING",
+            ),
+            (
                 evidence.dsr_probability is not None
                 and evidence.dsr_probability >= 0.80,
                 "DSR_LT_0_80_OR_MISSING",
@@ -402,6 +472,37 @@ class StrategyGovernor:
             (evidence.independent_period_count >= 2, "INDEPENDENT_PERIODS_LT_2"),
         )
         return tuple(reason for passed, reason in gates if not passed)
+
+    @staticmethod
+    def _minimum_evidence_win_rate_failures(
+        evidence: GovernanceEvidence,
+    ) -> tuple[str, ...]:
+        """충분한 자연표본에서 70% 미만인 SHADOW·CHALLENGER만 퇴역시킨다."""
+
+        minimum_evidence_ready = all(
+            (
+                evidence.base_sample_size >= 30,
+                evidence.stress_sample_size >= 30,
+                evidence.live_public_sample_size >= 30,
+                evidence.sample_span_days >= 7,
+                evidence.regime_count >= 2,
+            )
+        )
+        if not minimum_evidence_ready:
+            return ()
+        failures = (
+            (
+                evidence.base_win_rate is not None
+                and evidence.base_win_rate >= Decimal("0.70"),
+                "BASE_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE",
+            ),
+            (
+                evidence.stress_win_rate is not None
+                and evidence.stress_win_rate >= Decimal("0.70"),
+                "STRESS_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE",
+            ),
+        )
+        return tuple(reason for passed, reason in failures if not passed)
 
     @staticmethod
     def _shadow_gate_failures(evidence: GovernanceEvidence) -> tuple[str, ...]:

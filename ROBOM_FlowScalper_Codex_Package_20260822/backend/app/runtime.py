@@ -176,6 +176,11 @@ class PaperRuntime:
         default_factory=dict,
         repr=False,
     )
+    _governance_full_low_win_cycles: dict[str, int] = field(default_factory=dict, repr=False)
+    _governance_recent_low_win_cycles: dict[str, int] = field(
+        default_factory=dict,
+        repr=False,
+    )
     _governance_last_cycle_ts_ms: int | None = None
     strategy_evaluator: StrategySignalEvaluator = field(default_factory=StrategySignalEvaluator)
     regime_classifier: RegimeClassifier = field(default_factory=RegimeClassifier)
@@ -1793,6 +1798,12 @@ class PaperRuntime:
             stress = reports_by_key[(strategy_id, "STRESS")]
             windows = base.get("windows")
             recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
+            stress_windows = stress.get("windows")
+            stress_recent = (
+                stress_windows.get("recent_50", {})
+                if isinstance(stress_windows, Mapping)
+                else {}
+            )
             sample_size = min(
                 int(str(base["sample_size"])),
                 int(str(stress["sample_size"])),
@@ -1812,6 +1823,24 @@ class PaperRuntime:
                     and recent.get("profit_factor") is not None
                     and Decimal(str(recent["profit_factor"])) < Decimal("0.90")
                 )
+                full_low_win = (
+                    sample_size >= 30
+                    and (
+                        base.get("win_rate") is None
+                        or Decimal(str(base["win_rate"])) < Decimal("0.70")
+                        or stress.get("win_rate") is None
+                        or Decimal(str(stress["win_rate"])) < Decimal("0.70")
+                    )
+                )
+                recent_low_win = (
+                    sample_size >= 30
+                    and recent.get("win_rate") is not None
+                    and stress_recent.get("win_rate") is not None
+                    and (
+                        Decimal(str(recent["win_rate"])) < Decimal("0.70")
+                        or Decimal(str(stress_recent["win_rate"])) < Decimal("0.70")
+                    )
+                )
                 self._governance_full_degraded_cycles[strategy_id] = (
                     self._governance_full_degraded_cycles.get(strategy_id, 0) + 1
                     if full_degraded
@@ -1820,6 +1849,16 @@ class PaperRuntime:
                 self._governance_recent_degraded_cycles[strategy_id] = (
                     self._governance_recent_degraded_cycles.get(strategy_id, 0) + 1
                     if recent_degraded
+                    else 0
+                )
+                self._governance_full_low_win_cycles[strategy_id] = (
+                    self._governance_full_low_win_cycles.get(strategy_id, 0) + 1
+                    if full_low_win
+                    else 0
+                )
+                self._governance_recent_low_win_cycles[strategy_id] = (
+                    self._governance_recent_low_win_cycles.get(strategy_id, 0) + 1
+                    if recent_low_win
                     else 0
                 )
                 self._governance_last_sample_size[strategy_id] = sample_size
@@ -1834,12 +1873,20 @@ class PaperRuntime:
                 multiple_testing={
                     "recent_expectancy_usdt": recent.get("expectancy_usdt"),
                     "recent_profit_factor": recent.get("profit_factor"),
+                    "recent_base_win_rate": recent.get("win_rate"),
+                    "recent_stress_win_rate": stress_recent.get("win_rate"),
                     "live_public_sample_size": sample_size,
                     "full_oos_degraded_evaluations": (
                         self._governance_full_degraded_cycles.get(strategy_id, 0)
                     ),
                     "recent_oos_degraded_evaluations": (
                         self._governance_recent_degraded_cycles.get(strategy_id, 0)
+                    ),
+                    "full_win_rate_degraded_evaluations": (
+                        self._governance_full_low_win_cycles.get(strategy_id, 0)
+                    ),
+                    "recent_win_rate_degraded_evaluations": (
+                        self._governance_recent_low_win_cycles.get(strategy_id, 0)
                     ),
                     "evaluation_period": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
                     "evaluated_ts_ms": evaluated_ts_ms,
@@ -1907,6 +1954,12 @@ class PaperRuntime:
             stress = reports_by_key[(strategy_id, "STRESS")]
             windows = base.get("windows")
             recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
+            stress_windows = stress.get("windows")
+            stress_recent = (
+                stress_windows.get("recent_50", {})
+                if isinstance(stress_windows, Mapping)
+                else {}
+            )
             faulted = any(
                 bool(account["faulted"])
                 for account in accounts
@@ -1918,6 +1971,8 @@ class PaperRuntime:
                 multiple_testing={
                     "recent_expectancy_usdt": recent.get("expectancy_usdt"),
                     "recent_profit_factor": recent.get("profit_factor"),
+                    "recent_base_win_rate": recent.get("win_rate"),
+                    "recent_stress_win_rate": stress_recent.get("win_rate"),
                     "live_public_sample_size": min(
                         int(str(base["sample_size"])),
                         int(str(stress["sample_size"])),

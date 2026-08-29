@@ -139,6 +139,22 @@ test('shows lifecycle evidence and restores the prior revision without deleting 
   ))
 })
 
+test('explains the 70 percent retirement gate in beginner Korean', () => {
+  const rows = strategies.map((strategy, index) => index === 1 ? {
+    ...strategy,
+    governance: {
+      ...strategy.governance,
+      recommended_lifecycle: 'RETIRED' as const,
+      reason_codes: ['BASE_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE'],
+    },
+  } : strategy)
+
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[1])
+
+  expect(screen.getByText('충분한 기본 비용 표본에서 승률 70%에 못 미쳐 검증을 종료했습니다.')).toBeInTheDocument()
+})
+
 test('blocks policy-retired reactivation but keeps ordinary user OFF reversible', async () => {
   const userOffId = 'VWAP_EXHAUSTION_REVERSION_V1'
   const rows = strategies.map((strategy) => strategy.strategy_id === userOffId ? {
