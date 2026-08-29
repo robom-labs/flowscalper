@@ -3325,3 +3325,44 @@ event가 289,502건 전진했지만, 새 event-loop 500ms 초과가 1회 발생�
 
 현 수용상태는
 `REGRESSION_CONTRACT_PASS_RESEARCH_DEDUP_PASS_ONE_PASS_GATE_PASS_LONG_BASELINE_ABORTED_RETRY_REQUIRED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 80. Wave 111~113B 누적 기준선·LIVE 우선 archive 재검증 증거
+
+동결 13-Run의 같은 공개시장 입력에서 11개 전략·22개 BASE/STRESS 독립계좌를 비교하는
+`NONE` 기준선은 실제로 완료했다. 이후 TP1 실행가능성 gate를 전 전략에 적용한 두 시도는
+각각 신규 500ms 초과 event-loop 지연을 감지해 자동 중단했다. 결과 파일을 성과처럼 남기지
+않고 부분 결과를 제거했으며, 중단 trial은 append-only 이력에 보존했다.
+
+두 번째 중단이 전략 이벤트 처리 전에 일어났음을 확인하고 archive SHA-256·Parquet 범위 검증에도
+CPU 예산, 16MiB/s 읽기 상한과 활성 LIVE 원장 우선 I/O gate를 적용했다. 단계별 JSON 진행 로그도
+추가했다. 첫 실제 smoke는 hive partition 종목 식별 호환성 차이로 실패했고 그 기록을 보존했다.
+같은 동결 계약으로 호환성을 고친 다음 smoke는 완료됐다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 13-Run `NONE` 기준선 | `PASS` | 5,862.093초, 13 Runs·2,690,582 events, 현재 archive byte 재검증 mismatch 0, LIVE event +374,382, 신규 500ms 초과 0, 최대 queue 23·실행지연 p95 38.359ms |
+| 기준선 전략 판정 | `NOT_PROVEN` | 적격 순위 0. `QUEUE_MICROPRICE` OOS BASE 18건·승률 27.78%·기대값 -18.749bp·PF 0.370, `LSA` 5건·40%·-1.292bp·0.704, `DEPTH_ADJUSTED_OFI` 3건·33.33%·+1.585bp·1.107이며 모두 30기회·STRESS·강건성 gate 미달 |
+| TP1 전 전략 1차 | `ABORTED_RUNTIME_SAFETY` | 808.772초·LIVE event +52,915·신규 500ms 초과 1, 최대 queue 16·p95 46.709ms, 자식 SIGTERM·부분 결과 제거 |
+| TP1 CPU25 2차 | `ABORTED_RUNTIME_SAFETY` | 52.953초·LIVE event +3,380·신규 500ms 초과 1, 최대 queue 9·p95 37.478ms, 자식 SIGTERM·부분 결과 제거 |
+| 무연구 원인분리 | `PASS_SHORT_SCOPE` | 27초 동안 신규 500ms 초과 0, 대시보드 build 관측 최대 21.707ms·HTTP 최대 61.3ms·queue 최대 7. TP1 중단과 대시보드 build 515.925ms의 같은 시각은 상관관계로만 기록 |
+| LIVE 우선 archive 구현 | `PASS` | 1MiB chunk, 활성 원장 공유 I/O gate, 16MiB/s 상한, Parquet metadata 범위검증, 다섯 진행단계, 관련 45건·누적회귀 15 contracts/31 anchors·Ruff·mypy 108 source PASS |
+| 첫 LIVE 우선 smoke | `FAIL_PRESERVED` | 8.544초·LIVE event +555·신규 500ms 초과 0. hive `symbol=MULTI` 계약 불일치로 자식 exit 1, 결과 미발행 |
+| 호환성 수정 smoke | `PASS` | commit `a2ffd83d3dd9d337f5b56a0f718941c2f6b025ae`, 23.025초, 1 Run·26,876 archive events 재검증·100 replay events, 다섯 진행단계 완료, LIVE event +1,487·신규 500ms 초과 0·최대 queue 9·p95 29.417ms·비계획 reconnect/gap/resync/drop/fault/buffer drop 0 |
+| PAPER 안전경계 | `PASS` | 11전략·22계좌, PAPER only, 실제 주문·private API·인증·wallet·runtime AI 주문판단 false |
+| 전체 13-Run TP1 재검증 | `NOT_RUN` | 수정된 최종 commit에서 아직 전체 2,690,582-event 실행을 완료하지 않음 |
+| 외부 1차 연구 재탐색 | `PASS_RESEARCH_TRIAGE_ONLY` | 7개 1차 출처를 기존 Registry·100후보·trial ledger와 대조했다. 변동성 극단 진입거부 3개와 호가장 slippage-tail veto 2개를 프로젝트 작성 파라미터로 사전등록했지만 전략 추가·LIVE 기준변경·승격은 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 기준선과 smoke는 수익성 증거가 아니며, 30개 고유 기회·BASE/STRESS·시간순 OOS·bootstrap·DSR·PBO·독립 forward를 통과한 전략 0 |
+
+원시 근거는
+`evidence/WAVE111_SHARED_NONE_13RUN_STRATEGY_LEAGUE.json`,
+`evidence/WAVE111_SHARED_NONE_13RUN_STRATEGY_LEAGUE_LIVE_GUARD.json`,
+`evidence/WAVE111_ALL_TP1_13RUN_STRATEGY_LEAGUE_LIVE_GUARD.json`,
+`evidence/WAVE112_ALL_TP1_CPU25_13RUN_STRATEGY_LEAGUE_LIVE_GUARD.json`,
+`evidence/WAVE113_LIVE_PRIORITY_ARCHIVE_SMOKE_LIVE_GUARD.json`,
+`evidence/WAVE113B_LIVE_PRIORITY_ARCHIVE_SMOKE.json`,
+`evidence/WAVE113B_LIVE_PRIORITY_ARCHIVE_SMOKE_LIVE_GUARD.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`,
+`evidence/WAVE114_EXTERNAL_RESEARCH_TRIAGE.json`에 보존했다. 설계 결정은 `ADR-101`에 고정했다.
+
+현 수용상태는
+`BASELINE_PASS_TP1_REPLAYS_ABORTED_LIVE_PRIORITY_SMOKE_PASS_FULL_13RUN_TP1_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

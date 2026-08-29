@@ -7,7 +7,8 @@ import hashlib
 import json
 import math
 from collections import Counter, defaultdict, deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass, field, replace
 from decimal import Decimal
 from itertools import chain
@@ -20,6 +21,7 @@ from backend.app.domain.models import MarketDataState, MarketEvent, RuntimeMode,
 from backend.app.features import FeatureSnapshot
 from backend.app.market_data import Candle
 from backend.app.regime import Regime
+from backend.app.replay.process import ReplayCpuBudget
 from backend.app.research.protocol import (
     bootstrap_mean_interval,
     deflated_sharpe_ratio,
@@ -27,6 +29,7 @@ from backend.app.research.protocol import (
 )
 from backend.app.risk.manager import STRATEGY_LEAGUE_RISK_LIMITS
 from backend.app.runtime import PaperRuntime
+from backend.app.storage.io_priority import storage_io_priority_gate
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.registry import (
     StrategyChangeSource,
@@ -63,6 +66,8 @@ MAXIMUM_SINGLE_RUN_OPPORTUNITY_SHARE = 0.50
 MINIMUM_MULTI_REGIME_COUNT = 2
 MAXIMUM_SINGLE_REGIME_OPPORTUNITY_SHARE = 0.80
 PAPER_STARTING_EQUITY_USDT = Decimal("1000")
+RESEARCH_CPU_CHECKPOINT_EVENTS = 16
+DEFAULT_RESEARCH_ARCHIVE_READ_MIB_PER_SECOND = 16.0
 _CANDIDATE_EVENTS = {
     "MAIN_CANDIDATE_SELECTED",
     "LEAGUE_CANDIDATE_ARMED",
@@ -140,6 +145,9 @@ def verify_frozen_archive_bytes(
     archive: Path,
     dataset_manifest: Path,
     run_ids: Sequence[str],
+    *,
+    archive_batch_yield: Callable[[int], None] | None = None,
+    archive_batch_guard: Callable[[], AbstractContextManager[None]] | None = None,
 ) -> dict[str, object]:
     """동결 manifest의 선택 Run을 현재 parquet bytes와 다시 대조한다."""
 
@@ -147,7 +155,14 @@ def verify_frozen_archive_bytes(
     selected_rows = cast(Sequence[Mapping[str, object]], reference["selected_runs"])
     expected_by_id = {str(row["run_id"]): row for row in selected_rows}
     recomputed = [
-        asdict(_dataset_slice(run_id, archive / f"run={run_id}"))
+        asdict(
+            _dataset_slice(
+                run_id,
+                archive / f"run={run_id}",
+                archive_batch_yield=archive_batch_yield,
+                archive_batch_guard=archive_batch_guard,
+            )
+        )
         for run_id in run_ids
     ]
     compared_fields = (
@@ -194,7 +209,23 @@ def verify_frozen_archive_bytes(
         "manifest_sha256": reference["manifest_sha256"],
         "compared_fields": list(compared_fields),
         "mismatch_count": 0,
+        "live_writer_io_priority_gate": archive_batch_guard is not None,
     }
+
+
+def _progress(stage: str, **details: object) -> None:
+    """안전중단 증거에 현재 연구 단계를 남기도록 한 줄 JSON을 즉시 출력한다."""
+
+    print(
+        _canonical_json(
+            {
+                "type": "RESEARCH_PROGRESS",
+                "stage": stage,
+                **details,
+            }
+        ),
+        flush=True,
+    )
 
 
 def tp1_feasibility_gate_rejections(
@@ -608,6 +639,7 @@ def _replay_archive_run_for_strategies(
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
+    cooperative_yield: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """선택 전략을 한 신규 무원장 PAPER 런타임에서 동시에 수신순 재생한다."""
 
@@ -687,6 +719,11 @@ def _replay_archive_run_for_strategies(
         event_count += 1
         event_types[event.event_type] += 1
         runtime.ingest_live_event(event)
+        if cooperative_yield is not None and event_count % RESEARCH_CPU_CHECKPOINT_EVENTS == 0:
+            cooperative_yield()
+
+    if cooperative_yield is not None:
+        cooperative_yield()
 
     trades = _strategy_trade_rows(runtime, selected_strategy_ids)
     reports = TradeAnalytics().strategy_reports(
@@ -790,6 +827,7 @@ def replay_archive_run(
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
+    cooperative_yield: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """한 전략을 신규 무원장 PAPER 런타임에서 수신순으로 재생한다."""
 
@@ -801,6 +839,7 @@ def replay_archive_run(
         signal_gate=signal_gate,
         strategy_logic=strategy_logic,
         maximum_events=maximum_events,
+        cooperative_yield=cooperative_yield,
     )
 
 
@@ -812,6 +851,7 @@ def replay_strategy_league_archive_run(
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
+    cooperative_yield: Callable[[], None] | None = None,
 ) -> dict[str, object]:
     """등록 전략 전체를 22개 독립계좌의 한 무원장 PAPER 런타임에서 재생한다."""
 
@@ -823,6 +863,7 @@ def replay_strategy_league_archive_run(
         signal_gate=signal_gate,
         strategy_logic=strategy_logic,
         maximum_events=maximum_events,
+        cooperative_yield=cooperative_yield,
     )
 
 
@@ -1463,12 +1504,14 @@ def build_result(
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     dataset_manifest: Path | None = None,
     maximum_events: int | None = None,
+    target_cpu_ratio: float = 1.0,
 ) -> dict[str, object]:
     dataset_reference = (
         frozen_dataset_reference(dataset_manifest, run_ids)
         if dataset_manifest is not None
         else {"status": "NOT_PROVIDED"}
     )
+    cpu_budget = ReplayCpuBudget(target_cpu_ratio=target_cpu_ratio)
     runs = [
         replay_archive_run(
             run_id,
@@ -1477,6 +1520,7 @@ def build_result(
             signal_gate=signal_gate,
             strategy_logic=strategy_logic,
             maximum_events=maximum_events,
+            cooperative_yield=cpu_budget.checkpoint,
         )
         for run_id in run_ids
     ]
@@ -1510,6 +1554,8 @@ def build_result(
         "real_orders_enabled": False,
         "auth_required": False,
         "runtime_ai_order_decision": False,
+        "cooperative_cpu_target_ratio": target_cpu_ratio,
+        "cooperative_cpu_checkpoint_events": RESEARCH_CPU_CHECKPOINT_EVENTS,
         "runs": runs,
         "splits": split_summaries,
         "overall": _summary(runs, strategy_id=strategy_id),
@@ -1525,6 +1571,7 @@ def build_strategy_league_result(
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     dataset_manifest: Path | None = None,
     maximum_events: int | None = None,
+    target_cpu_ratio: float = 1.0,
 ) -> dict[str, object]:
     """등록 전략 전체를 각 Run당 한 번만 읽어 동일 PAPER 입력으로 비교한다."""
 
@@ -1535,6 +1582,7 @@ def build_strategy_league_result(
         if dataset_manifest is not None
         else {"status": "NOT_PROVIDED"}
     )
+    cpu_budget = ReplayCpuBudget(target_cpu_ratio=target_cpu_ratio)
     runs = [
         replay_strategy_league_archive_run(
             run_id,
@@ -1543,6 +1591,7 @@ def build_strategy_league_result(
             signal_gate=signal_gate,
             strategy_logic=strategy_logic,
             maximum_events=maximum_events,
+            cooperative_yield=cpu_budget.checkpoint,
         )
         for run_id in run_ids
     ]
@@ -1635,6 +1684,8 @@ def build_strategy_league_result(
         "real_orders_enabled": False,
         "auth_required": False,
         "runtime_ai_order_decision": False,
+        "cooperative_cpu_target_ratio": target_cpu_ratio,
+        "cooperative_cpu_checkpoint_events": RESEARCH_CPU_CHECKPOINT_EVENTS,
         "retired_strategy_reactivation_scope": "EPHEMERAL_RESEARCH_REPLAY_ONLY",
         "ranking_eligible_strategy_ids": [],
         "profitability_status": "NOT_PROVEN",
@@ -1677,12 +1728,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", action="append")
     parser.add_argument("--maximum-events", type=int)
     parser.add_argument(
+        "--target-cpu-ratio",
+        type=float,
+        default=1.0,
+        help="연구 replay 자식 프로세스가 사용할 협조 CPU 목표 비율입니다.",
+    )
+    parser.add_argument(
+        "--target-archive-read-mib-per-second",
+        type=float,
+        default=DEFAULT_RESEARCH_ARCHIVE_READ_MIB_PER_SECOND,
+        help="archive byte 재검증의 LIVE 우선 목표 읽기 속도입니다.",
+    )
+    parser.add_argument(
+        "--live-ledger-path",
+        type=Path,
+        help="LIVE 저장 쓰기와 archive 읽기를 조율할 활성 PAPER 원장 경로입니다.",
+    )
+    parser.add_argument(
         "--verify-archive-bytes",
         action="store_true",
         help="리플레이 전에 선택 Run의 현재 parquet bytes를 동결 manifest와 다시 대조합니다.",
     )
     parser.add_argument("--output", type=Path, required=True)
-    return parser.parse_args()
+    arguments = parser.parse_args()
+    if not 0 < arguments.target_cpu_ratio <= 1:
+        parser.error("--target-cpu-ratio는 0 초과 1 이하여야 합니다.")
+    if arguments.target_archive_read_mib_per_second <= 0:
+        parser.error("--target-archive-read-mib-per-second는 양수여야 합니다.")
+    return arguments
 
 
 def main() -> None:
@@ -1700,14 +1773,47 @@ def main() -> None:
         raise ValueError(
             "동결 13-Run 전체 결과는 --verify-archive-bytes 없이는 실행할 수 없습니다."
         )
-    archive_verification = (
-        verify_frozen_archive_bytes(
+    archive_verification: dict[str, object] | None = None
+    if args.verify_archive_bytes:
+        archive_budget = ReplayCpuBudget(
+            target_cpu_ratio=args.target_cpu_ratio,
+            target_archive_read_bytes_per_second=(
+                args.target_archive_read_mib_per_second * 1024 * 1024
+            ),
+        )
+        archive_guard: Callable[[], AbstractContextManager[None]] | None = None
+        if args.live_ledger_path is not None:
+            live_ledger_path = args.live_ledger_path
+
+            def guarded_archive_read() -> AbstractContextManager[None]:
+                return storage_io_priority_gate(live_ledger_path, exclusive=False)
+
+            archive_guard = guarded_archive_read
+        _progress(
+            "ARCHIVE_BYTE_VERIFICATION_STARTED",
+            run_count=len(run_ids),
+            live_writer_io_priority_gate=args.live_ledger_path is not None,
+            target_read_mib_per_second=args.target_archive_read_mib_per_second,
+        )
+        archive_verification = verify_frozen_archive_bytes(
             args.archive,
             args.dataset_manifest,
             run_ids,
+            archive_batch_yield=archive_budget.archive_checkpoint,
+            archive_batch_guard=archive_guard,
         )
-        if args.verify_archive_bytes
-        else None
+        archive_verification["target_read_mib_per_second"] = (
+            args.target_archive_read_mib_per_second
+        )
+        _progress(
+            "ARCHIVE_BYTE_VERIFICATION_COMPLETED",
+            run_count=archive_verification["run_count"],
+            event_count=archive_verification["event_count"],
+        )
+    _progress(
+        "PAPER_STRATEGY_REPLAY_STARTED",
+        run_count=len(run_ids),
+        all_strategies=bool(args.all_strategies),
     )
     if args.all_strategies:
         signal_gate_target_strategy_id = str(
@@ -1721,6 +1827,7 @@ def main() -> None:
             strategy_logic=str(args.strategy_logic),
             dataset_manifest=args.dataset_manifest,
             maximum_events=args.maximum_events,
+            target_cpu_ratio=args.target_cpu_ratio,
         )
     else:
         if args.signal_gate_target_strategy_id == SIGNAL_GATE_TARGET_ALL:
@@ -1740,16 +1847,23 @@ def main() -> None:
             strategy_logic=str(args.strategy_logic),
             dataset_manifest=args.dataset_manifest,
             maximum_events=args.maximum_events,
+            target_cpu_ratio=args.target_cpu_ratio,
         )
     if archive_verification is not None:
         frozen_dataset = result.get("frozen_dataset")
         if not isinstance(frozen_dataset, dict):
             raise ValueError("리플레이 결과에 동결 dataset 참조가 없습니다.")
         frozen_dataset["current_archive_byte_reverification"] = archive_verification
+    _progress(
+        "PAPER_STRATEGY_REPLAY_COMPLETED",
+        run_count=len(run_ids),
+        status=result.get("status"),
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     )
+    _progress("RESULT_WRITTEN", output=args.output.name)
 
 
 if __name__ == "__main__":

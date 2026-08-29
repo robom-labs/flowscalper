@@ -10,7 +10,8 @@ import math
 import tempfile
 import time
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +19,7 @@ from statistics import fmean
 from typing import Any
 
 import duckdb
+import pyarrow.parquet as pq
 
 from backend.app.build_identity import STRATEGY_VERSION, git_commit
 from backend.app.domain.market import TradeTick
@@ -855,39 +857,97 @@ def _promotion_assessment(
     }
 
 
-def _dataset_slice(run_id: str, run_dir: Path) -> DatasetSlice:
+def _dataset_slice(
+    run_id: str,
+    run_dir: Path,
+    *,
+    archive_batch_yield: Callable[[int], None] | None = None,
+    archive_batch_guard: Callable[[], AbstractContextManager[None]] | None = None,
+) -> DatasetSlice:
+    """Run bytes와 parquet metadata를 LIVE 원장 쓰기보다 낮은 우선순위로 검증한다."""
+
     files = tuple(sorted(run_dir.rglob("*.parquet")))
     if not files:
         raise FileNotFoundError(f"시장 archive가 없습니다: {run_dir}")
     digest = hashlib.sha256()
+    event_count = 0
+    symbols: set[str] = set()
+    start_ts_ms: int | None = None
+    end_ts_ms: int | None = None
     for path in files:
         relative = path.relative_to(run_dir).as_posix()
+        partition_symbol = next(
+            (
+                part.name.partition("=")[2]
+                for part in path.parents
+                if part != run_dir and part.name.startswith("symbol=")
+            ),
+            None,
+        )
         digest.update(relative.encode())
         digest.update(str(path.stat().st_size).encode())
         with path.open("rb") as stream:
-            while block := stream.read(8 * 1024 * 1024):
+            while True:
+                guard = archive_batch_guard() if archive_batch_guard is not None else nullcontext()
+                with guard:
+                    block = stream.read(1024 * 1024)
+                if not block:
+                    break
                 digest.update(block)
-    connection = duckdb.connect(":memory:")
-    try:
-        row = connection.execute(
-            """
-            SELECT MIN(venue_ts_ms), MAX(venue_ts_ms), COUNT(*),
-              LIST_SORT(LIST_DISTINCT(LIST(symbol)))
-            FROM read_parquet(?, union_by_name = true)
-            """,
-            [[str(path) for path in files]],
-        ).fetchone()
-    finally:
-        connection.close()
-    if row is None or row[0] is None or row[1] is None:
+                if archive_batch_yield is not None:
+                    archive_batch_yield(len(block))
+
+        guard = archive_batch_guard() if archive_batch_guard is not None else nullcontext()
+        with guard:
+            parquet = pq.ParquetFile(path)
+            names = parquet.schema_arrow.names
+            if "venue_ts_ms" not in names or "symbol" not in names:
+                raise ValueError(f"시장 archive 필수 열이 없습니다: {path}")
+            metadata = parquet.metadata
+            event_count += metadata.num_rows
+            timestamp_index = names.index("venue_ts_ms")
+            metadata_bounds: list[tuple[int, int]] = []
+            metadata_bounds_complete = True
+            for row_group_index in range(metadata.num_row_groups):
+                statistics = metadata.row_group(row_group_index).column(timestamp_index).statistics
+                if statistics is None or not statistics.has_min_max:
+                    metadata_bounds_complete = False
+                    break
+                metadata_bounds.append((int(statistics.min), int(statistics.max)))
+            columns = [] if partition_symbol is not None else ["symbol"]
+            if not metadata_bounds_complete:
+                columns.append("venue_ts_ms")
+            table = parquet.read(columns=columns, use_threads=False) if columns else None
+
+        if partition_symbol is not None:
+            symbols.add(partition_symbol)
+        elif table is not None:
+            symbols.update(str(value) for value in table.column("symbol").to_pylist())
+        if metadata_bounds_complete and metadata_bounds:
+            file_start_ts_ms = min(lower for lower, _ in metadata_bounds)
+            file_end_ts_ms = max(upper for _, upper in metadata_bounds)
+        else:
+            if table is None:
+                raise ValueError(f"시장 archive timestamp 열을 읽지 못했습니다: {path}")
+            timestamps = [int(value) for value in table.column("venue_ts_ms").to_pylist()]
+            if not timestamps:
+                continue
+            file_start_ts_ms = min(timestamps)
+            file_end_ts_ms = max(timestamps)
+        start_ts_ms = (
+            file_start_ts_ms if start_ts_ms is None else min(start_ts_ms, file_start_ts_ms)
+        )
+        end_ts_ms = file_end_ts_ms if end_ts_ms is None else max(end_ts_ms, file_end_ts_ms)
+
+    if start_ts_ms is None or end_ts_ms is None or event_count <= 0:
         raise ValueError(f"시장 archive 시간 범위를 읽을 수 없습니다: {run_dir}")
     return DatasetSlice(
         run_id=run_id,
         venue="BINANCE_USDM",
-        symbols=tuple(str(symbol) for symbol in row[3]),
-        start_ts_ms=int(row[0]),
-        end_ts_ms=int(row[1]),
-        event_count=int(row[2]),
+        symbols=tuple(sorted(symbols)),
+        start_ts_ms=start_ts_ms,
+        end_ts_ms=end_ts_ms,
+        event_count=event_count,
         checksum=digest.hexdigest(),
     )
 

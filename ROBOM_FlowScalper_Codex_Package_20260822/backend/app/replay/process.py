@@ -93,6 +93,10 @@ class _ReplayCpuBudget:
             self._sleeper(bytes_read / self._target_archive_read_bytes_per_second)
 
 
+# 연구용 CLI도 같은 LIVE 우선 협조 예산을 사용하도록 공개 별칭을 제공한다.
+ReplayCpuBudget = _ReplayCpuBudget
+
+
 def replay_stored_run_from_paths(
     database_path: str,
     archive_root: str | None,

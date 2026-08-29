@@ -35,6 +35,7 @@ from backend.app.research.trial_history import (
 from backend.app.storage.integrity import fetch_dashboard_payload
 from backend.app.strategies.registry import StrategyRegistry
 from scripts.research_runtime_strategy_replay import (
+    DEFAULT_RESEARCH_ARCHIVE_READ_MIB_PER_SECOND,
     DEFAULT_STRATEGY_ID,
     SIGNAL_GATE_NONE,
     SIGNAL_GATE_TARGET_ALL,
@@ -61,6 +62,43 @@ _IMPLEMENTATION_BOUND_PATHS = (
     "backend/app/strategies",
     "scripts/research_runtime_strategy_replay.py",
 )
+_DEFAULT_RESEARCH_TARGET_CPU_RATIO = 0.25
+
+
+def _default_live_ledger_path(project_root: Path) -> Path:
+    """현재 설치형 macOS 서비스의 활성 PAPER 원장을 명시적 경로로 찾는다."""
+
+    configured = os.environ.get("ROBOM_DB_PATH", "").strip()
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    parts = project_root.parts
+    if len(parts) >= 3 and parts[1] == "Volumes":
+        candidates.append(
+            Path("/Volumes")
+            / parts[2]
+            / "05_RUNTIME"
+            / "ROBOM_FlowScalper"
+            / "active-ledger"
+            / "run-ledger.sqlite3"
+        )
+    candidates.extend(
+        (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "ROBOM FlowScalper"
+            / "active-ledger"
+            / "run-ledger.sqlite3",
+            project_root / "data" / "run-ledger.sqlite3",
+        )
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve(strict=True)
+    raise FileNotFoundError(
+        "LIVE 원장 우선순위 조율 경로를 찾지 못했습니다. --live-ledger-path를 지정하세요."
+    )
 
 
 class ResearchTrialHistoryBlocked(Exception):
@@ -359,6 +397,12 @@ def _research_arguments(
         str(arguments.signal_gate_target_strategy_id),
         "--strategy-logic",
         str(arguments.strategy_logic),
+        "--target-cpu-ratio",
+        str(arguments.target_cpu_ratio),
+        "--target-archive-read-mib-per-second",
+        str(arguments.target_archive_read_mib_per_second),
+        "--live-ledger-path",
+        str(arguments.live_ledger_path),
     ]
     for run_id in arguments.run_id or ():
         command.extend(("--run-id", run_id))
@@ -436,6 +480,8 @@ def _validate_result_payload(
     signal_gate: str,
     signal_gate_target_strategy_id: str,
     strategy_logic: str,
+    target_cpu_ratio: float,
+    target_archive_read_mib_per_second: float,
 ) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise ValueError("전략리그 결과가 JSON 객체가 아닙니다.")
@@ -452,6 +498,7 @@ def _validate_result_payload(
         "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
         "signal_gate_trial_id": f"{signal_gate}:{signal_gate_target_strategy_id}",
         "strategy_logic": strategy_logic,
+        "cooperative_cpu_target_ratio": target_cpu_ratio,
     }
     mismatches = {
         key: {"expected": expected, "actual": payload.get(key)}
@@ -468,6 +515,12 @@ def _validate_result_payload(
     byte_verification = frozen_dataset.get("current_archive_byte_reverification")
     if not isinstance(byte_verification, dict) or byte_verification.get("status") != "PASS":
         raise ValueError("현재 archive byte 재검증이 PASS가 아닙니다.")
+    if (
+        byte_verification.get("live_writer_io_priority_gate") is not True
+        or byte_verification.get("target_read_mib_per_second")
+        != target_archive_read_mib_per_second
+    ):
+        raise ValueError("archive 재검증의 LIVE 원장 I/O 우선순위 계약이 다릅니다.")
     if full_frozen_replay:
         if (
             frozen_dataset.get("selected_run_count") != 13
@@ -524,6 +577,10 @@ async def _execute(
         signal_gate=str(arguments.signal_gate),
         signal_gate_target_strategy_id=str(arguments.signal_gate_target_strategy_id),
         strategy_logic=str(arguments.strategy_logic),
+        target_cpu_ratio=float(arguments.target_cpu_ratio),
+        target_archive_read_mib_per_second=float(
+            arguments.target_archive_read_mib_per_second
+        ),
     )
 
 
@@ -601,6 +658,13 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
             ),
             "signal_gate_trial_id": result.get("signal_gate_trial_id"),
             "strategy_logic": result.get("strategy_logic"),
+            "cooperative_cpu_target_ratio": result.get("cooperative_cpu_target_ratio"),
+            "cooperative_cpu_checkpoint_events": result.get(
+                "cooperative_cpu_checkpoint_events"
+            ),
+            "archive_target_read_mib_per_second": (
+                arguments.target_archive_read_mib_per_second
+            ),
             "run_count": len(run_rows) if isinstance(run_rows, list) else 0,
             "ranking_eligible_strategy_ids": result.get("ranking_eligible_strategy_ids"),
             "profitability_status": result.get("profitability_status"),
@@ -689,6 +753,11 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
                 f"{arguments.signal_gate}:{arguments.signal_gate_target_strategy_id}"
             ),
             "strategy_logic": str(arguments.strategy_logic),
+            "cooperative_cpu_target_ratio": float(arguments.target_cpu_ratio),
+            "archive_target_read_mib_per_second": float(
+                arguments.target_archive_read_mib_per_second
+            ),
+            "live_ledger_io_priority_gate": True,
             "history_catalog": str(arguments.trial_history_catalog),
             "history_decision": trial_history_decision,
             "history_record_id": trial_record_id,
@@ -737,6 +806,19 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--run-id", action="append")
     parser.add_argument("--maximum-events", type=int)
+    parser.add_argument(
+        "--target-cpu-ratio",
+        type=float,
+        default=_DEFAULT_RESEARCH_TARGET_CPU_RATIO,
+        help="LIVE 우선을 위해 연구 자식 프로세스에 허용할 협조 CPU 목표 비율입니다.",
+    )
+    parser.add_argument(
+        "--target-archive-read-mib-per-second",
+        type=float,
+        default=DEFAULT_RESEARCH_ARCHIVE_READ_MIB_PER_SECOND,
+        help="LIVE 원장 쓰기보다 낮게 조율할 archive 재검증 목표 속도입니다.",
+    )
+    parser.add_argument("--live-ledger-path", type=Path)
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
     parser.add_argument(
         "--signal-gate-target-strategy-id",
@@ -777,6 +859,11 @@ def parse_arguments() -> argparse.Namespace:
     arguments.project_root = arguments.project_root.resolve(strict=True)
     arguments.archive = arguments.archive.resolve(strict=True)
     arguments.dataset_manifest = arguments.dataset_manifest.resolve(strict=True)
+    arguments.live_ledger_path = (
+        arguments.live_ledger_path.resolve(strict=True)
+        if arguments.live_ledger_path is not None
+        else _default_live_ledger_path(arguments.project_root)
+    )
     arguments.trial_history_catalog = arguments.trial_history_catalog.resolve()
     arguments.resource_lock = arguments.resource_lock.resolve()
     arguments.control_output = arguments.control_output or arguments.output.with_name(
@@ -791,6 +878,8 @@ def parse_arguments() -> argparse.Namespace:
         or arguments.max_event_stall_seconds <= 0
         or arguments.planned_rotation_lock_grace_seconds <= 0
         or arguments.max_duration_seconds <= 0
+        or not 0 < arguments.target_cpu_ratio <= 1
+        or arguments.target_archive_read_mib_per_second <= 0
         or (arguments.maximum_events is not None and arguments.maximum_events <= 0)
     ):
         parser.error("시간·감시·대기열·이벤트 상한은 올바른 양수여야 합니다.")
