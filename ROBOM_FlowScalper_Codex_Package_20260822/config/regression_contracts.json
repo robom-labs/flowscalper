@@ -70,7 +70,7 @@
     {
       "contract_id": "REPLAY_CURSOR_IMMEDIATE",
       "symptom_ko": "진입 또는 실제 종료 버튼을 눌러도 재생 커서와 비용·상태 표시가 즉시 바뀌지 않는다.",
-      "fixed_by": "Wave 110 deterministic replay seek",
+      "fixed_by": "Wave 110 deterministic replay seek and Wave 114 passive clock initialization race removal",
       "test_anchors": [
         {
           "path": "frontend/tests/ReplayPage.test.tsx",
