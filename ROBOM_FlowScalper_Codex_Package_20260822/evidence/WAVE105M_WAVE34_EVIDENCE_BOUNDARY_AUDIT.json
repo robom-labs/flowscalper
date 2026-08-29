@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "generated_ts_utc": "2026-08-29T03:32:26Z",
+  "status": "PASS",
+  "scope": "WAVE34_FIXED_HORIZON_EVIDENCE_INTERPRETATION_ONLY",
+  "source": {
+    "path": "evidence/WAVE34_EXISTING_STRATEGY_RESEARCH.json",
+    "manifest_status": "EXECUTED",
+    "manifest_checksum": "f3ed7301738d3895a270656f546bdcfec0760390eb94fb39e8dbebed42b4f1b3",
+    "result_hash": "752e28f91456952ecdb4abd953c02e17b1908564ff3d8c4fd3949b1d88b43425",
+    "code_hash": "b974d856eefbd1ffe71cf6fdec49f6c1018c8947",
+    "strategy_version": "LSA_REVERSAL_V1+CBR_CONTINUATION_V1+VWAP_EXHAUSTION_REVERSION_V1+OFI_CONTINUATION_PULLBACK_V1+QUEUE_MICROPRICE_MOMENTUM_V1+AGGRESSOR_FLOW_CONTINUATION_V1+MULTILEVEL_MICROPRICE_MOMENTUM_V1+DEPTH_ADJUSTED_OFI_IMPULSE_V1+OFI_RETURN_CONFLUENCE_V1+BOOK_SLOPE_ASYMMETRY_V1@2026-08-26-wave34",
+    "run_count": 13,
+    "train_run_count": 6,
+    "validation_run_count": 2,
+    "final_oos_run_count": 5,
+    "runtime_strategy_count": 10,
+    "horizon_seconds": [
+      15,
+      30,
+      60,
+      180
+    ],
+    "base_cost_bps": 13,
+    "stress_cost_bps": 25,
+    "operational_metrics_status": "NOT_RUN"
+  },
+  "execution_semantics": {
+    "signal_source": "StrategySignalEvaluator",
+    "entry": "LONG_ASK_SHORT_BID_AT_SIGNAL",
+    "exit": "LONG_BID_SHORT_ASK_AT_FIRST_FRAME_AT_OR_AFTER_FIXED_HORIZON",
+    "full_paper_fill_engine": false,
+    "position_sizing_and_max_loss": false,
+    "tp1_tp2_sl_state_machine": false,
+    "partial_exit_and_breakeven_stop": false,
+    "edge_decay_and_max_hold": false,
+    "recovery_state_machine": false
+  },
+  "oos_descriptive_findings": {
+    "strategies_with_30_or_more_base_samples_at_any_horizon": [
+      {
+        "strategy_id": "QUEUE_MICROPRICE_MOMENTUM_V1",
+        "horizons_seconds": [
+          15,
+          30,
+          60,
+          180
+        ],
+        "best_observed_base_win_rate": 0.21212121212121213,
+        "best_observed_base_expectancy_bps": -3.754432328094028,
+        "best_observed_base_profit_factor": 0.8135179799597902,
+        "best_observed_stress_win_rate": 0.13131313131313133,
+        "best_observed_stress_expectancy_bps": -15.754432328094028,
+        "best_observed_stress_profit_factor": 0.4727580893806637
+      },
+      {
+        "strategy_id": "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+        "horizons_seconds": [
+          15,
+          30,
+          60
+        ],
+        "best_observed_base_win_rate": 0.04,
+        "best_observed_base_expectancy_bps": -11.925152861280408,
+        "best_observed_base_profit_factor": 0.010168938542441648,
+        "best_observed_stress_win_rate": 0.0,
+        "best_observed_stress_expectancy_bps": -23.92515286128041,
+        "best_observed_stress_profit_factor": 0.0
+      }
+    ],
+    "other_runtime_strategies_max_oos_base_sample_range": [
+      0,
+      10
+    ],
+    "runtime_strategy_reaching_70_percent_oos_base_and_stress": false,
+    "interpretation": "DESCRIPTIVE_OPENED_OOS_NOT_A_RETUNING_DATASET"
+  },
+  "evidence_boundaries": {
+    "proves_signal_fixed_horizon_price_response": true,
+    "proves_current_end_to_end_tp_sl_paper_behavior": false,
+    "proves_or_refutes_15_second_position_exit_bug": false,
+    "may_be_used_to_retune_same_final_oos": false,
+    "hourly_momentum_breakout_covered": false,
+    "current_11_strategy_profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  },
+  "required_next_evidence": [
+    "WAVE104_POST_DASHBOARD_CACHE_CLEAN_6H",
+    "FROZEN_13_RUN_BYTE_REVERIFICATION",
+    "CURRENT_11_STRATEGY_22_ACCOUNT_END_TO_END_PAPER_REPLAY",
+    "BASE_STRESS_30_UNIQUE_OPPORTUNITY_GATE",
+    "WIN_RATE_EXPECTANCY_PROFIT_FACTOR_DRAWDOWN_GATE",
+    "BOOTSTRAP_DSR_PBO_AND_CONCENTRATION_GATE",
+    "PREREGISTERED_INDEPENDENT_FORWARD_LIVE_PUBLIC"
+  ],
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "private_api_enabled": false,
+  "auth_required": false
+}
