@@ -1063,6 +1063,95 @@ class SQLiteLedger:
             cooperative_yield()
         return result[:limit] if limit is not None else result
 
+    def list_recent_market_events(
+        self,
+        run_id: str,
+        *,
+        symbol: str,
+        limit: int,
+        cooperative_yield: Callable[[], None] | None = None,
+    ) -> list[dict[str, Any]]:
+        """화면 미리보기용 최신 검증 이벤트만 최근 archive부터 제한해 읽는다."""
+
+        if limit <= 0:
+            raise ValueError("최근 시장 이벤트 개수는 양수여야 합니다.")
+        read_target = limit * 2
+        with self._replay_read_lock:
+            stored_rows = self._replay_read_connection.execute(
+                """
+                SELECT payload_json, checksum FROM market_events
+                INDEXED BY market_events_replay_order
+                WHERE run_id = ? AND symbol = ?
+                ORDER BY venue_ts_ms DESC, receive_monotonic_ns DESC, event_id DESC
+                LIMIT ?
+                """,
+                (run_id, symbol, read_target),
+            ).fetchall()
+            archive_rows = self._replay_read_connection.execute(
+                """
+                SELECT path, checksum FROM market_event_archives
+                WHERE run_id = ?
+                  AND EXISTS (
+                    SELECT 1 FROM json_each(symbols_json) WHERE value = ?
+                  )
+                ORDER BY first_ts_ms DESC, batch_id DESC
+                LIMIT ?
+                """,
+                (run_id, symbol, read_target),
+            ).fetchall()
+        result = self._verified_payload_rows(stored_rows, "최근 시장 이벤트")
+        archived_count = 0
+        if archive_rows:
+            if self.market_event_archive is None:
+                raise LedgerInvariantError("시장 이벤트 아카이브 저장소가 없습니다.")
+            try:
+                for archive in archive_rows:
+                    archive_events = self.market_event_archive.read_market_event_batch_filtered(
+                        Path(str(archive["path"])),
+                        expected_checksum=str(archive["checksum"]),
+                        symbol=symbol,
+                        cooperative_yield=cooperative_yield,
+                    )
+                    for event in archive_events:
+                        if str(event.get("run_id")) != run_id:
+                            raise LedgerInvariantError(
+                                "시장 이벤트 아카이브에 다른 Run이 섞였습니다."
+                            )
+                        if str(event.get("symbol")) != symbol:
+                            raise LedgerInvariantError(
+                                "최근 시장 이벤트 아카이브의 종목이 일치하지 않습니다."
+                            )
+                        result.append(event)
+                    archived_count += len(archive_events)
+                    if cooperative_yield is not None:
+                        cooperative_yield()
+                    if archived_count >= read_target:
+                        break
+            except (OSError, ValueError) as error:
+                raise LedgerInvariantError(
+                    f"최근 시장 이벤트 아카이브 검증 실패: {error}"
+                ) from error
+
+        unique: dict[tuple[str, str], dict[str, Any]] = {}
+        for event in result:
+            identity = (str(event.get("run_id")), str(event.get("event_id")))
+            existing = unique.get(identity)
+            if existing is not None and existing != event:
+                raise LedgerInvariantError(f"최근 시장 이벤트 중복 payload 불일치: {identity[1]}")
+            unique[identity] = event
+        ordered = sorted(
+            unique.values(),
+            key=lambda event: (
+                _market_event_receive_ts_ms(event),
+                int(str(event["receive_monotonic_ns"])),
+                int(str(event["venue_ts_ms"])),
+                str(event["event_id"]),
+            ),
+        )
+        if cooperative_yield is not None:
+            cooperative_yield()
+        return ordered[-limit:]
+
     def market_event_symbols(self, run_id: str) -> list[dict[str, object]]:
         """대용량 본문을 스캔하지 않고 종목별 저장 상태를 반환한다."""
 
@@ -1773,9 +1862,10 @@ class SQLiteLedger:
                 if existing is None or str(existing["checksum"]) != checksum:
                     raise LedgerInvariantError("거래 집중 재생 캐시가 기존 결과와 다릅니다.")
         with self._focus_read_lock:
-            self._focus_memory_cache[
-                (source_run_id, trade_id, profile, session_version)
-            ] = (checksum, compressed)
+            self._focus_memory_cache[(source_run_id, trade_id, profile, session_version)] = (
+                checksum,
+                compressed,
+            )
         return inserted
 
     def remember_replay_focus_session(
@@ -1792,9 +1882,10 @@ class SQLiteLedger:
         checksum = hashlib.sha256(payload).hexdigest()
         compressed = zlib.compress(payload, level=6)
         with self._focus_read_lock:
-            self._focus_memory_cache[
-                (source_run_id, trade_id, profile, session_version)
-            ] = (checksum, compressed)
+            self._focus_memory_cache[(source_run_id, trade_id, profile, session_version)] = (
+                checksum,
+                compressed,
+            )
 
     def list_runs(self) -> list[dict[str, Any]]:
         with self._lock:

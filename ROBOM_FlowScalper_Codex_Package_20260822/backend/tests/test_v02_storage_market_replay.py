@@ -687,11 +687,14 @@ def test_live_position_moves_to_completed_history_without_waiting_for_ledger_res
         f"{plan.strategy_id}:BASE",
         f"{plan.strategy_id}:STRESS",
     }
-    assert runtime.history_records(
-        account_scope="ALL",
-        version_scope="CURRENT",
-        sample_type="LIVE_PUBLIC",
-    )["rows"] == []
+    assert (
+        runtime.history_records(
+            account_scope="ALL",
+            version_scope="CURRENT",
+            sample_type="LIVE_PUBLIC",
+        )["rows"]
+        == []
+    )
 
     tp1 = plan.take_profit_targets[0].price
     runtime.paper_portfolio.on_book(
@@ -879,9 +882,7 @@ def test_replay_preview_does_not_wait_for_live_writer_lock(tmp_path: Path) -> No
         reader.join(timeout=1)
 
     assert preview_rows[0]["symbol"] == "BTCUSDT"
-    assert preview_rows[0]["available_symbols"] == [
-        {"symbol": "BTCUSDT", "event_count": 1}
-    ]
+    assert preview_rows[0]["available_symbols"] == [{"symbol": "BTCUSDT", "event_count": 1}]
     ledger.close()
 
 
@@ -1107,6 +1108,58 @@ def test_external_parquet_market_archive_keeps_sqlite_small_and_replays(
     assert replay.event_count == 4
     assert replay.scope_symbol == "BTCUSDT"
     assert replay.as_dict()["scope_symbol"] == "BTCUSDT"
+    ledger.close()
+
+
+def test_recent_timeline_reads_only_the_newest_archive_batches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "recent-market-parquet",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "recent-ledger.sqlite3",
+        market_event_archive=archive,
+    )
+    run_id = "run-recent-window"
+    ledger.start_run(
+        run_id,
+        mode="LIVE_SHADOW_PAPER",
+        venue=Venue.BINANCE_USDM.value,
+        config={"seed": 20260830},
+        started_ts_ms=1_000,
+    )
+    for batch_index in range(6):
+        rows = [
+            market_event(
+                run_id,
+                event_id=f"recent-{batch_index * 2 + offset}",
+                ts_ms=1_000 + batch_index * 100 + offset,
+            ).model_dump(mode="json")
+            for offset in range(2)
+        ]
+        batch = archive.write_market_event_batch(rows)
+        assert ledger.record_market_event_archive(batch, rows) == 2
+
+    read_paths: list[Path] = []
+    original_read = archive.read_market_event_batch_filtered
+
+    def traced_read(path: Path, **kwargs: object) -> list[dict[str, object]]:
+        read_paths.append(path)
+        return original_read(path, **kwargs)
+
+    monkeypatch.setattr(archive, "read_market_event_batch_filtered", traced_read)
+    recent = ledger.list_recent_market_events(
+        run_id,
+        symbol="BTCUSDT",
+        limit=3,
+    )
+
+    assert [row["event_id"] for row in recent] == ["recent-9", "recent-10", "recent-11"]
+    assert len(read_paths) == 3
     ledger.close()
 
 
@@ -1555,9 +1608,7 @@ def test_candidate_sqlite_commit_is_deferred_out_of_live_candidate_planning(
 
     assert plans == (plan,)
     assert ledger.count("candidates") == 0
-    assert [row["candidate_id"] for row in runtime._candidate_plan_buffer] == [
-        plan.candidate_id
-    ]
+    assert [row["candidate_id"] for row in runtime._candidate_plan_buffer] == [plan.candidate_id]
     assert runtime._has_unpersisted_execution_state() is True
 
     runtime._persist_execution_state(plan.signal_time_ms)

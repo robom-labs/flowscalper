@@ -100,18 +100,18 @@ def build_replay_timeline(
         source_run_id,
         symbol,
     )
-    events = ledger.list_market_events(
-        source_run_id,
-        symbol=selected_symbol,
-        limit=limit,
-        cooperative_yield=cooperative_yield,
+    events = (
+        ledger.list_recent_market_events(
+            source_run_id,
+            symbol=selected_symbol,
+            limit=limit,
+            cooperative_yield=cooperative_yield,
+        )
+        if selected_symbol is not None
+        else []
     )
-    first_event_ts_ms = (
-        int(str(events[0]["venue_ts_ms"])) // 1_000 * 1_000 if events else None
-    )
-    last_event_ts_ms = (
-        int(str(events[-1]["venue_ts_ms"])) // 1_000 * 1_000 if events else None
-    )
+    first_event_ts_ms = int(str(events[0]["venue_ts_ms"])) // 1_000 * 1_000 if events else None
+    last_event_ts_ms = int(str(events[-1]["venue_ts_ms"])) // 1_000 * 1_000 if events else None
     stored_candles = (
         ledger.list_candles(
             source_run_id,
