@@ -60,6 +60,8 @@
     "bootstrap_expectancy_lower_bound_above_zero_required": true,
     "dsr_required": true,
     "pbo_required": true,
+    "drawdown_gate_required": true,
+    "independent_forward_live_public_required": true,
     "deployment_before_wave104_six_hour_observation": false,
     "profitability_claim_allowed": false
   },
@@ -93,6 +95,27 @@
       "real_orders_enabled": false,
       "auth_required": false,
       "performance_evidence": false
+    },
+    "ranking_summary_contract": {
+      "status": "PASS_NO_AUTOMATIC_PROMOTION_FROM_THIS_RUNNER",
+      "minimum_unique_market_opportunities": 30,
+      "base_and_stress_pair_counts_as_one_opportunity": true,
+      "positive_base_and_stress_expectancy_required": true,
+      "base_and_stress_profit_factor_above_one_required": true,
+      "win_rate_only_can_set_ranking_eligible": false,
+      "ranking_eligible_until_external_robustness_evidence": false,
+      "external_blockers": [
+        "TIME_ORDERED_OOS_ROBUSTNESS_NOT_EVALUATED",
+        "BOOTSTRAP_EXPECTANCY_LOWER_BOUND_NOT_EVALUATED",
+        "DSR_NOT_EVALUATED",
+        "PBO_NOT_EVALUATED",
+        "DRAWDOWN_GATE_NOT_EVALUATED",
+        "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED"
+      ],
+      "targeted_pytest_passed": 11,
+      "ruff": "PASS",
+      "mypy": "PASS",
+      "git_diff_check": "PASS"
     }
   }
 }

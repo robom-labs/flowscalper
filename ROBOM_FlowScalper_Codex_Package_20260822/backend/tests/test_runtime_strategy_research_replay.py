@@ -7,6 +7,7 @@ import json
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -19,6 +20,7 @@ from backend.app.strategies.base import CandidateDecision, CandidateStatus
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal
 from scripts.research_runtime_strategy_replay import (
     ResearchSignalGateEvaluator,
+    _summary,
     build_result,
     frozen_dataset_reference,
     replay_archive_run,
@@ -249,9 +251,105 @@ def test_runtime_strategy_replay_builds_not_proven_empty_summary(tmp_path: Path)
     assert result["real_orders_enabled"] is False
     assert result["overall"]["trade_row_count"] == 0
     assert result["overall"]["observed_70_percent_gate_passed"] is False
+    assert result["overall"]["ranking_eligible"] is False
+    assert "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30" in result["overall"][
+        "ranking_blockers"
+    ]
     assert result["overall"]["profitability_status"] == "NOT_PROVEN"
     assert result["signal_gate"] == "NONE"
     assert result["overall"]["signal_gate_diagnostics"]["can_create_signals"] is False
+
+
+def test_replay_summary_never_promotes_on_win_rate_without_robustness_gates() -> None:
+    reports = [
+        {
+            "profile": profile,
+            "sample_size": 30,
+            "wins": 24,
+            "losses": 6,
+            "win_rate": "0.8",
+            "expectancy_usdt": "0.1",
+            "net_pnl": "3",
+            "profit_factor": "2",
+        }
+        for profile in ("BASE", "STRESS")
+    ]
+    trades = [
+        {
+            "run_id": "RUN-A",
+            "signal_event_id": f"signal-{index}",
+            "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+            "side": "LONG",
+            "profile": profile,
+            "exit_reason": "TAKE_PROFIT",
+            "holding_ms": 60_000,
+            "tp1_hit_ts_ms": 1,
+            "tp2_hit_ts_ms": 2,
+        }
+        for index in range(30)
+        for profile in ("BASE", "STRESS")
+    ]
+    with patch(
+        "scripts.research_runtime_strategy_replay.TradeAnalytics.strategy_reports",
+        return_value=reports,
+    ):
+        summary = _summary(
+            ({"event_count": 100, "trade_rows": trades, "open_state": {}},),
+            strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
+        )
+
+    assert summary["unique_market_opportunity_count"] == 30
+    assert summary["observed_70_percent_gate_passed"] is True
+    assert summary["cost_performance_gate_passed"] is True
+    assert summary["robustness_gate_passed"] is False
+    assert summary["ranking_eligible"] is False
+    assert "DSR_NOT_EVALUATED" in summary["ranking_blockers"]
+    assert "PBO_NOT_EVALUATED" in summary["ranking_blockers"]
+
+
+def test_replay_summary_deduplicates_profiles_before_the_30_opportunity_gate() -> None:
+    reports = [
+        {
+            "profile": profile,
+            "sample_size": 30,
+            "wins": 30,
+            "losses": 0,
+            "win_rate": "1",
+            "expectancy_usdt": "1",
+            "net_pnl": "30",
+            "profit_factor": None,
+        }
+        for profile in ("BASE", "STRESS")
+    ]
+    trades = [
+        {
+            "run_id": "RUN-A",
+            "signal_event_id": "same-signal",
+            "strategy_id": "VWAP_EXHAUSTION_REVERSION_V1",
+            "side": "LONG",
+            "profile": profile,
+            "exit_reason": "TAKE_PROFIT",
+            "holding_ms": 60_000,
+            "tp1_hit_ts_ms": 1,
+            "tp2_hit_ts_ms": 2,
+        }
+        for _ in range(30)
+        for profile in ("BASE", "STRESS")
+    ]
+    with patch(
+        "scripts.research_runtime_strategy_replay.TradeAnalytics.strategy_reports",
+        return_value=reports,
+    ):
+        summary = _summary(
+            ({"event_count": 100, "trade_rows": trades, "open_state": {}},),
+            strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
+        )
+
+    assert summary["unique_market_opportunity_count"] == 1
+    assert summary["observed_70_percent_gate_passed"] is False
+    assert summary["cost_performance_gate_passed"] is True
+    assert summary["ranking_eligible"] is False
+    assert "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30" in summary["ranking_blockers"]
 
 
 def test_runtime_strategy_replay_binds_the_selected_frozen_dataset_manifest(

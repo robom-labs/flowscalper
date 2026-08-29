@@ -38,3 +38,20 @@ BASE·STRESS 승률 70%를 명시적인 승격·생존 기준으로 검사하지
 ## 검증 경계
 
 동일 저장 공개시장 입력의 BASE·STRESS replay, 시간순 OOS, 실제 장시간 PAPER 관찰과 현재 버전 자연표본을 별도로 채워야 한다. 6시간·24시간은 실제로 경과한 증거가 없으면 각각 `NOT_RUN`으로 기록한다.
+
+## replay 요약 계약 보강
+
+2026-08-29 코드 감사를 통해 `research_runtime_strategy_replay.py`의 요약이 BASE·STRESS
+각 30행과 관측승률 70%만으로 `ranking_eligible=true`를 만들 수 있음을 확인했다. 이는 이
+ADR의 결정 3·4와 달랐다. 다음처럼 보강했다.
+
+- BASE·STRESS 행을 합치지 않은 `signal_event_id` 기준 고유 시장기회도 30개 이상이어야
+  관측 70% gate가 통과한다.
+- BASE·STRESS 각각 비용후 기대값·순손익 양수와 Profit Factor 1 초과를 별도 gate로
+  계산한다. 손실이 하나도 없는 양수 표본의 Profit Factor는 무한대로 취급한다.
+- 이 단일 replay runner는 시간순 OOS 강건성, bootstrap 하한, DSR, PBO, drawdown과 독립
+  미래 `LIVE_PUBLIC`을 계산하지 않으므로 결과가 아무리 좋아도 `ranking_eligible=false`를
+  유지하고 누락 gate를 기계판독 blocker로 기록한다.
+- 30개 BASE·STRESS 행이 모두 같은 한 신호를 반복한 fixture와, 30개 고유기회·80%·양수
+  기대값 fixture를 모두 검사했다. 전자는 고유기회 gate에서 실패하고 후자는 승률·비용
+  gate만 통과한 채 강건성 미평가로 승격되지 않는다.

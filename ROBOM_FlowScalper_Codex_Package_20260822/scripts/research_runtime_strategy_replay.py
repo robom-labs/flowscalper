@@ -506,13 +506,61 @@ def _summary(
     }
     base = report_by_profile["BASE"]
     stress = report_by_profile["STRESS"]
+    minimum_opportunities = 30
     observed_70_gate = (
-        int(str(base["sample_size"])) >= 30
-        and int(str(stress["sample_size"])) >= 30
+        len(opportunities) >= minimum_opportunities
+        and int(str(base["sample_size"])) >= minimum_opportunities
+        and int(str(stress["sample_size"])) >= minimum_opportunities
         and base.get("win_rate") is not None
         and float(str(base["win_rate"])) >= 0.70
         and stress.get("win_rate") is not None
         and float(str(stress["win_rate"])) >= 0.70
+    )
+    cost_performance_gate = all(
+        Decimal(str(report.get("expectancy_usdt", "0") or "0")) > 0
+        and Decimal(str(report.get("net_pnl", "0") or "0")) > 0
+        and (
+            (
+                report.get("profit_factor") is not None
+                and Decimal(str(report["profit_factor"])) > 1
+            )
+            or (
+                int(str(report.get("losses", 0))) == 0
+                and int(str(report.get("wins", 0))) > 0
+            )
+        )
+        for report in (base, stress)
+    )
+    ranking_blockers: list[str] = []
+    if len(opportunities) < minimum_opportunities:
+        ranking_blockers.append("UNIQUE_MARKET_OPPORTUNITIES_BELOW_30")
+    for profile, report in (("BASE", base), ("STRESS", stress)):
+        if int(str(report["sample_size"])) < minimum_opportunities:
+            ranking_blockers.append(f"{profile}_SAMPLE_BELOW_30")
+        if report.get("win_rate") is None or float(str(report["win_rate"])) < 0.70:
+            ranking_blockers.append(f"{profile}_WIN_RATE_BELOW_70_PERCENT")
+        if Decimal(str(report.get("expectancy_usdt", "0") or "0")) <= 0:
+            ranking_blockers.append(f"{profile}_EXPECTANCY_NOT_POSITIVE")
+        if Decimal(str(report.get("net_pnl", "0") or "0")) <= 0:
+            ranking_blockers.append(f"{profile}_NET_PNL_NOT_POSITIVE")
+        profit_factor = report.get("profit_factor")
+        no_loss_positive_sample = (
+            int(str(report.get("losses", 0))) == 0
+            and int(str(report.get("wins", 0))) > 0
+        )
+        if not no_loss_positive_sample and (
+            profit_factor is None or Decimal(str(profit_factor)) <= 1
+        ):
+            ranking_blockers.append(f"{profile}_PROFIT_FACTOR_NOT_ABOVE_ONE")
+    ranking_blockers.extend(
+        (
+            "TIME_ORDERED_OOS_ROBUSTNESS_NOT_EVALUATED",
+            "BOOTSTRAP_EXPECTANCY_LOWER_BOUND_NOT_EVALUATED",
+            "DSR_NOT_EVALUATED",
+            "PBO_NOT_EVALUATED",
+            "DRAWDOWN_GATE_NOT_EVALUATED",
+            "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED",
+        )
     )
     gate_rejection_counts: Counter[str] = Counter()
     gate_baseline_qualified_count = 0
@@ -564,7 +612,23 @@ def _summary(
             "can_create_signals": False,
         },
         "observed_70_percent_gate_passed": observed_70_gate,
-        "ranking_eligible": observed_70_gate,
+        "cost_performance_gate_passed": cost_performance_gate,
+        "robustness_gate_passed": False,
+        "ranking_eligible": False,
+        "ranking_blockers": ranking_blockers,
+        "ranking_contract": {
+            "minimum_unique_market_opportunities": minimum_opportunities,
+            "minimum_samples_per_profile": minimum_opportunities,
+            "minimum_win_rate_per_profile": 0.70,
+            "positive_expectancy_required": True,
+            "profit_factor_above_one_required": True,
+            "time_ordered_oos_required": True,
+            "bootstrap_lower_bound_required": True,
+            "dsr_required": True,
+            "pbo_required": True,
+            "drawdown_gate_required": True,
+            "independent_forward_live_public_required": True,
+        },
         "profitability_status": "NOT_PROVEN",
         "profitability_claim_allowed": False,
         "trade_rows": trades,

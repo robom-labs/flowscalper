@@ -106,3 +106,8 @@
 - 이 짧은 구간에는 기존 `QUALIFIED` 신호와 거래가 0건이었다. 따라서 이 결과는 입력형식과
   PAPER 경로 smoke일 뿐 후보 성과 검증이 아니며 전체 상태는 계속 `PRE_REGISTERED_NOT_RUN`,
   수익성은 `NOT_PROVEN`이다.
+- replay 요약의 `ranking_eligible`가 관측승률 70%만으로 참이 될 수 있던 구현 차이를
+  수정했다. BASE·STRESS 한 쌍을 하나로 세는 고유 시장기회 30개와 비용후 기대값·순손익·
+  Profit Factor를 별도 검사하되, 시간순 OOS·bootstrap·DSR·PBO·drawdown·독립 미래
+  `LIVE_PUBLIC`은 이 runner가 계산하지 않으므로 항상 명시적 blocker로 남기고 자동승격하지
+  않는다. 관련 replay 표적 테스트 11건과 Ruff·mypy·diff 검사가 통과했다.

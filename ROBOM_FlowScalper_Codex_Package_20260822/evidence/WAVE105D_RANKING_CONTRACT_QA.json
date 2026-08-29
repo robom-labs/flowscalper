@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "generated_date_kst": "2026-08-29",
+  "status": "PASS_NOT_A_PROFITABILITY_RESULT",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "private_api_enabled": false,
+  "profitability_claim": "NOT_PROVEN",
+  "source_revision_before_change": "c99e0ef6498b285cfc698dfaf54afcc329546282",
+  "defect": {
+    "path": "scripts/research_runtime_strategy_replay.py",
+    "prior_behavior": "BASE_AND_STRESS_30_ROWS_AND_70_PERCENT_WIN_RATE_COULD_SET_RANKING_ELIGIBLE_TRUE",
+    "violated_contract": "ADR_087_REQUIRES_UNIQUE_OPPORTUNITIES_COST_METRICS_AND_EXTERNAL_ROBUSTNESS_GATES"
+  },
+  "implemented_contract": {
+    "minimum_unique_market_opportunities": 30,
+    "minimum_samples_per_profile": 30,
+    "minimum_win_rate_per_profile": 0.7,
+    "positive_expectancy_per_profile": true,
+    "positive_net_pnl_per_profile": true,
+    "profit_factor_above_one_per_profile": true,
+    "base_and_stress_pair_deduplicated": true,
+    "time_ordered_oos_required": true,
+    "bootstrap_lower_bound_required": true,
+    "dsr_required": true,
+    "pbo_required": true,
+    "drawdown_gate_required": true,
+    "independent_forward_live_public_required": true,
+    "ranking_eligible_without_external_robustness": false
+  },
+  "verification": {
+    "runtime_strategy_replay_pytest": {
+      "status": "PASS",
+      "passed": 11,
+      "failed": 0
+    },
+    "duplicate_fixture": {
+      "base_sample_size": 30,
+      "stress_sample_size": 30,
+      "displayed_win_rate": 1.0,
+      "unique_market_opportunities": 1,
+      "observed_70_percent_gate_passed": false,
+      "ranking_eligible": false
+    },
+    "high_win_fixture": {
+      "base_sample_size": 30,
+      "stress_sample_size": 30,
+      "displayed_win_rate": 0.8,
+      "unique_market_opportunities": 30,
+      "observed_70_percent_gate_passed": true,
+      "cost_performance_gate_passed": true,
+      "robustness_gate_passed": false,
+      "ranking_eligible": false
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS",
+    "same_input_13_run_replay": "NOT_RUN",
+    "independent_future_live_public": "NOT_RUN"
+  },
+  "selection_decision": {
+    "selected_strategy_count": 0,
+    "reason": "ROBUSTNESS_AND_FORWARD_GATES_HAVE_NOT_RUN"
+  }
+}
