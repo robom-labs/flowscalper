@@ -74,6 +74,9 @@ def validate_regression_contracts(
         "unproven_candidates_must_not_fill_watchlist": True,
         "watchlist_selection_does_not_promote": True,
         "historical_trade_and_decision_records_must_be_preserved": True,
+        "frozen_research_cuts_must_be_retention_pinned": True,
+        "parameter_variants_must_not_mutate_frozen_trials": True,
+        "heavy_research_must_yield_to_live_runtime": True,
         "replacement_must_remove_obsolete_code_copy_css_and_tests": True,
         "profitability_status_without_all_gates": "NOT_PROVEN",
     }

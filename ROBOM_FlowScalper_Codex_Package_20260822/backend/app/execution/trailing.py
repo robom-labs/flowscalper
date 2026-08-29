@@ -171,6 +171,7 @@ class TrailingPolicy:
     activation_rule: TrailingActivationRule
     activation_r: Decimal
     partial_tp_required: bool
+    breakeven_buffer_bps: Decimal = Decimal(0)
     fixed_distance: Decimal | None = None
     retracement_rate: Decimal | None = None
     atr_multiplier: Decimal | None = None
@@ -186,6 +187,8 @@ class TrailingPolicy:
             raise ValueError("trailing activation R은 양수여야 합니다.")
         if self.activation_price_override is not None and self.activation_price_override <= 0:
             raise ValueError("trailing activation price override는 양수여야 합니다.")
+        if self.breakeven_buffer_bps < 0:
+            raise ValueError("trailing breakeven buffer bps는 음수일 수 없습니다.")
         if self.model is TrailingModel.FIXED_DISTANCE and (
             self.fixed_distance is None or self.fixed_distance <= 0
         ):
@@ -807,6 +810,9 @@ class TrailingStateMachine:
             partial_tp_required=_required_bool(
                 policy_payload.get("partial_tp_required"),
                 "partial_tp_required",
+            ),
+            breakeven_buffer_bps=Decimal(
+                str(policy_payload.get("breakeven_buffer_bps", 0))
             ),
             fixed_distance=_optional_decimal(policy_payload.get("fixed_distance")),
             retracement_rate=_optional_decimal(policy_payload.get("retracement_rate")),

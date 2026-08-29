@@ -8,6 +8,8 @@ from backend.app.research import (
     ALPHA_FAMILIES,
     EXIT_MODULES,
     TrialLifecycle,
+    cost_covered_exit_variant_manifest,
+    cost_covered_exit_variant_trials,
     preregistered_trials,
     trailing_policy_for_exit,
     trial_manifest,
@@ -63,12 +65,66 @@ def test_exit_modules_bind_to_one_shared_paper_trailing_engine() -> None:
     e03 = trailing_policy_for_exit("E03")
     e04 = trailing_policy_for_exit("E04")
     e05 = trailing_policy_for_exit("E05")
+    e06 = trailing_policy_for_exit("E06")
 
     assert trailing_policy_for_exit("E01") is None
     assert e02 is not None and e02.partial_tp_required is True
     assert e03 is not None and e03.model is TrailingModel.FIXED_RATE
     assert e04 is not None and e04.model is TrailingModel.CHANDELIER_STRUCTURE
     assert e05 is not None and e05.model is TrailingModel.EDGE_ADAPTIVE
+    assert e06 is not None and e06.partial_tp_required is True
+
+
+def test_cost_covered_e06_batch_is_separate_from_the_frozen_100_trials() -> None:
+    frozen = preregistered_trials()
+    variants = cost_covered_exit_variant_trials()
+
+    assert len(frozen) == 100
+    assert len(variants) == 4
+    assert {trial.alpha.family_id for trial in variants} == {"F17", "F18", "F19", "F20"}
+    assert {trial.exit.exit_id for trial in variants} == {"E06"}
+    assert {trial.trial_number for trial in variants} == {101, 102, 103, 104}
+    assert not {trial.trial_id for trial in frozen}.intersection(
+        trial.trial_id for trial in variants
+    )
+    assert all(
+        trial.paper_only and not trial.runtime_active and not trial.live_shadow_enabled
+        for trial in variants
+    )
+
+
+def test_cost_covered_e06_manifest_preserves_parent_lineage_and_paper_boundary() -> None:
+    manifest = cost_covered_exit_variant_manifest(
+        code_version="code+bundle",
+        generated_ts_utc="2026-08-29T00:00:00Z",
+        source_checksums={"variant.py": "a" * 64, "execution.py": "b" * 64},
+        parent_trial_manifest={
+            "path": "evidence/STRATEGY_100_TRIAL_MANIFEST.json",
+            "manifest_sha256": "c" * 64,
+            "file_sha256": "d" * 64,
+        },
+    )
+
+    assert manifest["manifest_kind"] == "COST_COVERED_EXIT_VARIANT_BATCH"
+    assert manifest["batch_id"] == "COST_COVERED_EARLY_TP_RUNNER_V1"
+    assert manifest["trial_count"] == 4
+    assert manifest["screening_eligible_count"] == 4
+    assert manifest["blocked_count"] == 0
+    assert manifest["selection_limit"] == 4
+    assert manifest["runtime_active_count"] == 0
+    assert manifest["live_shadow_count"] == 0
+    assert manifest["paper_only"] is True
+    assert manifest["real_orders_enabled"] is False
+    assert manifest["private_api_enabled"] is False
+    assert manifest["parent_trial_manifest"]["manifest_sha256"] == "c" * 64
+    assert [row["trial_id"] for row in manifest["trials"]] == [
+        trial.trial_id for trial in cost_covered_exit_variant_trials()
+    ]
+    assert all(
+        row["paper_execution_binding"]["trailing_policy"]["policy_id"]
+        == "E06_COST_COVERED_EARLY_TP_RUNNER_V1"
+        for row in manifest["trials"]
+    )
 
 
 def test_manifest_freezes_cost_split_funnel_and_promotion_gates() -> None:

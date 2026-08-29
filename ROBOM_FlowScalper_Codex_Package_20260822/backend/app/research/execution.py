@@ -24,6 +24,15 @@ from backend.app.strategies.base import CandidateDecision, CandidateStatus, Plan
 from backend.app.strategies.registry import ExitStyle
 
 BASE_EXPECTED_TOTAL_COST_BPS = Decimal("13")
+STRESS_EXPECTED_TOTAL_COST_BPS = Decimal("25")
+E06_TP1_R = Decimal("0.8")
+E06_TP1_FRACTION = Decimal("0.7")
+E06_TP2_R = Decimal("3")
+E06_RUNNER_FRACTION = Decimal("0.3")
+E06_WEIGHTED_GROSS_REWARD_R = (
+    E06_TP1_R * E06_TP1_FRACTION + E06_TP2_R * E06_RUNNER_FRACTION
+)
+E06_MINIMUM_WEIGHTED_NET_REWARD_R = Decimal("1.2")
 MAXIMUM_DECISION_DATA_AGE_MS = 1_000
 DEFAULT_INITIAL_STOP_ATR = Decimal("1")
 F05_INITIAL_STOP_ATR = Decimal("2")
@@ -146,6 +155,10 @@ class ResearchCandidatePlanBuilder:
             stop=stop,
             tick_size=metadata.instrument.tick_size,
         )
+        if trial.exit.exit_id == "E06":
+            e06_rejections = self._e06_cost_rejections(entry=entry, stop=stop)
+            if e06_rejections:
+                return self._rejected(metadata, *e06_rejections)
         final_target = targets[-1].price
         costed, rejections = costed_plan(
             side,
@@ -176,7 +189,7 @@ class ResearchCandidatePlanBuilder:
             net_reward_risk=costed.net_reward_risk,
         )
         trailing = trailing_policy_for_exit(trial.exit.exit_id)
-        requires_atr = trial.exit.exit_id in {"E02", "E04", "E05"}
+        requires_atr = trial.exit.exit_id in {"E02", "E04", "E05", "E06"}
         requires_structure = trial.exit.exit_id == "E04"
         structure_stop = (
             Decimal(
@@ -280,6 +293,11 @@ class ResearchCandidatePlanBuilder:
                 ("TP1", Decimal("1.5"), Decimal("0.4")),
                 ("TP2", Decimal("3"), Decimal("0.6")),
             )
+        elif trial.exit.exit_id == "E06":
+            definitions = (
+                ("TP1", E06_TP1_R, E06_TP1_FRACTION),
+                ("TP2", E06_TP2_R, E06_RUNNER_FRACTION),
+            )
         else:
             definitions = (("TP1", Decimal("3"), Decimal(1)),)
         return tuple(
@@ -295,6 +313,25 @@ class ResearchCandidatePlanBuilder:
             )
             for label, multiple, fraction in definitions
         )
+
+    @staticmethod
+    def _e06_cost_rejections(*, entry: Decimal, stop: Decimal) -> tuple[str, ...]:
+        risk = abs(entry - stop)
+        if risk <= 0:
+            return ("E06_INITIAL_RISK_NOT_POSITIVE",)
+        rejections: list[str] = []
+        for profile, cost_bps in (
+            ("BASE", BASE_EXPECTED_TOTAL_COST_BPS),
+            ("STRESS", STRESS_EXPECTED_TOTAL_COST_BPS),
+        ):
+            roundtrip_cost_r = entry * cost_bps / Decimal(10_000) / risk
+            if E06_TP1_R - roundtrip_cost_r <= 0:
+                rejections.append(f"E06_{profile}_TP1_NOT_NET_POSITIVE")
+            if E06_WEIGHTED_GROSS_REWARD_R - roundtrip_cost_r < (
+                E06_MINIMUM_WEIGHTED_NET_REWARD_R
+            ):
+                rejections.append(f"E06_{profile}_WEIGHTED_NET_REWARD_BELOW_1_2R")
+        return tuple(rejections)
 
     @staticmethod
     def _price(

@@ -7,6 +7,9 @@
     "unproven_candidates_must_not_fill_watchlist": true,
     "watchlist_selection_does_not_promote": true,
     "historical_trade_and_decision_records_must_be_preserved": true,
+    "frozen_research_cuts_must_be_retention_pinned": true,
+    "parameter_variants_must_not_mutate_frozen_trials": true,
+    "heavy_research_must_yield_to_live_runtime": true,
     "replacement_must_remove_obsolete_code_copy_css_and_tests": true,
     "profitability_status_without_all_gates": "NOT_PROVEN"
   },
@@ -331,6 +334,98 @@
             "test_all_strategy_comparison_reuses_one_batch_without_promoting",
             "test_all_strategy_comparison_rejects_missing_target_or_bad_accounting",
             "test_all_strategy_comparison_rejects_candidate_plan_growth"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "HEAVY_RESEARCH_LIVE_CPU_PRIORITY",
+      "symptom_ko": "후보 계산이나 테스트가 LIVE 대시보드와 이벤트 루프를 밀어 500ms 초과 지연을 다시 만든다.",
+      "fixed_by": "Wave 115 cooperative CPU budget and low-priority research execution",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_strategy_100_screening_runner.py",
+          "contains": [
+            "test_research_cpu_budget_yields_to_the_live_service"
+          ]
+        },
+        {
+          "path": "backend/tests/test_live_safe_strategy_screening.py",
+          "contains": [
+            "test_e06_live_safe_proposal_binds_parameters_data_code_and_cost",
+            "test_e06_live_safe_result_requires_sealed_oos_and_paper_boundaries"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "RECURSIVE_F20_HISTORY_PARITY",
+      "symptom_ko": "F20의 정상적인 과거 VWAP 의존성을 서로 다른 피처 보관창이 lookahead 불일치로 잘못 판정해 모든 exit 변형을 차단한다.",
+      "fixed_by": "Wave 112 equal past-only feature history windows",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_strategy_100_screening_runner.py",
+          "contains": [
+            "test_recursive_f20_audit_keeps_the_same_past_only_history_window"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "LIVE_PUBLIC_RESEARCH_CUT_RETENTION_PIN",
+      "symptom_ko": "장시간 누적한 현재 Run의 연구 파일이 동결 뒤 일반 retention에 섞여 사라지거나 기록 중 파일이 연구표본에 포함된다.",
+      "fixed_by": "Wave 112 stable archive cut and fail-closed retention pin",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_live_public_archive_cut.py",
+          "contains": [
+            "test_live_public_cut_pins_only_stable_complete_parquet",
+            "test_live_public_cut_excludes_file_inside_stability_window",
+            "test_tampered_research_pin_fails_closed_before_retention",
+            "test_changed_pinned_parquet_fails_closed_before_retention",
+            "test_archive_cut_read_budget_enforces_the_declared_rate",
+            "test_archive_cut_does_not_overwrite_existing_evidence",
+            "test_archive_cut_uses_the_same_single_research_resource_lock"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "COST_COVERED_EXIT_VARIANT_ISOLATION",
+      "symptom_ko": "승률 개선용 exit 파라미터 변형이 기존 100후보의 ID·결과를 덮거나 비용을 회수하지 못하는 짧은 익절을 허용한다.",
+      "fixed_by": "Wave 112 separate E06 cost-covered PAPER variant batch",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_strategy_100_registry.py",
+          "contains": [
+            "test_cost_covered_e06_batch_is_separate_from_the_frozen_100_trials",
+            "test_cost_covered_e06_manifest_preserves_parent_lineage_and_paper_boundary"
+          ]
+        },
+        {
+          "path": "backend/tests/test_strategy_100_execution.py",
+          "contains": [
+            "test_cost_covered_e06_sets_early_partial_tp_and_fee_safe_runner_before_entry",
+            "test_cost_covered_e06_rejects_a_stop_too_tight_to_cover_stress_costs"
+          ]
+        },
+        {
+          "path": "backend/tests/test_candidate_paper_portfolio.py",
+          "contains": [
+            "test_trailing_breakeven_includes_the_preregistered_cost_buffer"
+          ]
+        },
+        {
+          "path": "backend/tests/test_strategy_100_screening.py",
+          "contains": [
+            "test_screening_report_accepts_a_separate_preregistered_variant_batch"
+          ]
+        },
+        {
+          "path": "backend/tests/test_strategy_100_screening_runner.py",
+          "contains": [
+            "test_variant_manifest_selects_only_the_separate_e06_trials",
+            "test_variant_batch_cannot_overwrite_frozen_or_existing_research_outputs"
           ]
         }
       ]

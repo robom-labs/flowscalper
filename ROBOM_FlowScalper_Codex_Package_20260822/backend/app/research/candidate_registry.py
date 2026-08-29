@@ -536,6 +536,15 @@ def trailing_policy_for_exit(exit_id: str) -> TrailingPolicy | None:
             atr_multiplier=Decimal("2"),
             adverse_atr_multiplier=Decimal("1.2"),
         ),
+        "E06": TrailingPolicy(
+            policy_id="E06_COST_COVERED_EARLY_TP_RUNNER_V1",
+            model=TrailingModel.ATR_CHANDELIER,
+            activation_rule=TrailingActivationRule.TP1_TRIGGERED,
+            activation_r=Decimal("0.8"),
+            partial_tp_required=True,
+            breakeven_buffer_bps=Decimal("1"),
+            atr_multiplier=Decimal("2.5"),
+        ),
     }
     if exit_id == "E01":
         return None
@@ -627,6 +636,9 @@ def trial_manifest(
                     "activation_rule": trailing_policy.activation_rule.value,
                     "activation_r": str(trailing_policy.activation_r),
                     "partial_tp_required": trailing_policy.partial_tp_required,
+                    "breakeven_buffer_bps": str(
+                        trailing_policy.breakeven_buffer_bps
+                    ),
                     "fixed_distance": str(trailing_policy.fixed_distance)
                     if trailing_policy.fixed_distance is not None
                     else None,

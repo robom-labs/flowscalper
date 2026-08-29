@@ -327,8 +327,11 @@ class ParquetEventStore:
         feature_days: int = 90,
     ) -> tuple[Path, ...]:
         protected_types = {"candidate_window", "trade_window", "decision", "fill"}
+        protected_research_paths = _research_pin_paths(self.root)
         removed: list[Path] = []
         for path in self.root.rglob("*.parquet"):
+            if path.resolve() in protected_research_paths:
+                continue
             partitions = _partitions(path)
             event_type = partitions.get("event_type", "").lower()
             if event_type in protected_types:
@@ -415,6 +418,72 @@ def _set_background_io_policy(enabled: bool) -> bool:
 def _default_disk_usage(path: Path) -> DiskUsage:
     usage = shutil.disk_usage(path)
     return DiskUsage(total=usage.total, used=usage.used, free=usage.free)
+
+
+def _research_pin_paths(root: Path) -> frozenset[Path]:
+    """동결 연구 manifest가 가리키는 파일은 일반 retention에서 제외한다."""
+
+    pin_directory = root / ".research-pins"
+    if not pin_directory.exists():
+        return frozenset()
+    resolved_root = root.resolve()
+    protected: set[Path] = set()
+    for manifest_path in sorted(pin_directory.glob("*.json")):
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(
+                f"연구 데이터 pin manifest를 읽을 수 없습니다: {manifest_path}"
+            ) from error
+        if not isinstance(payload, dict):
+            raise ValueError("연구 데이터 pin manifest는 JSON object여야 합니다.")
+        claimed_checksum = payload.get("manifest_sha256")
+        checksum_payload = dict(payload)
+        checksum_payload.pop("manifest_sha256", None)
+        actual_checksum = hashlib.sha256(
+            json.dumps(
+                checksum_payload,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        if claimed_checksum != actual_checksum:
+            raise ValueError("연구 데이터 pin manifest checksum이 다릅니다.")
+        if (
+            payload.get("status") != "FROZEN_LIVE_PUBLIC_CUT"
+            or Path(str(payload.get("archive_root", ""))).resolve() != resolved_root
+        ):
+            raise ValueError("연구 데이터 pin manifest의 상태 또는 archive root가 다릅니다.")
+        files = payload.get("files")
+        if not isinstance(files, list) or not files:
+            raise ValueError("연구 데이터 pin manifest에 파일이 없습니다.")
+        for row in files:
+            if (
+                not isinstance(row, dict)
+                or not isinstance(row.get("relative_path"), str)
+                or not isinstance(row.get("size_bytes"), int)
+                or not isinstance(row.get("mtime_ns"), int)
+                or not isinstance(row.get("inode"), int)
+                or not isinstance(row.get("ctime_ns"), int)
+            ):
+                raise ValueError("연구 데이터 pin manifest 파일 행이 잘못됐습니다.")
+            candidate = (resolved_root / str(row["relative_path"])).resolve()
+            if not candidate.is_relative_to(resolved_root):
+                raise ValueError("연구 데이터 pin manifest가 archive 밖을 참조합니다.")
+            try:
+                current = candidate.stat()
+            except OSError as error:
+                raise ValueError("연구 데이터 pin manifest 파일이 없습니다.") from error
+            if (
+                current.st_size != row["size_bytes"]
+                or current.st_mtime_ns != row["mtime_ns"]
+                or current.st_ino != row["inode"]
+                or current.st_ctime_ns != row["ctime_ns"]
+            ):
+                raise ValueError("연구 데이터 pin manifest 파일이 동결 뒤 변경됐습니다.")
+            protected.add(candidate)
+    return frozenset(protected)
 
 
 def _market_event_receive_ts_ms(event: Mapping[str, object]) -> int:

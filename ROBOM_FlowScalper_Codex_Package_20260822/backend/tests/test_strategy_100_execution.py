@@ -18,6 +18,7 @@ from backend.app.research import (
     InstrumentMetadataEvidence,
     ResearchCandidatePlanBuilder,
     ResearchInstrumentMetadata,
+    cost_covered_exit_variant_trials,
     preregistered_trials,
 )
 from backend.app.risk import RiskState
@@ -116,9 +117,12 @@ def _inputs(family_id: str, exit_id: str, *, evidence: InstrumentMetadataEvidenc
         source_checksum="a" * 64,
         evidence=evidence,
     )
+    trial_pool = (
+        cost_covered_exit_variant_trials() if exit_id == "E06" else preregistered_trials()
+    )
     trial = next(
         trial
-        for trial in preregistered_trials()
+        for trial in trial_pool
         if trial.alpha.family_id == family_id and trial.exit.exit_id == exit_id
     )
     signal = AlphaSignal(
@@ -172,6 +176,49 @@ def test_fixed_exit_and_partial_runner_are_bound_before_entry() -> None:
     assert runner.plan.trailing_policy is not None
     assert runner.plan.trailing_policy.partial_tp_required is True
     assert runner.plan.trailing_atr is not None
+
+
+def test_cost_covered_e06_sets_early_partial_tp_and_fee_safe_runner_before_entry() -> None:
+    result = _build("F17", "E06")
+
+    assert result.plan is not None
+    assert result.rejection_codes == ()
+    assert [target.label for target in result.plan.take_profit_targets] == ["TP1", "TP2"]
+    assert [target.quantity_fraction for target in result.plan.take_profit_targets] == [
+        Decimal("0.7"),
+        Decimal("0.3"),
+    ]
+    assert result.plan.trailing_policy is not None
+    assert result.plan.trailing_policy.policy_id == "E06_COST_COVERED_EARLY_TP_RUNNER_V1"
+    assert result.plan.trailing_policy.partial_tp_required is True
+    assert result.plan.trailing_policy.breakeven_buffer_bps == Decimal("1")
+    assert result.plan.trailing_atr is not None
+
+
+def test_cost_covered_e06_rejects_a_stop_too_tight_to_cover_stress_costs() -> None:
+    trial, signal, alpha, book, metadata = _inputs(
+        "F17",
+        "E06",
+        evidence=InstrumentMetadataEvidence.POINT_IN_TIME_PUBLIC,
+    )
+    alpha = replace(alpha, atr=0.1)
+
+    result = ResearchCandidatePlanBuilder().build(
+        trial=trial,
+        signal=signal,
+        alpha_snapshot=alpha,
+        market_snapshot=_market_snapshot(ts_ms=alpha.decision_ts_ms, mid=alpha.close),
+        book=book,
+        metadata=metadata,
+        regime=Regime.TREND_UP,
+        run_id="RUN-RESEARCH",
+        signal_event_id="signal-e06-tight-stop",
+        risk_state=RiskState(),
+    )
+
+    assert result.plan is None
+    assert "E06_STRESS_TP1_NOT_NET_POSITIVE" in result.rejection_codes
+    assert "E06_STRESS_WEIGHTED_NET_REWARD_BELOW_1_2R" in result.rejection_codes
 
 
 def test_research_candidate_id_is_deterministic_and_exit_specific() -> None:

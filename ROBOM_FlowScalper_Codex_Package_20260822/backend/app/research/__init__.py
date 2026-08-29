@@ -28,6 +28,13 @@ from backend.app.research.candidate_registry import (
     trailing_policy_for_exit,
     trial_manifest,
 )
+from backend.app.research.cost_covered_exit_variants import (
+    COST_COVERED_EXIT_VARIANT,
+    COST_COVERED_EXIT_VARIANT_BATCH_ID,
+    COST_COVERED_EXIT_VARIANT_FAMILY_IDS,
+    cost_covered_exit_variant_manifest,
+    cost_covered_exit_variant_trials,
+)
 from backend.app.research.dataset_freeze import build_strategy_100_dataset_manifest
 from backend.app.research.execution import (
     InstrumentMetadataEvidence,
@@ -70,6 +77,9 @@ __all__ = [
     "ALPHA_FAMILIES",
     "ALPHA_EVALUATION_INTERVAL_SECONDS",
     "ALPHA_EVALUATORS",
+    "COST_COVERED_EXIT_VARIANT",
+    "COST_COVERED_EXIT_VARIANT_BATCH_ID",
+    "COST_COVERED_EXIT_VARIANT_FAMILY_IDS",
     "EXIT_MODULES",
     "HORIZON_MAXIMUM_HOLD_MS",
     "AlphaFamilySpec",
@@ -106,6 +116,8 @@ __all__ = [
     "build_trailing_ablation_report",
     "build_walk_forward_report",
     "chronological_split",
+    "cost_covered_exit_variant_manifest",
+    "cost_covered_exit_variant_trials",
     "deflated_sharpe_ratio",
     "evaluate_alpha",
     "finalize_research_manifest",

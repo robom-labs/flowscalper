@@ -15,18 +15,24 @@ import pytest
 
 from backend.app.costing import CostProfile
 from backend.app.features import FeatureInputError
+from backend.app.market_data import Candle
 from backend.app.research import (
     ScreeningAccountResult,
     ScreeningStatus,
     ScreeningTrade,
     TrialScreeningResult,
+    cost_covered_exit_variant_manifest,
+    cost_covered_exit_variant_trials,
     preregistered_trials,
 )
 from scripts.export_strategy_100_manifest import BOUND_SOURCE_FILES
 from scripts.research_intraday_candidates import _event_rows, _trade_tick
 from scripts.research_strategy_100_candidates import (
+    DEFAULT_RESEARCH_OUTPUTS,
+    RESEARCH_FEATURE_HISTORY_BARS,
     AccountCounters,
     ResearchAccountCarry,
+    ResearchCpuBudget,
     ResearchExecutionWindow,
     RunDiagnostics,
     Strategy100RunExecutor,
@@ -37,6 +43,8 @@ from scripts.research_strategy_100_candidates import (
     _run_diagnostics_payload,
     _run_execution_windows,
     _trade_inside_purged_split,
+    _trials_for_manifest,
+    _validate_output_contract,
     _validation_fold_returns,
     _validation_folds,
     _verify_current_bound_sources,
@@ -305,6 +313,83 @@ def test_research_account_carry_seeds_both_execution_and_shadow_ledgers() -> Non
     assert executor.ending_account_carry() == carries
 
 
+def test_recursive_f20_audit_keeps_the_same_past_only_history_window() -> None:
+    trial = next(
+        row for row in preregistered_trials() if row.alpha.family_id == "F20"
+    )
+    executor = Strategy100RunExecutor(
+        run_id="run-f20-history",
+        split="TRAIN",
+        archive_dir=Path("unused-archive"),
+        trials=(trial,),
+        instruments={},
+        account_counters={
+            (trial.trial_id, profile.value): AccountCounters() for profile in CostProfile
+        },
+        trial_integrity={trial.trial_id: TrialIntegrity()},
+        execution_windows_by_horizon={
+            "MICRO_SCALP": (
+                ResearchExecutionWindow(
+                    window_id="run-f20-history:TRAIN",
+                    horizon="MICRO_SCALP",
+                    entry_start_ts_ms=0,
+                    entry_cutoff_ts_ms=1_000_000,
+                    observation_end_ts_ms=1_181_000,
+                    maximum_holding_ms=180_000,
+                    purge_embargo_ms=180_000,
+                ),
+            )
+        },
+        account_carry={},
+    )
+    assert RESEARCH_FEATURE_HISTORY_BARS > 320
+    for index in range(400):
+        offset = Decimal(index) / Decimal("1000")
+        candle = Candle(
+            symbol="BTCUSDT",
+            interval_seconds=1,
+            open_ts_ms=index * 1_000,
+            open=Decimal("100") + offset,
+            high=Decimal("100.1") + offset,
+            low=Decimal("99.9") + offset,
+            close=Decimal("100.05") + offset,
+            volume=Decimal("10") + index,
+            trade_count=10 + index,
+            quote_volume=Decimal("1000") + index,
+            taker_buy_volume=Decimal("6"),
+            taker_sell_volume=Decimal("4"),
+        )
+        executor.alpha_features.ingest_completed(candle)
+        executor.recursive_features.ingest_completed(candle)
+
+    decision_ts_ms = 400_000
+    primary = executor.alpha_features.snapshot(
+        "BTCUSDT", "F20", decision_ts_ms=decision_ts_ms
+    )
+    recursive = executor.recursive_features.snapshot(
+        "BTCUSDT", "F20", decision_ts_ms=decision_ts_ms
+    )
+
+    assert primary is not None
+    assert recursive == primary
+
+
+def test_research_cpu_budget_yields_to_the_live_service() -> None:
+    monotonic_values = iter((0.0, 0.25))
+    process_values = iter((0.0, 0.1))
+    sleeps: list[float] = []
+    budget = ResearchCpuBudget(
+        target_cpu_ratio=0.2,
+        monotonic=lambda: next(monotonic_values),
+        process_time=lambda: next(process_values),
+        sleeper=sleeps.append,
+    )
+
+    budget.checkpoint()
+
+    assert sleeps[0] == pytest.approx(0.25)
+
+
 def _trade(
     trade_id: str,
     *,
@@ -347,6 +432,44 @@ def test_manifest_checksum_rejects_tampering() -> None:
         assert "checksum" in str(error)
     else:
         raise AssertionError("변조된 screening manifest가 허용됐습니다.")
+
+
+def test_variant_manifest_selects_only_the_separate_e06_trials() -> None:
+    manifest = cost_covered_exit_variant_manifest(
+        code_version="code",
+        generated_ts_utc="2026-08-29T00:00:00Z",
+        source_checksums={"variant.py": "a" * 64},
+        parent_trial_manifest={
+            "path": "evidence/STRATEGY_100_TRIAL_MANIFEST.json",
+            "manifest_sha256": "b" * 64,
+            "file_sha256": "c" * 64,
+        },
+    )
+
+    assert _trials_for_manifest(manifest) == cost_covered_exit_variant_trials()
+    tampered = dict(manifest)
+    tampered["trials"] = list(reversed(manifest["trials"]))
+    with pytest.raises(ValueError, match="순서 또는 ID"):
+        _trials_for_manifest(tampered)
+
+
+def test_variant_batch_cannot_overwrite_frozen_or_existing_research_outputs(
+    tmp_path: Path,
+) -> None:
+    frozen = tuple(tmp_path / path.name for path in DEFAULT_RESEARCH_OUTPUTS)
+    with pytest.raises(ValueError, match="동결 100후보와 분리"):
+        _validate_output_contract(
+            DEFAULT_RESEARCH_OUTPUTS,
+            manifest_kind="COST_COVERED_EXIT_VARIANT_BATCH",
+        )
+
+    frozen[0].write_text("preserved", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="덮어쓰지"):
+        _validate_output_contract(
+            frozen,
+            manifest_kind="STRATEGY_100_FROZEN_BATCH",
+        )
+    assert frozen[0].read_text(encoding="utf-8") == "preserved"
 
 
 def test_validation_runs_are_split_into_four_chronological_folds() -> None:

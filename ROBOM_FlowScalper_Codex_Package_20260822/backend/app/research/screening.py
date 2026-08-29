@@ -495,14 +495,22 @@ def build_screening_report(
     dataset_manifest_sha256: str,
     validation_fold_returns: Mapping[str, Sequence[float]],
     generated_ts_utc: str,
+    trials: Sequence[ResearchTrialSpec] | None = None,
+    selection_limit: int = 25,
 ) -> dict[str, Any]:
     """Final OOS를 봉인한 채 Validation에서 최대 25개 event replay 후보만 고른다."""
 
-    trials = preregistered_trials()
-    expected = {trial.trial_id: trial for trial in trials}
+    default_registry = trials is None
+    registered_trials = tuple(trials) if trials is not None else preregistered_trials()
+    if not registered_trials or selection_limit <= 0:
+        raise ValueError("screening trial과 선택 한도는 양수여야 합니다.")
+    expected = {trial.trial_id: trial for trial in registered_trials}
+    if len(expected) != len(registered_trials):
+        raise ValueError("screening trial ID가 중복됐습니다.")
     actual = {result.trial_id: result for result in results}
     if len(actual) != len(results) or set(actual) != set(expected):
-        raise ValueError("screening 결과는 사전등록 100개 trial을 중복 없이 전부 포함해야 합니다.")
+        scope = "사전등록 100개 trial" if default_registry else "사전등록 trial"
+        raise ValueError(f"screening 결과는 {scope}을 중복 없이 전부 포함해야 합니다.")
     if not trial_manifest_sha256 or not dataset_manifest_sha256 or not generated_ts_utc:
         raise ValueError("screening manifest checksum과 생성시각이 필요합니다.")
     for trial_id, trial in expected.items():
@@ -548,8 +556,12 @@ def build_screening_report(
     else:
         pbo = probability_of_backtest_overfitting(validation_fold_returns)
     statistics = {
-        trial.trial_id: _trial_statistics(trial, actual[trial.trial_id], trials_count=100)
-        for trial in trials
+        trial.trial_id: _trial_statistics(
+            trial,
+            actual[trial.trial_id],
+            trials_count=len(registered_trials),
+        )
+        for trial in registered_trials
     }
     pbo_passed = pbo.get("pbo") is not None and float(str(pbo["pbo"])) <= 0.20
     eligible = [
@@ -576,21 +588,23 @@ def build_screening_report(
             trial_id,
         )
     )
-    selected = eligible[:25]
+    selected = eligible[:selection_limit]
+    blocked_count = sum(not trial.screening_eligible for trial in registered_trials)
+    screening_eligible_count = len(registered_trials) - blocked_count
     return {
         "schema_version": 1,
         "status": "EXECUTED" if not failed_ids else "INCOMPLETE_TRIAL_FAILURES",
         "generated_ts_utc": generated_ts_utc,
         "trial_manifest_sha256": trial_manifest_sha256,
         "dataset_manifest_sha256": dataset_manifest_sha256,
-        "registered_trial_count": 100,
-        "screening_eligible_count": 90,
-        "blocked_trial_count": 10,
+        "registered_trial_count": len(registered_trials),
+        "screening_eligible_count": screening_eligible_count,
+        "blocked_trial_count": blocked_count,
         "executed_trial_count": sum(
             result.status is ScreeningStatus.EXECUTED for result in results
         ),
         "failed_trial_count": sum(result.status is ScreeningStatus.FAILED for result in results),
-        "planned_independent_account_count": 200,
+        "planned_independent_account_count": len(registered_trials) * len(SCREENING_PROFILES),
         "executed_independent_account_count": sum(
             len(result.accounts) for result in results if result.status is ScreeningStatus.EXECUTED
         ),
@@ -598,7 +612,7 @@ def build_screening_report(
             len(result.accounts) for result in results if result.status is ScreeningStatus.FAILED
         ),
         "observed_independent_account_count": sum(len(result.accounts) for result in results),
-        "blocked_independent_account_count": 20,
+        "blocked_independent_account_count": blocked_count * len(SCREENING_PROFILES),
         "starting_equity_per_account_usdt": str(STARTING_EQUITY_USDT),
         "selection_basis": "TRAIN_AND_VALIDATION_ONLY",
         "final_oos_status": "SEALED_NOT_USED_FOR_SELECTION",
@@ -613,7 +627,7 @@ def build_screening_report(
         ],
         "event_replay_selected": selected,
         "selection_count": len(selected),
-        "selection_limit": 25,
+        "selection_limit": selection_limit,
         "active_count": 0,
         "live_shadow_count": 0,
         "profitability_claim": "NOT_PROVEN_UNTIL_LATER_GATES",

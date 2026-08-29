@@ -1298,7 +1298,10 @@ class PaperPortfolioEngine:
             entry=True,
             profile=account.profile,
         ) + self.cost_model.fee_bps(entry=False, profile=account.profile)
-        adjustment = position.entry_fill.average_price * roundtrip_fee_bps / Decimal(10_000)
+        breakeven_cost_bps = roundtrip_fee_bps + policy.breakeven_buffer_bps
+        adjustment = (
+            position.entry_fill.average_price * breakeven_cost_bps / Decimal(10_000)
+        )
         fee_adjusted_breakeven = (
             position.entry_fill.average_price + adjustment
             if plan.direction is Side.LONG
@@ -2706,6 +2709,7 @@ def _trailing_policy_payload(policy: TrailingPolicy) -> dict[str, object]:
         "activation_rule": policy.activation_rule.value,
         "activation_r": str(policy.activation_r),
         "partial_tp_required": policy.partial_tp_required,
+        "breakeven_buffer_bps": str(policy.breakeven_buffer_bps),
         "fixed_distance": str(policy.fixed_distance) if policy.fixed_distance is not None else None,
         "retracement_rate": str(policy.retracement_rate)
         if policy.retracement_rate is not None
@@ -2736,6 +2740,7 @@ def _trailing_policy_from_payload(payload: object) -> TrailingPolicy | None:
             payload.get("partial_tp_required"),
             "partial_tp_required",
         ),
+        breakeven_buffer_bps=Decimal(str(payload.get("breakeven_buffer_bps", 0))),
         fixed_distance=Decimal(str(payload["fixed_distance"]))
         if payload.get("fixed_distance") is not None
         else None,

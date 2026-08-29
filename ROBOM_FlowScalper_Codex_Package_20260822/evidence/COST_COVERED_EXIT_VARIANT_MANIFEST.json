@@ -1,0 +1,350 @@
+{
+  "alpha_family_count": 4,
+  "batch_id": "COST_COVERED_EARLY_TP_RUNNER_V1",
+  "blocked_count": 0,
+  "code_version": "155ac8faddb2954603619022d7f179ef36d69755+research-bundle-sha256:4d239013e472b7ece69c75e04b2e88215f29292e2f708d3909e368c3482f2b37",
+  "cost_contract": {
+    "base_expected_total_cost_bps": 13,
+    "depth_slippage": "EXECUTABLE_BOOK_WALK",
+    "partial_fill": true,
+    "stress_expected_total_cost_bps": 25
+  },
+  "exit_module_count": 1,
+  "generated_ts_utc": "2026-08-29T12:46:28.810446Z",
+  "live_shadow_count": 0,
+  "manifest_kind": "COST_COVERED_EXIT_VARIANT_BATCH",
+  "manifest_sha256": "b93df61f88f4ef0df5e5d2d09fa44293bc190e168adba13e4cb41ed460f41160",
+  "paper_only": true,
+  "parent_trial_manifest": {
+    "file_sha256": "b1add8601f3d93a63d25a9eef5024d281619c0b2fc6be6b62714a595b8b5346f",
+    "manifest_sha256": "0b4340ae832e21754ad55c05ef5ce4ae1b948a874a9eef4f3b572a932eac72fc",
+    "path": "evidence/STRATEGY_100_TRIAL_MANIFEST.json"
+  },
+  "private_api_enabled": false,
+  "real_orders_enabled": false,
+  "risk_contract": {
+    "profiles_per_trial": [
+      "BASE",
+      "STRESS"
+    ],
+    "risk_per_trade_fraction": "0.005",
+    "starting_equity_per_trial_profile_usdt": "1000"
+  },
+  "runtime_active_count": 0,
+  "runtime_ai_enabled": false,
+  "schema_version": 1,
+  "screening_eligible_count": 4,
+  "selection_limit": 4,
+  "source_checksums": {
+    "backend/app/candidates/plans.py": "956e677b825559e4de125b976ddfc2b70403f7e3de6cd49b6f382d4fd088d60a",
+    "backend/app/costing/models.py": "73a20f98a1f279acdd26ca0f662ea1e235b30cc4e64f61185414a4c05038b063",
+    "backend/app/execution/models.py": "507b8473b42dea831945daf9f05b0a6524c384add0276f437d630dbd011225e2",
+    "backend/app/execution/portfolio.py": "fd6dbed3c21d9a7b348d641ef18df22e57672dddcfd5acbdafcbf0124db23e7a",
+    "backend/app/execution/simulator.py": "9877d6ef76654efdf8511654f77df2d524202e698c57d41978ea6cef86f74809",
+    "backend/app/execution/trailing.py": "506cf88d51e122500b15df6e5a5e0edda94c49ad230e9b19cd93fe36271e4f64",
+    "backend/app/features/engine.py": "112ed5747e5a7bf7d77ab5d7588898476318590b1f89fff0635c44e24776e9a6",
+    "backend/app/market_data/candles.py": "b4b16b2ad7f9e0617887b2279ff7c2a93ac2c935e42b14c57e419134b7403c66",
+    "backend/app/market_data/timeframes.py": "b7ecf42fe04fe3b744d0064de8ba1928a96e0733a27304e7ab9853f3ad3c7268",
+    "backend/app/positions/manager.py": "7550f754ea109bffcf37fb5805de61e1d5086f8ab0fcc36d84962504d965c8b2",
+    "backend/app/regime/classifier.py": "d71d3164962422efd0bcb2c060c7aef5778ef4a0838b8ca5a50ff75f35649560",
+    "backend/app/research/alpha_evaluators.py": "fe5a7b5b29156fd2abbdb59b21f5002fcc2d4c2c2b27342240d235ffd038c691",
+    "backend/app/research/alpha_features.py": "594e6ab6ca1ba7252151b59813d4c6dfc98234b02d1a47957c49aaa510f7d28f",
+    "backend/app/research/candidate_registry.py": "90e881371a0480b8bab3567ceeb9b933ad69f039d3fa678ba03d8ed0fe209476",
+    "backend/app/research/cost_covered_exit_variants.py": "9417675ba90b00384f227bbd3e2cabf6045425c6026512aea5b08f434e2a089f",
+    "backend/app/research/dataset_freeze.py": "19d46dd4c89b3d5e341e7324f184b9d9c544fe1095afa82c4e77505b2cab1f67",
+    "backend/app/research/execution.py": "f704745ba8512c80964074835bd74f5718ed63d1d7318b7e555aa54d9470de11",
+    "backend/app/research/instrument_metadata.py": "035df6e7076427cebf341d46458ff4dd16e81c61b18623f87c8305baf592b7ce",
+    "backend/app/research/screening.py": "b4f7757e6fafa20ec93ca90583274f23293e9e63715a06f087ac5d389f51d5c2",
+    "backend/app/research/secondary_reports.py": "451ae2207c5955d328d39f4ea4a97570a480a576ac0e01780515a331c81372e3",
+    "backend/app/risk/manager.py": "3e3314e0290c8ba73b87700528ed31266623d761406b1b2735dc2c4c6e0c898e",
+    "backend/app/strategies/shadow.py": "553373aabf9fccfd42ecbfcb0b12545692c22f4d9d4fd31837fa5ae8c0f94985",
+    "scripts/export_cost_covered_exit_variant_manifest.py": "4f46632b46502e4d65430f78a9f6bd65bbab7db4d3ca6112afaed691f426d05d",
+    "scripts/research_intraday_candidates.py": "46ebf63ec499f6356895aa650f4b078586d7755cdab949afa8764f592f16f222",
+    "scripts/research_strategy_100_candidates.py": "efda055bbfc44d8e005b79e54db44e359edf7846bc8b3c131c1ff5756f8c2620",
+    "scripts/run_live_safe_strategy_screening.py": "3a2b93ed1d9d7bb95e8e885068e290fe5a7a76424cd877c43180f05ae1268bea"
+  },
+  "status": "PREREGISTERED_NOT_EXECUTED",
+  "trial_count": 4,
+  "trials": [
+    {
+      "alpha": {
+        "blocker_codes": [],
+        "entry_rule": "top5 queue imbalance와 executable microprice 변위가 500ms 지속되고 비용을 넘을 때 진입한다.",
+        "evaluator_id": "ALPHA_EVALUATOR_F17_V1",
+        "evidence_grade": "RESEARCH_HYPOTHESIS",
+        "existing_strategy_links": [
+          "QUEUE_MICROPRICE_MOMENTUM_V1"
+        ],
+        "family_id": "F17",
+        "horizon": "MICRO_SCALP",
+        "name": "Queue imbalance microprice",
+        "parameters": {
+          "depth_levels": "5",
+          "long_imbalance_minimum": "0.65",
+          "microprice_spread_fraction": "0.15",
+          "persistence_ms": "500",
+          "sequence_valid_required": "True",
+          "short_imbalance_maximum": "0.35"
+        },
+        "source_ids": [
+          "GOULD_BONART_2015_QUEUE_IMBALANCE"
+        ]
+      },
+      "exit": {
+        "activation_rule": "TP1_EXECUTED",
+        "exit_id": "E06",
+        "exit_rule": "0.8R에서 70%를 부분익절하고 나머지 30%를 비용 반영 본전과 ATR trail로 보호하며 3R에서 종료한다.",
+        "name": "Cost-covered early TP runner",
+        "parameters": {
+          "atr_multiplier": "2.5",
+          "atr_period": "14",
+          "base_expected_total_cost_bps": "13",
+          "breakeven": "ROUNDTRIP_FEE_PLUS_BUFFER",
+          "initial_stop_r": "1.0",
+          "minimum_weighted_net_reward_r": "1.2",
+          "runner_fraction": "0.3",
+          "stress_expected_total_cost_bps": "25",
+          "tp1_fraction": "0.7",
+          "tp1_r": "0.8",
+          "tp2_r": "3.0",
+          "weighted_gross_reward_r": "1.46"
+        },
+        "source_ids": [
+          "FLOWSCALPER_COST_AWARE_ENTRY_REFUSAL",
+          "FLOWSCALPER_PARTIAL_TP"
+        ]
+      },
+      "lifecycle": "RESEARCH",
+      "live_shadow_enabled": false,
+      "paper_execution_binding": {
+        "fixed_tp_sl": false,
+        "real_orders_enabled": false,
+        "trailing_policy": {
+          "activation_r": "0.8",
+          "activation_rule": "TP1_TRIGGERED",
+          "atr_multiplier": "2.5",
+          "breakeven_buffer_bps": "1",
+          "model": "ATR_CHANDELIER",
+          "partial_tp_required": true,
+          "policy_id": "E06_COST_COVERED_EARLY_TP_RUNNER_V1"
+        },
+        "uses_paper_portfolio_engine": true
+      },
+      "paper_only": true,
+      "runtime_active": false,
+      "screening_eligible": true,
+      "trial_id": "ALPHA_F17_EXIT_E06_V1",
+      "trial_number": 101
+    },
+    {
+      "alpha": {
+        "blocker_codes": [],
+        "entry_rule": "top10 MLOFI를 현재 양방향 깊이로 정규화하고 robust z와 가격반응이 지속될 때 진입한다.",
+        "evaluator_id": "ALPHA_EVALUATOR_F18_V1",
+        "evidence_grade": "RESEARCH_HYPOTHESIS",
+        "existing_strategy_links": [
+          "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+          "MULTILEVEL_MICROPRICE_MOMENTUM_V1"
+        ],
+        "family_id": "F18",
+        "horizon": "MICRO_SCALP",
+        "name": "Multi level order flow imbalance continuation",
+        "parameters": {
+          "depth_levels": "10",
+          "normalization": "MEAN_BID_ASK_NOTIONAL_DEPTH",
+          "persistence_ms": "500",
+          "price_response_required": "True",
+          "robust_z_minimum": "2.0"
+        },
+        "source_ids": [
+          "XU_GOULD_HOWISON_2019_MLOFI"
+        ]
+      },
+      "exit": {
+        "activation_rule": "TP1_EXECUTED",
+        "exit_id": "E06",
+        "exit_rule": "0.8R에서 70%를 부분익절하고 나머지 30%를 비용 반영 본전과 ATR trail로 보호하며 3R에서 종료한다.",
+        "name": "Cost-covered early TP runner",
+        "parameters": {
+          "atr_multiplier": "2.5",
+          "atr_period": "14",
+          "base_expected_total_cost_bps": "13",
+          "breakeven": "ROUNDTRIP_FEE_PLUS_BUFFER",
+          "initial_stop_r": "1.0",
+          "minimum_weighted_net_reward_r": "1.2",
+          "runner_fraction": "0.3",
+          "stress_expected_total_cost_bps": "25",
+          "tp1_fraction": "0.7",
+          "tp1_r": "0.8",
+          "tp2_r": "3.0",
+          "weighted_gross_reward_r": "1.46"
+        },
+        "source_ids": [
+          "FLOWSCALPER_COST_AWARE_ENTRY_REFUSAL",
+          "FLOWSCALPER_PARTIAL_TP"
+        ]
+      },
+      "lifecycle": "RESEARCH",
+      "live_shadow_enabled": false,
+      "paper_execution_binding": {
+        "fixed_tp_sl": false,
+        "real_orders_enabled": false,
+        "trailing_policy": {
+          "activation_r": "0.8",
+          "activation_rule": "TP1_TRIGGERED",
+          "atr_multiplier": "2.5",
+          "breakeven_buffer_bps": "1",
+          "model": "ATR_CHANDELIER",
+          "partial_tp_required": true,
+          "policy_id": "E06_COST_COVERED_EARLY_TP_RUNNER_V1"
+        },
+        "uses_paper_portfolio_engine": true
+      },
+      "paper_only": true,
+      "runtime_active": false,
+      "screening_eligible": true,
+      "trial_id": "ALPHA_F18_EXIT_E06_V1",
+      "trial_number": 102
+    },
+    {
+      "alpha": {
+        "blocker_codes": [],
+        "entry_rule": "signed notional·trade intensity와 반대호가 depth 감소가 지속될 때만 진입한다.",
+        "evaluator_id": "ALPHA_EVALUATOR_F19_V1",
+        "evidence_grade": "RESEARCH_HYPOTHESIS",
+        "existing_strategy_links": [
+          "AGGRESSOR_FLOW_CONTINUATION_V1"
+        ],
+        "family_id": "F19",
+        "horizon": "MICRO_SCALP",
+        "name": "Aggressor flow liquidity vacuum continuation",
+        "parameters": {
+          "opposing_depth_depletion_minimum": "0.2",
+          "persistence_ms": "500",
+          "signed_notional_z_minimum": "2.0",
+          "spread_percentile_maximum": "75",
+          "trade_intensity_z_minimum": "1.5"
+        },
+        "source_ids": [
+          "PUBLIC_AGGRESSOR_FLOW_HYPOTHESIS"
+        ]
+      },
+      "exit": {
+        "activation_rule": "TP1_EXECUTED",
+        "exit_id": "E06",
+        "exit_rule": "0.8R에서 70%를 부분익절하고 나머지 30%를 비용 반영 본전과 ATR trail로 보호하며 3R에서 종료한다.",
+        "name": "Cost-covered early TP runner",
+        "parameters": {
+          "atr_multiplier": "2.5",
+          "atr_period": "14",
+          "base_expected_total_cost_bps": "13",
+          "breakeven": "ROUNDTRIP_FEE_PLUS_BUFFER",
+          "initial_stop_r": "1.0",
+          "minimum_weighted_net_reward_r": "1.2",
+          "runner_fraction": "0.3",
+          "stress_expected_total_cost_bps": "25",
+          "tp1_fraction": "0.7",
+          "tp1_r": "0.8",
+          "tp2_r": "3.0",
+          "weighted_gross_reward_r": "1.46"
+        },
+        "source_ids": [
+          "FLOWSCALPER_COST_AWARE_ENTRY_REFUSAL",
+          "FLOWSCALPER_PARTIAL_TP"
+        ]
+      },
+      "lifecycle": "RESEARCH",
+      "live_shadow_enabled": false,
+      "paper_execution_binding": {
+        "fixed_tp_sl": false,
+        "real_orders_enabled": false,
+        "trailing_policy": {
+          "activation_r": "0.8",
+          "activation_rule": "TP1_TRIGGERED",
+          "atr_multiplier": "2.5",
+          "breakeven_buffer_bps": "1",
+          "model": "ATR_CHANDELIER",
+          "partial_tp_required": true,
+          "policy_id": "E06_COST_COVERED_EARLY_TP_RUNNER_V1"
+        },
+        "uses_paper_portfolio_engine": true
+      },
+      "paper_only": true,
+      "runtime_active": false,
+      "screening_eligible": true,
+      "trial_id": "ALPHA_F19_EXIT_E06_V1",
+      "trial_number": 103
+    },
+    {
+      "alpha": {
+        "blocker_codes": [],
+        "entry_rule": "RANGE에서 VWAP 과도이탈·가격진전 둔화·refill·OFI와 microprice 반전을 확인한다.",
+        "evaluator_id": "ALPHA_EVALUATOR_F20_V1",
+        "evidence_grade": "RESEARCH_HYPOTHESIS",
+        "existing_strategy_links": [
+          "LSA_REVERSAL_V1",
+          "VWAP_EXHAUSTION_REVERSION_V1"
+        ],
+        "family_id": "F20",
+        "horizon": "MICRO_SCALP",
+        "name": "Absorption VWAP exhaustion reversal",
+        "parameters": {
+          "microprice_reentry_required": "True",
+          "ofi_reversal_required": "True",
+          "price_progress_efficiency_maximum": "0.25",
+          "refill_minimum": "0.2",
+          "regime": "RANGE",
+          "vwap_deviation_z_minimum": "2.0"
+        },
+        "source_ids": [
+          "PUBLIC_ABSORPTION_VWAP_HYPOTHESIS"
+        ]
+      },
+      "exit": {
+        "activation_rule": "TP1_EXECUTED",
+        "exit_id": "E06",
+        "exit_rule": "0.8R에서 70%를 부분익절하고 나머지 30%를 비용 반영 본전과 ATR trail로 보호하며 3R에서 종료한다.",
+        "name": "Cost-covered early TP runner",
+        "parameters": {
+          "atr_multiplier": "2.5",
+          "atr_period": "14",
+          "base_expected_total_cost_bps": "13",
+          "breakeven": "ROUNDTRIP_FEE_PLUS_BUFFER",
+          "initial_stop_r": "1.0",
+          "minimum_weighted_net_reward_r": "1.2",
+          "runner_fraction": "0.3",
+          "stress_expected_total_cost_bps": "25",
+          "tp1_fraction": "0.7",
+          "tp1_r": "0.8",
+          "tp2_r": "3.0",
+          "weighted_gross_reward_r": "1.46"
+        },
+        "source_ids": [
+          "FLOWSCALPER_COST_AWARE_ENTRY_REFUSAL",
+          "FLOWSCALPER_PARTIAL_TP"
+        ]
+      },
+      "lifecycle": "RESEARCH",
+      "live_shadow_enabled": false,
+      "paper_execution_binding": {
+        "fixed_tp_sl": false,
+        "real_orders_enabled": false,
+        "trailing_policy": {
+          "activation_r": "0.8",
+          "activation_rule": "TP1_TRIGGERED",
+          "atr_multiplier": "2.5",
+          "breakeven_buffer_bps": "1",
+          "model": "ATR_CHANDELIER",
+          "partial_tp_required": true,
+          "policy_id": "E06_COST_COVERED_EARLY_TP_RUNNER_V1"
+        },
+        "uses_paper_portfolio_engine": true
+      },
+      "paper_only": true,
+      "runtime_active": false,
+      "screening_eligible": true,
+      "trial_id": "ALPHA_F20_EXIT_E06_V1",
+      "trial_number": 104
+    }
+  ]
+}

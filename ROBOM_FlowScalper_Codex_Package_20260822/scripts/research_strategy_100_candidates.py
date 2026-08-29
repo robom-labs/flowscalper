@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import time
 from collections import Counter, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -41,11 +42,27 @@ from backend.app.research import (
     point_in_time_volatility_regime,
     preregistered_trials,
 )
+from backend.app.research.cost_covered_exit_variants import (
+    COST_COVERED_EXIT_VARIANT_BATCH_ID,
+    cost_covered_exit_variant_trials,
+)
 from backend.app.strategies.shadow import ShadowLedger
+from scripts.export_cost_covered_exit_variant_manifest import (
+    VARIANT_BOUND_SOURCE_FILES,
+)
 from scripts.export_strategy_100_manifest import BOUND_SOURCE_FILES
 from scripts.research_intraday_candidates import _book_frame, _event_rows, _trade_tick
 
 SCREENING_INTERVALS = (1, 300, 900, 3_600, 14_400, 21_600)
+RESEARCH_FEATURE_HISTORY_BARS = 640
+DEFAULT_RESEARCH_OUTPUTS = (
+    Path("evidence/STRATEGY_100_SCREENING.json"),
+    Path("evidence/STRATEGY_100_SCREENING_TRADES.jsonl"),
+    Path("evidence/STRATEGY_100_SCREENING_AUDIT.json"),
+    Path("evidence/TRAILING_ABLATION.json"),
+    Path("evidence/WALK_FORWARD_RESULTS.json"),
+    Path("evidence/MULTIPLE_TESTING_RESULTS.json"),
+)
 ENTRY_SETTLEMENT_MARGIN_MS = 1_000
 CROSS_SECTIONAL_GRACE_MS = 60_000
 ENTRY_REJECTION_EVENTS = frozenset(
@@ -59,6 +76,37 @@ ENTRY_REJECTION_EVENTS = frozenset(
         "ENTRY_UNFILLED",
     }
 )
+
+
+class ResearchCpuBudget:
+    """LIVE 서비스보다 낮은 협조 CPU 비율로 후보 계산을 진행한다."""
+
+    def __init__(
+        self,
+        *,
+        target_cpu_ratio: float,
+        monotonic: Callable[[], float] = time.monotonic,
+        process_time: Callable[[], float] = time.process_time,
+        sleeper: Callable[[float], None] = time.sleep,
+    ) -> None:
+        if not 0 < target_cpu_ratio <= 1:
+            raise ValueError("연구 CPU 목표 비율은 0 초과 1 이하여야 합니다.")
+        self._target_cpu_ratio = target_cpu_ratio
+        self._monotonic = monotonic
+        self._process_time = process_time
+        self._sleeper = sleeper
+        self._last_wall = monotonic()
+        self._last_cpu = process_time()
+
+    def checkpoint(self) -> None:
+        elapsed_wall = max(0.0, self._monotonic() - self._last_wall)
+        elapsed_cpu = max(0.0, self._process_time() - self._last_cpu)
+        required_wall = elapsed_cpu / self._target_cpu_ratio
+        sleep_seconds = max(0.0, required_wall - elapsed_wall)
+        if sleep_seconds > 0:
+            self._sleeper(sleep_seconds)
+        self._last_wall += elapsed_wall + sleep_seconds
+        self._last_cpu += elapsed_cpu
 
 
 @dataclass(slots=True)
@@ -174,16 +222,20 @@ def _verify_manifest(manifest: Mapping[str, object], *, name: str) -> str:
     return actual
 
 
-def _verify_current_bound_sources(trial_manifest: Mapping[str, object]) -> None:
+def _verify_current_bound_sources(
+    trial_manifest: Mapping[str, object],
+    *,
+    bound_source_files: Sequence[Path] = BOUND_SOURCE_FILES,
+) -> None:
     claimed = trial_manifest.get("source_checksums")
     if not isinstance(claimed, Mapping):
         raise ValueError("trial manifest source checksum 목록이 없습니다.")
-    expected_paths = {path.as_posix() for path in BOUND_SOURCE_FILES}
+    expected_paths = {path.as_posix() for path in bound_source_files}
     if set(claimed) != expected_paths:
         raise ValueError("trial manifest source checksum 경로가 현재 연구 bundle과 다릅니다.")
     mismatches = [
         path.as_posix()
-        for path in BOUND_SOURCE_FILES
+        for path in bound_source_files
         if claimed.get(path.as_posix()) != hashlib.sha256(path.read_bytes()).hexdigest()
     ]
     if mismatches:
@@ -209,25 +261,59 @@ def _load_inputs(
     dataset: dict[str, Any] = json.loads(dataset_bytes)
     instruments: dict[str, Any] = json.loads(instrument_bytes)
     trial_sha = _verify_manifest(trial, name="trial manifest")
-    _verify_current_bound_sources(trial)
+    manifest_kind = str(trial.get("manifest_kind", "STRATEGY_100_FROZEN_BATCH"))
+    is_cost_covered_variant = manifest_kind == "COST_COVERED_EXIT_VARIANT_BATCH"
+    _verify_current_bound_sources(
+        trial,
+        bound_source_files=(
+            VARIANT_BOUND_SOURCE_FILES if is_cost_covered_variant else BOUND_SOURCE_FILES
+        ),
+    )
     dataset_sha = _verify_manifest(dataset, name="dataset manifest")
     _verify_manifest(instruments, name="instrument manifest")
     if (
         trial.get("status") != "PREREGISTERED_NOT_EXECUTED"
-        or trial.get("trial_count") != 100
         or trial.get("runtime_active_count") != 0
         or trial.get("live_shadow_count") != 0
         or trial.get("paper_only") is not True
         or trial.get("real_orders_enabled") is not False
         or trial.get("private_api_enabled") is not False
     ):
-        raise ValueError("trial manifest의 100후보 PAPER 계약이 잘못됐습니다.")
+        raise ValueError("trial manifest의 PAPER 계약이 잘못됐습니다.")
     linked = dataset.get("trial_manifest")
     if not isinstance(linked, Mapping):
         raise ValueError("dataset manifest의 trial 연결정보가 없습니다.")
+    linked_manifest_sha = trial_sha
+    linked_file_sha = hashlib.sha256(trial_bytes).hexdigest()
+    parent_sha: str | None = None
+    if is_cost_covered_variant:
+        parent = trial.get("parent_trial_manifest")
+        if (
+            trial.get("batch_id") != COST_COVERED_EXIT_VARIANT_BATCH_ID
+            or trial.get("trial_count") != len(cost_covered_exit_variant_trials())
+            or trial.get("screening_eligible_count") != len(
+                cost_covered_exit_variant_trials()
+            )
+            or not isinstance(parent, Mapping)
+        ):
+            raise ValueError("비용회수형 변형 manifest 계약이 잘못됐습니다.")
+        parent_path = Path(str(parent.get("path", "")))
+        parent_bytes = parent_path.read_bytes()
+        parent_manifest: dict[str, Any] = json.loads(parent_bytes)
+        parent_sha = _verify_manifest(parent_manifest, name="parent trial manifest")
+        if (
+            parent_manifest.get("trial_count") != 100
+            or parent.get("manifest_sha256") != parent_sha
+            or parent.get("file_sha256") != hashlib.sha256(parent_bytes).hexdigest()
+        ):
+            raise ValueError("비용회수형 변형의 원본 100후보 계보가 다릅니다.")
+        linked_manifest_sha = parent_sha
+        linked_file_sha = hashlib.sha256(parent_bytes).hexdigest()
+    elif trial.get("trial_count") != 100:
+        raise ValueError("동결 100후보 trial manifest 수가 잘못됐습니다.")
     if (
-        linked.get("manifest_sha256") != trial_sha
-        or linked.get("file_sha256") != hashlib.sha256(trial_bytes).hexdigest()
+        linked.get("manifest_sha256") != linked_manifest_sha
+        or linked.get("file_sha256") != linked_file_sha
         or dataset.get("status") != "FROZEN_HISTORICAL_FORWARD_PENDING"
         or dataset.get("paper_only") is not True
         or dataset.get("real_orders_enabled") is not False
@@ -245,8 +331,30 @@ def _load_inputs(
             "dataset_manifest_file_sha256": hashlib.sha256(dataset_bytes).hexdigest(),
             "instrument_manifest_sha256": str(instruments["manifest_sha256"]),
             "instrument_manifest_file_sha256": hashlib.sha256(instrument_bytes).hexdigest(),
+            "trial_manifest_kind": manifest_kind,
+            "parent_trial_manifest_sha256": parent_sha,
         },
     )
+
+
+def _trials_for_manifest(trial_manifest: Mapping[str, object]) -> tuple[ResearchTrialSpec, ...]:
+    manifest_kind = str(
+        trial_manifest.get("manifest_kind", "STRATEGY_100_FROZEN_BATCH")
+    )
+    if manifest_kind == "COST_COVERED_EXIT_VARIANT_BATCH":
+        trials = cost_covered_exit_variant_trials()
+    elif manifest_kind == "STRATEGY_100_FROZEN_BATCH":
+        trials = preregistered_trials()
+    else:
+        raise ValueError(f"알 수 없는 research trial manifest 종류입니다: {manifest_kind}")
+    rows = trial_manifest.get("trials")
+    if not isinstance(rows, list):
+        raise ValueError("trial manifest에 trial 목록이 없습니다.")
+    manifest_ids = [str(row.get("trial_id", "")) for row in rows if isinstance(row, Mapping)]
+    expected_ids = [trial.trial_id for trial in trials]
+    if manifest_ids != expected_ids:
+        raise ValueError("trial manifest와 현재 실행 trial 순서 또는 ID가 다릅니다.")
+    return trials
 
 
 def _validation_folds(
@@ -452,8 +560,13 @@ class Strategy100RunExecutor:
         self._seed_account_carry(account_carry)
         self.plan_builder = ResearchCandidatePlanBuilder()
         self.candles = CandleBuilder(maximum_bars=640, intervals=SCREENING_INTERVALS)
-        self.alpha_features = AlphaFeatureBuilder(maximum_bars=640)
-        self.recursive_features = AlphaFeatureBuilder(maximum_bars=320)
+        # 두 독립 재계산 경로는 동일한 과거 범위를 가져야 한다. 서로 다른
+        # maxlen은 F20의 과거 VWAP을 잘라 정상적인 과거 의존성을 lookahead
+        # 불일치로 잘못 판정했다.
+        self.alpha_features = AlphaFeatureBuilder(maximum_bars=RESEARCH_FEATURE_HISTORY_BARS)
+        self.recursive_features = AlphaFeatureBuilder(
+            maximum_bars=RESEARCH_FEATURE_HISTORY_BARS
+        )
         self.regime_classifier = RegimeClassifier()
         self.feature_engines: dict[str, FeatureEngine] = {}
         self.latest_books: dict[str, BookSnapshot] = {}
@@ -536,15 +649,32 @@ class Strategy100RunExecutor:
             for window in self.execution_windows_by_horizon.get(horizon, ())
         )
 
-    def execute(self, *, maximum_events: int | None = None) -> tuple[ScreeningTrade, ...]:
+    def execute(
+        self,
+        *,
+        maximum_events: int | None = None,
+        cooperative_yield: Callable[[], None] | None = None,
+        checkpoint_events: int = 256,
+    ) -> tuple[ScreeningTrade, ...]:
         if maximum_events is not None and maximum_events <= 0:
             raise ValueError("maximum_events는 양수여야 합니다.")
-        for payload in _event_rows(self.archive_dir, maximum_events=maximum_events):
+        if checkpoint_events <= 0:
+            raise ValueError("연구 CPU checkpoint 이벤트 수는 양수여야 합니다.")
+        for index, payload in enumerate(
+            _event_rows(self.archive_dir, maximum_events=maximum_events),
+            start=1,
+        ):
             if int(str(payload.get("venue_ts_ms", 0))) > self.observation_end_ts_ms:
                 # 정렬축은 실제 수신순이다. 거래소 시각이 느린 이벤트가 뒤에
                 # 도착할 수 있으므로 경계 초과 한 건으로 전체 순회를 끝내지 않는다.
+                if cooperative_yield is not None and index % checkpoint_events == 0:
+                    cooperative_yield()
                 continue
             self._process(payload)
+            if cooperative_yield is not None and index % checkpoint_events == 0:
+                cooperative_yield()
+        if cooperative_yield is not None:
+            cooperative_yield()
         self._drain_audit()
         self.diagnostics.censored_position_count = sum(
             len(account.positions) for account in self.portfolio.shadows.values()
@@ -944,10 +1074,31 @@ def _run_diagnostics_payload(diagnostics: RunDiagnostics) -> dict[str, object]:
 
 
 def _atomic_write(path: Path, content: str) -> None:
+    if path.exists():
+        raise FileExistsError(f"기존 연구 증거를 덮어쓰지 않습니다: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(content, encoding="utf-8")
     temporary.replace(path)
+
+
+def _validate_output_contract(
+    outputs: Sequence[Path],
+    *,
+    manifest_kind: str,
+) -> None:
+    """한 번의 연구결과가 서로 또는 기존 불변 증거를 덮지 못하게 한다."""
+
+    resolved = tuple(path.resolve() for path in outputs)
+    if len(resolved) != len(set(resolved)):
+        raise ValueError("연구 결과 경로는 서로 달라야 합니다.")
+    if manifest_kind == "COST_COVERED_EXIT_VARIANT_BATCH":
+        frozen_defaults = {path.resolve() for path in DEFAULT_RESEARCH_OUTPUTS}
+        if frozen_defaults.intersection(resolved):
+            raise ValueError("E06 변형은 동결 100후보와 분리된 결과 경로가 필요합니다.")
+    existing = [path for path in outputs if path.exists()]
+    if existing:
+        raise FileExistsError(f"기존 연구 증거를 덮어쓰지 않습니다: {existing[0]}")
 
 
 def _parse_args() -> argparse.Namespace:
@@ -975,45 +1126,60 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("evidence/STRATEGY_100_SCREENING.json"),
+        default=DEFAULT_RESEARCH_OUTPUTS[0],
     )
     parser.add_argument(
         "--trades-output",
         type=Path,
-        default=Path("evidence/STRATEGY_100_SCREENING_TRADES.jsonl"),
+        default=DEFAULT_RESEARCH_OUTPUTS[1],
     )
     parser.add_argument(
         "--audit-output",
         type=Path,
-        default=Path("evidence/STRATEGY_100_SCREENING_AUDIT.json"),
+        default=DEFAULT_RESEARCH_OUTPUTS[2],
     )
     parser.add_argument(
         "--trailing-ablation-output",
         type=Path,
-        default=Path("evidence/TRAILING_ABLATION.json"),
+        default=DEFAULT_RESEARCH_OUTPUTS[3],
     )
     parser.add_argument(
         "--walk-forward-output",
         type=Path,
-        default=Path("evidence/WALK_FORWARD_RESULTS.json"),
+        default=DEFAULT_RESEARCH_OUTPUTS[4],
     )
     parser.add_argument(
         "--multiple-testing-output",
         type=Path,
-        default=Path("evidence/MULTIPLE_TESTING_RESULTS.json"),
+        default=DEFAULT_RESEARCH_OUTPUTS[5],
     )
+    parser.add_argument("--target-cpu-ratio", type=float, default=0.15)
+    parser.add_argument("--cpu-checkpoint-events", type=int, default=256)
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
-    _, dataset, instrument_manifest, source_hashes = _load_inputs(
+    if not 0 < args.target_cpu_ratio <= 1 or args.cpu_checkpoint_events <= 0:
+        raise ValueError("연구 CPU 비율과 checkpoint 이벤트 수가 잘못됐습니다.")
+    trial_manifest, dataset, instrument_manifest, source_hashes = _load_inputs(
         args.trial_manifest,
         args.dataset_manifest,
         args.instrument_manifest,
     )
+    _validate_output_contract(
+        (
+            args.output,
+            args.trades_output,
+            args.audit_output,
+            args.trailing_ablation_output,
+            args.walk_forward_output,
+            args.multiple_testing_output,
+        ),
+        manifest_kind=str(source_hashes["trial_manifest_kind"]),
+    )
     instruments = load_research_instruments(instrument_manifest)
-    trials = preregistered_trials()
+    trials = _trials_for_manifest(trial_manifest)
     executable_trials = tuple(trial for trial in trials if trial.screening_eligible)
     account_counters = {
         _account_key(trial.trial_id, profile): AccountCounters()
@@ -1053,6 +1219,7 @@ def main() -> None:
     incomplete_trials: dict[str, set[str]] = defaultdict(set)
     all_trades: list[ScreeningTrade] = []
     run_diagnostics: list[dict[str, object]] = []
+    cpu_budget = ResearchCpuBudget(target_cpu_ratio=args.target_cpu_ratio)
     all_execution_windows_by_horizon: dict[str, list[ResearchExecutionWindow]] = {
         horizon: [] for horizon in HORIZON_MAXIMUM_HOLD_MS
     }
@@ -1099,7 +1266,12 @@ def main() -> None:
             execution_windows_by_horizon=execution_windows_by_horizon,
             account_carry=account_carry,
         )
-        all_trades.extend(executor.execute())
+        all_trades.extend(
+            executor.execute(
+                cooperative_yield=cpu_budget.checkpoint,
+                checkpoint_events=args.cpu_checkpoint_events,
+            )
+        )
         account_carry.update(executor.ending_account_carry())
         for trial_id in executor.incomplete_trial_ids:
             incomplete_trials[trial_id].add(run_id)
@@ -1212,7 +1384,14 @@ def main() -> None:
         dataset_manifest_sha256=str(source_hashes["dataset_manifest_sha256"]),
         validation_fold_returns=fold_returns,
         generated_ts_utc=now,
+        trials=trials,
+        selection_limit=int(str(trial_manifest.get("selection_limit", 25))),
     )
+    report["trial_batch"] = {
+        "manifest_kind": str(source_hashes["trial_manifest_kind"]),
+        "batch_id": trial_manifest.get("batch_id", "STRATEGY_100_FROZEN_BATCH"),
+        "parent_trial_manifest_sha256": source_hashes["parent_trial_manifest_sha256"],
+    }
     trade_lines = "".join(
         json.dumps(_encode(asdict(trade)), ensure_ascii=False, sort_keys=True) + "\n"
         for trade in sorted(retained_trades, key=lambda row: (row.entry_ts_ms, row.trade_id))
@@ -1222,6 +1401,12 @@ def main() -> None:
         "status": "EXECUTED_DIAGNOSTIC_PROMOTION_BLOCKED",
         "generated_ts_utc": now,
         "source_hashes": source_hashes,
+        "trial_batch": report["trial_batch"],
+        "resource_contract": {
+            "target_cpu_ratio": args.target_cpu_ratio,
+            "cpu_checkpoint_events": args.cpu_checkpoint_events,
+            "single_thread_duckdb": True,
+        },
         "run_diagnostics": run_diagnostics,
         "processed_run_count": len(selected_runs),
         "processed_roles": ["TRAIN", "VALIDATION"],

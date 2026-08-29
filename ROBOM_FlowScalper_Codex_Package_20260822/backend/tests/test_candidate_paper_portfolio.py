@@ -387,6 +387,40 @@ def test_tp1_trailing_that_is_not_fee_safe_after_fill_rejects_entry_atomically()
     assert rejection["reason_codes"] == ["TRAILING_ACTIVATION_NOT_FEE_SAFE"]
 
 
+def test_trailing_breakeven_includes_the_preregistered_cost_buffer() -> None:
+    plan = replace(
+        candidate_plan(),
+        shadow_eligible=False,
+        trailing_policy=TrailingPolicy(
+            policy_id="COST_COVERED_BREAKEVEN_BUFFER_V1",
+            model=TrailingModel.ATR_CHANDELIER,
+            activation_rule=TrailingActivationRule.TP1_TRIGGERED,
+            activation_r=Decimal("1.5"),
+            partial_tp_required=True,
+            breakeven_buffer_bps=Decimal("1"),
+            atr_multiplier=Decimal("2.5"),
+        ),
+        trailing_atr=Decimal("1"),
+        trailing_reference_ts_ms=1_000,
+        trailing_reference_interval_seconds=60,
+    )
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    engine.offer((plan,), entries_paused=False)
+    engine.on_book(book(1_250))
+
+    managed = engine.main.position
+    assert managed is not None
+    assert managed.trailing_machine is not None
+    entry = managed.protected.entry_fill.average_price
+    assert managed.trailing_machine.fee_adjusted_breakeven == (
+        entry * (Decimal(1) + Decimal("13") / Decimal(10_000))
+    )
+
+
 def test_main_max_one_and_partial_entry_only_protects_actual_fill() -> None:
     first = candidate_plan()
     second = candidate_plan(strategy_id="CBR_CONTINUATION_V1")

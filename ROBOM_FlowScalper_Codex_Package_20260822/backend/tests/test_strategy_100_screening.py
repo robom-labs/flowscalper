@@ -13,6 +13,7 @@ from backend.app.research import (
     ScreeningTrade,
     TrialScreeningResult,
     build_screening_report,
+    cost_covered_exit_variant_trials,
     point_in_time_volatility_regime,
     preregistered_trials,
 )
@@ -124,6 +125,42 @@ def test_screening_report_keeps_all_trials_and_two_independent_accounts() -> Non
     }
     assert "BASE_BOOTSTRAP_LOWER_BOUND_NOT_POSITIVE" in executed["statistics"]["gate"]["reasons"]
     assert "STRESS_DSR_BELOW_0_95_OR_MISSING" in executed["statistics"]["gate"]["reasons"]
+
+
+def test_screening_report_accepts_a_separate_preregistered_variant_batch() -> None:
+    trials = cost_covered_exit_variant_trials()
+    results = tuple(
+        TrialScreeningResult(
+            trial_id=trial.trial_id,
+            status=ScreeningStatus.FAILED,
+            blocker_codes=(),
+            failure_code="DATASET_WINDOW_INSUFFICIENT_MICRO_SCALP",
+            deterministic_signal_pass=True,
+            no_lookahead_pass=True,
+            recursive_dependency_pass=True,
+            accounts=(),
+        )
+        for trial in trials
+    )
+
+    report = build_screening_report(
+        results,
+        trial_manifest_sha256="a" * 64,
+        dataset_manifest_sha256="b" * 64,
+        validation_fold_returns={},
+        generated_ts_utc="2026-08-29T00:00:00Z",
+        trials=trials,
+        selection_limit=4,
+    )
+
+    assert report["registered_trial_count"] == 4
+    assert report["screening_eligible_count"] == 4
+    assert report["blocked_trial_count"] == 0
+    assert report["planned_independent_account_count"] == 8
+    assert report["blocked_independent_account_count"] == 0
+    assert report["selection_limit"] == 4
+    assert report["status"] == "INCOMPLETE_TRIAL_FAILURES"
+    assert report["profitability_claim"] == "NOT_PROVEN_UNTIL_LATER_GATES"
 
 
 def test_failed_trial_preserves_both_account_diagnostics_without_counting_as_executed() -> None:
