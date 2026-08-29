@@ -692,3 +692,29 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 8. Delete partial output after safety abort, timeout or failure and preserve the exact violation codes in separate machine-readable control evidence. Never interpret an incomplete result as performance evidence.
 9. Keep the 30-opportunity, 70% BASE and STRESS win-rate, positive cost-adjusted expectancy, Profit Factor, drawdown, time-ordered OOS, bootstrap, DSR, PBO and concentration gates unchanged.
 10. Do not overlap the full replay with the in-progress uncontaminated six-hour observer, full build, full ledger scan or deployment. Actual orders, private APIs, credentials, wallets and runtime AI order decisions remain zero.
+
+## Append-only research iteration and survivor evidence Wave
+
+1. Keep every completed, failed and operator- or safety-aborted research attempt in an append-only JSONL catalog. Output filenames are not trial identity.
+2. Define an exact trial by hypothesis, actual parameter fingerprint, frozen dataset members and time range, implementation source bundle and cost model. Block an already completed exact trial before the archive child starts.
+3. Permit an exact retry only after FAILED or ABORTED. Permit later-data refresh only when the end time advances, the original start range is preserved and every prior immutable `run_id:checksum` member remains included.
+4. Count a genuinely different parameter fingerprint as a variant under the same hypothesis. Never count a renamed strategy or output file as a new strategy.
+5. Maintain resolved defects as executable regression contracts. Each contract requires at least one existing test anchor and preserved source tokens, and CI must run the contract validator before the normal suites.
+6. Keep survivor candidates out of ranking until each BASE and STRESS profile has at least 30 unique opportunities and the same opportunity is deduplicated across profiles.
+7. Require at least 70% BASE and STRESS win rates, positive cost-adjusted expectancy, Profit Factor, positive bootstrap lower bounds, DSR at least 0.95, PBO at most 0.20, chronological OOS, parameter robustness, concentration, drawdown, cost and no-lookahead gates.
+8. Keep at most 10 survivor-watchlist rows. A challenger may replace the weakest row only with strict multi-metric dominance; weak rows and their immutable evidence remain RETIRED/OFF or unregistered rather than deleted.
+9. A survivor-watchlist row always remains `FORWARD_LIVE_PUBLIC_MONITORING_REQUIRED`; selection cannot promote a strategy, enable an actual order or fill empty capacity with `NOT_PROVEN` candidates.
+10. Keep actual orders, private APIs, credentials, wallets and runtime AI order decisions at zero throughout research and validation.
+
+## One-pass all-strategy gate and replay resource Wave
+
+1. Apply one preregistered signal gate to all 11 registered strategies in one frozen archive pass when the gate is strategy-independent.
+2. Record per-strategy targeted state, baseline qualified count, accepted count, rejected count and rejection reasons. Require baseline equals accepted plus rejected for every targeted strategy.
+3. Compare baseline and candidate only when commit, strategy implementation version, Registry strategy IDs, frozen dataset bytes and Run members are identical.
+4. Reject a candidate if any strategy's qualified signals or PAPER plans increase, accounting is missing, aggregate totals disagree or BASE/STRESS account sets change.
+5. Reuse the strict single-target comparison for each virtualized strategy result, then require the aggregate result to equal the sum of all per-strategy rows.
+6. Guard archive replay with a nonblocking global resource lock so only one expensive replay can read the frozen dataset at a time. A second process exits before starting a child.
+7. Preserve safety-aborted output as separate control evidence, delete only the unpublished partial result and record FAILED or ABORTED in the append-only trial history.
+8. Do not salvage partial Run 7 data from a 13-Run safety abort. Baseline and candidate must restart from the same committed implementation and complete all frozen Runs.
+9. Do not overlap the new baseline with build, tests, ledger inspection, another replay or deployment. Monitor LIVE event progress and every safety counter while it runs.
+10. A completed comparison is still `NOT_PROVEN` until the 30-opportunity, cost, OOS, bootstrap, DSR, PBO, drawdown, concentration and independent forward gates pass.

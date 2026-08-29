@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from scripts.compare_all_strategy_gate_trials import compare_all_strategy_gate_trials
 from scripts.compare_strategy_gate_trials import compare_strategy_gate_trials
-from scripts.research_runtime_strategy_replay import SIGNAL_GATE_TP1_FEASIBILITY
+from scripts.research_runtime_strategy_replay import (
+    SIGNAL_GATE_TARGET_ALL,
+    SIGNAL_GATE_TP1_FEASIBILITY,
+)
 
 TARGET = "AGGRESSOR_FLOW_CONTINUATION_V1"
 OTHER = "VWAP_EXHAUSTION_REVERSION_V1"
@@ -170,6 +174,54 @@ def _result(
     }
 
 
+def _all_strategy_candidate() -> tuple[dict, dict]:
+    baseline = _result(signal_gate="NONE")
+    candidate = _result(signal_gate=SIGNAL_GATE_TP1_FEASIBILITY)
+    baseline_robustness = baseline["robustness_evaluation"]["strategies"]
+    candidate_robustness = candidate["robustness_evaluation"]["strategies"]
+    baseline_robustness[OTHER] = deepcopy(baseline_robustness[TARGET])
+    candidate_robustness[OTHER] = deepcopy(candidate_robustness[TARGET])
+    candidate["signal_gate_target_strategy_id"] = SIGNAL_GATE_TARGET_ALL
+    candidate["signal_gate_trial_id"] = (
+        f"{SIGNAL_GATE_TP1_FEASIBILITY}:{SIGNAL_GATE_TARGET_ALL}"
+    )
+    for run in baseline["runs"]:
+        run["signal_gate_target_strategy_id"] = TARGET
+        run["signal_gate_trial_id"] = f"NONE:{TARGET}"
+    for run in candidate["runs"]:
+        run["signal_gate_target_strategy_id"] = SIGNAL_GATE_TARGET_ALL
+        run["signal_gate_trial_id"] = (
+            f"{SIGNAL_GATE_TP1_FEASIBILITY}:{SIGNAL_GATE_TARGET_ALL}"
+        )
+        rows = run["strategy_decision_diagnostics"]
+        rows[TARGET].update(
+            {
+                "gate_targeted": True,
+                "gate_baseline_qualified": 10,
+                "gate_accepted_qualified": 6,
+                "gate_rejected_qualified": 4,
+                "gate_rejection_counts": {"TP1_GATE": 4},
+            }
+        )
+        rows[OTHER].update(
+            {
+                "gate_targeted": True,
+                "gate_baseline_qualified": 2,
+                "gate_accepted_qualified": 2,
+                "gate_rejected_qualified": 0,
+                "gate_rejection_counts": {},
+            }
+        )
+        run["signal_gate_diagnostics"] = {
+            "baseline_qualified_count": 12,
+            "accepted_qualified_count": 8,
+            "rejected_qualified_count": 4,
+            "rejection_counts": {"TP1_GATE": 4},
+            "can_create_signals": False,
+        }
+    return baseline, candidate
+
+
 def test_comparison_allows_only_a_historical_forward_shadow_candidate() -> None:
     result = compare_strategy_gate_trials(
         _result(signal_gate="NONE"),
@@ -285,6 +337,58 @@ def test_comparison_invalidates_target_signal_or_plan_growth() -> None:
     assert any(
         str(code).startswith("TARGET_CANDIDATE_PLAN_INCREASED")
         for code in result["integrity_violations"]
+    )
+
+
+def test_all_strategy_comparison_reuses_one_batch_without_promoting() -> None:
+    baseline, candidate = _all_strategy_candidate()
+
+    result = compare_all_strategy_gate_trials(baseline, candidate)
+
+    assert result["status"] == "PASS_COMPARISON_COMPLETE"
+    assert result["same_frozen_input_and_strategy_accounting_passed"] is True
+    assert set(result["strategy_comparisons"]) == {TARGET, OTHER}
+    assert all(
+        row["status"] == "PASS_COMPARISON_COMPLETE"
+        for row in result["strategy_comparisons"].values()
+    )
+    assert result["promotion_allowed"] is False
+    assert result["ranking_eligible_strategy_ids"] == []
+    assert result["profitability_status"] == "NOT_PROVEN"
+    assert result["real_orders_enabled"] is False
+    assert result["auth_required"] is False
+
+
+def test_all_strategy_comparison_rejects_missing_target_or_bad_accounting() -> None:
+    baseline, candidate = _all_strategy_candidate()
+    first = candidate["runs"][0]["strategy_decision_diagnostics"][OTHER]
+    first["gate_targeted"] = False
+    first["gate_rejected_qualified"] = 1
+
+    result = compare_all_strategy_gate_trials(baseline, candidate)
+
+    assert result["status"] == "FAIL_INTEGRITY"
+    assert result["decision"] == "INVALID_DO_NOT_USE"
+    assert any(
+        str(code).startswith("STRATEGY_NOT_GATE_TARGETED")
+        for code in result["shared_integrity_violations"]
+    )
+    assert any(
+        str(code).startswith("STRATEGY_GATE_ACCOUNTING_MISMATCH")
+        for code in result["shared_integrity_violations"]
+    )
+
+
+def test_all_strategy_comparison_rejects_candidate_plan_growth() -> None:
+    baseline, candidate = _all_strategy_candidate()
+    candidate["runs"][0]["candidate_plan_counts"][OTHER] = 3
+
+    result = compare_all_strategy_gate_trials(baseline, candidate)
+
+    assert result["status"] == "FAIL_INTEGRITY"
+    assert any(
+        str(code).startswith("CANDIDATE_PLAN_INCREASED")
+        for code in result["shared_integrity_violations"]
     )
 
 

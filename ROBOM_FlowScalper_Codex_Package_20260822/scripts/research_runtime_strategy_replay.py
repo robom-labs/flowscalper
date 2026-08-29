@@ -42,6 +42,7 @@ from scripts.research_strategy_revision import (
 )
 
 DEFAULT_STRATEGY_ID = "VWAP_EXHAUSTION_REVERSION_V1"
+SIGNAL_GATE_TARGET_ALL = "ALL_REGISTERED_STRATEGIES"
 SIGNAL_GATE_NONE = "NONE"
 SIGNAL_GATE_TP1_FEASIBILITY = "TP1_FEASIBILITY_CONFLUENCE_V1"
 SIGNAL_GATES = (SIGNAL_GATE_NONE, SIGNAL_GATE_TP1_FEASIBILITY)
@@ -286,6 +287,18 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
     strategy_rejection_counts: dict[str, Counter[str]] = field(
         default_factory=lambda: defaultdict(Counter)
     )
+    strategy_gate_baseline_qualified_counts: Counter[str] = field(
+        default_factory=Counter
+    )
+    strategy_gate_accepted_qualified_counts: Counter[str] = field(
+        default_factory=Counter
+    )
+    strategy_gate_rejected_qualified_counts: Counter[str] = field(
+        default_factory=Counter
+    )
+    strategy_gate_rejection_counts: dict[str, Counter[str]] = field(
+        default_factory=lambda: defaultdict(Counter)
+    )
     _mid_history: dict[str, deque[tuple[int, float]]] = field(
         default_factory=lambda: defaultdict(deque),
         repr=False,
@@ -330,16 +343,18 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
         recent_range_bps = self._recent_range_bps(snapshot)
         filtered: list[EvaluatedSignal] = []
         for signal in signals:
+            strategy_id = signal.decision.strategy_id
             if (
-                signal.decision.strategy_id != self.target_strategy_id
+                not self._is_gate_target(strategy_id)
                 or signal.decision.status is not CandidateStatus.QUALIFIED
             ):
                 filtered.append(signal)
                 continue
             self.baseline_qualified_count += 1
+            self.strategy_gate_baseline_qualified_counts[strategy_id] += 1
             rejections: tuple[str, ...] = ()
             if self.signal_gate == SIGNAL_GATE_TP1_FEASIBILITY:
-                descriptor = registry.descriptor(self.target_strategy_id)
+                descriptor = registry.descriptor(strategy_id)
                 rejections = tp1_feasibility_gate_rejections(
                     signal,
                     snapshot,
@@ -348,10 +363,13 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
                 )
             if not rejections:
                 self.accepted_qualified_count += 1
+                self.strategy_gate_accepted_qualified_counts[strategy_id] += 1
                 filtered.append(signal)
                 continue
             self.rejected_qualified_count += 1
             self.rejection_counts.update(rejections)
+            self.strategy_gate_rejected_qualified_counts[strategy_id] += 1
+            self.strategy_gate_rejection_counts[strategy_id].update(rejections)
             filtered.append(
                 replace(
                     signal,
@@ -395,6 +413,19 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
                     "post_gate_qualified": self.strategy_post_gate_qualified_counts[
                         strategy_id
                     ],
+                    "gate_targeted": self._is_gate_target(strategy_id),
+                    "gate_baseline_qualified": (
+                        self.strategy_gate_baseline_qualified_counts[strategy_id]
+                    ),
+                    "gate_accepted_qualified": (
+                        self.strategy_gate_accepted_qualified_counts[strategy_id]
+                    ),
+                    "gate_rejected_qualified": (
+                        self.strategy_gate_rejected_qualified_counts[strategy_id]
+                    ),
+                    "gate_rejection_counts": dict(
+                        sorted(self.strategy_gate_rejection_counts[strategy_id].items())
+                    ),
                     "rejection_counts": dict(
                         sorted(self.strategy_rejection_counts[strategy_id].items())
                     ),
@@ -420,6 +451,9 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
                 for strategy_id in strategy_ids
             },
         }
+
+    def _is_gate_target(self, strategy_id: str) -> bool:
+        return self.target_strategy_id in (strategy_id, SIGNAL_GATE_TARGET_ALL)
 
     def _vwap_reentry_confirmation_aligned(
         self,
@@ -580,8 +614,11 @@ def _replay_archive_run_for_strategies(
     if maximum_events is not None and maximum_events <= 0:
         raise ValueError("최대 이벤트 수는 양수여야 합니다.")
     selected_strategy_ids = _validated_strategy_ids(strategy_ids)
-    if signal_gate_target_strategy_id not in selected_strategy_ids:
+    all_strategy_gate = signal_gate_target_strategy_id == SIGNAL_GATE_TARGET_ALL
+    if not all_strategy_gate and signal_gate_target_strategy_id not in selected_strategy_ids:
         raise ValueError("연구 신호 gate 대상 전략이 선택 전략에 없습니다.")
+    if all_strategy_gate and selected_strategy_ids != StrategyRegistry().strategy_ids:
+        raise ValueError("전체 전략 연구 gate는 등록 전략 전체 replay에서만 사용할 수 있습니다.")
     if signal_gate not in SIGNAL_GATES:
         raise ValueError(f"알 수 없는 연구 신호 gate입니다: {signal_gate}")
     if strategy_logic not in STRATEGY_LOGICS:
@@ -672,11 +709,16 @@ def _replay_archive_run_for_strategies(
         for strategy_id in selected_strategy_ids
     }
     status = runtime.status()
-    target_setting = runtime.strategy_registry.setting(signal_gate_target_strategy_id)
+    target_setting = (
+        None
+        if all_strategy_gate
+        else runtime.strategy_registry.setting(signal_gate_target_strategy_id)
+    )
     enabled_other_strategies = [
         current_id
         for current_id in runtime.strategy_registry.strategy_ids
-        if current_id != signal_gate_target_strategy_id
+        if not all_strategy_gate
+        and current_id != signal_gate_target_strategy_id
         and runtime.strategy_registry.setting(current_id).mode is not StrategyMode.OFF
     ]
     strategy_modes = {
@@ -716,7 +758,9 @@ def _replay_archive_run_for_strategies(
         "first_receive_ts_ms": first_receive_ts_ms,
         "last_receive_ts_ms": last_receive_ts_ms,
         "event_type_counts": dict(sorted(event_types.items())),
-        "strategy_mode": target_setting.mode.value,
+        "strategy_mode": (
+            "MULTI_STRATEGY" if target_setting is None else target_setting.mode.value
+        ),
         "strategy_modes": strategy_modes,
         "source_strategy_settings": source_strategy_settings,
         "research_shadow_reactivation_is_ephemeral": True,
@@ -894,21 +938,40 @@ def _summary(
     gate_accepted_qualified_count = 0
     gate_rejected_qualified_count = 0
     for run in runs:
-        if run.get("signal_gate_target_strategy_id", strategy_id) != strategy_id:
+        run_gate_target = run.get("signal_gate_target_strategy_id", strategy_id)
+        if run_gate_target not in (strategy_id, SIGNAL_GATE_TARGET_ALL):
             continue
         diagnostics = run.get("signal_gate_diagnostics")
         if not isinstance(diagnostics, Mapping):
             continue
-        gate_baseline_qualified_count += int(
-            str(diagnostics.get("baseline_qualified_count", 0))
+        strategy_diagnostics = diagnostics.get("strategies")
+        strategy_gate_diagnostics = (
+            strategy_diagnostics.get(strategy_id)
+            if isinstance(strategy_diagnostics, Mapping)
+            else None
         )
-        gate_accepted_qualified_count += int(
-            str(diagnostics.get("accepted_qualified_count", 0))
-        )
-        gate_rejected_qualified_count += int(
-            str(diagnostics.get("rejected_qualified_count", 0))
-        )
-        rejection_counts = diagnostics.get("rejection_counts")
+        if isinstance(strategy_gate_diagnostics, Mapping):
+            gate_baseline_qualified_count += int(
+                str(strategy_gate_diagnostics.get("gate_baseline_qualified", 0))
+            )
+            gate_accepted_qualified_count += int(
+                str(strategy_gate_diagnostics.get("gate_accepted_qualified", 0))
+            )
+            gate_rejected_qualified_count += int(
+                str(strategy_gate_diagnostics.get("gate_rejected_qualified", 0))
+            )
+            rejection_counts = strategy_gate_diagnostics.get("gate_rejection_counts")
+        else:
+            gate_baseline_qualified_count += int(
+                str(diagnostics.get("baseline_qualified_count", 0))
+            )
+            gate_accepted_qualified_count += int(
+                str(diagnostics.get("accepted_qualified_count", 0))
+            )
+            gate_rejected_qualified_count += int(
+                str(diagnostics.get("rejected_qualified_count", 0))
+            )
+            rejection_counts = diagnostics.get("rejection_counts")
         if isinstance(rejection_counts, Mapping):
             gate_rejection_counts.update(
                 {
@@ -1595,9 +1658,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
     parser.add_argument(
         "--signal-gate-target-strategy-id",
-        choices=StrategyRegistry().strategy_ids,
+        choices=(*StrategyRegistry().strategy_ids, SIGNAL_GATE_TARGET_ALL),
         help=(
-            "전체 전략 replay에서 연구 gate를 적용할 한 전략입니다. "
+            "전체 전략 replay에서 연구 gate를 적용할 한 전략 또는 등록 전략 전체입니다. "
             "한 전략 replay에서는 --strategy-id와 같아야 합니다."
         ),
     )
@@ -1660,6 +1723,8 @@ def main() -> None:
             maximum_events=args.maximum_events,
         )
     else:
+        if args.signal_gate_target_strategy_id == SIGNAL_GATE_TARGET_ALL:
+            raise ValueError("전체 전략 연구 gate는 --all-strategies에서만 사용할 수 있습니다.")
         if (
             args.signal_gate_target_strategy_id is not None
             and args.signal_gate_target_strategy_id != args.strategy_id

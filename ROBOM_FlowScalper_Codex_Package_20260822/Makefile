@@ -11,7 +11,7 @@ SIHO_ASR_DEVICE ?= cpu
 SIHO_ASR_THREADS ?= 4
 
 .PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke
-.PHONY: security-scan repo-hygiene soak-30m soak-6h soak-24h
+.PHONY: security-scan repo-hygiene regression-contracts soak-30m soak-6h soak-24h
 .PHONY: service-soak-30m service-soak-6h service-soak-24h
 .PHONY: ledger-verify-snapshot ledger-verify-maintenance package-release clean-data-safe
 .PHONY: research-siho-video research-siho-current-strategy research-100-candidates
@@ -60,6 +60,9 @@ security-scan:
 
 repo-hygiene:
 	$(UV) run python scripts/check_repository_hygiene.py
+
+regression-contracts:
+	$(UV) run python scripts/verify_regression_contracts.py
 
 research-siho-video:
 	$(UV) run python scripts/research_siho_video_index.py --hydrate --collect-captions

@@ -3239,12 +3239,14 @@ TP1·TP2·SL·Governor와 실제 주문 경로는 바꾸지 않았다. 결정은
 | 60초 HTTP·화면 부하 | `PASS_SHORT_SCOPE` | 60회 평균/최대 12.585/49.556ms, event +3,923·전략평가 +16,356, build +60·HTTP/WS serialize +120, loop 500ms 초과·critical·fault·buffer drop 증가 0 |
 | 수정 후 5분 | `PASS_SHORT_SCOPE` | 300.021초·61표본, probe 오류 0, event +19,094·전략평가 +78,048, queue 최대 1, 처리/체결 p95 최대 34.640/51.182ms, loop 최대 203ms·500ms 초과 0, flush/checkpoint 최대 1.133/0.774초 |
 | 실제 브라우저 | `PASS` | 재로드 후 `시작 전`에서 3초 안에 `작동 중`, 표시 p95 31ms. 기록 25건, ETHUSDT replay 13 events의 진입 7/13·종료 13/13·순손익 -1.493 USDT, 전략 6 감시·5 퇴역·문제 0, 30건 전 비교 금지, 실제주문 경로 0, console warning/error 0을 직접 확인 |
-| 수정 후 6시간·24시간 | `NOT_RUN` | 새 release에서 실제 시간을 아직 채우지 않음. 수정 전 6시간 FAIL이나 5분 PASS로 대체하지 않음 |
+| 수정 후 6시간 | `FAIL` | 21,600.016초·721표본, event +1,430,678·평가 +5,643,228은 전진했지만 queue 최대 533·loop 최대 1,505ms·500ms 초과 13회·flush/checkpoint 최대 34.418/51.049초로 실패함 |
+| 수정 후 24시간 | `NOT_RUN` | 6시간 FAIL 뒤 실제 24시간을 시작하지 않음 |
 | 원장 전수검사 | `NOT_RUN` | 활성 writer에 full quick-check를 실행하지 않음. 기존 닫힌 사본 유지관리 경계 유지 |
 | 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 현재버전 BASE/STRESS 13/12건, 순손익 -18.1140910600/-22.4771721880 USDT, 새 5분 표본 증가 0. 30건 전 순위·승격 없음 |
 
 원시 근거는 `evidence/WAVE104_RUNNING_SERVICE_SOAK_6H.json`,
-`evidence/WAVE104_POST_DASHBOARD_CACHE_CLEAN_5M.json`과
+`evidence/WAVE104_POST_DASHBOARD_CACHE_CLEAN_5M.json`,
+`evidence/WAVE104_POST_DASHBOARD_CACHE_CLEAN_6H.json`과
 `evidence/WAVE104_DASHBOARD_CACHE_AND_BROWSER_QA.json`에 보존했다.
 
 구현·문서·원시 증거는 GitHub main
@@ -3254,4 +3256,67 @@ TP1·TP2·SL·Governor와 실제 주문 경로는 바꾸지 않았다. 결정은
 Release는 만들지 않았다.
 
 현 수용상태는
-`DASHBOARD_CACHE_ACTUAL_BROWSER_PASS_5M_PASS_BASELINE_6H_FAIL_POSTFIX_6H_24H_NOT_RUN_LEDGER_FULL_CHECK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+`DASHBOARD_CACHE_ACTUAL_BROWSER_PASS_5M_PASS_BASELINE_6H_FAIL_POSTFIX_6H_FAIL_24H_NOT_RUN_LEDGER_FULL_CHECK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 79. Wave 110 누적 회귀·중복방지·전략 생존연구 증거
+
+업그레이드할 때 이전에 해결한 시작·기록·replay·1~3초 종료·시간동기화·대시보드 지연·
+PAPER 안전 결함이 되살아나는 반복을 막기 위해 15개 누적 회귀계약을 기계판독 manifest로
+고정했다. 각 계약은 실제 테스트 파일과 test token을 가져야 하며 CI가 정상 테스트 전에
+이를 검증한다. 기존 Run·거래·판단·실패전략은 삭제하지 않는다.
+
+같은 전략시험을 파일명만 바꿔 반복하는 것을 막는 append-only 이력을 추가했다. 시험 정체성은
+가설·실제 파라미터·동결 데이터와 `run_id:checksum` 구성원·구현 source bundle·비용모델로
+고정한다. 완료된 같은 시험은 archive child 전에 차단하고, 중단·실패의 정확한 재시도와
+과거 범위를 모두 포함하는 더 늦은 새 데이터, 실제 값이 다른 파라미터 변형만 구분해 허용한다.
+
+생존후보는 BASE·STRESS 각각 30개 고유 기회, 두 profile 모두 승률 70% 이상, 비용후 양의
+기대값·Profit Factor·양의 bootstrap 하한·DSR·PBO·시간순 OOS·파라미터 강건성·집중도·
+drawdown·no-lookahead를 모두 통과해야 한다. 최대 10개만 유지하고 challenger는 기존 최약
+후보보다 여러 지표에서 엄격히 우월할 때만 교체한다. 이 감시목록은 ACTIVE 승격이나 실제
+주문을 절대 수행하지 않는다.
+
+11개 Registry 전략에 같은 TP1 feasibility gate를 한 번의 archive 통과로 적용하는 경로와
+전략별 baseline·accepted·rejected 회계를 구현했다. 비교기는 같은 commit·전략버전·Registry·
+동결 byte·Run 구성만 허용하고 신호나 계획이 늘거나 합계가 맞지 않으면 실패한다. 동시에
+전역 자원잠금으로 archive 연구 리플레이 한 개만 실행되게 했다.
+
+첫 13-Run `NONE` 기준선은 이전 worktree 코드로 4,394.737초 동안 Run 7까지 진행하며 LIVE
+event가 289,502건 전진했지만, 새 event-loop 500ms 초과가 1회 발생해 740ms에서 즉시
+`ABORTED_RUNTIME_SAFETY`로 종료됐다. child는 SIGTERM 됐고 부분 결과는 제거됐으며 완성 결과
+파일은 없다. 이 시도는 수익성·전략 비교 증거로 사용하지 않는다. 별도 200-event smoke도
+91.033초에 운영자가 중단했고 append-only 이력에 `ABORTED`로 남겼다.
+
+그보다 앞선 Wave 109의 13-Run 시도도 3,389.672초·event +237,500 뒤 새 591ms loop 지연을
+감지해 안전중단됐다. 뒤이은 원인분리 5분과 계획회전 포함 12분, 현재 배포 뒤 5분은 각각
+신규 500ms 초과 0·비계획 재연결/gap/drop/fault 0으로 PASS했지만 짧은 회복구간일 뿐이다.
+두 장기 중단 모두 같은 전략 결과로 합치거나 부분 표본을 살리지 않는다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| backend 전체 | `PASS` | 730건 16.28초 |
+| frontend 전체 | `PASS` | Vitest 14 files·76건 |
+| 정적·빌드 | `PASS_WITH_EXISTING_WARNING` | Ruff·mypy 108 source·ESLint·TypeScript·Vite·PAPER build safety PASS. 기존 536.99kB chunk 경고는 남음 |
+| 반응형 fixture | `PASS` | fixture backend 22건, Playwright desktop·tablet·mobile 3건 |
+| 보안·저장소 | `PASS` | security 144 source·실제주문 경로 false·repository hygiene PASS |
+| 누적 회귀계약 | `PASS` | 15 contracts·30 anchors·24 files·59 tokens, 최소 기회 30·생존후보 최대 10·수익성 기본 `NOT_PROVEN` |
+| archive replay 단일실행 | `PASS` | 실제 교차 process 두 번째 실행이 약 21ms에 child 시작 전 `BLOCKED_RESEARCH_RESOURCE_BUSY`로 종료됨 |
+| 13-Run 기준선 | `ABORTED_RUNTIME_SAFETY` | 4,394.737초·event +289,502·Run 7 중 740ms loop 지연 1회, 결과 미발행·partial 제거 |
+| 선행 13-Run 시도 | `ABORTED_RUNTIME_SAFETY` | 3,389.672초·event +237,500 뒤 591ms loop 지연 1회, 결과 미발행·partial 제거 |
+| 중단 후 원인분리 | `PASS_SHORT_SCOPE` | 5분 event +21,018·queue 최대 6, 계획회전 포함 12분 event +51,536·queue 최대 19, 배포 뒤 5분 event +19,702·queue 최대 8. 세 구간 모두 신규 500ms 초과·비계획 reconnect·gap·drop·fault 0 |
+| 현재 LIVE 서비스 | `PASS_WITH_HISTORICAL_INCIDENT` | 같은 `run-2b7135a972dd`, RUNNING·LIVE 공개시장·PAPER·11전략·22계좌·포지션 0·비계획 reconnect/gap/resync/drop/fault 0. 누적 740ms 사건 1회는 보존 |
+| 외부 연구 중복정리 | `PASS_RESEARCH_TRIAGE_ONLY` | Registry 복제 0, 비용지배 시험 5개 사전회피, OFI dollar-volume 가설 1개는 데이터계약 선행·미등록 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 현재버전 30개 고유 기회 미만, 새 기준선·후보 비교 미완료, 독립 forward·6h·24h `NOT_RUN` |
+
+원시 근거는 `evidence/WAVE110_RESEARCH_ITERATION_GUARD_QA.json`,
+`evidence/WAVE110_SHARED_NONE_13RUN_STRATEGY_LEAGUE_LIVE_GUARD.json`,
+`evidence/WAVE110_TRIAL_HISTORY_SMOKE_LIVE_GUARD.json`,
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`과
+`evidence/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION.json`,
+`evidence/WAVE109_SHARED_NONE_13RUN_STRATEGY_LEAGUE_LIVE_GUARD.json`,
+`evidence/WAVE109_PHASE_ATTRIBUTION_CLEAN_5M.json`,
+`evidence/WAVE109_POST_ABORT_ROTATION_ISOLATION_12M.json`과
+`evidence/WAVE110_POST_DEPLOY_DASHBOARD_COMPACTION_5M.json`에 보존했다.
+
+현 수용상태는
+`REGRESSION_CONTRACT_PASS_RESEARCH_DEDUP_PASS_ONE_PASS_GATE_PASS_LONG_BASELINE_ABORTED_RETRY_REQUIRED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

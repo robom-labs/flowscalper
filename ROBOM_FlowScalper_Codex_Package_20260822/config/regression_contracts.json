@@ -1,0 +1,339 @@
+{
+  "schema_version": 1,
+  "policy": {
+    "resolved_defects_are_append_only": true,
+    "minimum_unique_opportunities_before_ranking": 30,
+    "maximum_survivor_watchlist_size": 10,
+    "unproven_candidates_must_not_fill_watchlist": true,
+    "watchlist_selection_does_not_promote": true,
+    "historical_trade_and_decision_records_must_be_preserved": true,
+    "replacement_must_remove_obsolete_code_copy_css_and_tests": true,
+    "profitability_status_without_all_gates": "NOT_PROVEN"
+  },
+  "required_commands": [
+    "make regression-contracts",
+    "make test",
+    "make lint",
+    "make typecheck",
+    "make build",
+    "make e2e",
+    "make security-scan",
+    "make repo-hygiene"
+  ],
+  "contracts": [
+    {
+      "contract_id": "START_OPERATION_TRUTH",
+      "symptom_ko": "시작 버튼을 눌러도 작동 여부를 알 수 없거나 같은 요청이 중복 실행된다.",
+      "fixed_by": "ADR-044 and asynchronous control operations",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_control_operations.py",
+          "contains": [
+            "test_slow_start_live_returns_202_and_deduplicates",
+            "test_start_live_restarts_stopped_supervisor_without_creating_new_run"
+          ]
+        },
+        {
+          "path": "frontend/tests/controlUi.test.tsx",
+          "contains": [
+            "posts start-live once, renders 202 operation updates and cancels it"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "HISTORY_REPLAY_SCOPE_VISIBILITY",
+      "symptom_ko": "원장에는 거래가 있는데 현재 Run 또는 계좌 필터 때문에 거래기록과 다시보기가 빈 화면으로 보인다.",
+      "fixed_by": "ADR-058 and Wave 107 history replay audit",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_v02_storage_market_replay.py",
+          "contains": [
+            "test_history_api_separates_main_league_profile_and_version_scope",
+            "test_live_history_uses_warmed_trade_cache_without_rescanning_active_ledger"
+          ]
+        },
+        {
+          "path": "frontend/tests/HistoryPage.test.tsx",
+          "contains": [
+            "shows all PAPER accounts by default with a visible loading and count summary"
+          ]
+        },
+        {
+          "path": "frontend/e2e/dashboard.spec.ts",
+          "contains": [
+            "getByRole('button', { name: '다시보기' }).click()"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "REPLAY_CURSOR_IMMEDIATE",
+      "symptom_ko": "진입 또는 실제 종료 버튼을 눌러도 재생 커서와 비용·상태 표시가 즉시 바뀌지 않는다.",
+      "fixed_by": "Wave 110 deterministic replay seek",
+      "test_anchors": [
+        {
+          "path": "frontend/tests/ReplayPage.test.tsx",
+          "contains": [
+            "shows allocated entry and exit fees at the matching replay stage",
+            "fireEvent.click(screen.getByRole('button', { name: '진입' }))",
+            "fireEvent.click(screen.getByRole('button', { name: '실제 종료' }))"
+          ]
+        },
+        {
+          "path": "frontend/e2e/dashboard.spec.ts",
+          "contains": [
+            "focus-replay-range input",
+            "getByRole('button', { name: '처음', exact: true }).click()"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "EARLY_EDGE_DECAY_BLOCK",
+      "symptom_ko": "진입 뒤 일반적인 근거 약화만으로 1~3초 안에 비용을 확정하며 종료한다.",
+      "fixed_by": "ADR-084 and Wave 102 position management contract",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_position_management.py",
+          "contains": [
+            "test_edge_decay_cannot_exit_during_thirty_second_grace",
+            "test_edge_decay_exits_only_after_grace_and_multi_signal_persistence",
+            "test_edge_decay_does_not_crystallize_costs_while_price_is_flat",
+            "test_edge_decay_requires_price_loss_to_exceed_the_round_trip_cost_band"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "VENUE_CLOCK_MONOTONIC",
+      "symptom_ko": "컴퓨터 벽시계 변화가 거래소 지연과 화면 시간을 왜곡한다.",
+      "fixed_by": "venue clock monotonic calibration",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_time_sync.py",
+          "contains": [
+            "test_clock_calibration_uses_lowest_monotonic_round_trip_sample",
+            "test_monotonic_calibration_ignores_host_wall_clock_step"
+          ]
+        },
+        {
+          "path": "backend/tests/test_persistent_supervisor.py",
+          "contains": [
+            "test_supervisor_clock_calibration_survives_host_wall_clock_step"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "LIVE_REPLAY_AUTO_ABORT",
+      "symptom_ko": "대형 저장 리플레이가 현재 공개시장 처리와 PAPER 안전 경로를 느리게 만든다.",
+      "fixed_by": "ADR-059 and ADR-096",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_replay_live_safety.py",
+          "contains": [
+            "test_replay_guard_rejects_stall_lag_and_new_critical_incident",
+            "test_live_safety_cancels_replay_worker_on_critical_lag"
+          ]
+        },
+        {
+          "path": "backend/tests/test_live_safe_strategy_league_runner.py",
+          "contains": [
+            "test_result_validation_requires_paper_safety_and_current_archive_pass",
+            "test_live_safe_runner_allows_only_one_archive_replay_process"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "DASHBOARD_BOUNDED_PROJECTION",
+      "symptom_ko": "대시보드가 분석용 전체 통계와 이벤트를 매 갱신마다 직렬화해 화면과 LIVE 처리를 버벅이게 만든다.",
+      "fixed_by": "ADR-075, ADR-086 and Wave 110 compact projection",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_fixture_app.py",
+          "contains": [
+            "test_dashboard_snapshot_and_json_are_shared_within_one_refresh",
+            "test_dashboard_compacts_window_metrics_without_changing_analytics_api"
+          ]
+        },
+        {
+          "path": "backend/tests/test_v02_operational_safety.py",
+          "contains": [
+            "test_live_dashboard_bounds_event_projection",
+            "test_live_dashboard_never_waits_for_sqlite_writer_lock"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "PERSISTENT_SUPERVISOR_RECOVERY",
+      "symptom_ko": "일회성 연결 또는 소비자 예외 뒤 공개시장 수신이 조용히 멈추거나 대기열이 무한히 커진다.",
+      "fixed_by": "persistent public supervisor and recoverable consumer",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_persistent_supervisor.py",
+          "contains": [
+            "test_supervisor_remains_running_after_first_verified_event",
+            "test_supervisor_reconnects_and_bounds_overload_queue",
+            "test_consumer_delivery_failure_locks_then_recovers_without_task_death"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "STRATEGY_ACCOUNT_ISOLATION",
+      "symptom_ko": "전략이나 BASE·STRESS 계좌 사이에서 자산·손실·비용·포지션 상태가 섞인다.",
+      "fixed_by": "Strategy Registry independent PAPER accounts",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_strategy_registry_shadow.py",
+          "contains": [
+            "test_shadow_accounts_are_independent_by_strategy_and_cost_profile"
+          ]
+        },
+        {
+          "path": "backend/tests/test_strategy_league_portfolio.py",
+          "contains": [
+            "test_account_loss_and_cooldown_do_not_leak_to_another_account",
+            "test_system_entry_lock_blocks_main_and_all_league_accounts"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "PAPER_ZERO_REAL_ORDER_PATH",
+      "symptom_ko": "업그레이드가 실제 주문·인증·private API 경로를 다시 만들거나 요구한다.",
+      "fixed_by": "repository PAPER safety invariant",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_safety.py",
+          "contains": [
+            "test_runtime_mode_has_no_real_trading_member",
+            "test_runtime_source_has_no_exchange_execution_routes"
+          ]
+        },
+        {
+          "path": "scripts/assert_build_safety.py",
+          "contains": [
+            "REAL_TRADING"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "RUN_DATA_APPEND_ONLY",
+      "symptom_ko": "업그레이드나 새 Run 시작이 기존 거래·판단·시장데이터를 지우거나 현재 성과로 덮는다.",
+      "fixed_by": "run-scoped immutable ledger and safe data cleanup policy",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_storage_replay_analytics.py",
+          "contains": [
+            "test_completed_trade_accounting_and_finalized_run_are_immutable"
+          ]
+        },
+        {
+          "path": "backend/tests/test_fixture_app.py",
+          "contains": [
+            "test_dashboard_controls_preserve_run_history",
+            "test_persistent_run_reset_finalizes_old_run_without_deleting_history"
+          ]
+        },
+        {
+          "path": "Makefile",
+          "contains": [
+            "기존 Run 데이터는 자동 삭제하지 않습니다"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "RESEARCH_NO_DUPLICATE_RANKING",
+      "symptom_ko": "같은 시장기회를 BASE·STRESS나 유사 전략에서 여러 건으로 세어 표본과 승률을 부풀린다.",
+      "fixed_by": "ADR-087, ADR-091 and opportunity deduplication",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_runtime_strategy_research_replay.py",
+          "contains": [
+            "test_replay_summary_deduplicates_profiles_before_the_30_opportunity_gate",
+            "test_replay_summary_never_promotes_on_win_rate_without_robustness_gates"
+          ]
+        },
+        {
+          "path": "backend/tests/test_research_protocol.py",
+          "contains": [
+            "test_manifest_is_deterministic_complete_and_paper_only"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "RESEARCH_TRIAL_HISTORY_DEDUPLICATION",
+      "symptom_ko": "이미 끝난 같은 전략·파라미터·데이터 시험을 파일명만 바꿔 반복하거나 과거구간을 다시 골라 우연한 승자를 만든다.",
+      "fixed_by": "ADR-097 append-only research trial history",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_research_trial_history.py",
+          "contains": [
+            "test_completed_exact_trial_is_blocked_even_with_a_new_output_name",
+            "test_same_candidate_can_refresh_only_with_strictly_later_data",
+            "test_later_dataset_cannot_drop_an_existing_immutable_run",
+            "test_changed_parameters_are_counted_as_a_variant_not_a_duplicate"
+          ]
+        },
+        {
+          "path": "backend/tests/test_live_safe_strategy_league_runner.py",
+          "contains": [
+            "test_live_safe_runner_persists_append_only_trial_history",
+            "test_none_gate_history_identity_ignores_an_inactive_target"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "SURVIVOR_WATCHLIST_EVIDENCE_GATE",
+      "symptom_ko": "30건 미만이나 비용·강건성 실패 후보로 10칸을 억지로 채우거나 작은 승률 흔들림마다 기존 후보를 지우고 교체한다.",
+      "fixed_by": "ADR-098 and deterministic survivor watchlist",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_survivor_watchlist.py",
+          "contains": [
+            "test_watchlist_never_fills_capacity_with_small_or_weak_samples",
+            "test_watchlist_keeps_at_most_ten_and_deduplicates_identical_parameters",
+            "test_challenger_replaces_weakest_only_with_strict_multi_metric_dominance",
+            "test_watchlist_output_cannot_promote_or_enable_real_orders",
+            "test_parameter_fingerprint_ignores_key_order_but_changes_with_actual_value"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "ONE_PASS_ALL_STRATEGY_GATE",
+      "symptom_ko": "같은 동결 시장이벤트와 같은 gate를 전략마다 다시 읽어 연구가 불필요하게 느려지고 비교 입력이 달라진다.",
+      "fixed_by": "ADR-099 and one-pass all-registered-strategy gate targeting",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_runtime_strategy_research_replay.py",
+          "contains": [
+            "test_runtime_strategy_league_replay_can_target_tp1_gate_to_all_strategies"
+          ]
+        },
+        {
+          "path": "backend/tests/test_live_safe_strategy_league_runner.py",
+          "contains": [
+            "test_research_command_accepts_all_strategy_gate_target"
+          ]
+        },
+        {
+          "path": "backend/tests/test_strategy_gate_trial_comparison.py",
+          "contains": [
+            "test_all_strategy_comparison_reuses_one_batch_without_promoting",
+            "test_all_strategy_comparison_rejects_missing_target_or_bad_accounting",
+            "test_all_strategy_comparison_rejects_candidate_plan_growth"
+          ]
+        }
+      ]
+    }
+  ]
+}

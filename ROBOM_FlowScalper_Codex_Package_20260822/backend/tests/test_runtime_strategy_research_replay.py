@@ -25,6 +25,7 @@ from backend.tests.test_strategy_league_signals import (
     only_strategy,
 )
 from scripts.research_runtime_strategy_replay import (
+    SIGNAL_GATE_TARGET_ALL,
     SIGNAL_GATE_TP1_FEASIBILITY,
     STRATEGY_LOGIC_CURRENT,
     STRATEGY_LOGIC_WAVE102,
@@ -371,6 +372,45 @@ def test_runtime_strategy_league_replay_targets_tp1_gate_to_aggressor_only(
         assert candidate["candidate_plan_counts"][strategy_id] == baseline[
             "candidate_plan_counts"
         ][strategy_id]
+
+
+def test_runtime_strategy_league_replay_can_target_tp1_gate_to_all_strategies(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-research-all-strategy-gate-test"
+    _write_events(
+        tmp_path,
+        [
+            _event(run_id, event_id="depth-1", ts_ms=1_000, event_type="DEPTH_UPDATE"),
+            _event(run_id, event_id="trade-1", ts_ms=1_100, event_type="TRADE"),
+            _event(run_id, event_id="depth-2", ts_ms=1_500, event_type="DEPTH_UPDATE"),
+        ],
+    )
+
+    candidate = replay_strategy_league_archive_run(
+        "RUN-RESEARCH-ALL-STRATEGY-GATE-CANDIDATE",
+        tmp_path,
+        signal_gate_target_strategy_id=SIGNAL_GATE_TARGET_ALL,
+        signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+    )
+
+    assert candidate["signal_gate_target_strategy_id"] == SIGNAL_GATE_TARGET_ALL
+    assert candidate["signal_gate_trial_id"] == (
+        f"{SIGNAL_GATE_TP1_FEASIBILITY}:{SIGNAL_GATE_TARGET_ALL}"
+    )
+    assert candidate["strategy_mode"] == "MULTI_STRATEGY"
+    diagnostics = candidate["strategy_decision_diagnostics"]
+    assert set(diagnostics) == set(StrategyRegistry().strategy_ids)
+    assert all(row["gate_targeted"] is True for row in diagnostics.values())
+    assert all(
+        int(row["gate_accepted_qualified"])
+        + int(row["gate_rejected_qualified"])
+        == int(row["gate_baseline_qualified"])
+        for row in diagnostics.values()
+    )
+    assert candidate["real_orders_enabled"] is False
+    assert candidate["auth_required"] is False
+    assert candidate["ledger_attached"] is False
 
 
 def test_runtime_strategy_replay_rejects_unknown_strategy_and_bad_limit(

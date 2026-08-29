@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import fcntl
+import hashlib
 import json
 import os
 import sys
@@ -15,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from backend.app.build_identity import git_commit
 from backend.app.replay.safety import (
     ReplayLiveSafetySnapshot,
     ReplayLiveSafetyThresholds,
@@ -22,11 +25,19 @@ from backend.app.replay.safety import (
     replay_live_safety_snapshot_from_dashboard,
     run_with_live_safety,
 )
+from backend.app.research.survivor_watchlist import parameter_fingerprint
+from backend.app.research.trial_history import (
+    ResearchTrialProposal,
+    ResearchTrialRecord,
+    ResearchTrialStatus,
+    evaluate_trial_proposal,
+)
 from backend.app.storage.integrity import fetch_dashboard_payload
 from backend.app.strategies.registry import StrategyRegistry
 from scripts.research_runtime_strategy_replay import (
     DEFAULT_STRATEGY_ID,
     SIGNAL_GATE_NONE,
+    SIGNAL_GATE_TARGET_ALL,
     SIGNAL_GATES,
     STRATEGY_LOGIC_CURRENT,
     STRATEGY_LOGICS,
@@ -39,6 +50,25 @@ _SINGLE_THREAD_ENVIRONMENT = (
     "NUMEXPR_NUM_THREADS",
     "VECLIB_MAXIMUM_THREADS",
 )
+_IMPLEMENTATION_BOUND_PATHS = (
+    "backend/app/candidates",
+    "backend/app/costing",
+    "backend/app/execution",
+    "backend/app/features",
+    "backend/app/positions",
+    "backend/app/regime",
+    "backend/app/risk",
+    "backend/app/strategies",
+    "scripts/research_runtime_strategy_replay.py",
+)
+
+
+class ResearchTrialHistoryBlocked(Exception):
+    """완료된 동일 연구시험을 다시 실행하려 할 때 내부 제어흐름으로 사용한다."""
+
+
+class ResearchReplayResourceBusy(Exception):
+    """다른 archive 연구 리플레이가 이미 자원을 점유할 때 사용한다."""
 
 
 @dataclass(slots=True)
@@ -108,6 +138,196 @@ def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _canonical_hash(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _source_bundle_fingerprint(project_root: Path) -> str:
+    rows: list[dict[str, str]] = []
+    for relative in _IMPLEMENTATION_BOUND_PATHS:
+        path = project_root / relative
+        sources = sorted(path.rglob("*.py")) if path.is_dir() else [path]
+        for source in sources:
+            if not source.is_file():
+                raise FileNotFoundError(f"연구시험 구현 지문 파일이 없습니다: {source}")
+            rows.append(
+                {
+                    "path": source.relative_to(project_root).as_posix(),
+                    "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                }
+            )
+    return _canonical_hash({"git_commit": git_commit(), "sources": rows})
+
+
+def _trial_proposal_from_arguments(arguments: argparse.Namespace) -> ResearchTrialProposal:
+    manifest = json.loads(arguments.dataset_manifest.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("runs"), list):
+        raise ValueError("연구시험 dataset manifest의 Run 목록이 올바르지 않습니다.")
+    requested_run_ids = tuple(arguments.run_id or ())
+    selected_rows = [
+        row
+        for row in manifest["runs"]
+        if isinstance(row, dict)
+        and (not requested_run_ids or str(row.get("run_id")) in requested_run_ids)
+    ]
+    selected_ids = tuple(str(row.get("run_id")) for row in selected_rows)
+    if not selected_rows or (
+        requested_run_ids and set(selected_ids) != set(requested_run_ids)
+    ):
+        raise ValueError("연구시험 dataset manifest에서 요청 Run을 모두 찾지 못했습니다.")
+    dataset_material = {
+        "manifest_sha256": manifest.get("manifest_sha256"),
+        "selected_runs": [
+            {
+                key: row.get(key)
+                for key in ("run_id", "checksum", "start_ts_ms", "end_ts_ms", "event_count")
+            }
+            for row in selected_rows
+        ],
+        "maximum_events": arguments.maximum_events,
+    }
+    normalized_target = (
+        "NO_TARGET"
+        if str(arguments.signal_gate) == SIGNAL_GATE_NONE
+        else str(arguments.signal_gate_target_strategy_id)
+    )
+    hypothesis_id = (
+        "HYP-STRATEGY-LEAGUE-SMOKE-V1"
+        if arguments.maximum_events is not None
+        else f"HYP-STRATEGY-GATE-{arguments.signal_gate}-V1"
+    )
+    cost_paths = (
+        arguments.project_root / "backend" / "app" / "costing" / "models.py",
+        arguments.project_root / "backend" / "app" / "execution" / "simulator.py",
+    )
+    return ResearchTrialProposal(
+        hypothesis_id=hypothesis_id,
+        parameter_fingerprint=parameter_fingerprint(
+            {
+                "signal_gate": str(arguments.signal_gate),
+                "target_strategy_id": normalized_target,
+                "strategy_logic": str(arguments.strategy_logic),
+                "maximum_events": arguments.maximum_events,
+            }
+        ),
+        dataset_fingerprint=_canonical_hash(dataset_material),
+        dataset_start_ts_ms=min(int(row["start_ts_ms"]) for row in selected_rows),
+        dataset_end_ts_ms=max(int(row["end_ts_ms"]) for row in selected_rows),
+        implementation_fingerprint=_source_bundle_fingerprint(arguments.project_root),
+        cost_model_fingerprint=_canonical_hash(
+            [
+                {
+                    "path": path.relative_to(arguments.project_root).as_posix(),
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                }
+                for path in cost_paths
+            ]
+        ),
+        dataset_member_fingerprints=tuple(
+            f"{row.get('run_id')}:{row.get('checksum')}" for row in selected_rows
+        ),
+    )
+
+
+def _trial_record_from_json(payload: object) -> ResearchTrialRecord:
+    if not isinstance(payload, dict) or not isinstance(payload.get("proposal"), dict):
+        raise ValueError("연구시험 이력 행이 올바른 JSON 객체가 아닙니다.")
+    proposal_payload = dict(payload["proposal"])
+    members = proposal_payload.get("dataset_member_fingerprints", ())
+    if not isinstance(members, list | tuple):
+        raise ValueError("연구시험 dataset member 지문이 JSON 배열이 아닙니다.")
+    proposal_payload["dataset_member_fingerprints"] = tuple(str(row) for row in members)
+    return ResearchTrialRecord(
+        trial_id=str(payload.get("trial_id", "")),
+        proposal=ResearchTrialProposal(**proposal_payload),
+        status=ResearchTrialStatus(str(payload.get("status", ""))),
+        evidence_path=str(payload.get("evidence_path", "")),
+    )
+
+
+def _load_trial_history(path: Path) -> tuple[ResearchTrialRecord, ...]:
+    if not path.exists():
+        return ()
+    records: list[ResearchTrialRecord] = []
+    with path.open(encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+        try:
+            lines = handle.read().splitlines()
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            records.append(_trial_record_from_json(json.loads(line)))
+        except (TypeError, ValueError, json.JSONDecodeError) as caught:
+            raise ValueError(
+                f"연구시험 이력 {path}:{line_number}을 읽을 수 없습니다."
+            ) from caught
+    return tuple(records)
+
+
+def _append_trial_history(path: Path, record: ResearchTrialRecord) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema": "flowscalper.research_trial_history_record.v1",
+        "trial_id": record.trial_id,
+        "proposal": asdict(record.proposal),
+        "status": record.status.value,
+        "evidence_path": record.evidence_path,
+        "recorded_at": datetime.now(UTC).isoformat(),
+    }
+    raw = (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
+    descriptor = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        offset = 0
+        while offset < len(raw):
+            offset += os.write(descriptor, raw[offset:])
+        os.fsync(descriptor)
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _acquire_replay_resource_lock(path: Path) -> int:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        os.ftruncate(descriptor, 0)
+        os.write(
+            descriptor,
+            json.dumps(
+                {"pid": os.getpid(), "started_at": datetime.now(UTC).isoformat()},
+                sort_keys=True,
+            ).encode("utf-8"),
+        )
+        os.fsync(descriptor)
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _release_replay_resource_lock(descriptor: int | None) -> None:
+    if descriptor is None:
+        return
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
 
 
 def _child_environment() -> dict[str, str]:
@@ -322,11 +542,42 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
     partial_output = output.with_name(f".{output.name}.{uuid4().hex}.partial")
     observations = SafetyObservations()
     child_state = ChildState()
+    proposal = _trial_proposal_from_arguments(arguments)
+    history = _load_trial_history(arguments.trial_history_catalog)
+    trial_history_decision = evaluate_trial_proposal(history, proposal)
+    trial_record_id = f"RESEARCH-{uuid4().hex}"
+    trial_history_recorded = False
+    trial_history_error: dict[str, object] | None = None
+    resource_lock_descriptor: int | None = None
+    resource_lock_acquired = False
+    research_started = False
     status = "FAIL"
     exit_code = 1
     error: dict[str, object] | None = None
     result_summary: dict[str, object] | None = None
     try:
+        if trial_history_decision["execution_allowed"] is not True:
+            status = "BLOCKED_DUPLICATE_RESEARCH_TRIAL"
+            exit_code = 4
+            error = {
+                "type": "ResearchTrialHistoryBlocked",
+                "message": str(trial_history_decision["decision"]),
+            }
+            raise ResearchTrialHistoryBlocked
+        try:
+            resource_lock_descriptor = _acquire_replay_resource_lock(
+                arguments.resource_lock
+            )
+            resource_lock_acquired = True
+        except BlockingIOError as caught:
+            status = "BLOCKED_RESEARCH_RESOURCE_BUSY"
+            exit_code = 6
+            error = {
+                "type": "ResearchReplayResourceBusy",
+                "message": str(caught),
+            }
+            raise ResearchReplayResourceBusy from caught
+        research_started = True
         result = asyncio.run(
             _execute(
                 arguments,
@@ -376,10 +627,45 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
             "type": type(caught).__name__,
             "message": "사용자 또는 운영자가 중단했습니다.",
         }
+    except ResearchTrialHistoryBlocked:
+        pass
+    except ResearchReplayResourceBusy:
+        pass
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as caught:
         error = {"type": type(caught).__name__, "message": str(caught)}
     finally:
         partial_output.unlink(missing_ok=True)
+        _release_replay_resource_lock(resource_lock_descriptor)
+    if trial_history_decision["execution_allowed"] is True and research_started:
+        record_status = (
+            ResearchTrialStatus.COMPLETE
+            if status == "PASS"
+            else (
+                ResearchTrialStatus.ABORTED
+                if status.startswith("ABORTED")
+                else ResearchTrialStatus.FAILED
+            )
+        )
+        try:
+            _append_trial_history(
+                arguments.trial_history_catalog,
+                ResearchTrialRecord(
+                    trial_id=trial_record_id,
+                    proposal=proposal,
+                    status=record_status,
+                    evidence_path=str(output if status == "PASS" else control_output),
+                ),
+            )
+            trial_history_recorded = True
+        except (OSError, TypeError, ValueError) as caught:
+            trial_history_error = {
+                "type": type(caught).__name__,
+                "message": str(caught),
+            }
+            if status == "PASS":
+                status = "FAIL_TRIAL_HISTORY_NOT_RECORDED"
+                exit_code = 5
+                error = trial_history_error
     completed_at = datetime.now(UTC)
     evidence = {
         "schema_version": 1,
@@ -403,6 +689,18 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
                 f"{arguments.signal_gate}:{arguments.signal_gate_target_strategy_id}"
             ),
             "strategy_logic": str(arguments.strategy_logic),
+            "history_catalog": str(arguments.trial_history_catalog),
+            "history_decision": trial_history_decision,
+            "history_record_id": trial_record_id,
+            "history_recorded": trial_history_recorded,
+            "history_error": trial_history_error,
+            "proposal": asdict(proposal),
+        },
+        "resource_lock": {
+            "path": str(arguments.resource_lock),
+            "acquired": resource_lock_acquired,
+            "released": resource_lock_descriptor is not None,
+            "single_archive_replay_enforced": True,
         },
         "error": error,
         "paper_safety": {
@@ -442,7 +740,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
     parser.add_argument(
         "--signal-gate-target-strategy-id",
-        choices=StrategyRegistry().strategy_ids,
+        choices=(*StrategyRegistry().strategy_ids, SIGNAL_GATE_TARGET_ALL),
         default=DEFAULT_STRATEGY_ID,
     )
     parser.add_argument(
@@ -463,12 +761,24 @@ def parse_arguments() -> argparse.Namespace:
         default=15.0,
     )
     parser.add_argument("--max-duration-seconds", type=float, default=28_800.0)
+    parser.add_argument(
+        "--trial-history-catalog",
+        type=Path,
+        default=project_root / "evidence" / "RESEARCH_TRIAL_HISTORY.jsonl",
+    )
+    parser.add_argument(
+        "--resource-lock",
+        type=Path,
+        default=Path("/tmp/robom-flowscalper-strategy-league-replay.lock"),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--control-output", type=Path)
     arguments = parser.parse_args()
     arguments.project_root = arguments.project_root.resolve(strict=True)
     arguments.archive = arguments.archive.resolve(strict=True)
     arguments.dataset_manifest = arguments.dataset_manifest.resolve(strict=True)
+    arguments.trial_history_catalog = arguments.trial_history_catalog.resolve()
+    arguments.resource_lock = arguments.resource_lock.resolve()
     arguments.control_output = arguments.control_output or arguments.output.with_name(
         arguments.output.stem + "_LIVE_GUARD.json"
     )

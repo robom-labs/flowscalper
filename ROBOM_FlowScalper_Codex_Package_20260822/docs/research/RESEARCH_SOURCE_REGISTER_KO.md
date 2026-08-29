@@ -3,6 +3,9 @@
 기계판독 원본은
 [RESEARCH_SOURCE_REGISTER.json](../../evidence/RESEARCH_SOURCE_REGISTER.json)에 있다.
 
+2026-08-29의 최신 외부 연구와 현재 11전략·100후보 중복 대조, 추가 데이터 수집가설은
+[Wave 110 외부 연구 대조](WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION_KO.md)에 분리해 기록했다.
+
 ## 원칙
 
 - 공식 문서와 원 논문은 가설·상태 머신·검증방법의 출처다.

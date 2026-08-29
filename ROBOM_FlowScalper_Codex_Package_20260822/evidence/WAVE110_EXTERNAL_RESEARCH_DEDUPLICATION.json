@@ -1,0 +1,136 @@
+{
+  "schema": "flowscalper.external_research_deduplication.v1",
+  "status": "RESEARCH_REVIEW_COMPLETE_IMPLEMENTATION_GATES_PENDING",
+  "reviewed_at": "2026-08-29",
+  "existing_registry_strategy_count": 11,
+  "existing_preregistered_trial_count": 100,
+  "existing_alpha_family_count": 20,
+  "duplicate_strategy_clones_added": 0,
+  "distinct_data_collection_hypotheses": [
+    {
+      "hypothesis_id": "HYP-W110-INTRADAY-LIQUIDITY-QUARANTINE-V1",
+      "status": "DEFERRED_INSUFFICIENT_FROZEN_DAYS",
+      "can_create_signals": false,
+      "minimum_complete_utc_days": 7
+    },
+    {
+      "hypothesis_id": "HYP-W110-LIQUIDATION-SHOCK-QUARANTINE-V1",
+      "status": "DATA_COLLECTION_CONTRACT_REQUIRED",
+      "can_create_signals": false,
+      "force_order_stream_is_complete_liquidation_tape": false
+    },
+    {
+      "hypothesis_id": "HYP-W110-PERP-CROWDING-QUARANTINE-V1",
+      "status": "DATA_COLLECTION_CONTRACT_REQUIRED",
+      "can_create_signals": false,
+      "minimum_train_days": 21,
+      "public_market_data_only": true,
+      "funding_predictability_is_return_profitability": false
+    }
+  ],
+  "rapid_external_research_triage": [
+    {
+      "hypothesis_id": "HYP-W110-SIGNED-15M-REVERSAL-NEGATIVE-CONTROL-V1",
+      "status": "REJECTED_BEFORE_REPLAY_COST_DOMINATED",
+      "external_gross_edge_bps": 1.3,
+      "external_round_trip_cost_bps": 5.0,
+      "robom_base_cost_bps": 13.0,
+      "robom_stress_cost_bps": 25.0,
+      "registry_strategy_added": false,
+      "avoided_exit_variant_trial_count": 5
+    },
+    {
+      "hypothesis_id": "HYP-W110-QUARTER_HOUR_PHASE_LAYER-V1",
+      "status": "MERGED_INTO_INTRADAY_LIQUIDITY_QUARANTINE",
+      "minimum_complete_utc_days": 7,
+      "can_create_signals": false,
+      "registry_strategy_added": false
+    },
+        {
+            "hypothesis_id": "HYP-W110-ABSOLUTE_BASIS_VOLATILITY_LAYER-V1",
+            "status": "MERGED_INTO_PERP_CROWDING_QUARANTINE",
+            "predicts_directional_profitability": false,
+            "can_create_signals": false,
+            "registry_strategy_added": false
+        },
+        {
+            "hypothesis_id": "HYP-W110-VOLUME-PROFILE-TAPE-SPEED-V1",
+            "status": "DEFERRED_FEATURE_OVERLAP_AND_COST_RISK",
+            "registry_strategy_added": false,
+            "requires_distinct_feature_contract": true,
+            "external_narrow_stop_cost_share_percent": 93.0
+        },
+        {
+            "hypothesis_id": "HYP-W110-HOURLY-COST-AWARE-ML-V1",
+            "status": "DEFERRED_LONG_DATA_MODEL_CONTRACT",
+            "registry_strategy_added": false,
+            "runtime_ai_order_decision": false,
+            "requires_frozen_model_artifact": true,
+            "requires_purged_walk_forward": true
+        },
+    {
+      "hypothesis_id": "HYP-W110-NONLINEAR-UNIVERSAL-MICROSTRUCTURE-V1",
+      "status": "DEFERRED_FEATURE_OVERLAP_AND_MODEL_LIFECYCLE",
+      "registry_strategy_added": false,
+      "runtime_ai_order_decision": false,
+      "existing_feature_family_overlap": true,
+      "requires_frozen_model_artifact": true
+    },
+    {
+      "hypothesis_id": "HYP-W110-OFI-DOLLAR-VOLUME-PERSISTENCE-V1",
+      "status": "PREREGISTERED_DATASET_CONTRACT_REQUIRED",
+      "registry_strategy_added": false,
+      "runtime_ai_order_decision": false,
+      "existing_feature_family_overlap_must_be_measured": true,
+      "requires_event_time_dollar_volume_bars": true,
+      "horizon_family_minutes": [
+        1,
+        3,
+        10
+      ],
+      "minimum_unique_oos_opportunities": 30,
+      "short_positive_result_can_promote": false
+    },
+    {
+      "hypothesis_id": "HYP-W110-LONG-HORIZON-CRYPTO-FUNDAMENTAL-V1",
+      "status": "REJECTED_CURRENT_PRODUCT_HORIZON_MISMATCH",
+      "registry_strategy_added": false,
+      "source_horizon_days": [
+        1,
+        10,
+        60
+      ],
+      "current_scalper_horizon_compatible": false
+    },
+    {
+      "hypothesis_id": "HYP-W110-AGENTIC-NOWCAST-V1",
+      "status": "REJECTED_RUNTIME_AI_AND_HORIZON_SCOPE",
+      "registry_strategy_added": false,
+      "runtime_ai_order_decision": false,
+      "deterministic_replay_compatible": false
+    },
+    {
+      "hypothesis_id": "HYP-W110-CROSS-VENUE-FUNDING-CARRY-V1",
+      "status": "DEFERRED_SEPARATE_MULTI_VENUE_PAPER_ENGINE_REQUIRED",
+      "registry_strategy_added": false,
+      "requires_multiple_venue_positions": true,
+      "current_single_venue_execution_scope_compatible": false
+    }
+  ],
+  "cost_dominated_trials_avoided_before_compute": 5,
+  "scope_mismatch_hypotheses_removed_before_implementation": 3,
+  "next_execution_order": [
+    "WAVE110_SHARED_NONE_13RUN_BASELINE",
+    "WAVE105B_TP1_FEASIBILITY_SAME_INPUT_CANDIDATES",
+    "WAVE106_ADVERSE_FLOW_CAPACITY_CALIBRATION_AND_VETO",
+    "APPEND_ONLY_COMPLETED_DATASET_VERSION_FOR_F03_TO_F16"
+  ],
+  "ranking_minimum_unique_opportunities": 30,
+  "target_win_rate_is_gate_not_claim": true,
+  "profitability_status": "NOT_PROVEN",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "runtime_ai_order_decision": false
+}

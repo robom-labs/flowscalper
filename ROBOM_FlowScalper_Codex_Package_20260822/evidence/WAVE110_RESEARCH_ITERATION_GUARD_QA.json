@@ -1,0 +1,225 @@
+{
+  "schema": "flowscalper.wave110.research_iteration_guard.v1",
+  "status": "IMPLEMENTATION_VALIDATION_PASS_LONG_BASELINE_ABORTED_SAFETY_RETRY_REQUIRED",
+  "recorded_at": "2026-08-29T18:05:55+09:00",
+  "source_state": {
+    "branch": "codex/flowscalper-v0.2-upgrade",
+    "base_commit": "276c0478955f57b86aed5957fb3b6f0a7e085ef9",
+    "documentation_commit": "PENDING",
+    "runtime_release_commit": "276c0478955f57b86aed5957fb3b6f0a7e085ef9"
+  },
+  "regression_contracts": {
+    "status": "PASS",
+    "contract_count": 15,
+    "anchor_count": 30,
+    "anchor_file_count": 24,
+    "anchor_token_count": 59,
+    "resolved_defects_are_append_only": true
+  },
+  "research_trial_history": {
+    "status": "PASS",
+    "append_only": true,
+    "completed_exact_trial_blocked": true,
+    "failed_or_aborted_exact_retry_allowed": true,
+    "strict_forward_dataset_refresh_only": true,
+    "actual_parameter_variants_counted_separately": true,
+    "historical_records_preserved": true,
+    "record_count": 1,
+    "latest_status": "ABORTED"
+  },
+  "survivor_watchlist": {
+    "status": "PASS_IMPLEMENTATION_ONLY",
+    "maximum_size": 10,
+    "minimum_unique_opportunities": 30,
+    "minimum_base_and_stress_win_rate": 0.7,
+    "positive_cost_adjusted_expectancy_required": true,
+    "profit_factor_required": true,
+    "positive_bootstrap_lower_required": true,
+    "minimum_dsr_probability": 0.95,
+    "maximum_pbo": 0.2,
+    "chronological_oos_required": true,
+    "parameter_robustness_required": true,
+    "concentration_and_drawdown_required": true,
+    "strict_multi_metric_replacement_only": true,
+    "selection_can_promote": false,
+    "profitability_status": "NOT_PROVEN"
+  },
+  "one_pass_all_strategy_gate": {
+    "status": "PASS_IMPLEMENTATION_AND_TESTS",
+    "target": "ALL_REGISTERED_STRATEGIES",
+    "registered_strategy_count": 11,
+    "paper_account_count": 22,
+    "per_strategy_accounting_required": true,
+    "same_commit_dataset_bytes_and_run_members_required": true,
+    "signal_or_plan_increase_rejected": true,
+    "automatic_promotion": false
+  },
+  "resource_lock": {
+    "status": "PASS_ACTUAL_CROSS_PROCESS",
+    "single_archive_replay_enforced": true,
+    "second_process_exit_code": 6,
+    "second_process_status": "BLOCKED_RESEARCH_RESOURCE_BUSY",
+    "second_process_started_child": false,
+    "observed_block_latency_ms": 21
+  },
+  "long_baseline_attempt": {
+    "status": "ABORTED_RUNTIME_SAFETY",
+    "duration_seconds": 4394.737,
+    "completed_frozen_runs": 6,
+    "active_frozen_run_when_aborted": 7,
+    "total_frozen_runs": 13,
+    "live_event_delta": 289502,
+    "live_sample_count": 4223,
+    "maximum_queue_depth": 15,
+    "event_loop_over_500ms_delta": 1,
+    "event_loop_lag_ms": 740,
+    "violation_code": "EVENT_LOOP_LAG_OVER_500MS",
+    "child_return_code": -15,
+    "partial_output_removed": true,
+    "result_output_written": false,
+    "usable_for_strategy_comparison": false
+  },
+  "prior_long_baseline_attempt": {
+    "status": "ABORTED_RUNTIME_SAFETY",
+    "duration_seconds": 3389.672,
+    "live_event_delta": 237500,
+    "maximum_queue_depth": 27,
+    "event_loop_over_500ms_delta": 1,
+    "event_loop_lag_ms": 591,
+    "violation_code": "EVENT_LOOP_LAG_OVER_500MS",
+    "partial_output_removed": true,
+    "result_output_written": false,
+    "usable_for_strategy_comparison": false
+  },
+  "post_abort_short_observations": [
+    {
+      "evidence": "WAVE109_PHASE_ATTRIBUTION_CLEAN_5M.json",
+      "status": "PASS_SHORT_SCOPE",
+      "duration_seconds": 300.021,
+      "live_event_delta": 21018,
+      "maximum_queue_depth": 6,
+      "new_event_loop_over_500ms": 0
+    },
+    {
+      "evidence": "WAVE109_POST_ABORT_ROTATION_ISOLATION_12M.json",
+      "status": "PASS_SHORT_SCOPE",
+      "duration_seconds": 720.02,
+      "live_event_delta": 51536,
+      "maximum_queue_depth": 19,
+      "new_event_loop_over_500ms": 0
+    },
+    {
+      "evidence": "WAVE110_POST_DEPLOY_DASHBOARD_COMPACTION_5M.json",
+      "status": "PASS_SHORT_SCOPE",
+      "duration_seconds": 300.015,
+      "live_event_delta": 19702,
+      "maximum_queue_depth": 8,
+      "new_event_loop_over_500ms": 0
+    }
+  ],
+  "post_dashboard_cache_six_hour": {
+    "status": "FAIL",
+    "duration_seconds": 21600.016,
+    "live_event_delta": 1430678,
+    "strategy_evaluation_delta": 5643228,
+    "maximum_queue_depth": 533,
+    "maximum_processing_p95_ms": 109.44970703125,
+    "maximum_trade_p95_ms": 166.156982421875,
+    "event_loop_over_500ms_delta": 13,
+    "maximum_event_loop_ms": 1505,
+    "maximum_persistence_flush_ms": 34418,
+    "maximum_wal_checkpoint_ms": 51049,
+    "failures": [
+      "queue_bounded",
+      "event_loop_lag_bounded",
+      "persistence_flush_latency_bounded",
+      "wal_checkpoint_latency_bounded"
+    ],
+    "paper_safety_preserved": true
+  },
+  "validation": {
+    "backend": {
+      "status": "PASS",
+      "passed": 730,
+      "duration_seconds": 16.28
+    },
+    "frontend": {
+      "status": "PASS",
+      "files": 14,
+      "passed": 76
+    },
+    "fixture_backend": {
+      "status": "PASS",
+      "passed": 22
+    },
+    "playwright": {
+      "status": "PASS",
+      "desktop": true,
+      "tablet": true,
+      "mobile": true,
+      "passed": 3
+    },
+    "lint": "PASS",
+    "typecheck": "PASS_108_PYTHON_SOURCE_AND_FRONTEND_TSC",
+    "build": "PASS_WITH_EXISTING_536_99KB_CHUNK_WARNING",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS_144_SOURCE_REAL_ORDER_PATH_FALSE",
+    "repository_hygiene": "PASS"
+  },
+  "runtime_snapshot": {
+    "observed_at": "2026-08-29T18:05:55+09:00",
+    "url": "http://127.0.0.1:8870/",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "event_count": 366367,
+    "strategy_evaluation_count": 1453392,
+    "processing_p95_ms": 21.55615234375,
+    "trade_p95_ms": 64.553955078125,
+    "wide_p95_ms": 1735.174560546875,
+    "queue_depth": 0,
+    "planned_rotations": 6,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "event_loop_over_500ms_count": 1,
+    "event_loop_max_ms": 740,
+    "process_memory_mb": 273.859,
+    "clock_sync_status": "SYNCED",
+    "strategy_count": 11,
+    "paper_account_count": 22,
+    "position_count": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "external_research": {
+    "status": "RESEARCH_REVIEW_COMPLETE_IMPLEMENTATION_GATES_PENDING",
+    "duplicate_registry_strategies_added": 0,
+    "cost_dominated_trials_avoided": 5,
+    "scope_mismatch_hypotheses_removed_before_implementation": 3,
+    "new_preregistered_hypothesis": "HYP-W110-OFI-DOLLAR-VOLUME-PERSISTENCE-V1",
+    "new_registry_strategy_added": false,
+    "runtime_ai_order_decision": false
+  },
+  "acceptance": {
+    "profitability_status": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY",
+    "six_hour_post_dashboard_cache": "FAIL",
+    "six_hour_post_current_research_commit": "NOT_RUN",
+    "twenty_four_hour_post_change": "NOT_RUN",
+    "next_required_step": "COMMIT_THEN_RERUN_SAME_COMMIT_13_RUN_BASELINE_AND_ALL_STRATEGY_CANDIDATE"
+  },
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "api_keys_required": false,
+    "wallet_paths_enabled": false,
+    "runtime_ai_order_decision": false
+  }
+}

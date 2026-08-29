@@ -3,19 +3,31 @@
 
 from __future__ import annotations
 
+import json
 from argparse import Namespace
 from pathlib import Path
 
 import pytest
 
 from backend.app.replay.safety import ReplayLiveSafetySnapshot
+from backend.app.research.trial_history import (
+    ResearchTrialRecord,
+    ResearchTrialStatus,
+    evaluate_trial_proposal,
+)
 from scripts.research_runtime_strategy_replay import (
+    SIGNAL_GATE_TARGET_ALL,
     SIGNAL_GATE_TP1_FEASIBILITY,
     STRATEGY_LOGIC_CURRENT,
 )
 from scripts.run_live_safe_strategy_league_replay import (
     SafetyObservations,
+    _acquire_replay_resource_lock,
+    _append_trial_history,
+    _load_trial_history,
+    _release_replay_resource_lock,
     _research_arguments,
+    _trial_proposal_from_arguments,
     _validate_result_payload,
 )
 
@@ -78,6 +90,25 @@ def test_research_command_forces_all_strategies_and_archive_verification(
         "AGGRESSOR_FLOW_CONTINUATION_V1"
     )
     assert command[command.index("--strategy-logic") + 1] == STRATEGY_LOGIC_CURRENT
+
+
+def test_research_command_accepts_all_strategy_gate_target(tmp_path: Path) -> None:
+    arguments = Namespace(
+        project_root=tmp_path,
+        archive=tmp_path / "archive",
+        dataset_manifest=tmp_path / "manifest.json",
+        run_id=None,
+        maximum_events=1_000,
+        signal_gate=SIGNAL_GATE_TP1_FEASIBILITY,
+        signal_gate_target_strategy_id=SIGNAL_GATE_TARGET_ALL,
+        strategy_logic=STRATEGY_LOGIC_CURRENT,
+    )
+
+    command = _research_arguments(arguments, tmp_path / "partial.json")
+
+    assert command[command.index("--signal-gate-target-strategy-id") + 1] == (
+        SIGNAL_GATE_TARGET_ALL
+    )
 
 
 def test_result_validation_requires_paper_safety_and_current_archive_pass() -> None:
@@ -183,3 +214,111 @@ def test_safety_observations_report_event_and_stall_counter_deltas() -> None:
     assert report["event_loop_lag_over_500ms_delta"] == 0
     assert report["maximum_queue_depth"] == 4
     assert report["maximum_lag_p95_ms"] == 120.0
+
+
+def test_live_safe_runner_persists_append_only_trial_history(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifest_sha256": "manifest-a",
+                "runs": [
+                    {
+                        "run_id": "RUN-ONE",
+                        "checksum": "a" * 64,
+                        "start_ts_ms": 100,
+                        "end_ts_ms": 200,
+                        "event_count": 1_000,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    arguments = Namespace(
+        project_root=project_root,
+        dataset_manifest=manifest,
+        run_id=None,
+        maximum_events=None,
+        signal_gate="NONE",
+        signal_gate_target_strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
+        strategy_logic=STRATEGY_LOGIC_CURRENT,
+    )
+    proposal = _trial_proposal_from_arguments(arguments)
+    record = ResearchTrialRecord(
+        trial_id="TRIAL-ONE",
+        proposal=proposal,
+        status=ResearchTrialStatus.COMPLETE,
+        evidence_path="evidence/TRIAL-ONE.json",
+    )
+    catalog = tmp_path / "trial-history.jsonl"
+
+    _append_trial_history(catalog, record)
+    loaded = _load_trial_history(catalog)
+
+    assert loaded == (record,)
+    assert evaluate_trial_proposal(loaded, proposal)["decision"] == (
+        "BLOCK_DUPLICATE_COMPLETE_TRIAL"
+    )
+
+
+def test_none_gate_history_identity_ignores_an_inactive_target(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "manifest_sha256": "manifest-a",
+                "runs": [
+                    {
+                        "run_id": "RUN-ONE",
+                        "checksum": "a" * 64,
+                        "start_ts_ms": 100,
+                        "end_ts_ms": 200,
+                        "event_count": 1_000,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    common = {
+        "project_root": project_root,
+        "dataset_manifest": manifest,
+        "run_id": None,
+        "maximum_events": None,
+        "signal_gate": "NONE",
+        "strategy_logic": STRATEGY_LOGIC_CURRENT,
+    }
+    first = _trial_proposal_from_arguments(
+        Namespace(
+            **common,
+            signal_gate_target_strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
+        )
+    )
+    second = _trial_proposal_from_arguments(
+        Namespace(
+            **common,
+            signal_gate_target_strategy_id=SIGNAL_GATE_TARGET_ALL,
+        )
+    )
+
+    assert first.parameter_fingerprint == second.parameter_fingerprint
+    assert first.exact_trial_key == second.exact_trial_key
+
+
+def test_live_safe_runner_allows_only_one_archive_replay_process(
+    tmp_path: Path,
+) -> None:
+    lock_path = tmp_path / "strategy-replay.lock"
+    first = _acquire_replay_resource_lock(lock_path)
+
+    try:
+        with pytest.raises(BlockingIOError):
+            _acquire_replay_resource_lock(lock_path)
+    finally:
+        _release_replay_resource_lock(first)
+
+    second = _acquire_replay_resource_lock(lock_path)
+    _release_replay_resource_lock(second)

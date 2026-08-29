@@ -81,6 +81,9 @@ Detailed specifications:
 - `docs/adr/ADR-053-normalized-startup-recovery-transition-audit.md`
 - `docs/adr/ADR-054-normalized-paper-lifecycle-transition-audit.md`
 - `docs/adr/ADR-055-runtime-strategy-research-contract.md`
+- `docs/adr/ADR-097-append-only-regression-contracts-and-candidate-deduplication.md`
+- `docs/adr/ADR-098-evidence-gated-survivor-watchlist.md`
+- `docs/adr/ADR-099-one-pass-all-strategy-gate-replay.md`
 
 ## Supporting contracts
 
@@ -152,6 +155,14 @@ Detailed specifications:
 - `scripts/verify_macos_ledger_maintenance.py`
 - `scripts/research_public_trend_candidates.py`
 - `scripts/research_public_hourly_trend_diagnostic.py`
+- `scripts/run_live_safe_strategy_league_replay.py`
+- `scripts/compare_all_strategy_gate_trials.py`
+- `scripts/verify_regression_contracts.py`
+- `config/regression_contracts.json`
+- `docs/research/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION_KO.md`
+- `evidence/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION.json`
+- `evidence/WAVE110_RESEARCH_ITERATION_GUARD_QA.json`
+- `evidence/RESEARCH_TRIAL_HISTORY.jsonl`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-full.png`

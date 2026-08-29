@@ -31,7 +31,7 @@ jobs:
       - run: uv sync --all-groups --locked
       - run: pnpm install --frozen-lockfile
         working-directory: ROBOM_FlowScalper_Codex_Package_20260822/frontend
-      - run: make repo-hygiene
+      - run: make repo-hygiene regression-contracts
       - run: make lint typecheck test build
   browser:
     needs: validate
