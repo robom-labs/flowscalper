@@ -35,12 +35,17 @@ export function formatUsdt(
   return `${sign}${localized(number, digits, minimum)} USDT`
 }
 
+export function priceFractionDigits(value: Numeric) {
+  const number = parsed(value)
+  if (number === null) return 2
+  const magnitude = Math.abs(number)
+  return magnitude >= 1_000 ? 2 : magnitude >= 100 ? 3 : magnitude >= 1 ? 4 : magnitude >= 0.01 ? 6 : 8
+}
+
 export function formatPrice(value: Numeric) {
   const number = parsed(value)
   if (number === null) return '—'
-  const magnitude = Math.abs(number)
-  const digits = magnitude >= 1_000 ? 2 : magnitude >= 100 ? 3 : magnitude >= 1 ? 4 : magnitude >= 0.01 ? 6 : 8
-  return localized(number, digits)
+  return localized(number, priceFractionDigits(number))
 }
 
 export function formatQuantity(value: Numeric) {

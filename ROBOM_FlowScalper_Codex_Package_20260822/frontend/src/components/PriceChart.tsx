@@ -12,6 +12,7 @@ import {
   type AutoscaleInfoProvider,
   type IPriceLine,
   type ISeriesApi,
+  type PriceFormat,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -20,7 +21,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import { bollinger, ema, macd, rsi, sma, vwap, type IndicatorCandle, type IndicatorPoint } from '../chart/indicators'
 import { seriesUpdateMode } from '../chart/seriesUpdate'
 import { formatChartKstTime, formatKstDateTime } from '../time'
-import { exitReasonLabel, formatCompactNumber, formatPrice } from '../format'
+import { exitReasonLabel, formatCompactNumber, formatPrice, priceFractionDigits } from '../format'
 import type { ChartData, HistoryRow, ReplayFocusFrame } from '../types'
 
 export type ChartOverlay = {
@@ -120,6 +121,9 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
     }
   }, [candles])
   const hasData = candles.length > 0 || chart.points.length > 0
+  const priceReference = overlay?.entry ?? chart.lines.entry ?? last(candles)?.close ?? last(chart.points)?.microprice ?? 0
+  const priceDigits = priceFractionDigits(priceReference)
+  const priceFormat = useMemo<PriceFormat>(() => ({ type: 'custom', formatter: formatPrice, minMove: 10 ** -priceDigits }), [priceDigits])
 
   useEffect(() => {
     const container = containerRef.current
@@ -197,6 +201,14 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
       api.remove()
     }
   }, [hasData])
+
+  useEffect(() => {
+    if (!hasData) return
+    candleRef.current?.applyOptions({ priceFormat })
+    for (const key of ['MA5', 'MA10', 'MA20', 'MA60', 'EMA20', 'VWAP', 'BOLLINGER_MIDDLE', 'BOLLINGER_UPPER', 'BOLLINGER_LOWER', 'BID', 'ASK', 'MICROPRICE']) {
+      lineRefs.current[key]?.applyOptions({ priceFormat })
+    }
+  }, [hasData, priceFormat])
 
   useEffect(() => {
     const api = chartApiRef.current

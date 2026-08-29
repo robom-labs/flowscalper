@@ -176,3 +176,38 @@ test('shows the current PAPER direction and protection prices directly on the ch
   expect(banner).toHaveTextContent('1차 목표 101')
   expect(banner).toHaveTextContent('손절 99')
 })
+
+test('keeps sub-dollar entry, targets and stop distinct on the chart price scale', async () => {
+  const smallPriceChart = chart('龙虾USDT')
+  smallPriceChart.candles = smallPriceChart.candles.map((item, index) => ({
+    ...item,
+    open: 0.06120 + index * 0.000001,
+    high: 0.06128 + index * 0.000001,
+    low: 0.06116 + index * 0.000001,
+    close: 0.06124 + index * 0.000001,
+  }))
+  const planPrices = [0.061234, 0.061834, 0.062434, 0.060734]
+
+  render(<PriceChart chart={smallPriceChart} overlay={{
+    key: 'small-price-position',
+    label: '소액 종목 테스트',
+    symbol: '龙虾USDT',
+    side: 'LONG',
+    signalTime: 20_000,
+    entry: planPrices[0],
+    tp1: planPrices[1],
+    tp2: planPrices[2],
+    stop: planPrices[3],
+  }} />)
+
+  await waitFor(() => expect(chartMocks.createChart).toHaveBeenCalled())
+  const candleSeries = chartMocks.series.find((series) => series.kind === 'CandlestickSeries')
+  const formatOptions = candleSeries?.applyOptions.mock.calls
+    .map(([options]) => options as { priceFormat?: { formatter: (value: number) => string; minMove: number; type: string } })
+    .find((options) => options.priceFormat)?.priceFormat
+  expect(formatOptions).toBeDefined()
+  expect(formatOptions?.type).toBe('custom')
+  expect(formatOptions?.minMove).toBe(0.000001)
+  expect(new Set(planPrices.map((price) => formatOptions?.formatter(price))).size).toBe(4)
+  expect(formatOptions?.formatter(planPrices[0])).toBe('0.061234')
+})

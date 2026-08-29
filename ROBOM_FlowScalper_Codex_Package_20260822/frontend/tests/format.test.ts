@@ -10,6 +10,7 @@ import {
   formatQuantity,
   formatUsdt,
   paperAccountLabel,
+  priceFractionDigits,
   sampleTypeLabel,
   sideLabel,
 } from '../src/format'
@@ -23,6 +24,8 @@ describe('beginner-facing number formatting', () => {
 
   test('formats price, quantity, percentage, volume and short holding time', () => {
     expect(formatPrice('0.0000123456789')).toBe('0.00001235')
+    expect(priceFractionDigits('0.061234')).toBe(6)
+    expect(priceFractionDigits('134.10')).toBe(3)
     expect(formatQuantity('116.53000000')).toBe('116.53')
     expect(formatPercentFraction('0.60549')).toBe('60.5%')
     expect(formatDurationMs(1_696)).toBe('1.7초')
