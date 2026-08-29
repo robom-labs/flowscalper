@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "status": "PASS_NO_SHORT_EXIT_RECURRENCE_PROFITABILITY_NOT_PROVEN",
+  "observed_server_time_ms": 1787973053874,
+  "development_commit": "6b0f011fac63477d6a0c3cb53914231d132961af",
+  "installed_release_commit": "0f09703ea973361c3f8d1c52c55dd0437d671f6f",
+  "installed_release_contains_development_changes": false,
+  "run_id": "run-2b7135a972dd",
+  "runtime": {
+    "operation_state": "RUNNING",
+    "mode": "LIVE_SHADOW_PAPER",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "strategy_count": 11,
+    "league_account_count": 22,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0
+  },
+  "history_query": {
+    "run_scope": "CURRENT",
+    "account_scope": "ALL",
+    "profile": "ALL",
+    "version_scope": "CURRENT",
+    "sample_type": "LIVE_PUBLIC",
+    "returned_count": 27,
+    "strategy_version": "LSA_REVERSAL_V1+CBR_CONTINUATION_V1+VWAP_EXHAUSTION_REVERSION_V1+OFI_CONTINUATION_PULLBACK_V1+QUEUE_MICROPRICE_MOMENTUM_V1+AGGRESSOR_FLOW_CONTINUATION_V1+MULTILEVEL_MICROPRICE_MOMENTUM_V1+DEPTH_ADJUSTED_OFI_IMPULSE_V1+OFI_RETURN_CONFLUENCE_V1+BOOK_SLOPE_ASYMMETRY_V1+HOURLY_MOMENTUM_BREAKOUT_V1@2026-08-28-wave102"
+  },
+  "holding_time_ms": {
+    "minimum": 135886,
+    "median": 808906,
+    "maximum": 901376,
+    "at_most_3_seconds": 0,
+    "at_most_15_seconds": 0,
+    "at_most_30_seconds": 0
+  },
+  "exit_reason_counts": {
+    "EDGE_DECAY": 12,
+    "MAX_HOLD": 13,
+    "PROFIT_PROTECTION": 2
+  },
+  "current_version_strategy_profile_rows": {
+    "CBR_CONTINUATION_V1": {
+      "BASE": {"sample_size": 1, "wins": 1, "net_pnl_usdt": "0.055339078"},
+      "STRESS": {"sample_size": 1, "wins": 1, "net_pnl_usdt": "0.003310104"},
+      "interpretation": "SAMPLE_BELOW_30_NOT_PROVEN"
+    },
+    "VWAP_EXHAUSTION_REVERSION_V1": {
+      "BASE": {"sample_size": 8, "wins": 0, "net_pnl_usdt": "-12.0381299800"},
+      "STRESS": {"sample_size": 8, "wins": 0, "net_pnl_usdt": "-15.1343108280"},
+      "interpretation": "SHADOW_ONLY_SAMPLE_BELOW_30_NEGATIVE"
+    },
+    "AGGRESSOR_FLOW_CONTINUATION_V1": {
+      "BASE": {"sample_size": 5, "wins": 1, "net_pnl_usdt": "-6.07596108"},
+      "STRESS": {"sample_size": 4, "wins": 0, "net_pnl_usdt": "-7.34286136"},
+      "interpretation": "SHADOW_ONLY_SAMPLE_BELOW_30_NEGATIVE"
+    },
+    "MULTILEVEL_MICROPRICE_MOMENTUM_V1": {
+      "BASE": {"sample_size": 0},
+      "STRESS": {"sample_size": 0},
+      "interpretation": "NO_NATURAL_SAMPLE_NOT_PROVEN"
+    },
+    "OFI_RETURN_CONFLUENCE_V1": {
+      "BASE": {"sample_size": 0},
+      "STRESS": {"sample_size": 0},
+      "interpretation": "NO_NATURAL_SAMPLE_NOT_PROVEN"
+    },
+    "BOOK_SLOPE_ASYMMETRY_V1": {
+      "BASE": {"sample_size": 0},
+      "STRESS": {"sample_size": 0},
+      "interpretation": "NO_NATURAL_SAMPLE_NOT_PROVEN"
+    }
+  },
+  "registry_state": {
+    "active_count": 0,
+    "shadow_count": 6,
+    "retired_off_count": 5,
+    "low_sample_negative_strategies_are_not_active": true,
+    "retired_records_are_preserved": true
+  },
+  "conclusions": {
+    "ordinary_1_to_15_second_exit_recurrence": false,
+    "observed_70_percent_strategy_proven": false,
+    "ranking_allowed": false,
+    "signal_thresholds_lowered": false,
+    "profitability_status": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}
