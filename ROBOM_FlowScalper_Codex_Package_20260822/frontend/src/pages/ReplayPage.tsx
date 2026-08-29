@@ -157,6 +157,7 @@ export function ReplayPage({ trade }: Props) {
   }, [])
 
   useEffect(() => {
+    if (trade) return
     let cancelled = false
     const resultRowsPromise = fetch('/api/replay/results')
       .then((response) => response.json() as Promise<ReplayResult[]>)
@@ -172,12 +173,9 @@ export function ReplayPage({ trade }: Props) {
           setRunning(true)
           setOperationNow(Date.now())
         }
-        const requestedRun = trade?.run_id ?? ''
-        const runId = runRows.some((run) => run.run_id === requestedRun)
-          ? requestedRun
-          : runRows[0]?.run_id ?? ''
+        const runId = runRows[0]?.run_id ?? ''
         setSelectedRun(runId)
-        if (runId && !trade) await loadPreview(runId)
+        if (runId) await loadPreview(runId)
         void resultRowsPromise.then((resultRows) => {
           if (cancelled) return
           setResults(resultRows)

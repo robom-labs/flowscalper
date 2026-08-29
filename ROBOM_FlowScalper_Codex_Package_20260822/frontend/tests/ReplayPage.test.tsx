@@ -124,8 +124,10 @@ test('restores an active strategy verification and exposes a real cancel control
 
 test('shows a visible retry action when a focused trade chart request fails', async () => {
   let attempts = 0
+  const requests: string[] = []
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
+    requests.push(url)
     if (url === '/api/replay/runs' || url === '/api/replay/results') {
       return new Response('[]', { status: 200 })
     }
@@ -149,6 +151,8 @@ test('shows a visible retry action when a focused trade chart request fails', as
   expect(screen.getByRole('alert')).toHaveTextContent('원장 캐시가 사용 중입니다.')
   fireEvent.click(screen.getByRole('button', { name: '거래 차트 다시 시도' }))
   await waitFor(() => expect(attempts).toBe(2))
+  expect(requests).toHaveLength(2)
+  expect(requests.every((url) => url.includes('/focus?'))).toBe(true)
 })
 
 test('shows allocated entry and exit fees at the matching replay stage', async () => {
