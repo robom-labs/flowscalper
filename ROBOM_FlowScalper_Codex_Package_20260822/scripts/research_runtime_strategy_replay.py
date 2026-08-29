@@ -323,87 +323,131 @@ class ResearchSignalGateEvaluator(StrategySignalEvaluator):
         )
 
 
-def _configure_target_strategy(runtime: PaperRuntime, strategy_id: str) -> None:
-    if strategy_id not in runtime.strategy_registry.strategy_ids:
-        raise ValueError(f"알 수 없는 전략입니다: {strategy_id}")
+def _validated_strategy_ids(strategy_ids: Sequence[str]) -> tuple[str, ...]:
+    available = StrategyRegistry().strategy_ids
+    selected = tuple(strategy_ids)
+    if not selected:
+        raise ValueError("연구할 전략이 없습니다.")
+    if len(selected) != len(set(selected)):
+        raise ValueError("연구 전략 ID가 중복됐습니다.")
+    unknown = [strategy_id for strategy_id in selected if strategy_id not in available]
+    if unknown:
+        raise ValueError(f"알 수 없는 전략입니다: {unknown}")
+    return selected
+
+
+def _configure_research_strategies(
+    runtime: PaperRuntime,
+    strategy_ids: Sequence[str],
+) -> None:
+    selected = set(_validated_strategy_ids(strategy_ids))
+    reason = (
+        "RESEARCH_ALL_STRATEGY_LEAGUE_REPLAY"
+        if len(selected) == len(runtime.strategy_registry.strategy_ids)
+        else "RESEARCH_SELECTED_STRATEGY_REPLAY"
+    )
     for current_id in runtime.strategy_registry.strategy_ids:
         runtime.strategy_registry.configure(
             current_id,
             mode=(
                 StrategyMode.SHADOW
-                if current_id == strategy_id
+                if current_id in selected
                 else StrategyMode.OFF
             ),
             long_enabled=True,
             short_enabled=True,
             source=StrategyChangeSource.RECOVERY,
-            reason="RESEARCH_SINGLE_STRATEGY_REPLAY",
+            reason=reason,
         )
 
 
-def _target_trade_rows(
+def _strategy_trade_rows(
     runtime: PaperRuntime,
-    strategy_id: str,
+    strategy_ids: Sequence[str],
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
-    for profile in ("BASE", "STRESS"):
-        account = runtime.paper_portfolio.shadows[f"{strategy_id}:{profile}"]
-        rows.extend(runtime._paper_trade_row(trade) for trade in account.completed_trades)
+    for strategy_id in strategy_ids:
+        for profile in ("BASE", "STRESS"):
+            account = runtime.paper_portfolio.shadows[f"{strategy_id}:{profile}"]
+            rows.extend(runtime._paper_trade_row(trade) for trade in account.completed_trades)
     return rows
 
 
-def _open_state(runtime: PaperRuntime, strategy_id: str) -> dict[str, object]:
+def _open_state(
+    runtime: PaperRuntime,
+    strategy_ids: Sequence[str],
+) -> dict[str, object]:
     positions: list[dict[str, object]] = []
     pending_entries = 0
-    for profile in ("BASE", "STRESS"):
-        account = runtime.paper_portfolio.shadows[f"{strategy_id}:{profile}"]
-        pending_entries += len(account.pending_entries)
-        positions.extend(
-            {
-                "profile": profile,
-                "trade_id": managed.protected.trade_id,
-                "candidate_id": managed.plan.candidate_id,
-                "symbol": managed.plan.symbol,
-                "side": managed.plan.direction.value,
-                "opened_ts_ms": managed.protected.opened_ts_ms,
-                "entry_price": str(managed.protected.entry_fill.average_price),
-                "initial_stop": str(managed.protected.initial_stop),
-                "take_profit_1": str(managed.plan.take_profit_targets[0].price),
-                "take_profit_2": (
-                    str(managed.plan.take_profit_targets[1].price)
-                    if len(managed.plan.take_profit_targets) > 1
-                    else None
-                ),
-            }
-            for managed in account.positions.values()
-        )
+    pending_entry_counts: dict[str, int] = {}
+    for strategy_id in strategy_ids:
+        strategy_pending_entries = 0
+        for profile in ("BASE", "STRESS"):
+            account = runtime.paper_portfolio.shadows[f"{strategy_id}:{profile}"]
+            profile_pending_entries = len(account.pending_entries)
+            pending_entries += profile_pending_entries
+            strategy_pending_entries += profile_pending_entries
+            positions.extend(
+                {
+                    "strategy_id": strategy_id,
+                    "profile": profile,
+                    "trade_id": managed.protected.trade_id,
+                    "candidate_id": managed.plan.candidate_id,
+                    "symbol": managed.plan.symbol,
+                    "side": managed.plan.direction.value,
+                    "opened_ts_ms": managed.protected.opened_ts_ms,
+                    "entry_price": str(managed.protected.entry_fill.average_price),
+                    "initial_stop": str(managed.protected.initial_stop),
+                    "take_profit_1": str(managed.plan.take_profit_targets[0].price),
+                    "take_profit_2": (
+                        str(managed.plan.take_profit_targets[1].price)
+                        if len(managed.plan.take_profit_targets) > 1
+                        else None
+                    ),
+                }
+                for managed in account.positions.values()
+            )
+        pending_entry_counts[strategy_id] = strategy_pending_entries
     return {
         "open_position_count": len(positions),
         "pending_entry_count": pending_entries,
+        "pending_entry_counts": pending_entry_counts,
         "censored_count": len(positions) + pending_entries,
         "positions": positions,
     }
 
 
-def replay_archive_run(
+def _replay_archive_run_for_strategies(
     run_id: str,
     run_dir: Path,
     *,
-    strategy_id: str = DEFAULT_STRATEGY_ID,
+    strategy_ids: Sequence[str],
+    signal_gate_target_strategy_id: str,
     signal_gate: str = SIGNAL_GATE_NONE,
     strategy_logic: str = STRATEGY_LOGIC_CURRENT,
     maximum_events: int | None = None,
 ) -> dict[str, object]:
-    """한 저장 Run을 신규 무원장 PAPER 런타임에서 수신순으로 재생한다."""
+    """선택 전략을 한 신규 무원장 PAPER 런타임에서 동시에 수신순 재생한다."""
 
     if maximum_events is not None and maximum_events <= 0:
         raise ValueError("최대 이벤트 수는 양수여야 합니다.")
-    if strategy_id not in StrategyRegistry().strategy_ids:
-        raise ValueError(f"알 수 없는 전략입니다: {strategy_id}")
+    selected_strategy_ids = _validated_strategy_ids(strategy_ids)
+    if signal_gate_target_strategy_id not in selected_strategy_ids:
+        raise ValueError("연구 신호 gate 대상 전략이 선택 전략에 없습니다.")
     if signal_gate not in SIGNAL_GATES:
         raise ValueError(f"알 수 없는 연구 신호 gate입니다: {signal_gate}")
     if strategy_logic not in STRATEGY_LOGICS:
         raise ValueError(f"알 수 없는 연구 전략 로직입니다: {strategy_logic}")
+    if (
+        strategy_logic == STRATEGY_LOGIC_WAVE102
+        and DEFAULT_STRATEGY_ID not in selected_strategy_ids
+    ):
+        raise ValueError("Wave102 기준선은 VWAP 전략을 포함해야 합니다.")
+    if (
+        signal_gate != SIGNAL_GATE_NONE
+        and signal_gate_target_strategy_id != DEFAULT_STRATEGY_ID
+    ):
+        raise ValueError("사전등록 TP1 신호 gate 대상은 VWAP 전략이어야 합니다.")
     event_iterator = iter(_event_rows(run_dir, maximum_events=maximum_events))
     first_payload = next(event_iterator, None)
     runtime_run_id = (
@@ -412,7 +456,7 @@ def replay_archive_run(
         else run_id
     )
     gated_evaluator = ResearchSignalGateEvaluator(
-        target_strategy_id=strategy_id,
+        target_strategy_id=signal_gate_target_strategy_id,
         signal_gate=signal_gate,
         strategy_logic=strategy_logic,
     )
@@ -429,7 +473,14 @@ def replay_archive_run(
         "NO_AUTH_HEADERS",
         "RESEARCH_NO_PERSISTENCE",
     ]
-    _configure_target_strategy(runtime, strategy_id)
+    source_strategy_settings = {
+        strategy_id: {
+            "mode": runtime.strategy_registry.setting(strategy_id).mode.value,
+            "lifecycle": runtime.strategy_registry.setting(strategy_id).lifecycle.value,
+        }
+        for strategy_id in selected_strategy_ids
+    }
+    _configure_research_strategies(runtime, selected_strategy_ids)
 
     event_count = 0
     first_receive_ts_ms: int | None = None
@@ -457,30 +508,51 @@ def replay_archive_run(
         event_types[event.event_type] += 1
         runtime.ingest_live_event(event)
 
-    trades = _target_trade_rows(runtime, strategy_id)
-    reports = TradeAnalytics().strategy_reports(trades, strategy_ids=(strategy_id,))
+    trades = _strategy_trade_rows(runtime, selected_strategy_ids)
+    reports = TradeAnalytics().strategy_reports(
+        trades,
+        strategy_ids=selected_strategy_ids,
+    )
     audit_events = [
         row
         for row in runtime.paper_portfolio.audit_events
-        if row.get("strategy_id") == strategy_id
+        if row.get("strategy_id") in selected_strategy_ids
     ]
-    candidate_ids = {
-        str(row["candidate_id"])
-        for row in audit_events
-        if row.get("event") in _CANDIDATE_EVENTS and row.get("candidate_id")
+    candidate_ids_by_strategy = {
+        strategy_id: {
+            str(row["candidate_id"])
+            for row in audit_events
+            if row.get("strategy_id") == strategy_id
+            and row.get("event") in _CANDIDATE_EVENTS
+            and row.get("candidate_id")
+        }
+        for strategy_id in selected_strategy_ids
     }
     status = runtime.status()
-    target_setting = runtime.strategy_registry.setting(strategy_id)
+    target_setting = runtime.strategy_registry.setting(signal_gate_target_strategy_id)
     enabled_other_strategies = [
         current_id
         for current_id in runtime.strategy_registry.strategy_ids
-        if current_id != strategy_id
+        if current_id != signal_gate_target_strategy_id
         and runtime.strategy_registry.setting(current_id).mode is not StrategyMode.OFF
     ]
+    strategy_modes = {
+        strategy_id: runtime.strategy_registry.setting(strategy_id).mode.value
+        for strategy_id in selected_strategy_ids
+    }
     return {
         "run_id": run_id,
         "runtime_run_id": runtime_run_id,
-        "strategy_id": strategy_id,
+        "research_scope": (
+            "ALL_REGISTERED_STRATEGIES"
+            if len(selected_strategy_ids) == len(runtime.strategy_registry.strategy_ids)
+            else "SELECTED_STRATEGIES"
+        ),
+        "strategy_id": signal_gate_target_strategy_id,
+        "strategy_ids": list(selected_strategy_ids),
+        "strategy_count": len(selected_strategy_ids),
+        "strategy_account_count": len(selected_strategy_ids) * 2,
+        "signal_gate_target_strategy_id": signal_gate_target_strategy_id,
         "signal_gate": signal_gate,
         "strategy_logic": strategy_logic,
         "signal_gate_diagnostics": gated_evaluator.diagnostics(),
@@ -497,18 +569,68 @@ def replay_archive_run(
         "last_receive_ts_ms": last_receive_ts_ms,
         "event_type_counts": dict(sorted(event_types.items())),
         "strategy_mode": target_setting.mode.value,
+        "strategy_modes": strategy_modes,
+        "source_strategy_settings": source_strategy_settings,
+        "research_shadow_reactivation_is_ephemeral": True,
         "enabled_other_strategies": enabled_other_strategies,
         "strategy_evaluation_count": runtime.strategy_evaluation_count,
         "qualified_signal_count": runtime.qualified_signal_count,
-        "candidate_plan_count": len(candidate_ids),
+        "candidate_plan_count": sum(map(len, candidate_ids_by_strategy.values())),
+        "candidate_plan_counts": {
+            strategy_id: len(candidate_ids)
+            for strategy_id, candidate_ids in candidate_ids_by_strategy.items()
+        },
         "trade_count": len(trades),
         "trade_rows": trades,
         "reports": reports,
-        "open_state": _open_state(runtime, strategy_id),
+        "open_state": _open_state(runtime, selected_strategy_ids),
         "real_orders_enabled": status.real_orders_enabled,
         "auth_required": status.auth_required,
         "ledger_attached": runtime.ledger is not None,
     }
+
+
+def replay_archive_run(
+    run_id: str,
+    run_dir: Path,
+    *,
+    strategy_id: str = DEFAULT_STRATEGY_ID,
+    signal_gate: str = SIGNAL_GATE_NONE,
+    strategy_logic: str = STRATEGY_LOGIC_CURRENT,
+    maximum_events: int | None = None,
+) -> dict[str, object]:
+    """한 전략을 신규 무원장 PAPER 런타임에서 수신순으로 재생한다."""
+
+    return _replay_archive_run_for_strategies(
+        run_id,
+        run_dir,
+        strategy_ids=(strategy_id,),
+        signal_gate_target_strategy_id=strategy_id,
+        signal_gate=signal_gate,
+        strategy_logic=strategy_logic,
+        maximum_events=maximum_events,
+    )
+
+
+def replay_strategy_league_archive_run(
+    run_id: str,
+    run_dir: Path,
+    *,
+    signal_gate: str = SIGNAL_GATE_NONE,
+    strategy_logic: str = STRATEGY_LOGIC_CURRENT,
+    maximum_events: int | None = None,
+) -> dict[str, object]:
+    """등록 전략 전체를 22개 독립계좌의 한 무원장 PAPER 런타임에서 재생한다."""
+
+    return _replay_archive_run_for_strategies(
+        run_id,
+        run_dir,
+        strategy_ids=StrategyRegistry().strategy_ids,
+        signal_gate_target_strategy_id=DEFAULT_STRATEGY_ID,
+        signal_gate=signal_gate,
+        strategy_logic=strategy_logic,
+        maximum_events=maximum_events,
+    )
 
 
 def _summary(
@@ -521,10 +643,26 @@ def _summary(
     for run in runs:
         run_trades = run.get("trade_rows")
         if isinstance(run_trades, Sequence) and not isinstance(run_trades, str | bytes):
-            trades.extend(dict(row) for row in run_trades if isinstance(row, Mapping))
+            trades.extend(
+                dict(row)
+                for row in run_trades
+                if isinstance(row, Mapping)
+                and str(row.get("strategy_id")) == strategy_id
+            )
         open_state = run.get("open_state")
         if isinstance(open_state, Mapping):
-            censored_count += int(str(open_state.get("censored_count", 0)))
+            positions = open_state.get("positions")
+            if isinstance(positions, Sequence) and not isinstance(positions, str | bytes):
+                censored_count += sum(
+                    isinstance(position, Mapping)
+                    and str(position.get("strategy_id")) == strategy_id
+                    for position in positions
+                )
+            pending_counts = open_state.get("pending_entry_counts")
+            if isinstance(pending_counts, Mapping):
+                censored_count += int(str(pending_counts.get(strategy_id, 0)))
+            elif run.get("strategy_ids") == [strategy_id]:
+                censored_count += int(str(open_state.get("pending_entry_count", 0)))
     reports = TradeAnalytics().strategy_reports(trades, strategy_ids=(strategy_id,))
     report_by_profile = {str(row["profile"]): row for row in reports}
     opportunities = {
@@ -607,6 +745,8 @@ def _summary(
     gate_accepted_qualified_count = 0
     gate_rejected_qualified_count = 0
     for run in runs:
+        if run.get("signal_gate_target_strategy_id", strategy_id) != strategy_id:
+            continue
         diagnostics = run.get("signal_gate_diagnostics")
         if not isinstance(diagnostics, Mapping):
             continue
@@ -735,6 +875,81 @@ def build_result(
     }
 
 
+def build_strategy_league_result(
+    archive: Path,
+    *,
+    run_ids: Sequence[str],
+    signal_gate: str = SIGNAL_GATE_NONE,
+    strategy_logic: str = STRATEGY_LOGIC_CURRENT,
+    dataset_manifest: Path | None = None,
+    maximum_events: int | None = None,
+) -> dict[str, object]:
+    """등록 전략 전체를 각 Run당 한 번만 읽어 동일 PAPER 입력으로 비교한다."""
+
+    strategy_ids = StrategyRegistry().strategy_ids
+    dataset_reference = (
+        frozen_dataset_reference(dataset_manifest, run_ids)
+        if dataset_manifest is not None
+        else {"status": "NOT_PROVIDED"}
+    )
+    runs = [
+        replay_strategy_league_archive_run(
+            run_id,
+            archive / f"run={run_id}",
+            signal_gate=signal_gate,
+            strategy_logic=strategy_logic,
+            maximum_events=maximum_events,
+        )
+        for run_id in run_ids
+    ]
+    run_by_id = {str(run["run_id"]): run for run in runs}
+    split_ids = {
+        "train": DEFAULT_RESEARCH_TRAIN_RUNS,
+        "validation": DEFAULT_VALIDATION_RUNS,
+        "oos": DEFAULT_OOS_RUNS,
+    }
+    split_summaries = {
+        split: {
+            strategy_id: _summary(
+                [run_by_id[run_id] for run_id in ids if run_id in run_by_id],
+                strategy_id=strategy_id,
+            )
+            for strategy_id in strategy_ids
+        }
+        for split, ids in split_ids.items()
+    }
+    overall_by_strategy = {
+        strategy_id: _summary(runs, strategy_id=strategy_id)
+        for strategy_id in strategy_ids
+    }
+    return {
+        "schema_version": 2,
+        "status": "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE",
+        "method": "ONE_PASS_ALL_REGISTERED_ACTUAL_PAPER_RUNTIME_PATH",
+        "git_commit": git_commit(),
+        "research_scope": "ALL_REGISTERED_STRATEGIES",
+        "strategy_ids": list(strategy_ids),
+        "strategy_count": len(strategy_ids),
+        "strategy_account_count": len(strategy_ids) * 2,
+        "signal_gate_target_strategy_id": DEFAULT_STRATEGY_ID,
+        "signal_gate": signal_gate,
+        "strategy_logic": strategy_logic,
+        "strategy_version": STRATEGY_VERSION,
+        "event_order": "OBSERVED_RECEIVE_ORDER_ADR_080",
+        "frozen_dataset": dataset_reference,
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+        "runtime_ai_order_decision": False,
+        "retired_strategy_reactivation_scope": "EPHEMERAL_RESEARCH_REPLAY_ONLY",
+        "ranking_eligible_strategy_ids": [],
+        "profitability_status": "NOT_PROVEN",
+        "runs": runs,
+        "splits": split_summaries,
+        "overall_by_strategy": overall_by_strategy,
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -742,7 +957,9 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data/market-parquet-v6/venue=BINANCE_USDM"),
     )
-    parser.add_argument("--strategy-id", default=DEFAULT_STRATEGY_ID)
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--strategy-id", default=DEFAULT_STRATEGY_ID)
+    selection.add_argument("--all-strategies", action="store_true")
     parser.add_argument("--signal-gate", choices=SIGNAL_GATES, default=SIGNAL_GATE_NONE)
     parser.add_argument(
         "--strategy-logic",
@@ -770,15 +987,25 @@ def main() -> None:
             *DEFAULT_OOS_RUNS,
         )
     )
-    result = build_result(
-        args.archive,
-        strategy_id=str(args.strategy_id),
-        run_ids=run_ids,
-        signal_gate=str(args.signal_gate),
-        strategy_logic=str(args.strategy_logic),
-        dataset_manifest=args.dataset_manifest,
-        maximum_events=args.maximum_events,
-    )
+    if args.all_strategies:
+        result = build_strategy_league_result(
+            args.archive,
+            run_ids=run_ids,
+            signal_gate=str(args.signal_gate),
+            strategy_logic=str(args.strategy_logic),
+            dataset_manifest=args.dataset_manifest,
+            maximum_events=args.maximum_events,
+        )
+    else:
+        result = build_result(
+            args.archive,
+            strategy_id=str(args.strategy_id),
+            run_ids=run_ids,
+            signal_gate=str(args.signal_gate),
+            strategy_logic=str(args.strategy_logic),
+            dataset_manifest=args.dataset_manifest,
+            maximum_events=args.maximum_events,
+        )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n"

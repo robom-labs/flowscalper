@@ -17,6 +17,7 @@ from backend.app.domain.models import DataQuality, MarketEvent, Side, Venue
 from backend.app.features import FeatureSnapshot
 from backend.app.regime import Regime
 from backend.app.strategies.base import CandidateDecision, CandidateStatus
+from backend.app.strategies.registry import StrategyRegistry
 from backend.app.strategies.runtime_evaluator import EvaluatedSignal
 from backend.tests.test_strategy_league_signals import (
     aligned_features,
@@ -29,8 +30,10 @@ from scripts.research_runtime_strategy_replay import (
     ResearchSignalGateEvaluator,
     _summary,
     build_result,
+    build_strategy_league_result,
     frozen_dataset_reference,
     replay_archive_run,
+    replay_strategy_league_archive_run,
     tp1_feasibility_gate_rejections,
 )
 
@@ -218,6 +221,42 @@ def test_runtime_strategy_replay_is_single_strategy_paper_only(tmp_path: Path) -
     assert result["strategy_logic"] == STRATEGY_LOGIC_CURRENT
     assert result["trade_count"] == 0
     assert dict(result["open_state"])["censored_count"] == 0
+
+
+def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_22_accounts(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-research-league-test"
+    _write_events(
+        tmp_path,
+        [
+            _event(run_id, event_id="depth-1", ts_ms=1_000, event_type="DEPTH_UPDATE"),
+            _event(run_id, event_id="trade-1", ts_ms=1_100, event_type="TRADE"),
+            _event(run_id, event_id="depth-2", ts_ms=1_500, event_type="DEPTH_UPDATE"),
+        ],
+    )
+    strategy_ids = StrategyRegistry().strategy_ids
+
+    result = replay_strategy_league_archive_run(
+        "RUN-RESEARCH-LEAGUE-TEST",
+        tmp_path,
+    )
+
+    assert result["research_scope"] == "ALL_REGISTERED_STRATEGIES"
+    assert result["strategy_ids"] == list(strategy_ids)
+    assert result["strategy_count"] == len(strategy_ids) == 11
+    assert result["strategy_account_count"] == 22
+    assert set(result["strategy_modes"].values()) == {"SHADOW"}
+    assert result["source_strategy_settings"]["LSA_REVERSAL_V1"] == {
+        "mode": "OFF",
+        "lifecycle": "RETIRED",
+    }
+    assert result["research_shadow_reactivation_is_ephemeral"] is True
+    assert len(result["reports"]) == 22
+    assert result["real_orders_enabled"] is False
+    assert result["auth_required"] is False
+    assert result["ledger_attached"] is False
+    assert result["trade_count"] == 0
 
 
 def test_runtime_strategy_replay_rejects_unknown_strategy_and_bad_limit(
@@ -413,6 +452,57 @@ def test_replay_summary_deduplicates_profiles_before_the_30_opportunity_gate() -
     assert "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30" in summary["ranking_blockers"]
 
 
+def test_replay_summary_filters_other_strategy_rows_in_a_league_run() -> None:
+    strategy_id = "VWAP_EXHAUSTION_REVERSION_V1"
+    reports = [
+        {
+            "profile": profile,
+            "sample_size": 1,
+            "wins": 0,
+            "losses": 1,
+            "win_rate": "0",
+            "expectancy_usdt": "-1",
+            "net_pnl": "-1",
+            "profit_factor": "0",
+        }
+        for profile in ("BASE", "STRESS")
+    ]
+    trades = [
+        {
+            "run_id": "RUN-A",
+            "signal_event_id": f"signal-{current_strategy_id}",
+            "strategy_id": current_strategy_id,
+            "side": "LONG",
+            "profile": "BASE",
+            "exit_reason": "STOP",
+            "holding_ms": 60_000,
+            "tp1_hit_ts_ms": None,
+            "tp2_hit_ts_ms": None,
+        }
+        for current_strategy_id in (strategy_id, "CBR_CONTINUATION_V1")
+    ]
+    run = {
+        "event_count": 100,
+        "strategy_ids": list(StrategyRegistry().strategy_ids),
+        "signal_gate_target_strategy_id": strategy_id,
+        "signal_gate_diagnostics": {"baseline_qualified_count": 7},
+        "trade_rows": trades,
+        "open_state": {"positions": [], "pending_entry_counts": {}},
+    }
+    with patch(
+        "scripts.research_runtime_strategy_replay.TradeAnalytics.strategy_reports",
+        return_value=reports,
+    ) as strategy_reports:
+        summary = _summary((run,), strategy_id=strategy_id)
+
+    passed_trades = strategy_reports.call_args.args[0]
+    assert len(passed_trades) == 1
+    assert passed_trades[0]["strategy_id"] == strategy_id
+    assert summary["trade_row_count"] == 1
+    assert summary["unique_market_opportunity_count"] == 1
+    assert summary["signal_gate_diagnostics"]["baseline_qualified_count"] == 7
+
+
 def test_runtime_strategy_replay_binds_the_selected_frozen_dataset_manifest(
     tmp_path: Path,
 ) -> None:
@@ -438,6 +528,33 @@ def test_runtime_strategy_replay_binds_the_selected_frozen_dataset_manifest(
     assert frozen["selected_run_count"] == 1
     assert frozen["selected_event_count"] == 1
     assert frozen["current_archive_byte_reverification"] == "NOT_RUN"
+
+
+def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) -> None:
+    run_id = "RUN-RESEARCH-LEAGUE-SUMMARY"
+    run_dir = tmp_path / f"run={run_id}"
+    run_dir.mkdir()
+    _write_events(
+        run_dir,
+        [_event(run_id, event_id="depth-1", ts_ms=1_000, event_type="DEPTH_UPDATE")],
+    )
+
+    result = build_strategy_league_result(
+        tmp_path,
+        run_ids=(run_id,),
+    )
+
+    assert result["status"] == "RESEARCH_STRATEGY_LEAGUE_REPLAY_COMPLETE"
+    assert result["strategy_count"] == 11
+    assert result["strategy_account_count"] == 22
+    assert result["real_orders_enabled"] is False
+    assert result["ranking_eligible_strategy_ids"] == []
+    assert result["profitability_status"] == "NOT_PROVEN"
+    assert len(result["overall_by_strategy"]) == 11
+    assert all(
+        summary["ranking_eligible"] is False
+        for summary in result["overall_by_strategy"].values()
+    )
 
 
 def test_frozen_dataset_reference_rejects_tamper_and_unknown_run(tmp_path: Path) -> None:

@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "status": "PASS_PATH_ONLY",
+  "profitability_status": "NOT_PROVEN",
+  "ranking_eligible_strategy_ids": [],
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "runtime_ai_order_decision": false,
+  "purpose": "등록 전략 전체를 같은 저장 공개시장 입력의 한 PAPER 런타임에서 동시에 비교",
+  "contract": {
+    "event_order": "OBSERVED_RECEIVE_ORDER_ADR_080",
+    "strategy_count": 11,
+    "independent_base_stress_account_count": 22,
+    "single_archive_pass_per_run": true,
+    "actual_paper_entry_fill_tp_sl_management_path": true,
+    "archive_end_force_close": false,
+    "retired_strategy_reactivation_scope": "EPHEMERAL_RESEARCH_REPLAY_ONLY",
+    "source_registry_state_preserved_in_result": true,
+    "cross_strategy_trade_contamination_blocked": true
+  },
+  "verification": {
+    "regression_tests": {
+      "status": "PASS",
+      "count": 199,
+      "command": ".venv/bin/python -m pytest backend/tests/test_runtime_strategy_research_replay.py backend/tests/test_strategy_registry_shadow.py backend/tests/test_strategy_league_signals.py backend/tests/test_strategy_league_portfolio.py backend/tests/test_candidate_paper_portfolio.py -q"
+    },
+    "ruff": "PASS",
+    "mypy": "PASS",
+    "git_diff_check": "PASS",
+    "stored_event_smoke": {
+      "status": "PASS_PATH_ONLY",
+      "run_id": "RUN-B987D1D386C6",
+      "event_count": 5000,
+      "strategy_logic": "CURRENT_FULL_CONFLUENCE",
+      "signal_gate": "NONE",
+      "strategy_count": 11,
+      "account_count": 22,
+      "strategy_modes_during_replay": [
+        "SHADOW"
+      ],
+      "strategy_evaluation_count": 34958,
+      "qualified_signal_count": 15,
+      "candidate_plan_count": 5,
+      "completed_trade_count": 0,
+      "censored_open_position_count": 8,
+      "pending_entry_count": 0,
+      "strategy_profile_report_count": 22,
+      "real_orders_enabled": false,
+      "auth_required": false,
+      "ledger_attached": false
+    },
+    "frozen_13_run_all_strategy_replay": "NOT_RUN",
+    "current_archive_byte_reverification": "NOT_RUN",
+    "wave104_six_hour_observer": "IN_PROGRESS"
+  },
+  "interpretation": [
+    "5,000 이벤트 smoke는 단일 패스 경로와 계좌 격리만 검증한다.",
+    "구간 끝 열린 포지션 8개는 강제 종료하지 않아 결과를 유리하게 만들지 않았다.",
+    "완료 거래 0건이므로 승률, 기대값 또는 수익성을 평가할 수 없다.",
+    "30개 이상의 고유 시장기회와 모든 강건성 gate 전에는 전략을 순위화하지 않는다."
+  ]
+}
