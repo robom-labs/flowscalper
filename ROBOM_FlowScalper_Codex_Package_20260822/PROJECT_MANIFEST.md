@@ -89,6 +89,7 @@ Detailed specifications:
 - `docs/adr/ADR-106-focused-replay-memory-cache-and-request-isolation.md`
 - `docs/adr/ADR-107-bounded-persistence-batches-and-observation-window.md`
 - `docs/adr/ADR-108-replay-preview-live-reader-isolation.md`
+- `docs/adr/ADR-109-parallel-trend-tournament-and-preserved-retirement.md`
 
 ## Supporting contracts
 
@@ -159,6 +160,7 @@ Detailed specifications:
 - `scripts/verify_ledger_snapshot.py`
 - `scripts/verify_macos_ledger_maintenance.py`
 - `scripts/research_public_trend_candidates.py`
+- `scripts/research_intraday_trend_tournament.py`
 - `scripts/research_public_hourly_trend_diagnostic.py`
 - `scripts/run_live_safe_strategy_league_replay.py`
 - `scripts/compare_all_strategy_gate_trials.py`
@@ -166,6 +168,7 @@ Detailed specifications:
 - `config/regression_contracts.json`
 - `docs/research/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION_KO.md`
 - `docs/research/HYP-116J-intraday-trend-v2-live-shadow.md`
+- `docs/research/HYP-116L-parallel-trend-tournament.md`
 - `evidence/WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION.json`
 - `evidence/WAVE110_RESEARCH_ITERATION_GUARD_QA.json`
 - `evidence/WAVE116J_POST_READINESS_RUNTIME_QA.json`
