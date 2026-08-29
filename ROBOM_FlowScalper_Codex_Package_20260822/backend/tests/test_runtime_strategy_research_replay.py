@@ -610,6 +610,7 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     assert result["profitability_status"] == "NOT_PROVEN"
     assert result["schema_version"] == 3
     assert result["robustness_evaluation"]["status"] == "INCOMPLETE_REQUIRED_RUNS"
+    assert result["robustness_evaluation"]["final_oos"]["opened_for_this_result"] is False
     assert len(result["overall_by_strategy"]) == 11
     assert all(
         summary["ranking_eligible"] is False
@@ -685,6 +686,8 @@ def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_p
     robust = result["strategies"]["ROBUST_A"]
     weak = result["strategies"]["WEAK_B"]
     assert result["status"] == "HISTORICAL_METRICS_CALCULATED_FORWARD_PENDING"
+    assert result["final_oos"]["opened_for_this_result"] is True
+    assert result["final_oos"]["no_retuning_after_open"] is True
     assert result["pbo_gate_by_profile"] == {"BASE": True, "STRESS": True}
     assert robust["final_oos_unique_market_opportunity_count"] == 30
     assert robust["profiles"]["BASE"]["sample_size"] == 30

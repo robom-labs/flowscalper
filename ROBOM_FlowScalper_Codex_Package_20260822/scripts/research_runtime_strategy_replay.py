@@ -1254,7 +1254,8 @@ def strategy_league_robustness(
         "final_oos": {
             "run_ids": list(oos_run_ids),
             "missing_run_ids": missing_oos,
-            "opened_once_no_retuning": True,
+            "opened_for_this_result": not missing_oos,
+            "no_retuning_after_open": True,
         },
         "pbo_by_profile": pbo_by_profile,
         "pbo_gate_by_profile": pbo_gates,
