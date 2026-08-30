@@ -3744,7 +3744,7 @@ full screening을 실행하지 않는다.
 기계판독 근거는 `evidence/WAVE126_STRATEGY_100_SCREENING_LIVE_GUARD.json`,
 `evidence/WAVE126A_PHYSICAL_IO_GUARD_QA.json`과
 `evidence/WAVE126A_POST_IO_GUARD_RUNTIME_45S.json`이다. 결정은
-`docs/adr/ADR-121-physical-research-io-domain-and-portable-frozen-copy.md`에 고정했다.
+`docs/adr/ADR-121-physical-research-io-domain-and-portable-frozen-dataset.md`에 고정했다.
 
 현 수용상태는
 `LIVE_RUNNING_PHYSICAL_RESEARCH_IO_GUARD_PASS_TRAIN_MIRROR_VERIFIED_FULL_SCREENING_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
@@ -3795,7 +3795,7 @@ wallet·runtime AI는 계속 0이다.
 기계판독 근거는 `evidence/WAVE126B_RAM_MIRROR_AND_PILOT_QA.json`,
 `evidence/WAVE126B_STRATEGY_100_RAM_MIRROR_PILOT.json`,
 `evidence/WAVE126B_RAM_PILOT_LIVE_GUARD_30S_RETRY.json`과
-`evidence/WAVE126B_POST_VALIDATION_COPY_RUNTIME_45S.json`이다.
+`evidence/WAVE126B_POST_VALIDATION_PORTABLE_RUNTIME_45S.json`이다.
 
 현 수용상태는
 `LIVE_RUNNING_RAM_TRAIN_VALIDATION_VERIFIED_BOUNDED_PILOT_PASS_FULL_SCREEN_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
