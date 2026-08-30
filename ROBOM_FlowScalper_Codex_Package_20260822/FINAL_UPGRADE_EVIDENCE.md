@@ -3979,3 +3979,53 @@ development 57건·Validation 21건에서 STRESS 기대값 -1.992 계좌 bp·PF 
 
 현 수용상태는
 `HYP129_EXECUTED_AFTER_LOOKAHEAD_FIX_NO_SELECTION_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.
+
+## 92. Wave 131 거래량 확인 추세 30후보의 근접 실패 보존
+
+OBV 이동평균 교차, OBV·가격 동시돌파, 거래량 확인 수축 돌파, 추세 filter turn과 OBV 뒤
+첫 눌림 5계열에 LONG·SHORT·BOTH와 BALANCED·SELECTIVE를 적용한 30개 후보를 결과 전에
+고정했다. 후보 지문은
+`dd89c061086900c23ec17c1aef124372e6856fc06d0646b7b72ca6ec7399f58b`, 실행 commit은
+`673d31e4f29fbe038a9a39cf6f9dfc7849e58b7d`다.
+
+공식 Binance USDⓈ-M 공개 완성 4시간봉 148,824개와 펀딩 이벤트 74,487개를 사용했다.
+후보 전체 중복 평가 기준 원신호 8,242개, 독립 포트폴리오 선택 4,124개, 완료거래 4,112개,
+데이터 끝 미결 12개였다. 실제 펀딩 이벤트는 92,873번 적용했고 순 cashflow는
+-3,032.451 계좌 bp였다. 경계가 모호한 유리한 credit 99.145 계좌 bp는 제외했다.
+
+walk-forward 안정성을 통과한 후보는 4개였고 Train·Validation과 함께 선발된 후보는
+`T130_OBV_PRICE_BREAKOUT_4H_BOTH_SELECTIVE` 하나였다. 이 후보의 진단 OOS 68건은 BASE
+기대값 +4.801 계좌 bp·PF 1.208, STRESS 기대값 +3.824 계좌 bp·PF 1.162였다. 그러나
+bootstrap 95% 기대값 하한 -8.951 계좌 bp, DSR 0, PBO 0.8571로 최종 강건성 gate를
+실패했다. 방향별 사후 진단에서 SHORT 34건이 양수였지만 LONG 34건은 음수였고, OOS를 연 뒤
+확인한 분할을 새 승격 근거로 사용하지 않았다.
+
+전체 실행을 두 번 반복해 생성시각을 제외한 canonical SHA-256
+`f6c277ab71b90336b72ed3acc41dcfbcbcc8f11e68f45e7daf690c17099b4dfa`가 일치했다. 연구와
+동시에 실제 서비스를 180.027초 관찰한 결과 event +12,597, 전략평가 +79,360, queue 최대
+7, 처리·체결 p95 최대 25.060·70.030ms였다. 신규 500ms 초과 loop 지연, 비계획 재연결,
+gap, drop, 저장 fault, 실제 주문과 인증은 0이었다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 결과 전 후보·코드 고정 | `PASS` | main `673d31e`, 30후보·5계열·후보 지문 일치 |
+| 단위·회귀 | `PASS` | 후보·OBV·미래불변·확인봉·체결·펀딩·비용 관련 9건 |
+| 관련 연구 회귀 | `PASS` | HYP-128·129·130 합계 27건 |
+| 정적검사 | `PASS` | Ruff, strict mypy, py_compile, diff check |
+| 공개시장 입력 | `PASS` | 12종목·4시간봉 148,824·펀딩 74,487·dataset SHA-256 |
+| 실행 재현성 | `PASS` | 전체 두 실행의 생성시각 제외 canonical SHA-256 일치 |
+| Train·Validation 선발 | `PASS_EXECUTION_ONLY` | 한 후보 선발, 성과입증 아님 |
+| 진단 OOS 강건성 | `FAIL_RESEARCH_GATES` | bootstrap 하한·DSR·PBO 실패 |
+| Registry·SHADOW 승격 | `PASS_NONE_PROMOTED` | 통과 후보 0, 변경 0 |
+| 동시 LIVE guard | `PASS` | 180.027초, event·평가 전진, 신규 critical lag·fault·drop 0 |
+| 실제 주문·인증 | `PASS` | 실제 주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 역사 강건성 gate 통과 0 |
+
+기계판독 근거는 `evidence/WAVE131_VOLUME_CONFIRMED_EARLY_TREND_TOURNAMENT.json`,
+`evidence/WAVE131_VOLUME_CONFIRMED_EARLY_TREND_TOURNAMENT_QA.json`,
+`evidence/WAVE131_VOLUME_TREND_RESEARCH_LIVE_GUARD_180S.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 결과와 후속 외부검증 분리는
+`docs/adr/ADR-126-volume-breakout-near-miss-and-external-validation.md`에 기록했다.
+
+현 수용상태는
+`HYP130_EXECUTED_OOS_NEAR_MISS_REJECTED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.

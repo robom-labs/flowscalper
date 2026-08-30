@@ -1,7 +1,7 @@
 # HYP-130. 거래량 확인 4시간 추세 초입·첫 눌림 30후보 사전등록
 
 - 사전등록 상태. `LOCKED_BEFORE_EXECUTION`.
-- 실행 상태. `NOT_RUN`.
+- 실행 상태. `EXECUTED_NO_PROMOTION`.
 - 등록일. 2026-08-30.
 - 가설 ID. `HYP-130-VOLUME-CONFIRMED-EARLY-TREND-TOURNAMENT`.
 - 후보 지문. `dd89c061086900c23ec17c1aef124372e6856fc06d0646b7b72ca6ec7399f58b`.
@@ -134,3 +134,39 @@ bid·ask BASE·STRESS SHADOW의 현재 버전 자연표본 30건과 별도 미�
 
 실제 주문, private API, API Key, secret, 인증, wallet, 입출금과 runtime AI 주문판단은 계속
 0이다.
+
+## 실행 결과
+
+- 실행 commit. `673d31e4f29fbe038a9a39cf6f9dfc7849e58b7d`.
+- dataset 지문. `89f778387acebe91361449e20c95917ab33281134fa25bf8cb69a3d59314338a`.
+- 입력. 12종목 완성 4시간봉 148,824개와 실제 공개 펀딩 이벤트 74,487개.
+- 전체 후보 중복 평가. 원신호 8,242개, 포트폴리오 선택 4,124개, 완료거래 4,112개,
+  데이터 끝 미결 12개.
+- walk-forward 안정성 통과. 4개.
+- Train·Validation·walk-forward 동시 선발. 1개.
+- 전체 역사 강건성 gate 통과. 0개.
+- PBO. `0.8571428571`.
+
+선발된 `T130_OBV_PRICE_BREAKOUT_4H_BOTH_SELECTIVE`는 진단 OOS 68건에서 BASE 기대값
++4.801 계좌 bp·PF 1.208, STRESS 기대값 +3.824 계좌 bp·PF 1.162였다. 그러나 bootstrap
+95% 기대값 하한은 -8.951 계좌 bp, DSR 확률은 0, PBO는 0.8571이었다. 따라서 양의 평균이
+다중시험에서 우연히 선택됐을 가능성을 배제하지 못했고 최종 gate를 실패했다.
+
+방향별 사후 진단에서는 LONG 34건이 STRESS 기대값 -4.707 계좌 bp·PF 0.830, SHORT
+34건이 +12.355 계좌 bp·PF 1.627이었다. 이는 양방향 후보의 결과를 연 뒤 확인한 차이이므로
+SHORT만 잘라 승격하는 근거로 사용하지 않는다. 사전등록된 별도 SHORT 후보도 필요한
+시간순 안정성 gate를 통과하지 못했다.
+
+전체 tournament를 두 번 실행해 생성시각을 제외한 canonical SHA-256
+`f6c277ab71b90336b72ed3acc41dcfbcbcc8f11e68f45e7daf690c17099b4dfa`가 일치했다. 동시
+LIVE_PUBLIC 180.027초 관찰은 event +12,597, 전략평가 +79,360, queue 최대 7, 처리·체결
+p95 최대 25.060·70.030ms였고 신규 500ms 초과 loop 지연, 비계획 재연결, gap, drop,
+저장 fault, 실제 주문과 인증은 0이었다.
+
+Registry와 PAPER SHADOW 승격은 0개다. 결과는
+`RESEARCH-HYP130-89f778387ace-b3595bafeea4`로 append-only 시험이력에 보존한다. 다음 연구는
+같은 역사에서 SHORT를 사후 조정하지 않고, 파라미터 무변경 외부 venue 또는 이후 시점
+검증과 국제 공개영상의 기계적으로 완전한 규칙을 별도 가설 ID로 분리한다.
+
+현 수용상태는
+`HYP130_EXECUTED_OOS_NEAR_MISS_REJECTED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.

@@ -1,0 +1,126 @@
+{
+  "schema": "flowscalper.wave131_volume_confirmed_early_trend_tournament_qa.v1",
+  "wave": "WAVE131",
+  "execution_status": "PASS_REPRODUCIBLE_RESEARCH_GATES_FAILED",
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "preregistration_commit": "673d31e4f29fbe038a9a39cf6f9dfc7849e58b7d",
+  "execution_commit": "673d31e4f29fbe038a9a39cf6f9dfc7849e58b7d",
+  "candidate_count": 30,
+  "candidate_family_count": 5,
+  "candidate_fingerprint": "dd89c061086900c23ec17c1aef124372e6856fc06d0646b7b72ca6ec7399f58b",
+  "implementation_fingerprint": "b3595bafeea460eb36d8125825b38ebf930f40a8ddfd2315c9f6cf965c705232",
+  "dataset": {
+    "venue": "BINANCE_USDM",
+    "public_only": true,
+    "start_ts_ms": 1609459200000,
+    "end_ts_ms": 1788048000000,
+    "symbol_count": 12,
+    "completed_four_hour_bar_count": 148824,
+    "funding_event_count": 74487,
+    "dataset_fingerprint": "89f778387acebe91361449e20c95917ab33281134fa25bf8cb69a3d59314338a"
+  },
+  "candidate_flow": {
+    "raw_intent_count_all_candidates": 8242,
+    "portfolio_selected_count_all_candidates": 4124,
+    "closed_trade_count_all_candidates": 4112,
+    "censored_open_count_all_candidates": 12
+  },
+  "selection": {
+    "maximum_evaluable_fold_count": 6,
+    "maximum_positive_fold_count": 4,
+    "walk_forward_stability_pass_candidate_count": 4,
+    "selected_on_train_validation_and_walk_forward_count": 1,
+    "selected_on_train_validation_and_walk_forward": [
+      "T130_OBV_PRICE_BREAKOUT_4H_BOTH_SELECTIVE"
+    ],
+    "adaptive_historical_robustness_pass_count": 0,
+    "adaptive_historical_robustness_pass_candidates": [],
+    "unranked_insufficient_sample_count": 13,
+    "probability_of_backtest_overfitting": 0.8571428571428571
+  },
+  "diagnostic_oos_selected_candidate": {
+    "candidate_id": "T130_OBV_PRICE_BREAKOUT_4H_BOTH_SELECTIVE",
+    "sample_size": 68,
+    "base_expectancy_account_bps": 4.800904261848351,
+    "base_profit_factor": 1.2079094516493565,
+    "stress_expectancy_account_bps": 3.8239912130140254,
+    "stress_profit_factor": 1.161508502361004,
+    "win_rate": 0.4411764705882353,
+    "payoff_ratio_stress": 1.471244102990605,
+    "maximum_drawdown_stress_account_bps": 383.06741806342063,
+    "bootstrap_expectancy_95_lower_account_bps": -8.95126070110372,
+    "bootstrap_expectancy_95_upper_account_bps": 18.84895937245906,
+    "deflated_sharpe_probability": 0.0,
+    "largest_positive_symbol_share": 0.4574071613427175,
+    "failed_gates": [
+      "BOOTSTRAP_EXPECTANCY_95_LOWER_NOT_POSITIVE",
+      "DEFLATED_SHARPE_BELOW_0_95",
+      "PBO_ABOVE_0_20"
+    ]
+  },
+  "direction_diagnostic_not_a_selection": {
+    "long": {
+      "sample_size": 34,
+      "stress_expectancy_account_bps": -4.70676941239693,
+      "stress_profit_factor": 0.8297916023102021,
+      "win_rate": 0.35294117647058826
+    },
+    "short": {
+      "sample_size": 34,
+      "stress_expectancy_account_bps": 12.35475183842498,
+      "stress_profit_factor": 1.6271302666632546,
+      "win_rate": 0.5294117647058824
+    },
+    "post_hoc_direction_promotion_forbidden": true,
+    "reason": "양방향 후보를 연 뒤 본 방향별 차이이며 별도 SHORT 후보의 사전등록 안정성 통과가 아니므로 승격 근거로 사용하지 않는다."
+  },
+  "funding_audit_all_candidates": {
+    "applied_funding_event_count": 92873,
+    "net_funding_cashflow_account_bps": -3032.4508987710965,
+    "excluded_ambiguous_boundary_credit_account_bps": 99.14527928525449
+  },
+  "reproducibility": {
+    "full_tournament_execution_count": 2,
+    "generated_timestamp_excluded_canonical_sha256": "f6c277ab71b90336b72ed3acc41dcfbcbcc8f11e68f45e7daf690c17099b4dfa",
+    "identical": true
+  },
+  "live_runtime_guard": {
+    "status": "PASS",
+    "duration_seconds": 180.027,
+    "run_id": "run-2b7135a972dd",
+    "event_delta": 12597,
+    "strategy_evaluation_delta": 79360,
+    "maximum_queue_depth": 7,
+    "maximum_processing_lag_p95_ms": 25.0595703125,
+    "maximum_trade_lag_p95_ms": 70.02978515625,
+    "new_event_loop_lag_over_500ms_delta": 0,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "dropped_event_delta": 0,
+    "persistence_fault_delta": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "decision": {
+    "registry_changes": [],
+    "paper_shadow_promotions": [],
+    "failed_results_preserved": true,
+    "same_thresholds_reused_after_results": false,
+    "next_step": "고정 후보를 사후 SHORT로 잘라 같은 데이터에서 재승격하지 않는다. 다른 venue 또는 이후 시점의 공개시장 자료에서 파라미터 무변경 외부검증을 먼저 설계하고, 국제 공개영상의 완전한 결정규칙은 별도 가설 ID로 중복 제거한다.",
+    "reason": "선발 후보의 OOS 평균은 양수였지만 bootstrap 하한, DSR와 PBO가 모두 실패해 우연 선택 위험을 배제하지 못했다."
+  },
+  "evidence": {
+    "full_report": "evidence/WAVE131_VOLUME_CONFIRMED_EARLY_TREND_TOURNAMENT.json",
+    "full_report_sha256": "43c3ca9aa7dbaf33e854d7e1ad96d9ceb97aa6de2864ffd67df4e4ab0d3e2e6d",
+    "live_guard": "evidence/WAVE131_VOLUME_TREND_RESEARCH_LIVE_GUARD_180S.json",
+    "live_guard_sha256": "85fdb5057ab1418063b42e220483d133133b0643f7e7499938057cebd5dc34b5",
+    "trial_history": "evidence/RESEARCH_TRIAL_HISTORY.jsonl",
+    "trial_id": "RESEARCH-HYP130-89f778387ace-b3595bafeea4",
+    "preregistration": "docs/research/HYP-130-volume-confirmed-early-trend.md"
+  }
+}

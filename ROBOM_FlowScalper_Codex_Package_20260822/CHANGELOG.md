@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 거래량 확인 4시간 추세·첫 눌림 30후보를 사전등록 실행했다. 한 OBV·가격 동시돌파 후보가 진단 OOS 68건에서 BASE·STRESS 평균은 양수였지만 bootstrap 하한, DSR와 PBO 0.8571을 실패해 승격하지 않았다. 방향별 사후 진단의 SHORT 양수도 같은 역사 재선택에 사용하지 않고 `NOT_PROVEN`, `NOT_READY`로 보존했다.
 - HYP-129의 주 t 일요일 종가 신호가 같은 주 일요일 시가로 진입하던 하루 미래참조 결함을 발견해 최초 결과를 폐기했다. 후보·비용·gate는 바꾸지 않고 다음 월요일 시가로 수정·회귀 고정한 뒤 30개 상태조건 모멘텀을 재실행했다. 1,330개 완료거래에도 선발 0·PBO 0.6571로 실패해 Registry·SHADOW 승격 없이 `NOT_PROVEN`, `NOT_READY`로 보존했다.
 - 수정 배포 뒤 같은 Run 180.009초 관찰에서 event +12,971·전략평가 +79,600·queue 최대 3·처리/체결 p95 최대 22.240/47.746ms였고 저장잠금·WAL fault·drop·비계획 재연결·실제 주문·인증은 0으로 PASS했다.
 - PASSIVE WAL checkpoint가 41,714개 frame 중 41,507개를 이미 확정하고 207개만 남겼는데도 전체 frame을 64MiB 상한과 비교해 영구 저장잠금을 만들던 결함을 수정했다. 정상 반환의 부분 checkpoint는 미확정 frame만 판정하고 작은 꼬리는 재시도하며, 실제 미확정 64MiB·checkpoint 예외·SQLite commit 오류는 기존처럼 fail-closed한다.
