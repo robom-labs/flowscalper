@@ -61,3 +61,45 @@ BASE 13bp·STRESS 25bp와 실제 펀딩을 HYP-131에서 바꾸지 않는다. �
 
 실제 주문, private API, API Key, secret, 인증, wallet, 입출금과 runtime AI 주문판단은 계속
 0이다.
+
+## 실행 결과
+
+- 실행 상태. `COMPLETE_WITH_RESEARCH_GATE_FAILURE`.
+- 실행 commit. `86f2c9248a975545033f52f7328798b27da21b1b`.
+- 입력. Bybit linear 12종목 완성 4시간봉 141,422개, 공개 펀딩 이벤트 71,609개.
+- 봉 gap. 12종목 모두 0개.
+- 데이터셋 SHA-256. `ee992d2fd31257fad48e0c50865101985a0f68c91f042a741c70bdf674fa61bb`.
+- 생성시각을 제외한 전체 재실행 SHA-256. `39183599fb3ad9cec1f183d9573451a1d0efc0766a43ff5cfa58f4fb76cf83e3`.
+- 외부 venue 복제 gate 통과. 0개.
+- Registry·LIVE SHADOW 변경. 0개.
+
+네 후보 모두 BASE·STRESS 평균은 양수였고 최대 승자 7.99R~28.61R,
+수익분포 왜도 1.90~6.41의 양의 비대칭을 다른 거래소에서도 관찰했다. 그러나
+모두 bootstrap 95% 기대값 하한과 DSR을 실패했다. 이는 평균이 양수라도 큰 승자
+몇 건에 대한 불확실성이 아직 크다는 뜻이다.
+
+가장 근접한 `T131_SQUEEZE_BREAKOUT_4H_BOTH_BALANCED_CHAND22_ATR4`는 203건에서
+BASE 기대값 +9.016 계좌 bp·PF 1.416, STRESS 기대값 +7.546 계좌 bp·PF
+1.333이었다. STRESS 승률은 38.4%, payoff는 2.137, 왜도는 3.321, 최대 승자는
+15.414R이었다. 승자 보유 중앙값 9,000분은 패자 3,120분보다 길어 요청한
+작은 손실·드문 큰 승자 형태와 일치했다.
+
+그러나 bootstrap 하한은 -2.310 계좌 bp, DSR은 0이었고 8개 시간순 fold 중 표본이
+있는 7개의 양수 fold는 4개로 요구치 5개를 못 채웠다. 최신 두 fold는 양수였지만
+양의 종목 기여의 54.7%가 ETHUSDT에 집중됐다. 따라서 `NOT_PROVEN`,
+`NOT_READY`를 유지하고 현재 운영 전략으로 승격하지 않는다.
+
+기계판독 결과는
+`evidence/WAVE134_BYBIT_ASYMMETRIC_RUNNER_EXTERNAL_REPLICATION.json`과
+`evidence/WAVE134_BYBIT_ASYMMETRIC_RUNNER_EXTERNAL_REPLICATION_QA.json`에 보존한다.
+
+최초 300.017초 동시 LIVE guard는 event +22,376·전략평가 +132,320, queue 최대
+11, 처리·체결 p95 최대 26.739·81.053ms, 신규 500ms 초과·비계획 재연결·gap·
+drop·저장 fault·실제 주문·인증 0이었다. 다만 관찰 종료 순간 WAL checkpoint가 진행
+중이어서 구간 내 완료를 증명하지 못한 항목을 `FAIL` 그대로 보존했다.
+
+checkpoint 완료 후 cache된 전체 연구 재실행을 겹친 180.018초 분리 guard는
+event +13,024·전략평가 +79,420, queue 최대 2, 처리·체결 p95 최대
+28.213·79.395ms였다. checkpoint·저장·재연결·gap·drop·신규 500ms 초과·실제
+주문·인증 검사가 모두 `PASS`였다. 두 guard를 모두 증거로 보존하며 나중 PASS로
+최초 FAIL을 삭제하지 않는다.

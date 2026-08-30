@@ -515,3 +515,24 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   초과 0으로 PASS했다.
 - Registry·LIVE SHADOW 변경은 0이다. 다음 단계는 네 규칙을 바꾸지 않은 다른 공개 perpetual
   venue 복제이며, 통과해도 실제 bid·ask 미래 SHADOW 전에는 승격하지 않는다.
+
+## Wave 134 Bybit 비대칭 runner 외부 venue 복제
+
+- 상태는 `COMPLETE_WITH_RESEARCH_GATE_FAILURE`다. HYP-131의 네 선발 규칙을
+  commit `86f2c92`에서 고정한 뒤 Bybit 공개 linear 4시간봉·펀딩에 변경 없이
+  복제했다.
+- 12종목 완성봉 141,422개·펀딩 71,609개를 사용했고 종목별 gap은 모두 0이다.
+  전체 재실행의 생성시각 제외 SHA-256은 일치했다.
+- 네 후보 모두 BASE·STRESS 평균, 양의 왜도와 7.99R~28.61R 최대 승자를 보였지만
+  bootstrap 95% 하한과 DSR을 모두 실패했다.
+- 최선의 수축돌파 ATR4는 203건·STRESS 승률 38.4%·payoff 2.137·기대값
+  +7.546 계좌 bp·최대 15.414R이었다. 그러나 양수 fold 4/7과 ETHUSDT 양의 기여
+  54.7%로 시간·종목 집중 gate를 통과하지 못했다.
+- 최초 300초 LIVE guard의 checkpoint 구간 내 미완료 `FAIL`은 보존했다. 완료 후 연구
+  재실행을 겹친 180초 분리 guard는 event +13,024·평가 +79,420·queue 2·처리/
+  체결 p95 28.213/79.395ms·오류·실주문·인증 0으로 PASS했다.
+- 전체 backend 897건, frontend 83건, Ruff, mypy 112 source, frontend lint·typecheck·build,
+  PAPER safety, security 148 source와 repository hygiene는 PASS했다.
+- Registry·LIVE SHADOW 변경은 0, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+  다음 가설은 같은 Bybit 결과에 맞추지 않고 ADX 상승·DMI 방향·분산 규칙을
+  사전등록한 뒤 아직 열지 않은 공개 venue 또는 미래 bid·ask SHADOW에서 검증한다.

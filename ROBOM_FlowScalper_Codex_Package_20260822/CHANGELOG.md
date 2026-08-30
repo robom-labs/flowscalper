@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- Binance에서 선발한 비대칭 추세 runner 네 개를 규칙 변경 없이 Bybit linear 공개 4시간봉 141,422개·펀딩 71,609개에 복제했다. 모두 비용 후 양수 평균·양의 왜도·큰 승자 형태는 보였지만 bootstrap·DSR을 실패했다. 최선의 수축돌파 ATR4도 203건·STRESS 승률 38.4%·payoff 2.137·최대 15.414R에서 시간·종목 집중성을 통과하지 못해 Registry·SHADOW 승격 없이 `NOT_PROVEN`, `NOT_READY`로 보존했다.
 - 고정 익절로 큰 추세 승자를 잘라내지 않는 비대칭 runner 60후보를 사전등록 실행했다. 네 후보가 Train·Validation·walk-forward를 통과했고 진단 OOS에서 낮은 승률·높은 payoff·양의 평균 형태가 나타났지만 bootstrap 하한, DSR와 PBO 0.80을 실패해 Registry·SHADOW 승격 없이 `NOT_PROVEN`, `NOT_READY`로 보존했다.
 - 공개영상에서 비중복으로 고정한 유동성 훑기·일목 추세 12후보를 12종목 완성 5분봉 922,752개에서 실행했다. Train·Validation 동시 선발은 0개였고, Validation만 양수인 후보도 앞선 개발구간 비용후 음수라 승격하지 않았다. 영상의 승률·수익 주장과 기존 Supertrend·Donchian·재시험·VWAP·squeeze 중복은 새 전략 수로 세지 않았다.
 - 거래량 확인 4시간 추세·첫 눌림 30후보를 사전등록 실행했다. 한 OBV·가격 동시돌파 후보가 진단 OOS 68건에서 BASE·STRESS 평균은 양수였지만 bootstrap 하한, DSR와 PBO 0.8571을 실패해 승격하지 않았다. 방향별 사후 진단의 SHORT 양수도 같은 역사 재선택에 사용하지 않고 `NOT_PROVEN`, `NOT_READY`로 보존했다.

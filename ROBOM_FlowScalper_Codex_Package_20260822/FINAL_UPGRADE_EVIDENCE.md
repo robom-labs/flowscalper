@@ -4122,3 +4122,58 @@ Train·Validation 동시 선발은 4개였지만 전체 역사 강건성 통과�
 
 현 수용상태는
 `HYP131_POSITIVE_SKEW_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.
+
+## 95. Wave 134 Bybit 비대칭 runner 무변경 외부 복제
+
+HYP-131의 Binance 선발 네 후보를 다른 venue 결과를 보기 전 commit
+`86f2c9248a975545033f52f7328798b27da21b1b`에서 고정했다. 후보 지문은
+`8aac503aea1119d7ebe14dd9598a3ed6303d240db015d3ca71854d34a3041cb9`다. 진입,
+최초 구조손절, +1R 활성화, 이전 완성 22봉 Chandelier ATR 3·4배, 다음 봉 시가,
+갭 시 더 불리한 시가, 동시 2포지션·일 2진입, 거래당 위험 40bp, BASE
+13bp·STRESS 25bp와 실제 공개 펀딩을 바꾸지 않았다.
+
+Bybit linear 12종목에서 UTC 2021-01-01 이상 2026-08-30 미만 완성 4시간봉
+141,422개와 공개 펀딩 71,609개를 사용했다. 종목별 봉 gap은 모두 0이고 데이터셋
+SHA-256은 `ee992d2fd31257fad48e0c50865101985a0f68c91f042a741c70bdf674fa61bb`다.
+결과를 전체 재실행해 생성시각 제외 canonical SHA-256
+`39183599fb3ad9cec1f183d9573451a1d0efc0766a43ff5cfa58f4fb76cf83e3`가 일치했다.
+
+네 후보 모두 BASE·STRESS 평균, 양의 왜도와 큰 승자 형태는 재현됐다. 그러나
+bootstrap 95% 하한과 DSR을 네 후보 모두 실패했고 외부 venue 복제 gate 통과는
+0개다. 대표 `T131_SQUEEZE_BREAKOUT_4H_BOTH_BALANCED_CHAND22_ATR4`는 203건,
+BASE 기대값 +9.016 계좌 bp·PF 1.416, STRESS +7.546 계좌 bp·PF 1.333이었다.
+STRESS 승률은 38.4%, payoff 2.137, 왜도 3.321, 최대 승자 15.414R로 작은 손실과
+드문 큰 승자 형태를 보였다. 승자 보유 중앙값 9,000분은 패자 3,120분보다 길었다.
+
+그러나 이 후보도 bootstrap 하한 -2.310 계좌 bp, DSR 0, 시간순 양수 fold 4/7로
+요구치 5개를 못 채웠고 양의 종목 기여 54.7%가 ETHUSDT에 집중됐다. 따라서 양수
+평균과 15.414R 승자를 미래 수익성으로 확대 해석하지 않고 Registry·SHADOW 승격은
+0으로 유지했다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| Bybit 결과 전 후보·코드 고정 | `PASS` | `86f2c92`, 4후보·후보 지문 일치 |
+| 공개자료·인증 0 | `PASS` | Bybit public kline·funding만 사용, API Key·private endpoint 0 |
+| 시간·완성봉·gap | `PASS` | 미완성 제외, 12종목 gap 0, 시간순 fold |
+| 실행 재현성 | `PASS` | 생성시각 제외 전체 재실행 SHA-256 일치 |
+| 양의 비대칭 형태 | `PASS_OBSERVED` | 4후보 모두 왜도 양수·최대 7.99R~28.61R, 수익성 증명 아님 |
+| 외부 venue 강건성 | `FAIL_RESEARCH_GATES` | bootstrap·DSR 전부 실패, 일부 기간·종목 집중 |
+| Registry·SHADOW 승격 | `PASS_NONE_PROMOTED` | 통과 후보 0, 변경 0 |
+| 최초 동시 LIVE guard | `FAIL_PRESERVED` | 300.017초 이벤트·평가 전진, 종료 순간 checkpoint 진행 중 |
+| checkpoint 후 분리 guard | `PASS` | 180.018초 event +13,024·평가 +79,420·queue 2·오류 0 |
+| 연구 단위·전체 backend | `PASS` | 관련 11건·전체 897건 |
+| frontend | `PASS` | 83건·lint·typecheck·build, 기존 544.50kB chunk 경고 유지 |
+| 정적·안전·보안·위생 | `PASS` | Ruff, mypy 112 source, PAPER safety, security 148 source, hygiene |
+| 실제 주문·인증 | `PASS` | 실제 주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 양의 비대칭 재현은 통계적 통과가 아님 |
+
+기계판독 근거는
+`evidence/WAVE134_BYBIT_ASYMMETRIC_RUNNER_EXTERNAL_REPLICATION.json`,
+`evidence/WAVE134_BYBIT_ASYMMETRIC_RUNNER_EXTERNAL_REPLICATION_QA.json`,
+`evidence/WAVE134_BYBIT_EXTERNAL_REPLICATION_LIVE_GUARD_300S.json`,
+`evidence/WAVE134_BYBIT_EXTERNAL_REPLICATION_FOLLOWUP_GUARD_180S.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 후속 가설 경계는
+`docs/adr/ADR-129-bybit-positive-skew-replication-no-promotion.md`에 기록했다.
+
+현 수용상태는
+`HYP132_POSITIVE_SKEW_EXTERNAL_REPLICATION_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.
