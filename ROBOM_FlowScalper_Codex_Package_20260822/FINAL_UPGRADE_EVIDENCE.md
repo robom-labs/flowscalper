@@ -3748,3 +3748,54 @@ full screening을 실행하지 않는다.
 
 현 수용상태는
 `LIVE_RUNNING_PHYSICAL_RESEARCH_IO_GUARD_PASS_TRAIN_MIRROR_VERIFIED_FULL_SCREENING_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 87. Wave 126B Train·Validation RAM 전수복제와 100후보 bounded pilot
+
+W126A의 물리 I/O 격리 계약을 실제 전체 Train·Validation 입력에 적용했다. 활성 PAPER
+서비스를 정상 종료한 유지관리 구간에 manifest가 지정한 누락 파일 15,158개,
+2,199,941,728 bytes만 RAM으로 복사했다. 첫 전체 검사에서 이전 부분복제 파일 한 개의 크기
+불일치를 발견해 동결 원본에서 그 파일만 다시 복사했다. 이후 Train 2,502개,
+Validation 1 8,534개, Validation 2 10,305개, 합계 21,341개가 4.030초에 manifest 크기와
+파일별 SHA-256을 모두 통과했다. Final OOS 3,466개는 복사·읽기·평가하지 않았다.
+
+현재 source와 GitHub main은 `961ccc1f78f72c0eafb6811d6e86ce90c2e1b94c`로 일치한다.
+이 commit에 대해 100개 trial 중 exact 실행 가능한 90개와 규칙이 불충분해 차단한 10개,
+Train·Validation·봉인 Final OOS 네 논리구간을 다시 사전등록했다. trial manifest SHA-256은
+`bdc8c0378de92e8f6b120427cef997a42ef8a39d123785ddfa4e07ed53d4a298`, dataset manifest는
+`3ff7afa73ab5e100cd05162e3715dbc1f6d879cb1e69a623c6c1950e3b963b65`다.
+
+첫 pilot 명령은 연구 spill 위치를 명시하지 않아 실행 전 fail closed했고 결과를 만들지 않았다.
+`ROBOM_RESEARCH_SPILL_ROOT`를 RAM 영역으로 명시한 재실행은 Train의 첫 1,000 event를
+13.783초에 처리하고 후보평가 960회를 수행했다. 처리량은 72.553 event/s,
+69.651 candidate-evaluation/s였다. 후보계획·완료거래·선택·승격은 모두 0이고 Final OOS는
+처리하지 않았다. 따라서 이는 runner·입력·독립 180 BASE/STRESS 계좌 경로의 bounded 진단일
+뿐 성과증거가 아니다.
+
+성공 pilot과 동시에 실행한 30초 LIVE guard는 event +1,975, 전략평가 +13,000,
+queue 최대 0, 처리·체결 p95 최대 23.457·72.496ms, event-loop 최대 305ms였다.
+신규 500ms 초과, 비계획 재연결, sequence gap, resync, drop, 저장 fault와 buffer drop은
+모두 0이었다. 복사 유지관리 뒤 같은 Run을 복구한 45.018초 관찰도 event +3,112,
+전략평가 +19,740, queue 최대 0, 처리·체결 p95 최대 23.535·47.198ms,
+event-loop 최대 243ms와 같은 결함 지표 0으로 PASS했다. 실제 주문·private API·인증·API Key·
+wallet·runtime AI는 계속 0이다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 새 100후보 사전등록 | `PASS` | trial 100·실행 90·차단 10, 고정 manifest SHA-256 |
+| Train·Validation portable mirror | `PASS` | 21,341/21,341 size·SHA-256, 4.030초 |
+| Final OOS 봉인 | `PASS` | 3,466파일 복사·읽기·평가 0 |
+| bounded pilot | `PASS_DIAGNOSTIC_ONLY` | 1,000 event·960평가·13.783초, 거래·선택·승격 0 |
+| pilot 동시 LIVE | `PASS_SHORT_SCOPE` | event +1,975·평가 +13,000, queue 0, 처리/체결 p95 23.457/72.496ms, 결함 0 |
+| 복사 뒤 LIVE 복구 | `PASS_SHORT_SCOPE` | 같은 Run, 45.018초·event +3,112·평가 +19,740, 결함 0 |
+| PAPER 안전 | `PASS` | 실제 주문·private API·인증·API Key·wallet·runtime AI 0 |
+| 전체 Train·Validation 100후보 | `NOT_RUN` | pilot 선형추정 약 98시간, 최적화·resumable 실행 필요 |
+| 6시간·24시간 | `NOT_RUN` | 새 실행 release의 실제 연속 경과시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 완료거래 0, OOS·bootstrap·DSR·PBO·forward gate 미실행 |
+
+기계판독 근거는 `evidence/WAVE126B_RAM_MIRROR_AND_PILOT_QA.json`,
+`evidence/WAVE126B_STRATEGY_100_RAM_MIRROR_PILOT.json`,
+`evidence/WAVE126B_RAM_PILOT_LIVE_GUARD_30S_RETRY.json`과
+`evidence/WAVE126B_POST_VALIDATION_COPY_RUNTIME_45S.json`이다.
+
+현 수용상태는
+`LIVE_RUNNING_RAM_TRAIN_VALIDATION_VERIFIED_BOUNDED_PILOT_PASS_FULL_SCREEN_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

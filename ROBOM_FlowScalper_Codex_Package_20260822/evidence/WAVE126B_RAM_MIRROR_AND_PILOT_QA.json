@@ -1,0 +1,145 @@
+{
+  "schema": "flowscalper.wave126b_ram_mirror_and_pilot_qa.v1",
+  "generated_at_utc": "2026-08-30T05:51:35Z",
+  "status": "PASS_WITH_LIMITS",
+  "source_commit": "961ccc1f78f72c0eafb6811d6e86ce90c2e1b94c",
+  "source_matches_origin_main": true,
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "api_key_requested": false,
+    "wallet_requested": false,
+    "runtime_ai_enabled": false
+  },
+  "preregistration": {
+    "trial_manifest": "evidence/STRATEGY_100_TRIAL_MANIFEST_V2_W126.json",
+    "trial_manifest_sha256": "bdc8c0378de92e8f6b120427cef997a42ef8a39d123785ddfa4e07ed53d4a298",
+    "registered_trial_count": 100,
+    "executable_trial_count": 90,
+    "blocked_trial_count": 10,
+    "dataset_manifest": "evidence/STRATEGY_100_DATASET_MANIFEST_V2_W126.json",
+    "dataset_manifest_sha256": "3ff7afa73ab5e100cd05162e3715dbc1f6d879cb1e69a623c6c1950e3b963b65"
+  },
+  "portable_ram_mirror": {
+    "archive_root": "/Volumes/ROBOM_RESEARCH_RAM/market-parquet-v6",
+    "physical_io_domain": "RAM:disk10",
+    "verification_method": "MANIFEST_SIZE_AND_FILE_SHA256",
+    "verified_file_count": 21341,
+    "verification_elapsed_seconds": 4.03,
+    "runs": [
+      {
+        "run_id": "RUN-2B7135A972DD-TRAIN-1-V2",
+        "role": "TRAIN",
+        "status": "PASS",
+        "expected_files": 2502,
+        "verified_files": 2502,
+        "elapsed_seconds": 0.652
+      },
+      {
+        "run_id": "RUN-2B7135A972DD-VALIDATION-1-V2",
+        "role": "VALIDATION",
+        "status": "PASS",
+        "expected_files": 8534,
+        "verified_files": 8534,
+        "elapsed_seconds": 1.624
+      },
+      {
+        "run_id": "RUN-2B7135A972DD-VALIDATION-2-V2",
+        "role": "VALIDATION",
+        "status": "PASS",
+        "expected_files": 10305,
+        "verified_files": 10305,
+        "elapsed_seconds": 1.755
+      },
+      {
+        "run_id": "RUN-2B7135A972DD-FINAL_OOS-1-V2",
+        "role": "FINAL_OOS",
+        "status": "SEALED_NOT_READ",
+        "expected_files": 3466,
+        "verified_files": 0
+      }
+    ]
+  },
+  "maintenance_copy": {
+    "service_stopped_before_copy": true,
+    "selected_train_validation_file_count": 18839,
+    "missing_file_count_copied": 15158,
+    "copied_bytes": 2199941728,
+    "copy_elapsed_seconds": 440.632,
+    "partial_file_detected_by_full_verification": 1,
+    "partial_file_repaired_from_frozen_source": 1,
+    "service_restarted_after_verification": true,
+    "same_run_recovered": true
+  },
+  "bounded_pilot": {
+    "evidence": "evidence/WAVE126B_STRATEGY_100_RAM_MIRROR_PILOT.json",
+    "status": "PASS",
+    "scope": "BOUNDED_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+    "maximum_events": 1000,
+    "processed_events": 1000,
+    "candidate_evaluation_count": 960,
+    "events_per_second": 72.553,
+    "candidate_evaluations_per_second": 69.651,
+    "completed_trade_count": 0,
+    "final_oos_processed": false,
+    "selection_or_promotion_performed": false,
+    "profitability_claim": "NOT_PROVEN",
+    "first_attempt_without_explicit_spill_root": "FAIL_CLOSED_EXPECTED",
+    "first_attempt_result_published": false
+  },
+  "live_guard_during_successful_pilot": {
+    "evidence": "evidence/WAVE126B_RAM_PILOT_LIVE_GUARD_30S_RETRY.json",
+    "status": "PASS",
+    "event_delta": 1975,
+    "strategy_evaluation_delta": 13000,
+    "qualified_signal_delta": 0,
+    "main_trade_delta": 0,
+    "league_trade_delta": 0,
+    "maximum_queue_depth": 0,
+    "maximum_processing_lag_p95_ms": 23.45703125,
+    "maximum_trade_lag_p95_ms": 72.49609375,
+    "maximum_event_loop_lag_ms": 305.0,
+    "event_loop_lag_over_500ms_delta": 0,
+    "event_gap_over_500ms_delta": 0,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "resync_delta": 0,
+    "dropped_event_delta": 0,
+    "persistence_fault_delta": 0,
+    "buffer_drop_delta": 0
+  },
+  "post_copy_runtime": {
+    "evidence": "evidence/WAVE126B_POST_VALIDATION_COPY_RUNTIME_45S.json",
+    "status": "PASS",
+    "observed_duration_seconds": 45.018,
+    "event_delta": 3112,
+    "strategy_evaluation_delta": 19740,
+    "qualified_signal_delta": 0,
+    "main_trade_delta": 0,
+    "league_trade_delta": 0,
+    "maximum_queue_depth": 0,
+    "maximum_processing_lag_p95_ms": 23.53515625,
+    "maximum_trade_lag_p95_ms": 47.197509765625,
+    "maximum_event_loop_lag_ms": 243.0,
+    "event_loop_lag_over_500ms_delta": 0,
+    "event_gap_over_500ms_delta": 0,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "resync_delta": 0,
+    "dropped_event_delta": 0,
+    "persistence_fault_delta": 0,
+    "buffer_drop_delta": 0
+  },
+  "acceptance": {
+    "portable_train_validation_verified": "PASS",
+    "final_oos_sealed": "PASS",
+    "bounded_runner_path": "PASS",
+    "live_runtime_concurrent_guard": "PASS_SHORT_SCOPE",
+    "full_train_validation_screen": "NOT_RUN",
+    "six_hour_runtime": "NOT_RUN",
+    "twenty_four_hour_runtime": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}
