@@ -125,7 +125,7 @@
   },
   "validation": {
     "targeted_okx_tests": "PASS_6",
-    "full_backend_tests": "PASS_909",
+    "full_backend_tests": "PASS_910",
     "frontend_tests": "PASS_87",
     "ruff": "PASS",
     "mypy": "PASS_112_SOURCE_FILES",
@@ -139,6 +139,15 @@
     "ui_browser": "NOT_RUN_NO_UI_SOURCE_CHANGE",
     "six_hour_soak": "NOT_RUN",
     "twenty_four_hour_soak": "NOT_RUN"
+  },
+  "deployment_preparation": {
+    "first_stage": "FAIL_PRESERVED_INTERNAL_TEMP_VOLUME_204_MIB_FREE_GIT_ARCHIVE_EXIT_128",
+    "running_service_restarted_by_failure": false,
+    "external_runtime_archive_probe": "PASS_153_MIB",
+    "probe_archive_removed": true,
+    "fix": "TEMP_ARCHIVE_CREATED_IN_RELEASE_DESTINATION_PARENT",
+    "targeted_macos_service_contracts": "PASS_16",
+    "post_fix_full_backend_tests": "PASS_910"
   },
   "safety": {
     "paper_only": true,

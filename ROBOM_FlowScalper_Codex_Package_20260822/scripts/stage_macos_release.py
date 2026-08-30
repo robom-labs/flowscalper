@@ -47,7 +47,11 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _extract_commit(source_root: Path, commit: str, destination: Path) -> None:
-    with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as stream:
+    with tempfile.NamedTemporaryFile(
+        suffix=".tar",
+        delete=False,
+        dir=destination.parent,
+    ) as stream:
         archive_path = Path(stream.name)
     try:
         subprocess.run(

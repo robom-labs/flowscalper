@@ -8,6 +8,7 @@ import os
 import plistlib
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -349,6 +350,36 @@ def test_staged_release_is_unchanged_when_worktree_assets_and_source_change(
         ]
         is False
     )
+
+
+def test_release_archive_temp_file_stays_on_runtime_volume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    observed_directories: list[Path | None] = []
+    real_named_temporary_file = tempfile.NamedTemporaryFile
+
+    def observed_named_temporary_file(*args: object, **kwargs: object) -> object:
+        directory = kwargs.get("dir")
+        observed_directories.append(Path(directory) if directory is not None else None)
+        return real_named_temporary_file(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "scripts.stage_macos_release.tempfile.NamedTemporaryFile",
+        observed_named_temporary_file,
+    )
+
+    stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+
+    assert observed_directories == [(runtime / "releases").resolve()]
 
 
 def test_release_pointer_switch_records_rollback_and_can_restore_previous_release(

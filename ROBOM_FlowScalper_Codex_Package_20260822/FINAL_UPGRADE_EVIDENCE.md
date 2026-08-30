@@ -4360,12 +4360,14 @@ incident·실제 주문·인증 0으로 `PASS`했다. wide scanner p95 최대 1,
 | 외부 venue 강건성 | `FAIL_RESEARCH_GATES` | bootstrap·DSR·시간순 안정성 전부 실패 |
 | Registry·LIVE SHADOW 승격 | `PASS_NONE_PROMOTED` | 변경 0 |
 | 연구 전용 단위회귀 | `PASS` | 6건 |
-| 전체 backend·frontend | `PASS` | backend 909건·frontend 87건 |
+| 전체 backend·frontend | `PASS` | backend 910건·frontend 87건 |
 | 정적·build | `PASS_WITH_WARNING` | Ruff·mypy 112 source·ESLint·TypeScript·build, 기존 551.21kB chunk 경고 |
 | PAPER safety·security·위생 | `PASS` | build safety·security 148 source·repository hygiene |
 | 누적 회귀계약 | `PASS` | 30계약·59 anchor·실제 주문 0 |
 | 최초 계획교체 동시 guard | `FAIL_PRESERVED` | sequence gap·resync 각 +1, 비계획 재연결·drop 0 |
 | 계획교체 후 guard | `PASS` | 60.076초 event·평가 전진, 신규 오류·gap·drop 0 |
+| 최초 불변 릴리스 준비 | `FAIL_PRESERVED` | 내부 임시볼륨 204MiB 여유에서 153MiB Git archive 생성 중 exit 128, 서비스 재시작 0 |
+| 외장 runtime 임시 archive 수정 | `PASS_SOURCE` | macOS service 계약 16건·Ruff, archive를 destination parent에 생성 |
 | Wave 138 UI 브라우저 | `NOT_RUN_NOT_APPLICABLE` | UI 소스 변경 0, 실행 서비스 API만 비침습 관찰 |
 | 6시간·24시간 | `NOT_RUN` | 이번 연구 구현 뒤 실제 시간 미충족 |
 | 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 양의 표본 평균은 강건성 통과가 아님 |
@@ -4377,6 +4379,13 @@ incident·실제 주문·인증 0으로 `PASS`했다. wide scanner p95 최대 1,
 `evidence/WAVE138_OKX_RESEARCH_POST_ROTATION_FOLLOWUP_60S.json`이다. 무승격 결정은
 `docs/adr/ADR-131-okx-fixed-external-replication-robustness-failure-no-promotion.md`에
 기록했다.
+
+증거 commit 뒤 실제 불변 릴리스를 준비하는 첫 시도는 `/var/folders`가 속한 내부 볼륨의
+여유가 204MiB뿐인 상태에서 153MiB Git archive를 만들다가 exit 128로 중단됐다. 외장
+runtime 같은 경로에는 동일 archive 생성이 성공해 내부 임시공간 의존으로 재현했다.
+probe archive는 확인 뒤 제거했고 사용자 원장·시장자료는 삭제하지 않았다. 릴리스 archive를
+destination parent에 만들고 `finally`에서 지우도록 수정했으며 실제 서비스는 이 준비 실패로
+중단하거나 재시작하지 않았다.
 
 현 수용상태는
 `OKX_FIXED_EXTERNAL_REPLICATION_POSITIVE_SKEW_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.

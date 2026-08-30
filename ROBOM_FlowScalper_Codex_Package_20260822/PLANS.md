@@ -586,5 +586,8 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   LIVE SHADOW 변경은 모두 0이다.
 - 후속 연구는 실패 결과와 원장을 삭제하지 않고 별도 사전등록·독립 미래자료로만 진행한다.
   실제 bid·ask BASE/STRESS 자연표본 30건 전에는 후보를 승격하지 않는다.
+- 첫 불변 릴리스 준비는 내부 임시볼륨 여유 204MiB에서 153MiB Git archive를 만들다
+  exit 128로 중단됐다. 서비스 재시작은 0이었다. archive 임시파일을 외장 runtime release
+  staging과 같은 볼륨에 생성하도록 수정하고 macOS service 계약 회귀 16건으로 고정한다.
 - 실제 주문, private API, API Key, secret, wallet과 입출금은 계속 0이며 수익성은
   `NOT_PROVEN`, 실자금은 `NOT_READY`다.
