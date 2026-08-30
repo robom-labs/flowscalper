@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 다년 4시간 추세 30후보를 공식 공개 봉 148,824개와 펀딩 74,487개로 사전등록 실행했다. Train·Validation 선발 3개가 진단 OOS에서 모두 BASE·STRESS 음수이고 PBO 0.60이라 승격하지 않았으며 실패와 trial 지문을 보존했다. 후속 일봉 후보는 한 번의 분할 성과뿐 아니라 6개 시간순 fold 중 최소 4개와 최신 2개 비용후 양수를 선발 전에 요구한다.
 - 100후보 연구의 Train·Validation 21,341개 파일을 LIVE와 다른 RAM I/O 영역에 복제하고 manifest 크기·파일별 SHA-256으로 전수검증했다. Final OOS 3,466개는 봉인 상태를 유지했다. 1,000-event pilot과 동시 LIVE guard는 PASS했지만 거래·선택·승격은 0이고 전체 screen은 `NOT_RUN`, 수익성·실자금 준비는 `NOT_PROVEN`·`NOT_READY`다.
 - 대용량 100후보 연구의 경로·`st_dev`가 달라도 backing 물리 USB가 같으면 실행을 거부한다. sparsebundle은 실제 backing 장치를 추적하고 RAM Disk는 별도 영역으로 분류하며, 다른 장치 복제본은 manifest의 size·파일별 SHA-256을 전부 통과해야 한다. 해석할 수 없는 Disk Image, 부분복제와 stale 사전등록은 fail closed하고 수익성 결과를 만들지 않는다.
 - 과거 재생 첫 화면이 2,500만 건대 활성 Run의 캔들 미리보기를 기다리며 약 29.4초 동안 `저장 기록 목록을 확인하는 중`에 머물던 문제를 수정했다. Run 목록은 즉시 선택할 수 있게 하고 미리보기 진행을 별도 표시하며, Run·종목·최근 캔들 조회는 LIVE 원장 쓰기와 시작 캐시 읽기 모두에서 분리된 replay 전용 WAL query-only 연결을 사용한다. 정밀 화면 100건도 전체 종목 archive를 먼저 스캔하지 않고 최신 검증 batch만 제한해 읽는다.

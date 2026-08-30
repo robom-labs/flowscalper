@@ -1,0 +1,94 @@
+{
+  "schema": "flowscalper.wave127_multiyear_trend_tournament_qa.v1",
+  "wave": "WAVE127",
+  "execution_status": "PASS",
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "frozen_implementation_commit": "e273a7f1d948cc6b629100c1ab4074e072f7f204",
+  "candidate_count": 30,
+  "candidate_family_count": 5,
+  "candidate_fingerprint": "2bd1ed549ec51800970469c34b8c548e6451516c4752d6a56485f064b27cfbe1",
+  "dataset": {
+    "venue": "BINANCE_USDM",
+    "public_only": true,
+    "start_ts_ms": 1609459200000,
+    "end_ts_ms": 1788048000000,
+    "symbol_count": 12,
+    "completed_four_hour_bar_count": 148824,
+    "funding_event_count": 74487,
+    "dataset_fingerprint": "89f778387acebe91361449e20c95917ab33281134fa25bf8cb69a3d59314338a"
+  },
+  "selection": {
+    "selected_on_train_validation_count": 3,
+    "selected_on_train_validation": [
+      "T127_BREAKOUT_RETEST_4H_LONG_SELECTIVE",
+      "T127_CHANNEL_BREAKOUT_4H_BOTH_SELECTIVE",
+      "T127_ICHIMOKU_PULLBACK_4H_LONG_BALANCED"
+    ],
+    "adaptive_historical_robustness_pass_count": 0,
+    "adaptive_historical_robustness_pass_candidates": [],
+    "probability_of_backtest_overfitting": 0.6
+  },
+  "diagnostic_oos": [
+    {
+      "candidate_id": "T127_BREAKOUT_RETEST_4H_LONG_SELECTIVE",
+      "sample_size": 27,
+      "win_rate": 0.2962962962962963,
+      "base_expectancy_bps": -61.298553039914204,
+      "stress_expectancy_bps": -73.2985530399142,
+      "base_profit_factor": 0.8508990797972799,
+      "stress_profit_factor": 0.8252989739458151,
+      "base_maximum_drawdown_bps": 6189.969051440492,
+      "all_robustness_gates_passed": false
+    },
+    {
+      "candidate_id": "T127_CHANNEL_BREAKOUT_4H_BOTH_SELECTIVE",
+      "sample_size": 35,
+      "win_rate": 0.37142857142857144,
+      "base_expectancy_bps": -27.397483844298982,
+      "stress_expectancy_bps": -39.39748384429898,
+      "base_profit_factor": 0.9464623043358158,
+      "stress_profit_factor": 0.9241312577893579,
+      "base_maximum_drawdown_bps": 6509.531082588686,
+      "all_robustness_gates_passed": false
+    },
+    {
+      "candidate_id": "T127_ICHIMOKU_PULLBACK_4H_LONG_BALANCED",
+      "sample_size": 47,
+      "win_rate": 0.425531914893617,
+      "base_expectancy_bps": -201.67475605703345,
+      "stress_expectancy_bps": -213.67475605703345,
+      "base_profit_factor": 0.5246879278291756,
+      "stress_profit_factor": 0.5044571384311168,
+      "base_maximum_drawdown_bps": 11104.138432737436,
+      "all_robustness_gates_passed": false
+    }
+  ],
+  "funding_audit_all_candidates": {
+    "closed_trade_count": 3463,
+    "censored_open_count": 23,
+    "applied_funding_event_count": 97173,
+    "net_funding_cashflow_bps": -83465.7655,
+    "excluded_ambiguous_boundary_credit_count": 899,
+    "excluded_ambiguous_boundary_credit_bps": 1268.6637
+  },
+  "decision": {
+    "registry_changes": [],
+    "paper_shadow_promotions": [],
+    "failed_results_preserved": true,
+    "trial_history_recorded": true,
+    "same_thresholds_reused_after_results": false,
+    "next_hypothesis": "daily_signal_with_slow_daily_regime_and_walk_forward_stability",
+    "reason": "세 후보가 진단 OOS에서 비용 후 음수이고 PBO가 0.60이므로 승격하지 않는다."
+  },
+  "evidence": {
+    "full_report": "evidence/WAVE127_MULTIYEAR_TREND_TOURNAMENT.json",
+    "full_report_sha256": "9aeda1f1ef60cdd24e51a84b91debe73932512a8f7b5a4890ffb165224a393e3",
+    "trial_history": "evidence/RESEARCH_TRIAL_HISTORY.jsonl",
+    "preregistration": "docs/research/HYP-127-multiyear-low-turnover-trend-tournament.md"
+  }
+}

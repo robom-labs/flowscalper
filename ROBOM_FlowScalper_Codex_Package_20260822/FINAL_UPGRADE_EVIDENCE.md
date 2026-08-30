@@ -3799,3 +3799,46 @@ wallet·runtime AI는 계속 0이다.
 
 현 수용상태는
 `LIVE_RUNNING_RAM_TRAIN_VALIDATION_VERIFIED_BOUNDED_PILOT_PASS_FULL_SCREEN_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 88. Wave 127 다년 4시간 추세 30후보의 비용후 실패 보존
+
+공식 Binance USDⓈ-M 공개 완성 4시간봉과 펀딩 이력을 UTC 2021-01-01 이상
+2026-08-30 미만으로 내려받았다. 고정 12종목의 봉 148,824개와 펀딩 이벤트 74,487개를
+사용했고 원본 파일과 파생 dataset을 SHA-256 manifest로 고정했다. 후보는 채널 돌파, 돌파 뒤
+첫 재시험, 추세 초입 첫 눌림, 일목 눌림, 유동성 훑기 뒤 복귀 5계열에 롱·숏·양방향과
+BALANCED·SELECTIVE를 적용한 30개다. 후보 지문은
+`2bd1ed549ec51800970469c34b8c548e6451516c4752d6a56485f064b27cfbe1`, 실행 commit은
+`e273a7f1d948cc6b629100c1ab4074e072f7f204`다.
+
+Train·Validation에서는 돌파 재시험 롱 SELECTIVE, 채널 돌파 양방향 SELECTIVE, 일목 눌림 롱
+BALANCED 세 계열이 선발됐다. 그러나 2024-12 이후 진단 OOS에서 BASE 기대값은 각각
+-61.299bp, -27.397bp, -201.675bp, STRESS는 -73.299bp, -39.397bp, -213.675bp였다.
+표본은 27·35·47건, 승률은 29.63%·37.14%·42.55%였고 세 후보 모두 전체 강건성 gate를
+실패했다. PBO는 0.60으로 허용 상한 0.20을 넘었다. 따라서 Registry와 SHADOW 승격은 0이며
+수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+실제 펀딩은 방향별로 적용했고 후보 전체 중복 평가 기준 cashflow 합계는 -83,465.766bp였다.
+진입 또는 종료 봉에 걸린 모호한 유리한 credit 1,268.664bp는 제외했고 불리한 비용은 포함했다.
+같은 봉 손절 우선, 다음 봉 시가 진입, BASE 13bp·STRESS 25bp, 미결 포지션 미채점과 실제주문
+0 계약을 유지했다. 실패 결과는 `RESEARCH-HYP127-89f778387ace-265d295cb008`로 append-only
+trial history에 기록했다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 결과 전 후보·코드 고정 | `PASS` | GitHub main `e273a7f`, 후보 30·5계열·지문 일치 |
+| 단위·회귀 | `PASS` | 후보·체결·펀딩·비용·선발 관련 21건 |
+| 정적검사 | `PASS` | Ruff, strict mypy, diff check |
+| 공개시장 입력 | `PASS` | 12종목, 4시간봉 148,824개, 펀딩 74,487개 |
+| Train·Validation 선발 | `PASS_EXECUTION_ONLY` | 서로 다른 3계열 선발, 성과입증 아님 |
+| 진단 OOS | `FAIL_PROFITABILITY_GATES` | 세 후보 BASE·STRESS 음수, PBO 0.60 |
+| Registry·SHADOW 승격 | `PASS_NONE_PROMOTED` | 통과 후보 0, 변경 0 |
+| 실제 주문·인증 | `PASS` | 실제 주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 역사 gate 통과 0 |
+
+기계판독 근거는 `evidence/WAVE127_MULTIYEAR_TREND_TOURNAMENT.json`,
+`evidence/WAVE127_MULTIYEAR_TREND_TOURNAMENT_QA.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 실패 뒤 후속 방향은
+`docs/adr/ADR-122-multiyear-trend-failure-and-daily-stability-gate.md`에 고정했다.
+
+현 수용상태는
+`HYP127_EXECUTED_OOS_FAILED_NO_PROMOTION_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
