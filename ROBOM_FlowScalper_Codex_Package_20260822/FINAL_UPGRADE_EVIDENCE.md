@@ -4078,3 +4078,47 @@ PBO 0.1429가 상한 안에 있어도 기본 표본·성과 gate 실패를 대�
 
 현 수용상태는
 `HYP118_EXECUTED_NO_SELECTION_NO_PROMOTION_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 94. Wave 133 작은 손실·큰 추세수익 비대칭 runner 연구
+
+HYP-130의 30개 고정 진입을 수정하지 않고 고정 TP1·TP2와 부분익절을 제거했다. +1R 도달
+봉이 끝난 다음부터 이전 완성 22봉의 Chandelier ATR 3배·4배 추적손절만 사용하는 60개 후보를
+결과 전 commit `1ada60d3a51ca35ce35e45c776270d41bdad8abb`로 고정했다. 후보 지문은
+`63f6e317014bc342ee21c21bdec128dcd5b4e01f1dc109c38e7639e09308a44c`다.
+
+완성 4시간봉 148,824개와 실제 공개 펀딩 74,487개에서 원신호 17,918개, 포트폴리오 선택
+10,221개, 완료거래 10,211개와 미결 10개를 평가했다. walk-forward 통과는 7개,
+Train·Validation 동시 선발은 4개였지만 전체 역사 강건성 통과는 0개다.
+
+대표 `T131_SQUEEZE_BREAKOUT_4H_BOTH_BALANCED_CHAND22_ATR4`는 진단 OOS 75건에서 BASE
+기대값 +11.500 계좌 bp·PF 1.613, STRESS +10.095 계좌 bp·PF 1.513이었다. STRESS 승률
+38.7%, payoff 2.400, 왜도 2.351, 최대 승자 9.670R로 사용자가 요청한 작은 손실과 드문 큰
+수익 형태는 관찰됐다. 그러나 bootstrap 95% 하한 -4.372, DSR 0, PBO 0.80으로 우연 선택
+가능성을 배제하지 못했다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 결과 전 후보·코드 고정 | `PASS` | `1ada60d`, 60후보·5진입계열·2청산변형·후보 지문 일치 |
+| 미래정보·체결 회귀 | `PASS` | 현재 봉 제외 trail, 동일 봉 최초손절 우선, 비확대 stop, 갭 시가 체결, 미결 미채점 |
+| 관련 연구 회귀 | `PASS` | 비대칭·HYP-127·128·130 관련 40건 |
+| 전체 backend | `PASS` | 893건 |
+| frontend | `PASS` | 83건·lint·typecheck·build, 기존 544.50kB chunk 경고 유지 |
+| 정적·안전·보안·위생 | `PASS` | Ruff, mypy 112 source, PAPER safety, security 148 source, hygiene |
+| 공개시장 입력 | `PASS` | 12종목·완성 4시간봉 148,824·펀딩 74,487·dataset SHA-256 |
+| 실행 재현성 | `PASS` | 생성시각 제외 두 실행 canonical SHA-256 일치 |
+| 진단 OOS 강건성 | `FAIL_RESEARCH_GATES` | 네 후보 모두 bootstrap·DSR·PBO 또는 집중·payoff 실패 |
+| Registry·SHADOW 승격 | `PASS_NONE_PROMOTED` | 통과 후보 0, 변경 0 |
+| 연구+전체검사 동시 guard | `FAIL_PRESERVED` | 300.017초 신규 500ms 초과 loop 지연 1회 |
+| 연구 단독 분리 guard | `PASS` | 150.018초 event +10,658·평가 +65,800·queue 19·500ms 초과 0 |
+| 실제 주문·인증 | `PASS` | 실제 주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 양의 비대칭 관찰은 강건성 통과가 아님 |
+
+기계판독 근거는 `evidence/WAVE133_ASYMMETRIC_TREND_RUNNER_TOURNAMENT.json`,
+`evidence/WAVE133_ASYMMETRIC_TREND_RUNNER_TOURNAMENT_QA.json`,
+`evidence/WAVE133_ASYMMETRIC_TREND_RESEARCH_LIVE_GUARD_300S.json`,
+`evidence/WAVE133_ASYMMETRIC_TREND_RESEARCH_ISOLATED_GUARD_150S.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 결과와 무승격 결정은
+`docs/adr/ADR-128-asymmetric-runner-promising-shape-no-promotion.md`에 기록했다.
+
+현 수용상태는
+`HYP131_POSITIVE_SKEW_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.

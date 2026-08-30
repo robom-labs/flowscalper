@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 고정 익절로 큰 추세 승자를 잘라내지 않는 비대칭 runner 60후보를 사전등록 실행했다. 네 후보가 Train·Validation·walk-forward를 통과했고 진단 OOS에서 낮은 승률·높은 payoff·양의 평균 형태가 나타났지만 bootstrap 하한, DSR와 PBO 0.80을 실패해 Registry·SHADOW 승격 없이 `NOT_PROVEN`, `NOT_READY`로 보존했다.
 - 공개영상에서 비중복으로 고정한 유동성 훑기·일목 추세 12후보를 12종목 완성 5분봉 922,752개에서 실행했다. Train·Validation 동시 선발은 0개였고, Validation만 양수인 후보도 앞선 개발구간 비용후 음수라 승격하지 않았다. 영상의 승률·수익 주장과 기존 Supertrend·Donchian·재시험·VWAP·squeeze 중복은 새 전략 수로 세지 않았다.
 - 거래량 확인 4시간 추세·첫 눌림 30후보를 사전등록 실행했다. 한 OBV·가격 동시돌파 후보가 진단 OOS 68건에서 BASE·STRESS 평균은 양수였지만 bootstrap 하한, DSR와 PBO 0.8571을 실패해 승격하지 않았다. 방향별 사후 진단의 SHORT 양수도 같은 역사 재선택에 사용하지 않고 `NOT_PROVEN`, `NOT_READY`로 보존했다.
 - HYP-129의 주 t 일요일 종가 신호가 같은 주 일요일 시가로 진입하던 하루 미래참조 결함을 발견해 최초 결과를 폐기했다. 후보·비용·gate는 바꾸지 않고 다음 월요일 시가로 수정·회귀 고정한 뒤 30개 상태조건 모멘텀을 재실행했다. 1,330개 완료거래에도 선발 0·PBO 0.6571로 실패해 Registry·SHADOW 승격 없이 `NOT_PROVEN`, `NOT_READY`로 보존했다.

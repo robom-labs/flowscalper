@@ -496,3 +496,22 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 70%는 보장값이 아니다. 현재버전 자연표본 30개 전 순위 금지, BASE·STRESS·OOS·bootstrap,
   DSR·PBO·drawdown·집중도 전 수익성 `NOT_PROVEN`, 실자금 `NOT_READY`를 유지한다. 이번
   관찰의 신규 V2 자연표본은 BASE/STRESS 0/0, 6시간·24시간은 `NOT_RUN`이다.
+
+## Wave 133 비대칭 추세 runner 연구
+
+- 상태는 `COMPLETE_WITH_LIMITS`다. HYP-130의 30개 고정 진입에 +1R 활성화 뒤 이전 완성
+  22봉 Chandelier ATR 3·4배를 결합한 60개 PAPER 후보를 결과 전에 commit `1ada60d`로
+  고정했다.
+- 고정 익절·부분익절·일반 근거약화·최대보유는 없고 최초 구조 손절, 불리하게 넓어지지 않는
+  추적손절과 데이터 종료 미결만 허용한다. 현재 봉 미래참조, 동일 봉 손절 우선, 갭 손절의 더
+  불리한 시가 체결을 결정론 회귀로 고정했다.
+- 12종목 완성 4시간봉 148,824개와 펀딩 74,487개에서 완료거래 10,211개를 평가했다. 7개가
+  walk-forward, 4개가 Train·Validation 동시 선발을 통과했지만 전체 강건성 통과는 0개다.
+- 대표 수축돌파 ATR4 후보는 진단 OOS 75건, STRESS 승률 38.7%, payoff 2.400, 기대값
+  +10.095 계좌 bp, 최대 9.670R의 양의 비대칭을 보였다. 하지만 bootstrap 하한 -4.372,
+  DSR 0, 전체 PBO 0.80이라 수익성 `NOT_PROVEN`, 실자금 `NOT_READY`다.
+- 전체 재실행 SHA는 일치했다. 연구와 전체 검사를 겹친 300초 guard의 loop 지연 1회 FAIL은
+  보존했고, 연구만 겹친 분리 150초는 queue 19·처리/체결 p95 31.215/77.898ms·신규 500ms
+  초과 0으로 PASS했다.
+- Registry·LIVE SHADOW 변경은 0이다. 다음 단계는 네 규칙을 바꾸지 않은 다른 공개 perpetual
+  venue 복제이며, 통과해도 실제 bid·ask 미래 SHADOW 전에는 승격하지 않는다.
