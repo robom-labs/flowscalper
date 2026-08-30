@@ -38,6 +38,7 @@ from scripts.research_intraday_candidates import _event_rows, _trade_tick
 from scripts.research_strategy_100_candidates import (
     DEFAULT_RESEARCH_OUTPUTS,
     RESEARCH_FEATURE_HISTORY_BARS,
+    RESEARCH_FEATURE_SNAPSHOT_INTERVAL_MS,
     AccountCounters,
     ResearchAccountCarry,
     ResearchCpuBudget,
@@ -575,6 +576,82 @@ def test_research_account_carry_seeds_both_execution_and_shadow_ledgers() -> Non
         assert shadow_account.current_equity_usdt == carries[key].current_equity_usdt
         assert shadow_account.peak_equity_usdt == carries[key].peak_equity_usdt
     assert executor.ending_account_carry() == carries
+
+
+def test_research_feature_snapshot_matches_live_500ms_cadence_but_every_book_executes() -> None:
+    trial = next(
+        row
+        for row in preregistered_trials()
+        if row.screening_eligible and row.alpha.horizon == "MICRO_SCALP"
+    )
+    executor = Strategy100RunExecutor(
+        run_id="run-feature-cadence",
+        split="TRAIN",
+        archive_dir=Path("unused-archive"),
+        trials=(trial,),
+        instruments={},
+        account_counters={
+            (trial.trial_id, profile.value): AccountCounters() for profile in CostProfile
+        },
+        trial_integrity={trial.trial_id: TrialIntegrity()},
+        execution_windows_by_horizon={
+            "MICRO_SCALP": (
+                ResearchExecutionWindow(
+                    window_id="run-feature-cadence:TRAIN",
+                    horizon="MICRO_SCALP",
+                    entry_start_ts_ms=0,
+                    entry_cutoff_ts_ms=10_000,
+                    observation_end_ts_ms=191_000,
+                    maximum_holding_ms=180_000,
+                    purge_embargo_ms=180_000,
+                ),
+            )
+        },
+        account_carry={},
+    )
+
+    class CountingFeatureEngine:
+        def __init__(self) -> None:
+            self.ingest_count = 0
+            self.snapshot_count = 0
+
+        def ingest_book(self, _frame) -> None:
+            self.ingest_count += 1
+
+        def snapshot(self):
+            self.snapshot_count += 1
+            raise FeatureInputError("fixture warmup")
+
+    engine = CountingFeatureEngine()
+    executor.feature_engines["BTCUSDT"] = engine
+    execution_timestamps: list[int] = []
+    executor.portfolio.on_book = lambda book: execution_timestamps.append(book.ts_ms)
+
+    def payload(ts_ms: int) -> dict[str, object]:
+        return {
+            "event_type": "DEPTH_UPDATE",
+            "symbol": "BTCUSDT",
+            "venue_ts_ms": ts_ms,
+            "quality": {
+                "sequence_valid": True,
+                "is_stale": False,
+                "lag_ms": 0,
+            },
+            "data": {
+                "bids": [["99.9", "10"]],
+                "asks": [["100.1", "10"]],
+            },
+        }
+
+    for timestamp in (1_000, 1_100, 1_250, 1_500):
+        executor._process(payload(timestamp))
+
+    assert RESEARCH_FEATURE_SNAPSHOT_INTERVAL_MS == 500
+    assert execution_timestamps == [1_000, 1_100, 1_250, 1_500]
+    assert engine.ingest_count == 4
+    assert engine.snapshot_count == 2
+    assert executor.diagnostics.feature_snapshot_count == 2
+    assert executor.diagnostics.feature_snapshot_throttled_count == 2
 
 
 def test_recursive_f20_audit_keeps_the_same_past_only_history_window() -> None:

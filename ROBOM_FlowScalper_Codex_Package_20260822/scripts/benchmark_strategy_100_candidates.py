@@ -7,7 +7,6 @@ import hashlib
 import json
 import time
 from collections.abc import Mapping
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +33,7 @@ from scripts.research_strategy_100_candidates import (
     _canonical_json,
     _effective_validation_folds,
     _load_inputs,
+    _run_diagnostics_payload,
     _run_execution_windows,
     _screening_boundaries,
     _validation_folds,
@@ -284,7 +284,7 @@ def main() -> None:
         run_id=run_id,
         maximum_events=args.maximum_events,
         elapsed_seconds=elapsed,
-        diagnostics=asdict(executor.diagnostics),
+        diagnostics=_run_diagnostics_payload(executor.diagnostics),
         completed_trade_count=len(trades),
         baseline_resources=baseline,
         final_resources=final_resources,

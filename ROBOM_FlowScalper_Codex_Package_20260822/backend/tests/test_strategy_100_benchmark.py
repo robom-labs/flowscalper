@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+
 from scripts.benchmark_strategy_100_candidates import build_benchmark_report
+from scripts.research_strategy_100_candidates import (
+    RunDiagnostics,
+    _run_diagnostics_payload,
+)
 
 
 def test_benchmark_report_requires_observed_candidate_evaluations() -> None:
@@ -51,3 +57,26 @@ def test_benchmark_report_requires_observed_candidate_evaluations() -> None:
     )
     assert insufficient["status"] == "INSUFFICIENT_BOUNDED_SAMPLE"
     assert insufficient["checks"]["candidate_evaluations_observed"] is False
+
+
+def test_benchmark_report_serializes_real_counter_diagnostics() -> None:
+    diagnostics = RunDiagnostics(run_id="train-run", split="TRAIN")
+    diagnostics.event_count = 100
+    diagnostics.alpha_evaluation_count = 900
+    diagnostics.audit_counts["ENTRY_REJECTED"] = 2
+
+    report = build_benchmark_report(
+        run_id="train-run",
+        maximum_events=100,
+        elapsed_seconds=1.0,
+        diagnostics=_run_diagnostics_payload(diagnostics),
+        completed_trade_count=0,
+        baseline_resources={},
+        final_resources={},
+        source_hashes={},
+        generated_ts_utc="2026-08-30T00:00:00Z",
+    )
+
+    rendered = json.dumps(report, ensure_ascii=False, sort_keys=True)
+
+    assert '"ENTRY_REJECTED": 2' in rendered

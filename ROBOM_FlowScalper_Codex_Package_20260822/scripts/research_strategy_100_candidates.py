@@ -60,6 +60,7 @@ from scripts.research_intraday_candidates import _book_frame, _event_rows, _trad
 
 SCREENING_INTERVALS = (1, 300, 900, 3_600, 14_400, 21_600)
 RESEARCH_FEATURE_HISTORY_BARS = 640
+RESEARCH_FEATURE_SNAPSHOT_INTERVAL_MS = 500
 DEFAULT_RESEARCH_OUTPUTS = (
     Path("evidence/STRATEGY_100_SCREENING.json"),
     Path("evidence/STRATEGY_100_SCREENING_TRADES.jsonl"),
@@ -152,6 +153,8 @@ class RunDiagnostics:
     audit_counts: Counter[str] = field(default_factory=Counter)
     warmup_candle_count: int = 0
     warmup_symbol_count: int = 0
+    feature_snapshot_count: int = 0
+    feature_snapshot_throttled_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -616,6 +619,7 @@ class Strategy100RunExecutor:
         self.latest_books: dict[str, BookSnapshot] = {}
         self.latest_features: dict[str, FeatureSnapshot] = {}
         self.latest_regimes: dict[str, Regime] = {}
+        self.last_feature_snapshot_ms: dict[str, int] = {}
         self.pending_cross_sectional: set[tuple[int, str]] = set()
         self.signal_volatility_regime: dict[str, str] = {}
         self.trials_by_family: dict[str, tuple[ResearchTrialSpec, ...]] = defaultdict(tuple)
@@ -831,6 +835,16 @@ class Strategy100RunExecutor:
         engine = self.feature_engines.setdefault(symbol, FeatureEngine())
         try:
             engine.ingest_book(frame)
+            last_snapshot_ms = self.last_feature_snapshot_ms.get(symbol)
+            if (
+                last_snapshot_ms is not None
+                and frame.ts_ms - last_snapshot_ms < RESEARCH_FEATURE_SNAPSHOT_INTERVAL_MS
+            ):
+                self.diagnostics.feature_snapshot_throttled_count += 1
+                self._drain_audit()
+                return
+            self.last_feature_snapshot_ms[symbol] = frame.ts_ms
+            self.diagnostics.feature_snapshot_count += 1
             market_snapshot = engine.snapshot()
         except (FeatureInputError, KeyError, ValueError, ZeroDivisionError):
             self.diagnostics.rejected_market_event_count += 1
