@@ -1486,6 +1486,65 @@ async def test_incomplete_oversized_wal_checkpoint_fails_closed(
     ledger.close()
 
 
+async def test_incomplete_checkpoint_with_small_pending_tail_retries_without_fault(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "small-pending-tail.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-small-pending-tail",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime._wal_checkpoint_next_flush = 1
+    monkeypatch.setattr(runtime_module, "_WAL_CHECKPOINT_SOFT_BYTES", 0)
+    runtime._market_event_buffer = [
+        {
+            "event_id": f"event-small-pending-tail-{index}",
+            "run_id": runtime.run_id,
+            "venue": runtime.venue.value,
+            "symbol": "BTCUSDT",
+            "event_type": "TRADE",
+            "venue_ts_ms": index,
+            "receive_monotonic_ns": index,
+            "data": {"price": "100", "quantity": "1"},
+        }
+        for index in range(500)
+    ]
+
+    checkpoint_calls = 0
+
+    async def nearly_complete_checkpoint(function, *arguments):
+        nonlocal checkpoint_calls
+        assert function is runtime_module.run_passive_wal_checkpoint_in_process
+        assert arguments == (str(ledger.path), True)
+        checkpoint_calls += 1
+        if checkpoint_calls == 1:
+            return (0, 41_714, 41_507)
+        return (0, 41_714, 41_714)
+
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", nearly_complete_checkpoint)
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    for _ in range(200):
+        if runtime._wal_checkpoint_count >= 2:
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert runtime._wal_checkpoint_count == 2
+    assert runtime._wal_checkpoint_busy_count == 1
+    assert runtime._wal_checkpoint_pending_bytes == 0
+    assert runtime._persistence_fault_count == 0
+    assert runtime._persistence_fault_active is False
+    assert runtime.paper_portfolio.main.risk_state.faulted is False
+    assert "PERSISTENCE_FAULT_ENTRY_LOCK" not in runtime.runtime_health_flags
+    ledger.close()
+
+
 async def test_atomic_ledger_fault_restores_market_and_candle_batches(
     tmp_path: Path,
     monkeypatch,

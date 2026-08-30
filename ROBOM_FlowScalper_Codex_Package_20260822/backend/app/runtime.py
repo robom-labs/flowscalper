@@ -4530,11 +4530,13 @@ class PaperRuntime:
             if incomplete:
                 self._wal_checkpoint_busy_count += 1
                 self._wal_checkpoint_next_flush = self._persistence_flush_count + 1
-                if log_frames >= _MAX_WAL_FRAMES_WITHOUT_CHECKPOINT:
+                pending_frames = max(0, log_frames - checkpointed_frames)
+                if pending_frames >= _MAX_WAL_FRAMES_WITHOUT_CHECKPOINT:
                     self._handle_persistence_fault(
                         RuntimeError(
                             "WAL_CHECKPOINT_INCOMPLETE_AND_WAL_TOO_LARGE: "
-                            f"frames={log_frames}; checkpointed={checkpointed_frames}"
+                            f"frames={log_frames}; checkpointed={checkpointed_frames}; "
+                            f"pending={pending_frames}"
                         )
                     )
             else:

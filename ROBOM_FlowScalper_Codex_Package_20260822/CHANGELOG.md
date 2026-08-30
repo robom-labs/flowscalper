@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- PASSIVE WAL checkpoint가 41,714개 frame 중 41,507개를 이미 확정하고 207개만 남겼는데도 전체 frame을 64MiB 상한과 비교해 영구 저장잠금을 만들던 결함을 수정했다. 정상 반환의 부분 checkpoint는 미확정 frame만 판정하고 작은 꼬리는 재시도하며, 실제 미확정 64MiB·checkpoint 예외·SQLite commit 오류는 기존처럼 fail-closed한다.
 - 일봉 느린 레짐 추세·눌림 30후보를 12종목 24,804개 완성 일봉과 실제 펀딩으로 사전등록 실행했다. 모든 후보가 최소 표본 또는 6개 시간순 fold 안정성을 실패했고 PBO 0.2571로 승격 후보는 0이다. 결과를 보존하고 후속 상승상태 지속·위험조정 모멘텀을 별도 가설로 분리했다.
 - 다년 4시간 추세 30후보를 공식 공개 봉 148,824개와 펀딩 74,487개로 사전등록 실행했다. Train·Validation 선발 3개가 진단 OOS에서 모두 BASE·STRESS 음수이고 PBO 0.60이라 승격하지 않았으며 실패와 trial 지문을 보존했다. 후속 일봉 후보는 한 번의 분할 성과뿐 아니라 6개 시간순 fold 중 최소 4개와 최신 2개 비용후 양수를 선발 전에 요구한다.
 - 100후보 연구의 Train·Validation 21,341개 파일을 LIVE와 다른 RAM I/O 영역에 복제하고 manifest 크기·파일별 SHA-256으로 전수검증했다. Final OOS 3,466개는 봉인 상태를 유지했다. 1,000-event pilot과 동시 LIVE guard는 PASS했지만 거래·선택·승격은 0이고 전체 screen은 `NOT_RUN`, 수익성·실자금 준비는 `NOT_PROVEN`·`NOT_READY`다.
