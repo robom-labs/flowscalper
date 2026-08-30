@@ -118,6 +118,7 @@ class RunningServiceSample:
     wal_checkpointed_frames: int
     wal_checkpoint_deferred_count: int
     wal_checkpoint_last_wal_bytes: int
+    wal_checkpoint_pending_bytes: int
     wal_checkpoint_running: bool
     wal_checkpoint_current_concurrent_flush_delta: int
     wal_checkpoint_last_concurrent_flush_delta: int
@@ -390,6 +391,10 @@ def parse_running_service_sample(
         wal_checkpoint_last_wal_bytes=_integer(
             system.get("wal_checkpoint_last_wal_bytes"),
             "system.wal_checkpoint_last_wal_bytes",
+        ),
+        wal_checkpoint_pending_bytes=_integer(
+            system.get("wal_checkpoint_pending_bytes"),
+            "system.wal_checkpoint_pending_bytes",
         ),
         wal_checkpoint_running=_boolean(
             system.get("wal_checkpoint_running"),
@@ -748,7 +753,7 @@ def summarize_running_service_soak(
             final.wal_checkpoint_count > baseline.wal_checkpoint_count
             or (
                 final.wal_checkpoint_deferred_count > baseline.wal_checkpoint_deferred_count
-                and final.wal_checkpoint_last_wal_bytes < 16 * 1024 * 1024
+                and final.wal_checkpoint_pending_bytes < 16 * 1024 * 1024
             )
         ),
         "wal_checkpoint_count_monotonic": all(
@@ -934,6 +939,9 @@ def summarize_running_service_soak(
         ),
         "maximum_wal_checkpoint_observed_bytes": max(
             sample.wal_checkpoint_last_wal_bytes for sample in samples
+        ),
+        "maximum_wal_checkpoint_pending_bytes": max(
+            sample.wal_checkpoint_pending_bytes for sample in samples
         ),
         "wal_checkpoint_completed_delta": (
             final.wal_checkpoint_count - baseline.wal_checkpoint_count

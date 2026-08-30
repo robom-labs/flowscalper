@@ -1137,6 +1137,104 @@ async def test_wal_checkpoint_runs_without_blocking_live_persistence_flushes(
     ledger.close()
 
 
+async def test_logical_wal_frames_prevent_repeat_checkpoint_on_retained_file_size(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "logical-wal-market-parquet",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "logical-wal.sqlite3",
+        market_event_archive=archive,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-logical-wal",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+        market_event_archive=archive,
+    )
+    runtime._wal_checkpoint_next_flush = 1
+    ledger.close()
+    wal_path = ledger.path.with_name(f"{ledger.path.name}-wal")
+    with wal_path.open("wb") as retained_wal:
+        retained_wal.truncate(32 * 1024 * 1024)
+    for index in range(2_000):
+        runtime.ingest_live_event(
+            MarketEvent(
+                event_id=f"logical-wal-{index}",
+                run_id=runtime.run_id,
+                venue=runtime.venue,
+                symbol="BTCUSDT",
+                event_type="WIDE_TICKER",
+                venue_ts_ms=index,
+                receive_monotonic_ns=index,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=False,
+                    sequence_valid=True,
+                    lag_ms=0,
+                ),
+                data={"last_price": "100"},
+            )
+        )
+
+    persistence_calls = 0
+    checkpoint_calls = 0
+
+    async def simulated_process(function, *arguments):
+        nonlocal checkpoint_calls, persistence_calls
+        if function is runtime_module.persist_archives_and_candles_in_process:
+            persistence_calls += 1
+            log_frames = 5_000 if persistence_calls == 1 else 100
+            return {
+                "gate_wait_ms": 0.0,
+                "archive_ms": 0.0,
+                "ledger_ms": 0.0,
+                "ledger_connect_ms": 0.0,
+                "ledger_begin_wait_ms": 0.0,
+                "ledger_write_ms": 0.0,
+                "ledger_commit_ms": 0.0,
+                "ledger_close_ms": 0.0,
+                "archive_batches": 1,
+                "wal_probe_ms": 0.0,
+                "wal_log_frames": log_frames,
+                "wal_checkpointed_frames": 0,
+                "wal_page_size": 4_096,
+            }
+        assert function is runtime_module.run_passive_wal_checkpoint_in_process
+        assert arguments == (str(ledger.path), True)
+        checkpoint_calls += 1
+        return (0, 5_000, 5_000)
+
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", simulated_process)
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    for _ in range(500):
+        if (
+            runtime._market_event_buffer == []
+            and runtime._wal_checkpoint_task is None
+            and runtime._persistence_flush_count == 8
+        ):
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert runtime._persistence_flush_count == 8
+    assert persistence_calls == 8
+    assert checkpoint_calls == 1
+    assert runtime._wal_checkpoint_count == 1
+    assert runtime._wal_checkpoint_deferred_count >= 1
+    assert runtime._wal_checkpoint_last_wal_bytes == 32 * 1024 * 1024
+    assert runtime._wal_checkpoint_pending_bytes == 100 * 4_096
+    assert runtime._persistence_fault_count == 0
+
+
 async def test_parquet_process_fault_restores_batch_and_fails_closed(
     tmp_path: Path,
     monkeypatch,

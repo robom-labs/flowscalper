@@ -1331,6 +1331,10 @@ def test_archive_and_full_commit_use_independent_connection(tmp_path: Path) -> N
     assert timings["archive_batches"] == 1
     assert float(timings["archive_ms"]) >= 0
     assert float(timings["ledger_ms"]) >= 0
+    assert float(timings["wal_probe_ms"]) >= 0
+    assert int(timings["wal_log_frames"]) >= 0
+    assert int(timings["wal_checkpointed_frames"]) >= 0
+    assert int(timings["wal_page_size"]) > 0
     assert ledger.count("market_event_archives") == 1
     assert ledger.count("candles") == 1
     assert ledger.market_event_symbols(run_id) == [{"symbol": "BTCUSDT", "event_count": 1}]

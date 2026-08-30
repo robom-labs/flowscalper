@@ -113,6 +113,7 @@ def _payload() -> dict[str, object]:
             "wal_checkpointed_frames": 10,
             "wal_checkpoint_deferred_count": 0,
             "wal_checkpoint_last_wal_bytes": 1_000,
+            "wal_checkpoint_pending_bytes": 1_000,
             "wal_checkpoint_running": False,
             "wal_checkpoint_current_concurrent_flush_delta": 0,
             "wal_checkpoint_last_concurrent_flush_delta": 0,

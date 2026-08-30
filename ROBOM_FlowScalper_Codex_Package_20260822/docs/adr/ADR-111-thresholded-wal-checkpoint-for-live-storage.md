@@ -17,19 +17,26 @@ Wave 116L 연구 뒤 실행 서비스를 관찰한 결과 이벤트와 전략평
 이벤트는 계속 들어왔지만 persistence flush 수가 체크포인트 종료 전까지 증가하지 않았다.
 별도 process만으로는 충분하지 않고 worker가 그 process를 기다리는 구조도 제거해야 했다.
 
+비차단 분리 뒤 8분 실제 관찰에서는 첫 체크포인트가 40.494초 걸리는 동안 11회 flush가
+전진했다. 하지만 체크포인트 완료 뒤에도 WAL 파일의 물리 크기 21.7MB가 유지돼 네 flush마다
+불필요한 체크포인트가 반복됐다. WAL 파일 크기는 논리적인 미처리 frame 수가 아니므로
+실행 기준으로 사용할 수 없었다.
+
 ## 결정
 
 1. 네 번의 flush마다 WAL 상태를 확인하는 주기는 유지한다.
-2. WAL이 기존 소프트 기준인 16MB보다 작으면 실제 체크포인트를 실행하지 않고 다음 네 번의
-   flush 뒤 다시 확인한다.
-3. 작은 WAL을 건너뛴 횟수와 확인 당시 WAL 크기는 기존 deferred 진단에 기록한다.
-4. WAL이 16MB 이상이면 별도 process의 `PASSIVE` 체크포인트를 백그라운드 task로 실행하고
+2. 각 archive·원장 commit 직후 SQLite `wal_checkpoint(NOOP)`와 `page_size`로 미처리
+   `log_frames - checkpointed_frames`의 논리 바이트를 읽는다.
+3. 논리 미처리 WAL이 기존 소프트 기준인 16MB보다 작으면 실제 체크포인트를 실행하지 않고
+   다음 네 번의 flush 뒤 다시 확인한다. 물리 WAL 파일 크기는 진단용으로만 보존한다.
+4. 작은 논리 WAL을 건너뛴 횟수, 물리 WAL 크기와 논리 미처리 크기를 진단에 기록한다.
+5. 논리 미처리 WAL이 16MB 이상이면 별도 process의 `PASSIVE` 체크포인트를 백그라운드 task로 실행하고
    persistence worker는 그 결과를 기다리지 않은 채 다음 flush를 계속한다.
-5. 체크포인트 process는 LIVE persistence 우선순위 잠금을 선점하지 않고 background I/O
+6. 체크포인트 process는 LIVE persistence 우선순위 잠금을 선점하지 않고 background I/O
    우선순위를 사용한다. SQLite `PASSIVE` 결과의 busy·미완료 수치로 경쟁 상태를 판정한다.
-6. 체크포인트가 진행되는 동안 완료된 flush 수를 현재·최근·최대 진단값으로 기록한다.
-7. 체크포인트 실패, 64MB 초과, 미완료 16,384 frame과 저장 적체 fail-closed 경로는 유지한다.
-8. soak의 `wal_checkpoint_continued`는 실제 체크포인트 전진뿐 아니라 16MB 미만 WAL을
+7. 체크포인트가 진행되는 동안 완료된 flush 수를 현재·최근·최대 진단값으로 기록한다.
+8. 체크포인트 실패, 64MB 초과, 미완료 16,384 frame과 저장 적체 fail-closed 경로는 유지한다.
+9. soak의 `wal_checkpoint_continued`는 실제 체크포인트 전진뿐 아니라 16MB 미만 논리 WAL을
    명시적으로 확인하고 미룬 경우도 정상 worker 전진으로 판정한다.
 
 ## 검증 계약

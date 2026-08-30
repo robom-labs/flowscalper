@@ -573,6 +573,7 @@
           "contains": [
             "test_parquet_persistence_worker_keeps_event_loop_responsive",
             "test_wal_checkpoint_runs_without_blocking_live_persistence_flushes",
+            "test_logical_wal_frames_prevent_repeat_checkpoint_on_retained_file_size",
             "test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists",
             "test_incomplete_oversized_wal_checkpoint_fails_closed"
           ]

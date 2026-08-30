@@ -2374,6 +2374,10 @@ def persist_archives_and_candles_in_process(
                 "ledger_commit_ms": 0.0,
                 "ledger_close_ms": 0.0,
                 "archive_batches": len(archive_records),
+                "wal_probe_ms": 0.0,
+                "wal_log_frames": -1,
+                "wal_checkpointed_frames": -1,
+                "wal_page_size": 4_096,
             }
         if len(run_ids) != 1:
             raise LedgerInvariantError("한 영속화 커밋에 여러 Run의 데이터가 섞였습니다.")
@@ -2385,6 +2389,10 @@ def persist_archives_and_candles_in_process(
         ledger_write_ms = 0.0
         ledger_commit_ms = 0.0
         ledger_close_ms = 0.0
+        wal_probe_ms = 0.0
+        wal_log_frames = -1
+        wal_checkpointed_frames = -1
+        wal_page_size = 4_096
         foreground_commit = _set_persistence_background_io_policy(False)
         try:
             connect_started = time.perf_counter()
@@ -2427,8 +2435,20 @@ def persist_archives_and_candles_in_process(
                     connection.execute("COMMIT")
                     ledger_commit_ms = (time.perf_counter() - commit_started) * 1_000
                 except BaseException:
-                    connection.execute("ROLLBACK")
+                    if connection.in_transaction:
+                        connection.execute("ROLLBACK")
                     raise
+                wal_probe_started = time.perf_counter()
+                wal_row = connection.execute("PRAGMA wal_checkpoint(NOOP)").fetchone()
+                if wal_row is None or len(wal_row) != 3:
+                    raise LedgerInvariantError("WAL NOOP probe 결과 형식이 올바르지 않습니다.")
+                page_size_row = connection.execute("PRAGMA page_size").fetchone()
+                if page_size_row is None:
+                    raise LedgerInvariantError("SQLite page_size를 읽지 못했습니다.")
+                wal_log_frames = int(wal_row[1])
+                wal_checkpointed_frames = int(wal_row[2])
+                wal_page_size = int(page_size_row[0])
+                wal_probe_ms = (time.perf_counter() - wal_probe_started) * 1_000
             finally:
                 close_started = time.perf_counter()
                 connection.close()
@@ -2446,6 +2466,10 @@ def persist_archives_and_candles_in_process(
             "ledger_commit_ms": ledger_commit_ms,
             "ledger_close_ms": ledger_close_ms,
             "archive_batches": len(archive_records),
+            "wal_probe_ms": wal_probe_ms,
+            "wal_log_frames": wal_log_frames,
+            "wal_checkpointed_frames": wal_checkpointed_frames,
+            "wal_page_size": wal_page_size,
         }
 
 

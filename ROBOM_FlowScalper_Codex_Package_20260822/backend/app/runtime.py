@@ -283,6 +283,10 @@ class PaperRuntime:
     _wal_checkpoint_last_error: str | None = None
     _wal_checkpoint_deferred_count: int = 0
     _wal_checkpoint_last_wal_bytes: int = 0
+    _wal_checkpoint_probe_log_frames: int = -1
+    _wal_checkpoint_probe_checkpointed_frames: int = -1
+    _wal_checkpoint_probe_page_size: int = 4_096
+    _wal_checkpoint_pending_bytes: int = 0
     _wal_checkpoint_task: asyncio.Task[tuple[int, int, int]] | None = field(
         default=None,
         init=False,
@@ -1013,6 +1017,12 @@ class PaperRuntime:
             "wal_checkpoint_deferred_count": self._wal_checkpoint_deferred_count,
             "wal_checkpoint_last_wal_bytes": self._wal_checkpoint_last_wal_bytes,
             "wal_checkpoint_soft_bytes": _WAL_CHECKPOINT_SOFT_BYTES,
+            "wal_checkpoint_probe_log_frames": self._wal_checkpoint_probe_log_frames,
+            "wal_checkpoint_probe_checkpointed_frames": (
+                self._wal_checkpoint_probe_checkpointed_frames
+            ),
+            "wal_checkpoint_probe_page_size": self._wal_checkpoint_probe_page_size,
+            "wal_checkpoint_pending_bytes": self._wal_checkpoint_pending_bytes,
             "wal_checkpoint_running": (
                 self._wal_checkpoint_task is not None and not self._wal_checkpoint_task.done()
             ),
@@ -4297,6 +4307,10 @@ class PaperRuntime:
             "market_events": len(market_batch),
             "candles": len(candle_batch),
             "archive_batches": 0,
+            "wal_probe_ms": 0.0,
+            "wal_log_frames": -1,
+            "wal_checkpointed_frames": -1,
+            "wal_page_size": 4_096,
         }
         if self.ledger is None:
             return timings
@@ -4433,6 +4447,12 @@ class PaperRuntime:
             self._wal_checkpoint_max_ms = max(self._wal_checkpoint_max_ms, elapsed_ms)
             self._wal_checkpoint_log_frames = log_frames
             self._wal_checkpointed_frames = checkpointed_frames
+            self._wal_checkpoint_probe_log_frames = log_frames
+            self._wal_checkpoint_probe_checkpointed_frames = checkpointed_frames
+            self._wal_checkpoint_pending_bytes = max(
+                0,
+                (log_frames - checkpointed_frames) * self._wal_checkpoint_probe_page_size,
+            )
             self._wal_checkpoint_last_completed_ts_ms = self.clock.utc_ms()
             self._wal_checkpoint_last_error = None
             self.runtime_health_flags = [
@@ -4467,7 +4487,14 @@ class PaperRuntime:
             wal_path = self.ledger.path.with_name(f"{self.ledger.path.name}-wal")
             wal_size = wal_path.stat().st_size if wal_path.exists() else 0
             self._wal_checkpoint_last_wal_bytes = wal_size
-            if wal_size < _WAL_CHECKPOINT_SOFT_BYTES:
+            logical_probe_available = (
+                self._wal_checkpoint_probe_log_frames >= 0
+                and self._wal_checkpoint_probe_checkpointed_frames >= 0
+            )
+            checkpoint_pressure_bytes = (
+                self._wal_checkpoint_pending_bytes if logical_probe_available else wal_size
+            )
+            if checkpoint_pressure_bytes < _WAL_CHECKPOINT_SOFT_BYTES:
                 self._wal_checkpoint_deferred_count += 1
                 self._wal_checkpoint_next_flush = (
                     self._persistence_flush_count + _WAL_CHECKPOINT_FLUSH_INTERVAL
@@ -4489,6 +4516,17 @@ class PaperRuntime:
             elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
             completed_ts_ms = self.clock.utc_ms()
             self._persistence_flush_count += 1
+            wal_log_frames = int(timings["wal_log_frames"])
+            wal_checkpointed_frames = int(timings["wal_checkpointed_frames"])
+            if wal_log_frames >= 0 and wal_checkpointed_frames >= 0:
+                self._wal_checkpoint_probe_log_frames = wal_log_frames
+                self._wal_checkpoint_probe_checkpointed_frames = wal_checkpointed_frames
+                self._wal_checkpoint_probe_page_size = int(timings["wal_page_size"])
+                self._wal_checkpoint_pending_bytes = max(
+                    0,
+                    (wal_log_frames - wal_checkpointed_frames)
+                    * self._wal_checkpoint_probe_page_size,
+                )
             self._persistence_flush_last_ms = elapsed_ms
             self._persistence_flush_last_completed_ts_ms = completed_ts_ms
             if elapsed_ms > self._persistence_flush_max_ms:
