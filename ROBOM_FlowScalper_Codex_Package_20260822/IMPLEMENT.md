@@ -793,3 +793,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 - `SafetyHeader` 브랜드를 접근 가능한 버튼으로 바꾸고 `App` 시장 기본 화면으로 연결했다.
 - frontend 85건, lint, typecheck, build, 데스크톱·태블릿·모바일 Playwright 3건을 통과했다. 실제 8870은 7개 PAPER 포지션을 자동 보호 중이어서 강제 종료·재시작을 하지 않았다.
 - 재시도 30.018초 읽기 전용 관찰은 event +2,340·전략평가 +13,020·queue 최대 1·처리/체결 p95 30.097/82.178ms였다. 신규 critical·비계획 재연결·gap·drop·저장 fault·buffer drop·실제주문·인증은 0으로 PASS했다.
+
+## Wave 136 ADX·DMI 적응 진단과 외부복제 경계
+
+- ADX·DMI는 Wilder RMA 14, ADX 25 이상, 3개 완성봉 전보다 상승, 방향 일치를 현재 봉까지의
+  값만으로 계산한다. 같은 후보·종목은 종료 뒤 168시간 동안 방향을 바꿔도 재진입하지 않는다.
+- HYP-133의 네 후보는 Bybit 결과에서 평균·PF가 높아져도 적응 개발 진단으로만 기록한다.
+  bootstrap 하한·DSR·시간순·표본 gate 중 하나라도 실패하면 승격하지 않는다.
+- 원신호·ADX 거절·상승 거절·방향 거절·cooldown 거절·최종 적격 수를 후보별로 보존한다.
+- 최초 360초 동시 관찰의 신규 event-loop 500ms 초과 1회는 `FAIL_PRESERVED`로 유지한다.
+  연구가 없는 후속 120초 PASS는 원인을 연구로 확정하는 증거로 사용하지 않는다.
+- OKX 복제는 사전등록 commit 뒤 공식 공개 history-candles와 공개 historical funding만 사용하고,
+  공식 펀딩이 누락되면 0으로 치환하지 않고 차단한다.

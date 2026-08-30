@@ -4216,3 +4216,46 @@ LIVE 공개시장·PAPER로 계속 실행 중이며, 새 소스 릴리스와는 
 
 현 수용상태는
 `STRATEGY_RESULT_UI_SOURCE_PASS_INSTALL_WAITING_FOR_FLAT_PAPER_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 97. Wave 136 ADX·DMI 분산형 비대칭 추세 진단
+
+HYP-132의 Bybit 결과를 본 뒤 만든 적응 가설임을 먼저 고정하고, ADX 25 이상·3개 완성봉
+상승·방향 일치 DMI와 동일 종목 168시간 재진입 제한을 네 비대칭 추세 runner에 적용했다.
+사전등록 commit은 `b8dd147bd84446b992e68d0ef7c16de5690d3d24`, 실행 코드 commit은
+`0be93e1f1d1c51a9bc1bc1081367036f8b64bbf4`다.
+
+Bybit linear 12종목의 완성 4시간봉 141,422개·공개 펀딩 71,609개를 사용했고 gap은 0,
+데이터 SHA-256은 `ee992d2fd31257fad48e0c50865101985a0f68c91f042a741c70bdf674fa61bb`다.
+생성시각을 제외한 전체 재실행 SHA-256
+`e6dd77476893de55c9ebc34b5d831f34f2def1f6e4a76f50e94519f7d9473875`가 일치했다.
+
+OBV 이동평균 교차 ATR3는 129건·STRESS 승률 43.4%·기대값 +10.011 계좌 bp·PF 1.480·
+payoff 1.930이었고, 수축돌파 ATR4는 94건·STRESS 기대값 +13.389·PF 1.582·payoff
+2.550이었다. 그러나 전자는 bootstrap 하한 -1.117·DSR 0·최신 두 fold 실패, 후자는
+표본 100건 미달·bootstrap 하한 -3.676·DSR 0이었다. 나머지 두 후보도 PF·payoff·
+bootstrap·DSR 또는 시간순 gate를 실패했다. 적응 진단 통과와 Registry·LIVE SHADOW 변경은
+모두 0이다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 사전등록·후보 지문 | `PASS` | 4후보·지문 `ba7a1a7d...`, 결과 전 commit |
+| 공식 공개 입력·gap | `PASS` | 12종목·141,422봉·71,609 펀딩·gap 0 |
+| 단위·정적검사 | `PASS` | 관련 17건·Ruff |
+| 결정론적 전체 재실행 | `PASS` | 생성시각 제외 canonical SHA-256 일치 |
+| 적응 개발 강건성 | `FAIL_RESEARCH_GATES` | bootstrap·DSR·시간순 또는 최소표본 실패, 통과 0 |
+| Registry·LIVE SHADOW | `PASS_NONE_PROMOTED` | 변경 0 |
+| 최초 동시 LIVE guard | `FAIL_PRESERVED` | 360.012초, 신규 500ms 초과 loop 지연 1회 |
+| 연구 없는 분리 guard | `PASS` | 120.021초 event +9,316·평가 +53,380·queue 4·신규 500ms 초과 0 |
+| 포지션 보호 | `PASS` | 분리 관찰 내내 5/5 보호 |
+| 실제 주문·인증 | `PASS_ZERO` | 실제주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 적응 표본 개선은 독립 미래검증이 아님 |
+
+기계판독 근거는 `evidence/WAVE136_ADX_DMI_DIVERSIFIED_ASYMMETRIC_RUNNER.json`,
+`evidence/WAVE136_ADX_DMI_DIVERSIFIED_ASYMMETRIC_RUNNER_QA.json`,
+`evidence/WAVE136_HYP133_RESEARCH_LIVE_GUARD_360S.json`,
+`evidence/WAVE136_HYP133_ISOLATED_NO_RESEARCH_GUARD_120S.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 무승격과 독립복제 결정은
+`docs/adr/ADR-130-adx-dmi-diversification-adaptive-improvement-no-promotion.md`에 기록했다.
+
+현 수용상태는
+`HYP133_ADAPTIVE_IMPROVEMENT_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.

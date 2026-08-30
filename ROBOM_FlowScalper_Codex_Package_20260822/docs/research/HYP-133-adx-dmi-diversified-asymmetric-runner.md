@@ -76,3 +76,38 @@ Registry 변경이 0이다.
 
 실제 주문, private API, API Key, secret, 인증, wallet, 입출금과 runtime AI 주문판단은 계속
 0이다.
+
+## 실행 결과
+
+- 실행 상태. `COMPLETE_WITH_RESEARCH_GATE_FAILURE`.
+- 사전등록 commit. `b8dd147bd84446b992e68d0ef7c16de5690d3d24`.
+- 실행 코드 commit. `0be93e1f1d1c51a9bc1bc1081367036f8b64bbf4`.
+- 입력. Bybit linear 12종목 완성 4시간봉 141,422개, 공개 펀딩 71,609개.
+- 데이터셋 SHA-256. `ee992d2fd31257fad48e0c50865101985a0f68c91f042a741c70bdf674fa61bb`.
+- 후보 지문. `ba7a1a7dc251854181b41f1f1595ae21dae43d7c1b26393ecaaafbce00150adb`.
+- 생성시각을 제외한 재실행 SHA-256. `e6dd77476893de55c9ebc34b5d831f34f2def1f6e4a76f50e94519f7d9473875`.
+- 적응 개발 진단 gate 통과. 0개.
+- Registry·LIVE SHADOW 변경. 0개.
+
+ADX 25와 3봉 상승 규칙은 네 후보의 원래 적격 신호 중 36.6%~79.6%를 제거했고, 통과한
+신호에서도 168시간 재진입 제한이 후보별 22~1,314건을 추가 차단했다. 최종 완료표본은
+94~358건이었다. 네 후보의 양의 종목 기여 최대 비중은 19.0%~38.7%로 모두 50% 아래였지만,
+네 후보 모두 bootstrap 95% 기대값 하한과 DSR을 실패했다.
+
+가장 개선 폭이 컸던 OBV 이동평균 교차 ATR3는 129건에서 BASE 기대값 +11.214 계좌 bp·
+PF 1.557, STRESS 기대값 +10.011 계좌 bp·PF 1.480이었다. STRESS 승률은 43.4%, payoff는
+1.930, 왜도는 2.135, 최대 승자는 8.286R이었다. 원후보의 STRESS 기대값 +1.213·PF
+1.054보다 높았고 단일 종목 비중은 28.0%였다.
+
+그러나 bootstrap 하한은 -1.117 계좌 bp, DSR은 0이고 최신 두 시간순 fold가 모두 양수가
+아니었다. 수축돌파 ATR4도 STRESS 기대값 +13.389·PF 1.582였지만 94건으로 최소 100건에
+미달했고 bootstrap 하한 -3.676, 양수 fold 2/4였다. 나머지 두 후보는 필터 뒤 성과가
+악화되거나 payoff·PF·시간순 안정성을 실패했다.
+
+따라서 같은 Bybit 자료에서 보인 개선을 미래 수익성으로 해석하지 않는다. HYP-132 결과를 본
+뒤 만든 적응 진단이므로 상태는 `NOT_PROVEN`, `NOT_READY`이며, 네 규칙을 다시 바꾸지 않은
+OKX 공개 자료 복제 또는 사전등록 이후 실제 bid·ask 미래 SHADOW가 다음 확인 단계다.
+
+기계판독 결과는
+`evidence/WAVE136_ADX_DMI_DIVERSIFIED_ASYMMETRIC_RUNNER.json`과
+`evidence/WAVE136_ADX_DMI_DIVERSIFIED_ASYMMETRIC_RUNNER_QA.json`에 보존한다.

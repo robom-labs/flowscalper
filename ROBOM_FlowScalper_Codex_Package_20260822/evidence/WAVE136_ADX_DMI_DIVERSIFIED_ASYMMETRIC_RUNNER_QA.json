@@ -1,0 +1,129 @@
+{
+  "schema": "flowscalper.research_qa.v1",
+  "wave": 136,
+  "hypothesis_id": "HYP-133-ADX-DMI-DIVERSIFIED-ASYMMETRIC-RUNNER",
+  "status": "COMPLETE_WITH_RESEARCH_GATE_FAILURE",
+  "research_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "preregistration_commit": "b8dd147bd84446b992e68d0ef7c16de5690d3d24",
+  "implementation_commit": "0be93e1f1d1c51a9bc1bc1081367036f8b64bbf4",
+  "implementation_fingerprint": "f19f270cc372a8339b2d4d7cdbb4c73853d31cb9d2320eb0a1c1772faa700ba1",
+  "dataset": {
+    "venue": "BYBIT_LINEAR",
+    "symbol_count": 12,
+    "completed_4h_bar_count": 141422,
+    "public_funding_count": 71609,
+    "gap_count": 0,
+    "sha256": "ee992d2fd31257fad48e0c50865101985a0f68c91f042a741c70bdf674fa61bb"
+  },
+  "candidate_contract": {
+    "candidate_count": 4,
+    "fingerprint": "ba7a1a7dc251854181b41f1f1595ae21dae43d7c1b26393ecaaafbce00150adb",
+    "canonical_rerun_sha256": "e6dd77476893de55c9ebc34b5d831f34f2def1f6e4a76f50e94519f7d9473875",
+    "adaptive_development_gate_pass_count": 0,
+    "registry_change_count": 0,
+    "live_shadow_change_count": 0
+  },
+  "candidate_summary": [
+    {
+      "candidate": "T133_OBV_MA_CROSS_4H_BOTH_BALANCED_CHAND22_ATR3_ADX25_RISE3_DMI_COOLDOWN168H",
+      "sample_size": 129,
+      "stress_win_rate": 0.4341085271,
+      "stress_expectancy_account_bps": 10.0109674584,
+      "stress_profit_factor": 1.4804329876,
+      "stress_payoff": 1.9298501446,
+      "bootstrap_95_lower_account_bps": -1.1165637315,
+      "dsr_probability": 0.0,
+      "largest_positive_symbol_share": 0.2796520237,
+      "evaluable_positive_folds": "5/7",
+      "latest_two_folds_positive": false,
+      "gate_pass": false
+    },
+    {
+      "candidate": "T133_OBV_PRICE_BREAKOUT_4H_BOTH_BALANCED_CHAND22_ATR3_ADX25_RISE3_DMI_COOLDOWN168H",
+      "sample_size": 358,
+      "stress_win_rate": 0.4245810056,
+      "stress_expectancy_account_bps": 0.7369912311,
+      "stress_profit_factor": 1.0358573147,
+      "stress_payoff": 1.4038592554,
+      "bootstrap_95_lower_account_bps": -4.0955594628,
+      "dsr_probability": 0.0,
+      "largest_positive_symbol_share": 0.1904190569,
+      "evaluable_positive_folds": "4/7",
+      "latest_two_folds_positive": true,
+      "gate_pass": false
+    },
+    {
+      "candidate": "T133_SQUEEZE_BREAKOUT_4H_BOTH_BALANCED_CHAND22_ATR4_ADX25_RISE3_DMI_COOLDOWN168H",
+      "sample_size": 94,
+      "stress_win_rate": 0.3829787234,
+      "stress_expectancy_account_bps": 13.3893228303,
+      "stress_profit_factor": 1.5824937155,
+      "stress_payoff": 2.5495732083,
+      "bootstrap_95_lower_account_bps": -3.6763066418,
+      "dsr_probability": 0.0,
+      "largest_positive_symbol_share": 0.3692702833,
+      "evaluable_positive_folds": "2/4",
+      "latest_two_folds_positive": false,
+      "gate_pass": false
+    },
+    {
+      "candidate": "T133_OBV_FIRST_PULLBACK_4H_BOTH_BALANCED_CHAND22_ATR4_ADX25_RISE3_DMI_COOLDOWN168H",
+      "sample_size": 123,
+      "stress_win_rate": 0.3414634146,
+      "stress_expectancy_account_bps": -0.3569255937,
+      "stress_profit_factor": 0.9856178422,
+      "stress_payoff": 1.9008344099,
+      "bootstrap_95_lower_account_bps": -11.412561986,
+      "dsr_probability": 0.0,
+      "largest_positive_symbol_share": 0.3867247327,
+      "evaluable_positive_folds": "3/7",
+      "latest_two_folds_positive": false,
+      "gate_pass": false
+    }
+  ],
+  "validation": {
+    "targeted_unit_tests": "PASS_17",
+    "ruff": "PASS",
+    "deterministic_full_rerun": "PASS",
+    "initial_concurrent_live_guard": {
+      "status": "FAIL_PRESERVED",
+      "duration_seconds": 360.012,
+      "event_delta": 30541,
+      "strategy_evaluation_delta": 162540,
+      "maximum_queue_depth": 9,
+      "processing_lag_p95_max_ms": 33.77734375,
+      "trade_lag_p95_max_ms": 100.680908203125,
+      "new_event_loop_lag_over_500ms": 1,
+      "classification": "NOT_PROVEN_TIMING_CORRELATION_ONLY"
+    },
+    "isolated_no_research_live_guard": {
+      "status": "PASS",
+      "duration_seconds": 120.021,
+      "event_delta": 9316,
+      "strategy_evaluation_delta": 53380,
+      "maximum_queue_depth": 4,
+      "processing_lag_p95_max_ms": 25.614501953125,
+      "trade_lag_p95_max_ms": 83.024658203125,
+      "wide_lag_p95_max_ms_observational": 1836.1416015625,
+      "memory_growth_mb": 0.469,
+      "new_event_loop_lag_over_500ms": 0,
+      "new_unplanned_reconnects": 0,
+      "new_gaps": 0,
+      "new_resyncs": 0,
+      "new_drops": 0,
+      "new_persistence_faults": 0,
+      "new_buffer_drops": 0,
+      "protected_positions": "5/5"
+    }
+  },
+  "safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_key_used": false,
+    "wallet_path_present": false
+  },
+  "decision": "NO_PROMOTION_PREREGISTER_OKX_EXTERNAL_REPLICATION"
+}

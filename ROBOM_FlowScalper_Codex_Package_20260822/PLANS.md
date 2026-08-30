@@ -546,3 +546,14 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - `FlowScalper` 이름을 누르면 항상 시장 기본화면으로 돌아가게 한다.
 - 단위·lint·typecheck·build·desktop·tablet·mobile E2E를 통과한 후 현재 PAPER 포지션이 자연 종료될 때까지 기존 8870 서비스를 유지한다.
 - 포지션 0건에서만 커밋된 불변 릴리스를 설치하고 실제 8870 브라우저 클릭과 화면을 다시 검증한다.
+
+## Wave 136 ADX·DMI 분산형 비대칭 추세 진단
+
+- 상태는 `COMPLETE_WITH_RESEARCH_GATE_FAILURE`다.
+- HYP-132 결과를 본 뒤 만든 적응 가설임을 명시하고 ADX 25, 3개 완성봉 동안 상승하는 ADX,
+  방향 일치 DMI와 동일 종목 168시간 재진입 제한을 결과 전 commit `b8dd147`에서 고정했다.
+- 네 후보는 같은 Bybit 공개 완성 4시간봉·펀딩, BASE 13bp·STRESS 25bp와 비대칭 runner
+  규칙으로 한 번만 평가하고 결정론적 전체 재실행 SHA 일치를 요구한다.
+- 결과가 좋아도 같은 자료의 적응 진단이므로 Registry·LIVE SHADOW 변경은 0으로 유지한다.
+- 실패·초기 동시 LIVE guard의 500ms 초과 1회·분리 관찰 PASS를 모두 보존하고 원인으로 단정하지 않는다.
+- 다음 Wave는 네 규칙을 바꾸지 않은 OKX 공개 완성 4시간봉·실제 펀딩 독립 복제다.
