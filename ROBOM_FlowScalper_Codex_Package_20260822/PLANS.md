@@ -569,3 +569,22 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   표시하고 승률이 없는 전략은 마지막에 둔다.
 - 현재 8870은 PAPER 포지션 2건을 보호 중이므로 강제 종료·재시작하지 않는다. 포지션 0건에서만
   커밋된 불변 릴리스를 설치하고 실제 8870 브라우저를 다시 검증한다.
+
+## Wave 138 OKX 비대칭 추세 runner 고정 외부복제
+
+- 상태는 `COMPLETE_WITH_RESEARCH_GATE_FAILURE`다.
+- 먼저 현재버전 완료 PAPER 원장을 분해해 총 gross `+7.68109 USDT`보다 수수료
+  `17.063736 USDT`와 슬리피지 `1.696577 USDT`가 커서 순손익이
+  `-11.079223 USDT`인 비용 지배 상태를 확인했다. 같은 품질의 거래 수만 늘리는 것은
+  개선 방향에서 제외한다.
+- HYP-134에서 고정한 네 ADX·DMI 비대칭 추세 runner를 규칙 변경 없이 OKX USDT
+  perpetual 12종목의 완성 4시간봉 83,232개와 실제 펀딩 41,645개에 복제한다.
+- 모든 후보는 실제 공개자료, BASE 13bp·STRESS 25bp, 거래당 위험 40bp, 동시에 최대
+  2포지션·일 2진입, 최초 구조손절과 +1R 뒤 Chandelier runner를 그대로 사용한다.
+- 네 후보 모두 비용 후 평균·PF·양의 왜도와 최대 7.832R~14.899R 승자를 보였지만,
+  bootstrap 95% 하한·DSR·시간순 안정성 gate를 실패했다. 외부복제 통과와 Registry·
+  LIVE SHADOW 변경은 모두 0이다.
+- 후속 연구는 실패 결과와 원장을 삭제하지 않고 별도 사전등록·독립 미래자료로만 진행한다.
+  실제 bid·ask BASE/STRESS 자연표본 30건 전에는 후보를 승격하지 않는다.
+- 실제 주문, private API, API Key, secret, wallet과 입출금은 계속 0이며 수익성은
+  `NOT_PROVEN`, 실자금은 `NOT_READY`다.

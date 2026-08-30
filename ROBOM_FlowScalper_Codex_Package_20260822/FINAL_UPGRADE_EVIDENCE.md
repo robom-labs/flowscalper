@@ -4308,3 +4308,75 @@ bootstrap·DSR 또는 시간순 gate를 실패했다. 적응 진단 통과와 Re
 
 현 수용상태는
 `HISTORY_OPPORTUNITY_SOURCE_PASS_INSTALL_WAITING_FOR_FLAT_PAPER_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 99. Wave 138 OKX 비대칭 추세 runner 고정 외부복제
+
+이번 Wave는 적은 익절을 억지로 늘리기 전에 현재 LIVE_PUBLIC PAPER 손실의 원인을 먼저
+분해했다. 실행 당시 현재버전 완료 원장 25행은 거래 ID 25개·실제 진입기회 13개로
+중복이 없었다. gross는 `+7.68109 USDT`였지만 수수료 `17.063736 USDT`와 슬리피지
+`1.696577 USDT`가 더 커 순손익은 `-11.079223 USDT`였다. 동일 품질의 진입 횟수만
+늘리면 비용 손실이 커지는 구조이므로 신호·비용 기준을 낮추지 않았다.
+
+HYP-134는 Bybit 결과를 본 뒤 만든 ADX·DMI 적응 규칙 네 개를 OKX 결과를 보기 전에
+commit `68c3c3e5cea2581ccab801ec9d4c04076b6e80ab`에서 고정했다. 실행 코드는
+`9d1b42105a60909249c5b6c73663c119b2650920`이다. OKX 공개 USDT swap 12종목에서
+2023-07-01 이상 2026-08-30 미만 완성 4시간봉 83,232개와 실제 펀딩 41,645개를
+사용했고 종목별 봉 gap은 모두 0이었다. 데이터셋 SHA-256은
+`5ab722bb91f0b70aa2fd64c98ef70b73f2be1a46eabc4643ca17b4e0b92841c4`다.
+
+| 후보 | STRESS 표본 | 승률 | 기대값 계좌 bp | PF | payoff | 최대 승자 | bootstrap 하한 | 판정 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 첫 눌림 ATR4 | 73 | 34.25% | +9.002 | 1.395 | 2.679 | 7.832R | -7.446 | `FAIL` |
+| OBV MA 교차 ATR3 | 87 | 36.78% | +6.064 | 1.256 | 2.159 | 8.326R | -8.005 | `FAIL` |
+| OBV 가격돌파 ATR3 | 231 | 43.72% | +6.043 | 1.303 | 1.678 | 14.899R | -1.189 | `FAIL` |
+| 수축돌파 ATR4 | 66 | 39.39% | +19.663 | 1.873 | 2.882 | 12.016R | -2.483 | `FAIL` |
+
+네 후보 모두 BASE·STRESS 평균, PF, 양의 왜도와 큰 승자 형태를 보였다. 사용자가 요청한
+“여러 번 작게 손실을 보더라도 추세가 생길 때 크게 보유하는” 형태는 외부 venue에서도
+관찰됐다. 그러나 bootstrap 95% 하한은 모두 음수이고 DSR은 모두 0이었다. 시간순
+안정성도 네 후보 모두 실패했으며 세 후보는 최소 100건에 미달했다. 231건인 가격돌파도
+평가 가능 fold 8개 중 양수 4개이고 최신 두 fold가 모두 양수가 아니었다. 따라서 양의
+평균과 큰 승자를 수익성 증명으로 확대하지 않고 통과 후보·Registry·LIVE SHADOW 변경을
+모두 0으로 유지했다.
+
+생성시각을 제외한 결과의 결정론적 SHA-256은
+`7412958ccfc8cd16d868375af3f6a54851dcd85b1fb2fbb06c9fd50c22d5045f`이며 같은 cache
+전체 재실행에서 일치했다. OKX API·공개 Historical Market Data만 사용했고 API Key,
+로그인, private API, secret, wallet과 입출금은 사용하지 않았다.
+
+첫 사후 서비스 관찰 60.018초는 계획 WebSocket 교체 1회와 동시에 sequence gap·resync가
+각 1 증가해 관찰기 기준 `FAIL`로 보존했다. 같은 구간의 비계획 재연결·drop·저장결함·
+실제 주문·인증 증가는 0이었다. 계획 교체가 끝난 뒤 별도 60.076초 관찰은 event
+`+4,256`·전략평가 `+26,560`, queue 최대 7, 처리/체결 p95 최대
+`30.572/76.317ms`, 신규 sequence gap·resync·비계획 재연결·drop·저장결함·임계지연
+incident·실제 주문·인증 0으로 `PASS`했다. wide scanner p95 최대 1,912.858ms는
+진입 실행호가가 아닌 넓은 관찰 지표로 분리했다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 결과 전 사전등록 | `PASS` | commit `68c3c3e`, 후보 4개·비용·gate 고정 |
+| 공개자료·완성봉·gap | `PASS` | 12종목·83,232봉·41,645 펀딩·gap 0 |
+| 결정론적 cache 전체 재실행 | `PASS` | 생성시각 제외 SHA-256 일치 |
+| 외부 venue 강건성 | `FAIL_RESEARCH_GATES` | bootstrap·DSR·시간순 안정성 전부 실패 |
+| Registry·LIVE SHADOW 승격 | `PASS_NONE_PROMOTED` | 변경 0 |
+| 연구 전용 단위회귀 | `PASS` | 6건 |
+| 전체 backend·frontend | `PASS` | backend 909건·frontend 87건 |
+| 정적·build | `PASS_WITH_WARNING` | Ruff·mypy 112 source·ESLint·TypeScript·build, 기존 551.21kB chunk 경고 |
+| PAPER safety·security·위생 | `PASS` | build safety·security 148 source·repository hygiene |
+| 누적 회귀계약 | `PASS` | 30계약·59 anchor·실제 주문 0 |
+| 최초 계획교체 동시 guard | `FAIL_PRESERVED` | sequence gap·resync 각 +1, 비계획 재연결·drop 0 |
+| 계획교체 후 guard | `PASS` | 60.076초 event·평가 전진, 신규 오류·gap·drop 0 |
+| Wave 138 UI 브라우저 | `NOT_RUN_NOT_APPLICABLE` | UI 소스 변경 0, 실행 서비스 API만 비침습 관찰 |
+| 6시간·24시간 | `NOT_RUN` | 이번 연구 구현 뒤 실제 시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 양의 표본 평균은 강건성 통과가 아님 |
+
+기계판독 근거는
+`evidence/WAVE138_OKX_ADX_DMI_ASYMMETRIC_RUNNER_EXTERNAL_REPLICATION.json`,
+`evidence/WAVE138_OKX_ADX_DMI_ASYMMETRIC_RUNNER_EXTERNAL_REPLICATION_QA.json`,
+`evidence/WAVE138_OKX_RESEARCH_POST_LIVE_GUARD_60S.json`과
+`evidence/WAVE138_OKX_RESEARCH_POST_ROTATION_FOLLOWUP_60S.json`이다. 무승격 결정은
+`docs/adr/ADR-131-okx-fixed-external-replication-robustness-failure-no-promotion.md`에
+기록했다.
+
+현 수용상태는
+`OKX_FIXED_EXTERNAL_REPLICATION_POSITIVE_SKEW_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.

@@ -1,0 +1,154 @@
+{
+  "schema": "flowscalper.wave_qa.v1",
+  "wave": 138,
+  "generated_at_kst": "2026-08-31",
+  "status": "COMPLETE_WITH_RESEARCH_GATE_FAILURE",
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "preregistration": {
+    "hypothesis_id": "HYP-134-OKX-ADX-DMI-ASYMMETRIC-RUNNER-EXTERNAL-REPLICATION",
+    "commit": "68c3c3e5cea2581ccab801ec9d4c04076b6e80ab",
+    "implementation_commit": "9d1b42105a60909249c5b6c73663c119b2650920",
+    "candidate_fingerprint": "3fddfbefc954c3e19fb1d03e559c702df945366276fde27ed96ee2e210a664f9",
+    "candidate_rules_changed_after_results": false
+  },
+  "live_public_baseline_before_replication": {
+    "run_id": "run-2b7135a972dd",
+    "completed_ledger_rows": 25,
+    "unique_trade_ids": 25,
+    "unique_entry_opportunities": 13,
+    "duplicate_trade_ids": 0,
+    "gross_pnl_usdt": 7.68109,
+    "fees_usdt": 17.063736,
+    "slippage_usdt": 1.696577,
+    "net_pnl_usdt": -11.079223,
+    "diagnosis": "COSTS_EXCEED_GROSS_SIGNAL_EDGE",
+    "thresholds_lowered_to_create_trades": false
+  },
+  "dataset": {
+    "venue": "OKX_USDT_SWAP",
+    "public_only": true,
+    "api_key_used": false,
+    "completed_four_hour_bars": 83232,
+    "funding_events": 41645,
+    "symbols": 12,
+    "bar_gap_count": 0,
+    "dataset_sha256": "5ab722bb91f0b70aa2fd64c98ef70b73f2be1a46eabc4643ca17b4e0b92841c4",
+    "start_ts_ms": 1688169600000,
+    "end_ts_ms": 1788048000000
+  },
+  "candidates": [
+    {
+      "candidate": "OBV_FIRST_PULLBACK_CHAND22_ATR4",
+      "sample_size": 73,
+      "stress_win_rate_percent": 34.2466,
+      "stress_expectancy_account_bps": 9.0016,
+      "stress_profit_factor": 1.3953,
+      "stress_payoff": 2.679,
+      "maximum_winner_r": 7.8322,
+      "bootstrap_expectancy_lower_account_bps": -7.4456,
+      "deflated_sharpe_probability": 0.0,
+      "temporal_stability_pass": false,
+      "external_replication_pass": false
+    },
+    {
+      "candidate": "OBV_MA_CROSS_CHAND22_ATR3",
+      "sample_size": 87,
+      "stress_win_rate_percent": 36.7816,
+      "stress_expectancy_account_bps": 6.0644,
+      "stress_profit_factor": 1.2563,
+      "stress_payoff": 2.1592,
+      "maximum_winner_r": 8.3256,
+      "bootstrap_expectancy_lower_account_bps": -8.0054,
+      "deflated_sharpe_probability": 0.0,
+      "temporal_stability_pass": false,
+      "external_replication_pass": false
+    },
+    {
+      "candidate": "OBV_PRICE_BREAKOUT_CHAND22_ATR3",
+      "sample_size": 231,
+      "stress_win_rate_percent": 43.7229,
+      "stress_expectancy_account_bps": 6.0426,
+      "stress_profit_factor": 1.3033,
+      "stress_payoff": 1.6776,
+      "maximum_winner_r": 14.8994,
+      "bootstrap_expectancy_lower_account_bps": -1.1888,
+      "deflated_sharpe_probability": 0.0,
+      "temporal_stability_pass": false,
+      "external_replication_pass": false
+    },
+    {
+      "candidate": "SQUEEZE_BREAKOUT_CHAND22_ATR4",
+      "sample_size": 66,
+      "stress_win_rate_percent": 39.3939,
+      "stress_expectancy_account_bps": 19.6627,
+      "stress_profit_factor": 1.8735,
+      "stress_payoff": 2.8823,
+      "maximum_winner_r": 12.0164,
+      "bootstrap_expectancy_lower_account_bps": -2.4826,
+      "deflated_sharpe_probability": 0.0,
+      "temporal_stability_pass": false,
+      "external_replication_pass": false
+    }
+  ],
+  "determinism": {
+    "generated_timestamp_excluded_sha256": "7412958ccfc8cd16d868375af3f6a54851dcd85b1fb2fbb06c9fd50c22d5045f",
+    "cache_rerun_match": true
+  },
+  "runtime_guards": {
+    "first_60_seconds": {
+      "status": "FAIL_PRESERVED",
+      "reason": "PLANNED_ROTATION_COINCIDENT_SEQUENCE_GAP_AND_RESYNC",
+      "planned_rotation_delta": 1,
+      "unplanned_reconnect_delta": 0,
+      "sequence_gap_delta": 1,
+      "resync_delta": 1,
+      "drop_delta": 0,
+      "event_delta": 3916,
+      "strategy_evaluation_delta": 24020
+    },
+    "post_rotation_followup_60_seconds": {
+      "status": "PASS",
+      "event_delta": 4256,
+      "strategy_evaluation_delta": 26560,
+      "maximum_queue_depth": 7,
+      "maximum_processing_lag_p95_ms": 30.5723,
+      "maximum_trade_lag_p95_ms": 76.3167,
+      "maximum_wide_lag_p95_ms_observational": 1912.8579,
+      "unplanned_reconnect_delta": 0,
+      "sequence_gap_delta": 0,
+      "resync_delta": 0,
+      "drop_delta": 0,
+      "persistence_fault_delta": 0,
+      "critical_lag_incident_delta": 0
+    }
+  },
+  "validation": {
+    "targeted_okx_tests": "PASS_6",
+    "full_backend_tests": "PASS_909",
+    "frontend_tests": "PASS_87",
+    "ruff": "PASS",
+    "mypy": "PASS_112_SOURCE_FILES",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "frontend_build": "PASS_WITH_EXISTING_551_21_KB_CHUNK_WARNING",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS_148_SOURCE_FILES",
+    "repository_hygiene": "PASS",
+    "regression_contracts": "PASS_30_CONTRACTS_59_ANCHORS",
+    "ui_browser": "NOT_RUN_NO_UI_SOURCE_CHANGE",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN"
+  },
+  "safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "api_key_requested": false,
+    "wallet_requested": false,
+    "registry_changes": [],
+    "live_shadow_changes": []
+  },
+  "decision": "NO_PROMOTION_RETAIN_FAILURES_REQUIRE_NEW_PREREGISTRATION_AND_FUTURE_BID_ASK_SHADOW"
+}

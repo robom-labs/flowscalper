@@ -1,7 +1,7 @@
 # HYP-134. OKX ADX·DMI 비대칭 추세 runner 독립 복제 사전등록
 
 - 사전등록 상태. `LOCKED_BEFORE_MARKET_DATA_DOWNLOAD`.
-- 실행 상태. `NOT_RUN`.
+- 실행 상태. `COMPLETE_WITH_RESEARCH_GATE_FAILURE`.
 - 등록일. 2026-08-30.
 - 가설 ID. `HYP-134-OKX-ADX-DMI-ASYMMETRIC-RUNNER-EXTERNAL-REPLICATION`.
 - 성과 상태. `NOT_PROVEN`.
@@ -91,3 +91,30 @@ HYP-134가 통과해도 상태는 `NOT_PROVEN`, `NOT_READY`다. 실제 bid·ask 
 슬리피지를 쓰는 미래 BASE·STRESS PAPER 자연표본이 전략별 최소 30건 쌓이기 전에는
 승률 순위·ACTIVE 승격·실자금 사용을 금지한다. 실제 주문, private API, API Key, secret,
 wallet, 입출금과 runtime AI 주문판단은 계속 0이다.
+
+## 실행 결과
+
+- 사전등록 commit. `68c3c3e5cea2581ccab801ec9d4c04076b6e80ab`.
+- 실행 코드 commit. `9d1b42105a60909249c5b6c73663c119b2650920`.
+- 입력. OKX USDT swap 12종목 완성 4시간봉 83,232개, 실제 공개 펀딩 41,645개.
+- 종목별 봉 gap. 모두 0개.
+- 데이터셋 SHA-256. `5ab722bb91f0b70aa2fd64c98ef70b73f2be1a46eabc4643ca17b4e0b92841c4`.
+- 후보 지문. `3fddfbefc954c3e19fb1d03e559c702df945366276fde27ed96ee2e210a664f9`.
+- 생성시각을 제외한 결정론적 재실행 SHA-256. `7412958ccfc8cd16d868375af3f6a54851dcd85b1fb2fbb06c9fd50c22d5045f`.
+- 외부 venue 복제 gate 통과. 0개.
+- Registry·LIVE SHADOW 변경. 0개.
+
+네 후보의 STRESS 기대값은 +6.043~+19.663 계좌 bp, PF는 1.256~1.873,
+payoff는 1.678~2.882였고 최대 승자는 7.832R~14.899R이었다. 낮은 승률을 큰 승자로
+보완하는 양의 비대칭 형태는 관찰됐다.
+
+그러나 bootstrap 2,000회 기대값 95% 하한은 -8.005~-1.189 계좌 bp, DSR은 네 후보 모두
+0이었다. 시간순 안정성도 모두 실패했고 첫 눌림·OBV 이동평균 교차·수축돌파는 완료거래가
+각각 73·87·66건으로 최소 100건에 미달했다. 231건인 OBV 가격돌파도 평가 가능한 fold
+8개 중 양수 4개이고 최신 두 fold가 모두 양수가 아니었다.
+
+따라서 양의 평균·PF와 큰 승자는 수익성 증명이 아니다. 같은 OKX 표본에서 파라미터를
+재조정하지 않으며 상태는 `NOT_PROVEN`, `NOT_READY`다. 상세 판정은
+`evidence/WAVE138_OKX_ADX_DMI_ASYMMETRIC_RUNNER_EXTERNAL_REPLICATION.json`과
+`docs/adr/ADR-131-okx-fixed-external-replication-robustness-failure-no-promotion.md`에
+보존한다.
