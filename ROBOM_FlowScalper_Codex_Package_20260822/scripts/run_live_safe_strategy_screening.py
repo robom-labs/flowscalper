@@ -354,6 +354,7 @@ async def _execute(
         poll_seconds=arguments.poll_seconds,
         max_consecutive_probe_errors=arguments.max_consecutive_probe_errors,
         planned_rotation_lock_grace_seconds=arguments.planned_rotation_lock_grace_seconds,
+        allow_paper_positions=arguments.allow_paper_positions,
     )
     await asyncio.wait_for(
         run_with_live_safety(
@@ -524,6 +525,9 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
         },
         "paper_safety": {
             "paper_only": True,
+            "paper_positions_allowed_during_research": (
+                arguments.allow_paper_positions
+            ),
             "real_orders_enabled": False,
             "auth_required": False,
             "private_api_enabled": False,
@@ -568,6 +572,14 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--max-lag-p95-ms", type=float, default=500.0)
     parser.add_argument("--max-event-stall-seconds", type=float, default=30.0)
     parser.add_argument("--planned-rotation-lock-grace-seconds", type=float, default=15.0)
+    parser.add_argument(
+        "--allow-paper-positions",
+        action="store_true",
+        help=(
+            "PAPER 포지션을 LIVE 지연·큐·저장 감시 아래 연구와 공존시킵니다. "
+            "실제 주문·인증·private API 차단은 유지됩니다."
+        ),
+    )
     parser.add_argument("--max-duration-seconds", type=float, default=28_800.0)
     parser.add_argument("--target-cpu-ratio", type=float, default=0.15)
     parser.add_argument("--cpu-checkpoint-events", type=int, default=256)

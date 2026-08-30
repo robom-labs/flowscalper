@@ -25,6 +25,7 @@
 11. V2 동결 연구는 checksum으로 고정한 공개봉 워밍업 24종목을 명시적 연구 유니버스로 사용한다. 동일 공개 피드에 섞인 기타 종목은 전체 입력 건수에는 포함하되, PAPER 체결·피처·캔들·전략 계산 전에 제외하고 제외 건수를 진단에 남긴다. 종목 선택을 결과를 보고 바꾸지 않는다.
 
 12. W124부터는 동일한 동결 24종목을 DuckDB 수신순 정렬 전에 제한하되, MULTI parquet 파티션 열이 아닌 `payload_json.symbol`을 필터한다. 종목 선택은 동결 워밍업 manifest를 따라가며 결과를 보고 바꾸지 않는다.
+13. 공통 replay 안전감시는 PAPER 포지션이 하나라도 있으면 차단하는 기본값을 유지한다. 다만 100후보 screening은 `--allow-paper-positions`를 명시한 경우에만 LIVE PAPER 포지션과 공존한다. 이 옵션은 `LIVE_SHADOW_PAPER`·`execution_state=PAPER`·실제 주문 false·인증 false를 완화하지 않고, 지연·queue·event stall·저장 장애·drop·비계획 재연결·Run 교체·프로세스 재시작은 기존처럼 즉시 중단한다.
 
 ## 수용기준
 
@@ -48,3 +49,5 @@ W123은 정렬 전 필터를 처음 적용했지만 MULTI archive의 parquet 상
 W124는 수정된 `payload_json.symbol` 정렬 전 필터로 10만 연구대상 이벤트를 1,225.751초에 처리했다. 처리량은 81.583 events/s, 후보평가는 154,920회·126.388 evaluations/s, peak RSS는 873.797MB였다. 단위 이벤트 속도는 W121보다 낮지만 W122 bounded 표본에서 연구 밖 이벤트가 50.755%였으므로, 전체 Train·Validation에서 무관 이벤트를 계산·정렬 경로에서 제거하기 위해 채택한다. 이 50.755%는 10만 건 bounded 표본이며 전체 데이터의 확정 비율은 아니다.
 
 W124 동시 LIVE 안전감시는 1,224.896초·244회 읽기에서 이벤트 88,730건 전진, lag P95 최대 28.043ms, queue 최대 11, probe 오류·저장 오류·버퍼 손실·비계획 재연결 0, 실제 주문·인증 0이었다. 이 결과는 `evidence/WAVE124_STRATEGY_100_RESOURCE_BENCHMARK_V6.json`과 `evidence/WAVE124_STRATEGY_100_RESOURCE_BENCHMARK_LIVE_GUARD.json`에 나눠 보존한다. 성능·안전 불변조건은 `PASS`, 수익성은 `NOT_PROVEN`, 승격은 0이다.
+
+W125 첫 전체 screening 시도는 시작 snapshot에 이미 보호 중인 BTCUSDT SHORT BASE·STRESS PAPER 포지션 2개가 있어 `POSITION_OPENED`로 즉시 `ABORTED_RUNTIME_SAFETY`가 됐다. worker는 시작되지 않았고 수익성은 `NOT_PROVEN`이다. 장시간 선별 동안 PAPER 진입이 한 번이라도 생기면 동일하게 전부 유실되는 구조였으므로, 공통 기본 차단은 유지하되 100후보 screening에만 PAPER 공존 opt-in을 추가했다. W125 중단 증거는 `evidence/WAVE125_STRATEGY_100_SCREENING_LIVE_GUARD.json`에 보존한다.

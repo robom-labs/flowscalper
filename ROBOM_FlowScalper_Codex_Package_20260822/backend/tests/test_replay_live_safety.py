@@ -204,6 +204,29 @@ def test_replay_guard_rejects_stopped_non_paper_or_restarted_runtime() -> None:
     assert "EXECUTION_NOT_PAPER" in violations
 
 
+def test_replay_guard_keeps_positions_blocked_by_default_but_allows_paper_opt_in() -> None:
+    default_guard = ReplayLiveSafetyGuard(_snapshot(position_count=2))
+    assert default_guard.initial_violations() == ("POSITION_OPENED",)
+
+    paper_guard = ReplayLiveSafetyGuard(
+        _snapshot(position_count=2),
+        thresholds=ReplayLiveSafetyThresholds(allow_paper_positions=True),
+    )
+    assert paper_guard.initial_violations() == ()
+    assert paper_guard.observe(_snapshot(event_count=101, position_count=3)) == ()
+
+    violations = paper_guard.observe(
+        _snapshot(
+            event_count=102,
+            position_count=3,
+            execution_state="LIVE",
+            real_orders_enabled=True,
+        )
+    )
+    assert "EXECUTION_NOT_PAPER" in violations
+    assert "REAL_ORDERS_ENABLED" in violations
+
+
 @pytest.mark.asyncio
 async def test_live_safety_cancels_replay_worker_on_critical_lag() -> None:
     calls = 0

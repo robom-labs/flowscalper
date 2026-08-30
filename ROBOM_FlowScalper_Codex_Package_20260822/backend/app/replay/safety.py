@@ -66,6 +66,7 @@ class ReplayLiveSafetyThresholds:
     poll_seconds: float = 1.0
     max_consecutive_probe_errors: int = 3
     planned_rotation_lock_grace_seconds: float = 15.0
+    allow_paper_positions: bool = False
 
     def __post_init__(self) -> None:
         if self.max_queue_depth < 0:
@@ -76,6 +77,8 @@ class ReplayLiveSafetyThresholds:
             raise ValueError("감시 간격과 planned rotation 유예시간은 양수여야 합니다.")
         if self.max_consecutive_probe_errors <= 0:
             raise ValueError("연속 감시 오류 상한은 양수여야 합니다.")
+        if not isinstance(self.allow_paper_positions, bool):
+            raise ValueError("PAPER 포지션 공존 설정은 bool이어야 합니다.")
 
 
 class ReplayLiveSafetyViolation(RuntimeError):
@@ -306,7 +309,7 @@ class ReplayLiveSafetyGuard:
             violations.append("STORAGE_ENTRY_BLOCKED")
         if sample.entry_locked and not allow_planned_transition:
             violations.append("ENTRY_LOCKED")
-        if sample.position_count:
+        if sample.position_count and not self.thresholds.allow_paper_positions:
             violations.append("POSITION_OPENED")
         if sample.last_error is not None:
             violations.append("RUNTIME_ERROR")
