@@ -371,6 +371,10 @@ def _state_allows(context: WeeklyContext, policy: str) -> bool:
     raise ValueError(f"알 수 없는 시장 상태 정책입니다. {policy}")
 
 
+def entry_open_after_completed_week(context: WeeklyContext) -> int:
+    return context.week_open_ts_ms + WEEKLY_INTERVAL_MS
+
+
 def _candidate_legs(
     context: WeeklyContext,
     spec: StateMomentumSpec,
@@ -651,7 +655,7 @@ def research_state_momentum_tournament(
         for context in contexts:
             if not _state_allows(context, spec.state_policy):
                 continue
-            signal_day_open = context.week_open_ts_ms + 6 * DAILY_INTERVAL_MS
+            signal_day_open = entry_open_after_completed_week(context)
             for symbol, direction, momentum, rank in _candidate_legs(context, spec):
                 signal_index = daily_index[symbol].get(signal_day_open)
                 if signal_index is None:

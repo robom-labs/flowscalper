@@ -28,6 +28,7 @@ from scripts.research_state_conditioned_momentum_tournament import (
     aggregate_daily_to_weekly,
     apply_state_momentum_portfolio_limits,
     build_weekly_contexts,
+    entry_open_after_completed_week,
     select_stable_state_momentum_candidates,
     state_momentum_candidate_fingerprint,
     volatility_risk_scale,
@@ -207,6 +208,15 @@ def test_weekly_context_never_changes_when_only_future_week_is_mutated() -> None
 
     assert baseline_contexts[:-1] == changed_contexts[:-1]
     assert baseline_contexts[-1] != changed_contexts[-1]
+
+
+def test_completed_week_signal_enters_only_at_following_monday_open() -> None:
+    context = _context()
+
+    entry_open = entry_open_after_completed_week(context)
+
+    assert entry_open == context.week_open_ts_ms + WEEKLY_INTERVAL_MS
+    assert entry_open > context.week_close_ts_ms
 
 
 def test_candidate_legs_keep_long_winner_short_loser_and_slow_alignment() -> None:
