@@ -619,6 +619,22 @@
           ]
         }
       ]
+    },
+    {
+      "contract_id": "PUBLIC_VIDEO_IDEA_PAPER_BOUNDARY",
+      "symptom_ko": "공개 영상의 비밀·고승률 주장을 검증 없이 복제하거나 기존 후보를 다른 이름으로 중복 등록한다.",
+      "fixed_by": "HYP-118 deterministic public-video idea mapping and 12-candidate PAPER tournament",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_public_video_trend_tournament.py",
+          "contains": [
+            "test_public_video_tournament_preregisters_12_nonduplicate_candidates",
+            "test_liquidity_sweep_requires_a_close_back_inside_the_prior_range",
+            "test_liquidity_sweep_setup_does_not_read_a_future_bar",
+            "test_ichimoku_setup_does_not_read_a_future_bar"
+          ]
+        }
+      ]
     }
   ]
 }

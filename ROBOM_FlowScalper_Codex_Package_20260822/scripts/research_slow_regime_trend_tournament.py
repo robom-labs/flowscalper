@@ -504,6 +504,29 @@ def _regime_allows(
     return market_ok and symbol_ok and slow_ok
 
 
+def _midpoint(rows: Sequence[IntradayBar], start: int, end: int) -> float:
+    window = rows[start:end]
+    if not window:
+        raise ValueError("중간값 계산 구간은 비어 있을 수 없습니다.")
+    return (max(row.high for row in window) + min(row.low for row in window)) / 2
+
+
+def _ichimoku_at(
+    rows: Sequence[IntradayBar],
+    index: int,
+) -> tuple[float, float, float, float] | None:
+    cloud_source = index - 26
+    if index < 25 or cloud_source < 51:
+        return None
+    conversion = _midpoint(rows, index - 8, index + 1)
+    base = _midpoint(rows, index - 25, index + 1)
+    source_conversion = _midpoint(rows, cloud_source - 8, cloud_source + 1)
+    source_base = _midpoint(rows, cloud_source - 25, cloud_source + 1)
+    leading_a = (source_conversion + source_base) / 2
+    leading_b = _midpoint(rows, cloud_source - 51, cloud_source + 1)
+    return conversion, base, leading_a, leading_b
+
+
 def _setup(
     rows: Sequence[IntradayBar],
     feature_rows: Sequence[SlowFeatures | None],
@@ -518,6 +541,77 @@ def _setup(
     if features is None or previous_features is None:
         return False, None
     atr = features.atr
+    if spec.setup_kind == "LIQUIDITY_SWEEP_RECLAIM":
+        history = rows[index - spec.lookback : index]
+        if len(history) != spec.lookback:
+            return False, None
+        close_location = (current.close - current.low) / max(current.high - current.low, 1e-12)
+        if direction > 0:
+            level = min(row.low for row in history)
+            sweep_depth = level - current.low
+            ready = (
+                0 < sweep_depth <= atr * spec.retest_band_atr
+                and current.close > level
+                and current.close > current.open
+                and close_location >= (0.62 if spec.style == "SELECTIVE" else 0.52)
+                and (
+                    spec.style != "SELECTIVE"
+                    or current.close > previous.high
+                )
+            )
+            return ready, current.low - atr * spec.stop_buffer_atr
+        level = max(row.high for row in history)
+        sweep_depth = current.high - level
+        ready = (
+            0 < sweep_depth <= atr * spec.retest_band_atr
+            and current.close < level
+            and current.close < current.open
+            and close_location <= (0.38 if spec.style == "SELECTIVE" else 0.48)
+            and (
+                spec.style != "SELECTIVE"
+                or current.close < previous.low
+            )
+        )
+        return ready, current.high + atr * spec.stop_buffer_atr
+    if spec.setup_kind == "ICHIMOKU_PULLBACK_CONTINUATION":
+        current_lines = _ichimoku_at(rows, index)
+        previous_lines = _ichimoku_at(rows, index - 1)
+        if current_lines is None or previous_lines is None:
+            return False, None
+        conversion, base, leading_a, leading_b = current_lines
+        previous_conversion, previous_base, _, _ = previous_lines
+        cloud_top = max(leading_a, leading_b)
+        cloud_bottom = min(leading_a, leading_b)
+        band = atr * spec.retest_band_atr
+        if direction > 0:
+            pullback_touched = previous.low <= max(previous_conversion, previous_base) + band
+            ready = (
+                current.close > cloud_top
+                and conversion > base
+                and pullback_touched
+                and current.close > conversion
+                and current.close > previous.high
+                and current.close > current.open
+                and (
+                    spec.style != "SELECTIVE"
+                    or (leading_a > leading_b and base > cloud_top)
+                )
+            )
+            return ready, min(previous.low, current.low, cloud_bottom) - atr * spec.stop_buffer_atr
+        pullback_touched = previous.high >= min(previous_conversion, previous_base) - band
+        ready = (
+            current.close < cloud_bottom
+            and conversion < base
+            and pullback_touched
+            and current.close < conversion
+            and current.close < previous.low
+            and current.close < current.open
+            and (
+                spec.style != "SELECTIVE"
+                or (leading_a < leading_b and base < cloud_bottom)
+            )
+        )
+        return ready, max(previous.high, current.high, cloud_top) + atr * spec.stop_buffer_atr
     if spec.setup_kind == "CHANNEL_BREAKOUT":
         history = rows[index - spec.lookback : index]
         if len(history) != spec.lookback:

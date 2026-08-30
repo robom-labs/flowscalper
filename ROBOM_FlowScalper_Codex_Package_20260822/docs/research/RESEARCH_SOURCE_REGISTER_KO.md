@@ -6,6 +6,14 @@
 2026-08-29의 최신 외부 연구와 기존 11전략·100후보 중복 대조, 추가 데이터 수집가설은
 [Wave 110 외부 연구 대조](WAVE110_EXTERNAL_RESEARCH_DEDUPLICATION_KO.md)에 분리해 기록했다.
 
+2026-08-30의 TradingView 공개 전략 설명·공식 백테스트 경계와 기존 100후보 대응은
+[Wave 117 공개 아이디어 중복 대조](WAVE117_TRADINGVIEW_CRYPTO_STRATEGY_MAPPING_KO.md)에
+분리해 기록했다. 공개 게시물의 성과값은 ROBOM PAPER 성과로 사용하지 않았다.
+
+같은 날 확인한 YouTube 중단타 영상과 TradingView 공식 지표 설명의 채택·병합·제외 판단은
+[Wave 118 공개 영상 중복 대조](WAVE118_YOUTUBE_TRADINGVIEW_IDEA_MAPPING_KO.md)에 분리했다.
+영상의 승률·수익률·제휴 홍보는 성과 증거로 사용하지 않았다.
+
 ## 원칙
 
 - 공식 문서와 원 논문은 가설·상태 머신·검증방법의 출처다.
