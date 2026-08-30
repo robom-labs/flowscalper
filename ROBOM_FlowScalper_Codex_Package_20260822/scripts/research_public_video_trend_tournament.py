@@ -7,7 +7,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from scripts.research_intraday_trend_tournament import load_segmented_public_klines
 from scripts.research_public_trend_candidates import DEFAULT_SYMBOLS, Kline, _parse_date
@@ -19,8 +19,25 @@ from scripts.research_slow_regime_trend_tournament import (
 )
 
 
+class _VideoParameters(TypedDict):
+    lookback: int
+    momentum: float
+    rank_threshold: float
+    breadth: float
+    adx: float
+    relative_volume: float
+    retest_band: float
+    stop_buffer: float
+    tp1_r: float
+    tp2_r: float
+    cooldown_hours: int
+    slow_alignment: bool
+
+
 def _candidate_specs() -> tuple[SlowTrendSpec, ...]:
-    families = (
+    families: tuple[
+        tuple[str, str, int, str, Mapping[str, _VideoParameters]], ...
+    ] = (
         (
             "LIQUIDITY_15M",
             "FIFTEEN_MINUTE_LIQUIDITY_SWEEP_RECLAIM",
