@@ -586,6 +586,39 @@
           ]
         }
       ]
+    },
+    {
+      "contract_id": "STRATEGY_100_IMMUTABLE_SPLIT_AND_WARMUP",
+      "symptom_ko": "동결 뒤 추가된 parquet가 과거 100후보 입력을 바꾸거나 완료봉 워밍업 부족으로 70개 후보가 실행조차 되지 않는다.",
+      "fixed_by": "Wave 117 checksum-bound archive file selection, logical time splits and public completed-candle warmup",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_strategy_100_screening_runner.py",
+          "contains": [
+            "test_research_archive_reader_uses_only_the_frozen_explicit_files",
+            "test_frozen_public_warmup_aggregates_only_completed_past_bars",
+            "test_public_warmup_cache_rejects_duplicate_or_missing_bars",
+            "test_v2_dataset_makes_disjoint_logical_runs_from_one_long_public_run"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "SLOW_REGIME_TREND_PAPER_TOURNAMENT",
+      "symptom_ko": "빠른 단타 후보만 반복해 느린 추세초입과 첫 눌림을 비교하지 못하거나 미결 포지션을 임의의 시간청산으로 손익화한다.",
+      "fixed_by": "HYP-117 preregistered 1h and 4h regime-relative-strength PAPER tournament",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_slow_regime_trend_tournament.py",
+          "contains": [
+            "test_slow_tournament_preregisters_24_distinct_candidates_without_max_hold",
+            "test_slow_tournament_same_bar_stop_precedes_targets",
+            "test_slow_tournament_leaves_unresolved_position_censored",
+            "test_slow_tournament_setup_does_not_read_future_bars",
+            "test_slow_tournament_portfolio_limits_concurrency_and_daily_entries"
+          ]
+        }
+      ]
     }
   ]
 }

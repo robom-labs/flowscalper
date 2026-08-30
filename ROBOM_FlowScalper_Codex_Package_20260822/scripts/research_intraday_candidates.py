@@ -152,8 +152,20 @@ class RunDiagnostics:
     signals_by_key: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
 
-def _event_rows(run_dir: Path, *, maximum_events: int | None = None) -> Iterator[dict[str, Any]]:
-    files = tuple(sorted(run_dir.rglob("*.parquet")))
+def _event_rows(
+    run_dir: Path,
+    *,
+    files: Sequence[Path] | None = None,
+    maximum_events: int | None = None,
+) -> Iterator[dict[str, Any]]:
+    selected_files = (
+        tuple(sorted(run_dir.rglob("*.parquet")))
+        if files is None
+        else tuple(sorted(path.resolve(strict=True) for path in files))
+    )
+    if len(selected_files) != len(set(selected_files)):
+        raise ValueError("research archive 파일 목록이 중복됐습니다.")
+    files = selected_files
     if not files:
         raise FileNotFoundError(f"시장 archive가 없습니다: {run_dir}")
     spill_root = run_dir.parent / ".research-duckdb-spill"

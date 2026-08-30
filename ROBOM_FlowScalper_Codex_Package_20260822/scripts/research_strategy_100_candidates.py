@@ -20,7 +20,7 @@ from backend.app.costing import CostProfile
 from backend.app.execution import BookSnapshot
 from backend.app.execution.portfolio import PaperPortfolioEngine
 from backend.app.features import BookFrame, FeatureEngine, FeatureInputError, FeatureSnapshot
-from backend.app.market_data import CandleBuilder
+from backend.app.market_data import Candle, CandleBuilder
 from backend.app.regime import Regime, RegimeClassifier
 from backend.app.research import (
     ALPHA_EVALUATION_INTERVAL_SECONDS,
@@ -46,6 +46,11 @@ from backend.app.research.cost_covered_exit_variants import (
     COST_COVERED_EXIT_VARIANT_BATCH_ID,
     cost_covered_exit_variant_trials,
 )
+from backend.app.research.strategy100_dataset_v2 import (
+    archive_files_for_logical_run,
+    load_bound_manifest,
+)
+from backend.app.research.strategy100_warmup import FrozenStrategy100Warmup
 from backend.app.strategies.shadow import ShadowLedger
 from scripts.export_cost_covered_exit_variant_manifest import (
     VARIANT_BOUND_SOURCE_FILES,
@@ -145,6 +150,8 @@ class RunDiagnostics:
     first_ts_ms: int | None = None
     last_ts_ms: int | None = None
     audit_counts: Counter[str] = field(default_factory=Counter)
+    warmup_candle_count: int = 0
+    warmup_symbol_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,6 +327,39 @@ def _load_inputs(
         or dataset.get("private_api_enabled") is not False
     ):
         raise ValueError("dataset과 trial manifest 연결 또는 PAPER 경계가 다릅니다.")
+    v2_source_hashes: dict[str, object] = {}
+    if int(str(dataset.get("schema_version", 0))) >= 3:
+        cut_reference = dataset.get("live_public_cut")
+        warmup_reference = dataset.get("warmup_manifest")
+        if not isinstance(cut_reference, Mapping) or not isinstance(
+            warmup_reference, Mapping
+        ):
+            raise ValueError("V2 dataset의 LIVE_PUBLIC cut 또는 워밍업 연결이 없습니다.")
+        cut_manifest, _, cut_file_sha = load_bound_manifest(
+            cut_reference,
+            binding_path=dataset_path,
+            expected_status="FROZEN_LIVE_PUBLIC_CUT",
+            name="LIVE_PUBLIC cut",
+        )
+        warmup_manifest, _, warmup_file_sha = load_bound_manifest(
+            warmup_reference,
+            binding_path=dataset_path,
+            expected_status="FROZEN_PUBLIC_KLINE_WARMUP",
+            name="public kline warmup",
+        )
+        if (
+            cut_manifest.get("private_api_enabled") is True
+            or cut_manifest.get("auth_required") is not False
+            or warmup_manifest.get("private_api_enabled") is not False
+            or warmup_manifest.get("auth_required") is not False
+        ):
+            raise ValueError("V2 dataset 공개시장 입력의 private API 경계가 잘못됐습니다.")
+        v2_source_hashes = {
+            "live_public_cut_manifest_sha256": cut_manifest["manifest_sha256"],
+            "live_public_cut_file_sha256": cut_file_sha,
+            "warmup_manifest_sha256": warmup_manifest["manifest_sha256"],
+            "warmup_manifest_file_sha256": warmup_file_sha,
+        }
     return (
         trial,
         dataset,
@@ -333,6 +373,7 @@ def _load_inputs(
             "instrument_manifest_file_sha256": hashlib.sha256(instrument_bytes).hexdigest(),
             "trial_manifest_kind": manifest_kind,
             "parent_trial_manifest_sha256": parent_sha,
+            **v2_source_hashes,
         },
     )
 
@@ -525,12 +566,15 @@ class Strategy100RunExecutor:
             Sequence[ResearchExecutionWindow],
         ],
         account_carry: Mapping[tuple[str, str], ResearchAccountCarry],
+        archive_files: Sequence[Path] | None = None,
+        warmup_candles: Sequence[Candle] = (),
     ) -> None:
         if split not in {"TRAIN", "VALIDATION"}:
             raise ValueError("Stage 1 executor에는 Train·Validation만 허용됩니다.")
         self.run_id = run_id
         self.split = split
         self.archive_dir = archive_dir
+        self.archive_files = tuple(archive_files) if archive_files is not None else None
         self.trials = tuple(trial for trial in trials if trial.screening_eligible)
         self.instruments = instruments
         self.account_counters = account_counters
@@ -599,7 +643,25 @@ class Strategy100RunExecutor:
             interval: tuple(sorted(values)) for interval, values in families_by_interval.items()
         }
         self.diagnostics = RunDiagnostics(run_id=run_id, split=split)
+        self._seed_warmup(warmup_candles)
         self.incomplete_trial_ids: set[str] = set()
+
+    def _seed_warmup(self, warmup_candles: Sequence[Candle]) -> None:
+        symbols: set[str] = set()
+        latest_by_key: dict[tuple[str, int], int] = {}
+        for candle in warmup_candles:
+            key = (candle.symbol, candle.interval_seconds)
+            previous_open = latest_by_key.get(key)
+            if previous_open is not None and candle.open_ts_ms <= previous_open:
+                raise ValueError("100후보 워밍업 완료봉이 중복되거나 역행합니다.")
+            latest_by_key[key] = candle.open_ts_ms
+            if not self.alpha_features.ingest_completed(candle):
+                raise ValueError("100후보 primary 워밍업 완료봉이 거절됐습니다.")
+            if not self.recursive_features.ingest_completed(candle):
+                raise ValueError("100후보 recursive 워밍업 완료봉이 거절됐습니다.")
+            symbols.add(candle.symbol)
+        self.diagnostics.warmup_candle_count = len(warmup_candles)
+        self.diagnostics.warmup_symbol_count = len(symbols)
 
     def _seed_account_carry(
         self,
@@ -661,7 +723,11 @@ class Strategy100RunExecutor:
         if checkpoint_events <= 0:
             raise ValueError("연구 CPU checkpoint 이벤트 수는 양수여야 합니다.")
         for index, payload in enumerate(
-            _event_rows(self.archive_dir, maximum_events=maximum_events),
+            _event_rows(
+                self.archive_dir,
+                files=getattr(self, "archive_files", None),
+                maximum_events=maximum_events,
+            ),
             start=1,
         ):
             if int(str(payload.get("venue_ts_ms", 0))) > self.observation_end_ts_ms:
@@ -1200,6 +1266,28 @@ def main() -> None:
     )
     if any(not isinstance(row, Mapping) or row.get("role") == "FINAL_OOS" for row in selected_runs):
         raise ValueError("Stage 1 실행 Run에 Final OOS가 섞였습니다.")
+    v2_cut_manifest: dict[str, Any] | None = None
+    v2_warmup: FrozenStrategy100Warmup | None = None
+    if int(str(dataset.get("schema_version", 0))) >= 3:
+        cut_reference = dataset.get("live_public_cut")
+        warmup_reference = dataset.get("warmup_manifest")
+        if not isinstance(cut_reference, Mapping) or not isinstance(
+            warmup_reference, Mapping
+        ):
+            raise ValueError("V2 dataset의 동결 입력 연결이 없습니다.")
+        v2_cut_manifest, _, _ = load_bound_manifest(
+            cut_reference,
+            binding_path=args.dataset_manifest,
+            expected_status="FROZEN_LIVE_PUBLIC_CUT",
+            name="LIVE_PUBLIC cut",
+        )
+        _, warmup_path, _ = load_bound_manifest(
+            warmup_reference,
+            binding_path=args.dataset_manifest,
+            expected_status="FROZEN_PUBLIC_KLINE_WARMUP",
+            name="public kline warmup",
+        )
+        v2_warmup = FrozenStrategy100Warmup.load(warmup_path)
     validation_start, final_oos_start = _screening_boundaries(dataset)
     raw_folds = _validation_folds(dataset)
     folds_by_horizon = {
@@ -1255,16 +1343,35 @@ def main() -> None:
                 }
             )
             continue
+        source_run_id = str(row.get("source_run_id", run_id))
+        archive_files = (
+            archive_files_for_logical_run(
+                live_public_cut=v2_cut_manifest,
+                logical_run=row,
+            )
+            if v2_cut_manifest is not None
+            else None
+        )
+        warmup_candles = (
+            v2_warmup.candles_before(
+                int(str(row["start_ts_ms"])),
+                maximum_bars=RESEARCH_FEATURE_HISTORY_BARS,
+            )
+            if v2_warmup is not None
+            else ()
+        )
         executor = Strategy100RunExecutor(
             run_id=run_id,
             split=str(row["role"]),
-            archive_dir=args.archive / f"run={run_id}",
+            archive_dir=args.archive / f"run={source_run_id}",
             trials=trials,
             instruments=instruments,
             account_counters=account_counters,
             trial_integrity=integrity,
             execution_windows_by_horizon=execution_windows_by_horizon,
             account_carry=account_carry,
+            archive_files=archive_files,
+            warmup_candles=warmup_candles,
         )
         all_trades.extend(
             executor.execute(

@@ -25,7 +25,15 @@ from backend.app.research import (
     cost_covered_exit_variant_trials,
     preregistered_trials,
 )
+from backend.app.research.strategy100_dataset_v2 import (
+    build_strategy_100_dataset_v2_manifest,
+)
+from backend.app.research.strategy100_dataset_v2 import (
+    manifest_checksum as v2_manifest_checksum,
+)
+from backend.app.research.strategy100_warmup import FrozenStrategy100Warmup
 from scripts.export_strategy_100_manifest import BOUND_SOURCE_FILES
+from scripts.freeze_strategy_100_warmup import _ordered_complete_rows
 from scripts.research_intraday_candidates import _event_rows, _trade_tick
 from scripts.research_strategy_100_candidates import (
     DEFAULT_RESEARCH_OUTPUTS,
@@ -93,6 +101,216 @@ def test_research_archive_reader_uses_observed_receive_order(tmp_path: Path) -> 
         "received-second",
     ]
     assert revision_event_rows is _event_rows
+
+
+def test_research_archive_reader_uses_only_the_frozen_explicit_files(
+    tmp_path: Path,
+) -> None:
+    def write(path: Path, event_id: str) -> None:
+        payload = {
+            "event_id": event_id,
+            "event_type": "TRADE",
+            "symbol": "BTCUSDT",
+            "venue_ts_ms": 1_000,
+            "receive_ts_ms": 2_000,
+            "receive_monotonic_ns": 1,
+        }
+        pq.write_table(
+            pa.Table.from_pylist(
+                [
+                    {
+                        "ts_ms": 1_000,
+                        "venue_ts_ms": 1_000,
+                        "symbol": "BTCUSDT",
+                        "payload_json": json.dumps(payload),
+                    }
+                ]
+            ),
+            path,
+        )
+
+    frozen = tmp_path / "frozen.parquet"
+    appended_later = tmp_path / "appended-later.parquet"
+    write(frozen, "frozen")
+    write(appended_later, "not-in-cut")
+
+    assert [row["event_id"] for row in _event_rows(tmp_path, files=(frozen,))] == [
+        "frozen"
+    ]
+
+
+def test_frozen_public_warmup_aggregates_only_completed_past_bars(
+    tmp_path: Path,
+) -> None:
+    cache_root = tmp_path / "data" / "warmup"
+    evidence_root = tmp_path / "evidence"
+    cache_root.mkdir(parents=True)
+    evidence_root.mkdir()
+    rows = [
+        {
+            "symbol": "BTCUSDT",
+            "open_ts_ms": index * 300_000,
+            "open": "100",
+            "high": "102",
+            "low": "99",
+            "close": str(100 + index / 100),
+            "volume": "10",
+            "quote_volume": "1000",
+            "trade_count": 20,
+            "taker_buy_volume": "6",
+            "taker_buy_quote_volume": "600",
+        }
+        for index in range(12)
+    ]
+    data_path = cache_root / "BTCUSDT.json"
+    data_bytes = json.dumps(rows, separators=(",", ":")).encode() + b"\n"
+    data_path.write_bytes(data_bytes)
+    manifest: dict[str, object] = {
+        "schema_version": 1,
+        "status": "FROZEN_PUBLIC_KLINE_WARMUP",
+        "cache_root": "data/warmup",
+        "cutoff_ts_ms": 3_600_000,
+        "symbols": ["BTCUSDT"],
+        "files": [
+            {
+                "symbol": "BTCUSDT",
+                "relative_path": "BTCUSDT.json",
+                "file_sha256": hashlib.sha256(data_bytes).hexdigest(),
+                "bar_count": 12,
+            }
+        ],
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "private_api_enabled": False,
+        "auth_required": False,
+    }
+    manifest["manifest_sha256"] = v2_manifest_checksum(manifest)
+    manifest_path = evidence_root / "warmup.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    warmup = FrozenStrategy100Warmup.load(manifest_path)
+    candles = warmup.candles_before(3_600_000, maximum_bars=640)
+
+    assert warmup.symbols == ("BTCUSDT",)
+    assert len([row for row in candles if row.interval_seconds == 300]) == 12
+    assert len([row for row in candles if row.interval_seconds == 900]) == 4
+    assert len([row for row in candles if row.interval_seconds == 3_600]) == 1
+    assert all(
+        row.open_ts_ms + row.interval_seconds * 1_000 <= 3_600_000 for row in candles
+    )
+
+
+def test_public_warmup_cache_rejects_duplicate_or_missing_bars() -> None:
+    complete = [
+        {"symbol": "BTCUSDT", "open_ts_ms": index * 300_000}
+        for index in range(3)
+    ]
+
+    assert len(
+        _ordered_complete_rows(
+            complete,
+            symbol="BTCUSDT",
+            start_ms=0,
+            end_ms=900_000,
+        )
+    ) == 3
+    with pytest.raises(RuntimeError, match="중복"):
+        _ordered_complete_rows(
+            [complete[0], complete[0], complete[2]],
+            symbol="BTCUSDT",
+            start_ms=0,
+            end_ms=900_000,
+        )
+    with pytest.raises(RuntimeError, match="연속 구간"):
+        _ordered_complete_rows(
+            [complete[0], complete[2]],
+            symbol="BTCUSDT",
+            start_ms=0,
+            end_ms=900_000,
+        )
+
+
+def test_v2_dataset_makes_disjoint_logical_runs_from_one_long_public_run() -> None:
+    trial: dict[str, object] = {
+        "status": "PREREGISTERED_NOT_EXECUTED",
+        "trial_count": 100,
+        "screening_eligible_count": 90,
+        "runtime_active_count": 0,
+        "live_shadow_count": 0,
+        "code_version": "fixture",
+        "source_checksums": {"fixture.py": "a" * 64},
+    }
+    trial["manifest_sha256"] = v2_manifest_checksum(trial)
+    files = [
+        {
+            "relative_path": (
+                "venue=BINANCE_USDM/run=RUN-LONG/date=2026-01-"
+                f"{1 + index // 24:02d}/symbol=MULTI/hour={index % 24:02d}/"
+                f"event_type=MARKET_EVENT/part-{index}.parquet"
+            ),
+            "event_count": 10,
+            "first_ts_ms": index * 3_600_000,
+            "last_ts_ms": (index + 1) * 3_600_000 - 1,
+        }
+        for index in range(101)
+    ]
+    cut: dict[str, object] = {
+        "status": "FROZEN_LIVE_PUBLIC_CUT",
+        "run_id": "RUN-LONG",
+        "archive_root": "/tmp/archive",
+        "file_count": 101,
+        "event_count": 1_010,
+        "files": files,
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+    }
+    cut["manifest_sha256"] = v2_manifest_checksum(cut)
+    warmup: dict[str, object] = {
+        "status": "FROZEN_PUBLIC_KLINE_WARMUP",
+        "symbol_count": 24,
+        "cutoff_ts_ms": 0,
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "private_api_enabled": False,
+    }
+    warmup["manifest_sha256"] = v2_manifest_checksum(warmup)
+
+    dataset = build_strategy_100_dataset_v2_manifest(
+        trial_manifest=trial,
+        trial_manifest_path="evidence/trial.json",
+        trial_manifest_file_sha256="b" * 64,
+        live_public_cut=cut,
+        live_public_cut_path="evidence/cut.json",
+        live_public_cut_file_sha256="c" * 64,
+        warmup_manifest=warmup,
+        warmup_manifest_path="evidence/warmup.json",
+        warmup_manifest_file_sha256="d" * 64,
+        train_hours=20,
+        validation_hours_each=40,
+        generated_ts_utc="2026-08-30T00:00:00Z",
+    )
+
+    assert [len(row["archive_partitions"]) for row in dataset["runs"]] == [
+        20,
+        40,
+        40,
+        1,
+    ]
+    assert [row["role"] for row in dataset["runs"]] == [
+        "TRAIN",
+        "VALIDATION",
+        "VALIDATION",
+        "FINAL_OOS",
+    ]
+    assert len(
+        {
+            partition
+            for row in dataset["runs"]
+            for partition in row["archive_partitions"]
+        }
+    ) == 101
+    assert dataset["research_interpretation"]["promotion_eligible"] is False
 
 
 def test_research_trade_rejects_nonfinite_input_before_candle_path() -> None:
