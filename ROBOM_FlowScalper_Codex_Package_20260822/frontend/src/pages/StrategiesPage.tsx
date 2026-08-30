@@ -208,7 +208,7 @@ export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = tr
   const [saving, setSaving] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [profile, setProfile] = useState<CostProfile>('BASE')
-  const [sortKey, setSortKey] = useState<StrategySortKey>('sampleSize')
+  const [sortKey, setSortKey] = useState<StrategySortKey>('winRate')
   const [sortDirection, setSortDirection] = useState<SortDirection>('descending')
   const ordered = useMemo(() => orderedStrategies(strategies), [strategies])
   const selected = useMemo(

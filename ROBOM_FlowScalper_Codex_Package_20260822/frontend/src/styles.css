@@ -105,6 +105,10 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .history-table th, .history-table td, .performance-table th, .performance-table td { padding: 11px 8px; border-bottom: 1px solid #152a35; text-align: left; vertical-align: middle; }
 .history-table th, .performance-table th { position: sticky; top: 0; z-index: 1; color: #6f8998; background: #0b171e; font-size: 9px; letter-spacing: .05em; white-space: nowrap; }
 .history-table td small, .performance-table td small { display: block; margin-top: 3px; color: #698392; font-size: 9px; }
+.history-cost-results { display: grid; gap: 4px; min-width: 150px; }
+.history-cost-results span { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.history-cost-results b { color: #8da5b0; font-size: 9px; font-weight: 750; }
+.history-cost-results strong { font-size: 11px; }
 .chip { min-height: 24px; padding: 3px 6px; color: #a9c5d3; }
 .chip { white-space: nowrap; }
 .chart-title-row { min-height: 52px; }
@@ -243,6 +247,12 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .trade-result-lead { display: grid; gap: 4px; margin: 14px 0 4px; border: 1px solid #21434c; border-radius: 9px; padding: 12px; background: #0a1b22; }
 .trade-result-lead strong { font-size: 18px; }
 .trade-result-lead span { color: #8ca4af; font-size: 10px; }
+.history-opportunity-note { margin: 12px 0 8px; border: 1px solid #2d5d62; border-radius: 8px; padding: 10px; color: #a8c8ca; background: #0a1e22; font-size: 10px; line-height: 1.55; }
+.history-profile-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.history-profile-tabs button { display: grid; min-height: 54px; gap: 3px; border: 1px solid #294957; border-radius: 8px; padding: 7px 9px; color: #9bb0ba; background: #0c1c24; cursor: pointer; text-align: left; }
+.history-profile-tabs button[aria-pressed="true"] { border-color: var(--mint); background: #102b2b; box-shadow: inset 0 0 0 1px #65d6c344; }
+.history-profile-tabs span { font-size: 9px; font-weight: 800; }
+.history-profile-tabs strong { font-size: 11px; }
 .detail-list dd small { display: block; margin-top: 4px; color: #7893a2; line-height: 1.45; }
 .close-button { min-width: 48px; min-height: 48px; border: 1px solid #31505f; border-radius: 8px; color: #b9cbd5; background: #10212a; cursor: pointer; }
 .table-actions { display: flex; gap: 5px; }

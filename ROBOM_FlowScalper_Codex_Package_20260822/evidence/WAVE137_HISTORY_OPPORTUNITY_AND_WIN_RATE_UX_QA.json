@@ -1,0 +1,96 @@
+{
+  "schema": "flowscalper.ui_qa.v1",
+  "wave": 137,
+  "status": "SOURCE_PASS_INSTALL_WAITING_FOR_FLAT_PAPER",
+  "observed_ts_ms": 1788101655860,
+  "diagnosis": {
+    "reported_duplicate_is_ledger_corruption": false,
+    "classification": "SAME_CANDIDATE_INDEPENDENT_BASE_STRESS_PAPER_RESULTS",
+    "symbol": "SOLUSDT",
+    "strategy_id": "MULTISPEED_TREND_RECLAIM_30M_V2",
+    "entry_ts_ms": 1788093002816,
+    "exit_ts_ms": 1788097529804,
+    "exit_reason": "TAKE_PROFIT",
+    "base": {
+      "trade_id": "paper-candidate-6f40cce1abd9404a-multispeed_trend_reclaim_30m_v2-base",
+      "net_pnl_usdt": "8.83197206791225640",
+      "fees_usdt": "0.84319632",
+      "slippage_usdt": "0.02363161208774360"
+    },
+    "stress": {
+      "trade_id": "paper-candidate-6f40cce1abd9404a-multispeed_trend_reclaim_30m_v2-stress",
+      "net_pnl_usdt": "6.66508520409437880",
+      "fees_usdt": "1.41127044",
+      "slippage_usdt": "0.03954435590562120"
+    },
+    "immutable_rows_deleted": 0
+  },
+  "implementation": {
+    "history_api_identity": [
+      "candidate_id",
+      "signal_event_id",
+      "opportunity_id"
+    ],
+    "history_default_view": "ONE_MARKET_OPPORTUNITY_WITH_BASE_STRESS_RESULTS",
+    "same_profile_collision_hidden": false,
+    "detail_profile_switch": true,
+    "default_strategy_sort": "BASE_WIN_RATE_DESCENDING",
+    "missing_win_rate_position": "BOTTOM",
+    "minimum_rankable_sample_size": 30,
+    "brand_returns_to_market": true
+  },
+  "actual_runtime_observation": {
+    "url": "http://127.0.0.1:8870/",
+    "installed_release_commit": "5de870501899f17437d037c999d5278a648276b2",
+    "run_id": "run-2b7135a972dd",
+    "mode": "LIVE_SHADOW_PAPER",
+    "venue": "BINANCE_USDM",
+    "operation_state": "RUNNING",
+    "open_positions": 2,
+    "current_version_raw_history_rows": 24,
+    "base_history_rows": 11,
+    "stress_history_rows": 13,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "actual_browser_source_preview": {
+    "url": "http://127.0.0.1:8872/?wave=137",
+    "preview_only_version_header_override": true,
+    "installed_service_changed": false,
+    "history_summary": "진입기회 13건 · 세부 원장 24건 · 공동 0건 · 전략별 13건",
+    "base_stress_grouping": "PASS",
+    "base_stress_detail_switch": "PASS",
+    "default_win_rate_descending": "PASS",
+    "brand_market_navigation": "PASS",
+    "paper_only_badge_visible": true,
+    "real_orders_visible": 0
+  },
+  "validation": {
+    "backend_history_tests": "PASS_44",
+    "frontend_tests": "PASS_87",
+    "frontend_test_files": 15,
+    "ruff": "PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "PASS_WITH_EXISTING_CHUNK_WARNING",
+    "git_diff_check": "PASS"
+  },
+  "screenshots": [
+    {
+      "path": "evidence/screenshots/wave137-history-opportunity-grouping.png",
+      "sha256": "73b4b328ea86db575a0d58e4a2a8e7b44c149e4485f24c5d76775a1c9cf51dfd"
+    },
+    {
+      "path": "evidence/screenshots/wave137-strategy-win-rate-sort.png",
+      "sha256": "dc97c7f1275d616d227c58c5b9c7dcc165bd48976b0ce1d3fa972ac0b5d1e467"
+    }
+  ],
+  "deployment": {
+    "latest_source_installed_at_8870": false,
+    "state": "BLOCKED_BY_2_PROTECTED_PAPER_POSITIONS",
+    "forced_close_or_restart": false,
+    "next_action": "INSTALL_COMMITTED_IMMUTABLE_RELEASE_ONLY_AFTER_NATURAL_FLAT_STATE"
+  },
+  "profitability": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY"
+}

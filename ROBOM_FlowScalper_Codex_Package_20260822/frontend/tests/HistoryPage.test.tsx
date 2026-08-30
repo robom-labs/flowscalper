@@ -1,6 +1,6 @@
 // 현재 Run에서 사라진 거래의 상세 패널이 화면에 남지 않는지 검증한다.
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { HistoryPage } from '../src/pages/HistoryPage'
 import type { HistoryRow } from '../src/types'
@@ -186,7 +186,92 @@ test('shows all PAPER accounts by default with a visible loading and count summa
   expect(screen.getByLabelText('계좌 범위')).toHaveValue('ALL')
   expect(screen.getByLabelText('전략 버전')).toHaveValue('CURRENT')
   await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2))
-  expect(screen.getByRole('status')).toHaveTextContent('현재 조건 2건 · 공동 1건 · 전략별 1건')
+  expect(screen.getByRole('status')).toHaveTextContent('진입기회 2건 · 세부 원장 2건 · 공동 1건 · 전략별 1건')
+})
+
+test('groups BASE and STRESS ledger rows from the same opportunity without deleting either result', async () => {
+  const baseTrade: HistoryRow = {
+    ...trade,
+    trade_id: 'shadow-opportunity-base',
+    candidate_id: 'candidate-same-opportunity',
+    signal_event_id: 'signal-same-opportunity',
+    opportunity_id: 'candidate-same-opportunity',
+    account_scope: 'LEAGUE',
+    account_id: 'CBR_CONTINUATION_V1:BASE',
+    profile: 'BASE',
+    strategy_version: 'current-v2',
+    net_pnl: '8.831972',
+    fees: '0.9',
+    slippage: '0.3',
+    replay_available: true,
+  }
+  const stressTrade: HistoryRow = {
+    ...baseTrade,
+    trade_id: 'shadow-opportunity-stress',
+    account_id: 'CBR_CONTINUATION_V1:STRESS',
+    profile: 'STRESS',
+    net_pnl: '6.665085',
+    fees: '1.8',
+    slippage: '0.6',
+  }
+  const replay = vi.fn()
+  vi.stubGlobal('fetch', vi.fn(async () => historyResponse([stressTrade, baseTrade])))
+
+  render(<HistoryPage rows={[]} currentRunId="run-history" onReplay={replay} />)
+
+  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1))
+  expect(screen.getByRole('status')).toHaveTextContent('진입기회 1건 · 세부 원장 2건 · 공동 0건 · 전략별 1건')
+  const resultRow = document.querySelector('.history-table tbody tr')
+  expect(resultRow).toHaveTextContent('기본 비용')
+  expect(resultRow).toHaveTextContent('+8.832 USDT')
+  expect(resultRow).toHaveTextContent('보수 비용')
+  expect(resultRow).toHaveTextContent('+6.665 USDT')
+  expect(resultRow).toHaveTextContent('같은 진입기회 · 비용 가정만 다름')
+
+  fireEvent.click(screen.getByRole('button', { name: '비용별 결과' }))
+  expect(screen.getByText(/중복 거래가 아닙니다/)).toBeInTheDocument()
+  const profileTabs = screen.getByRole('group', { name: '비용별 거래 결과' })
+  const stressButton = within(profileTabs).getByRole('button', { name: /보수 비용/ })
+  expect(stressButton).toHaveAttribute('aria-pressed', 'false')
+  fireEvent.click(stressButton)
+  expect(stressButton).toHaveAttribute('aria-pressed', 'true')
+  expect(document.querySelector('.trade-result-lead')).toHaveTextContent('+6.665 USDT')
+
+  fireEvent.click(screen.getByRole('button', { name: '선택한 비용 결과 다시보기' }))
+  expect(replay).toHaveBeenCalledWith(stressTrade)
+})
+
+test('keeps a same-profile collision visible instead of hiding a possible ledger duplicate', async () => {
+  const baseTrade: HistoryRow = {
+    ...trade,
+    trade_id: 'shadow-opportunity-base',
+    candidate_id: 'candidate-same-opportunity',
+    opportunity_id: 'candidate-same-opportunity',
+    account_scope: 'LEAGUE',
+    account_id: 'CBR_CONTINUATION_V1:BASE',
+    profile: 'BASE',
+    strategy_version: 'current-v2',
+  }
+  const duplicateBaseTrade: HistoryRow = {
+    ...baseTrade,
+    trade_id: 'shadow-opportunity-base-duplicate',
+  }
+  const stressTrade: HistoryRow = {
+    ...baseTrade,
+    trade_id: 'shadow-opportunity-stress',
+    account_id: 'CBR_CONTINUATION_V1:STRESS',
+    profile: 'STRESS',
+  }
+  vi.stubGlobal('fetch', vi.fn(async () => historyResponse([
+    stressTrade,
+    baseTrade,
+    duplicateBaseTrade,
+  ])))
+
+  render(<HistoryPage rows={[]} currentRunId="run-history" onReplay={vi.fn()} />)
+
+  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2))
+  expect(screen.getByRole('status')).toHaveTextContent('진입기회 2건 · 세부 원장 3건')
 })
 
 test('shows an open PAPER position and moves the completed trade into refreshed history', async () => {

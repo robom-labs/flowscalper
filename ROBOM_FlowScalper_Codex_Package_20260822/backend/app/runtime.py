@@ -2942,9 +2942,35 @@ class PaperRuntime:
         profile = str(trade.get("profile", "BASE"))
         run_id = str(trade["run_id"])
         trade_id = str(trade.get("trade_id", trade.get("shadow_trade_id", "UNKNOWN")))
+        candidate_id = (
+            str(trade["candidate_id"]).strip()
+            if trade.get("candidate_id") is not None
+            else ""
+        )
+        signal_event_id = (
+            str(trade["signal_event_id"]).strip()
+            if trade.get("signal_event_id") is not None
+            else ""
+        )
+        if candidate_id.upper() == "UNKNOWN":
+            candidate_id = ""
+        if signal_event_id.upper() == "UNKNOWN":
+            signal_event_id = ""
+        opportunity_id = candidate_id or signal_event_id or "|".join(
+            (
+                run_id,
+                strategy_id,
+                str(trade["symbol"]),
+                str(trade["side"]),
+                str(trade["entry_ts_ms"]),
+            )
+        )
         return {
             "run_id": run_id,
             "trade_id": trade_id,
+            "candidate_id": candidate_id or None,
+            "signal_event_id": signal_event_id or None,
+            "opportunity_id": opportunity_id,
             "account_scope": account_scope,
             "account_id": (
                 "SHARED_PAPER" if account_scope == "MAIN" else f"{strategy_id}:{profile}"

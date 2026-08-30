@@ -805,3 +805,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
   연구가 없는 후속 120초 PASS는 원인을 연구로 확정하는 증거로 사용하지 않는다.
 - OKX 복제는 사전등록 commit 뒤 공식 공개 history-candles와 공개 historical funding만 사용하고,
   공식 펀딩이 누락되면 0으로 치환하지 않고 차단한다.
+
+## Wave 137 거래기록 진입기회 묶음과 승률 기본 정렬
+
+- `/api/history`와 공동계좌 history 응답에 `candidate_id`, `signal_event_id`, `opportunity_id`를
+  추가했다. 과거 원장에 식별자가 없으면 Run·전략·종목·방향·진입시각으로 표시용 식별자를 만든다.
+- 전략별 계좌의 같은 진입기회에서 비용 조건만 다른 BASE·STRESS 원장 행을 한 화면 행으로 묶었다.
+  원장, 거래 ID, 비용과 순손익은 그대로 보존하며 같은 profile 충돌은 별도 행으로 유지한다.
+- 묶음 행은 기본·보수 비용 순손익을 동시에 표시하고 drawer에서 두 결과를 직접 전환한다.
+- 전략 표의 최초 정렬을 기본 비용 승률 내림차순으로 바꿨다. 미측정 승률 마지막 배치와 30건 미만
+  순위 제외 안내는 유지한다.
+- backend history 44건, frontend 전체 15 files·87건, Ruff, ESLint, TypeScript와 Vite build를
+  통과했다. 실제 PAPER API를 연결한 별도 최신 소스 화면에서 묶음·전환·정렬·홈 이동을 클릭했다.

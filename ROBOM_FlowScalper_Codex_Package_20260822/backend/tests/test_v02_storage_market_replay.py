@@ -532,6 +532,8 @@ def test_history_api_separates_main_league_profile_and_version_scope(
     )
     main_trade = {
         **_sample_trade("main-current"),
+        "candidate_id": "candidate-main-current",
+        "signal_event_id": "signal-main-current",
         "sample_type": "LIVE_PUBLIC",
         "strategy_version": STRATEGY_VERSION,
     }
@@ -539,6 +541,8 @@ def test_history_api_separates_main_league_profile_and_version_scope(
         **_sample_trade("shadow-current"),
         "shadow_trade_id": "shadow-current",
         "closed_ts_ms": 2_100,
+        "candidate_id": "candidate-shadow-current",
+        "signal_event_id": "signal-shadow-current",
         "profile": "STRESS",
         "sample_type": "LIVE_PUBLIC",
         "strategy_version": STRATEGY_VERSION,
@@ -586,6 +590,9 @@ def test_history_api_separates_main_league_profile_and_version_scope(
     league = next(row for row in payload["rows"] if row["account_scope"] == "LEAGUE")
     assert league["profile"] == "STRESS"
     assert league["account_id"].endswith(":STRESS")
+    assert league["candidate_id"] == "candidate-shadow-current"
+    assert league["signal_event_id"] == "signal-shadow-current"
+    assert league["opportunity_id"] == "candidate-shadow-current"
     assert league["replay_available"] is False
     assert payload["scope"]["strategy_version"] == STRATEGY_VERSION
     assert payload["paper_only"] is True

@@ -441,6 +441,29 @@ def _history_rows(
             {
                 "run_id": str(trade["run_id"]),
                 "trade_id": str(trade["trade_id"]),
+                "candidate_id": (
+                    str(trade["candidate_id"])
+                    if trade.get("candidate_id") is not None
+                    else None
+                ),
+                "signal_event_id": (
+                    str(trade["signal_event_id"])
+                    if trade.get("signal_event_id") is not None
+                    else None
+                ),
+                "opportunity_id": (
+                    str(trade.get("candidate_id") or trade.get("signal_event_id"))
+                    if trade.get("candidate_id") or trade.get("signal_event_id")
+                    else "|".join(
+                        (
+                            str(trade["run_id"]),
+                            str(trade["strategy_id"]),
+                            str(trade["symbol"]),
+                            str(trade["side"]),
+                            str(trade["entry_ts_ms"]),
+                        )
+                    )
+                ),
                 "symbol": str(trade["symbol"]),
                 "strategy": str(trade["strategy_id"]),
                 "side": str(trade["side"]),
@@ -491,6 +514,9 @@ def _history_rows(
         {
             "run_id": archived_run_ids[-1] if archived_run_ids else status.run_id,
             "trade_id": "fixture-trade-001",
+            "candidate_id": "fixture-candidate-001",
+            "signal_event_id": "fixture-signal-001",
+            "opportunity_id": "fixture-candidate-001",
             "symbol": "BTCUSDT",
             "strategy": "LSA_REVERSAL_V1",
             "side": "LONG",

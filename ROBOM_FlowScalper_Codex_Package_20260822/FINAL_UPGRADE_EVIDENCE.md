@@ -4259,3 +4259,49 @@ bootstrap·DSR 또는 시간순 gate를 실패했다. 적응 진단 통과와 Re
 
 현 수용상태는
 `HYP133_ADAPTIVE_IMPROVEMENT_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.
+
+## 98. Wave 137 거래기록 진입기회 묶음과 승률 기본 정렬
+
+사용자가 거래기록 최상단에서 본 SOLUSDT 익절 두 건을 실제 현재 Run 원장으로 대조했다.
+두 행은 동일 전략 `MULTISPEED_TREND_RECLAIM_30M_V2`, 동일 LONG 진입시각
+`1788093002816`, 동일 종료시각 `1788097529804`, 동일 `TAKE_PROFIT`인 한 번의
+진입기회를 기본 비용과 보수 비용 독립 PAPER 계좌에서 각각 계산한 결과였다. 기본 비용은
+순손익 `+8.83197206791225640 USDT`, 보수 비용은 `+6.66508520409437880 USDT`였고,
+수수료·가격차이 가정이 달랐다. 원장 손상이나 같은 계좌의 중복 체결로 판정하지 않았으며
+불변 거래 행 삭제는 0건이다.
+
+`/api/history`와 공동계좌 history 응답에 후보·신호·진입기회 식별자를 추가했다. 거래기록은
+전략별 계좌에서 동일 Run·전략 버전·전략·진입기회이고 비용 조건만 다른 BASE·STRESS를
+한 행으로 묶어 두 순손익을 나란히 표시한다. 상세 화면에서 비용 조건을 전환하고 선택한
+원장 결과를 그대로 다시보기로 넘긴다. 같은 비용 조건이 두 번 있거나 공동계좌 행이면
+자동으로 묶지 않아 실제 중복 가능성을 숨기지 않는다. 전략 화면 최초 정렬은 기본 비용
+승률 내림차순이며 승률 미측정 행은 마지막에 둔다. 30건 미만은 계속
+`표본 부족 · 순위 제외`이므로 화면 순서가 수익성 입증이나 ACTIVE 승격을 뜻하지 않는다.
+
+검증 시점 실제 `http://127.0.0.1:8870/`은 release
+`5de870501899f17437d037c999d5278a648276b2`, Run `run-2b7135a972dd`,
+`LIVE_SHADOW_PAPER`·`BINANCE_USDM`·`RUNNING`이었다. 실제 주문과 인증은 false였고
+현재버전 전략별 원장은 BASE 11건·STRESS 13건, 합계 24건이었다. PAPER 포지션 2건이
+열려 있어 강제 청산·재시작·최신 소스 설치를 하지 않았다. 현재 API에 최신 프론트 소스를
+연결한 별도 `8872` 미리보기에서 24개 세부 원장이 13개 진입기회로 표시되는지, SOLUSDT의
+기본 `+8.832`·보수 `+6.665 USDT` 전환, 승률 내림차순, 사이트 이름을 통한 시장 화면 이동과
+`PAPER · 실제 주문 0`을 실제 브라우저로 확인했다. 미리보기용 버전 헤더 변경은 화면 검증에만
+사용했고 실제 8870 서비스와 원장을 변경하지 않았다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 최상단 두 익절 원장 대조 | `PASS_NOT_DUPLICATE` | 동일 후보의 BASE·STRESS 독립 비용 결과, 삭제 0 |
+| backend history 회귀 | `PASS` | 관련 44건 |
+| frontend 단위회귀 | `PASS` | 15 files·87 tests |
+| Ruff·ESLint·TypeScript·build | `PASS` | 정적검사와 Vite build, 기존 chunk 경고만 유지 |
+| 소스 화면 실제 브라우저 | `PASS` | 묶음·비용 전환·정렬·홈 이동·PAPER 배지 확인 |
+| 실제 8870 최신 소스 설치 | `BLOCKED` | 보호 중 PAPER 포지션 2건, 강제 종료 0 |
+| 6시간·24시간 | `NOT_RUN` | 이번 UI 변경 뒤 실제 시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 비용후 현재버전 표본이 전략별 30건 미만 |
+
+기계판독 근거는 `evidence/WAVE137_HISTORY_OPPORTUNITY_AND_WIN_RATE_UX_QA.json`이며,
+화면 증거는 `evidence/screenshots/wave137-history-opportunity-grouping.png`와
+`evidence/screenshots/wave137-strategy-win-rate-sort.png`다.
+
+현 수용상태는
+`HISTORY_OPPORTUNITY_SOURCE_PASS_INSTALL_WAITING_FOR_FLAT_PAPER_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

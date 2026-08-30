@@ -158,6 +158,9 @@ export type LogItem = {
 export type HistoryRow = {
   run_id: string
   trade_id: string
+  candidate_id?: string | null
+  signal_event_id?: string | null
+  opportunity_id?: string
   symbol: string
   strategy: string
   side: string
