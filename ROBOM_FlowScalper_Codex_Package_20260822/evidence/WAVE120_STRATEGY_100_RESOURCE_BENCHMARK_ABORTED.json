@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "status": "ABORTED_RESOURCE_BUDGET",
+  "scope": "BOUNDED_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+  "started_at_kst": "2026-08-30T11:36:23+09:00",
+  "aborted_at_kst": "2026-08-30T12:06:34+09:00",
+  "minimum_observed_elapsed_seconds": 1811,
+  "repository_head_at_start": "dddb7aca977a545c8ec4cdb19f402f3d787c1eb9",
+  "bound_research_code_version": "1d8135e4cd04edabe44c41c656b62bb65b851589+research-bundle-sha256:787ca06a93914ff9a35de52a4fed633e57d1a31c4a2beb6008cbc661a91bd76f",
+  "trial_manifest": {
+    "path": "evidence/STRATEGY_100_TRIAL_MANIFEST_V2_W120.json",
+    "manifest_sha256": "0e0205e06003a145b1c1669e6c5aac10409278290863d622633c492e80e77d47"
+  },
+  "dataset_manifest": {
+    "path": "evidence/STRATEGY_100_DATASET_MANIFEST_V2_W120.json",
+    "manifest_sha256": "134169d17f52ee2d93bbc25e9f224e9ba582a03d95c65c8ca6e7c2c5e05b670f"
+  },
+  "maximum_events_requested": 100000,
+  "processed_events": null,
+  "processed_events_interpretation": "NOT_CAPTURED_BECAUSE_BENCHMARK_EXCEEDED_THE_30_MINUTE_RESOURCE_BUDGET",
+  "output_path": "evidence/WAVE120_STRATEGY_100_RESOURCE_BENCHMARK_V2.json",
+  "output_written": false,
+  "abort": {
+    "type": "KeyboardInterrupt",
+    "controller_reason": "30_MINUTE_BOUNDED_BENCHMARK_RESOURCE_BUDGET_EXCEEDED",
+    "observed_stage": "PROCESSING_EVENTS_AFTER_RECEIVE_ORDER_SORT",
+    "observed_stack_hotspot": "AlphaFeatureBuilder.snapshot -> _anchored_vwap_bars"
+  },
+  "live_runtime_observation": {
+    "runtime_release_commit": "03a7a7fb065b97a6d0073c9397d84f37db0afc35",
+    "market_event_count_start_observed": 217536,
+    "market_event_count_end_observed": 328276,
+    "market_event_advanced": true,
+    "observed_lag_p95_ms_max": 26.55224609375,
+    "observed_queue_depth_max": 2,
+    "runtime_cumulative_persistence_backlog_peak": 7824,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "unplanned_reconnects": 0,
+    "entry_locked": false,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "cleanup": {
+    "research_spill_temporary_directory_removed": true,
+    "live_archive_modified_by_research": false
+  },
+  "remediation": {
+    "commit": "d07e3267c70eeaf1272f913c3b162f2f20d916c0",
+    "empty_paper_account_scan": "PaperPortfolioEngine keeps on_book delivery exact and uses a constant-time inactive-symbol fast path.",
+    "shared_alpha_feature_snapshot": "Same-symbol, same-interval, same-decision immutable feature snapshots are reused and invalidated on every accepted candle or microstructure update.",
+    "related_test_result": "88 passed"
+  },
+  "benchmark_passed": false,
+  "selection_or_promotion_performed": false,
+  "profitability_claim": "NOT_PROVEN",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "private_api_enabled": false,
+  "runtime_ai_enabled": false
+}

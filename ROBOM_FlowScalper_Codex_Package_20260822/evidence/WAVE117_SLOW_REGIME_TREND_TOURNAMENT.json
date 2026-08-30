@@ -1,0 +1,2227 @@
+{
+  "adaptive_boundary": {
+    "independent_future_oos": false,
+    "prior_results_were_inspected": true,
+    "reason": "Wave116L의 15분·30분 손실과 방향별 결과를 본 뒤 느린 시간축과 시장 레짐을 추가했으므로 이 역사구간은 후보 제거용 적응 진단입니다."
+  },
+  "adaptive_historical_robustness_pass_candidates": [],
+  "auth_required": false,
+  "code_hash": "4ffb6299cf6f36f97dd5cacd294e4894ac605610",
+  "development_profiles": {
+    "T117_BREAKOUT_4H_BOTH_BALANCED": {
+      "base": {
+        "expectancy_bps": -136.97844524050632,
+        "losses": 25,
+        "maximum_drawdown_bps": 9726.84012246136,
+        "net_sum_bps": -4520.288692936709,
+        "payoff_ratio": 1.929945310315256,
+        "profit_factor": 0.6175824993008819,
+        "sample_size": 33,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.24242424242424243,
+        "wins": 8
+      },
+      "censored_count": 2,
+      "exit_reasons": {
+        "STOP": 25,
+        "STOP_AFTER_TP1": 5,
+        "TP2": 3
+      },
+      "gross": {
+        "expectancy_bps": -123.97844524050633,
+        "losses": 25,
+        "maximum_drawdown_bps": 9414.84012246136,
+        "net_sum_bps": -4091.288692936709,
+        "payoff_ratio": 2.0127819843266517,
+        "profit_factor": 0.6440902349845286,
+        "sample_size": 33,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.24242424242424243,
+        "wins": 8
+      },
+      "median_holding_minutes": 2400,
+      "stress": {
+        "expectancy_bps": -148.97844524050632,
+        "losses": 25,
+        "maximum_drawdown_bps": 10014.84012246136,
+        "net_sum_bps": -4916.288692936709,
+        "payoff_ratio": 1.8574236926998895,
+        "profit_factor": 0.5943755816639646,
+        "sample_size": 33,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.24242424242424243,
+        "wins": 8
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_BREAKOUT_4H_BOTH_SELECTIVE": {
+      "base": {
+        "expectancy_bps": 132.38665878564302,
+        "losses": 8,
+        "maximum_drawdown_bps": 2797.5793145074063,
+        "net_sum_bps": 1456.2532466420732,
+        "payoff_ratio": 3.908595362863224,
+        "profit_factor": 1.465723261073709,
+        "sample_size": 11,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2727272727272727,
+        "wins": 3
+      },
+      "censored_count": 2,
+      "exit_reasons": {
+        "STOP": 8,
+        "STOP_AFTER_TP1": 1,
+        "TP2": 2
+      },
+      "gross": {
+        "expectancy_bps": 145.38665878564302,
+        "losses": 8,
+        "maximum_drawdown_bps": 2706.5793145074063,
+        "net_sum_bps": 1599.2532466420732,
+        "payoff_ratio": 4.077472936160779,
+        "profit_factor": 1.5290523510602922,
+        "sample_size": 11,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2727272727272727,
+        "wins": 3
+      },
+      "median_holding_minutes": 3600,
+      "stress": {
+        "expectancy_bps": 120.38665878564302,
+        "losses": 8,
+        "maximum_drawdown_bps": 2881.5793145074063,
+        "net_sum_bps": 1324.2532466420732,
+        "payoff_ratio": 3.7623821899595713,
+        "profit_factor": 1.4108933212348393,
+        "sample_size": 11,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2727272727272727,
+        "wins": 3
+      },
+      "validation_stress": {
+        "expectancy_bps": -284.89349983397096,
+        "losses": 2,
+        "maximum_drawdown_bps": 569.7869996679419,
+        "net_sum_bps": -569.7869996679419,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 2,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    },
+    "T117_BREAKOUT_4H_LONG_BALANCED": {
+      "base": {
+        "expectancy_bps": -390.16793836464655,
+        "losses": 12,
+        "maximum_drawdown_bps": 6256.074696528414,
+        "net_sum_bps": -5852.519075469698,
+        "payoff_ratio": 0.41992483267354025,
+        "profit_factor": 0.10498120816838506,
+        "sample_size": 15,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2,
+        "wins": 3
+      },
+      "censored_count": 1,
+      "exit_reasons": {
+        "STOP": 12,
+        "STOP_AFTER_TP1": 3
+      },
+      "gross": {
+        "expectancy_bps": -377.16793836464655,
+        "losses": 12,
+        "maximum_drawdown_bps": 6113.074696528414,
+        "net_sum_bps": -5657.519075469698,
+        "payoff_ratio": 0.4546277333895328,
+        "profit_factor": 0.11365693334738321,
+        "sample_size": 15,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2,
+        "wins": 3
+      },
+      "median_holding_minutes": 3840,
+      "stress": {
+        "expectancy_bps": -402.16793836464655,
+        "losses": 12,
+        "maximum_drawdown_bps": 6388.074696528414,
+        "net_sum_bps": -6032.519075469698,
+        "payoff_ratio": 0.3893293700260541,
+        "profit_factor": 0.09733234250651353,
+        "sample_size": 15,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2,
+        "wins": 3
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_BREAKOUT_4H_LONG_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -204.81332162313402,
+        "losses": 4,
+        "maximum_drawdown_bps": 1329.2860461313187,
+        "net_sum_bps": -1024.06660811567,
+        "payoff_ratio": 0.9184462257884751,
+        "profit_factor": 0.22961155644711878,
+        "sample_size": 5,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2,
+        "wins": 1
+      },
+      "censored_count": 2,
+      "exit_reasons": {
+        "STOP": 4,
+        "STOP_AFTER_TP1": 1
+      },
+      "gross": {
+        "expectancy_bps": -191.813321623134,
+        "losses": 4,
+        "maximum_drawdown_bps": 1277.2860461313187,
+        "net_sum_bps": -959.06660811567,
+        "payoff_ratio": 0.9965487025540785,
+        "profit_factor": 0.24913717563851961,
+        "sample_size": 5,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2,
+        "wins": 1
+      },
+      "median_holding_minutes": 2400,
+      "stress": {
+        "expectancy_bps": -216.81332162313402,
+        "losses": 4,
+        "maximum_drawdown_bps": 1377.2860461313187,
+        "net_sum_bps": -1084.06660811567,
+        "payoff_ratio": 0.8515861722095494,
+        "profit_factor": 0.21289654305238734,
+        "sample_size": 5,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2,
+        "wins": 1
+      },
+      "validation_stress": {
+        "expectancy_bps": -284.89349983397096,
+        "losses": 2,
+        "maximum_drawdown_bps": 569.7869996679419,
+        "net_sum_bps": -569.7869996679419,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 2,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    },
+    "T117_BREAKOUT_4H_SHORT_BALANCED": {
+      "base": {
+        "expectancy_bps": 350.2740184451036,
+        "losses": 3,
+        "maximum_drawdown_bps": 1402.766778669622,
+        "net_sum_bps": 1401.0960737804144,
+        "payoff_ratio": 5.996426979349784,
+        "profit_factor": 1.9988089931165949,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 1
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 3,
+        "TP2": 1
+      },
+      "gross": {
+        "expectancy_bps": 363.2740184451036,
+        "losses": 3,
+        "maximum_drawdown_bps": 1363.766778669622,
+        "net_sum_bps": 1453.0960737804144,
+        "payoff_ratio": 6.196505655896534,
+        "profit_factor": 2.0655018852988447,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 1
+      },
+      "median_holding_minutes": 3000.0,
+      "stress": {
+        "expectancy_bps": 338.2740184451036,
+        "losses": 3,
+        "maximum_drawdown_bps": 1438.766778669622,
+        "net_sum_bps": 1353.0960737804144,
+        "payoff_ratio": 5.821366382322732,
+        "profit_factor": 1.9404554607742441,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 1
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_BREAKOUT_4H_SHORT_SELECTIVE": {
+      "base": {
+        "expectancy_bps": 289.4436259048726,
+        "losses": 5,
+        "maximum_drawdown_bps": 2251.7923148394643,
+        "net_sum_bps": 2026.105381334108,
+        "payoff_ratio": 4.749436335649092,
+        "profit_factor": 1.8997745342596366,
+        "sample_size": 7,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2857142857142857,
+        "wins": 2
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 5,
+        "TP2": 2
+      },
+      "gross": {
+        "expectancy_bps": 302.44362590487253,
+        "losses": 5,
+        "maximum_drawdown_bps": 2186.7923148394643,
+        "net_sum_bps": 2117.1053813341077,
+        "payoff_ratio": 4.920332016634062,
+        "profit_factor": 1.968132806653625,
+        "sample_size": 7,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2857142857142857,
+        "wins": 2
+      },
+      "median_holding_minutes": 3600,
+      "stress": {
+        "expectancy_bps": 277.4436259048726,
+        "losses": 5,
+        "maximum_drawdown_bps": 2311.7923148394643,
+        "net_sum_bps": 1942.105381334108,
+        "payoff_ratio": 4.600216105992389,
+        "profit_factor": 1.8400864423969556,
+        "sample_size": 7,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2857142857142857,
+        "wins": 2
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_PULLBACK_1H_BOTH_BALANCED": {
+      "base": {
+        "expectancy_bps": -54.3720016890874,
+        "losses": 13,
+        "maximum_drawdown_bps": 1044.693301653997,
+        "net_sum_bps": -1033.0680320926606,
+        "payoff_ratio": 1.1740667073851996,
+        "profit_factor": 0.5418769418700922,
+        "sample_size": 19,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3157894736842105,
+        "wins": 6
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 13,
+        "STOP_AFTER_TP1": 5,
+        "TP2": 1
+      },
+      "gross": {
+        "expectancy_bps": -41.3720016890874,
+        "losses": 13,
+        "maximum_drawdown_bps": 872.8497695749172,
+        "net_sum_bps": -786.0680320926606,
+        "payoff_ratio": 1.3502014473028632,
+        "profit_factor": 0.6231698987551676,
+        "sample_size": 19,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3157894736842105,
+        "wins": 6
+      },
+      "median_holding_minutes": 840,
+      "stress": {
+        "expectancy_bps": -66.3720016890874,
+        "losses": 13,
+        "maximum_drawdown_bps": 1261.0680320926606,
+        "net_sum_bps": -1261.0680320926606,
+        "payoff_ratio": 1.0333971753375115,
+        "profit_factor": 0.47695254246346686,
+        "sample_size": 19,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3157894736842105,
+        "wins": 6
+      },
+      "validation_stress": {
+        "expectancy_bps": -77.29423045690756,
+        "losses": 5,
+        "maximum_drawdown_bps": 541.0596131983528,
+        "net_sum_bps": -541.0596131983528,
+        "payoff_ratio": 0.8178046648499233,
+        "profit_factor": 0.32712186593996934,
+        "sample_size": 7,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.2857142857142857,
+        "wins": 2
+      }
+    },
+    "T117_PULLBACK_1H_BOTH_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -99.78228154241238,
+        "losses": 5,
+        "maximum_drawdown_bps": 1069.6670395080275,
+        "net_sum_bps": -798.258252339299,
+        "payoff_ratio": 0.5673519408757716,
+        "profit_factor": 0.34041116452546294,
+        "sample_size": 8,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.375,
+        "wins": 3
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 5,
+        "STOP_AFTER_TP1": 3
+      },
+      "gross": {
+        "expectancy_bps": -86.78228154241238,
+        "losses": 5,
+        "maximum_drawdown_bps": 991.6670395080275,
+        "net_sum_bps": -694.258252339299,
+        "payoff_ratio": 0.6563099048928814,
+        "profit_factor": 0.3937859429357289,
+        "sample_size": 8,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.375,
+        "wins": 3
+      },
+      "median_holding_minutes": 840.0,
+      "stress": {
+        "expectancy_bps": -111.78228154241238,
+        "losses": 5,
+        "maximum_drawdown_bps": 1141.6670395080275,
+        "net_sum_bps": -894.258252339299,
+        "payoff_ratio": 0.4933175839513803,
+        "profit_factor": 0.2959905503708282,
+        "sample_size": 8,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.375,
+        "wins": 3
+      },
+      "validation_stress": {
+        "expectancy_bps": 186.4391691394665,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 186.4391691394665,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 1.0,
+        "wins": 1
+      }
+    },
+    "T117_PULLBACK_1H_LONG_BALANCED": {
+      "base": {
+        "expectancy_bps": 1.2459197942281008,
+        "losses": 3,
+        "maximum_drawdown_bps": 399.2964786998281,
+        "net_sum_bps": 9.967358353824807,
+        "payoff_ratio": 0.6096542092730745,
+        "profit_factor": 1.0160903487884574,
+        "sample_size": 8,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.625,
+        "wins": 5
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 3,
+        "STOP_AFTER_TP1": 5
+      },
+      "gross": {
+        "expectancy_bps": 14.245919794228099,
+        "losses": 3,
+        "maximum_drawdown_bps": 386.2964786998281,
+        "net_sum_bps": 113.96735835382479,
+        "payoff_ratio": 0.7178034469743337,
+        "profit_factor": 1.196339078290556,
+        "sample_size": 8,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.625,
+        "wins": 5
+      },
+      "median_holding_minutes": 1950.0,
+      "stress": {
+        "expectancy_bps": -10.7540802057719,
+        "losses": 3,
+        "maximum_drawdown_bps": 411.2964786998281,
+        "net_sum_bps": -86.0326416461752,
+        "payoff_ratio": 0.5212470115908431,
+        "profit_factor": 0.8687450193180718,
+        "sample_size": 8,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.625,
+        "wins": 5
+      },
+      "validation_stress": {
+        "expectancy_bps": 53.625480987181824,
+        "losses": 1,
+        "maximum_drawdown_bps": 102.16142570311357,
+        "net_sum_bps": 160.87644296154548,
+        "payoff_ratio": 1.2873639284805052,
+        "profit_factor": 2.5747278569610104,
+        "sample_size": 3,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.6666666666666666,
+        "wins": 2
+      }
+    },
+    "T117_PULLBACK_1H_LONG_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -31.009339614083775,
+        "losses": 2,
+        "maximum_drawdown_bps": 395.44614562506354,
+        "net_sum_bps": -124.0373584563351,
+        "payoff_ratio": 0.6863356494213012,
+        "profit_factor": 0.6863356494213012,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.5,
+        "wins": 2
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 2,
+        "STOP_AFTER_TP1": 2
+      },
+      "gross": {
+        "expectancy_bps": -18.009339614083775,
+        "losses": 2,
+        "maximum_drawdown_bps": 369.44614562506354,
+        "net_sum_bps": -72.0373584563351,
+        "payoff_ratio": 0.8050125591797539,
+        "profit_factor": 0.8050125591797539,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.5,
+        "wins": 2
+      },
+      "median_holding_minutes": 510.0,
+      "stress": {
+        "expectancy_bps": -43.00933961408377,
+        "losses": 2,
+        "maximum_drawdown_bps": 419.44614562506354,
+        "net_sum_bps": -172.03735845633508,
+        "payoff_ratio": 0.5898463718149967,
+        "profit_factor": 0.5898463718149967,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.5,
+        "wins": 2
+      },
+      "validation_stress": {
+        "expectancy_bps": 186.4391691394665,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 186.4391691394665,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 1.0,
+        "wins": 1
+      }
+    },
+    "T117_PULLBACK_1H_SHORT_BALANCED": {
+      "base": {
+        "expectancy_bps": -94.82139913149868,
+        "losses": 10,
+        "maximum_drawdown_bps": 1453.95713870765,
+        "net_sum_bps": -1043.0353904464855,
+        "payoff_ratio": 3.622681996577966,
+        "profit_factor": 0.3622681996577966,
+        "sample_size": 11,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.09090909090909091,
+        "wins": 1
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 10,
+        "TP2": 1
+      },
+      "gross": {
+        "expectancy_bps": -81.82139913149867,
+        "losses": 10,
+        "maximum_drawdown_bps": 1349.9571387076498,
+        "net_sum_bps": -900.0353904464854,
+        "payoff_ratio": 4.021840410778455,
+        "profit_factor": 0.4021840410778455,
+        "sample_size": 11,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.09090909090909091,
+        "wins": 1
+      },
+      "median_holding_minutes": 360,
+      "stress": {
+        "expectancy_bps": -106.82139913149868,
+        "losses": 10,
+        "maximum_drawdown_bps": 1549.95713870765,
+        "net_sum_bps": -1175.0353904464855,
+        "payoff_ratio": 3.3066982670301397,
+        "profit_factor": 0.330669826703014,
+        "sample_size": 11,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.09090909090909091,
+        "wins": 1
+      },
+      "validation_stress": {
+        "expectancy_bps": -175.48401403997457,
+        "losses": 4,
+        "maximum_drawdown_bps": 701.9360561598983,
+        "net_sum_bps": -701.9360561598983,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    },
+    "T117_PULLBACK_1H_SHORT_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -168.555223470741,
+        "losses": 3,
+        "maximum_drawdown_bps": 674.220893882964,
+        "net_sum_bps": -674.220893882964,
+        "payoff_ratio": 0.5175656640036068,
+        "profit_factor": 0.17252188800120227,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 1
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 3,
+        "STOP_AFTER_TP1": 1
+      },
+      "gross": {
+        "expectancy_bps": -155.555223470741,
+        "losses": 3,
+        "maximum_drawdown_bps": 622.220893882964,
+        "net_sum_bps": -622.220893882964,
+        "payoff_ratio": 0.5938557175217818,
+        "profit_factor": 0.19795190584059397,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 1
+      },
+      "median_holding_minutes": 1500.0,
+      "stress": {
+        "expectancy_bps": -180.555223470741,
+        "losses": 3,
+        "maximum_drawdown_bps": 722.220893882964,
+        "net_sum_bps": -722.220893882964,
+        "payoff_ratio": 0.4533519759363451,
+        "profit_factor": 0.15111732531211503,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 1
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_RELATIVE_4H_BOTH_BALANCED": {
+      "base": {
+        "expectancy_bps": -226.84438721720102,
+        "losses": 10,
+        "maximum_drawdown_bps": 3679.823416195643,
+        "net_sum_bps": -3402.665808258015,
+        "payoff_ratio": 0.46792103084165704,
+        "profit_factor": 0.23396051542082855,
+        "sample_size": 15,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 5
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 10,
+        "STOP_AFTER_TP1": 5
+      },
+      "gross": {
+        "expectancy_bps": -213.84438721720102,
+        "losses": 10,
+        "maximum_drawdown_bps": 3510.823416195643,
+        "net_sum_bps": -3207.665808258015,
+        "payoff_ratio": 0.5121776280776074,
+        "profit_factor": 0.2560888140388037,
+        "sample_size": 15,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 5
+      },
+      "median_holding_minutes": 5040,
+      "stress": {
+        "expectancy_bps": -238.84438721720102,
+        "losses": 10,
+        "maximum_drawdown_bps": 3835.823416195643,
+        "net_sum_bps": -3582.665808258015,
+        "payoff_ratio": 0.42930756394408803,
+        "profit_factor": 0.21465378197204402,
+        "sample_size": 15,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 5
+      },
+      "validation_stress": {
+        "expectancy_bps": -253.4332023398548,
+        "losses": 4,
+        "maximum_drawdown_bps": 1773.7568219767563,
+        "net_sum_bps": -1520.5992140391288,
+        "payoff_ratio": 0.28544793153268555,
+        "profit_factor": 0.14272396576634278,
+        "sample_size": 6,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 2
+      }
+    },
+    "T117_RELATIVE_4H_BOTH_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -554.861986264036,
+        "losses": 1,
+        "maximum_drawdown_bps": 554.861986264036,
+        "net_sum_bps": -554.861986264036,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 1
+      },
+      "gross": {
+        "expectancy_bps": -541.861986264036,
+        "losses": 1,
+        "maximum_drawdown_bps": 541.861986264036,
+        "net_sum_bps": -541.861986264036,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      },
+      "median_holding_minutes": 1440,
+      "stress": {
+        "expectancy_bps": -566.861986264036,
+        "losses": 1,
+        "maximum_drawdown_bps": 566.861986264036,
+        "net_sum_bps": -566.861986264036,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_RELATIVE_4H_LONG_BALANCED": {
+      "base": {
+        "expectancy_bps": -214.59130137176263,
+        "losses": 4,
+        "maximum_drawdown_bps": 1450.5788923852372,
+        "net_sum_bps": -1287.5478082305758,
+        "payoff_ratio": 0.4651753703957233,
+        "profit_factor": 0.23258768519786166,
+        "sample_size": 6,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 2
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 4,
+        "STOP_AFTER_TP1": 2
+      },
+      "gross": {
+        "expectancy_bps": -201.59130137176263,
+        "losses": 4,
+        "maximum_drawdown_bps": 1385.5788923852372,
+        "net_sum_bps": -1209.5478082305758,
+        "payoff_ratio": 0.5120385339757985,
+        "profit_factor": 0.25601926698789923,
+        "sample_size": 6,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 2
+      },
+      "median_holding_minutes": 5040.0,
+      "stress": {
+        "expectancy_bps": -226.59130137176263,
+        "losses": 4,
+        "maximum_drawdown_bps": 1510.5788923852372,
+        "net_sum_bps": -1359.5478082305758,
+        "payoff_ratio": 0.4244236622720329,
+        "profit_factor": 0.21221183113601644,
+        "sample_size": 6,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 2
+      },
+      "validation_stress": {
+        "expectancy_bps": -267.6972411592156,
+        "losses": 3,
+        "maximum_drawdown_bps": 1221.820048791524,
+        "net_sum_bps": -1070.7889646368624,
+        "payoff_ratio": 0.3708346846265368,
+        "profit_factor": 0.12361156154217894,
+        "sample_size": 4,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 1
+      }
+    },
+    "T117_RELATIVE_4H_LONG_SELECTIVE": {
+      "base": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      },
+      "censored_count": 0,
+      "exit_reasons": {},
+      "gross": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      },
+      "median_holding_minutes": null,
+      "stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_RELATIVE_4H_SHORT_BALANCED": {
+      "base": {
+        "expectancy_bps": -247.66758983154227,
+        "losses": 7,
+        "maximum_drawdown_bps": 2898.190782997862,
+        "net_sum_bps": -2476.6758983154227,
+        "payoff_ratio": 0.484480162698934,
+        "profit_factor": 0.2076343554424003,
+        "sample_size": 10,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3,
+        "wins": 3
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 7,
+        "STOP_AFTER_TP1": 3
+      },
+      "gross": {
+        "expectancy_bps": -234.66758983154227,
+        "losses": 7,
+        "maximum_drawdown_bps": 2820.190782997862,
+        "net_sum_bps": -2346.6758983154227,
+        "payoff_ratio": 0.5289949077717874,
+        "profit_factor": 0.22671210333076602,
+        "sample_size": 10,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3,
+        "wins": 3
+      },
+      "median_holding_minutes": 4200.0,
+      "stress": {
+        "expectancy_bps": -259.6675898315423,
+        "losses": 7,
+        "maximum_drawdown_bps": 2970.190782997862,
+        "net_sum_bps": -2596.6758983154227,
+        "payoff_ratio": 0.44562999515411256,
+        "profit_factor": 0.1909842836374768,
+        "sample_size": 10,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3,
+        "wins": 3
+      },
+      "validation_stress": {
+        "expectancy_bps": -274.4560492300832,
+        "losses": 2,
+        "maximum_drawdown_bps": 925.4946714732155,
+        "net_sum_bps": -823.3681476902495,
+        "payoff_ratio": 0.22069608163253837,
+        "profit_factor": 0.11034804081626919,
+        "sample_size": 3,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 1
+      }
+    },
+    "T117_RELATIVE_4H_SHORT_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -554.861986264036,
+        "losses": 1,
+        "maximum_drawdown_bps": 554.861986264036,
+        "net_sum_bps": -554.861986264036,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 1
+      },
+      "gross": {
+        "expectancy_bps": -541.861986264036,
+        "losses": 1,
+        "maximum_drawdown_bps": 541.861986264036,
+        "net_sum_bps": -541.861986264036,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      },
+      "median_holding_minutes": 1440,
+      "stress": {
+        "expectancy_bps": -566.861986264036,
+        "losses": 1,
+        "maximum_drawdown_bps": 566.861986264036,
+        "net_sum_bps": -566.861986264036,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      },
+      "validation_stress": {
+        "expectancy_bps": null,
+        "losses": 0,
+        "maximum_drawdown_bps": 0.0,
+        "net_sum_bps": 0.0,
+        "payoff_ratio": null,
+        "profit_factor": null,
+        "sample_size": 0,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": null,
+        "wins": 0
+      }
+    },
+    "T117_RETEST_1H_BOTH_BALANCED": {
+      "base": {
+        "expectancy_bps": -49.13356172880091,
+        "losses": 37,
+        "maximum_drawdown_bps": 4257.38686740065,
+        "net_sum_bps": -2997.1472654568556,
+        "payoff_ratio": 1.0663506622757672,
+        "profit_factor": 0.6916869160707679,
+        "sample_size": 61,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.39344262295081966,
+        "wins": 24
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 37,
+        "STOP_AFTER_TP1": 20,
+        "TP2": 4
+      },
+      "gross": {
+        "expectancy_bps": -36.13356172880091,
+        "losses": 37,
+        "maximum_drawdown_bps": 3789.3868674006503,
+        "net_sum_bps": -2204.1472654568556,
+        "payoff_ratio": 1.1739158339983164,
+        "profit_factor": 0.7614589193502592,
+        "sample_size": 61,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.39344262295081966,
+        "wins": 24
+      },
+      "median_holding_minutes": 600,
+      "stress": {
+        "expectancy_bps": -61.13356172880091,
+        "losses": 37,
+        "maximum_drawdown_bps": 4731.962647340886,
+        "net_sum_bps": -3729.1472654568556,
+        "payoff_ratio": 0.9760949592950487,
+        "profit_factor": 0.6331426762994911,
+        "sample_size": 61,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.39344262295081966,
+        "wins": 24
+      },
+      "validation_stress": {
+        "expectancy_bps": -42.08312358632966,
+        "losses": 10,
+        "maximum_drawdown_bps": 827.5247153648032,
+        "net_sum_bps": -757.4962245539339,
+        "payoff_ratio": 0.7274844213998571,
+        "profit_factor": 0.5819875371198856,
+        "sample_size": 18,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.4444444444444444,
+        "wins": 8
+      }
+    },
+    "T117_RETEST_1H_BOTH_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -86.6155660617697,
+        "losses": 12,
+        "maximum_drawdown_bps": 1964.9106990620494,
+        "net_sum_bps": -1385.8490569883152,
+        "payoff_ratio": 1.7910034326851214,
+        "profit_factor": 0.5970011442283738,
+        "sample_size": 16,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 4
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 12,
+        "STOP_AFTER_TP1": 3,
+        "TP2": 1
+      },
+      "gross": {
+        "expectancy_bps": -73.6155660617697,
+        "losses": 12,
+        "maximum_drawdown_bps": 1821.9106990620494,
+        "net_sum_bps": -1177.8490569883152,
+        "payoff_ratio": 1.9236313951280382,
+        "profit_factor": 0.6412104650426794,
+        "sample_size": 16,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 4
+      },
+      "median_holding_minutes": 990.0,
+      "stress": {
+        "expectancy_bps": -98.61556606176971,
+        "losses": 12,
+        "maximum_drawdown_bps": 2096.9106990620494,
+        "net_sum_bps": -1577.8490569883154,
+        "payoff_ratio": 1.6788286319741754,
+        "profit_factor": 0.5596095439913918,
+        "sample_size": 16,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.25,
+        "wins": 4
+      },
+      "validation_stress": {
+        "expectancy_bps": -88.42923891240628,
+        "losses": 4,
+        "maximum_drawdown_bps": 530.5754334744377,
+        "net_sum_bps": -530.5754334744377,
+        "payoff_ratio": 0.55759258811262,
+        "profit_factor": 0.27879629405631,
+        "sample_size": 6,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 2
+      }
+    },
+    "T117_RETEST_1H_LONG_BALANCED": {
+      "base": {
+        "expectancy_bps": -97.40248833181545,
+        "losses": 21,
+        "maximum_drawdown_bps": 3348.7178921076124,
+        "net_sum_bps": -2922.0746499544634,
+        "payoff_ratio": 1.0179996785247394,
+        "profit_factor": 0.4362855765106025,
+        "sample_size": 30,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.3,
+        "wins": 9
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 21,
+        "STOP_AFTER_TP1": 7,
+        "TP2": 2
+      },
+      "gross": {
+        "expectancy_bps": -84.40248833181545,
+        "losses": 21,
+        "maximum_drawdown_bps": 3075.717892107613,
+        "net_sum_bps": -2532.0746499544634,
+        "payoff_ratio": 1.1301882102428278,
+        "profit_factor": 0.48436637581835473,
+        "sample_size": 30,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.3,
+        "wins": 9
+      },
+      "median_holding_minutes": 540.0,
+      "stress": {
+        "expectancy_bps": -109.40248833181545,
+        "losses": 21,
+        "maximum_drawdown_bps": 3600.7178921076124,
+        "net_sum_bps": -3282.0746499544634,
+        "payoff_ratio": 0.9244432796968537,
+        "profit_factor": 0.3961899770129373,
+        "sample_size": 30,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.3,
+        "wins": 9
+      },
+      "validation_stress": {
+        "expectancy_bps": -51.41236307482589,
+        "losses": 8,
+        "maximum_drawdown_bps": 708.3494674113754,
+        "net_sum_bps": -616.9483568979107,
+        "payoff_ratio": 1.1263799225991273,
+        "profit_factor": 0.5631899612995637,
+        "sample_size": 12,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.3333333333333333,
+        "wins": 4
+      }
+    },
+    "T117_RETEST_1H_LONG_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -20.506424140906695,
+        "losses": 4,
+        "maximum_drawdown_bps": 472.10664480611103,
+        "net_sum_bps": -143.54496898634687,
+        "payoff_ratio": 0.9933412800315842,
+        "profit_factor": 0.7450059600236881,
+        "sample_size": 7,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.42857142857142855,
+        "wins": 3
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 4,
+        "STOP_AFTER_TP1": 3
+      },
+      "gross": {
+        "expectancy_bps": -7.506424140906694,
+        "losses": 4,
+        "maximum_drawdown_bps": 433.10664480611103,
+        "net_sum_bps": -52.54496898634686,
+        "payoff_ratio": 1.1962121478384031,
+        "profit_factor": 0.8971591108788024,
+        "sample_size": 7,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.42857142857142855,
+        "wins": 3
+      },
+      "median_holding_minutes": 540,
+      "stress": {
+        "expectancy_bps": -32.506424140906695,
+        "losses": 4,
+        "maximum_drawdown_bps": 508.10664480611103,
+        "net_sum_bps": -227.54496898634687,
+        "payoff_ratio": 0.8367281486552979,
+        "profit_factor": 0.6275461114914734,
+        "sample_size": 7,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.42857142857142855,
+        "wins": 3
+      },
+      "validation_stress": {
+        "expectancy_bps": -37.330548105562414,
+        "losses": 3,
+        "maximum_drawdown_bps": 288.9297511963252,
+        "net_sum_bps": -186.65274052781206,
+        "payoff_ratio": 0.7853258451074969,
+        "profit_factor": 0.523550563404998,
+        "sample_size": 5,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.4,
+        "wins": 2
+      }
+    },
+    "T117_RETEST_1H_SHORT_BALANCED": {
+      "base": {
+        "expectancy_bps": -2.4216972742707195,
+        "losses": 16,
+        "maximum_drawdown_bps": 1875.1944941161485,
+        "net_sum_bps": -75.07261550239231,
+        "payoff_ratio": 1.0490187732536937,
+        "profit_factor": 0.9834550999253379,
+        "sample_size": 31,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4838709677419355,
+        "wins": 15
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 16,
+        "STOP_AFTER_TP1": 13,
+        "TP2": 2
+      },
+      "gross": {
+        "expectancy_bps": 10.57830272572928,
+        "losses": 16,
+        "maximum_drawdown_bps": 1648.7735530374762,
+        "net_sum_bps": 327.9273844976077,
+        "payoff_ratio": 1.1474585752965312,
+        "profit_factor": 1.075742414340498,
+        "sample_size": 31,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4838709677419355,
+        "wins": 15
+      },
+      "median_holding_minutes": 720,
+      "stress": {
+        "expectancy_bps": -14.42169727427072,
+        "losses": 16,
+        "maximum_drawdown_bps": 2115.1944941161482,
+        "net_sum_bps": -447.0726155023923,
+        "payoff_ratio": 0.9658364191443835,
+        "profit_factor": 0.9054716429478595,
+        "sample_size": 31,
+        "sample_status": "ENOUGH",
+        "win_rate": 0.4838709677419355,
+        "wins": 15
+      },
+      "validation_stress": {
+        "expectancy_bps": -23.424644609337207,
+        "losses": 2,
+        "maximum_drawdown_bps": 255.5873807696535,
+        "net_sum_bps": -140.54786765602324,
+        "payoff_ratio": 0.32420212658776226,
+        "profit_factor": 0.6484042531755245,
+        "sample_size": 6,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.6666666666666666,
+        "wins": 4
+      }
+    },
+    "T117_RETEST_1H_SHORT_SELECTIVE": {
+      "base": {
+        "expectancy_bps": -138.03378755577427,
+        "losses": 8,
+        "maximum_drawdown_bps": 1838.2579585342373,
+        "net_sum_bps": -1242.3040880019685,
+        "payoff_ratio": 4.54424353701053,
+        "profit_factor": 0.5680304421263163,
+        "sample_size": 9,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.1111111111111111,
+        "wins": 1
+      },
+      "censored_count": 0,
+      "exit_reasons": {
+        "STOP": 8,
+        "TP2": 1
+      },
+      "gross": {
+        "expectancy_bps": -125.03378755577427,
+        "losses": 8,
+        "maximum_drawdown_bps": 1760.2579585342373,
+        "net_sum_bps": -1125.3040880019685,
+        "payoff_ratio": 4.752259685471264,
+        "profit_factor": 0.594032460683908,
+        "sample_size": 9,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.1111111111111111,
+        "wins": 1
+      },
+      "median_holding_minutes": 1560,
+      "stress": {
+        "expectancy_bps": -150.03378755577427,
+        "losses": 8,
+        "maximum_drawdown_bps": 1910.2579585342373,
+        "net_sum_bps": -1350.3040880019685,
+        "payoff_ratio": 4.365150632287728,
+        "profit_factor": 0.545643829035966,
+        "sample_size": 9,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.1111111111111111,
+        "wins": 1
+      },
+      "validation_stress": {
+        "expectancy_bps": -343.92269294662566,
+        "losses": 1,
+        "maximum_drawdown_bps": 343.92269294662566,
+        "net_sum_bps": -343.92269294662566,
+        "payoff_ratio": null,
+        "profit_factor": 0.0,
+        "sample_size": 1,
+        "sample_status": "INSUFFICIENT",
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    }
+  },
+  "development_ranking_top_10": [],
+  "diagnostic_oos": {},
+  "generated_ts_ms": 1788052938984,
+  "limitations": [
+    "역사 kline에는 당시 실행가능 bid·ask 깊이가 없어 BASE·STRESS 고정비용을 차감했습니다.",
+    "이 결과는 앞선 데이터를 본 뒤 설계한 적응 진단이며 독립 미래 OOS가 아닙니다.",
+    "70% 승률은 진단값일 뿐 비용후 기대값·강건성 gate를 대신하지 않습니다."
+  ],
+  "paper_only": true,
+  "preregistration": {
+    "base_cost_bps": 13.0,
+    "candidate_count": 24,
+    "candidate_fingerprint": "01ffb727695008c4706f6cf558c06a2768c8cc1f00c938ea5ea83542a5a9fe3a",
+    "candidates": [
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_BREAKOUT_4H_LONG_BALANCED",
+        "cooldown_hours": 18,
+        "family": "FOUR_HOUR_CHANNEL_BREAKOUT",
+        "interval_minutes": 240,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.7,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.0,
+        "setup_kind": "CHANNEL_BREAKOUT",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_BREAKOUT_4H_LONG_SELECTIVE",
+        "cooldown_hours": 30,
+        "family": "FOUR_HOUR_CHANNEL_BREAKOUT",
+        "interval_minutes": 240,
+        "lookback": 40,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 1.0,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.0,
+        "setup_kind": "CHANNEL_BREAKOUT",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.45,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_BREAKOUT_4H_SHORT_BALANCED",
+        "cooldown_hours": 18,
+        "family": "FOUR_HOUR_CHANNEL_BREAKOUT",
+        "interval_minutes": 240,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.7,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.0,
+        "setup_kind": "CHANNEL_BREAKOUT",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_BREAKOUT_4H_SHORT_SELECTIVE",
+        "cooldown_hours": 30,
+        "family": "FOUR_HOUR_CHANNEL_BREAKOUT",
+        "interval_minutes": 240,
+        "lookback": 40,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 1.0,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.0,
+        "setup_kind": "CHANNEL_BREAKOUT",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.45,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_BREAKOUT_4H_BOTH_BALANCED",
+        "cooldown_hours": 18,
+        "family": "FOUR_HOUR_CHANNEL_BREAKOUT",
+        "interval_minutes": 240,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.7,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.0,
+        "setup_kind": "CHANNEL_BREAKOUT",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_BREAKOUT_4H_BOTH_SELECTIVE",
+        "cooldown_hours": 30,
+        "family": "FOUR_HOUR_CHANNEL_BREAKOUT",
+        "interval_minutes": 240,
+        "lookback": 40,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 1.0,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.0,
+        "setup_kind": "CHANNEL_BREAKOUT",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.45,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 17,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_RETEST_1H_LONG_BALANCED",
+        "cooldown_hours": 12,
+        "family": "ONE_HOUR_BREAKOUT_RETEST",
+        "interval_minutes": 60,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.75,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.45,
+        "setup_kind": "BREAKOUT_RETEST",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_RETEST_1H_LONG_SELECTIVE",
+        "cooldown_hours": 20,
+        "family": "ONE_HOUR_BREAKOUT_RETEST",
+        "interval_minutes": 60,
+        "lookback": 36,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 1.0,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.3,
+        "setup_kind": "BREAKOUT_RETEST",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.4,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 17,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_RETEST_1H_SHORT_BALANCED",
+        "cooldown_hours": 12,
+        "family": "ONE_HOUR_BREAKOUT_RETEST",
+        "interval_minutes": 60,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.75,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.45,
+        "setup_kind": "BREAKOUT_RETEST",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_RETEST_1H_SHORT_SELECTIVE",
+        "cooldown_hours": 20,
+        "family": "ONE_HOUR_BREAKOUT_RETEST",
+        "interval_minutes": 60,
+        "lookback": 36,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 1.0,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.3,
+        "setup_kind": "BREAKOUT_RETEST",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.4,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 17,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_RETEST_1H_BOTH_BALANCED",
+        "cooldown_hours": 12,
+        "family": "ONE_HOUR_BREAKOUT_RETEST",
+        "interval_minutes": 60,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.75,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.45,
+        "setup_kind": "BREAKOUT_RETEST",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_RETEST_1H_BOTH_SELECTIVE",
+        "cooldown_hours": 20,
+        "family": "ONE_HOUR_BREAKOUT_RETEST",
+        "interval_minutes": 60,
+        "lookback": 36,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 1.0,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.3,
+        "setup_kind": "BREAKOUT_RETEST",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.4,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_PULLBACK_1H_LONG_BALANCED",
+        "cooldown_hours": 12,
+        "family": "ONE_HOUR_FIRST_PULLBACK",
+        "interval_minutes": 60,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.6,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.35,
+        "setup_kind": "FIRST_PULLBACK_RECLAIM",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.25,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 20,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_PULLBACK_1H_LONG_SELECTIVE",
+        "cooldown_hours": 20,
+        "family": "ONE_HOUR_FIRST_PULLBACK",
+        "interval_minutes": 60,
+        "lookback": 32,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 0.85,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.22,
+        "setup_kind": "FIRST_PULLBACK_RECLAIM",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.35,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_PULLBACK_1H_SHORT_BALANCED",
+        "cooldown_hours": 12,
+        "family": "ONE_HOUR_FIRST_PULLBACK",
+        "interval_minutes": 60,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.6,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.35,
+        "setup_kind": "FIRST_PULLBACK_RECLAIM",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.25,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 20,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_PULLBACK_1H_SHORT_SELECTIVE",
+        "cooldown_hours": 20,
+        "family": "ONE_HOUR_FIRST_PULLBACK",
+        "interval_minutes": 60,
+        "lookback": 32,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 0.85,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.22,
+        "setup_kind": "FIRST_PULLBACK_RECLAIM",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.35,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_PULLBACK_1H_BOTH_BALANCED",
+        "cooldown_hours": 12,
+        "family": "ONE_HOUR_FIRST_PULLBACK",
+        "interval_minutes": 60,
+        "lookback": 20,
+        "momentum_72h_minimum": 0.02,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.6,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.35,
+        "setup_kind": "FIRST_PULLBACK_RECLAIM",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.25,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 20,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_PULLBACK_1H_BOTH_SELECTIVE",
+        "cooldown_hours": 20,
+        "family": "ONE_HOUR_FIRST_PULLBACK",
+        "interval_minutes": 60,
+        "lookback": 32,
+        "momentum_72h_minimum": 0.04,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 0.85,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.22,
+        "setup_kind": "FIRST_PULLBACK_RECLAIM",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.35,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_RELATIVE_4H_LONG_BALANCED",
+        "cooldown_hours": 18,
+        "family": "FOUR_HOUR_RELATIVE_MOMENTUM",
+        "interval_minutes": 240,
+        "lookback": 18,
+        "momentum_72h_minimum": 0.03,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.65,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.35,
+        "setup_kind": "RELATIVE_CONTINUATION",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_RELATIVE_4H_LONG_SELECTIVE",
+        "cooldown_hours": 30,
+        "family": "FOUR_HOUR_RELATIVE_MOMENTUM",
+        "interval_minutes": 240,
+        "lookback": 30,
+        "momentum_72h_minimum": 0.05,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 0.9,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.22,
+        "setup_kind": "RELATIVE_CONTINUATION",
+        "side_policy": "LONG",
+        "stop_buffer_atr": 0.45,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_RELATIVE_4H_SHORT_BALANCED",
+        "cooldown_hours": 18,
+        "family": "FOUR_HOUR_RELATIVE_MOMENTUM",
+        "interval_minutes": 240,
+        "lookback": 18,
+        "momentum_72h_minimum": 0.03,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.65,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.35,
+        "setup_kind": "RELATIVE_CONTINUATION",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_RELATIVE_4H_SHORT_SELECTIVE",
+        "cooldown_hours": 30,
+        "family": "FOUR_HOUR_RELATIVE_MOMENTUM",
+        "interval_minutes": 240,
+        "lookback": 30,
+        "momentum_72h_minimum": 0.05,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 0.9,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.22,
+        "setup_kind": "RELATIVE_CONTINUATION",
+        "side_policy": "SHORT",
+        "stop_buffer_atr": 0.45,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      },
+      {
+        "adx_minimum": 16,
+        "breadth_threshold": 0.55,
+        "candidate_id": "T117_RELATIVE_4H_BOTH_BALANCED",
+        "cooldown_hours": 18,
+        "family": "FOUR_HOUR_RELATIVE_MOMENTUM",
+        "interval_minutes": 240,
+        "lookback": 18,
+        "momentum_72h_minimum": 0.03,
+        "rank_threshold": 0.67,
+        "relative_volume_minimum": 0.65,
+        "require_slow_alignment": false,
+        "retest_band_atr": 0.35,
+        "setup_kind": "RELATIVE_CONTINUATION",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.3,
+        "style": "BALANCED",
+        "tp1_r": 1.5,
+        "tp2_r": 4.0
+      },
+      {
+        "adx_minimum": 22,
+        "breadth_threshold": 0.65,
+        "candidate_id": "T117_RELATIVE_4H_BOTH_SELECTIVE",
+        "cooldown_hours": 30,
+        "family": "FOUR_HOUR_RELATIVE_MOMENTUM",
+        "interval_minutes": 240,
+        "lookback": 30,
+        "momentum_72h_minimum": 0.05,
+        "rank_threshold": 0.83,
+        "relative_volume_minimum": 0.9,
+        "require_slow_alignment": true,
+        "retest_band_atr": 0.22,
+        "setup_kind": "RELATIVE_CONTINUATION",
+        "side_policy": "BOTH",
+        "stop_buffer_atr": 0.45,
+        "style": "SELECTIVE",
+        "tp1_r": 2.0,
+        "tp2_r": 5.0
+      }
+    ],
+    "censored_open_positions_are_not_scored": true,
+    "embargo_ms": 604800000,
+    "family_count": 4,
+    "fixed_maximum_hold": false,
+    "hypothesis_id": "HYP-117-SLOW-REGIME-TREND-TOURNAMENT",
+    "maximum_concurrent_positions": 2,
+    "maximum_daily_entries": 2,
+    "next_bar_open_entry": true,
+    "path": "docs/research/HYP-117-slow-regime-trend-tournament.md",
+    "same_bar_stop_before_target": true,
+    "split": "chronological 50% train / 20% validation / 30% diagnostic OOS",
+    "stress_cost_bps": 25.0,
+    "thresholds_lowered_after_results": false,
+    "tp1_fraction": 0.4
+  },
+  "private_api_enabled": false,
+  "profitability_claim": "NOT_PROVEN",
+  "promotion_assessment": {
+    "actual_bid_ask_depth_forward_required": true,
+    "future_live_public_forward_samples_required": true,
+    "minimum_natural_base_stress_opportunities_per_strategy": 30,
+    "registry_changes": [],
+    "shadow_implementation_candidates": [],
+    "status": "NOT_PROVEN"
+  },
+  "ranking_contract": {
+    "minimum_development_closed_trades": 60,
+    "minimum_oos_closed_trades": 30,
+    "minimum_validation_closed_trades": 20,
+    "sparse_candidates_are_not_ranked": true
+  },
+  "real_money_readiness": "NOT_READY",
+  "real_orders_enabled": false,
+  "schema_version": 1,
+  "selected_on_train_validation": [],
+  "selection_bias": {
+    "candidate_trials": 24,
+    "pbo": {
+      "combinations": 35,
+      "logits": [
+        20.723265864228342,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        -2.3513752571634776,
+        -0.8266785731844678,
+        20.723265864228342,
+        -0.8266785731844678,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        20.723265864228342,
+        20.723265864228342,
+        1.55814461804655,
+        2.351375257163477,
+        2.351375257163477,
+        3.0910424533583165,
+        2.351375257163477,
+        3.0910424533583165,
+        3.0910424533583165,
+        -20.72326583594641,
+        -1.8971199848858813,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        3.0910424533583165,
+        -2.3513752571634776,
+        20.723265864228342,
+        20.723265864228342,
+        3.0910424533583165
+      ],
+      "pbo": 0.17142857142857143,
+      "status": "CALCULATED"
+    }
+  },
+  "source": {
+    "base_interval": "5m",
+    "dataset_hash": "05b39e561e8fd231c7891fb409d4c1b1a98dd47d88e013ee370199e22e0db637",
+    "datasets": [
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "BTCUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "53d542d6f3b3e5cd601fd700c94b8f21e27f8a27c42cee4aa2198e141cc55b2d"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "BTCUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "e683f8608885ad59336b3109b9277dc752f28f04f8e2f78fca9839583b621a35"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "BTCUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "ETHUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "a6ce55e1b08127490145bef39fb2c376c6879a4e771ce0d79f86b7145beb8c0b"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "ETHUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "061036aaaf7f1689d773c20ada352fdefb672d5760ce473d0b94d2423620fc2e"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "ETHUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "BNBUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "26d62324b3ca48027b04bd79dae07b7c36f23ccc85743eea7744f7be5d73261d"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "BNBUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "f2b3797433d6ff745bcbf76125b1dd3971bf4e8bf26927c879d33ad7f14c67c5"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "BNBUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "SOLUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "035d2c382d2a966d18ec24a55389a450e3656829068273a0c3ae4da900be1c06"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "SOLUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "f4de964fc04587651449a588bfae7b71a016b4dc8abea9a680bca9bc14d3ed1b"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "SOLUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "XRPUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "bc8695f1a0348e2750d8b36a6c4cdd54fbccefc3560b6836f6ee54a665f88ec4"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "XRPUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "3c464991f7ab54f2f5d614c20c9ea2ad20bec8085942e53b4dc2c0e7a0383de5"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "XRPUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "DOGEUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "0fff09dbb6d25b240aed83332d6380b3b939f095743f933d6c5fd6e9e7cafaab"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "DOGEUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "982ccbd7a77c3aee4d3dd9423e98dc66052332712e063f56fc6c0f77b8151ceb"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "DOGEUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "ADAUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "12dda3b2d1633c3dbb710283aec7c4f8c153740cc19895b3627204557914e296"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "ADAUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "a7c44a62ba60031ffebad9abf762d756d13e242ee0482611713a8eba49931bf8"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "ADAUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "AVAXUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "7c98f6076564388c9992580c3fd1c2e52d7150ab6696adccdf5a95a5ee8fe231"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "AVAXUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "85e63f393a63b7b3feb48a4e1174d641abd900c2624daf66c661f0be0e9d1db1"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "AVAXUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "LINKUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "1d126bc62022ff9cb2d8c92b62708e30117c820d7396058d1bb209d31c85abe0"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "LINKUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "d61751d0e78e632217a83b41fb631b89bac0ad9166e07a9ffbe56d294b8d3255"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "LINKUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "DOTUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "26ab67fb0cb41f743f15bedba6508cefd4661d7ace591779f2dcb7814c4d2d5e"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "DOTUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "f5f3fe6a9d40f52dab9c58fe31fc11fd7e9b6c200983a3d2dbc8c09c7cb42b5a"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "DOTUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "LTCUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "efe5c042f225253b5ef6524b178a8d18670f888dea33c5f1a2745a53206408e6"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "LTCUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "72950c5ecd8f7f5ee9134c2f31b9707ab71d0cb24ccdcdf505f86eee301327a6"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "LTCUSDT"
+      },
+      {
+        "bar_count": 76896,
+        "end_ts_ms": 1787615999999,
+        "interval": "5m",
+        "segments": [
+          {
+            "declared_end_ts_ms": 1777248000000,
+            "declared_start_ts_ms": 1764547200000,
+            "path": "BCHUSDT-5m-1764547200000-1777248000000.json",
+            "sha256": "2f1e8fbfe3a8f00fc71f86235acab2e933d1a7efcb1cd1873dd2172e0889b6f5"
+          },
+          {
+            "declared_end_ts_ms": 1787616000000,
+            "declared_start_ts_ms": 1777248000000,
+            "path": "BCHUSDT-5m-1777248000000-1787616000000.json",
+            "sha256": "6f332e8b85e76815db5976549881e3aa19c1ff486b7a6a4d850621db101d47c4"
+          }
+        ],
+        "start_ts_ms": 1764547200000,
+        "symbol": "BCHUSDT"
+      }
+    ],
+    "end_ts_ms": 1787616000000,
+    "public_only": true,
+    "research_intervals": [
+      "1h",
+      "4h",
+      "4h market context"
+    ],
+    "start_ts_ms": 1764547200000,
+    "venue": "BINANCE_USDM"
+  },
+  "status": "NOT_PROVEN",
+  "unranked_insufficient_sample": [
+    "T117_BREAKOUT_4H_BOTH_BALANCED",
+    "T117_BREAKOUT_4H_BOTH_SELECTIVE",
+    "T117_BREAKOUT_4H_LONG_BALANCED",
+    "T117_BREAKOUT_4H_LONG_SELECTIVE",
+    "T117_BREAKOUT_4H_SHORT_BALANCED",
+    "T117_BREAKOUT_4H_SHORT_SELECTIVE",
+    "T117_PULLBACK_1H_BOTH_BALANCED",
+    "T117_PULLBACK_1H_BOTH_SELECTIVE",
+    "T117_PULLBACK_1H_LONG_BALANCED",
+    "T117_PULLBACK_1H_LONG_SELECTIVE",
+    "T117_PULLBACK_1H_SHORT_BALANCED",
+    "T117_PULLBACK_1H_SHORT_SELECTIVE",
+    "T117_RELATIVE_4H_BOTH_BALANCED",
+    "T117_RELATIVE_4H_BOTH_SELECTIVE",
+    "T117_RELATIVE_4H_LONG_BALANCED",
+    "T117_RELATIVE_4H_LONG_SELECTIVE",
+    "T117_RELATIVE_4H_SHORT_BALANCED",
+    "T117_RELATIVE_4H_SHORT_SELECTIVE",
+    "T117_RETEST_1H_BOTH_BALANCED",
+    "T117_RETEST_1H_BOTH_SELECTIVE",
+    "T117_RETEST_1H_LONG_BALANCED",
+    "T117_RETEST_1H_LONG_SELECTIVE",
+    "T117_RETEST_1H_SHORT_BALANCED",
+    "T117_RETEST_1H_SHORT_SELECTIVE"
+  ]
+}

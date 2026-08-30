@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "generated_ts_utc": "2026-08-30T04:22:09Z",
+  "scope": "READ_ONLY_LIVE_GUARD_DURING_WAVE124_BENCHMARK",
+  "benchmark_manifest_sha256": "61a036827e6a4034ed1f0a40b39752ebf9a3d93fc38f43c8b0ea1531e3f1d373",
+  "duration_seconds": 1224.896,
+  "probe_count": 244,
+  "probe_error_count": 0,
+  "event_count_start": 551243,
+  "event_count_end": 639973,
+  "event_delta": 88730,
+  "event_advanced": true,
+  "lag_p95_ms_max": 28.043212890625,
+  "queue_depth_max": 11,
+  "persistence_fault_count_max": 0,
+  "persistence_buffer_dropped_max": 0,
+  "unplanned_reconnects_max": 0,
+  "real_orders_ever_enabled": false,
+  "auth_ever_required": false,
+  "paper_only": true,
+  "profitability_claim": "NOT_PROVEN"
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "status": "FAIL",
+  "scope": "BOUNDED_DIAGNOSTIC_NOT_PROMOTION_EVIDENCE",
+  "started_at_kst": "2026-08-30T11:06:04.895+09:00",
+  "completed_at_kst": null,
+  "minimum_observed_elapsed_seconds": 1585,
+  "source_commit": "3608778cd7484362f7160b057ac0c549c3e71784",
+  "trial_manifest": {
+    "path": "evidence/STRATEGY_100_TRIAL_MANIFEST_V2_W119B.json",
+    "manifest_sha256": "0a7aa959535acf20b5241c5da7382504abe21ee197fad612f01306d4ad422530"
+  },
+  "dataset_manifest": {
+    "path": "evidence/STRATEGY_100_DATASET_MANIFEST_V2_W119B.json",
+    "manifest_sha256": "a013d6036d3a0e5cf3d42d3bd7537d4cca97f4deb4ee3906c6175f6cfb6e48eb"
+  },
+  "maximum_events_requested": 100000,
+  "processed_events": null,
+  "processed_events_interpretation": "NOT_CAPTURED_DUE_FINAL_EVIDENCE_SERIALIZATION_FAILURE",
+  "error": {
+    "type": "TypeError",
+    "message": "keys must be str, int, float, bool or None, not tuple",
+    "stage": "FINAL_REPORT_MANIFEST_SHA256_SERIALIZATION"
+  },
+  "root_cause": "RunDiagnostics.audit_counts Counter was passed through dataclasses.asdict(), which reconstructed tuple keys that canonical JSON cannot serialize.",
+  "live_runtime_observation": {
+    "runtime_release_commit": "03a7a7fb065b97a6d0073c9397d84f37db0afc35",
+    "market_event_advanced": true,
+    "observed_lag_p95_ms_max": 24.788,
+    "observed_persistence_backlog_peak": 5530,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "unplanned_reconnects": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "remediation": {
+    "commit": "1d8135e4cd04edabe44c41c656b62bb65b851589",
+    "benchmark_serialization": "RunDiagnostics now uses the existing JSON-safe diagnostic conversion.",
+    "research_cadence": "Feature snapshots now match the LIVE 500ms cadence while every valid book still reaches PAPER execution.",
+    "regression_test": "test_benchmark_report_serializes_real_counter_diagnostics"
+  },
+  "benchmark_passed": false,
+  "selection_or_promotion_performed": false,
+  "profitability_claim": "NOT_PROVEN",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "private_api_enabled": false,
+  "runtime_ai_enabled": false
+}

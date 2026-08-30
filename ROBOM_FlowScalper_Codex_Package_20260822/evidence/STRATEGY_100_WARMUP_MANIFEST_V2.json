@@ -1,0 +1,272 @@
+{
+  "auth_required": false,
+  "bar_count": 241920,
+  "cache_root": "data/strategy100-warmup-v2",
+  "cutoff_ts_ms": 1788051900000,
+  "files": [
+    {
+      "bar_count": 10080,
+      "file_sha256": "283fa307538d6c5cb9346ad9a460a2242a91e2aab5c8004a49b16b58afee3b20",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "AAVEUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2471658,
+      "symbol": "AAVEUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "8207f5b11d448d6b771744c22ec476e69997e9076cdf8582a735e216c97e407c",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "ADAUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2535726,
+      "symbol": "ADAUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "0a32f4d423cd0a5701570b63148ea718b74159725e663da8ccce0e5f5d72dcf4",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "ARBUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2627601,
+      "symbol": "ARBUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "4af999cce1e0c7e9234c86e0bb1f93f1d3707e723635c4bab80299e5747843ab",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "ATOMUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2456319,
+      "symbol": "ATOMUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "f3d2c8b89b3e835e907f734a7d1678be2299a0e6c58a90967e138dc772c382b0",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "AVAXUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2440518,
+      "symbol": "AVAXUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "8ecfe14ae91e5c7f4874fb02901e8e7a13117fe4ef2f82dbd11f45223729e1b1",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "BCHUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2492161,
+      "symbol": "BCHUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "db13a528531d541749d48529300dd1aed0da376538d238fc2a03e1da116171d5",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "BNBUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2538551,
+      "symbol": "BNBUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "fed169861fd39c7fe7d16b7d55744f241dbb83ca4542e4bb449950026824c741",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "BTCUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2621274,
+      "symbol": "BTCUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "97d5a00d617de7e9f6250cd4d63077646c9933a246876802a6d62c22936d6b3a",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "DOGEUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2629697,
+      "symbol": "DOGEUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "e45a2135e3e92eec8f0c690f642fb127760d2c6c836afed0dd5c73a1751dd3ff",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "DOTUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2615528,
+      "symbol": "DOTUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "a9ef4c9a1c21e25d67d8b092be2f184f2c439eeceb7d717f549d2f21229672a6",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "ETCUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2442278,
+      "symbol": "ETCUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "1bebfe0ff6301c4176b23f3a86dd8cd98d7bf75f8943a52621f7a0ff4ee2e1a8",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "ETHUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2608524,
+      "symbol": "ETHUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "2a0c6facd2ba2086c1b06047c2d9c16a0f01217959427acaf3b142452b01ad84",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "FETUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2622130,
+      "symbol": "FETUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "99ec1f88b5afdfc7f942318a004df7966373fe1d38653f7d15c6116b6307547c",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "FILUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2620630,
+      "symbol": "FILUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "c14ea6162d2d50d177a153ba847f7cc13449ba9f42b84daf568ac76c5b38fe76",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "INJUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2596590,
+      "symbol": "INJUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "44f92dcfbc0fe94f2f4b859fc0e1701f1116dfbeaa7eb4307cefb19328c6c8af",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "LINKUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2499968,
+      "symbol": "LINKUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "14c02aaef0653e849c250c5ea0f7a4c8a013e77b6838a4af7177ec3e4370a6d6",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "LTCUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2461879,
+      "symbol": "LTCUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "2a859e7fa65fd22300962667cfc2855f0a8e0cc55cab3e6a692ee82e4c69b7e9",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "NEARUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2454756,
+      "symbol": "NEARUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "f928e9fda481c98aa6cb110e0f3566ae1a9227b3f42d2ea126b897f48d447920",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "OPUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2669778,
+      "symbol": "OPUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "6cb36ee275c48e61caf1a127fc661d1392b71c8b68b05c86326acaab872b4c9c",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "SOLUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2612149,
+      "symbol": "SOLUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "dfeeef88ecb7a27323513c6ee40b4ac422c0fb487b69b6e48256ea91bf99063e",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "SUIUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2641965,
+      "symbol": "SUIUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "98e598387248c9b5d8e91db1ab9ca2610c29490ba1e227a6e4899e2609ab3b0f",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "TRXUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2499347,
+      "symbol": "TRXUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "0e1433b7a12e7fcc4066caaba689b8e7c725fd46da5648c6166e00141282e136",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "UNIUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2439481,
+      "symbol": "UNIUSDT"
+    },
+    {
+      "bar_count": 10080,
+      "file_sha256": "7c78f65700d7f280bf1c45fa8d423a845bccb7f7697842f636015702a382f101",
+      "first_ts_ms": 1785027900000,
+      "last_close_ts_ms": 1788051900000,
+      "relative_path": "XRPUSDT-5m-1785027900000-1788051900000-v2.json",
+      "size_bytes": 2550880,
+      "symbol": "XRPUSDT"
+    }
+  ],
+  "generated_ts_utc": "2026-08-30T01:38:45.396398Z",
+  "manifest_sha256": "3923e4e2e50b0a3dc2b9849543de5d776b2dfe7246080d9bf11e8d5fdf592a62",
+  "paper_only": true,
+  "private_api_enabled": false,
+  "real_orders_enabled": false,
+  "schema_version": 1,
+  "source": {
+    "endpoint": "https://fapi.binance.com/fapi/v1/klines",
+    "endpoint_class": "PUBLIC_MARKET_DATA",
+    "interval": "5m",
+    "venue": "BINANCE_USDM"
+  },
+  "start_ts_ms": 1785027900000,
+  "status": "FROZEN_PUBLIC_KLINE_WARMUP",
+  "symbol_count": 24,
+  "symbols": [
+    "AAVEUSDT",
+    "ADAUSDT",
+    "ARBUSDT",
+    "ATOMUSDT",
+    "AVAXUSDT",
+    "BCHUSDT",
+    "BNBUSDT",
+    "BTCUSDT",
+    "DOGEUSDT",
+    "DOTUSDT",
+    "ETCUSDT",
+    "ETHUSDT",
+    "FETUSDT",
+    "FILUSDT",
+    "INJUSDT",
+    "LINKUSDT",
+    "LTCUSDT",
+    "NEARUSDT",
+    "OPUSDT",
+    "SOLUSDT",
+    "SUIUSDT",
+    "TRXUSDT",
+    "UNIUSDT",
+    "XRPUSDT"
+  ],
+  "usage_contract": {
+    "completed_bars_only": true,
+    "decision_time_cutoff_required": true,
+    "entry_signal_before_live_public_window": false,
+    "execution_price_source": "FROZEN_LIVE_PUBLIC_BID_ASK_ONLY",
+    "lookahead_allowed": false
+  }
+}
