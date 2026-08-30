@@ -9,7 +9,9 @@ import asyncio
 import hashlib
 import json
 import os
+import plistlib
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -110,12 +112,114 @@ def _research_infrastructure_fingerprint(project_root: Path) -> str:
     return _canonical_hash(checksums)
 
 
-def _research_spill_contract(arguments: argparse.Namespace) -> dict[str, object]:
+def _mount_point(path: Path) -> Path:
+    candidate = path.resolve(strict=True)
+    while not candidate.is_mount():
+        parent = candidate.parent
+        if parent == candidate:
+            raise ValueError(f"연구 저장장치 mount를 찾을 수 없습니다: {path}")
+        candidate = parent
+    return candidate
+
+
+def _physical_io_domain(path: Path, *, visited_mounts: tuple[Path, ...] = ()) -> str:
+    resolved = path.resolve(strict=True)
+    if sys.platform != "darwin":
+        return f"st_dev:{resolved.stat().st_dev}"
+    mount_point = _mount_point(resolved)
+    if mount_point in visited_mounts:
+        raise ValueError(f"연구 저장장치 backing 경로가 순환합니다: {mount_point}")
+    diskutil = subprocess.run(
+        ("/usr/sbin/diskutil", "info", "-plist", str(mount_point)),
+        check=True,
+        capture_output=True,
+    )
+    info = plistlib.loads(diskutil.stdout)
+    if info.get("BusProtocol") == "Disk Image":
+        hdiutil = subprocess.run(
+            ("/usr/bin/hdiutil", "info", "-plist"),
+            check=True,
+            capture_output=True,
+        )
+        images = plistlib.loads(hdiutil.stdout).get("images", ())
+        for image in images:
+            entities = image.get("system-entities", ())
+            if any(
+                entity.get("mount-point") == str(mount_point) for entity in entities
+            ):
+                image_path = str(image["image-path"])
+                if image_path.startswith("ram://"):
+                    device = info.get("ParentWholeDisk") or info.get("DeviceIdentifier")
+                    return f"RAM:{device}"
+                return _physical_io_domain(
+                    Path(image_path),
+                    visited_mounts=(*visited_mounts, mount_point),
+                )
+        raise ValueError(
+            f"연구 Disk Image의 backing 경로를 찾을 수 없습니다: {mount_point}"
+        )
+    device = info.get("ParentWholeDisk") or info.get("DeviceIdentifier")
+    if not device:
+        raise ValueError(f"연구 저장장치 physical domain을 찾을 수 없습니다: {mount_point}")
+    return f"{info.get('BusProtocol', 'UNKNOWN')}:{device}"
+
+
+def _research_archive_contract(arguments: argparse.Namespace) -> dict[str, object]:
     dataset = _read_json(arguments.dataset_manifest)
     cut = dataset.get("live_public_cut")
+    research_root = arguments.archive.parent.resolve(strict=True)
+    research_device = research_root.stat().st_dev
+    research_io_domain = _physical_io_domain(research_root)
+    if not isinstance(cut, Mapping):
+        return {
+            "archive_file_count": 0,
+            "source_root": None,
+            "research_root": str(research_root),
+            "source_device": research_device,
+            "research_device": research_device,
+            "source_io_domain": research_io_domain,
+            "research_io_domain": research_io_domain,
+            "mirror_mode": False,
+            "same_source_device": True,
+            "same_source_io_domain": True,
+            "portable_sha256_verification": False,
+        }
     archive_file_count = (
-        int(str(cut.get("file_count", 0))) if isinstance(cut, Mapping) else 0
+        int(str(cut.get("file_count", 0)))
     )
+    source_root = Path(str(cut.get("archive_root", ""))).resolve(strict=True)
+    source_device = source_root.stat().st_dev
+    source_io_domain = _physical_io_domain(source_root)
+    mirror_mode = research_root != source_root
+    if archive_file_count >= _LARGE_RESEARCH_FILE_COUNT and (
+        not mirror_mode or research_io_domain == source_io_domain
+    ):
+        raise ValueError(
+            "대용량 screening은 --archive를 동결 원본/LIVE와 물리적으로 다른 "
+            "I/O domain의 checksum 검증 복제본으로 지정해야 합니다."
+        )
+    return {
+        "archive_file_count": archive_file_count,
+        "source_root": str(source_root),
+        "research_root": str(research_root),
+        "source_device": source_device,
+        "research_device": research_device,
+        "source_io_domain": source_io_domain,
+        "research_io_domain": research_io_domain,
+        "mirror_mode": mirror_mode,
+        "same_source_device": research_device == source_device,
+        "same_source_io_domain": research_io_domain == source_io_domain,
+        "portable_sha256_verification": mirror_mode,
+    }
+
+
+def _research_spill_contract(
+    arguments: argparse.Namespace,
+    *,
+    archive_contract: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    archive_contract = archive_contract or _research_archive_contract(arguments)
+    archive_file_count = int(str(archive_contract["archive_file_count"]))
     spill_root = arguments.research_spill_root
     if archive_file_count < _LARGE_RESEARCH_FILE_COUNT:
         return {
@@ -127,10 +231,14 @@ def _research_spill_contract(arguments: argparse.Namespace) -> dict[str, object]
         raise ValueError("대용량 screening은 --research-spill-root가 필요합니다.")
     spill_root.mkdir(parents=True, exist_ok=True)
     resolved_spill = spill_root.resolve(strict=True)
-    archive_device = arguments.archive.stat().st_dev
+    source_device = int(str(archive_contract["source_device"]))
+    research_device = int(str(archive_contract["research_device"]))
+    source_io_domain = str(archive_contract["source_io_domain"])
+    research_io_domain = str(archive_contract["research_io_domain"])
     spill_device = resolved_spill.stat().st_dev
-    if archive_device == spill_device:
-        raise ValueError("연구 spill은 LIVE archive와 다른 저장장치여야 합니다.")
+    spill_io_domain = _physical_io_domain(resolved_spill)
+    if source_io_domain == spill_io_domain:
+        raise ValueError("연구 spill은 동결 원본/LIVE와 물리적으로 달라야 합니다.")
     free_bytes = shutil.disk_usage(resolved_spill).free
     if free_bytes < _MINIMUM_RESEARCH_SPILL_FREE_BYTES:
         raise ValueError("연구 spill 여유공간은 5GiB 이상이어야 합니다.")
@@ -138,9 +246,16 @@ def _research_spill_contract(arguments: argparse.Namespace) -> dict[str, object]
         "required": True,
         "archive_file_count": archive_file_count,
         "path": str(resolved_spill),
-        "archive_device": archive_device,
+        "source_device": source_device,
+        "research_device": research_device,
         "spill_device": spill_device,
-        "same_device": False,
+        "source_io_domain": source_io_domain,
+        "research_io_domain": research_io_domain,
+        "spill_io_domain": spill_io_domain,
+        "same_source_device": source_device == spill_device,
+        "same_source_io_domain": False,
+        "same_research_device": research_device == spill_device,
+        "same_research_io_domain": research_io_domain == spill_io_domain,
         "free_bytes": free_bytes,
     }
 
@@ -402,7 +517,11 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
     observations = SafetyObservations()
     child_state = ChildState()
     proposal = _trial_proposal(arguments)
-    spill_contract = _research_spill_contract(arguments)
+    archive_contract = _research_archive_contract(arguments)
+    spill_contract = _research_spill_contract(
+        arguments,
+        archive_contract=archive_contract,
+    )
     history = _load_trial_history(arguments.trial_history_catalog)
     history_decision = evaluate_trial_proposal(history, proposal)
     record_id = f"RESEARCH-{uuid4().hex}"
@@ -521,6 +640,7 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
             "resource_lock": str(arguments.resource_lock),
             "resource_lock_acquired": resource_lock_acquired,
             "single_archive_research_enforced": True,
+            "research_archive": archive_contract,
             "research_spill": spill_contract,
         },
         "paper_safety": {

@@ -1286,6 +1286,7 @@ def main() -> None:
     args = _parse_args()
     if not 0 < args.target_cpu_ratio <= 1 or args.cpu_checkpoint_events <= 0:
         raise ValueError("연구 CPU 비율과 checkpoint 이벤트 수가 잘못됐습니다.")
+    args.archive = args.archive.resolve(strict=True)
     trial_manifest, dataset, instrument_manifest, source_hashes = _load_inputs(
         args.trial_manifest,
         args.dataset_manifest,
@@ -1406,6 +1407,7 @@ def main() -> None:
             archive_files_for_logical_run(
                 live_public_cut=v2_cut_manifest,
                 logical_run=row,
+                archive_root_override=args.archive.parent,
             )
             if v2_cut_manifest is not None
             else None

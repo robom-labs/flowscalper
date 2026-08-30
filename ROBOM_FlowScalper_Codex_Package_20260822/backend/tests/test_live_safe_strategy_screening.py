@@ -6,12 +6,14 @@ import argparse
 import asyncio
 import json
 import os
+import plistlib
 import signal
 import sys
 from pathlib import Path
 
 import pytest
 
+import scripts.run_live_safe_strategy_screening as screening
 from scripts.run_live_safe_strategy_league_replay import (
     ChildState,
     _duty_cycle_slices,
@@ -21,6 +23,8 @@ from scripts.run_live_safe_strategy_league_replay import (
 from scripts.run_live_safe_strategy_screening import (
     _OUTPUT_FILENAMES,
     _RESEARCH_INFRASTRUCTURE_BOUND_PATHS,
+    _physical_io_domain,
+    _research_archive_contract,
     _research_spill_contract,
     _staged_paths,
     _trial_proposal,
@@ -383,23 +387,183 @@ async def test_research_child_receives_explicit_spill_environment(tmp_path: Path
 
 
 def test_large_screening_requires_spill_on_another_device(tmp_path: Path) -> None:
-    archive = tmp_path / "archive"
+    source = tmp_path / "source"
+    archive = source / "venue=BINANCE_USDM"
     spill = tmp_path / "spill"
-    archive.mkdir()
+    archive.mkdir(parents=True)
     dataset = tmp_path / "dataset.json"
-    _write_json(dataset, {"live_public_cut": {"file_count": 500}})
+    _write_json(
+        dataset,
+        {
+            "live_public_cut": {
+                "file_count": 500,
+                "archive_root": str(source),
+            }
+        },
+    )
     arguments = argparse.Namespace(
         dataset_manifest=dataset,
         archive=archive,
         research_spill_root=None,
     )
 
-    with pytest.raises(ValueError, match="research-spill-root"):
-        _research_spill_contract(arguments)
+    with pytest.raises(ValueError, match="checksum 검증 복제본"):
+        _research_archive_contract(arguments)
 
     arguments.research_spill_root = spill
-    with pytest.raises(ValueError, match="다른 저장장치"):
+    with pytest.raises(ValueError, match="checksum 검증 복제본"):
         _research_spill_contract(arguments)
+
+
+def test_large_screening_rejects_different_paths_on_same_physical_io_domain(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "source"
+    mirror = tmp_path / "mirror"
+    archive = mirror / "venue=BINANCE_USDM"
+    source.mkdir()
+    archive.mkdir(parents=True)
+    dataset = tmp_path / "dataset.json"
+    _write_json(
+        dataset,
+        {
+            "live_public_cut": {
+                "file_count": 500,
+                "archive_root": str(source),
+            }
+        },
+    )
+    monkeypatch.setattr(screening, "_physical_io_domain", lambda _path: "USB:disk4")
+
+    with pytest.raises(ValueError, match="물리적으로 다른"):
+        _research_archive_contract(
+            argparse.Namespace(
+                dataset_manifest=dataset,
+                archive=archive,
+                research_spill_root=None,
+            )
+        )
+
+
+def test_darwin_physical_io_domain_resolves_sparsebundle_and_ram_disk(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    sparse_data = tmp_path / "sparse-data"
+    sparse_mount = tmp_path / "sparse-mount"
+    backing_image = tmp_path / "one-touch" / "research.sparsebundle"
+    backing_mount = tmp_path / "one-touch-mount"
+    ram_data = tmp_path / "ram-data"
+    ram_mount = tmp_path / "ram-mount"
+    for path in (sparse_data, sparse_mount, backing_mount, ram_data, ram_mount):
+        path.mkdir(parents=True)
+    backing_image.parent.mkdir()
+    backing_image.write_bytes(b"fixture")
+
+    def fake_mount_point(path: Path) -> Path:
+        if path == sparse_data:
+            return sparse_mount
+        if path == backing_image:
+            return backing_mount
+        if path == ram_data:
+            return ram_mount
+        raise AssertionError(f"unexpected mount lookup: {path}")
+
+    def fake_run(command, **_kwargs):
+        if command[:3] == ("/usr/sbin/diskutil", "info", "-plist"):
+            mount = Path(command[3])
+            if mount == sparse_mount:
+                payload = {
+                    "BusProtocol": "Disk Image",
+                    "ParentWholeDisk": "disk9",
+                }
+            elif mount == ram_mount:
+                payload = {
+                    "BusProtocol": "Disk Image",
+                    "ParentWholeDisk": "disk10",
+                }
+            elif mount == backing_mount:
+                payload = {
+                    "BusProtocol": "USB",
+                    "ParentWholeDisk": "disk4",
+                }
+            else:
+                raise AssertionError(f"unexpected diskutil mount: {mount}")
+            return argparse.Namespace(stdout=plistlib.dumps(payload))
+        if command == ("/usr/bin/hdiutil", "info", "-plist"):
+            payload = {
+                "images": [
+                    {
+                        "image-path": str(backing_image),
+                        "system-entities": [{"mount-point": str(sparse_mount)}],
+                    },
+                    {
+                        "image-path": "ram://18432",
+                        "system-entities": [{"mount-point": str(ram_mount)}],
+                    },
+                ]
+            }
+            return argparse.Namespace(stdout=plistlib.dumps(payload))
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(screening.sys, "platform", "darwin")
+    monkeypatch.setattr(screening, "_mount_point", fake_mount_point)
+    monkeypatch.setattr(screening.subprocess, "run", fake_run)
+
+    assert _physical_io_domain(sparse_data) == "USB:disk4"
+    assert _physical_io_domain(ram_data) == "RAM:disk10"
+
+
+def test_darwin_physical_io_domain_rejects_unresolved_disk_image(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    data = tmp_path / "unresolved-data"
+    mount = tmp_path / "unresolved-mount"
+    data.mkdir()
+    mount.mkdir()
+    monkeypatch.setattr(screening.sys, "platform", "darwin")
+    monkeypatch.setattr(screening, "_mount_point", lambda _path: mount)
+
+    def fake_run(command, **_kwargs):
+        if command[:3] == ("/usr/sbin/diskutil", "info", "-plist"):
+            return argparse.Namespace(
+                stdout=plistlib.dumps(
+                    {"BusProtocol": "Disk Image", "ParentWholeDisk": "disk9"}
+                )
+            )
+        if command == ("/usr/bin/hdiutil", "info", "-plist"):
+            return argparse.Namespace(stdout=plistlib.dumps({"images": []}))
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(screening.subprocess, "run", fake_run)
+
+    with pytest.raises(ValueError, match="backing 경로"):
+        _physical_io_domain(data)
+
+
+def test_small_legacy_screening_does_not_require_frozen_archive_mirror(
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "archive" / "venue=BINANCE_USDM"
+    archive.mkdir(parents=True)
+    dataset = tmp_path / "dataset.json"
+    _write_json(dataset, {"runs": [{"role": "TRAIN"}]})
+    arguments = argparse.Namespace(
+        dataset_manifest=dataset,
+        archive=archive,
+        research_spill_root=None,
+    )
+
+    contract = _research_archive_contract(arguments)
+
+    assert contract["archive_file_count"] == 0
+    assert contract["mirror_mode"] is False
+    assert _research_spill_contract(
+        arguments,
+        archive_contract=contract,
+    )["required"] is False
 
 
 @pytest.mark.asyncio

@@ -26,6 +26,7 @@ from backend.app.research import (
     preregistered_trials,
 )
 from backend.app.research.strategy100_dataset_v2 import (
+    archive_files_for_logical_run,
     build_strategy_100_dataset_v2_manifest,
 )
 from backend.app.research.strategy100_dataset_v2 import (
@@ -184,6 +185,56 @@ def test_research_archive_reader_uses_only_the_frozen_explicit_files(
     assert [row["event_id"] for row in _event_rows(tmp_path, files=(frozen,))] == [
         "frozen"
     ]
+
+
+def test_frozen_archive_portable_copy_uses_sha256_instead_of_inode(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    mirror_root = tmp_path / "mirror"
+    relative = Path(
+        "venue=BINANCE_USDM/run=RUN-LONG/date=2026-01-01/"
+        "symbol=MULTI/hour=00/event_type=MARKET_EVENT/part-a.parquet"
+    )
+    source = source_root / relative
+    mirror = mirror_root / relative
+    source.parent.mkdir(parents=True)
+    mirror.parent.mkdir(parents=True)
+    content = b"portable-frozen-parquet-fixture"
+    source.write_bytes(content)
+    mirror.write_bytes(content)
+    stat = source.stat()
+    cut = {
+        "archive_root": str(source_root),
+        "files": [
+            {
+                "relative_path": relative.as_posix(),
+                "size_bytes": len(content),
+                "mtime_ns": stat.st_mtime_ns,
+                "ctime_ns": stat.st_ctime_ns,
+                "inode": stat.st_ino,
+                "file_sha256": hashlib.sha256(content).hexdigest(),
+            }
+        ],
+    }
+    logical_run = {
+        "archive_partitions": [
+            "venue=BINANCE_USDM/run=RUN-LONG/date=2026-01-01/symbol=MULTI/hour=00"
+        ],
+        "archive_file_count": 1,
+    }
+
+    assert archive_files_for_logical_run(
+        live_public_cut=cut,
+        logical_run=logical_run,
+        archive_root_override=mirror_root,
+    ) == (mirror.resolve(),)
+
+    mirror.write_bytes(b"x" * len(content))
+    with pytest.raises(ValueError, match="복제본 checksum"):
+        archive_files_for_logical_run(
+            live_public_cut=cut,
+            logical_run=logical_run,
+            archive_root_override=mirror_root,
+        )
 
 
 def test_research_archive_reader_filters_frozen_symbols_before_limit(

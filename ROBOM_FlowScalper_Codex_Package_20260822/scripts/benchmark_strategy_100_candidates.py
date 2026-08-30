@@ -214,6 +214,7 @@ def main() -> None:
         archive_files = archive_files_for_logical_run(
             live_public_cut=cut_manifest,
             logical_run=selected,
+            archive_root_override=args.archive.parent,
         )
         warmup = FrozenStrategy100Warmup.load(warmup_path)
         research_symbols = warmup.symbols

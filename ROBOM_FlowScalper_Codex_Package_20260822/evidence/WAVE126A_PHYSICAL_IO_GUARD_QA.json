@@ -1,0 +1,144 @@
+{
+  "schema": "flowscalper.wave126a.physical_io_guard_qa.v1",
+  "status": "PASS_GUARD_IMPLEMENTED_FORMAL_SCREENING_NOT_RUN",
+  "generated_ts_utc": "2026-08-30T05:25:57Z",
+  "source_commit_before_wave": "b0020a51986d0104d27381838bcc00ffabaf5ff0",
+  "failed_attempts_preserved": [
+    {
+      "evidence": "evidence/WAVE125_STRATEGY_100_SCREENING_LIVE_GUARD.json",
+      "status": "ABORTED_RUNTIME_SAFETY"
+    },
+    {
+      "evidence": "evidence/WAVE126_STRATEGY_100_SCREENING_LIVE_GUARD.json",
+      "sha256": "551ffb40b26e497d47913daa95665b3202022fea51c4f83e35031af02956aced",
+      "status": "ABORTED_RUNTIME_SAFETY",
+      "violation": "EVENT_LOOP_LAG_OVER_500MS",
+      "observed_event_loop_lag_ms": 1548.0,
+      "observed_persistence_flush_ms": 37411.0,
+      "partial_result_published": false
+    }
+  ],
+  "physical_io_domains": [
+    {
+      "path": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매",
+      "st_dev": 16777248,
+      "physical_io_domain": "USB:disk4"
+    },
+    {
+      "path": "/Volumes/One Touch",
+      "st_dev": 16777238,
+      "physical_io_domain": "USB:disk4"
+    },
+    {
+      "path": "/Volumes/ROBOM_RESEARCH_RAM",
+      "st_dev": 16777251,
+      "physical_io_domain": "RAM:disk10"
+    },
+    {
+      "path": "/tmp",
+      "st_dev": 16777233,
+      "physical_io_domain": "Apple Fabric:disk3"
+    }
+  ],
+  "implemented_contracts": {
+    "large_archive_minimum_file_count": 500,
+    "large_archive_requires_distinct_path": true,
+    "large_archive_requires_distinct_physical_io_domain": true,
+    "portable_copy_verification": "SIZE_AND_FILE_SHA256",
+    "original_copy_verification": "SIZE_INODE_MTIME_CTIME",
+    "unresolved_disk_image": "FAIL_CLOSED",
+    "spill_requires_distinct_source_io_domain": true,
+    "full_screening_uses_portable_override": true,
+    "bounded_benchmark_uses_portable_override": true
+  },
+  "ram_train_copy": {
+    "logical_run_id": "RUN-2B7135A972DD-TRAIN-1-V2",
+    "expected_file_count": 2502,
+    "verified_file_count": 2502,
+    "verification": "SIZE_AND_FILE_SHA256",
+    "elapsed_seconds": 0.647,
+    "status": "PASS"
+  },
+  "bounded_pilot": {
+    "requested_events": 1000,
+    "output_written": false,
+    "status": "BLOCKED_EXPECTED_FAIL_CLOSED",
+    "reason": "CURRENT_CODE_SOURCE_CHECKSUM_DIFFERS_FROM_W124_PREREGISTRATION",
+    "interpretation": "NEW_COMMIT_AND_NEW_PREREGISTRATION_REQUIRED_BEFORE_EXECUTION",
+    "profitability_evidence": false
+  },
+  "verification": {
+    "targeted_pytest": {
+      "status": "PASS",
+      "passed": 41
+    },
+    "backend_full_pytest": {
+      "status": "PASS",
+      "passed": 850,
+      "elapsed_seconds": 92.27
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 112
+    },
+    "git_diff_check": "PASS",
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "checked_source_files": 148,
+      "violations": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "regression_contracts": {
+      "status": "PASS",
+      "contract_count": 30,
+      "minimum_unique_opportunities_before_ranking": 30,
+      "maximum_survivor_watchlist_size": 10
+    },
+    "runtime_observation": {
+      "evidence": "evidence/WAVE126A_POST_IO_GUARD_RUNTIME_45S.json",
+      "sha256": "b4b1ee50ed6498d076295af2860c7f1a441835da0d7d6369dae1559fcbd8e81b",
+      "status": "PASS",
+      "duration_seconds": 45.02,
+      "event_delta": 2988,
+      "strategy_evaluation_delta": 19720,
+      "qualified_signal_delta": 0,
+      "main_trade_delta": 0,
+      "league_trade_delta": 0,
+      "maximum_queue_depth": 3,
+      "maximum_processing_lag_p95_ms": 24.51123046875,
+      "maximum_trade_lag_p95_ms": 68.025146484375,
+      "event_loop_lag_over_500ms_delta": 0,
+      "unplanned_reconnect_delta": 0,
+      "sequence_gap_delta": 0,
+      "drop_delta": 0,
+      "persistence_fault_delta": 0,
+      "persistence_buffer_drop_delta": 0,
+      "real_orders_enabled": false,
+      "auth_required": false
+    }
+  },
+  "source_files": {
+    "backend/app/research/strategy100_dataset_v2.py": "c2cdcda47dc5049c3a7d5052a81504bb8602cf3b4951725001c63333839ce3dd",
+    "scripts/run_live_safe_strategy_screening.py": "af62d4b5a3f02371cd5023719b221e559dec7dbeb22ce3aa4b7e1dfb03c50dec",
+    "scripts/research_strategy_100_candidates.py": "f013d47bc004e6d4af0d907b7752adfb5318625ecb38d3e8ab1e817f3317a76b",
+    "scripts/benchmark_strategy_100_candidates.py": "8f035c86f42ccfb2240a2de71854dc7e85cc3433e47ed2754a6b7fc5b3dd9f0c"
+  },
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "api_key_requested": false,
+    "wallet_requested": false
+  },
+  "remaining": {
+    "validation_copy": "INCOMPLETE_NOT_USABLE",
+    "final_oos": "SEALED_NOT_COPIED_NOT_USED",
+    "new_preregistration": "NOT_RUN_UNTIL_SOURCE_COMMIT",
+    "full_train_validation_screening": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}

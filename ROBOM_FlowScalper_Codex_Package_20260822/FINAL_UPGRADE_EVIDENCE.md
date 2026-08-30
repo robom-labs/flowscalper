@@ -3698,3 +3698,53 @@ drop·신규진입 잠금은 0이었다. 넓은 종목 관찰 지연 p95 최대 
 
 현 수용상태는
 `TREND_V2_STRUCTURAL_TP_SL_INSTALLED_REPLAY_BROWSER_PASS_RUNTIME_120S_PASS_NATURAL_ENTRY_NOT_OBSERVED_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 86. Wave 126A 100후보 연구의 물리 I/O 격리와 portable 동결복제 계약
+
+W126 전체 100후보 screening은 418.255초 동안 진행되다 새 event-loop 1,548ms 지연을
+감지해 자동 중단했다. 같은 사고 표본에서 저장 flush 최대값은 37.411초였다. worker는
+종료코드 -15로 멈췄고 screening 결과 파일은 발행하지 않았다. 이 실패와 앞선 W125 실패는
+append-only 연구 trial 이력에서 삭제하지 않았다.
+
+기존 guard는 project archive와 `One Touch` spill의 `st_dev`가 달라 다른 장치라고
+판정했다. 그러나 macOS Disk Image backing 경로를 끝까지 추적한 결과 둘은 모두 같은
+`USB:disk4`였다. 별도 9GiB RAM Disk만 `RAM:disk10`, 내부 `/tmp`는
+`Apple Fabric:disk3`이었다. 이후 대용량 연구는 폴더나 논리 device가 아니라 이 물리 I/O
+영역을 기준으로 격리한다. backing 경로를 해석할 수 없으면 fail closed한다.
+
+다른 장치로 복제한 archive는 inode·ctime을 원본과 같게 만들지 않는다. 원본 identity
+검사는 유지하면서 portable 복제본은 manifest에 이미 동결된 size와 파일별 SHA-256을
+전부 확인하도록 분기했다. 현재 RAM에 완전복사된 Train 논리구간 2,502파일은 0.647초에
+전부 size·SHA-256 검사를 통과했다. Validation 복제는 완전하지 않고 Final OOS는 복사하거나
+열지 않았으므로 전체 screening에는 사용하지 않았다.
+
+1,000-event bounded pilot은 실행 전에 W124 사전등록의 source checksum과 현재 연구코드가
+다른 것을 감지해 결과 없이 중단했다. 이는 입력오류가 아니라 stale 사전등록을 우회하지 않는
+정상 안전동작이다. 현 코드를 commit으로 고정하고 새 manifest를 사전등록하기 전에는 pilot과
+full screening을 실행하지 않는다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| W126 중단·부분결과 제거 | `PASS_FAIL_CLOSED` | loop 1,548ms에서 자동중단, output 없음, trial `ABORTED` 보존 |
+| 물리장치 판별 | `PASS` | project·One Touch = `USB:disk4`, RAM = `RAM:disk10`, `/tmp` = `Apple Fabric:disk3` |
+| portable 동결복제 | `PASS_TRAIN_ONLY` | Train 2,502/2,502 size·SHA-256, 0.647초 |
+| 부분 Validation·Final OOS | `NOT_USED` | Validation 불완전, Final OOS 봉인·미복사·미사용 |
+| stale manifest pilot | `BLOCKED_EXPECTED_FAIL_CLOSED` | 1,000-event 결과 미작성, 새 commit·재사전등록 필요 |
+| 표적 backend 회귀 | `PASS` | 41건, 19.52초 |
+| 전체 backend | `PASS` | 850건, 92.27초 |
+| 정적 검증 | `PASS` | Ruff, mypy 112 source, diff check |
+| PAPER·보안·누적회귀 | `PASS` | build safety, security 148 source, 저장소 위생, 30 contracts |
+| 수정 뒤 실행서비스 | `PASS_SHORT_SCOPE` | 45.020초, event +2,988·평가 +19,720, queue 최대 3, 처리/체결 p95 24.511/68.025ms |
+| 런타임 결함 | `PASS_SHORT_SCOPE` | 신규 loop 500ms 초과·비계획 reconnect·gap·drop·저장 fault·buffer drop 0 |
+| 자연 진입·완료 | `NOT_OBSERVED` | 적격신호·신규 main/league 거래 0, 기준 완화 없음 |
+| PAPER 안전 | `PASS` | 실제 주문·private API·인증·API Key·wallet 0 |
+| 전체 100후보 결과 | `NOT_RUN` | Validation 복제와 새 사전등록 미완료 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 전체 Train·Validation·BASE/STRESS·OOS·강건성 gate 미실행 |
+
+기계판독 근거는 `evidence/WAVE126_STRATEGY_100_SCREENING_LIVE_GUARD.json`,
+`evidence/WAVE126A_PHYSICAL_IO_GUARD_QA.json`과
+`evidence/WAVE126A_POST_IO_GUARD_RUNTIME_45S.json`이다. 결정은
+`docs/adr/ADR-121-physical-research-io-domain-and-portable-frozen-copy.md`에 고정했다.
+
+현 수용상태는
+`LIVE_RUNNING_PHYSICAL_RESEARCH_IO_GUARD_PASS_TRAIN_MIRROR_VERIFIED_FULL_SCREENING_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

@@ -29,6 +29,14 @@ def manifest_checksum(manifest: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical_json(material).encode()).hexdigest()
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def resolve_manifest_path(path: str, *, binding_path: Path) -> Path:
     candidate = Path(path)
     if candidate.is_absolute():
@@ -266,8 +274,15 @@ def archive_files_for_logical_run(
     *,
     live_public_cut: Mapping[str, object],
     logical_run: Mapping[str, object],
+    archive_root_override: Path | None = None,
 ) -> tuple[Path, ...]:
-    root = Path(str(live_public_cut.get("archive_root", ""))).resolve(strict=True)
+    frozen_root = Path(str(live_public_cut.get("archive_root", ""))).resolve(strict=True)
+    root = (
+        archive_root_override.resolve(strict=True)
+        if archive_root_override is not None
+        else frozen_root
+    )
+    portable_copy = root != frozen_root
     partitions = logical_run.get("archive_partitions")
     file_rows = live_public_cut.get("files")
     if not isinstance(partitions, list) or not isinstance(file_rows, list):
@@ -287,9 +302,15 @@ def archive_files_for_logical_run(
         if not path.is_relative_to(root):
             raise ValueError("100후보 V2 archive 파일이 root 밖에 있습니다.")
         stat = path.stat()
-        if (
-            stat.st_size != int(str(row["size_bytes"]))
-            or stat.st_mtime_ns != int(str(row["mtime_ns"]))
+        if stat.st_size != int(str(row["size_bytes"])):
+            raise ValueError(f"100후보 V2 동결 archive 파일 크기가 다릅니다: {path}")
+        if portable_copy:
+            if _file_sha256(path) != str(row.get("file_sha256", "")):
+                raise ValueError(
+                    f"100후보 V2 동결 archive 복제본 checksum이 다릅니다: {path}"
+                )
+        elif (
+            stat.st_mtime_ns != int(str(row["mtime_ns"]))
             or stat.st_ctime_ns != int(str(row["ctime_ns"]))
             or stat.st_ino != int(str(row["inode"]))
         ):
