@@ -8,7 +8,7 @@ import hashlib
 import json
 import math
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from statistics import fmean, median
@@ -115,6 +115,10 @@ class AsymmetricTrendOutcome:
     regime_breadth: float
     relative_rank: float
     censored: bool
+
+
+SignalGate = Callable[[AsymmetricTrendSpec, str, int, int], bool]
+QualifiedSignalObserver = Callable[[AsymmetricTrendSpec, str, int, int, bool], None]
 
 
 RUNNER_EXITS = (
@@ -307,6 +311,8 @@ def _symbol_outcomes(
     indicators: VolumeIndicators,
     snapshots: Sequence[MarketSnapshot],
     spec: AsymmetricTrendSpec,
+    signal_gate: SignalGate | None = None,
+    signal_observer: QualifiedSignalObserver | None = None,
 ) -> list[AsymmetricTrendOutcome]:
     snapshot_times = [snapshot.close_ts_ms for snapshot in snapshots]
     output: list[AsymmetricTrendOutcome] = []
@@ -317,7 +323,10 @@ def _symbol_outcomes(
     slow_spec = _slow_spec(entry_spec)
     for index in range(start, len(rows) - 1):
         features = feature_rows[index]
-        if features is None or rows[index].open_ts_ms < cooldown_until:
+        if features is None:
+            continue
+        cooldown_blocked = rows[index].open_ts_ms < cooldown_until
+        if cooldown_blocked and signal_observer is None:
             continue
         if (
             features.adx < entry_spec.adx_minimum
@@ -349,6 +358,12 @@ def _symbol_outcomes(
                 spec=entry_spec,
             )
             if not ready or structural_stop is None:
+                continue
+            if signal_gate is not None and not signal_gate(spec, symbol, index, direction):
+                continue
+            if signal_observer is not None:
+                signal_observer(spec, symbol, index, direction, cooldown_blocked)
+            if cooldown_blocked:
                 continue
             rank_strength = relative_rank if direction > 0 else 1 - relative_rank
             spread = _directional_spread(indicators.spread[index], direction) or 0.0
@@ -426,6 +441,9 @@ def research_asymmetric_trend_tournament(
     bars_by_symbol: Mapping[str, Sequence[IntradayBar]],
     funding_by_symbol: Mapping[str, Sequence[FundingRate]],
     specs: Sequence[AsymmetricTrendSpec] = PREREGISTERED_ASYMMETRIC_TREND_CANDIDATES,
+    *,
+    signal_gate: SignalGate | None = None,
+    signal_observer: QualifiedSignalObserver | None = None,
 ) -> tuple[
     dict[str, tuple[AsymmetricTrendOutcome, ...]],
     dict[str, dict[str, float | int]],
@@ -453,6 +471,8 @@ def research_asymmetric_trend_tournament(
                     indicator_cache[(symbol, spec.entry.obv_fast, spec.entry.obv_slow)],
                     snapshots,
                     spec,
+                    signal_gate,
+                    signal_observer,
                 )
             )
     output: dict[str, tuple[AsymmetricTrendOutcome, ...]] = {}
