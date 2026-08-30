@@ -1,6 +1,6 @@
 # HYP-118. 공개 영상 기반 중단타 추세 12후보 사전등록
 
-- 상태. `PREREGISTERED_BEFORE_EXECUTION`.
+- 상태. `EXECUTED_NO_SELECTION_NO_PROMOTION`.
 - 등록일. 2026-08-30.
 - 연구범위. Binance USDⓈ-M 공개 완성 5분봉을 15분·1시간·4시간으로 집계한 PAPER 연구다.
 - 고정 실행범위. UTC `2025-12-01` 이상 `2026-08-25` 미만.
@@ -66,3 +66,37 @@
 
 결과를 본 뒤 같은 ID의 임계값을 바꾸지 않는다. 결함 수정 또는 새 수치 가설은 새 가설 번호와
 새 결과 파일로 분리하고 이전 원장과 실패 기록을 보존한다.
+
+## 실행 결과
+
+- 실행 commit. `2e3db02106f44f2d7f7962dad600f55e90b0af30`.
+- dataset 지문. `05b39e561e8fd231c7891fb409d4c1b1a98dd47d88e013ee370199e22e0db637`.
+- 입력. 12종목 완성 5분봉 922,752개, 24개 cache 조각.
+- 후보 중복 평가. development 완료 525건, Validation 완료 158건, 데이터 끝 미결 2건.
+- 최소표본을 채운 후보. 3개.
+- 최소표본 미달 후보. 9개.
+- Train·Validation 동시 선발. 0개.
+- 역사 강건성 gate 통과. 0개.
+- PBO. `0.1428571429`.
+
+가장 표본이 많으면서 Validation이 양수였던
+`T118_LIQUIDITY_15M_LONG_BALANCED`는 development 81건에서 비용 전 기대값 +5.474bp였지만
+BASE -7.526bp, STRESS -19.526bp·PF 0.499였다. Validation 29건은 STRESS +3.096bp·
+PF 1.125였으나 더 앞선 구간과 방향이 반대라 선발하지 않았다. 비용을 빼거나 앞선 음수구간을
+제외하지 않았다.
+
+일목 BALANCED 후보는 development 17~43건과 Validation 4~13건으로 표본이 부족했고 두
+구간의 STRESS 기대값도 음수였다. SELECTIVE 후보의 큰 양수 수치는 1~14건의 희소표본이라
+순위를 매기지 않았다.
+
+전체 tournament를 두 번 실행해 생성시각을 제외한 canonical SHA-256
+`ff3b99e1bc0c3e87a2534fdd2c3f421355ead8873ba04931abfd868bef6f30af`가 일치했다. 동시
+LIVE_PUBLIC 300.011초 관찰은 event +20,220, 전략평가 +130,160, queue 최대 5,
+처리·체결 p95 최대 29.095·74.672ms였고 신규 500ms 초과 loop 지연, critical lag,
+비계획 재연결, gap, drop, 저장 fault, 실제 주문과 인증은 0이었다.
+
+Registry와 PAPER SHADOW 승격은 0개다. 결과는
+`RESEARCH-HYP118-05b39e561e8f-f35a14b70f33`으로 append-only 시험이력에 보존한다.
+
+현 수용상태는
+`HYP118_EXECUTED_NO_SELECTION_NO_PROMOTION_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

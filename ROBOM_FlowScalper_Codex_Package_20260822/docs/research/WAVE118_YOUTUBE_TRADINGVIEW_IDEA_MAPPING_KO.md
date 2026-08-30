@@ -21,6 +21,10 @@
 | [TradingView KAMA 공식 설명](https://www.tradingview.com/support/solutions/43000773012-kaufman-s-adaptive-moving-average-kama/) | 효율비 기반 적응형 추세 | EMA·ADX 후보와 상당 부분 중복 | `DEFER_DEDUP`, 별도 미래 가설로만 검토 |
 | [TradingView Choppiness Index](https://www.tradingview.com/support/solutions/43000501980-choppiness-index-chop/) | 추세와 횡보 구분 | 기존 ADX·레짐 filter와 역할 중복 | `MERGE_FILTER_RESEARCH` |
 | [TradingView Volume Profile](https://www.tradingview.com/support/solutions/43000502040-volume-profile-indicators-basic-concepts/) | 과거 가격대별 활동과 POC·VAH·VAL | 현재 이벤트 schema에 완전한 profile 없음 | `DEFER_DATA_PARITY` |
+| [Bollinger Band Squeeze Trading Strategy](https://www.youtube.com/watch?v=O7UAwPSQ7Kw) | Band Width 수축과 OBV 돌파 확인 | HYP-130 수축·OBV 계열 | `EXECUTED_HYP130_NO_PASS` |
+| [I Coded a Supertrend Strategy Backtest](https://www.youtube.com/watch?v=Yl5WCVMllC4) | 상위시간 추세와 하위시간 진입 분리 | F07·HYP-117 느린 정렬 | `MERGE_EXISTING` |
+| [Donchian Channel Strategy for Crypto](https://www.youtube.com/watch?v=DX03SapMezE) | 채널 돌파와 위험관리 | F04·F05·HYP-127 | `MERGE_EXISTING` |
+| [Breakout & Retest Trading Strategy](https://www.youtube.com/watch?v=LONjM3dWPoI) | 상위시간 지지·저항 돌파 뒤 재시험 | F06·HYP-117 재확인 | `MERGE_EXISTING`, 영상의 승률 링크는 가져오지 않음 |
 
 ## 실제 추가 범위
 
@@ -35,3 +39,11 @@
 
 공개 영상에서 “많이 벌었다”거나 “승률이 높다”는 표현은 ROBOM에서 검증되지 않았다. 새 후보는
 수익 약속이 아니라 기존 계열과 다른 결정적 가설 두 개를 비용 후 반증하기 위한 것이다.
+
+## 실행 판정
+
+HYP-118의 12개 후보를 UTC 2025-12-01 이상 2026-08-25 미만 12종목 완성 5분봉
+922,752개에서 실행했다. Train·Validation 동시 선발은 0개였고 Registry·PAPER SHADOW
+승격도 0개다. 유동성 훑기 LONG 완화형의 Validation 양수는 development 비용후 음수와
+일치하지 않았고, 일목 계열은 표본과 비용후 성과가 부족했다. 영상 제목·조회수·성과표현은
+판정에 사용하지 않았다.

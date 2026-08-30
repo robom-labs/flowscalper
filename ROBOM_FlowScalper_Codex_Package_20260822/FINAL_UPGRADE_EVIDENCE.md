@@ -4029,3 +4029,52 @@ gap, drop, 저장 fault, 실제 주문과 인증은 0이었다.
 
 현 수용상태는
 `HYP130_EXECUTED_OOS_NEAR_MISS_REJECTED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.
+
+## 93. Wave 132 공개 영상 기반 12후보의 비용후 무선발
+
+유튜브·TradingView 공개 설명에서 기존 후보와 중복되지 않게 고정한 유동성 훑기 후 복귀와
+일목 추세 재개 2계열을 LONG·SHORT·BOTH와 BALANCED·SELECTIVE로 나눈 12개 후보로
+실행했다. 후보 지문은
+`bb612fc58647ec4e91dca7736f027cb835336f719eee0e5f7c8a927ad4969657`, 실행 commit은
+`2e3db02106f44f2d7f7962dad600f55e90b0af30`다.
+
+UTC 2025-12-01 이상 2026-08-25 미만 Binance USDⓈ-M 공개 완성 5분봉 922,752개를
+12종목·24개 cache 조각에서 읽었다. 원본과 격리 RAM 복제본의 파일별 SHA-256이 일치했다.
+후보별 독립 평가를 합산하면 development 완료 525건, Validation 완료 158건, 데이터 끝 미결
+2건이었다.
+
+최소표본을 채운 후보는 3개, 미달 후보는 9개였고 Train·Validation 동시 선발은 0개다.
+유동성 훑기 LONG 완화형은 development 81건에서 비용 전 +5.474bp였지만 BASE -7.526bp,
+STRESS -19.526bp·PF 0.499였다. Validation 29건은 STRESS +3.096bp·PF 1.125였으나
+시간순 일관성이 없어 선발하지 않았다. 일목 계열은 표본이 부족하거나 비용 후 음수였다.
+PBO 0.1429가 상한 안에 있어도 기본 표본·성과 gate 실패를 대신하지 않는다.
+
+두 번의 전체 실행은 생성시각 제외 canonical SHA-256
+`ff3b99e1bc0c3e87a2534fdd2c3f421355ead8873ba04931abfd868bef6f30af`로 일치했다. 동시
+실행서비스 300.011초 관찰은 event +20,220, 전략평가 +130,160, queue 최대 5,
+처리·체결 p95 최대 29.095·74.672ms였고 신규 500ms 초과 loop 지연, critical lag,
+비계획 재연결, gap, drop, 저장 fault, 실제 주문과 인증은 0이었다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 결과 전 후보·데이터 고정 | `PASS` | main `2e3db02`, 12후보·2계열·기간·후보 지문 고정 |
+| 단위·회귀 | `PASS` | 후보수·미래불변·sweep·일목 관련 4건 |
+| HYP-128~130 포함 회귀 | `PASS` | 관련 합계 31건 |
+| 정적검사 | `PASS` | Ruff, strict mypy, py_compile, diff check |
+| 공개시장 입력 | `PASS` | 12종목·완성 5분봉 922,752·24조각·SHA-256 일치 |
+| 실행 재현성 | `PASS` | 전체 두 실행의 생성시각 제외 canonical SHA-256 일치 |
+| Train·Validation 선발 | `FAIL_RESEARCH_GATES` | 선발 0, 미달 9·비용후 불일치 3 |
+| 진단 OOS | `NOT_RUN` | 선발 0이므로 OOS를 열어 사후 순위를 만들지 않음 |
+| Registry·SHADOW 승격 | `PASS_NONE_PROMOTED` | 통과 후보 0, 변경 0 |
+| 동시 LIVE guard | `PASS` | 300.011초, event·평가 전진, 신규 critical lag·fault·drop 0 |
+| 실제 주문·인증 | `PASS` | 실제 주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 역사 강건성 gate 통과 0 |
+
+기계판독 근거는 `evidence/WAVE132_PUBLIC_VIDEO_TREND_TOURNAMENT.json`,
+`evidence/WAVE132_PUBLIC_VIDEO_TREND_TOURNAMENT_QA.json`,
+`evidence/WAVE132_PUBLIC_VIDEO_TREND_RESEARCH_LIVE_GUARD_300S.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 결과와 중복 추가 금지 결정은
+`docs/adr/ADR-127-public-video-candidates-no-selection.md`에 기록했다.
+
+현 수용상태는
+`HYP118_EXECUTED_NO_SELECTION_NO_PROMOTION_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

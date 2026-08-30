@@ -1,0 +1,94 @@
+{
+  "schema": "flowscalper.wave132_public_video_trend_tournament_qa.v1",
+  "wave": "WAVE132",
+  "execution_status": "PASS_REPRODUCIBLE_RESEARCH_GATES_FAILED",
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "preregistration_commit": "2e3db02106f44f2d7f7962dad600f55e90b0af30",
+  "execution_commit": "2e3db02106f44f2d7f7962dad600f55e90b0af30",
+  "candidate_count": 12,
+  "candidate_family_count": 2,
+  "candidate_fingerprint": "bb612fc58647ec4e91dca7736f027cb835336f719eee0e5f7c8a927ad4969657",
+  "implementation_fingerprint": "f35a14b70f33ad30d87ccd6f5164130a85943ee77e96bdd8c0dedf4a6b189bb6",
+  "dataset": {
+    "venue": "BINANCE_USDM",
+    "public_only": true,
+    "start_ts_ms": 1764547200000,
+    "end_ts_ms": 1787616000000,
+    "symbol_count": 12,
+    "completed_five_minute_bar_count": 922752,
+    "cache_segment_count": 24,
+    "source_to_ram_sha256_match": true,
+    "dataset_fingerprint": "05b39e561e8fd231c7891fb409d4c1b1a98dd47d88e013ee370199e22e0db637"
+  },
+  "candidate_flow": {
+    "development_closed_trade_count_across_independent_candidates": 525,
+    "validation_closed_trade_count_across_independent_candidates": 158,
+    "censored_open_count_across_independent_candidates": 2
+  },
+  "selection": {
+    "rankable_candidate_count": 3,
+    "unranked_insufficient_sample_count": 9,
+    "selected_on_train_validation_count": 0,
+    "selected_on_train_validation": [],
+    "adaptive_historical_robustness_pass_count": 0,
+    "adaptive_historical_robustness_pass_candidates": [],
+    "probability_of_backtest_overfitting": 0.14285714285714285
+  },
+  "best_sufficiently_sampled_diagnostic_not_selected": {
+    "candidate_id": "T118_LIQUIDITY_15M_LONG_BALANCED",
+    "development_sample_size": 81,
+    "development_gross_expectancy_bps": 5.4743971890986,
+    "development_base_expectancy_bps": -7.5256028109014,
+    "development_stress_expectancy_bps": -19.5256028109014,
+    "development_stress_profit_factor": 0.4989299849575597,
+    "validation_sample_size": 29,
+    "validation_stress_expectancy_bps": 3.09583470322387,
+    "validation_stress_profit_factor": 1.1246654223199035,
+    "reason_not_selected": "검증구간은 양수였지만 더 앞선 개발구간이 BASE와 STRESS 모두 음수여서 시간순 일관성 gate를 실패했다."
+  },
+  "reproducibility": {
+    "full_tournament_execution_count": 2,
+    "generated_timestamp_excluded_canonical_sha256": "ff3b99e1bc0c3e87a2534fdd2c3f421355ead8873ba04931abfd868bef6f30af",
+    "identical": true
+  },
+  "live_runtime_guard": {
+    "status": "PASS",
+    "duration_seconds": 300.011,
+    "run_id": "run-2b7135a972dd",
+    "event_delta": 20220,
+    "strategy_evaluation_delta": 130160,
+    "maximum_queue_depth": 5,
+    "maximum_processing_lag_p95_ms": 29.0947265625,
+    "maximum_trade_lag_p95_ms": 74.671630859375,
+    "new_event_loop_lag_over_500ms_delta": 0,
+    "critical_lag_event_delta": 0,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "dropped_event_delta": 0,
+    "persistence_fault_delta": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "decision": {
+    "registry_changes": [],
+    "paper_shadow_promotions": [],
+    "failed_results_preserved": true,
+    "same_thresholds_reused_after_results": false,
+    "next_step": "영상 제목과 성과 주장을 추가 후보 수로 세지 않는다. 기존 F03-F20, HYP-117, HYP-127과 HYP-130 중복을 제거하고 파라미터 무변경 외부 venue 검증을 우선한다.",
+    "reason": "12개 중 Train과 Validation을 함께 통과한 후보가 없어서 진단 OOS를 열거나 런타임에 승격할 근거가 없다."
+  },
+  "evidence": {
+    "full_report": "evidence/WAVE132_PUBLIC_VIDEO_TREND_TOURNAMENT.json",
+    "full_report_sha256": "67b330e78577b7be06575271908145f4669d768c20105389c8f7c64ff284d9f8",
+    "live_guard": "evidence/WAVE132_PUBLIC_VIDEO_TREND_RESEARCH_LIVE_GUARD_300S.json",
+    "live_guard_sha256": "74c2c08d09f5ad791e4faf7a115bde454475115cb720eb4acd7afe568882d8c1",
+    "trial_history": "evidence/RESEARCH_TRIAL_HISTORY.jsonl",
+    "trial_id": "RESEARCH-HYP118-05b39e561e8f-f35a14b70f33",
+    "preregistration": "docs/research/HYP-118-public-video-trend-tournament.md"
+  }
+}
