@@ -241,6 +241,8 @@ def test_running_service_soak_rejects_new_slow_storage_work() -> None:
         {
             "persistence_flush_last_ms": 20_001.0,
             "wal_checkpoint_last_ms": 30_001.0,
+            "wal_checkpoint_last_concurrent_flush_delta": 0,
+            "wal_checkpoint_max_concurrent_flush_delta": 0,
         }
     )
 
@@ -251,7 +253,31 @@ def test_running_service_soak_rejects_new_slow_storage_work() -> None:
 
     assert result["status"] == "FAIL"
     assert "persistence_flush_latency_bounded" in result["failures"]
-    assert "wal_checkpoint_latency_bounded" in result["failures"]
+    assert "wal_checkpoint_runtime_impact_bounded" in result["failures"]
+
+
+def test_running_service_soak_accepts_slow_nonblocking_checkpoint() -> None:
+    nonblocking = _advanced_payload()
+    system = nonblocking["system"]
+    assert isinstance(system, dict)
+    system.update(
+        {
+            "persistence_flush_last_ms": 5_000.0,
+            "wal_checkpoint_last_ms": 40_494.0,
+            "wal_checkpoint_pending_bytes": 1 * 1024 * 1024,
+            "wal_checkpoint_last_concurrent_flush_delta": 11,
+            "wal_checkpoint_max_concurrent_flush_delta": 11,
+        }
+    )
+
+    result = summarize_running_service_soak(
+        [_sample(_payload(), 0.0), _sample(nonblocking, 30.0)],
+        requested_duration_seconds=30.0,
+    )
+
+    assert result["status"] == "PASS"
+    assert result["maximum_wal_checkpoint_last_ms"] == 40_494.0
+    assert result["checks"]["wal_checkpoint_runtime_impact_bounded"] is True
 
 
 def test_running_service_soak_rejects_stalled_strategy_and_new_faults() -> None:

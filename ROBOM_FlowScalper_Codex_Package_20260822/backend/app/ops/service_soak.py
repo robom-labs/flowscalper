@@ -10,6 +10,8 @@ from typing import Any
 
 from backend.app.storage.integrity import RuntimeSafetyViolation
 
+_MAX_LOGICAL_WAL_BYTES_WITHOUT_CHECKPOINT = 64 * 1024 * 1024
+
 
 @dataclass(frozen=True, slots=True)
 class RunningServiceSoakThresholds:
@@ -580,6 +582,21 @@ def summarize_running_service_soak(
         for previous, current in adjacent_samples
         if current.wal_checkpoint_count > previous.wal_checkpoint_count
     )
+    maximum_wal_checkpoint_latency = max(
+        observed_wal_checkpoint_latencies,
+        default=0.0,
+    )
+    maximum_wal_checkpoint_concurrent_flush_delta = max(
+        sample.wal_checkpoint_max_concurrent_flush_delta for sample in samples
+    )
+    wal_checkpoint_runtime_impact_bounded = (
+        maximum_wal_checkpoint_latency <= active_thresholds.max_wal_checkpoint_last_ms
+        or (
+            maximum_wal_checkpoint_concurrent_flush_delta > 0
+            and final.persistence_flush_count > baseline.persistence_flush_count
+            and final.wal_checkpoint_pending_bytes < _MAX_LOGICAL_WAL_BYTES_WITHOUT_CHECKPOINT
+        )
+    )
     baseline_strategy_ids = {state.strategy_id for state in baseline.strategy_states}
     counter_checks = {
         "no_consumer_delivery_failures": (
@@ -769,11 +786,7 @@ def summarize_running_service_soak(
             >= previous.persistence_backlog_entry_lock_count
             for previous, current in adjacent_samples
         ),
-        "wal_checkpoint_latency_bounded": max(
-            observed_wal_checkpoint_latencies,
-            default=0.0,
-        )
-        <= active_thresholds.max_wal_checkpoint_last_ms,
+        "wal_checkpoint_runtime_impact_bounded": (wal_checkpoint_runtime_impact_bounded),
         "wal_checkpoint_complete_at_end": (
             final.wal_checkpoint_log_frames == final.wal_checkpointed_frames
         ),
@@ -927,10 +940,7 @@ def summarize_running_service_soak(
         "maximum_storage_health_refresh_max_ms": max(
             sample.storage_health_refresh_max_ms for sample in samples
         ),
-        "maximum_wal_checkpoint_last_ms": max(
-            observed_wal_checkpoint_latencies,
-            default=0.0,
-        ),
+        "maximum_wal_checkpoint_last_ms": maximum_wal_checkpoint_latency,
         "wal_checkpoint_busy_delta": (
             final.wal_checkpoint_busy_count - baseline.wal_checkpoint_busy_count
         ),

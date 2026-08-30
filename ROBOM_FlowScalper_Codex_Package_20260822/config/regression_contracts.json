@@ -581,7 +581,8 @@
         {
           "path": "backend/tests/test_running_service_soak.py",
           "contains": [
-            "test_running_service_soak_accepts_small_wal_deferral_without_checkpoint"
+            "test_running_service_soak_accepts_small_wal_deferral_without_checkpoint",
+            "test_running_service_soak_accepts_slow_nonblocking_checkpoint"
           ]
         }
       ]
