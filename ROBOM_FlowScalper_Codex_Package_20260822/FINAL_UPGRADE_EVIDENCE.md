@@ -3899,3 +3899,83 @@ credit 1,192.926bp는 제외했고 불리한 비용은 포함했다. Registry와
 
 현 수용상태는
 `HYP128_EXECUTED_NO_SELECTION_NO_PROMOTION_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 90. Wave 130 WAL 미확정 꼬리 판정과 PAPER 진입잠금 복구
+
+설치 서비스에서 공개시장 연결과 전략평가는 전진했지만 저장 상태가
+`PERSISTENCE_FAULT_ENTRY_LOCK`, `PERSISTENCE_BACKLOG_ENTRY_LOCK`과
+`PAPER_ENTRIES_PAUSED`로 고정된 결함을 조사했다. PASSIVE checkpoint 반환은 전체 log frame
+41,714개 중 41,507개를 이미 확정해 실제 미확정 꼬리가 207 frame, 847,872 byte뿐이었지만
+기존 코드는 전체 41,714 frame을 64MiB 경계와 비교해 영구 fault를 만들었다.
+
+정상 PASSIVE 반환에서는 `log_frames - checkpointed_frames`만 미확정 byte로 판정하도록
+수정했다. 미확정 꼬리가 작으면 재시도하고, 실제 미확정 64MiB 이상, checkpoint 예외와 SQLite
+commit 오류는 기존처럼 fail-closed한다. 41,714/41,507 부분완료 뒤 41,714/41,714 완료를
+재현하는 회귀와 실제 20,000/0 미확정 fault 회귀를 함께 고정했다.
+
+수정 commit `5de870501899f17437d037c999d5278a648276b2`를 설치한 뒤 같은 Run
+`run-2b7135a972dd`를 180.009초·37표본 관찰했다. event +12,971, 전략평가 +79,600,
+queue 최대 3, 처리·체결 p95 최대 22.240·47.746ms, 저장 buffer 최대 254, flush 최근 최대
+935ms였다. 저장잠금·persistence fault·buffer drop·비계획 재연결·sequence gap·resync·drop,
+실제 주문과 인증은 모두 0이었고 관찰은 `PASS`다. 자연 적격신호와 신규 거래는 이 3분 동안
+0이었으며 이를 결함이나 수익성 증거로 해석하지 않는다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 논리 WAL 꼬리 회귀 | `PASS` | 작은 부분완료 재시도·완료와 실제 64MiB 미확정 fail-closed를 함께 검증 |
+| 관련 저장·runtime 회귀 | `PASS` | 180건 |
+| 정적검사 | `PASS` | Ruff, strict mypy, diff check |
+| 설치 후 실제 Run 관찰 | `PASS` | 180.009초·37표본, event·평가·flush 전진, 잠금·fault·drop 0 |
+| PAPER 안전 | `PASS` | 실제 주문·private API·API Key·wallet·인증 0 |
+| 6시간·24시간 수정 후 관찰 | `NOT_RUN` | 3분 PASS를 장시간 PASS로 확대하지 않음 |
+
+기계판독 근거는 `evidence/WAVE130_WAL_PENDING_TAIL_POST_FIX_RUNTIME_180S.json`과
+`evidence/WAVE130_WAL_PENDING_TAIL_POST_FIX_QA.json`, 상세 결정은
+`docs/adr/ADR-124-logical-wal-pending-tail-safety.md`다.
+
+현 수용상태는 `WAL_PENDING_TAIL_FIX_DEPLOYED_3M_PASS_LONG_SOAK_NOT_RUN`이다.
+
+## 91. Wave 129 상승상태 위험조정 모멘텀 30후보 실패 보존
+
+HYP-128 뒤 별도 사전등록한 2주·4주 상대모멘텀, 승자-패자, 시계열 모멘텀과 느린 정렬
+5계열을 `UP_UP`, 전체상태, `NON_UP_UP` 음성대조와 고정·변동성감쇠 위험으로 조합해 30개를
+고정했다. 후보 사전등록 commit은 `038abf72de678be1571fbe79e4333f5c2b2dc18c`, 후보 지문은
+`deceb5868087ed4989064b03361eab2b34952ba6b457505db801e93d9e6c19cb`다.
+
+최초 실행에서 주 t 일요일 종가 신호가 같은 주 일요일 시가에 진입하는 하루 미래참조 구현을
+발견했다. 이 출력은 전부 폐기하고 선발·승격에 사용하지 않았다. 후보·비용·gate는 그대로 둔
+채 다음 월요일 시가 진입과 `진입시각 > 신호 주 종료시각` 회귀를 추가한 commit
+`0561dd474dddaeef989840dac21be5c534a2c904`에서 같은 데이터로 다시 실행했다.
+
+수정 실행은 12종목 완성 일봉 24,804개·주봉 3,528개, 공통 상태 282주를 사용했다. 원신호는
+6,772개, 후보별 독립 포트폴리오 선택은 합계 1,372건, 완료거래 1,330건, 데이터 끝 미결은
+42건이었다. 실제 공개 펀딩과 BASE 13bp·STRESS 25bp, 다음 월요일 시가, 같은 봉 손절 우선,
+TP1·TP2·구조 손절과 미결 미채점을 유지했다.
+
+30개 모두 최소 표본 또는 walk-forward 안정성 gate를 실패했다. 평가 가능한 fold 최댓값은
+4개, 양수 fold 최댓값은 2개이며 Train·Validation·walk-forward 선발과 진단 OOS 진입은 모두
+0개다. PBO 0.6571428571은 상한 0.20을 크게 넘었다. 4주 전체상태 변동성감쇠 롱은
+development 46건에서 STRESS 기대값 +10.988 계좌 bp·PF 1.787이었지만 Validation 14건과
+fold 2개뿐이어서 순위를 매기지 않았다. 표본이 더 많았던 2주 전체상태 변동성감쇠 롱도
+development 57건·Validation 21건에서 STRESS 기대값 -1.992 계좌 bp·PF 0.874였다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 결과 전 후보 고정 | `PASS` | 사전등록 commit·30후보·5계열·후보 지문 고정 |
+| 최초 미래참조 결과 | `DISCARDED` | 일요일 종가 신호를 같은 일요일 시가에 사용, 승격 근거로 사용하지 않음 |
+| 수정 경계 회귀 | `PASS` | 다음 월요일 시가와 신호 주 종료 뒤 진입을 단위테스트로 고정 |
+| 단위·정적검사 | `PASS` | HYP-129 11건, Ruff, strict mypy, diff check |
+| 공개시장 입력 | `PASS` | 12종목·완성 일봉 24,804·주봉 3,528·종목별 SHA-256 |
+| 시간순 안정성 선발 | `FAIL_RESEARCH_GATES` | 통과 0, 평가 가능 fold 최대 4·양수 최대 2, PBO 0.6571 |
+| 진단 OOS | `NOT_RUN` | 선발 후보 0이므로 OOS를 열어 사후 순위를 만들지 않음 |
+| Registry·SHADOW 승격 | `PASS_NONE_PROMOTED` | 변경 0, 실패·미확정 기록 보존 |
+| 실제 주문·인증 | `PASS` | 실제 주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 역사 gate 통과 0 |
+
+기계판독 근거는 `evidence/WAVE129_STATE_CONDITIONED_MOMENTUM_TOURNAMENT.json`,
+`evidence/WAVE129_STATE_CONDITIONED_MOMENTUM_TOURNAMENT_QA.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 결과와 후속 연구 분리는
+`docs/adr/ADR-125-completed-week-boundary-and-hyp129-rejection.md`에 기록했다.
+
+현 수용상태는
+`HYP129_EXECUTED_AFTER_LOOKAHEAD_FIX_NO_SELECTION_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.

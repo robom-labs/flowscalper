@@ -1,0 +1,103 @@
+{
+  "schema": "flowscalper.wave129_state_conditioned_momentum_tournament_qa.v1",
+  "wave": "WAVE129",
+  "execution_status": "PASS_AFTER_LOOKAHEAD_FIX",
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "candidate_preregistration_commit": "038abf72de678be1571fbe79e4333f5c2b2dc18c",
+  "corrected_execution_commit": "0561dd474dddaeef989840dac21be5c534a2c904",
+  "candidate_count": 30,
+  "candidate_family_count": 5,
+  "candidate_fingerprint": "deceb5868087ed4989064b03361eab2b34952ba6b457505db801e93d9e6c19cb",
+  "discarded_execution": {
+    "status": "DISCARDED_IMPLEMENTATION_BUG",
+    "reason": "완성 주봉의 일요일 종가를 사용하면서 같은 주 일요일 시가에 진입해 미래참조가 발생했다.",
+    "result_used_for_selection": false,
+    "registry_changes": []
+  },
+  "corrected_entry_boundary": {
+    "signal": "주 t 일요일 UTC 종가",
+    "entry": "주 t+1 월요일 UTC 시가",
+    "same_day_stop_before_target": true,
+    "fixed_maximum_hold": false,
+    "censored_open_positions_are_not_scored": true
+  },
+  "dataset": {
+    "venue": "BINANCE_USDM",
+    "public_only": true,
+    "start_ts_ms": 1609459200000,
+    "end_ts_ms": 1788048000000,
+    "symbol_count": 12,
+    "completed_daily_bar_count": 24804,
+    "completed_weekly_bar_count": 3528,
+    "weekly_context_count": 282,
+    "up_up_context_count": 101,
+    "non_up_up_context_count": 181,
+    "dataset_fingerprint": "425a7601789062f823ef62554fc7feb076992907fa7bac4bc70ac46f941b70f7"
+  },
+  "candidate_flow": {
+    "raw_intent_count_all_candidates": 6772,
+    "portfolio_selected_count_all_candidates": 1372,
+    "closed_trade_count_all_candidates": 1330,
+    "censored_open_count_all_candidates": 42
+  },
+  "selection": {
+    "maximum_evaluable_fold_count": 4,
+    "maximum_positive_fold_count": 2,
+    "selected_on_train_validation_and_walk_forward_count": 0,
+    "selected_on_train_validation_and_walk_forward": [],
+    "adaptive_historical_robustness_pass_count": 0,
+    "adaptive_historical_robustness_pass_candidates": [],
+    "unranked_insufficient_sample_count": 30,
+    "probability_of_backtest_overfitting": 0.6571428571428571
+  },
+  "diagnostic_near_misses_not_ranked": [
+    {
+      "candidate_id": "T129_XSMOM_4W_LONG_ALL_REGIMES_VOL_CAPPED",
+      "development_closed_trades": 46,
+      "validation_closed_trades": 14,
+      "development_stress_expectancy_account_bps": 10.987636623551577,
+      "development_stress_profit_factor": 1.786926325755894,
+      "development_win_rate": 0.391304347826087,
+      "walk_forward_evaluable_folds": 2,
+      "walk_forward_positive_folds": 2,
+      "selection_status": "UNRANKED_INSUFFICIENT_SAMPLE_AND_STABILITY"
+    },
+    {
+      "candidate_id": "T129_XSMOM_2W_LONG_ALL_REGIMES_VOL_CAPPED",
+      "development_closed_trades": 57,
+      "validation_closed_trades": 21,
+      "development_stress_expectancy_account_bps": -1.9924141253173422,
+      "development_stress_profit_factor": 0.8737524819930501,
+      "development_win_rate": 0.3684210526315789,
+      "walk_forward_evaluable_folds": 4,
+      "walk_forward_positive_folds": 1,
+      "selection_status": "UNRANKED_NEGATIVE_AND_INSUFFICIENT_SAMPLE"
+    }
+  ],
+  "funding_audit_all_candidates": {
+    "applied_funding_event_count": 137142,
+    "net_funding_cashflow_account_bps": -1201.1234247386226,
+    "excluded_ambiguous_boundary_credit_count": 1506,
+    "excluded_ambiguous_boundary_credit_account_bps": 82.2137932944976
+  },
+  "decision": {
+    "registry_changes": [],
+    "paper_shadow_promotions": [],
+    "failed_results_preserved": true,
+    "same_thresholds_reused_after_results": false,
+    "next_hypothesis": "shorter_horizon_early_trend_and_first_pullback_with_fixed_oos",
+    "reason": "30개 모두 사전등록 표본·walk-forward 안정성 선발을 통과하지 못했고 PBO 0.6571도 상한 0.20을 크게 넘으므로 승격하지 않는다."
+  },
+  "evidence": {
+    "full_report": "evidence/WAVE129_STATE_CONDITIONED_MOMENTUM_TOURNAMENT.json",
+    "full_report_sha256": "3e54e385ad7ebaf579129b4ffabb605bdd6057aedb316f511b176825eb156b8d",
+    "trial_history": "evidence/RESEARCH_TRIAL_HISTORY.jsonl",
+    "trial_id": "RESEARCH-HYP129-425a76017890-9a89b60eaa2a",
+    "preregistration": "docs/research/HYP-129-up-up-state-risk-capped-momentum.md"
+  }
+}

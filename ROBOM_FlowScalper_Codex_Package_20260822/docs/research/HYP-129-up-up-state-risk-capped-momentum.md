@@ -120,3 +120,30 @@ HYP-128은 일봉 30후보 모두에서 사전등록 표본·시간순 안정성
 전에는 수익성 `NOT_PROVEN`, 실자금 `NOT_READY`다. 통과 후보가 없으면 Registry 변경 0을
 유지하고 실패를 지우지 않는다. 실제 주문, private API, API Key, secret, 인증, wallet과
 입출금 경로는 계속 0이다.
+
+## 실행 뒤 고정 결과
+
+- 후보·파라미터 사전등록 commit은 `038abf72de678be1571fbe79e4333f5c2b2dc18c`, 후보 지문은
+  `deceb5868087ed4989064b03361eab2b34952ba6b457505db801e93d9e6c19cb`다.
+- 최초 실행에서 완성 주의 일요일 종가로 신호를 만들면서 같은 주 일요일 시가를 진입가로
+  사용한 미래참조 구현 결함을 발견했다. 그 결과는 전부 폐기했고 선발·승격에 사용하지 않았다.
+- 후보 수치와 gate는 바꾸지 않고 다음 월요일 시가 경계를 회귀테스트로 고정한
+  `0561dd474dddaeef989840dac21be5c534a2c904`에서 다시 실행했다.
+- 12종목의 완성 일봉 24,804개와 주봉 3,528개, 공통 주별 상태 282개를 사용했다.
+  `UP_UP`은 101주, 그 외 상태는 181주였고 dataset 지문은
+  `425a7601789062f823ef62554fc7feb076992907fa7bac4bc70ac46f941b70f7`이다.
+- 후보 전체 중복 평가 기준 원신호 6,772개, 포트폴리오 선택 1,372건, 완료거래 1,330건,
+  데이터 끝 미결 42건이었다.
+- 30개 모두 최소 표본 또는 walk-forward 안정성 gate를 실패했다. 평가 가능한 fold 최댓값은
+  4개, 양수 fold 최댓값은 2개였고 Train·Validation 선발과 진단 OOS 진입은 모두 0개다.
+- PBO는 `0.6571428571`로 고정 상한 0.20을 크게 넘었다.
+- `T129_XSMOM_4W_LONG_ALL_REGIMES_VOL_CAPPED`은 development 46건에서 STRESS 기대값
+  +10.988 계좌 bp·PF 1.787이었지만 Validation 14건과 평가 가능 fold 2개뿐이어서 순위를
+  매기지 않았다.
+- 표본이 가장 많았던 `T129_XSMOM_2W_LONG_ALL_REGIMES_VOL_CAPPED`도 development
+  57건·Validation 21건이지만 STRESS 기대값 -1.992 계좌 bp·PF 0.874로 음수였다.
+- Registry·PAPER SHADOW 승격은 0개다. 수익성은 `NOT_PROVEN`, 실자금 준비는
+  `NOT_READY`다.
+- 전체 결과는 `evidence/WAVE129_STATE_CONDITIONED_MOMENTUM_TOURNAMENT.json`, 요약은
+  `evidence/WAVE129_STATE_CONDITIONED_MOMENTUM_TOURNAMENT_QA.json`, append-only 시험
+  기록은 `RESEARCH-HYP129-425a76017890-9a89b60eaa2a`에 보존한다.
