@@ -190,6 +190,7 @@ def main() -> None:
     source_run_id = str(selected.get("source_run_id", run_id))
     archive_files: tuple[Path, ...] | None = None
     warmup_candles = ()
+    research_symbols: tuple[str, ...] | None = None
     input_binding: dict[str, object] | None = None
     if int(str(dataset.get("schema_version", 0))) >= 3:
         cut_reference = dataset.get("live_public_cut")
@@ -215,6 +216,7 @@ def main() -> None:
             logical_run=selected,
         )
         warmup = FrozenStrategy100Warmup.load(warmup_path)
+        research_symbols = warmup.symbols
         warmup_candles = warmup.candles_before(
             int(str(selected["start_ts_ms"])),
             maximum_bars=RESEARCH_FEATURE_HISTORY_BARS,
@@ -273,6 +275,7 @@ def main() -> None:
         },
         archive_files=archive_files,
         warmup_candles=warmup_candles,
+        research_symbols=research_symbols,
     )
     sampler = ProcessResourceSampler(args.archive)
     baseline = sampler.sample()

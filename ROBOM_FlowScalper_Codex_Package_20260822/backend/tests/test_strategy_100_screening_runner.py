@@ -608,6 +608,7 @@ def test_research_feature_snapshot_matches_live_500ms_cadence_but_every_book_exe
             )
         },
         account_carry={},
+        research_symbols=("BTCUSDT",),
     )
 
     class CountingFeatureEngine:
@@ -627,10 +628,10 @@ def test_research_feature_snapshot_matches_live_500ms_cadence_but_every_book_exe
     execution_timestamps: list[int] = []
     executor.portfolio.on_book = lambda book: execution_timestamps.append(book.ts_ms)
 
-    def payload(ts_ms: int) -> dict[str, object]:
+    def payload(ts_ms: int, *, symbol: str = "BTCUSDT") -> dict[str, object]:
         return {
             "event_type": "DEPTH_UPDATE",
-            "symbol": "BTCUSDT",
+            "symbol": symbol,
             "venue_ts_ms": ts_ms,
             "quality": {
                 "sequence_valid": True,
@@ -643,10 +644,14 @@ def test_research_feature_snapshot_matches_live_500ms_cadence_but_every_book_exe
             },
         }
 
+    executor._process(payload(900, symbol="ETHUSDT"))
     for timestamp in (1_000, 1_100, 1_250, 1_500):
         executor._process(payload(timestamp))
 
     assert RESEARCH_FEATURE_SNAPSHOT_INTERVAL_MS == 500
+    assert executor.diagnostics.event_count == 5
+    assert executor.diagnostics.outside_research_universe_event_count == 1
+    assert "ETHUSDT" not in executor.feature_engines
     assert execution_timestamps == [1_000, 1_100, 1_250, 1_500]
     assert engine.ingest_count == 4
     assert engine.snapshot_count == 2

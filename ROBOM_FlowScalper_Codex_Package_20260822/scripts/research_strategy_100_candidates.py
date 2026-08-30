@@ -142,6 +142,7 @@ class RunDiagnostics:
     book_event_count: int = 0
     trade_event_count: int = 0
     rejected_market_event_count: int = 0
+    outside_research_universe_event_count: int = 0
     missing_feature_count: int = 0
     alpha_evaluation_count: int = 0
     alpha_signal_count: int = 0
@@ -576,6 +577,7 @@ class Strategy100RunExecutor:
         account_carry: Mapping[tuple[str, str], ResearchAccountCarry],
         archive_files: Sequence[Path] | None = None,
         warmup_candles: Sequence[Candle] = (),
+        research_symbols: Sequence[str] | None = None,
     ) -> None:
         if split not in {"TRAIN", "VALIDATION"}:
             raise ValueError("Stage 1 executor에는 Train·Validation만 허용됩니다.")
@@ -583,6 +585,15 @@ class Strategy100RunExecutor:
         self.split = split
         self.archive_dir = archive_dir
         self.archive_files = tuple(archive_files) if archive_files is not None else None
+        self.research_symbols = (
+            frozenset(research_symbols) if research_symbols is not None else None
+        )
+        if self.research_symbols is not None and (
+            not self.research_symbols or any(not symbol for symbol in self.research_symbols)
+        ):
+            raise ValueError(
+                "명시적 research 종목 목록은 비어 있거나 빈 종목을 포함할 수 없습니다."
+            )
         self.trials = tuple(trial for trial in trials if trial.screening_eligible)
         self.instruments = instruments
         self.account_counters = account_counters
@@ -844,6 +855,9 @@ class Strategy100RunExecutor:
         self.diagnostics.last_ts_ms = ts_ms
         event_type = str(payload.get("event_type"))
         symbol = str(payload.get("symbol"))
+        if self.research_symbols is not None and symbol not in self.research_symbols:
+            self.diagnostics.outside_research_universe_event_count += 1
+            return
         if event_type in {"DEPTH_UPDATE", "ORDERBOOK", "REST_BOOK_TICKER_BOOTSTRAP"}:
             self._process_book(payload, symbol)
         elif event_type == "TRADE":
@@ -1415,6 +1429,7 @@ def main() -> None:
             account_carry=account_carry,
             archive_files=archive_files,
             warmup_candles=warmup_candles,
+            research_symbols=(v2_warmup.symbols if v2_warmup is not None else None),
         )
         all_trades.extend(
             executor.execute(

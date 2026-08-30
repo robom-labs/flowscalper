@@ -301,7 +301,7 @@ def test_base_stress_latency_partial_fill_fee_and_risk_use_actual_quantity() -> 
     )
 
 
-def test_exit_styles_have_exact_fractions_and_trend_tp1_never_widens_stop() -> None:
+def test_exit_styles_have_exact_fractions_and_trend_uses_tp_sl_after_tp1() -> None:
     reversion = league_plan("LSA_REVERSAL_V1", "BTCUSDT")
     trend = league_plan("CBR_CONTINUATION_V1", "ETHUSDT")
     assert [target.quantity_fraction for target in reversion.take_profit_targets] == [
@@ -340,6 +340,7 @@ def test_exit_styles_have_exact_fractions_and_trend_tp1_never_widens_stop() -> N
     assert managed.remaining_quantity < managed.original_quantity
     assert managed.protected.current_stop >= initial_stop
     assert managed.protected.current_stop > managed.protected.entry_fill.average_price
+    assert "NO_GENERAL_EDGE_DECAY_TP_SL_ONLY" in trend.management_policy
     adverse = replace(
         features(),
         symbol="ETHUSDT",
@@ -360,8 +361,13 @@ def test_exit_styles_have_exact_fractions_and_trend_tp1_never_widens_stop() -> N
     engine.evaluate_health(adverse, Regime.SHOCK, now_ms=34_249, book=adverse_book)
     assert managed.pending_exit is None
     engine.evaluate_health(adverse, Regime.SHOCK, now_ms=34_250, book=adverse_book)
+    assert managed.pending_exit is None
+    engine.on_book(replace(adverse_book, ts_ms=34_250))
     assert managed.pending_exit is not None
-    assert managed.pending_exit.label == "EXIT_EDGE_DECAY"
+    assert managed.pending_exit.reason is ExitReason.STOP
+    engine.on_book(replace(adverse_book, ts_ms=34_750))
+    assert "ETHUSDT" not in account.positions
+    assert account.completed_trades[-1].exit_reason is ExitReason.STOP
 
 
 def _trigger_book(
