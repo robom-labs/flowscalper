@@ -58,6 +58,7 @@ from backend.app.storage.parquet import (
     ArchivedEventBatch,
     ParquetEventStore,
     StorageHealth,
+    StoragePressureError,
     warm_market_event_worker_process,
 )
 from backend.app.storage.sqlite import (
@@ -228,6 +229,11 @@ class PaperRuntime:
     _persisted_shadow_trade_ids: set[str] = field(default_factory=set)
     _persisted_audit_count: int = 0
     _persistence_fault_count: int = 0
+    _persistence_fault_active: bool = False
+    _persistence_fault_recoverable: bool = False
+    _persistence_recovery_count: int = 0
+    _persistence_last_recovered_ts_ms: int | None = None
+    _last_recovered_persistence_error: str | None = None
     _persistence_buffer_dropped: int = 0
     _persistence_backlog_peak: int = 0
     _persistence_backlog_entry_lock_count: int = 0
@@ -822,6 +828,32 @@ class PaperRuntime:
                 flag for flag in self.runtime_health_flags if flag != "STORAGE_PRESSURE_ENTRY_LOCK"
             ]
 
+    def _recover_transient_persistence_fault_if_safe(self) -> bool:
+        """저장공간 압력만 해소된 경우 적체 버퍼 저장을 자동 재개한다."""
+
+        if (
+            not self._persistence_fault_active
+            or not self._persistence_fault_recoverable
+            or not self._storage_entry_allowed
+        ):
+            return False
+        self._persistence_fault_active = False
+        self._persistence_fault_recoverable = False
+        self._persistence_recovery_count += 1
+        self._persistence_last_recovered_ts_ms = self.clock.utc_ms()
+        self._last_recovered_persistence_error = self._last_persistence_error
+        self._last_persistence_error = None
+        self.runtime_health_flags = [
+            flag
+            for flag in self.runtime_health_flags
+            if flag != "ENTRY_LOCK_TRANSIENT_PERSISTENCE"
+        ]
+        self._log(
+            "STORAGE",
+            "저장공간 안전선 회복 · 누적 버퍼 저장 자동 재개",
+        )
+        return True
+
     def _record_storage_health_refresh(self, elapsed_ms: float) -> None:
         self._storage_health_refresh_count += 1
         self._storage_health_refresh_last_ms = elapsed_ms
@@ -841,6 +873,7 @@ class PaperRuntime:
                 self._apply_storage_safety(archive_health, ledger_health)
             except OSError as error:
                 self._apply_storage_safety(None, None, error=error)
+            self._recover_transient_persistence_fault_if_safe()
             self._record_storage_health_refresh((time.monotonic() - started) * 1_000)
         elif (
             self.storage_guard is not None
@@ -870,6 +903,7 @@ class PaperRuntime:
             self._apply_storage_safety(archive_health, ledger_health)
         except OSError as error:
             self._apply_storage_safety(None, None, error=error)
+        self._recover_transient_persistence_fault_if_safe()
         self._record_storage_health_refresh((asyncio.get_running_loop().time() - started) * 1_000)
         self._refresh_supervisor_entry_safety()
         return self._storage_entry_allowed
@@ -909,6 +943,13 @@ class PaperRuntime:
                 self._storage_health_refresh_completed_ts_ms
             ),
             "persistence_fault_count": self._persistence_fault_count,
+            "persistence_fault_active": self._persistence_fault_active,
+            "persistence_fault_recoverable": self._persistence_fault_recoverable,
+            "persistence_recovery_count": self._persistence_recovery_count,
+            "persistence_last_recovered_ts_ms": self._persistence_last_recovered_ts_ms,
+            "persistence_last_recovered_error": (
+                self._last_recovered_persistence_error or "NONE"
+            ),
             "persistence_buffer_dropped": self._persistence_buffer_dropped,
             "persistence_backlog_peak": self._persistence_backlog_peak,
             "persistence_backlog_entry_lock_count": (self._persistence_backlog_entry_lock_count),
@@ -1111,7 +1152,24 @@ class PaperRuntime:
     def _handle_persistence_fault(self, error: Exception) -> None:
         self._persistence_fault_count += 1
         self._last_persistence_error = f"{type(error).__name__}: {error}"
+        already_hard_faulted = (
+            self._persistence_fault_active and not self._persistence_fault_recoverable
+        ) or self.paper_portfolio.main.risk_state.faulted
+        recoverable_storage_pressure = isinstance(error, StoragePressureError) and not (
+            already_hard_faulted
+        )
+        self._persistence_fault_active = True
         self.paused = True
+        if recoverable_storage_pressure:
+            self._persistence_fault_recoverable = True
+            if "ENTRY_LOCK_TRANSIENT_PERSISTENCE" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("ENTRY_LOCK_TRANSIENT_PERSISTENCE")
+            self._log(
+                "STORAGE",
+                "저장공간 압력 · 신규 PAPER 진입 일시 차단 · 여유 회복 시 자동 재개",
+            )
+            return
+        self._persistence_fault_recoverable = False
         self.paper_portfolio.main.risk_state.faulted = True
         if "PERSISTENCE_FAULT_ENTRY_LOCK" not in self.runtime_health_flags:
             self.runtime_health_flags.append("PERSISTENCE_FAULT_ENTRY_LOCK")
@@ -1318,6 +1376,10 @@ class PaperRuntime:
         if self.ledger is not None and self.mode is not RuntimeMode.READY:
             with self._persistence_lock:
                 self._market_event_buffer.append(self._persistable_market_event(event))
+                if self._persistence_fault_active and len(self._market_event_buffer) > 10_000:
+                    overflow = len(self._market_event_buffer) - 10_000
+                    self._persistence_buffer_dropped += overflow
+                    del self._market_event_buffer[:overflow]
                 persistence_backlog = len(self._market_event_buffer)
             self._refresh_persistence_backlog_safety(persistence_backlog)
         if event.quality.is_stale or not event.quality.sequence_valid:
@@ -3967,6 +4029,10 @@ class PaperRuntime:
                 for candle in candles
                 if candle.interval_seconds in _PERSISTED_CANDLE_INTERVALS
             )
+            if self._persistence_fault_active and len(self._candle_buffer) > 5_000:
+                overflow = len(self._candle_buffer) - 5_000
+                self._persistence_buffer_dropped += overflow
+                del self._candle_buffer[:overflow]
 
     def _persist_execution_state_safely(self, ts_ms: int) -> bool:
         if not self._has_unpersisted_execution_state():
@@ -4559,10 +4625,10 @@ class PaperRuntime:
             with self._persistence_lock:
                 should_flush = (
                     len(self._market_event_buffer) >= _MARKET_PERSISTENCE_FLUSH_THRESHOLD
-                    and self._persistence_fault_count == 0
+                    and not self._persistence_fault_active
                 )
                 should_flush_universe = bool(self._universe_snapshot_buffer) and (
-                    self._persistence_fault_count == 0
+                    not self._persistence_fault_active
                 )
             if should_flush_universe:
                 await flush_universe_snapshots()
@@ -4575,9 +4641,9 @@ class PaperRuntime:
         with self._persistence_lock:
             has_pending = bool(self._market_event_buffer or self._candle_buffer)
             has_pending_universe = bool(self._universe_snapshot_buffer)
-        if has_pending_universe and self._persistence_fault_count == 0:
+        if has_pending_universe and not self._persistence_fault_active:
             await flush_universe_snapshots()
-        if has_pending and self._persistence_fault_count == 0:
+        if has_pending and not self._persistence_fault_active:
             await flush(None)
         await finish_wal_checkpoint(wait=True)
 

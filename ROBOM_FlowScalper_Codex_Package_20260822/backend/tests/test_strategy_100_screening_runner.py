@@ -103,6 +103,52 @@ def test_research_archive_reader_uses_observed_receive_order(tmp_path: Path) -> 
     assert revision_event_rows is _event_rows
 
 
+def test_research_archive_reader_honors_external_spill_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive = tmp_path / "archive"
+    archive.mkdir()
+    spill_root = tmp_path / "large-external-spill"
+    rows = [
+        {
+            "ts_ms": 1_000,
+            "venue_ts_ms": 1_000,
+            "symbol": "BTCUSDT",
+            "payload_json": json.dumps(
+                {
+                    "event_id": "external-spill",
+                    "event_type": "TRADE",
+                    "symbol": "BTCUSDT",
+                    "venue_ts_ms": 1_000,
+                    "receive_ts_ms": 1_001,
+                    "receive_monotonic_ns": 1,
+                }
+            ),
+        }
+    ]
+    pq.write_table(pa.Table.from_pylist(rows), archive / "events.parquet")
+    monkeypatch.setenv("ROBOM_RESEARCH_SPILL_ROOT", str(spill_root))
+
+    assert [row["event_id"] for row in _event_rows(archive)] == ["external-spill"]
+    assert not (tmp_path / ".research-duckdb-spill").exists()
+    assert not spill_root.exists()
+
+
+def test_large_research_archive_requires_explicit_spill_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ROBOM_RESEARCH_SPILL_ROOT", raising=False)
+    archive = tmp_path / "large-archive"
+    archive.mkdir()
+    for index in range(500):
+        (archive / f"events-{index:03d}.parquet").touch()
+
+    with pytest.raises(ValueError, match="ROBOM_RESEARCH_SPILL_ROOT"):
+        next(_event_rows(archive))
+
+
 def test_research_archive_reader_uses_only_the_frozen_explicit_files(
     tmp_path: Path,
 ) -> None:

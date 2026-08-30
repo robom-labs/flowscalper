@@ -241,3 +241,15 @@ No personal credentials exist in exports.
   `LOW < 0.75`, `NORMAL <= 1.5`, `HIGH > 1.5`를 고정한다.
 - 결과는 Validation 진단이며 Final OOS를 열거나 수익성·승격을 입증하지 않는다.
 - 상세 경계는 `docs/adr/ADR-081-fixed-parameter-walk-forward-and-holdouts.md`를 따른다.
+
+## 10.20 연구 spill과 LIVE 저장공간 격리
+
+- 대용량 DuckDB 수신순 정렬은 `ROBOM_RESEARCH_SPILL_ROOT`로 지정한 충분한 별도
+  볼륨에 임시파일을 작성한다. 500개 이상 archive 파일은 이 경로가 없으면
+  실행하지 않는다.
+- `StoragePressureError`는 누적 사고로 기록하되 현재 fault 활성상태와 분리한다.
+  저장공간이 안전선을 회복하면 버퍼 flush를 자동 재개한다.
+- SQLite·WAL·atomic commit 결함은 가역적 저장압력으로 재분류하지 않고 영구
+  fail-closed로 유지한다.
+- 세부 결정과 제외 표본 경계는 `docs/adr/ADR-119-research-spill-and-transient-storage-recovery.md`를
+  따른다.

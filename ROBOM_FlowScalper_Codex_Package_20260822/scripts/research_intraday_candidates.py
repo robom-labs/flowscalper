@@ -7,6 +7,7 @@ import hashlib
 import html
 import json
 import math
+import os
 import tempfile
 import time
 from collections import defaultdict
@@ -54,6 +55,7 @@ DEFAULT_RESEARCH_TRAIN_RUNS = (
     "RUN-E6FE0A69A138",
     "RUN-683EA01095FE",
 )
+_LARGE_RESEARCH_ARCHIVE_FILE_THRESHOLD = 500
 DEFAULT_VALIDATION_RUNS = (
     "RUN-ED214939F990",
     "RUN-8CD493F93260",
@@ -168,7 +170,16 @@ def _event_rows(
     files = selected_files
     if not files:
         raise FileNotFoundError(f"시장 archive가 없습니다: {run_dir}")
-    spill_root = run_dir.parent / ".research-duckdb-spill"
+    configured_spill_root = os.environ.get("ROBOM_RESEARCH_SPILL_ROOT")
+    if len(files) >= _LARGE_RESEARCH_ARCHIVE_FILE_THRESHOLD and not configured_spill_root:
+        raise ValueError(
+            "대용량 연구는 LIVE archive와 다른 ROBOM_RESEARCH_SPILL_ROOT가 필요합니다."
+        )
+    spill_root = (
+        Path(configured_spill_root).expanduser()
+        if configured_spill_root
+        else run_dir.parent / ".research-duckdb-spill"
+    )
     spill_root.mkdir(parents=True, exist_ok=True)
     try:
         with tempfile.TemporaryDirectory(prefix="receive-order-", dir=spill_root) as spill_dir:

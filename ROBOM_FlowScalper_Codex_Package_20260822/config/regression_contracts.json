@@ -635,6 +635,29 @@
           ]
         }
       ]
+    },
+    {
+      "contract_id": "RESEARCH_SPILL_AND_TRANSIENT_STORAGE_RECOVERY",
+      "symptom_ko": "대용량 후보 정렬 임시파일이 LIVE 저장공간을 침범하고 일시 압력을 영구 원장 고장으로 잘못 처리해 버퍼가 무한 증가한다.",
+      "fixed_by": "Wave 119 external research spill binding and recoverable storage-pressure persistence state",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_v02_operational_safety.py",
+          "contains": [
+            "test_storage_health_worker_recovers_transient_persistence_pressure",
+            "test_transient_storage_pressure_recovers_and_preserves_incident_history",
+            "test_persistence_worker_resumes_after_recovered_incident_count",
+            "test_active_persistence_fault_keeps_ingest_retry_buffer_bounded"
+          ]
+        },
+        {
+          "path": "backend/tests/test_strategy_100_screening_runner.py",
+          "contains": [
+            "test_research_archive_reader_honors_external_spill_root",
+            "test_large_research_archive_requires_explicit_spill_root"
+          ]
+        }
+      ]
     }
   ]
 }

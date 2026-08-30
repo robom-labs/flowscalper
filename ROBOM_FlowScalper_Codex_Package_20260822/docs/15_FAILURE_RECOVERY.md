@@ -132,6 +132,10 @@ Recovery requires satisfying a deterministic health check, not merely a UI toggl
 - Rejection-only execution audits stay immutable but do not create a duplicate complete portfolio snapshot. A recovery-state mutation still writes the full checksum-protected portfolio and only the affected shadow-account history row.
 - SQLite permanently stores 1-second candles and the 180-second replay focus interval. Other chart intervals remain deterministic in-memory derivatives, so removing their duplicate persistence does not alter strategy thresholds or the live chart contract.
 - A persistence write error faults the main risk state, keeps retry buffers bounded and cannot be cleared with the UI resume control.
+- `StoragePressureError`는 SQLite·WAL 무결성 실패와 분리한다. 신규 PAPER 진입을 일시
+  잠그고, archive와 ledger 여유공간이 모두 안전선을 회복하면 누적 사고횟수를
+  보존한 채 persistence worker를 자동 재개한다. 실제 write·WAL·checksum 오류는 계속
+  영구 fail-closed다.
 - A market-archive worker-process error follows the same fail-closed path; its popped batch is restored ahead of newly arrived rows before the bounded retry limit is applied.
 - CPU, process memory, thread count, uptime and disk figures on the System diagnostics screen come from the local process and filesystem rather than fixture constants.
 - Rolling public-event lag p95 above 1,500ms sets `CRITICAL_MARKET_LAG_ENTRY_LOCK` in both supervisor telemetry and the PAPER runtime. A fresh sequence-valid depth clears an automatically recoverable safety wait after p95 recovery; only a user-requested pause requires an explicit resume.

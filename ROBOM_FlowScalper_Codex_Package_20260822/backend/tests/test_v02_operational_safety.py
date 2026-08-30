@@ -19,7 +19,7 @@ from backend.app.domain.models import DataQuality, MarketDataState, MarketEvent,
 from backend.app.market_data.candles import Candle
 from backend.app.ops import ProcessResourceSampler
 from backend.app.runtime import PaperRuntime
-from backend.app.storage.parquet import DiskUsage, ParquetEventStore
+from backend.app.storage.parquet import DiskUsage, ParquetEventStore, StoragePressureError
 from backend.app.storage.sqlite import SQLiteLedger
 from backend.tests.test_candidate_paper_portfolio import candidate_plan
 from backend.tests.test_storage_replay_analytics import _sample_trade
@@ -788,6 +788,42 @@ async def test_storage_health_refresh_runs_outside_event_loop(tmp_path: Path) ->
     assert dashboard["system"]["storage_entry_allowed"] is True
 
 
+async def test_storage_health_worker_recovers_transient_persistence_pressure(
+    tmp_path: Path,
+) -> None:
+    free_bytes = 50
+
+    def disk_usage(_: Path) -> DiskUsage:
+        return DiskUsage(total=1_000, used=1_000 - free_bytes, free=free_bytes)
+
+    guard = ParquetEventStore(
+        tmp_path / "recoverable-pressure-archive",
+        minimum_free_bytes=100,
+        minimum_free_ratio=0.10,
+        disk_usage=disk_usage,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-recoverable-pressure-worker",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        storage_guard=guard,
+    )
+    runtime._handle_persistence_fault(
+        StoragePressureError("STORAGE_PRESSURE: FREE_BYTES_BELOW_LIMIT")
+    )
+
+    assert await runtime.refresh_storage_safety_async() is False
+    assert runtime._persistence_fault_active is True
+    assert runtime._persistence_recovery_count == 0
+
+    free_bytes = 900
+    assert await runtime.refresh_storage_safety_async() is True
+    assert runtime._persistence_fault_active is False
+    assert runtime._persistence_recovery_count == 1
+    assert runtime.dashboard()["system"]["persistence_last_error"] == "NONE"
+
+
 async def test_stale_storage_health_fails_closed_until_worker_refresh(
     tmp_path: Path,
 ) -> None:
@@ -928,6 +964,121 @@ def test_sqlite_write_fault_fails_closed_and_bounds_retry_buffer(
     assert "OSError" in str(dashboard["system"]["persistence_last_error"])
     assert dashboard["operation_status"]["state"] == "SAFETY_BLOCKED"
     assert dashboard["operation_status"]["automatic_recovery"] is False
+    ledger.close()
+
+
+def test_transient_storage_pressure_recovers_and_preserves_incident_history(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "transient-storage-pressure.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-transient-storage-pressure",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(current_utc_ms=10_000),
+        ledger=ledger,
+    )
+
+    runtime._handle_persistence_fault(
+        StoragePressureError("STORAGE_PRESSURE: FREE_BYTES_BELOW_LIMIT")
+    )
+
+    assert runtime._persistence_fault_count == 1
+    assert runtime._persistence_fault_active is True
+    assert runtime._persistence_fault_recoverable is True
+    assert runtime.paper_portfolio.main.risk_state.faulted is False
+    assert "ENTRY_LOCK_TRANSIENT_PERSISTENCE" in runtime.runtime_health_flags
+    assert "PERSISTENCE_FAULT_ENTRY_LOCK" not in runtime.runtime_health_flags
+
+    runtime._storage_entry_allowed = True
+    assert runtime._recover_transient_persistence_fault_if_safe() is True
+    diagnostics = runtime.dashboard()["system"]
+    assert diagnostics["persistence_fault_count"] == 1
+    assert diagnostics["persistence_fault_active"] is False
+    assert diagnostics["persistence_fault_recoverable"] is False
+    assert diagnostics["persistence_recovery_count"] == 1
+    assert "StoragePressureError" in str(diagnostics["persistence_last_recovered_error"])
+    assert diagnostics["persistence_last_error"] == "NONE"
+    assert "ENTRY_LOCK_TRANSIENT_PERSISTENCE" not in runtime.runtime_health_flags
+    ledger.close()
+
+
+async def test_persistence_worker_resumes_after_recovered_incident_count(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "recovered-worker.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-recovered-worker",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime._persistence_fault_count = 1
+    runtime._persistence_fault_active = False
+    runtime._market_event_buffer = [
+        {
+            "event_id": f"recovered-{index}",
+            "run_id": runtime.run_id,
+            "venue": runtime.venue.value,
+            "symbol": "BTCUSDT",
+            "event_type": "WIDE_TICKER",
+            "venue_ts_ms": index,
+            "receive_monotonic_ns": index,
+            "data": {"last_price": "100"},
+        }
+        for index in range(500)
+    ]
+
+    stop = asyncio.Event()
+    worker = asyncio.create_task(runtime.run_persistence_worker(stop))
+    for _ in range(100):
+        if ledger.count("market_events") == 500:
+            break
+        await asyncio.sleep(0.01)
+    stop.set()
+    await worker
+
+    assert ledger.count("market_events") == 500
+    assert runtime._market_event_buffer == []
+    assert runtime._persistence_fault_count == 1
+    ledger.close()
+
+
+def test_active_persistence_fault_keeps_ingest_retry_buffer_bounded(tmp_path: Path) -> None:
+    ledger = SQLiteLedger(tmp_path / "active-fault-bounded.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-active-fault-bounded",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+    )
+    runtime._persistence_fault_active = True
+
+    for index in range(10_100):
+        runtime.ingest_live_event(
+            MarketEvent(
+                event_id=f"bounded-{index}",
+                run_id=runtime.run_id,
+                venue=runtime.venue,
+                symbol="BTCUSDT",
+                event_type="WIDE_TICKER",
+                venue_ts_ms=index,
+                receive_monotonic_ns=index,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=False,
+                    sequence_valid=True,
+                    lag_ms=0,
+                ),
+                data={"last_price": "100"},
+            )
+        )
+
+    assert len(runtime._market_event_buffer) == 10_000
+    assert runtime._persistence_buffer_dropped == 100
+    assert runtime._market_event_buffer[0]["event_id"] == "bounded-100"
     ledger.close()
 
 
