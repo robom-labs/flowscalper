@@ -817,3 +817,6 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
   순위 제외 안내는 유지한다.
 - backend history 44건, frontend 전체 15 files·87건, Ruff, ESLint, TypeScript와 Vite build를
   통과했다. 실제 PAPER API를 연결한 별도 최신 소스 화면에서 묶음·전환·정렬·홈 이동을 클릭했다.
+- 첫 GitHub browser 작업은 기존 E2E가 과거 최초 정렬을 전제로 승률 버튼을 먼저 눌러
+  `ascending`을 만든 뒤 `descending`을 기대해 실패했다. 최초 `descending`을 먼저 확인하고
+  양방향 전환 뒤 다시 `descending`으로 돌아오는 계약으로 수정했으며 로컬 Playwright 3종을 통과했다.

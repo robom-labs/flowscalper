@@ -186,10 +186,11 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await page.getByRole('button', { name: '보수 비용', exact: true }).click()
   await expect(page.getByRole('button', { name: '보수 비용', exact: true })).toHaveAttribute('aria-pressed', 'true')
   if (testInfo.project.name === 'desktop') {
-    await page.getByRole('button', { name: /승률 정렬/ }).click()
     await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
     await page.getByRole('button', { name: /승률 정렬/ }).click()
     await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'ascending')
+    await page.getByRole('button', { name: /승률 정렬/ }).click()
+    await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
   } else {
     await page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: '승률' }).click()
     await expect(page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: /승률/ })).toHaveAttribute('aria-pressed', 'true')

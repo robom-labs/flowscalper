@@ -4294,6 +4294,8 @@ bootstrap·DSR 또는 시간순 gate를 실패했다. 적응 진단 통과와 Re
 | backend history 회귀 | `PASS` | 관련 44건 |
 | frontend 단위회귀 | `PASS` | 15 files·87 tests |
 | Ruff·ESLint·TypeScript·build | `PASS` | 정적검사와 Vite build, 기존 chunk 경고만 유지 |
+| 첫 GitHub Actions browser | `FAIL_PRESERVED` | run `33318458880`, 과거 최초 정렬을 전제로 한 E2E 기대값 불일치 |
+| 수정 후 로컬 Playwright | `PASS` | desktop·tablet·mobile 3건, 내림·오름·내림 전환 |
 | 소스 화면 실제 브라우저 | `PASS` | 묶음·비용 전환·정렬·홈 이동·PAPER 배지 확인 |
 | 실제 8870 최신 소스 설치 | `BLOCKED` | 보호 중 PAPER 포지션 2건, 강제 종료 0 |
 | 6시간·24시간 | `NOT_RUN` | 이번 UI 변경 뒤 실제 시간 미충족 |
