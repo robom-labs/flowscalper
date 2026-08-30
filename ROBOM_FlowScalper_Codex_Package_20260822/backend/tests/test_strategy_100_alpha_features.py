@@ -93,6 +93,8 @@ def test_completed_candle_snapshot_is_deterministic_on_first_post_close_event() 
     second = builder.snapshot("BTCUSDT", "F04", decision_ts_ms=decision)
 
     assert first == second
+    assert builder.diagnostics.snapshot_cache_hits == 1
+    assert builder.diagnostics.snapshot_cache_misses == 1
     assert first is not None
     assert first.completed_candle_close_ts_ms == decision
     assert first.prior_donchian20_high < first.close
@@ -101,6 +103,29 @@ def test_completed_candle_snapshot_is_deterministic_on_first_post_close_event() 
     assert delayed.decision_ts_ms == decision + 1
     assert delayed.completed_candle_close_ts_ms == decision
     assert builder.snapshot("BTCUSDT", "F04", decision_ts_ms=decision + 300_000) is None
+
+
+def test_same_interval_families_share_only_the_same_immutable_snapshot() -> None:
+    builder = AlphaFeatureBuilder()
+    for index in range(80):
+        builder.ingest_completed(_candle("BTCUSDT", 300, index))
+    decision = 80 * 300 * 1_000
+
+    donchian = builder.snapshot("BTCUSDT", "F04", decision_ts_ms=decision)
+    vwap = builder.snapshot("BTCUSDT", "F08", decision_ts_ms=decision)
+
+    assert donchian is not None
+    assert vwap is donchian
+    assert builder.diagnostics.snapshot_cache_hits == 1
+    assert builder.diagnostics.snapshot_cache_misses == 1
+
+    builder.ingest_microstructure(_micro(decision))
+    refreshed = builder.snapshot("BTCUSDT", "F08", decision_ts_ms=decision)
+
+    assert refreshed is not None
+    assert refreshed is not donchian
+    assert refreshed.sequence_valid is True
+    assert builder.diagnostics.snapshot_cache_misses == 2
 
 
 def test_candle_gap_clears_the_contiguous_family_warmup() -> None:

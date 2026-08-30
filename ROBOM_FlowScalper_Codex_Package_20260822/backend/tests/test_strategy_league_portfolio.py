@@ -123,6 +123,22 @@ def test_registry_builds_dynamic_independent_thousand_usdt_accounts() -> None:
     assert engine.main.max_positions == 1
 
 
+def test_empty_symbol_books_keep_the_on_book_contract_with_constant_time_fast_path() -> None:
+    engine = league_engine()
+
+    engine.on_book(league_book("SOLUSDT", 1_250))
+
+    assert engine.book_empty_fast_path_count == 1
+    assert engine.book_active_scan_count == 0
+
+    plan = league_plan("LSA_REVERSAL_V1", "BTCUSDT")
+    engine.offer((plan,), entries_paused=False)
+    engine.on_book(league_book("BTCUSDT", 1_250))
+
+    assert engine.book_active_scan_count == 1
+    assert engine.main.position is not None
+
+
 def test_different_strategies_can_hold_opposite_btc_positions_without_competing() -> None:
     engine = league_engine()
     long_plan = league_plan("LSA_REVERSAL_V1", "BTCUSDT", Side.LONG)

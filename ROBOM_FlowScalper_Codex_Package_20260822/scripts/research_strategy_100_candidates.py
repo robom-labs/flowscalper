@@ -155,6 +155,11 @@ class RunDiagnostics:
     warmup_symbol_count: int = 0
     feature_snapshot_count: int = 0
     feature_snapshot_throttled_count: int = 0
+    paper_execution_book_count: int = 0
+    paper_execution_book_skipped_count: int = 0
+    position_health_evaluation_count: int = 0
+    alpha_snapshot_cache_hit_count: int = 0
+    alpha_snapshot_cache_miss_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -746,6 +751,30 @@ class Strategy100RunExecutor:
         if cooperative_yield is not None:
             cooperative_yield()
         self._drain_audit()
+        primary_builder = getattr(self, "alpha_features", None)
+        recursive_builder = getattr(self, "recursive_features", None)
+        if primary_builder is not None and recursive_builder is not None:
+            primary_diagnostics = primary_builder.diagnostics
+            recursive_diagnostics = recursive_builder.diagnostics
+            self.diagnostics.alpha_snapshot_cache_hit_count = (
+                primary_diagnostics.snapshot_cache_hits
+                + recursive_diagnostics.snapshot_cache_hits
+            )
+            self.diagnostics.alpha_snapshot_cache_miss_count = (
+                primary_diagnostics.snapshot_cache_misses
+                + recursive_diagnostics.snapshot_cache_misses
+            )
+        self.diagnostics.paper_execution_book_count = getattr(
+            self.portfolio,
+            "book_active_scan_count",
+            0,
+        )
+        self.diagnostics.paper_execution_book_skipped_count = (
+            getattr(self.portfolio, "book_empty_fast_path_count", 0)
+        )
+        self.diagnostics.position_health_evaluation_count = (
+            getattr(self.portfolio, "health_active_scan_count", 0)
+        )
         self.diagnostics.censored_position_count = sum(
             len(account.positions) for account in self.portfolio.shadows.values()
         )

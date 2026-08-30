@@ -225,6 +225,11 @@ class PaperPortfolioEngine:
         self._transition_revisions: dict[str, int] = {}
         self._transition_states: dict[str, str] = {}
         self._last_execution_transition: dict[str, object] = {}
+        self._active_symbols: set[str] = set()
+        self.book_active_scan_count = 0
+        self.book_empty_fast_path_count = 0
+        self.health_active_scan_count = 0
+        self.health_empty_fast_path_count = 0
 
     @property
     def accounts(self) -> tuple[ExecutionAccount, ...]:
@@ -271,6 +276,7 @@ class PaperPortfolioEngine:
                 )
                 if not rejections:
                     self.main.pending_entries[selected.symbol] = PendingEntry(selected)
+                    self._active_symbols.add(selected.symbol)
                     self.risk_manager.reserve_pending(
                         self.main.risk_state,
                         selected.max_planned_loss,
@@ -333,6 +339,7 @@ class PaperPortfolioEngine:
                         )
                         continue
                     account.pending_entries[selected.symbol] = PendingEntry(selected)
+                    self._active_symbols.add(selected.symbol)
                     self.league_risk_manager.reserve_pending(
                         account.risk_state,
                         selected.max_planned_loss,
@@ -357,6 +364,10 @@ class PaperPortfolioEngine:
                 }
             )
             return
+        if book.symbol not in self._active_symbols:
+            self.book_empty_fast_path_count += 1
+            return
+        self.book_active_scan_count += 1
         for account in self.accounts:
             managed = account.positions.get(book.symbol)
             if managed is not None:
@@ -364,6 +375,7 @@ class PaperPortfolioEngine:
             pending = account.pending_entries.get(book.symbol)
             if pending is not None:
                 self._advance_entry(account, pending, book)
+        self._refresh_active_symbol(book.symbol)
 
     def request_main_exit(self, *, now_ms: int, reason: ExitReason) -> bool:
         managed = self.main.position
@@ -398,6 +410,10 @@ class PaperPortfolioEngine:
     ) -> None:
         """고정시간 대신 실제 근거·흐름·유동성 건강으로 종료를 결정한다."""
 
+        if snapshot.symbol not in self._active_symbols:
+            self.health_empty_fast_path_count += 1
+            return
+        self.health_active_scan_count += 1
         for account in self.accounts:
             managed = account.positions.get(snapshot.symbol)
             if managed is None:
@@ -757,6 +773,23 @@ class PaperPortfolioEngine:
             self._derive_transition_tracking_from_accounts()
         self.audit_events = []
         self._new_main_trades = []
+        self._rebuild_active_symbols()
+
+    def _refresh_active_symbol(self, symbol: str) -> None:
+        if any(
+            symbol in account.pending_entries or symbol in account.positions
+            for account in self.accounts
+        ):
+            self._active_symbols.add(symbol)
+        else:
+            self._active_symbols.discard(symbol)
+
+    def _rebuild_active_symbols(self) -> None:
+        self._active_symbols = {
+            symbol
+            for account in self.accounts
+            for symbol in (*account.pending_entries, *account.positions)
+        }
 
     @property
     def latest_execution_transition(self) -> dict[str, object]:

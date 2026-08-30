@@ -55,6 +55,8 @@ class AlphaFeatureDiagnostics:
     accepted_microstructure: int
     duplicate_microstructure: int
     out_of_order_microstructure: int
+    snapshot_cache_hits: int
+    snapshot_cache_misses: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -409,6 +411,9 @@ class AlphaFeatureBuilder:
         self._accepted_microstructure = 0
         self._duplicate_microstructure = 0
         self._out_of_order_microstructure = 0
+        self._snapshot_cache: dict[tuple[str, int, int], AlphaFeatureSnapshot] = {}
+        self._snapshot_cache_hits = 0
+        self._snapshot_cache_misses = 0
 
     def ingest_completed(self, candle: Candle) -> bool:
         close_ts_ms = candle.open_ts_ms + candle.interval_seconds * 1_000
@@ -430,6 +435,7 @@ class AlphaFeatureBuilder:
             raise AlphaFeatureError("완료봉 값이 올바르지 않습니다.")
         history.append(candle)
         self._accepted_candles += 1
+        self._snapshot_cache.clear()
         return True
 
     def ingest_microstructure(self, snapshot: FeatureSnapshot) -> bool:
@@ -444,6 +450,7 @@ class AlphaFeatureBuilder:
         snapshot.assert_finite()
         history.append(snapshot)
         self._accepted_microstructure += 1
+        self._snapshot_cache.clear()
         return True
 
     def snapshot(
@@ -468,6 +475,12 @@ class AlphaFeatureBuilder:
         completed_age_ms = decision_ts_ms - completed_close_ts_ms
         if completed_age_ms < 0 or completed_age_ms >= interval * 1_000:
             return None
+        cache_key = (symbol, interval, decision_ts_ms)
+        cached = self._snapshot_cache.get(cache_key)
+        if cached is not None:
+            self._snapshot_cache_hits += 1
+            return cached
+        self._snapshot_cache_misses += 1
         closes = [float(bar.close) for bar in bars]
         prior20 = bars[-21:-1]
         prior55 = bars[-56:-1] if len(bars) >= 56 else bars[:-1]
@@ -542,7 +555,7 @@ class AlphaFeatureBuilder:
         momentum_volatility_ratio = (
             abs(momentum_24h) / (slow_volatility * math.sqrt(4)) if slow_volatility > 0 else 0.0
         )
-        return AlphaFeatureSnapshot(
+        snapshot = AlphaFeatureSnapshot(
             symbol=symbol,
             decision_ts_ms=decision_ts_ms,
             completed_candle_close_ts_ms=completed_close_ts_ms,
@@ -622,6 +635,8 @@ class AlphaFeatureBuilder:
             ofi_reversal_confirmed=micro.ofi_reversal_confirmed,
             microprice_reentry_confirmed=micro.microprice_reentry_confirmed,
         )
+        self._snapshot_cache[cache_key] = snapshot
+        return snapshot
 
     def _completed_as_of(
         self,
@@ -759,4 +774,6 @@ class AlphaFeatureBuilder:
             accepted_microstructure=self._accepted_microstructure,
             duplicate_microstructure=self._duplicate_microstructure,
             out_of_order_microstructure=self._out_of_order_microstructure,
+            snapshot_cache_hits=self._snapshot_cache_hits,
+            snapshot_cache_misses=self._snapshot_cache_misses,
         )
