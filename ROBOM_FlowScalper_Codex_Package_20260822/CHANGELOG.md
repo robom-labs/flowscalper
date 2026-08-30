@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 일봉 느린 레짐 추세·눌림 30후보를 12종목 24,804개 완성 일봉과 실제 펀딩으로 사전등록 실행했다. 모든 후보가 최소 표본 또는 6개 시간순 fold 안정성을 실패했고 PBO 0.2571로 승격 후보는 0이다. 결과를 보존하고 후속 상승상태 지속·위험조정 모멘텀을 별도 가설로 분리했다.
 - 다년 4시간 추세 30후보를 공식 공개 봉 148,824개와 펀딩 74,487개로 사전등록 실행했다. Train·Validation 선발 3개가 진단 OOS에서 모두 BASE·STRESS 음수이고 PBO 0.60이라 승격하지 않았으며 실패와 trial 지문을 보존했다. 후속 일봉 후보는 한 번의 분할 성과뿐 아니라 6개 시간순 fold 중 최소 4개와 최신 2개 비용후 양수를 선발 전에 요구한다.
 - 100후보 연구의 Train·Validation 21,341개 파일을 LIVE와 다른 RAM I/O 영역에 복제하고 manifest 크기·파일별 SHA-256으로 전수검증했다. Final OOS 3,466개는 봉인 상태를 유지했다. 1,000-event pilot과 동시 LIVE guard는 PASS했지만 거래·선택·승격은 0이고 전체 screen은 `NOT_RUN`, 수익성·실자금 준비는 `NOT_PROVEN`·`NOT_READY`다.
 - 대용량 100후보 연구의 경로·`st_dev`가 달라도 backing 물리 USB가 같으면 실행을 거부한다. sparsebundle은 실제 backing 장치를 추적하고 RAM Disk는 별도 영역으로 분류하며, 다른 장치 복제본은 manifest의 size·파일별 SHA-256을 전부 통과해야 한다. 해석할 수 없는 Disk Image, 부분복제와 stale 사전등록은 fail closed하고 수익성 결과를 만들지 않는다.

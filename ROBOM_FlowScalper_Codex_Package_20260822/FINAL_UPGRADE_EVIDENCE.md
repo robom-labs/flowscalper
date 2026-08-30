@@ -3842,3 +3842,60 @@ trial history에 기록했다.
 
 현 수용상태는
 `HYP127_EXECUTED_OOS_FAILED_NO_PROMOTION_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 89. Wave 128 일봉 느린 레짐 30후보의 희소·안정성 실패 보존
+
+HYP-127 결과 뒤 별도 가설로 사전등록한 일봉 채널 돌파, 돌파 뒤 첫 재시험, 추세 초입 첫
+눌림, 일목 눌림과 EMA 눌림 5계열에 롱·숏·양방향과 BALANCED·SELECTIVE를 적용했다.
+후보 30개의 지문은
+`f5b58ee6b16a3fb651d69d86a6fefa2dcb6d8ebac97a6ea54a05a618bca8ee21`, 실행 commit은
+`7f233956ef84913157c2b9efc879ecf126e50aee`다.
+
+공식 Binance USDⓈ-M 공개 완성 4시간봉을 UTC 완성 일봉으로 집계했다. 12종목에서 종목당
+2,067개, 합계 24,804개 일봉을 사용했고 dataset 지문은
+`7127b105c60190cd205601d85f4b42105e85f724178dbe619ba54fa99031d989`다. 실제 공개 펀딩,
+BASE 13bp·STRESS 25bp, 다음 일봉 시가 진입, 같은 봉 손절 우선, 미결 포지션 미채점 계약을
+유지했다.
+
+모든 후보가 최소 표본 또는 6개 시간순 fold 안정성 gate를 실패했다. 후보별 평가 가능한 fold
+최댓값은 4개, 양수 fold 최댓값은 3개였고 Train·Validation·walk-forward 선발 후보는 0개다.
+PBO는 0.2571428571로 고정 상한 0.20을 넘었다. 채널 돌파 롱 BALANCED는 development
+44건·Validation 19건, EMA 눌림 양방향 BALANCED는 51건·19건으로 최근 구간에서 양수였지만
+고정 최소 60건·20건과 평가 가능 fold 5개를 충족하지 못해 순위를 매기지 않았다. 19건을
+20건으로 간주하거나 fold 기준을 4개로 낮추지 않았다.
+
+후보 전체 중복 평가 기준 완료거래는 786건, 미결 보존은 20건이었다. 적용한 펀딩 이벤트는
+92,715개, 순 펀딩 cashflow 합계는 -52,999.150bp였다. 진입·종료 일봉 경계의 모호한 유리한
+credit 1,192.926bp는 제외했고 불리한 비용은 포함했다. Registry와 PAPER SHADOW 승격은
+0개이며 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다. 결과는
+`RESEARCH-HYP128-7127b105c601-8379fdb564d0`로 append-only trial history에 기록했다.
+
+대형 연구와 LIVE 서비스를 동시에 사용한 900초 관찰은 큐 333과 flush 23,510ms로 `FAIL`했다.
+연구를 중지하고 격리한 180초 재관찰은 큐 최대 9, 처리 P95 26.172ms, 체결 경로 P95
+84.703ms, flush 최대 11,571ms로 `PASS`했다. 비계획 재연결, sequence gap, drop, 저장 fault,
+실제 주문과 인증은 0이었다. 따라서 후속 대형 연구는 LIVE 프로세스와 물리적으로 격리한다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 결과 전 후보·코드 고정 | `PASS` | GitHub main `7f23395`, 후보 30·5계열·지문 일치 |
+| 단위·회귀 | `PASS` | 후보·집계·체결·펀딩·walk-forward 관련 28건 |
+| 정적검사 | `PASS` | Ruff, strict mypy, diff check |
+| 저장소 위생 | `PASS` | 구버전·복사본 이름 위반 0 |
+| 공개시장 입력 | `PASS` | 12종목, 완성 일봉 24,804개, 원본·파생 SHA-256 |
+| 시간순 안정성 선발 | `FAIL_RESEARCH_GATES` | 통과 0, 평가 가능 fold 최대 4·양수 최대 3 |
+| 진단 OOS | `NOT_RUN` | 선발 후보 0이므로 OOS를 열어 순위를 만들지 않음 |
+| Registry·SHADOW 승격 | `PASS_NONE_PROMOTED` | 통과 후보 0, 변경 0 |
+| LIVE 격리 회복 | `PASS_AFTER_OVERLAP_FAIL` | 180초 큐 최대 9·마지막 0, fault·drop 0 |
+| 실제 주문·인증 | `PASS` | 실제 주문·private API·API Key·wallet 0 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 역사 gate 통과 0 |
+
+기계판독 근거는 `evidence/WAVE128_DAILY_REGIME_TREND_TOURNAMENT.json`,
+`evidence/WAVE128_DAILY_REGIME_TREND_TOURNAMENT_QA.json`,
+`evidence/WAVE127_RESEARCH_RUNTIME_GUARD_900S.json`,
+`evidence/WAVE127_POST_RESEARCH_IDLE_RUNTIME_90S.json`,
+`evidence/WAVE127_POST_RESEARCH_IDLE_RUNTIME_180S_RETRY.json`과
+`evidence/RESEARCH_TRIAL_HISTORY.jsonl`이다. 결과와 후속 연구 분리는
+`docs/adr/ADR-123-daily-trend-sparsity-and-state-conditioned-momentum.md`에 기록했다.
+
+현 수용상태는
+`HYP128_EXECUTED_NO_SELECTION_NO_PROMOTION_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

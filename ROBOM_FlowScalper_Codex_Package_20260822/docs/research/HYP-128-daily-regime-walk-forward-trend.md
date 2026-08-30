@@ -1,6 +1,7 @@
 # HYP-128. 일봉 느린 레짐·시간순 안정성 추세 30후보 사전등록
 
-- 상태. `PREREGISTERED_BEFORE_EXECUTION`.
+- 사전등록 상태. `LOCKED_BEFORE_EXECUTION`.
+- 실행 상태. `EXECUTED_NO_SELECTION`.
 - 등록일. 2026-08-30.
 - 가설 ID. `HYP-128-DAILY-REGIME-WALK-FORWARD-TREND-TOURNAMENT`.
 - 후보 지문. `f5b58ee6b16a3fb651d69d86a6fefa2dcb6d8ebac97a6ea54a05a618bca8ee21`.
@@ -112,3 +113,25 @@ bid·ask BASE·STRESS SHADOW에서 새 버전 자연표본 30개와 독립 미�
 외부 논문과 지표 이름은 성과 보증이 아니다. 실패·희소·탈락 결과를 삭제하지 않으며, 결함 수정
 또는 새 임계값은 새 가설 번호와 새 지문으로만 실행한다. 실제 주문, private API, API Key,
 secret, 인증, wallet과 입출금 경로는 계속 0이다.
+
+## 실행 뒤 고정 결과
+
+- 실행 commit은 `7f233956ef84913157c2b9efc879ecf126e50aee`다.
+- 파생 일봉 dataset 지문은
+  `7127b105c60190cd205601d85f4b42105e85f724178dbe619ba54fa99031d989`다.
+- 12종목에서 종목당 2,067개, 합계 24,804개 완성 일봉을 사용했다.
+- 30개 모두 최소 표본과 6개 fold 안정성 선발을 함께 통과하지 못했다.
+- 평가 가능한 fold의 후보별 최댓값은 4개, 양수 fold 최댓값은 3개였다.
+- Train·Validation·walk-forward 선발 후보와 진단 OOS 진입 후보는 모두 0개다.
+- PBO는 0.2571428571로 고정 상한 0.20을 넘었다.
+- Registry·PAPER SHADOW 승격은 0개다.
+- 결과는 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+채널 돌파 롱 BALANCED는 development 44건·Validation 19건, EMA 눌림 양방향 BALANCED는
+development 51건·Validation 19건이었다. 일부 합계와 최근 fold가 양수여도 사전등록 최소
+60건·20건과 최소 5개 평가 가능 fold를 충족하지 못했으므로 순위를 매기지 않았다. 기준을
+19건이나 4개 fold로 낮추지 않는다.
+
+전체 결과는 `evidence/WAVE128_DAILY_REGIME_TREND_TOURNAMENT.json`, 요약 검증은
+`evidence/WAVE128_DAILY_REGIME_TREND_TOURNAMENT_QA.json`, append-only 시험 기록은
+`RESEARCH-HYP128-7127b105c601-8379fdb564d0`에 보존한다.

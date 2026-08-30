@@ -1,0 +1,83 @@
+{
+  "schema": "flowscalper.wave128_daily_regime_trend_tournament_qa.v1",
+  "wave": "WAVE128",
+  "execution_status": "PASS",
+  "profitability_status": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "private_api_enabled": false,
+  "frozen_implementation_commit": "7f233956ef84913157c2b9efc879ecf126e50aee",
+  "candidate_count": 30,
+  "candidate_family_count": 5,
+  "candidate_fingerprint": "f5b58ee6b16a3fb651d69d86a6fefa2dcb6d8ebac97a6ea54a05a618bca8ee21",
+  "dataset": {
+    "venue": "BINANCE_USDM",
+    "public_only": true,
+    "start_ts_ms": 1609459200000,
+    "end_ts_ms": 1788048000000,
+    "symbol_count": 12,
+    "completed_daily_bar_count": 24804,
+    "dataset_fingerprint": "7127b105c60190cd205601d85f4b42105e85f724178dbe619ba54fa99031d989"
+  },
+  "selection": {
+    "walk_forward_stability_pass_count": 0,
+    "maximum_evaluable_fold_count": 4,
+    "maximum_positive_fold_count": 3,
+    "selected_on_train_validation_and_walk_forward_count": 0,
+    "selected_on_train_validation_and_walk_forward": [],
+    "adaptive_historical_robustness_pass_count": 0,
+    "adaptive_historical_robustness_pass_candidates": [],
+    "unranked_insufficient_sample_count": 30,
+    "probability_of_backtest_overfitting": 0.2571428571428571
+  },
+  "diagnostic_near_misses_not_ranked": [
+    {
+      "candidate_id": "T128_CHANNEL_BREAKOUT_1D_LONG_BALANCED",
+      "development_closed_trades": 44,
+      "validation_closed_trades": 19,
+      "development_stress_expectancy_bps": 594.5476989380813,
+      "development_stress_profit_factor": 1.8774192753511707,
+      "walk_forward_evaluable_folds": 3,
+      "walk_forward_positive_folds": 2,
+      "latest_two_folds_positive": true,
+      "selection_status": "UNRANKED_INSUFFICIENT_SAMPLE"
+    },
+    {
+      "candidate_id": "T128_EMA_PULLBACK_1D_BOTH_BALANCED",
+      "development_closed_trades": 51,
+      "validation_closed_trades": 19,
+      "development_stress_expectancy_bps": 262.8225478461261,
+      "development_stress_profit_factor": 1.4095553488140586,
+      "walk_forward_evaluable_folds": 4,
+      "walk_forward_positive_folds": 3,
+      "latest_two_folds_positive": true,
+      "selection_status": "UNRANKED_INSUFFICIENT_SAMPLE"
+    }
+  ],
+  "funding_audit_all_candidates": {
+    "closed_trade_count": 786,
+    "censored_open_count": 20,
+    "applied_funding_event_count": 92715,
+    "net_funding_cashflow_bps": -52999.149500000014,
+    "excluded_ambiguous_boundary_credit_count": 1011,
+    "excluded_ambiguous_boundary_credit_bps": 1192.9261000000001
+  },
+  "decision": {
+    "registry_changes": [],
+    "paper_shadow_promotions": [],
+    "failed_results_preserved": true,
+    "trial_history_recorded": true,
+    "same_thresholds_reused_after_results": false,
+    "next_hypothesis": "up_up_state_conditioned_risk_managed_momentum",
+    "reason": "30개 모두 표본·walk-forward 안정성 선발을 통과하지 못했고 PBO 0.2571도 허용 상한 0.20을 넘으므로 승격하지 않는다."
+  },
+  "evidence": {
+    "full_report": "evidence/WAVE128_DAILY_REGIME_TREND_TOURNAMENT.json",
+    "full_report_sha256": "e8b5e3b0e4823b83b5809c2a1d23595dba742d502dbaa34c08c7ad01d26bec63",
+    "trial_history": "evidence/RESEARCH_TRIAL_HISTORY.jsonl",
+    "trial_id": "RESEARCH-HYP128-7127b105c601-8379fdb564d0",
+    "preregistration": "docs/research/HYP-128-daily-regime-walk-forward-trend.md"
+  }
+}
