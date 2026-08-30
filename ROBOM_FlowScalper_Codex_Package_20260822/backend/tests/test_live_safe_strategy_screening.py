@@ -21,6 +21,7 @@ from scripts.run_live_safe_strategy_league_replay import (
 from scripts.run_live_safe_strategy_screening import (
     _OUTPUT_FILENAMES,
     _RESEARCH_INFRASTRUCTURE_BOUND_PATHS,
+    _research_spill_contract,
     _staged_paths,
     _trial_proposal,
     _validate_result,
@@ -360,6 +361,45 @@ async def test_research_child_process_is_hard_throttled_and_resumed(tmp_path: Pa
         0,
         1,
     }
+
+
+@pytest.mark.asyncio
+async def test_research_child_receives_explicit_spill_environment(tmp_path: Path) -> None:
+    state = ChildState()
+
+    await _run_child(
+        (
+            sys.executable,
+            "-c",
+            "import os; print(os.environ['ROBOM_RESEARCH_SPILL_ROOT'])",
+        ),
+        project_root=tmp_path,
+        state=state,
+        environment_overrides={"ROBOM_RESEARCH_SPILL_ROOT": "/external/research-spill"},
+    )
+
+    assert state.return_code == 0
+    assert state.stdout_tail == "/external/research-spill"
+
+
+def test_large_screening_requires_spill_on_another_device(tmp_path: Path) -> None:
+    archive = tmp_path / "archive"
+    spill = tmp_path / "spill"
+    archive.mkdir()
+    dataset = tmp_path / "dataset.json"
+    _write_json(dataset, {"live_public_cut": {"file_count": 500}})
+    arguments = argparse.Namespace(
+        dataset_manifest=dataset,
+        archive=archive,
+        research_spill_root=None,
+    )
+
+    with pytest.raises(ValueError, match="research-spill-root"):
+        _research_spill_contract(arguments)
+
+    arguments.research_spill_root = spill
+    with pytest.raises(ValueError, match="다른 저장장치"):
+        _research_spill_contract(arguments)
 
 
 @pytest.mark.asyncio

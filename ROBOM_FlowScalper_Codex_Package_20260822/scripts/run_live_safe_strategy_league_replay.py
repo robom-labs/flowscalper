@@ -12,6 +12,7 @@ import os
 import signal
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -595,12 +596,18 @@ async def _run_child(
     state: ChildState,
     hard_duty_cycle_target_ratio: float | None = None,
     maximum_continuous_run_seconds: float = 0.05,
+    environment_overrides: Mapping[str, str] | None = None,
 ) -> None:
     state.command = command
+    child_environment = _child_environment()
+    if environment_overrides:
+        if any(not key or not value for key, value in environment_overrides.items()):
+            raise ValueError("연구 자식 프로세스 환경변수 이름과 값이 필요합니다.")
+        child_environment.update(environment_overrides)
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=str(project_root),
-        env=_child_environment(),
+        env=child_environment,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

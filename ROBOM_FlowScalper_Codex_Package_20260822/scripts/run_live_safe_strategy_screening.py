@@ -72,6 +72,8 @@ _RESEARCH_INFRASTRUCTURE_BOUND_PATHS = (
 
 _STANDARD_BATCH_KIND = "STRATEGY_100_FROZEN_BATCH"
 _COST_COVERED_BATCH_KIND = "COST_COVERED_EXIT_VARIANT_BATCH"
+_LARGE_RESEARCH_FILE_COUNT = 500
+_MINIMUM_RESEARCH_SPILL_FREE_BYTES = 5 * 1024 * 1024 * 1024
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -106,6 +108,41 @@ def _research_infrastructure_fingerprint(project_root: Path) -> str:
             raise FileNotFoundError(f"연구 실행 인프라 파일이 없습니다: {path}")
         checksums[relative_path] = hashlib.sha256(path.read_bytes()).hexdigest()
     return _canonical_hash(checksums)
+
+
+def _research_spill_contract(arguments: argparse.Namespace) -> dict[str, object]:
+    dataset = _read_json(arguments.dataset_manifest)
+    cut = dataset.get("live_public_cut")
+    archive_file_count = (
+        int(str(cut.get("file_count", 0))) if isinstance(cut, Mapping) else 0
+    )
+    spill_root = arguments.research_spill_root
+    if archive_file_count < _LARGE_RESEARCH_FILE_COUNT:
+        return {
+            "required": False,
+            "archive_file_count": archive_file_count,
+            "path": str(spill_root) if spill_root is not None else None,
+        }
+    if spill_root is None:
+        raise ValueError("대용량 screening은 --research-spill-root가 필요합니다.")
+    spill_root.mkdir(parents=True, exist_ok=True)
+    resolved_spill = spill_root.resolve(strict=True)
+    archive_device = arguments.archive.stat().st_dev
+    spill_device = resolved_spill.stat().st_dev
+    if archive_device == spill_device:
+        raise ValueError("연구 spill은 LIVE archive와 다른 저장장치여야 합니다.")
+    free_bytes = shutil.disk_usage(resolved_spill).free
+    if free_bytes < _MINIMUM_RESEARCH_SPILL_FREE_BYTES:
+        raise ValueError("연구 spill 여유공간은 5GiB 이상이어야 합니다.")
+    return {
+        "required": True,
+        "archive_file_count": archive_file_count,
+        "path": str(resolved_spill),
+        "archive_device": archive_device,
+        "spill_device": spill_device,
+        "same_device": False,
+        "free_bytes": free_bytes,
+    }
 
 
 def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
@@ -326,6 +363,15 @@ async def _execute(
                 state=child_state,
                 hard_duty_cycle_target_ratio=arguments.target_cpu_ratio,
                 maximum_continuous_run_seconds=(arguments.maximum_continuous_run_seconds),
+                environment_overrides=(
+                    {
+                        "ROBOM_RESEARCH_SPILL_ROOT": str(
+                            arguments.research_spill_root.resolve(strict=True)
+                        )
+                    }
+                    if arguments.research_spill_root is not None
+                    else None
+                ),
             ),
             probe=probe,
             thresholds=thresholds,
@@ -355,6 +401,7 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
     observations = SafetyObservations()
     child_state = ChildState()
     proposal = _trial_proposal(arguments)
+    spill_contract = _research_spill_contract(arguments)
     history = _load_trial_history(arguments.trial_history_catalog)
     history_decision = evaluate_trial_proposal(history, proposal)
     record_id = f"RESEARCH-{uuid4().hex}"
@@ -473,6 +520,7 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
             "resource_lock": str(arguments.resource_lock),
             "resource_lock_acquired": resource_lock_acquired,
             "single_archive_research_enforced": True,
+            "research_spill": spill_contract,
         },
         "paper_safety": {
             "paper_only": True,
@@ -525,6 +573,15 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--cpu-checkpoint-events", type=int, default=256)
     parser.add_argument("--maximum-continuous-run-seconds", type=float, default=0.05)
     parser.add_argument(
+        "--research-spill-root",
+        type=Path,
+        default=(
+            Path(os.environ["ROBOM_RESEARCH_SPILL_ROOT"])
+            if os.environ.get("ROBOM_RESEARCH_SPILL_ROOT")
+            else None
+        ),
+    )
+    parser.add_argument(
         "--trial-history-catalog",
         type=Path,
         default=project_root / "evidence" / "RESEARCH_TRIAL_HISTORY.jsonl",
@@ -544,6 +601,8 @@ def parse_arguments() -> argparse.Namespace:
     arguments.instrument_manifest = arguments.instrument_manifest.resolve(strict=True)
     arguments.trial_history_catalog = arguments.trial_history_catalog.resolve()
     arguments.resource_lock = arguments.resource_lock.resolve()
+    if arguments.research_spill_root is not None:
+        arguments.research_spill_root = arguments.research_spill_root.expanduser()
     arguments.control_output = arguments.control_output or arguments.output_directory.with_name(
         arguments.output_directory.name + "_LIVE_GUARD.json"
     )
