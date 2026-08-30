@@ -19,7 +19,13 @@ from backend.app.research import (
     load_research_instruments,
     preregistered_trials,
 )
+from backend.app.research.strategy100_dataset_v2 import (
+    archive_files_for_logical_run,
+    load_bound_manifest,
+)
+from backend.app.research.strategy100_warmup import FrozenStrategy100Warmup
 from scripts.research_strategy_100_candidates import (
+    RESEARCH_FEATURE_HISTORY_BARS,
     AccountCounters,
     ResearchAccountCarry,
     Strategy100RunExecutor,
@@ -45,6 +51,7 @@ def build_benchmark_report(
     final_resources: Mapping[str, object],
     source_hashes: Mapping[str, object],
     generated_ts_utc: str,
+    input_binding: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     """선택·승격에 쓰지 않는 bounded 진단 보고서를 fail-closed로 만든다."""
 
@@ -67,6 +74,19 @@ def build_benchmark_report(
         "private_api_disabled": True,
         "runtime_ai_disabled": True,
     }
+    if input_binding is not None:
+        checks.update(
+            {
+                "frozen_explicit_archive_files_bound": int(
+                    str(input_binding.get("explicit_archive_file_count", 0))
+                )
+                > 0,
+                "completed_public_warmup_bound": (
+                    int(str(input_binding.get("warmup_candle_count", 0))) > 0
+                    and int(str(input_binding.get("warmup_symbol_count", 0))) >= 20
+                ),
+            }
+        )
     status = "PASS" if all(checks.values()) else "INSUFFICIENT_BOUNDED_SAMPLE"
     report: dict[str, Any] = {
         "schema_version": 1,
@@ -93,6 +113,7 @@ def build_benchmark_report(
         "dashboard_serialization": "NOT_MEASURED_BY_THIS_BENCHMARK",
         "replay_contention": "NOT_MEASURED_BY_THIS_BENCHMARK",
         "source_hashes": dict(source_hashes),
+        "input_binding": dict(input_binding or {}),
         "diagnostics": dict(diagnostics),
         "checks": checks,
         "selection_or_promotion_performed": False,
@@ -166,6 +187,47 @@ def main() -> None:
         raise ValueError("benchmark에 사용할 Train Run이 없습니다.")
     selected = train_rows[0]
     run_id = str(selected["run_id"])
+    source_run_id = str(selected.get("source_run_id", run_id))
+    archive_files: tuple[Path, ...] | None = None
+    warmup_candles = ()
+    input_binding: dict[str, object] | None = None
+    if int(str(dataset.get("schema_version", 0))) >= 3:
+        cut_reference = dataset.get("live_public_cut")
+        warmup_reference = dataset.get("warmup_manifest")
+        if not isinstance(cut_reference, Mapping) or not isinstance(
+            warmup_reference, Mapping
+        ):
+            raise ValueError("V2 benchmark 동결 입력 연결이 없습니다.")
+        cut_manifest, _, _ = load_bound_manifest(
+            cut_reference,
+            binding_path=args.dataset_manifest,
+            expected_status="FROZEN_LIVE_PUBLIC_CUT",
+            name="LIVE_PUBLIC cut",
+        )
+        _, warmup_path, _ = load_bound_manifest(
+            warmup_reference,
+            binding_path=args.dataset_manifest,
+            expected_status="FROZEN_PUBLIC_KLINE_WARMUP",
+            name="public kline warmup",
+        )
+        archive_files = archive_files_for_logical_run(
+            live_public_cut=cut_manifest,
+            logical_run=selected,
+        )
+        warmup = FrozenStrategy100Warmup.load(warmup_path)
+        warmup_candles = warmup.candles_before(
+            int(str(selected["start_ts_ms"])),
+            maximum_bars=RESEARCH_FEATURE_HISTORY_BARS,
+        )
+        input_binding = {
+            "schema_version": int(str(dataset["schema_version"])),
+            "source_run_id": source_run_id,
+            "logical_run_id": run_id,
+            "explicit_archive_file_count": len(archive_files),
+            "warmup_candle_count": len(warmup_candles),
+            "warmup_symbol_count": len(warmup.symbols),
+            "warmup_cutoff_ts_ms": warmup.manifest["cutoff_ts_ms"],
+        }
     trials = preregistered_trials()
     executable = tuple(trial for trial in trials if trial.screening_eligible)
     account_counters = {
@@ -188,7 +250,7 @@ def main() -> None:
     executor = Strategy100RunExecutor(
         run_id=run_id,
         split="TRAIN",
-        archive_dir=args.archive / f"run={run_id}",
+        archive_dir=args.archive / f"run={source_run_id}",
         trials=trials,
         instruments=instruments,
         account_counters=account_counters,
@@ -209,6 +271,8 @@ def main() -> None:
             for trial in executable
             for profile in CostProfile
         },
+        archive_files=archive_files,
+        warmup_candles=warmup_candles,
     )
     sampler = ProcessResourceSampler(args.archive)
     baseline = sampler.sample()
@@ -226,6 +290,7 @@ def main() -> None:
         final_resources=final_resources,
         source_hashes=source_hashes,
         generated_ts_utc=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        input_binding=input_binding,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")

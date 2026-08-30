@@ -20,6 +20,11 @@ def test_benchmark_report_requires_observed_candidate_evaluations() -> None:
         final_resources={"process_memory_mb": 110, "process_cpu_percent": 50},
         source_hashes={"dataset_manifest_sha256": "a" * 64},
         generated_ts_utc="2026-08-28T00:00:00Z",
+        input_binding={
+            "explicit_archive_file_count": 100,
+            "warmup_candle_count": 20_000,
+            "warmup_symbol_count": 24,
+        },
     )
 
     assert report["status"] == "PASS"
@@ -30,6 +35,8 @@ def test_benchmark_report_requires_observed_candidate_evaluations() -> None:
     assert report["active_count"] == 0
     assert report["final_oos_processed"] is False
     assert report["real_orders_enabled"] is False
+    assert report["checks"]["frozen_explicit_archive_files_bound"] is True
+    assert report["checks"]["completed_public_warmup_bound"] is True
 
     insufficient = build_benchmark_report(
         run_id="train-run",
