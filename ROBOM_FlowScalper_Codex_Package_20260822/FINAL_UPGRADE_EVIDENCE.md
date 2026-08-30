@@ -4177,3 +4177,42 @@ STRESS 승률은 38.4%, payoff 2.137, 왜도 3.321, 최대 승자 15.414R로 작
 
 현 수용상태는
 `HYP132_POSITIVE_SKEW_EXTERNAL_REPLICATION_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.
+
+## 96. Wave 135 전략 결과표·정렬·홈 이동
+
+전략 화면의 복잡한 사용 방식·방향 설정을 상세 drawer로 옮기고 기본 화면은 전략,
+현재 상태, 승률, 거래 수, 비용 후 순손익, 보유 건수만 표시하게 바꿘다. BASE·STRESS를
+따로 보며 데스크톱 표 머리글과 모바일 큰 버튼으로 오름차순·내림차순을 바꾸게 했다.
+승률 미측정 행은 항상 아래로 보내고 30건 미만은 `표본 부족 · 순위 제외`를 표시한다.
+`FlowScalper` 이름을 누르면 어떤 화면에서든 시장 기본화면으로 돌아간다.
+
+소스 미리보기의 데스크톱·태블릿·모바일 Playwright는 모두 통과했다. 실제 8870 서비스는
+release `5de870501899f17437d037c999d5278a648276b2`에서 Run `run-2b7135a972dd`를
+LIVE 공개시장·PAPER로 계속 실행 중이며, 새 소스 릴리스와는 아직 다르다. 검증 시점에
+추세 V2 BASE/STRESS 포지션 7개가 열려 있어 강제 청산이나 재시작을 하지 않았다.
+
+거래기록은 현재 Run에서 공동계좌 현재버전 0건만 보면 비어 있지만, 전략별 계좌 현재버전은
+19건이고 현재 Run 모든 버전은 공동 1건·전략별 148건·합계 149건이다. 따라서 원장이
+멈춘 것이 아니라 범위 필터를 구분해야 하는 상태다. 현재 소스는 이미 기본 계좌 범위를
+`모든 가상계좌`로 열도록 바뀔 상태이며, 실제 설치 후 브라우저에서 다시 확인해야 한다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| TypeScript·ESLint·build | `PASS` | typecheck, lint, Vite build 통과 |
+| frontend 단위회귀 | `PASS` | 15 files·85 tests |
+| 반응형 Playwright | `PASS` | desktop·tablet·mobile 3건, 정렬·비용·drawer·홈 이동 |
+| 소스 화면 시각검사 | `PASS` | desktop·mobile 캡처 직접 확인 |
+| 30.018초 실제 서비스 관찰 | `PASS` | event +2,340·평가 +13,020·queue 1·처리/체결 p95 30.097/82.178ms |
+| 신규 오류·비계획 재연결·gap·drop | `PASS_ZERO` | fault·buffer drop·critical·실제주문·인증 증가 0 |
+| 첫 관찰의 WAL 완료 경계 | `FAIL_PRESERVED` | 관찰 종료 순간 checkpoint 진행 중, 완료 후 재시도 PASS |
+| 커밋 불변 릴리스·실제 8870 클릭 | `NOT_RUN` | 7개 PAPER 포지션 자연 종료 대기 |
+| 6시간·24시간 | `NOT_RUN` | 실제 시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 현재버전 BASE 9건·STRESS 10건, 모두 30건 미만·누적 순손익 음수 |
+
+기계판독 근거는 `evidence/WAVE135_STRATEGY_SORT_AND_HOME_QA.json`,
+`evidence/WAVE135_PREDEPLOY_RUNTIME_30S.json`,
+`evidence/WAVE135_PREDEPLOY_RUNTIME_30S_RETRY.json`과
+`evidence/screenshots/phase09-strategy-sort-{desktop,tablet,mobile}.png`다.
+
+현 수용상태는
+`STRATEGY_RESULT_UI_SOURCE_PASS_INSTALL_WAITING_FOR_FLAT_PAPER_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

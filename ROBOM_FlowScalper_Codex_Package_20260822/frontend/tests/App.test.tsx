@@ -151,7 +151,7 @@ test('navigates five main groups and contextual subpages', async () => {
   vi.stubGlobal('WebSocket', FakeWebSocket)
   render(<App />)
   for (const [button, heading] of [
-    ['전략', '전략 설정'],
+    ['전략', '전략 한눈에 보기'],
     ['기록', '거래 기록'],
     ['분석', '성과'],
     ['설정', '시스템 상태'],
@@ -161,6 +161,20 @@ test('navigates five main groups and contextual subpages', async () => {
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
     expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
   }
+})
+
+test('returns to the main market when the FlowScalper name is clicked', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ ok: true, json: async () => initialDashboard })),
+  )
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+  render(<App />)
+
+  fireEvent.click(await screen.findByRole('button', { name: '전략' }))
+  expect(screen.getByRole('heading', { name: '전략 한눈에 보기' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'FlowScalper 메인 시장으로 이동' }))
+  expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
 })
 
 test('separates current RSS from peak RSS in advanced diagnostics', async () => {

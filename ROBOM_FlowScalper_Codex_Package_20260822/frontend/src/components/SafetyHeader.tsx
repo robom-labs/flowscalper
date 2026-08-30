@@ -7,10 +7,11 @@ type Props = {
   connected: boolean
   connectionState: 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
   lastUpdateMs: number | null
+  onHome: () => void
   onSummary: () => void
 }
 
-export function SafetyHeader({ data, connected, connectionState, lastUpdateMs, onSummary }: Props) {
+export function SafetyHeader({ data, connected, connectionState, lastUpdateMs, onHome, onSummary }: Props) {
   const { status } = data
   const live = status.market_data_state === 'LIVE'
   const fixture = status.mode === 'DEMO_FIXTURE'
@@ -39,7 +40,7 @@ export function SafetyHeader({ data, connected, connectionState, lastUpdateMs, o
     .reduce((total, account) => total + account.open_positions, 0)
   return (
     <header className="topbar">
-      <div className="brand-lockup"><h1>FlowScalper</h1><button type="button" className="summary-link" onClick={onSummary}>요약</button></div>
+      <div className="brand-lockup"><h1><button type="button" className="brand-home" aria-label="FlowScalper 메인 시장으로 이동" onClick={onHome}>FlowScalper</button></h1><button type="button" className="summary-link" onClick={onSummary}>요약</button></div>
       <div className="header-status" aria-label="운영 상태">
         <span className={live ? 'status-dot live' : fixture ? 'status-dot fixture' : 'status-dot'}>{sourceLabel}</span>
         <span>보유 중 {openPositions}건</span>

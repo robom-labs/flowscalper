@@ -1,0 +1,97 @@
+{
+  "schema": "flowscalper.strategy_sort_and_home_qa.v1",
+  "status": "SOURCE_VALIDATION_PASS_INSTALL_WAITING_FOR_FLAT_PAPER",
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "implementation_base_commit": "8855384b46a24a35861db1e4f003523ba3db1d90",
+  "source_checks": {
+    "typescript_typecheck": "PASS",
+    "eslint": "PASS",
+    "vite_build": "PASS_WITH_EXISTING_CHUNK_SIZE_WARNING",
+    "vitest_files": 15,
+    "vitest_tests": 85,
+    "vitest_status": "PASS",
+    "playwright_projects": [
+      "desktop",
+      "tablet",
+      "mobile"
+    ],
+    "playwright_tests": 3,
+    "playwright_status": "PASS"
+  },
+  "verified_interactions": [
+    "BASE_STRESS_PROFILE_SWITCH",
+    "DESKTOP_WIN_RATE_DESCENDING",
+    "DESKTOP_WIN_RATE_ASCENDING",
+    "MOBILE_SORT_CONTROL",
+    "STRATEGY_DETAIL_AND_SETTINGS",
+    "LONG_SHORT_CONTROLS_PRESERVED",
+    "FLOWSCALPER_BRAND_RETURNS_TO_MARKET"
+  ],
+  "screenshots": [
+    {
+      "path": "evidence/screenshots/phase09-strategy-sort-desktop.png",
+      "sha256": "34ba71f5a193e2e0ea81d8c3f2744abfc23d10725e7bb0573f3b6821ee571ed0"
+    },
+    {
+      "path": "evidence/screenshots/phase09-strategy-sort-tablet.png",
+      "sha256": "45772d5ded64fd111fa900d84a44c86967bb1c1c5e4491ffee4fcbdd100a29e5"
+    },
+    {
+      "path": "evidence/screenshots/phase09-strategy-sort-mobile.png",
+      "sha256": "1e08706a53e83541e9f1db8f104cee323d1c4c2f81c2d6e232fa66fc2819afd8"
+    }
+  ],
+  "installed_runtime_before_deploy": {
+    "release_commit": "5de870501899f17437d037c999d5278a648276b2",
+    "run_id": "run-2b7135a972dd",
+    "operation_state": "RUNNING",
+    "market_data_state": "LIVE",
+    "execution_state": "PAPER",
+    "open_paper_positions": 7,
+    "all_positions_protected": true,
+    "current_run_history_counts": {
+      "main_current_version": 0,
+      "main_all_versions": 1,
+      "league_current_version": 19,
+      "league_all_versions": 148,
+      "all_accounts_current_version": 19,
+      "all_accounts_all_versions": 149
+    },
+    "source_and_installed_release_match": false,
+    "reason": "The committed installed release predates this source wave. The service was not restarted while PAPER positions were open."
+  },
+  "runtime_observer": {
+    "evidence": "evidence/WAVE135_PREDEPLOY_RUNTIME_30S_RETRY.json",
+    "status": "PASS",
+    "duration_seconds": 30.018,
+    "event_delta": 2340,
+    "strategy_evaluation_delta": 13020,
+    "qualified_signal_delta": 0,
+    "maximum_queue_depth": 1,
+    "maximum_processing_lag_p95_ms": 30.0966796875,
+    "maximum_trade_lag_p95_ms": 82.177978515625,
+    "maximum_wide_lag_p95_ms_observational": 1800.40771484375,
+    "new_unplanned_reconnects": 0,
+    "new_sequence_gaps": 0,
+    "new_dropped_events": 0,
+    "new_persistence_faults": 0,
+    "new_persistence_buffer_drops": 0,
+    "new_critical_lag_incidents": 0
+  },
+  "preserved_failed_observation": {
+    "evidence": "evidence/WAVE135_PREDEPLOY_RUNTIME_30S.json",
+    "status": "FAIL",
+    "reason": "A nonblocking WAL checkpoint was still running at the end of the first window. It completed before the clean retry and was not discarded."
+  },
+  "installation": {
+    "status": "NOT_RUN",
+    "blocking_condition": "SEVEN_OPEN_PAPER_POSITIONS",
+    "next_safe_action": "Stage and install the committed immutable release only after all PAPER positions close naturally, then repeat the actual 8870 browser interactions."
+  },
+  "profitability_claim": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY",
+  "six_hour_soak": "NOT_RUN",
+  "twenty_four_hour_soak": "NOT_RUN"
+}

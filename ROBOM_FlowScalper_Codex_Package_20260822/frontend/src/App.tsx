@@ -124,7 +124,7 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <SafetyHeader data={data} connected={connected} connectionState={connectionState} lastUpdateMs={lastUpdateMs} onSummary={() => changePage('summary')} />
+      <SafetyHeader data={data} connected={connected} connectionState={connectionState} lastUpdateMs={lastUpdateMs} onHome={() => changePage('terminal')} onSummary={() => changePage('summary')} />
       <Navigation page={page} onChange={changePage} />
       {connectionError ? <p className="connection-error" role="alert">{connectionError}</p> : null}
       {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}

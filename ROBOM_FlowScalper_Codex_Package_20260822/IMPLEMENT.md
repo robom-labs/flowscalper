@@ -784,3 +784,12 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 10. Keep natural nonzero open-to-close visibility `NOT_OBSERVED` until it occurs. Deterministic lifecycle
     tests supplement but do not replace natural evidence. Keep 6h·24h `NOT_RUN`, profitability
     `NOT_PROVEN` and real-money readiness `NOT_READY` until their independent gates pass.
+
+## Wave 135 전략 결과표·정렬·홈 이동
+
+- `StrategiesPage` 표를 BASE·STRESS 전환과 전략·상태·승률·거래 수·순손익·보유 정렬을 지원하는 결과표로 교체했다.
+- 승률 미측정값은 방향과 무관하게 마지막에 두고, 30건 미만은 순위 제외·남은 표본을 표시한다. 기존 사용 방식·LONG·SHORT·Governor·변경 이력은 상세 drawer에 보존했다.
+- 매 상태 갱신마다 전략×계좌 반복 필터를 하지 않도록 전략 ID별 계좌 `Map`을 메모이제이션했다.
+- `SafetyHeader` 브랜드를 접근 가능한 버튼으로 바꾸고 `App` 시장 기본 화면으로 연결했다.
+- frontend 85건, lint, typecheck, build, 데스크톱·태블릿·모바일 Playwright 3건을 통과했다. 실제 8870은 7개 PAPER 포지션을 자동 보호 중이어서 강제 종료·재시작을 하지 않았다.
+- 재시도 30.018초 읽기 전용 관찰은 event +2,340·전략평가 +13,020·queue 최대 1·처리/체결 p95 30.097/82.178ms였다. 신규 critical·비계획 재연결·gap·drop·저장 fault·buffer drop·실제주문·인증은 0으로 PASS했다.

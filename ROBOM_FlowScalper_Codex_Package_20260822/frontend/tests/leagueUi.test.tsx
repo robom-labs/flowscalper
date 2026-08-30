@@ -15,19 +15,27 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+function openStrategySettings(strategyId: string) {
+  const row = document.querySelector(`[data-strategy-id="${strategyId}"]`)
+  if (!(row instanceof HTMLElement)) throw new Error(`strategy row missing: ${strategyId}`)
+  fireEvent.click(within(row).getByRole('button', { name: '자세히·설정' }))
+}
+
 test('shows fifteen compact strategy rows with ten simultaneous paper hypotheses', () => {
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(15)
-  expect(document.querySelectorAll('.strategy-inline-modes button[aria-pressed="true"]')).toHaveLength(10)
+  expect(document.querySelectorAll('.strategy-inline-modes button')).toHaveLength(0)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('10개 동시 검증 · 과거 결과 보존 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('10개 동시 검증 · 30건 달성 0개 · 보존 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getAllByText('준비 중')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(5)
-  expect(screen.getByRole('columnheader', { name: '이번 Run 결과' })).toBeInTheDocument()
-  expect(screen.getByRole('columnheader', { name: '검증 결과' })).toBeInTheDocument()
-  expect(screen.queryByRole('columnheader', { name: '현재버전 승률' })).not.toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '승률' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '거래 수' })).toHaveAttribute('aria-sort', 'descending')
+  expect(screen.getByRole('columnheader', { name: '순손익' })).toBeInTheDocument()
+  expect(screen.getByRole('group', { name: '성과 비용 기준' })).toBeInTheDocument()
+  expect(screen.getByText(/30건 미만 승률은 참고값/)).toBeInTheDocument()
 
-  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[0])
+  openStrategySettings(strategies[0].strategy_id)
   expect(screen.getByRole('dialog', { name: '전략 상세 정보' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: '기본 비용 가상계좌' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: '보수 비용 가상계좌' })).toBeInTheDocument()
@@ -53,13 +61,46 @@ test('shows fifteen compact strategy rows with ten simultaneous paper hypotheses
   expect(screen.getAllByText('고급 통계 보기')).toHaveLength(2)
 
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
-  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[10])
+  openStrategySettings(strategies[1].strategy_id)
+  expect(screen.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: '상승 켜짐' })).toHaveAttribute('aria-pressed', 'true')
+  fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
+  openStrategySettings(strategies[10].strategy_id)
   expect(screen.getByText('1시간~36시간')).toBeInTheDocument()
   expect(screen.getByText(/TP1 2.2R·40%/)).toBeInTheDocument()
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
-  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[11])
+  openStrategySettings(strategies[11].strategy_id)
   expect(screen.getByText('30분~8시간')).toBeInTheDocument()
   expect(screen.getByText(/시간청산 없이 TP1·TP2·구조 손절로 결판/)).toBeInTheDocument()
+})
+
+test('sorts strategy results both ways and keeps missing win rates at the bottom', () => {
+  const evidence = new Map([
+    [strategies[0].strategy_id, { sampleSize: 12, wins: 6, losses: 6, winRate: '0.5' }],
+    [strategies[1].strategy_id, { sampleSize: 6, wins: 5, losses: 1, winRate: '0.833333' }],
+    [strategies[2].strategy_id, { sampleSize: 30, wins: 21, losses: 9, winRate: '0.7' }],
+  ])
+  const rows = strategies.map((strategy) => {
+    const value = evidence.get(strategy.strategy_id)
+    return value ? {
+      ...strategy,
+      performance: {
+        ...strategy.performance,
+        BASE: { ...strategy.performance.BASE, sample_size: value.sampleSize, wins: value.wins, losses: value.losses, win_rate: value.winRate },
+      },
+    } : strategy
+  })
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  const visibleIds = () => [...document.querySelectorAll<HTMLTableRowElement>('.strategy-compact-table tbody tr')].map((row) => row.dataset.strategyId)
+
+  expect(visibleIds().slice(0, 3)).toEqual([strategies[2].strategy_id, strategies[0].strategy_id, strategies[1].strategy_id])
+  fireEvent.click(screen.getByRole('button', { name: /승률 정렬/ }))
+  expect(screen.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
+  expect(visibleIds().slice(0, 3)).toEqual([strategies[1].strategy_id, strategies[2].strategy_id, strategies[0].strategy_id])
+  fireEvent.click(screen.getByRole('button', { name: /승률 정렬/ }))
+  expect(screen.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'ascending')
+  expect(visibleIds().slice(0, 3)).toEqual([strategies[0].strategy_id, strategies[2].strategy_id, strategies[1].strategy_id])
+  expect(visibleIds().at(-1)).toBe(strategies.at(-1)?.strategy_id)
 })
 
 test('shows lifecycle evidence and restores the prior revision without deleting history', async () => {
@@ -126,7 +167,7 @@ test('shows lifecycle evidence and restores the prior revision without deleting 
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} onRollback={onRollback} />)
 
-  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[2])
+  openStrategySettings(current.strategy_id)
   const dialog = screen.getByRole('dialog', { name: '전략 상세 정보' })
   const history = dialog.querySelector('ol')
   if (!history) throw new Error('strategy change history missing')
@@ -154,7 +195,7 @@ test('explains the 70 percent retirement gate in beginner Korean', () => {
   } : strategy)
 
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
-  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[1])
+  openStrategySettings(strategies[1].strategy_id)
 
   expect(screen.getByText('충분한 기본 비용 표본에서 승률 70%에 못 미쳐 검증을 종료했습니다.')).toBeInTheDocument()
 })
@@ -171,9 +212,12 @@ test('blocks policy-retired reactivation but keeps ordinary user OFF reversible'
   vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
 
+  openStrategySettings(strategies[0].strategy_id)
   expect(screen.queryByRole('button', { name: 'LSA 반전 공동·독립 모의 중' })).not.toBeInTheDocument()
-  expect(screen.getAllByText('새 진입 없음 · 거래기록과 가상계좌 보존')).toHaveLength(5)
-  expect(screen.getAllByText('현재 거래 없음')).toHaveLength(5)
+  expect(screen.getByText('새 진입 없음 · 거래기록과 가상계좌 보존')).toBeInTheDocument()
+  expect(screen.getByText('과거 상승·하락 설정만 보존합니다.')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '전략 상세 정보 닫기' }))
+  openStrategySettings(userOffId)
   const reversible = screen.getByRole('button', { name: 'VWAP 소진 독립 모의 중' })
   expect(reversible).toBeEnabled()
   fireEvent.click(reversible)
@@ -199,7 +243,7 @@ test('translates governor reason codes into beginner Korean', () => {
   } : strategy)
 
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
-  fireEvent.click(screen.getAllByRole('button', { name: '자세히' })[11])
+  openStrategySettings(strategies[11].strategy_id)
 
   expect(screen.getByText(/기본 비용 가상계좌 표본 30건이 필요합니다/)).toBeInTheDocument()
   expect(screen.getByText(/보수 비용을 뺀 거래당 기대수익이 아직 양수/)).toBeInTheDocument()
@@ -211,6 +255,7 @@ test('confirms mode changes and sends the visible settings revision', async () =
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
 
+  openStrategySettings('CBR_CONTINUATION_V1')
   expect(screen.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByRole('button', { name: 'CBR 돌파 검증 중지' })).toHaveAttribute('aria-pressed', 'false')
   fireEvent.click(screen.getByRole('button', { name: 'CBR 돌파 공동·독립 모의 중' }))
@@ -241,7 +286,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
   expect(screen.getByText('조건 미충족')).toBeInTheDocument()
-  expect(screen.getByText('9개 동시 검증 · 과거 결과 보존 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('9개 동시 검증 · 30건 달성 0개 · 보존 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 

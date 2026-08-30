@@ -168,7 +168,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   }
 
   await page.getByRole('button', { name: '전략', exact: true }).click()
-  await expect(page.getByRole('heading', { name: '전략 설정' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '전략 한눈에 보기' })).toBeVisible()
   if (testInfo.project.name !== 'desktop') {
     for (const button of await page.getByRole('navigation', { name: '하위 화면' }).getByRole('button').all()) {
       const box = await button.boundingBox()
@@ -177,18 +177,27 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
     }
   }
   await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(15)
-  await expect(page.getByText('10개 동시 검증 · 과거 결과 보존 5개 · 문제 0개 · 실제 주문 0')).toBeVisible()
+  await expect(page.getByText('10개 동시 검증 · 30건 달성 0개 · 보존 5개 · 문제 0개 · 실제 주문 0')).toBeVisible()
   await expect(page.getByText('준비 중')).toHaveCount(10)
   await expect(page.locator('.strategy-monitor.off')).toHaveCount(5)
-  await expect(page.locator('.strategy-inline-modes button[aria-pressed="true"]')).toHaveCount(10)
-  await expect(page.locator('.strategy-inline-directions button[aria-pressed="true"]')).toHaveCount(20)
-  await expect(page.getByText('새 진입 없음 · 거래기록과 가상계좌 보존')).toHaveCount(5)
-  await expect(page.getByText('현재 거래 없음')).toHaveCount(5)
-  await expect(page.getByRole('button', { name: 'LSA 반전 공동·독립 모의 중' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.getByRole('button', { name: 'CBR 돌파 검증 중지' })).toHaveAttribute('aria-pressed', 'false')
-  await page.getByRole('button', { name: '자세히', exact: true }).first().click()
+  await expect(page.locator('.strategy-inline-modes button')).toHaveCount(0)
+  await expect(page.getByText(/30건 미만 승률은 참고값/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '기본 비용', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: '보수 비용', exact: true }).click()
+  await expect(page.getByRole('button', { name: '보수 비용', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  if (testInfo.project.name === 'desktop') {
+    await page.getByRole('button', { name: /승률 정렬/ }).click()
+    await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
+    await page.getByRole('button', { name: /승률 정렬/ }).click()
+    await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'ascending')
+  } else {
+    await page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: '승률' }).click()
+    await expect(page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: /승률/ })).toHaveAttribute('aria-pressed', 'true')
+  }
+  await capturePhase09(page, testInfo.project.name, 'strategy-sort')
+  await page.locator('[data-strategy-id="LSA_REVERSAL_V1"]').getByRole('button', { name: '자세히·설정' }).click()
   const strategyDialog = page.getByRole('dialog', { name: '전략 상세 정보' })
+  await expect(strategyDialog.getByText('새 진입 없음 · 거래기록과 가상계좌 보존')).toBeVisible()
   await expect(strategyDialog.getByText('최소 준비', { exact: true })).toBeVisible()
   await expect(strategyDialog.getByText('무엇을 노리나요?', { exact: true })).toBeVisible()
   await expect(strategyDialog.getByText('종료 원칙', { exact: true })).toBeVisible()
@@ -213,6 +222,13 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(page.getByText(/급락·급등 쓸기 반전 전략 설정을 RETIRED·OFF 상태로 변경/)).toBeVisible()
   await expect(page.getByText(/NONE.*RECOVERY.*COST_ADJUSTED_RESEARCH_RETIREMENT/)).toBeVisible()
   await page.getByRole('button', { name: '전략 상세 정보 닫기' }).click()
+  await page.locator('[data-strategy-id="CBR_CONTINUATION_V1"]').getByRole('button', { name: '자세히·설정' }).click()
+  await expect(strategyDialog.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(strategyDialog.getByRole('button', { name: '상승 켜짐' })).toHaveAttribute('aria-pressed', 'true')
+  await page.getByRole('button', { name: '전략 상세 정보 닫기' }).click()
+  await page.getByRole('button', { name: 'FlowScalper 메인 시장으로 이동' }).click()
+  await expect(page.getByRole('heading', { name: /시장$/ })).toBeVisible()
+  await page.getByRole('button', { name: '전략', exact: true }).click()
   await page.getByRole('button', { name: '분석', exact: true }).click()
   await expect(page.getByText(/자산은 이번 실행, 승률과 통계는 현재 전략 버전/)).toBeVisible()
   await capturePhase09(page, testInfo.project.name, 'current-version-performance')

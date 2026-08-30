@@ -536,3 +536,13 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - Registry·LIVE SHADOW 변경은 0, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
   다음 가설은 같은 Bybit 결과에 맞추지 않고 ADX 상승·DMI 방향·분산 규칙을
   사전등록한 뒤 아직 열지 않은 공개 venue 또는 미래 bid·ask SHADOW에서 검증한다.
+
+## Wave 135 전략 결과표·정렬·홈 이동
+
+- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_WAITING_FOR_FLAT_PAPER`다.
+- 전략 기본표를 초보자가 바로 판단할 승률·거래 수·비용 후 순손익·보유 중심으로 단순화한다.
+- 데스크톱 표 머리글과 모바일 큰 버튼에 오름차순·내림차순, BASE·STRESS 비용 전환을 연결한다.
+- 30건 미만이나 승률이 없는 전략이 잘못된 순위를 만들지 않게 하고 상세·설정·과거 기록은 삭제하지 않는다.
+- `FlowScalper` 이름을 누르면 항상 시장 기본화면으로 돌아가게 한다.
+- 단위·lint·typecheck·build·desktop·tablet·mobile E2E를 통과한 후 현재 PAPER 포지션이 자연 종료될 때까지 기존 8870 서비스를 유지한다.
+- 포지션 0건에서만 커밋된 불변 릴리스를 설치하고 실제 8870 브라우저 클릭과 화면을 다시 검증한다.

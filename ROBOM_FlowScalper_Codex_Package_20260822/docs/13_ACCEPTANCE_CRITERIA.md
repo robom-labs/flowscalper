@@ -243,3 +243,15 @@ Wave 47의 활성 writer 동시검사는 queue 4,096·drop 9,736을 만든 `FAIL
 - [x] The implementation commit completes a genuine non-invasive 30-minute installed-service observation.
 - [ ] The implementation commit completes genuine 6-hour and 24-hour installed-service observations.
 - [ ] Current-version natural LIVE_PUBLIC samples meet the preregistered profitability gate.
+
+## W. Beginner strategy result sorting and home navigation
+
+- [x] The default strategy view shows only strategy, current state, win rate, trade count, cost-adjusted Run PnL, open positions and details.
+- [x] Every desktop result header sorts ascending and descending with an accessible `aria-sort` state.
+- [x] Tablet and mobile expose equivalent 48px-or-larger sorting controls without root overflow.
+- [x] Missing win rates remain below measured rows in both directions and samples below 30 are explicitly excluded from ranking.
+- [x] BASE and STRESS profiles can be switched without mixing the two independent PAPER accounts.
+- [x] Strategy mode and LONG/SHORT controls remain available in the detail drawer and policy-retired rows remain locked with immutable history preserved.
+- [x] Clicking the FlowScalper name returns to the main market from another page.
+- [x] Unit tests and desktop, tablet and mobile Playwright exercise both sorting directions, cost switching, drawer controls and home navigation.
+- [ ] The committed immutable release is installed after every current PAPER position closes naturally and the same interactions are repeated in the actual 8870 browser.

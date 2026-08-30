@@ -20,6 +20,57 @@ type Props = {
   onRollback?: (strategyId: string, targetRevision: number, expectedRevision: number) => Promise<unknown>
 }
 
+type CostProfile = 'BASE' | 'STRESS'
+type StrategySortKey = 'strategy' | 'status' | 'winRate' | 'sampleSize' | 'pnl' | 'openPositions'
+type SortDirection = 'ascending' | 'descending'
+
+const defaultSortDirection: Record<StrategySortKey, SortDirection> = {
+  strategy: 'ascending',
+  status: 'ascending',
+  winRate: 'descending',
+  sampleSize: 'descending',
+  pnl: 'descending',
+  openPositions: 'descending',
+}
+
+const mobileSortOptions: Array<{ key: StrategySortKey; label: string }> = [
+  { key: 'strategy', label: '전략' },
+  { key: 'winRate', label: '승률' },
+  { key: 'sampleSize', label: '거래 수' },
+  { key: 'pnl', label: '순손익' },
+  { key: 'openPositions', label: '보유' },
+]
+
+function SortableHeader({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onSort,
+}: {
+  label: string
+  sortKey: StrategySortKey
+  activeKey: StrategySortKey
+  direction: SortDirection
+  onSort: (key: StrategySortKey) => void
+}) {
+  const active = activeKey === sortKey
+  const nextDirection = active && direction === 'descending' ? '오름차순' : '내림차순'
+  return (
+    <th aria-sort={active ? direction : undefined}>
+      <button
+        type="button"
+        className={active ? 'strategy-sort-button active' : 'strategy-sort-button'}
+        aria-label={`${label} 정렬 · 누르면 ${nextDirection}`}
+        onClick={() => onSort(sortKey)}
+      >
+        <span>{label}</span>
+        <span aria-hidden="true">{active ? direction === 'ascending' ? '▲' : '▼' : '↕'}</span>
+      </button>
+    </th>
+  )
+}
+
 const lifecycleLabels: Record<StrategyRow['lifecycle'], string> = {
   RESEARCH: '연구 중',
   SHADOW: '독립 검증 중',
@@ -156,6 +207,9 @@ function ProfileDetails({ report, account, analyticsReady }: { report: StrategyP
 export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = true, onConfigure, onRollback }: Props) {
   const [saving, setSaving] = useState('')
   const [selectedId, setSelectedId] = useState('')
+  const [profile, setProfile] = useState<CostProfile>('BASE')
+  const [sortKey, setSortKey] = useState<StrategySortKey>('sampleSize')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('descending')
   const ordered = useMemo(() => orderedStrategies(strategies), [strategies])
   const selected = useMemo(
     () => strategies.find((strategy) => strategy.strategy_id === selectedId) ?? null,
@@ -177,44 +231,106 @@ export function StrategiesPage({ strategies, leagueAccounts, analyticsReady = tr
   }, [onConfigure])
   const closeDrawer = useCallback(() => setSelectedId(''), [])
   const accounts = selected ? leagueAccounts.filter((account) => account.strategy_id === selected.strategy_id) : []
-  const monitorRows = ordered.map((strategy) => monitorState(
-    strategy,
-    leagueAccounts.filter((account) => account.strategy_id === strategy.strategy_id),
-  ))
-  const healthyCount = monitorRows.filter((row) => !['fault', 'off'].includes(row.tone)).length
-  const faultCount = monitorRows.filter((row) => row.tone === 'fault').length
-  const offCount = monitorRows.filter((row) => row.tone === 'off').length
+  const rows = useMemo(() => {
+    const accountsByStrategy = new Map<string, LeagueAccount[]>()
+    for (const account of leagueAccounts) {
+      const strategyAccounts = accountsByStrategy.get(account.strategy_id) ?? []
+      strategyAccounts.push(account)
+      accountsByStrategy.set(account.strategy_id, strategyAccounts)
+    }
+    return ordered.map((strategy, originalIndex) => {
+      const strategyAccounts = accountsByStrategy.get(strategy.strategy_id) ?? []
+      const account = strategyAccounts.find((item) => item.profile === profile)
+      const report = strategy.performance[profile]
+      return {
+        strategy,
+        account,
+        report,
+        monitor: monitorState(strategy, strategyAccounts),
+        pnl: account ? number(account.current_equity_usdt) - number(account.starting_equity_usdt) : 0,
+        winRate: report.win_rate === null ? null : number(report.win_rate),
+        originalIndex,
+      }
+    }).sort((left, right) => {
+      if (sortKey === 'winRate' && (left.winRate === null || right.winRate === null)) {
+        if (left.winRate === right.winRate) return left.originalIndex - right.originalIndex
+        return left.winRate === null ? 1 : -1
+      }
+      let comparison = 0
+      if (sortKey === 'strategy') comparison = left.strategy.short_name.localeCompare(right.strategy.short_name, 'ko')
+      if (sortKey === 'status') comparison = left.monitor.label.localeCompare(right.monitor.label, 'ko')
+      if (sortKey === 'winRate') comparison = (left.winRate ?? 0) - (right.winRate ?? 0)
+      if (sortKey === 'sampleSize') comparison = left.report.sample_size - right.report.sample_size
+      if (sortKey === 'pnl') comparison = left.pnl - right.pnl
+      if (sortKey === 'openPositions') comparison = (left.account?.open_positions ?? 0) - (right.account?.open_positions ?? 0)
+      const directed = comparison * (sortDirection === 'ascending' ? 1 : -1)
+      return directed || left.originalIndex - right.originalIndex
+    })
+  }, [leagueAccounts, ordered, profile, sortDirection, sortKey])
+  const sortBy = useCallback((key: StrategySortKey) => {
+    if (key === sortKey) {
+      setSortDirection((current) => current === 'ascending' ? 'descending' : 'ascending')
+      return
+    }
+    setSortKey(key)
+    setSortDirection(defaultSortDirection[key])
+  }, [sortKey])
+  const healthyCount = rows.filter((row) => !['fault', 'off'].includes(row.monitor.tone)).length
+  const faultCount = rows.filter((row) => row.monitor.tone === 'fault').length
+  const offCount = rows.filter((row) => row.monitor.tone === 'off').length
+  const provenSampleCount = rows.filter((row) => row.report.sample_size >= 30).length
   return (
     <section aria-labelledby="strategies-heading">
-      <div className="page-heading"><div><p className="section-kicker">모의매매 전략</p><h2 id="strategies-heading">전략 설정</h2><p className="heading-help">각 전략이 지금 무엇을 하는지와 진입하지 못한 핵심 이유를 한 줄로 표시합니다. 실행 오류와 조건 미충족은 따로 판단하며, 장시간 0건이면 전략 적합성을 다시 검증합니다.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 동시 검증 · 과거 결과 보존 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
+      <div className="page-heading"><div><p className="section-kicker">전략별 모의결과</p><h2 id="strategies-heading">전략 한눈에 보기</h2><p className="heading-help">표 제목을 누르면 큰순·작은순으로 바뀝니다. 승률만 보지 않고 거래 수와 비용을 뺀 순손익을 함께 확인하세요.</p></div><span className={faultCount ? 'page-note negative' : 'page-note'}>{healthyCount}개 동시 검증 · 30건 달성 {provenSampleCount}개 · 보존 {offCount}개 · 문제 {faultCount}개 · 실제 주문 0</span></div>
       {!analyticsReady ? <p className="profile-scope-note" role="status">과거 거래통계를 전략 버전별로 불러오는 중입니다. 준비 전 숫자는 순위나 승률로 사용하지 않습니다.</p> : null}
       {ordered.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
-      <section className="panel strategy-compact-panel"><div className="table-scroll"><table className="strategy-compact-table"><thead><tr><th>전략</th><th>지금 상태</th><th>사용 방식</th><th>거래 방향</th><th>이번 Run 결과</th><th>검증 결과</th><th>보기</th></tr></thead><tbody>{ordered.map((strategy) => {
-        const account = leagueAccounts.find((item) => item.strategy_id === strategy.strategy_id && item.profile === 'BASE')
-        const report = strategy.performance.BASE
-        const pnl = account ? number(account.current_equity_usdt) - number(account.starting_equity_usdt) : 0
-        const winRate = !analyticsReady ? '불러오는 중' : report.win_rate === null ? '표본 없음' : formatPercentFraction(report.win_rate)
-        const isSaving = saving === strategy.strategy_id
-        const monitor = monitorState(strategy, leagueAccounts.filter((item) => item.strategy_id === strategy.strategy_id))
-        const changeMode = (mode: StrategyConfiguration['mode']) => {
-          if (mode === strategy.mode) return
-          if (window.confirm(`${strategy.short_name} 사용 상태를 ${modeLabels[mode]}(으)로 바꿀까요? 진행 중 PAPER는 기존 계획대로 관리됩니다.`)) {
-            void configure(strategy, { mode })
-          }
-        }
-        return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}>
-          <td data-label="전략"><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td>
-          <td data-label="지금 상태"><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail} · {strategy.evaluated_paths}개 조건 확인</small></td>
-          <td data-label="사용 방식">{strategy.policy_reactivation_locked ? <div className="strategy-retired-note"><strong>검증 종료</strong><span>새 진입 없음 · 거래기록과 가상계좌 보존</span></div> : <><div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${strategy.short_name} ${modeLabels[mode]}`} aria-pressed={strategy.mode === mode} disabled={isSaving} key={mode} onClick={() => changeMode(mode)}>{strategy.mode === mode && isSaving ? '저장 중' : modeLabels[mode]}</button>)}</div><small>{strategy.manual_lock ? '사용자가 고정함' : '검증 결과에 따라 자동 관리'}</small></>}</td>
-          <td data-label="거래 방향">{strategy.policy_reactivation_locked ? <div className="strategy-retired-note"><strong>현재 거래 없음</strong><span>과거 상승·하락 설정만 보존</span></div> : <div className="strategy-inline-directions"><button type="button" aria-pressed={strategy.long_enabled} disabled={isSaving} onClick={() => void configure(strategy, { long_enabled: !strategy.long_enabled })}>상승 {strategy.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={strategy.short_enabled} disabled={isSaving} onClick={() => void configure(strategy, { short_enabled: !strategy.short_enabled })}>하락 {strategy.short_enabled ? '켜짐' : '꺼짐'}</button></div>}</td>
-          <td data-label="이번 Run 결과"><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>현재 자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })} · 보유 {account?.open_positions ?? 0}건</small></td>
-          <td data-label="검증 결과"><strong>{analyticsReady ? sampleStatusLabel(report.sample_size, report.sample_status) : '불러오는 중'}</strong><small>{analyticsReady ? `현재 승률 ${winRate}` : '통계를 확인하고 있습니다.'}</small></td>
-          <td data-label="보기"><button type="button" className="secondary-button" onClick={() => setSelectedId(strategy.strategy_id)}>자세히</button></td>
-        </tr>
-      })}</tbody></table></div></section>
+      <section className="panel strategy-compact-panel">
+        <div className="strategy-table-toolbar">
+          <div><strong>{costProfileLabel(profile)} 기준</strong><span>현재 전략 버전 · 공개시장 PAPER만</span></div>
+          <div className="segmented-control" role="group" aria-label="성과 비용 기준">
+            <button type="button" className={profile === 'BASE' ? 'selected' : ''} aria-pressed={profile === 'BASE'} onClick={() => setProfile('BASE')}>기본 비용</button>
+            <button type="button" className={profile === 'STRESS' ? 'selected' : ''} aria-pressed={profile === 'STRESS'} onClick={() => setProfile('STRESS')}>보수 비용</button>
+          </div>
+        </div>
+        <p className="strategy-ranking-note">30건 미만 승률은 참고값이며 순위나 수익성 결론으로 사용하지 않습니다. 보수 비용은 더 불리한 수수료·가격차이를 적용합니다.</p>
+        <div className="strategy-mobile-sort" role="group" aria-label="전략표 정렬">{mobileSortOptions.map((option) => <button type="button" className={sortKey === option.key ? 'active' : ''} aria-pressed={sortKey === option.key} key={option.key} onClick={() => sortBy(option.key)}>{option.label}<span aria-hidden="true">{sortKey === option.key ? sortDirection === 'ascending' ? ' ▲' : ' ▼' : ''}</span></button>)}</div>
+        <div className="table-scroll"><table className="strategy-compact-table"><thead><tr>
+          <SortableHeader label="전략" sortKey="strategy" activeKey={sortKey} direction={sortDirection} onSort={sortBy} />
+          <SortableHeader label="지금 상태" sortKey="status" activeKey={sortKey} direction={sortDirection} onSort={sortBy} />
+          <SortableHeader label="승률" sortKey="winRate" activeKey={sortKey} direction={sortDirection} onSort={sortBy} />
+          <SortableHeader label="거래 수" sortKey="sampleSize" activeKey={sortKey} direction={sortDirection} onSort={sortBy} />
+          <SortableHeader label="순손익" sortKey="pnl" activeKey={sortKey} direction={sortDirection} onSort={sortBy} />
+          <SortableHeader label="보유" sortKey="openPositions" activeKey={sortKey} direction={sortDirection} onSort={sortBy} />
+          <th>보기</th>
+        </tr></thead><tbody>{rows.map(({ strategy, account, report, monitor, pnl }) => {
+          const winRate = !analyticsReady ? '불러오는 중' : report.win_rate === null ? '아직 거래 없음' : formatPercentFraction(report.win_rate)
+          return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}>
+            <td data-label="전략"><strong>{strategy.short_name}</strong><small>{strategy.display_name_ko} · {lifecycleLabels[strategy.lifecycle]}</small></td>
+            <td data-label="지금 상태"><span className={`strategy-monitor ${monitor.tone}`}>{monitor.label}</span><small>{monitor.detail}</small></td>
+            <td data-label="승률"><strong>{winRate}</strong><small>{analyticsReady ? report.sample_size < 30 ? '표본 부족 · 순위 제외' : sampleStatusLabel(report.sample_size, report.sample_status) : '통계를 확인하고 있습니다.'}</small></td>
+            <td data-label="거래 수"><strong>{analyticsReady ? `${report.sample_size}건` : '불러오는 중'}</strong><small>{analyticsReady ? `승 ${report.wins} · 패 ${report.losses}${report.sample_size < 30 ? ` · ${30 - report.sample_size}건 더 필요` : ''}` : '현재 버전을 확인 중입니다.'}</small></td>
+            <td data-label="순손익"><span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>{formatUsdt(pnl, { signed: true })}</span><small>이번 Run · 현재 자산 {formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })}</small></td>
+            <td data-label="보유"><strong>{account?.open_positions ?? 0}건</strong><small>{modeLabels[strategy.mode]}</small></td>
+            <td data-label="보기"><button type="button" className="secondary-button" onClick={() => setSelectedId(strategy.strategy_id)}>자세히·설정</button></td>
+          </tr>
+        })}</tbody></table></div>
+      </section>
       <SideDrawer title={selected ? `${selected.short_name} · ${selected.display_name_ko}` : '전략 상세'} open={selected !== null} onClose={closeDrawer} label="전략 상세 정보">
         {selected ? <>
           <p className="drawer-subtitle"><b>{lifecycleLabels[selected.lifecycle]}</b> · {modeLabels[selected.mode]}</p>
+          <section className="profile-detail-block strategy-drawer-settings">
+            <h3>작동 설정</h3>
+            {selected.policy_reactivation_locked ? <div className="strategy-retired-note"><strong>검증 종료</strong><span>새 진입 없음 · 거래기록과 가상계좌 보존</span><span>과거 상승·하락 설정만 보존합니다.</span></div> : <>
+              <p className="profile-scope-note">설정을 바꿔도 진행 중인 PAPER 포지션은 기존 진입 계획대로 관리됩니다.</p>
+              <span className="strategy-setting-label">사용 방식</span>
+              <div className="strategy-inline-modes">{(['ACTIVE', 'SHADOW', 'OFF'] as const).map((mode) => <button type="button" aria-label={`${selected.short_name} ${modeLabels[mode]}`} aria-pressed={selected.mode === mode} disabled={saving === selected.strategy_id} key={mode} onClick={() => {
+                if (mode !== selected.mode && window.confirm(`${selected.short_name} 사용 상태를 ${modeLabels[mode]}(으)로 바꿀까요? 진행 중 PAPER는 기존 계획대로 관리됩니다.`)) void configure(selected, { mode })
+              }}>{selected.mode === mode && saving === selected.strategy_id ? '저장 중' : modeLabels[mode]}</button>)}</div>
+              <span className="strategy-setting-label">거래 방향</span>
+              <div className="strategy-inline-directions"><button type="button" aria-pressed={selected.long_enabled} disabled={saving === selected.strategy_id} onClick={() => void configure(selected, { long_enabled: !selected.long_enabled })}>상승 {selected.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={selected.short_enabled} disabled={saving === selected.strategy_id} onClick={() => void configure(selected, { short_enabled: !selected.short_enabled })}>하락 {selected.short_enabled ? '켜짐' : '꺼짐'}</button></div>
+              <p className="profile-scope-note">{selected.manual_lock ? '사용자가 고정한 설정입니다.' : '검증 결과에 따라 안전하게 자동 관리됩니다.'}</p>
+            </>}
+          </section>
           <section className="profile-detail-block">
             <h3>한눈에 보는 전략</h3>
             <dl className="drawer-detail-list">
