@@ -203,7 +203,9 @@ def test_research_archive_reader_filters_frozen_symbols_before_limit(
             {
                 "ts_ms": index * 1_000,
                 "venue_ts_ms": index * 1_000,
-                "symbol": symbol,
+                # 실제 MULTI archive처럼 parquet 상위 종목과 payload
+                # 종목이 다른 경로를 고정해 payload 필터 회귀를 검출한다.
+                "symbol": "MULTI",
                 "payload_json": json.dumps(payload),
             }
         )

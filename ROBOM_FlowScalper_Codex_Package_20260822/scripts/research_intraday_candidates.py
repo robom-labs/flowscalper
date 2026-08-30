@@ -208,7 +208,9 @@ def _event_rows(
                 if selected_symbols is not None:
                     # 동결된 연구 종목을 정렬 전에 제한해, 연구와 무관한
                     # 공개 시장 이벤트가 DuckDB spill과 전량 정렬을 키우지 않게 한다.
-                    query += " AND symbol = ANY(?)"
+                    query += (
+                        " AND json_extract_string(payload_json, '$.symbol') = ANY(?)"
+                    )
                     parameters.append(list(selected_symbols))
                 query += """
                     ORDER BY
