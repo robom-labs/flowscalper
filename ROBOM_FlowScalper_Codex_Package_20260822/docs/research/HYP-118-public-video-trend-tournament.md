@@ -3,6 +3,9 @@
 - 상태. `PREREGISTERED_BEFORE_EXECUTION`.
 - 등록일. 2026-08-30.
 - 연구범위. Binance USDⓈ-M 공개 완성 5분봉을 15분·1시간·4시간으로 집계한 PAPER 연구다.
+- 고정 실행범위. UTC `2025-12-01` 이상 `2026-08-25` 미만.
+- 후보 지문. `bb612fc58647ec4e91dca7736f027cb835336f719eee0e5f7c8a927ad4969657`.
+- 실행 전 코드 commit. `ea0af17b949ac1827c4b2b1e398ed561cc119a7b`.
 - 성과 상태. `NOT_PROVEN`.
 - 실자금 준비. `NOT_READY`.
 
@@ -31,6 +34,9 @@
 
 ## 미래정보·체결·청산 계약
 
+- 고정 12종목은 `BTCUSDT`, `ETHUSDT`, `BNBUSDT`, `SOLUSDT`, `XRPUSDT`,
+  `DOGEUSDT`, `ADAUSDT`, `AVAXUSDT`, `LINKUSDT`, `DOTUSDT`, `LTCUSDT`,
+  `BCHUSDT`다.
 - 완성된 봉과 그 시점까지 존재한 데이터만 사용한다.
 - 일목 선행스팬은 현재 화면 위치에 해당하는 26봉 전 계산값만 사용한다.
 - 신호 다음 봉 시가에 진입하고 신호봉 종가로 소급 체결하지 않는다.
