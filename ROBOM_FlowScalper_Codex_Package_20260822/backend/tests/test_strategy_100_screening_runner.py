@@ -186,6 +186,42 @@ def test_research_archive_reader_uses_only_the_frozen_explicit_files(
     ]
 
 
+def test_research_archive_reader_filters_frozen_symbols_before_limit(
+    tmp_path: Path,
+) -> None:
+    rows = []
+    for index, symbol in enumerate(("ETHUSDT", "BTCUSDT", "BTCUSDT"), start=1):
+        payload = {
+            "event_id": f"event-{index}",
+            "event_type": "TRADE",
+            "symbol": symbol,
+            "venue_ts_ms": index * 1_000,
+            "receive_ts_ms": index * 1_000,
+            "receive_monotonic_ns": index,
+        }
+        rows.append(
+            {
+                "ts_ms": index * 1_000,
+                "venue_ts_ms": index * 1_000,
+                "symbol": symbol,
+                "payload_json": json.dumps(payload),
+            }
+        )
+    pq.write_table(pa.Table.from_pylist(rows), tmp_path / "events.parquet")
+
+    assert [
+        row["event_id"]
+        for row in _event_rows(
+            tmp_path,
+            symbols=("BTCUSDT",),
+            maximum_events=1,
+        )
+    ] == ["event-2"]
+
+    with pytest.raises(ValueError, match="research 종목"):
+        next(_event_rows(tmp_path, symbols=()))
+
+
 def test_frozen_public_warmup_aggregates_only_completed_past_bars(
     tmp_path: Path,
 ) -> None:
@@ -421,18 +457,25 @@ def test_executor_keeps_scanning_receive_order_after_future_exchange_event(
     processed: list[str] = []
     executor._process = lambda payload: processed.append(str(payload["event_id"]))
     executor._drain_audit = lambda: None
-    monkeypatch.setattr(
-        "scripts.research_strategy_100_candidates._event_rows",
-        lambda *_args, **_kwargs: iter(
+    reader_kwargs: dict[str, object] = {}
+
+    def event_rows(*_args, **kwargs):
+        reader_kwargs.update(kwargs)
+        return iter(
             (
                 {"event_id": "future-exchange-time", "venue_ts_ms": 3_000},
                 {"event_id": "late-in-window", "venue_ts_ms": 1_000},
             )
-        ),
+        )
+
+    monkeypatch.setattr(
+        "scripts.research_strategy_100_candidates._event_rows",
+        event_rows,
     )
 
     assert executor.execute() == ()
     assert processed == ["late-in-window"]
+    assert reader_kwargs["symbols"] is None
 
 
 def test_execution_windows_pause_embargo_and_leave_full_horizon_to_close() -> None:

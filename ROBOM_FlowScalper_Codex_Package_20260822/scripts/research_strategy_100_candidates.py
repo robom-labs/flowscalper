@@ -747,6 +747,7 @@ class Strategy100RunExecutor:
                 self.archive_dir,
                 files=getattr(self, "archive_files", None),
                 maximum_events=maximum_events,
+                symbols=getattr(self, "research_symbols", None),
             ),
             start=1,
         ):

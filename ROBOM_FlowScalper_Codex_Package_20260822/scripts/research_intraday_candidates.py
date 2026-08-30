@@ -159,6 +159,7 @@ def _event_rows(
     *,
     files: Sequence[Path] | None = None,
     maximum_events: int | None = None,
+    symbols: Sequence[str] | None = None,
 ) -> Iterator[dict[str, Any]]:
     selected_files = (
         tuple(sorted(run_dir.rglob("*.parquet")))
@@ -170,6 +171,13 @@ def _event_rows(
     files = selected_files
     if not files:
         raise FileNotFoundError(f"시장 archive가 없습니다: {run_dir}")
+    selected_symbols = (
+        tuple(sorted(set(symbols))) if symbols is not None else None
+    )
+    if selected_symbols is not None and (
+        not selected_symbols or any(not symbol for symbol in selected_symbols)
+    ):
+        raise ValueError("명시적 research 종목은 비어 있거나 빈 종목을 포함할 수 없습니다.")
     configured_spill_root = os.environ.get("ROBOM_RESEARCH_SPILL_ROOT")
     if len(files) >= _LARGE_RESEARCH_ARCHIVE_FILE_THRESHOLD and not configured_spill_root:
         raise ValueError(
@@ -195,6 +203,14 @@ def _event_rows(
                     WHERE json_extract_string(payload_json, '$.event_type') IN (
                       'TRADE', 'DEPTH_UPDATE', 'ORDERBOOK', 'REST_BOOK_TICKER_BOOTSTRAP'
                     )
+                """
+                parameters: list[object] = [[str(path) for path in files]]
+                if selected_symbols is not None:
+                    # 동결된 연구 종목을 정렬 전에 제한해, 연구와 무관한
+                    # 공개 시장 이벤트가 DuckDB spill과 전량 정렬을 키우지 않게 한다.
+                    query += " AND symbol = ANY(?)"
+                    parameters.append(list(selected_symbols))
+                query += """
                     ORDER BY
                       COALESCE(
                         TRY_CAST(
@@ -226,12 +242,7 @@ def _event_rows(
                 """
                 if maximum_events is not None:
                     query += " LIMIT ?"
-                    parameters: list[object] = [
-                        [str(path) for path in files],
-                        maximum_events,
-                    ]
-                else:
-                    parameters = [[str(path) for path in files]]
+                    parameters.append(maximum_events)
                 reader = connection.execute(query, parameters).to_arrow_reader(batch_size=2_048)
                 for batch in reader:
                     for raw in batch.column(0).to_pylist():
