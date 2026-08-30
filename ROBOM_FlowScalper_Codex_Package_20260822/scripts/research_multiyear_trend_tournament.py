@@ -568,12 +568,15 @@ def funding_adjustment(
     side: str,
     entry_ts_ms: int,
     exit_ts_ms: int,
+    bar_interval_ms: int = INTERVAL_MS,
 ) -> FundingAdjustment:
+    if bar_interval_ms <= 0:
+        raise ValueError("펀딩 경계의 봉 시간은 양수여야 합니다.")
     timestamps = [row.funding_ts_ms for row in rates]
     start = bisect.bisect_left(timestamps, entry_ts_ms)
     end = bisect.bisect_right(timestamps, exit_ts_ms)
     direction = 1 if side == "LONG" else -1
-    exit_bar_open_ts_ms = exit_ts_ms - INTERVAL_MS + 1
+    exit_bar_open_ts_ms = exit_ts_ms - bar_interval_ms + 1
     funding_bps = 0.0
     applied = 0
     excluded_credit = 0.0
@@ -600,6 +603,8 @@ def funding_adjustment(
 def apply_actual_funding_and_costs(
     outcome: SlowTrendOutcome,
     rates: Sequence[FundingRate],
+    *,
+    bar_interval_ms: int = INTERVAL_MS,
 ) -> tuple[SlowTrendOutcome, FundingAdjustment]:
     if outcome.censored or outcome.gross_bps is None:
         return outcome, FundingAdjustment(0.0, 0, 0.0, 0)
@@ -608,6 +613,7 @@ def apply_actual_funding_and_costs(
         side=outcome.side,
         entry_ts_ms=outcome.entry_ts_ms,
         exit_ts_ms=outcome.exit_ts_ms,
+        bar_interval_ms=bar_interval_ms,
     )
     gross_with_funding = outcome.gross_bps + adjustment.funding_bps
     return (
@@ -645,6 +651,7 @@ def research_tournament(
             )
     output: dict[str, tuple[SlowTrendOutcome, ...]] = {}
     audit: dict[str, dict[str, float | int]] = {}
+    spec_by_id = {spec.candidate_id: spec for spec in specs}
     for candidate_id, candidate_rows in raw.items():
         selected = apply_portfolio_limits(candidate_rows)
         adjusted: list[SlowTrendOutcome] = []
@@ -656,6 +663,7 @@ def research_tournament(
             revised, funding = apply_actual_funding_and_costs(
                 row,
                 funding_by_symbol.get(row.symbol, ()),
+                bar_interval_ms=(spec_by_id[candidate_id].interval_minutes * 60_000),
             )
             adjusted.append(revised)
             total_funding_bps += funding.funding_bps
