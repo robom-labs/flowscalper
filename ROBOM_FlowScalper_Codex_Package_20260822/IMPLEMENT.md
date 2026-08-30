@@ -820,3 +820,4 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 - 첫 GitHub browser 작업은 기존 E2E가 과거 최초 정렬을 전제로 승률 버튼을 먼저 눌러
   `ascending`을 만든 뒤 `descending`을 기대해 실패했다. 최초 `descending`을 먼저 확인하고
   양방향 전환 뒤 다시 `descending`으로 돌아오는 계약으로 수정했으며 로컬 Playwright 3종을 통과했다.
+- 후속 GitHub Actions `33318712295`는 validate 1분 19초와 browser 1분 15초가 모두 통과했다.

@@ -71,7 +71,7 @@
     "frontend_test_files": 15,
     "playwright_local": "PASS_3_DESKTOP_TABLET_MOBILE",
     "github_actions_first_run": "FAIL_BROWSER_STALE_INITIAL_SORT_ASSERTION_33318458880",
-    "github_actions_followup": "PENDING",
+    "github_actions_followup": "PASS_33318712295_VALIDATE_1M19S_BROWSER_1M15S",
     "ruff": "PASS",
     "eslint": "PASS",
     "typescript": "PASS",
