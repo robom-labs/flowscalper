@@ -1,4 +1,4 @@
-# E06 후보 screening의 LIVE 안전감시·불변 이력·결과 계약을 검증한다.
+# 4후보·100후보 screening의 LIVE 안전감시·불변 이력·결과 계약을 검증한다.
 
 from __future__ import annotations
 
@@ -56,6 +56,7 @@ def test_e06_live_safe_proposal_binds_parameters_data_code_and_cost(tmp_path: Pa
             "batch_id": "COST_COVERED_EARLY_TP_RUNNER_V1",
             "paper_only": True,
             "real_orders_enabled": False,
+            "private_api_enabled": False,
             "manifest_sha256": "a" * 64,
             "source_checksums": {
                 "backend/app/costing/models.py": "b" * 64,
@@ -156,9 +157,7 @@ def test_e06_live_safe_result_requires_sealed_oos_and_paper_boundaries(
                     "paper_only": True,
                     "real_orders_enabled": False,
                     "private_api_enabled": False,
-                    "trial_batch": {
-                        "manifest_kind": "COST_COVERED_EXIT_VARIANT_BATCH"
-                    },
+                    "trial_batch": {"manifest_kind": "COST_COVERED_EXIT_VARIANT_BATCH"},
                 },
             )
         elif name == "audit":
@@ -178,6 +177,124 @@ def test_e06_live_safe_result_requires_sealed_oos_and_paper_boundaries(
     assert summary["planned_independent_account_count"] == 8
     assert summary["profitability_claim"] == "NOT_PROVEN_UNTIL_LATER_GATES"
     assert set(path.name for path in paths.values()) == set(_OUTPUT_FILENAMES.values())
+
+
+def test_strategy_100_live_safe_proposal_binds_frozen_public_inputs(
+    tmp_path: Path,
+) -> None:
+    trial_manifest = tmp_path / "trials.json"
+    dataset_manifest = tmp_path / "dataset.json"
+    _write_research_infrastructure(tmp_path)
+    _write_json(
+        trial_manifest,
+        {
+            "status": "PREREGISTERED_NOT_EXECUTED",
+            "trial_count": 100,
+            "screening_eligible_count": 90,
+            "runtime_active_count": 0,
+            "live_shadow_count": 0,
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "private_api_enabled": False,
+            "manifest_sha256": "a" * 64,
+            "source_checksums": {
+                "backend/app/costing/models.py": "b" * 64,
+                "backend/app/execution/portfolio.py": "c" * 64,
+            },
+            "trials": [{"trial_id": f"TRIAL-{index:03d}"} for index in range(100)],
+        },
+    )
+    _write_json(
+        dataset_manifest,
+        {
+            "manifest_sha256": "d" * 64,
+            "live_public_cut": {"manifest_sha256": "e" * 64},
+            "warmup_manifest": {"manifest_sha256": "f" * 64},
+            "runs": [
+                {
+                    "run_id": "RUN-TRAIN",
+                    "role": "TRAIN",
+                    "checksum": None,
+                    "start_ts_ms": 100,
+                    "end_ts_ms": 200,
+                    "event_count": 10,
+                },
+                {
+                    "run_id": "RUN-VALIDATION",
+                    "role": "VALIDATION",
+                    "checksum": None,
+                    "start_ts_ms": 201,
+                    "end_ts_ms": 300,
+                    "event_count": 20,
+                },
+                {
+                    "run_id": "RUN-FINAL",
+                    "role": "FINAL_OOS",
+                    "checksum": None,
+                    "start_ts_ms": 301,
+                    "end_ts_ms": 400,
+                    "event_count": 30,
+                },
+            ],
+        },
+    )
+
+    proposal = _trial_proposal(
+        argparse.Namespace(
+            trial_manifest=trial_manifest,
+            dataset_manifest=dataset_manifest,
+            project_root=tmp_path,
+        )
+    )
+
+    assert proposal.hypothesis_id == "HYP-STRATEGY-100-FROZEN-BATCH-V2"
+    assert proposal.dataset_start_ts_ms == 100
+    assert proposal.dataset_end_ts_ms == 300
+    assert proposal.dataset_member_fingerprints[0].startswith("RUN-TRAIN:")
+    assert not proposal.dataset_member_fingerprints[0].endswith(":None")
+
+
+def test_strategy_100_live_safe_result_accepts_100_registered_90_executable(
+    tmp_path: Path,
+) -> None:
+    paths = _staged_paths(tmp_path)
+    for name, path in paths.items():
+        if name == "screening":
+            _write_json(
+                path,
+                {
+                    "status": "EXECUTED",
+                    "registered_trial_count": 100,
+                    "planned_independent_account_count": 200,
+                    "executed_trial_count": 90,
+                    "failed_trial_count": 0,
+                    "selection_count": 0,
+                    "active_count": 0,
+                    "live_shadow_count": 0,
+                    "final_oos_status": "SEALED_NOT_USED_FOR_SELECTION",
+                    "profitability_claim": "NOT_PROVEN_UNTIL_LATER_GATES",
+                    "paper_only": True,
+                    "real_orders_enabled": False,
+                    "private_api_enabled": False,
+                    "trial_batch": {"manifest_kind": "STRATEGY_100_FROZEN_BATCH"},
+                },
+            )
+        elif name == "audit":
+            _write_json(
+                path,
+                {
+                    "final_oos_processed": False,
+                    "processed_roles": ["TRAIN", "VALIDATION"],
+                },
+            )
+        else:
+            path.write_text("\n", encoding="utf-8")
+
+    summary = _validate_result(paths)
+
+    assert summary["manifest_kind"] == "STRATEGY_100_FROZEN_BATCH"
+    assert summary["registered_trial_count"] == 100
+    assert summary["planned_independent_account_count"] == 200
 
 
 def test_hard_duty_cycle_caps_native_scan_before_cooperative_checkpoints() -> None:

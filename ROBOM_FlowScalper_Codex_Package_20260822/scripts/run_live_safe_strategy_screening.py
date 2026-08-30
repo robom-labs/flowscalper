@@ -1,4 +1,4 @@
-# 비용회수형 전략 screening을 LIVE PAPER 안전감시와 불변 연구이력 아래 실행한다.
+# 사전등록 전략 screening을 LIVE PAPER 안전감시와 불변 연구이력 아래 실행한다.
 
 """사전등록 후보 계산이 현재 공개시장 수신을 침범하면 결과 승격 없이 중단한다."""
 
@@ -60,12 +60,18 @@ _OUTPUT_FILENAMES = {
 }
 
 _RESEARCH_INFRASTRUCTURE_BOUND_PATHS = (
+    "backend/app/research/strategy100_dataset_v2.py",
+    "backend/app/research/strategy100_warmup.py",
     "backend/app/replay/safety.py",
     "scripts/run_live_safe_strategy_screening.py",
     "scripts/run_live_safe_strategy_league_replay.py",
+    "scripts/research_intraday_candidates.py",
     "scripts/research_strategy_100_candidates.py",
     "scripts/run_server.py",
 )
+
+_STANDARD_BATCH_KIND = "STRATEGY_100_FROZEN_BATCH"
+_COST_COVERED_BATCH_KIND = "COST_COVERED_EXIT_VARIANT_BATCH"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -106,17 +112,44 @@ def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
     trial = _read_json(arguments.trial_manifest)
     dataset = _read_json(arguments.dataset_manifest)
     rows = _selected_dataset_rows(dataset)
+    manifest_kind = str(trial.get("manifest_kind", _STANDARD_BATCH_KIND))
     if (
-        trial.get("manifest_kind") != "COST_COVERED_EXIT_VARIANT_BATCH"
-        or trial.get("status") != "PREREGISTERED_NOT_EXECUTED"
-        or trial.get("trial_count") != 4
+        trial.get("status") != "PREREGISTERED_NOT_EXECUTED"
         or trial.get("paper_only") is not True
         or trial.get("real_orders_enabled") is not False
+        or trial.get("private_api_enabled") is not False
     ):
-        raise ValueError("LIVE 안전 screening은 사전등록된 E06 PAPER 4후보만 허용합니다.")
+        raise ValueError("LIVE 안전 screening은 사전등록된 PAPER 후보만 허용합니다.")
+    if manifest_kind == _COST_COVERED_BATCH_KIND:
+        if trial.get("trial_count") != 4:
+            raise ValueError("비용회수형 E06 batch는 정확히 4후보여야 합니다.")
+        hypothesis_id = "HYP-COST-COVERED-EARLY-TP-RUNNER-E06-V1"
+        parameter_material: object = {
+            "batch_id": trial.get("batch_id"),
+            "trials": trial.get("trials"),
+            "cost_contract": trial.get("cost_contract"),
+            "risk_contract": trial.get("risk_contract"),
+        }
+    elif manifest_kind == _STANDARD_BATCH_KIND:
+        if (
+            trial.get("trial_count") != 100
+            or trial.get("screening_eligible_count") != 90
+            or trial.get("runtime_active_count") != 0
+            or trial.get("live_shadow_count") != 0
+        ):
+            raise ValueError("동결 100후보 batch의 100등록·90실행가능·승격 0 계약이 다릅니다.")
+        hypothesis_id = "HYP-STRATEGY-100-FROZEN-BATCH-V2"
+        parameter_material = {
+            "trials": trial.get("trials"),
+            "trial_count": trial.get("trial_count"),
+            "screening_eligible_count": trial.get("screening_eligible_count"),
+            "selection_limit": trial.get("selection_limit", 25),
+        }
+    else:
+        raise ValueError(f"알 수 없는 LIVE 안전 screening batch입니다: {manifest_kind}")
     source_checksums = trial.get("source_checksums")
     if not isinstance(source_checksums, Mapping):
-        raise ValueError("E06 source checksum이 없습니다.")
+        raise ValueError("screening source checksum이 없습니다.")
     cost_sources = {
         str(path): str(checksum)
         for path, checksum in source_checksums.items()
@@ -131,9 +164,11 @@ def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
         )
     }
     if not cost_sources:
-        raise ValueError("E06 비용·체결 구현 지문이 없습니다.")
+        raise ValueError("screening 비용·체결 구현 지문이 없습니다.")
     dataset_material = {
         "manifest_sha256": dataset.get("manifest_sha256"),
+        "live_public_cut": dataset.get("live_public_cut"),
+        "warmup_manifest": dataset.get("warmup_manifest"),
         "runs": [
             {
                 key: row.get(key)
@@ -143,15 +178,8 @@ def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
         ],
     }
     return ResearchTrialProposal(
-        hypothesis_id="HYP-COST-COVERED-EARLY-TP-RUNNER-E06-V1",
-        parameter_fingerprint=parameter_fingerprint(
-            {
-                "batch_id": trial.get("batch_id"),
-                "trials": trial.get("trials"),
-                "cost_contract": trial.get("cost_contract"),
-                "risk_contract": trial.get("risk_contract"),
-            }
-        ),
+        hypothesis_id=hypothesis_id,
+        parameter_fingerprint=parameter_fingerprint(parameter_material),
         dataset_fingerprint=_canonical_hash(dataset_material),
         dataset_start_ts_ms=min(int(str(row["start_ts_ms"])) for row in rows),
         dataset_end_ts_ms=max(int(str(row["end_ts_ms"])) for row in rows),
@@ -166,7 +194,7 @@ def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
         ),
         cost_model_fingerprint=_canonical_hash(cost_sources),
         dataset_member_fingerprints=tuple(
-            f"{row.get('run_id')}:{row.get('checksum')}" for row in rows
+            f"{row.get('run_id')}:{row.get('checksum') or _canonical_hash(row)}" for row in rows
         ),
     )
 
@@ -216,9 +244,21 @@ def _validate_result(paths: Mapping[str, Path]) -> dict[str, object]:
         raise ValueError(f"후보 screening 결과 파일이 누락됐습니다: {missing}")
     report = _read_json(paths["screening"])
     audit = _read_json(paths["audit"])
+    trial_batch = report.get("trial_batch")
+    if not isinstance(trial_batch, Mapping):
+        raise ValueError("screening 결과에 trial batch 계보가 없습니다.")
+    manifest_kind = str(trial_batch.get("manifest_kind", ""))
+    if manifest_kind == _COST_COVERED_BATCH_KIND:
+        registered_trial_count = 4
+        planned_independent_account_count = 8
+    elif manifest_kind == _STANDARD_BATCH_KIND:
+        registered_trial_count = 100
+        planned_independent_account_count = 200
+    else:
+        raise ValueError(f"screening 결과의 batch 종류가 잘못됐습니다: {manifest_kind}")
     expected = {
-        "registered_trial_count": 4,
-        "planned_independent_account_count": 8,
+        "registered_trial_count": registered_trial_count,
+        "planned_independent_account_count": planned_independent_account_count,
         "active_count": 0,
         "live_shadow_count": 0,
         "final_oos_status": "SEALED_NOT_USED_FOR_SELECTION",
@@ -232,18 +272,16 @@ def _validate_result(paths: Mapping[str, Path]) -> dict[str, object]:
         for key, value in expected.items()
         if report.get(key) != value
     }
-    trial_batch = report.get("trial_batch")
     if (
         mismatches
         or report.get("status") not in {"EXECUTED", "INCOMPLETE_TRIAL_FAILURES"}
-        or not isinstance(trial_batch, Mapping)
-        or trial_batch.get("manifest_kind") != "COST_COVERED_EXIT_VARIANT_BATCH"
         or audit.get("final_oos_processed") is not False
         or audit.get("processed_roles") != ["TRAIN", "VALIDATION"]
     ):
-        raise ValueError(f"E06 screening 결과 불변조건이 다릅니다: {mismatches}")
+        raise ValueError(f"screening 결과 불변조건이 다릅니다: {mismatches}")
     return {
         "status": report["status"],
+        "manifest_kind": manifest_kind,
         "registered_trial_count": report["registered_trial_count"],
         "planned_independent_account_count": report["planned_independent_account_count"],
         "executed_trial_count": report.get("executed_trial_count"),
@@ -287,9 +325,7 @@ async def _execute(
                 project_root=arguments.project_root,
                 state=child_state,
                 hard_duty_cycle_target_ratio=arguments.target_cpu_ratio,
-                maximum_continuous_run_seconds=(
-                    arguments.maximum_continuous_run_seconds
-                ),
+                maximum_continuous_run_seconds=(arguments.maximum_continuous_run_seconds),
             ),
             probe=probe,
             thresholds=thresholds,
@@ -399,9 +435,7 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
                     trial_id=record_id,
                     proposal=proposal,
                     status=record_status,
-                    evidence_path=str(
-                        output_directory if status == "PASS" else control_output
-                    ),
+                    evidence_path=str(output_directory if status == "PASS" else control_output),
                 ),
             )
             history_recorded = True
@@ -434,9 +468,7 @@ def run(arguments: argparse.Namespace) -> tuple[int, dict[str, object]]:
         "resource_contract": {
             "target_cpu_ratio": arguments.target_cpu_ratio,
             "cpu_checkpoint_events": arguments.cpu_checkpoint_events,
-            "maximum_continuous_run_seconds": (
-                arguments.maximum_continuous_run_seconds
-            ),
+            "maximum_continuous_run_seconds": (arguments.maximum_continuous_run_seconds),
             "hard_duty_cycle_enforced": child_state.hard_duty_cycle_enabled,
             "resource_lock": str(arguments.resource_lock),
             "resource_lock_acquired": resource_lock_acquired,
