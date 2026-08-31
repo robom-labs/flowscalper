@@ -4,16 +4,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-SUPPORT_DIR="$HOME/Library/Application Support/ROBOM FlowScalper"
-INTERNAL_PYTHON="$SUPPORT_DIR/runtime-venv/bin/python"
 PROJECT_VOLUME_NAME="${PROJECT_DIR#/Volumes/}"
 PROJECT_VOLUME_NAME="${PROJECT_VOLUME_NAME%%/*}"
 PROJECT_MOUNT="/Volumes/$PROJECT_VOLUME_NAME"
-if [[ "$PROJECT_DIR" == /Volumes/*/* && -d "$PROJECT_MOUNT" ]]; then
-  DEFAULT_ACTIVE_LEDGER_DIR="$PROJECT_MOUNT/05_RUNTIME/ROBOM_FlowScalper/active-ledger"
-else
-  DEFAULT_ACTIVE_LEDGER_DIR="$SUPPORT_DIR/active-ledger"
+if [[ "$PROJECT_DIR" != /Volumes/*/* && -z "${ROBOM_RUNTIME_ROOT:-}" ]]; then
+  echo "외장 APFS 실행 릴리스를 찾지 못했습니다: $PROJECT_DIR" >&2
+  exit 75
 fi
+RUNTIME_ROOT="${ROBOM_RUNTIME_ROOT:-$PROJECT_MOUNT/05_RUNTIME/ROBOM_FlowScalper}"
+SUPPORT_DIR="$RUNTIME_ROOT/support"
+CACHE_DIR="$RUNTIME_ROOT/cache"
+TMP_DIR="$RUNTIME_ROOT/tmp"
+RUNTIME_PYTHON="${ROBOM_RUNTIME_PYTHON:-$SUPPORT_DIR/runtime-venv/bin/python}"
+DEFAULT_ACTIVE_LEDGER_DIR="$RUNTIME_ROOT/active-ledger"
 ACTIVE_LEDGER_DIR="${ROBOM_ACTIVE_LEDGER_DIR:-$DEFAULT_ACTIVE_LEDGER_DIR}"
 RELEASE_MANIFEST="$PROJECT_DIR/release-manifest.json"
 
@@ -25,12 +28,8 @@ if [[ ! -f "$RELEASE_MANIFEST" ]]; then
   echo "불변 실행 릴리스 manifest가 없습니다: $RELEASE_MANIFEST" >&2
   exit 75
 fi
-if [[ -x "$INTERNAL_PYTHON" ]]; then
-  RUNTIME_PYTHON="$INTERNAL_PYTHON"
-elif [[ -x "$PROJECT_DIR/.venv/bin/python" ]]; then
-  RUNTIME_PYTHON="$PROJECT_DIR/.venv/bin/python"
-else
-  echo "Python 실행환경이 없습니다: $PROJECT_DIR" >&2
+if [[ ! -x "$RUNTIME_PYTHON" ]]; then
+  echo "외장 Python 실행환경이 없습니다: $RUNTIME_PYTHON" >&2
   exit 75
 fi
 MANIFEST_VALUE='import json,sys; print(json.loads(open(sys.argv[1], encoding="utf-8").read())[sys.argv[2]])'
@@ -43,9 +42,12 @@ MARKET_ARCHIVE_PATH="${ROBOM_MARKET_ARCHIVE_PATH:-$MANIFEST_MARKET_ARCHIVE}"
 
 cd "$PROJECT_DIR"
 umask 077
-mkdir -p "$ACTIVE_LEDGER_DIR" "$SUPPORT_DIR/python-cache"
+mkdir -p "$ACTIVE_LEDGER_DIR" "$CACHE_DIR/python" "$CACHE_DIR/xdg" "$CACHE_DIR/uv" "$TMP_DIR"
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
-export PYTHONPYCACHEPREFIX="$SUPPORT_DIR/python-cache"
+export PYTHONPYCACHEPREFIX="$CACHE_DIR/python"
+export XDG_CACHE_HOME="$CACHE_DIR/xdg"
+export UV_CACHE_DIR="$CACHE_DIR/uv"
+export TMPDIR="$TMP_DIR/"
 export PYTHONUNBUFFERED=1
 export PYTHONNOUSERSITE=1
 export PYTHONPATH="$PROJECT_DIR"
@@ -61,6 +63,11 @@ export ROBOM_RELOAD="false"
 export ROBOM_RELEASE_COMMIT="$RELEASE_COMMIT"
 export ROBOM_RELEASE_ISOLATED="true"
 export ROBOM_DB_PATH="${ROBOM_DB_PATH:-$ACTIVE_LEDGER_DIR/run-ledger.sqlite3}"
+"$RUNTIME_PYTHON" "$PROJECT_DIR/scripts/recover_oversized_wal.py" \
+  --source "$ROBOM_DB_PATH" \
+  --snapshot-root "$RUNTIME_ROOT/maintenance-snapshots" \
+  --output "$SUPPORT_DIR/startup-ledger-recovery.json" \
+  --max-wal-bytes 67108864
 export ROBOM_MODE="${ROBOM_MODE:-$($RUNTIME_PYTHON scripts/select_service_mode.py "$ROBOM_DB_PATH")}"
 export ROBOM_MARKET_ARCHIVE_PATH="$MARKET_ARCHIVE_PATH"
 export ROBOM_MIN_FREE_BYTES="5368709120"

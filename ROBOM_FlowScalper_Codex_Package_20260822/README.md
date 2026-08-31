@@ -45,7 +45,7 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 ./scripts/install_macos_service.sh
 ```
 
-서비스는 안전한 `READY`로 시작하며 공개시장 모의거래는 화면의 `자동 관찰 시작`을 눌러야 시작됩니다. 한 번 누르면 `연결 중`을 거쳐 `작동 중`이 표시되고, 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. 외장 APFS 작업공간에서 실행할 때는 canonical 소스·활성 SQLite 원장·공개시장 Parquet·릴리스를 같은 외장 볼륨에 보존하고, 내장에는 약 283MB Python 실행환경 복사본·LaunchAgent plist·운영 로그만 둡니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 저장하고, archive와 활성 원장 파일시스템 중 하나라도 여유공간이 5GiB 미만이거나 4% 미만이면 신규 PAPER 진입을 fail-closed로 잠급니다. 더는 현재 서비스가 읽지 않는 이전 진단 원장과 과거 build·test 산출물은 삭제하지 않고 migration archive와 manifest에 보존합니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 외장 소스가 보이면 자동으로 다시 실행됩니다.
+서비스는 보존된 Run 상태를 안전하게 복구하며 화면의 `자동 관찰 시작`을 누르면 `연결 중`을 거쳐 `작동 중`이 표시됩니다. 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. canonical 소스·활성 SQLite 원장·공개시장 Parquet·불변 릴리스·Python base·venv·cache·temp·운영 로그는 모두 외장 APFS에 보존합니다. 내장에는 macOS가 요구하는 작은 `~/Library/LaunchAgents/kr.robom.flowscalper.plist`만 남기고 로그는 외장에서 10MiB 단위로 회전합니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 저장하고, archive와 활성 원장 파일시스템 중 하나라도 여유공간이 5GiB 미만이거나 4% 미만이면 신규 PAPER 진입을 fail-closed로 잠급니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 One Touch가 연결되면 외장 bootstrap이 sparsebundle을 연결하고 서비스를 다시 시작합니다.
 
 자동 시작을 해제하되 거래 원장과 외장 파일을 보존하려면 다음 명령을 실행합니다.
 
@@ -111,7 +111,7 @@ Windows Command Prompt에서는 `set ROBOM_MODE=LIVE_SHADOW_PAPER`를 실행한 
 
 ## 저장·복구·내보내기
 
-- 수동 실행은 `data/run-ledger.sqlite3`을 사용합니다. macOS 자동 서비스가 외장 APFS 프로젝트에 있으면 같은 volume의 `05_RUNTIME/ROBOM_FlowScalper/active-ledger/run-ledger.sqlite3`을 기본으로 사용하고, 외장 프로젝트가 아니면 Application Support의 `active-ledger/run-ledger.sqlite3`을 사용합니다. `ROBOM_ACTIVE_LEDGER_DIR`·`ROBOM_DB_PATH`가 있으면 명시값이 우선합니다.
+- 수동 개발 실행은 외장 프로젝트의 `data/run-ledger.sqlite3`을 사용합니다. macOS 자동 서비스의 원장·불변 릴리스·Python 실행환경·cache·temp·로그는 모두 같은 외장 APFS volume의 `05_RUNTIME/ROBOM_FlowScalper` 아래에 있습니다. 내장에는 macOS가 요구하는 작은 LaunchAgent plist만 남습니다. 외장 프로젝트·runtime·sparsebundle 계약을 통과하지 못하면 자동 서비스 설치와 시작을 거부합니다.
 - 자동 서비스의 공개시장 event는 외장 `data/market-parquet-v6`에 ZSTD Parquet으로 보존합니다. 각 row와 batch checksum, root 경로 검증 뒤 SQLite event와 시간순 병합해 replay합니다. candle, 후보, strategy account와 replay 결과는 Run 범위의 SQLite 원장에 보존합니다.
 - 기본 보존기간은 deep-book 7일, 1초 특징·캔들 90일입니다. 후보·거래 창은 자동 정리에서 보호됩니다.
 - 저장소 여유 공간이 기준보다 작으면 원장을 우선 보호하고 신규 PAPER 진입을 잠깁니다.
@@ -154,7 +154,7 @@ make package-release
 - sequence gap은 해당 호가를 stale로 표시하고 새 snapshot으로 재동기화합니다.
 - SQLite checksum 불일치·손상은 복구를 중단하고 신규 진입을 잠깁니다.
 - 최상위 실행기는 빈 localhost 포트를 자동 선택합니다. 수동 실행에서 포트를 고정하려면 `ROBOM_PORT=8876 make run`처럼 localhost 포트만 지정합니다.
-- 자동 실행 사이트가 열리지 않으면 `launchctl print gui/$(id -u)/kr.robom.flowscalper`와 `~/Library/Application Support/ROBOM FlowScalper/service-error.log`를 확인합니다.
+- 자동 실행 사이트가 열리지 않으면 `launchctl print gui/$(id -u)/kr.robom.flowscalper`와 `/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/logs/service-error.log`를 확인합니다. One Touch와 APFS sparsebundle이 연결돼 있는지도 함께 확인합니다.
 
 ## 알려진 제한
 

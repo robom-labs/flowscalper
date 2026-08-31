@@ -591,3 +591,23 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   staging과 같은 볼륨에 생성하도록 수정하고 macOS service 계약 회귀 16건으로 고정한다.
 - 실제 주문, private API, API Key, secret, wallet과 입출금은 계속 0이며 수익성은
   `NOT_PROVEN`, 실자금은 `NOT_READY`다.
+
+## Wave 139 외장 전용 저장·대형 WAL 시작 복구
+
+- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_PENDING`이다.
+- One Touch의 APFS sparsebundle을 256GiB 가변 이미지로 확장하고 소스·원장·시장자료·
+  불변 릴리스·Python·cache·temp·로그를 외장에만 두는 설치 계약으로 교체한다.
+- 내장에 남았던 ROBOM 전용 cache 3.0GB를 외장으로 복사·전수 대조한 뒤 제거하고,
+  과거 Application Support 586MB는 외장 migration archive에 보존·원장검사한 뒤
+  새 외장 서비스 복구가 통과할 때만 내장 사본을 제거한다.
+- 5.207GB 활성 원장과 2.354GB WAL은 서비스 handle 0에서 DB·WAL·SHM을 복구본으로
+  보존한 뒤 `TRUNCATE` checkpoint 0byte를 확인했다. 다른 물리 device 사본의
+  SHA-256 일치, `quick_check=ok`, 외래키 위반 0을 실행 근거로 남긴다.
+- 새 시작 경로는 64MiB 초과 WAL에서 open writer를 거부하고 동일 APFS clone을
+  checkpoint보다 먼저 만든다. 어떤 실패도 localhost 성공으로 표시하지 않는다.
+- 전체 backend 916건, frontend 87건, Ruff, mypy 112 source, ESLint, TypeScript,
+  build, PAPER safety, security 148 source, 저장소 위생과 누적 회귀계약 30개는 PASS했다.
+- 커밋된 불변 릴리스 설치, 동일 Run 복구, 실제 공개시장 event 전진,
+  거래기록·다시보기·브라우저는 설치 후 별도 실행 검증한다.
+- 실제 주문·private API·API Key·secret·wallet은 0을 유지한다. 수익성은
+  `NOT_PROVEN`, 6시간·24시간은 실제 경과 전까지 `NOT_RUN`으로 유지한다.

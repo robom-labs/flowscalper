@@ -1,5 +1,8 @@
 # ADR-024. 활성 원장 증가 제한과 원장 볼륨 안전검사
 
+> 2026-08-31의 macOS 외장 전용 runtime·bootstrap과 시작 전 대형 WAL 복구는 ADR-132가
+> 대체한다. 아래 Application Support fallback은 과거 결정으로만 보존한다.
+
 ## 상태
 
 Accepted, 2026-08-25.

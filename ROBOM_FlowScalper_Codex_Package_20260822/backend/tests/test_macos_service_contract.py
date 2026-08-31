@@ -15,7 +15,7 @@ import pytest
 
 from backend.app.api.dashboard import release_identity
 from backend.app.storage.integrity import RuntimeSafetyViolation
-from scripts.stage_macos_release import activate_release, stage_release
+from scripts.stage_macos_release import _default_runtime_root, activate_release, stage_release
 from scripts.verify_macos_ledger_maintenance import (
     _require_manual_pause_contract,
     _validate_initial_runtime,
@@ -34,6 +34,56 @@ def test_launch_agent_allows_graceful_paper_persistence_shutdown() -> None:
     assert payload["KeepAlive"] is True
     assert payload["ExitTimeOut"] >= 60
     assert payload["ProcessType"] == "Background"
+    assert payload["ProgramArguments"] == ["/bin/zsh", "__BOOTSTRAP_SCRIPT__"]
+    assert payload["StandardOutPath"] == "/dev/null"
+    assert payload["StandardErrorPath"] == "/dev/null"
+
+
+def test_macos_service_keeps_runtime_cache_logs_and_bootstrap_external() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
+        encoding="utf-8"
+    )
+    runner = (PROJECT_ROOT / "scripts" / "run_macos_service.sh").read_text(encoding="utf-8")
+    bootstrap = (
+        PROJECT_ROOT / "packaging" / "macos" / "run_external_bootstrap.sh"
+    ).read_text(encoding="utf-8")
+
+    for source in (installer, runner):
+        assert "Library/Application Support/ROBOM FlowScalper" not in source
+        assert "Library/Caches/ROBOM_FlowScalper" not in source
+    assert (
+        'RUNTIME_ROOT="${ROBOM_RUNTIME_ROOT:-$WORKSPACE_MOUNT/05_RUNTIME/ROBOM_FlowScalper}"'
+        in installer
+    )
+    assert 'SUPPORT_DIR="$RUNTIME_ROOT/support"' in installer
+    assert 'LOG_DIR="$RUNTIME_ROOT/logs"' in installer
+    assert 'PYTHON_BASE="$SUPPORT_DIR/python-base"' in installer
+    assert 'ditto "$SOURCE_PYTHON_BASE" "$PYTHON_BASE"' in installer
+    assert 'ln -s "$PYTHON_BASE/bin/$PYTHON_BINARY" "$RUNTIME_VENV/bin/python"' in installer
+    assert 'CACHE_DIR="$RUNTIME_ROOT/cache"' in runner
+    assert 'export PYTHONPYCACHEPREFIX="$CACHE_DIR/python"' in runner
+    assert 'export XDG_CACHE_HOME="$CACHE_DIR/xdg"' in runner
+    assert 'export UV_CACHE_DIR="$CACHE_DIR/uv"' in runner
+    assert 'export TMPDIR="$TMP_DIR/"' in runner
+    assert "/usr/bin/hdiutil attach -nobrowse" in bootstrap
+    assert 'RUNNER="$RUNTIME_ROOT/current/scripts/run_macos_service.sh"' in bootstrap
+    assert 'MAX_LOG_BYTES=10485760' in bootstrap
+    assert 'exec >>"$SERVICE_LOG" 2>>"$ERROR_LOG"' in bootstrap
+
+    setup = (PROJECT_ROOT / "scripts" / "setup_macos.sh").read_text(encoding="utf-8")
+    assert 'export UV_PYTHON_INSTALL_DIR="$CACHE_ROOT/python"' in setup
+    assert "uv python install 3.12 --no-bin" in setup
+    assert "uv venv --python 3.12 --clear .venv" in setup
+    assert "uv sync --python 3.12 --frozen --all-groups" in setup
+
+
+def test_default_release_runtime_rejects_internal_source() -> None:
+    with pytest.raises(RuntimeError, match="외장 볼륨"):
+        _default_runtime_root(Path("/tmp/flowscalper"))
+
+    assert _default_runtime_root(Path("/Volumes/ROBOM_FLOWSCALPER/project")) == Path(
+        "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper"
+    )
 
 
 def test_installer_uses_launchd_graceful_bootout_before_new_bootstrap() -> None:
@@ -192,7 +242,8 @@ def test_service_uses_immutable_current_release_and_manifest_paths() -> None:
 )
 def test_service_runner_pins_backend_import_to_physical_release(tmp_path: Path) -> None:
     release = tmp_path / "release"
-    support = tmp_path / "home" / "Library" / "Application Support" / "ROBOM FlowScalper"
+    runtime_root = tmp_path / "runtime"
+    support = runtime_root / "support"
     runtime_python = support / "runtime-venv" / "bin" / "python"
     market_archive = tmp_path / "market-archive"
     active_ledger = tmp_path / "active-ledger"
@@ -236,6 +287,8 @@ def test_service_runner_pins_backend_import_to_physical_release(tmp_path: Path) 
                 "        'release_commit': os.environ.get('ROBOM_RELEASE_COMMIT'),",
                 "        'release_isolated': os.environ.get('ROBOM_RELEASE_ISOLATED'),",
                 "        'real_orders_enabled': os.environ.get('REAL_TRADING', 'false'),",
+                "        'python_cache': os.environ.get('PYTHONPYCACHEPREFIX'),",
+                "        'tmpdir': os.environ.get('TMPDIR'),",
                 "    }))",
             ]
         )
@@ -250,6 +303,8 @@ def test_service_runner_pins_backend_import_to_physical_release(tmp_path: Path) 
         env={
             **os.environ,
             "HOME": str(tmp_path / "home"),
+            "ROBOM_RUNTIME_ROOT": str(runtime_root),
+            "ROBOM_RUNTIME_PYTHON": str(runtime_python),
             "ROBOM_RUNNER_TEST_OUTPUT": str(output),
         },
         capture_output=True,
@@ -262,6 +317,8 @@ def test_service_runner_pins_backend_import_to_physical_release(tmp_path: Path) 
     assert payload["release_commit"] == "a" * 40
     assert payload["release_isolated"] == "true"
     assert payload["real_orders_enabled"] == "false"
+    assert payload["python_cache"] == str(runtime_root / "cache" / "python")
+    assert payload["tmpdir"] == f"{runtime_root / 'tmp'}/"
 
 
 def test_dashboard_release_identity_is_development_or_exact_immutable_commit(

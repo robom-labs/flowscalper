@@ -17,29 +17,60 @@ SOURCE_PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 LABEL="kr.robom.flowscalper"
 USER_ID="$(id -u)"
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
-SUPPORT_DIR="$HOME/Library/Application Support/ROBOM FlowScalper"
 TARGET_PLIST="$LAUNCH_AGENT_DIR/$LABEL.plist"
 TEMPLATE_PLIST="$SOURCE_PROJECT_DIR/packaging/macos/$LABEL.plist"
-RUNTIME_VENV="$SUPPORT_DIR/runtime-venv"
+BOOTSTRAP_TEMPLATE="$SOURCE_PROJECT_DIR/packaging/macos/run_external_bootstrap.sh"
 SERVICE_TARGET="gui/$USER_ID/$LABEL"
 SOURCE_VOLUME_NAME="${SOURCE_PROJECT_DIR#/Volumes/}"
 SOURCE_VOLUME_NAME="${SOURCE_VOLUME_NAME%%/*}"
-if [[ "$SOURCE_PROJECT_DIR" == /Volumes/*/* ]]; then
-  RUNTIME_ROOT="${ROBOM_RUNTIME_ROOT:-/Volumes/$SOURCE_VOLUME_NAME/05_RUNTIME/ROBOM_FlowScalper}"
-else
-  RUNTIME_ROOT="${ROBOM_RUNTIME_ROOT:-$SUPPORT_DIR}"
-fi
+WORKSPACE_MOUNT="${ROBOM_WORKSPACE_MOUNT:-/Volumes/$SOURCE_VOLUME_NAME}"
+DEFAULT_EXTERNAL_HOME="/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822"
+EXTERNAL_HOME="${ROBOM_EXTERNAL_HOME:-$DEFAULT_EXTERNAL_HOME}"
+SPARSEBUNDLE_PATH="${ROBOM_WORKSPACE_SPARSEBUNDLE:-$EXTERNAL_HOME/ROBOM_FlowScalper_Workspace.sparsebundle}"
+RUNTIME_ROOT="${ROBOM_RUNTIME_ROOT:-$WORKSPACE_MOUNT/05_RUNTIME/ROBOM_FlowScalper}"
+SUPPORT_DIR="$RUNTIME_ROOT/support"
+LOG_DIR="$RUNTIME_ROOT/logs"
+CACHE_DIR="$RUNTIME_ROOT/cache"
+RUNTIME_VENV="$SUPPORT_DIR/runtime-venv"
+PYTHON_BASE="$SUPPORT_DIR/python-base"
+BOOTSTRAP_DIR="$EXTERNAL_HOME/bootstrap"
+BOOTSTRAP_SCRIPT="$BOOTSTRAP_DIR/run_flowscalper_bootstrap.sh"
 MARKET_ARCHIVE_PATH="${ROBOM_MARKET_ARCHIVE_PATH:-$SOURCE_PROJECT_DIR/data/market-parquet-v6}"
 
-if [[ ! -f "$TEMPLATE_PLIST" || ! -x "$SOURCE_PROJECT_DIR/.venv/bin/python" || ! -d "$SOURCE_PROJECT_DIR/frontend/node_modules" ]]; then
+if [[ "$SOURCE_PROJECT_DIR" != "$WORKSPACE_MOUNT"/* ]]; then
+  echo "자동 서비스 소스는 외장 APFS 작업공간 안에 있어야 합니다: $SOURCE_PROJECT_DIR" >&2
+  exit 1
+fi
+if [[ "$RUNTIME_ROOT" != /Volumes/*/* || "$EXTERNAL_HOME" != /Volumes/*/* ]]; then
+  echo "런타임과 bootstrap은 외장 볼륨 경로여야 합니다." >&2
+  exit 1
+fi
+if [[ ! -d "$SPARSEBUNDLE_PATH" ]]; then
+  echo "외장 APFS sparsebundle이 없습니다: $SPARSEBUNDLE_PATH" >&2
+  exit 1
+fi
+if [[ ! -f "$TEMPLATE_PLIST" || ! -f "$BOOTSTRAP_TEMPLATE" || ! -x "$SOURCE_PROJECT_DIR/.venv/bin/python" || ! -d "$SOURCE_PROJECT_DIR/frontend/node_modules" ]]; then
   echo "먼저 외장 저장소에서 ./scripts/setup_macos.sh를 실행해야 합니다." >&2
   exit 1
 fi
 
-mkdir -p "$LAUNCH_AGENT_DIR" "$SUPPORT_DIR" "$RUNTIME_ROOT"
+mkdir -p "$LAUNCH_AGENT_DIR" "$SUPPORT_DIR" "$LOG_DIR" "$CACHE_DIR" "$BOOTSTRAP_DIR"
+SOURCE_PYTHON="$SOURCE_PROJECT_DIR/.venv/bin/python"
+SOURCE_PYTHON_BASE="$($SOURCE_PYTHON -c 'import sys; print(sys.base_prefix)')"
+PYTHON_BINARY="$($SOURCE_PYTHON -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")')"
+if [[ ! -x "$PYTHON_BASE/bin/$PYTHON_BINARY" ]]; then
+  ditto "$SOURCE_PYTHON_BASE" "$PYTHON_BASE"
+fi
 if [[ ! -x "$RUNTIME_VENV/bin/python" ]]; then
   ditto "$SOURCE_PROJECT_DIR/.venv" "$RUNTIME_VENV"
 fi
+if [[ -L "$RUNTIME_VENV/bin/python" ]]; then
+  unlink "$RUNTIME_VENV/bin/python"
+  ln -s "$PYTHON_BASE/bin/$PYTHON_BINARY" "$RUNTIME_VENV/bin/python"
+fi
+"$SOURCE_PYTHON" -c \
+  'import pathlib,sys; path=pathlib.Path(sys.argv[1]); rows=path.read_text().splitlines(); path.write_text("\n".join((f"home = {sys.argv[2]}" if row.startswith("home = ") else row) for row in rows) + "\n")' \
+  "$RUNTIME_VENV/pyvenv.cfg" "$PYTHON_BASE/bin"
 "$RUNTIME_VENV/bin/python" -c "import duckdb, fastapi, uvicorn"
 STAGE_RESULT="$SUPPORT_DIR/latest-release-stage.json"
 "$SOURCE_PROJECT_DIR/.venv/bin/python" "$SOURCE_PROJECT_DIR/scripts/stage_macos_release.py" \
@@ -53,11 +84,19 @@ STAGE_RESULT="$SUPPORT_DIR/latest-release-stage.json"
   "$STAGE_RESULT"
 PROJECT_DIR="$RUNTIME_ROOT/current"
 [[ -f "$PROJECT_DIR/release-manifest.json" ]] || { echo "불변 릴리스 준비에 실패했습니다." >&2; exit 1; }
-escaped_project="${PROJECT_DIR//&/\\&}"
-escaped_logs="${SUPPORT_DIR//&/\\&}"
-sed -e "s|__PROJECT_DIR__|$escaped_project|g" -e "s|__LOG_DIR__|$escaped_logs|g" "$TEMPLATE_PLIST" > "$TARGET_PLIST"
+escaped_bootstrap="${BOOTSTRAP_SCRIPT//&/\\&}"
+escaped_mount="${WORKSPACE_MOUNT//&/\\&}"
+escaped_bundle="${SPARSEBUNDLE_PATH//&/\\&}"
+escaped_runtime="${RUNTIME_ROOT//&/\\&}"
+sed \
+  -e "s|__WORKSPACE_MOUNT__|$escaped_mount|g" \
+  -e "s|__SPARSEBUNDLE_PATH__|$escaped_bundle|g" \
+  -e "s|__RUNTIME_ROOT__|$escaped_runtime|g" \
+  "$BOOTSTRAP_TEMPLATE" > "$BOOTSTRAP_SCRIPT"
+sed -e "s|__BOOTSTRAP_SCRIPT__|$escaped_bootstrap|g" "$TEMPLATE_PLIST" > "$TARGET_PLIST"
 xattr -d com.apple.provenance "$TARGET_PLIST" 2>/dev/null || true
 chmod 600 "$TARGET_PLIST"
+chmod 700 "$BOOTSTRAP_SCRIPT"
 chmod 755 "$(cd "$PROJECT_DIR" && pwd -P)/scripts/run_macos_service.sh"
 plutil -lint "$TARGET_PLIST"
 
@@ -142,11 +181,11 @@ assert system["storage_entry_allowed"] is True' \
 done
 if [[ "$service_ready" != "true" ]]; then
   echo "PAPER 서비스가 180초 안에 안전한 LIVE 준비 상태가 되지 않았습니다." >&2
-  echo "로그를 확인하세요: $SUPPORT_DIR" >&2
+  echo "로그를 확인하세요: $LOG_DIR" >&2
   exit 6
 fi
 
 echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"
 echo "주소: http://127.0.0.1:8870/"
-echo "로그: $SUPPORT_DIR"
+echo "로그: $LOG_DIR"
 echo "릴리스: $(cd "$PROJECT_DIR" && pwd -P)"

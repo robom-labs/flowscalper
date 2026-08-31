@@ -21,7 +21,8 @@
 | 정식 APFS 작업공간 | `/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매` |
 | 정식 프로젝트 | `/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822` |
 | Finder 실행기 | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/START_ROBOM_FlowScalper.command` |
-| 호환 링크 | `/Users/runner706/Documents/ChatGPT/자동매매` → 외장 작업공간 |
+| 서비스 runtime | `/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper` |
+| 설치·연구 입력 보관 | `/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822/inputs` |
 
 정식 Git 작업과 완성본은 외장하드에 있다. ExFAT가 실행권한·심볼릭 링크를 보존하지 못하는 문제를 피하기 위해 실제 저장소는 외장하드 안의 APFS sparsebundle에 두었다. 실행기는 예상 APFS Volume UUID `CFA4ACD9-40F2-4825-845E-137F76AA1C62`가 일치할 때만 앱을 연다. 이동 증거는 `evidence/EXTERNAL_MIGRATION_EVIDENCE.json`에 있다.
 
@@ -181,7 +182,7 @@
 - 자연 적격신호가 없었던 공개시장 기록에서는 거래 0을 그대로 보존했다.
 - 6시간·24시간 soak와 Windows 실기기 실행은 `NOT_RUN`이다.
 - 거래소의 지역 제한·유지보수·protocol 변경은 로컬 코드로 없앨 수 없다. 연결이 검증되지 않으면 LIVE 대신 fail-closed 상태를 표시한다.
-- 외장 APFS 작업 이미지는 현재 약 32GiB 상한이며 약 29GiB가 비어 있다. 장기수집으로 한계에 가까워지면 One Touch의 별도 데이터 볼륨으로 확장해야 한다.
+- 외장 APFS sparsebundle은 Wave 139에서 256GiB 가변 이미지로 확장했다. 실제 사용 용량만 One Touch에 할당되며, 장기 수집은 외장 여유공간과 자동 진입잠금을 계속 같이 감시한다.
 
 ## 12. Wave 09 LIVE 지연·차트·시각 핫픽스
 
@@ -4389,3 +4390,47 @@ destination parent에 만들고 `finally`에서 지우도록 수정했으며 실
 
 현 수용상태는
 `OKX_FIXED_EXTERNAL_REPLICATION_POSITIVE_SKEW_OBSERVED_ROBUSTNESS_FAILED_NO_PROMOTION_NOT_PROVEN_NOT_READY`다.
+
+## 100. Wave 139 외장 전용 저장·대형 WAL 시작 복구
+
+새 설치를 시작하기 전 `/Volumes/ROBOM_FLOWSCALPER`가 없었고 One Touch의
+`ROBOM_FlowScalper_Workspace.sparsebundle`은 34.1GB 논리 크기, 26.7GB 사용,
+7.5GB 여유였다. sparsebundle을 안전하게 연결한 뒤 현재 활성 원장
+5,207,486,464 bytes와 WAL 2,353,727,192 bytes를 확인했다. 서비스는 port를
+열기 전 SQLite가 대형 WAL index를 재구축하는 I/O 상태에 머물렀고, 공개시장
+연결과 신규 PAPER 진입은 일어나지 않았다.
+
+활성 서비스를 정상 종료한 뒤 DB·WAL·SHM을 One Touch 복구 경로에 먼저
+복사했고 원본과 복구본 SHA-256이 모두 일치했다. sparsebundle을 256GiB
+가변 APFS로 확장한 뒤 닫힌 원장의 `wal_checkpoint(TRUNCATE)`를 92.36초
+실행해 busy 0·WAL 0byte를 확인했다. 닫힌 APFS clone 5,208,920,064 bytes를
+다른 물리 device에 전송한 뒤 양쪽 SHA-256
+`7f7cea6f799c404e1d0e5ac6a999ec269b0e01847e5d80b1ba3a88065d33da24`를 대조했다.
+그 불변 사본에서 `quick_check=ok`, 외래키 위반 0, user version 7, 23 tables를
+실제로 검증했다.
+
+내장 `~/Library/Caches/ROBOM_FlowScalper`의 일반파일 82,383개·심볼릭 링크
+740개를 외장 cache로 복사했고 `rsync --dry-run` 차이 0건과 외장 의존성을
+사용한 frontend 87건·lint·typecheck·build PASS 후 내장 3.0GB cache를 제거했다.
+과거 Application Support 586MB는 파일 11,557개·링크 3개를 외장 migration
+archive로 복사했고 그 안의 구형 원장은 `quick_check=ok`·user version 4다.
+다운로드의 인계 프롬프트·ZIP 7개도 외장 `inputs/20260831`로 byte 대조 후
+이동했다. 이전 작업트리 2개는 변경 0건·독자 commit 0건을 확인한 뒤 제거했다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| sparsebundle 확장 | `PASS` | 256GiB·사용 23GiB·여유 233GiB |
+| 대형 WAL 사전 보존·checkpoint | `PASS` | 사전 사본 SHA 일치·busy 0·WAL 0byte |
+| cross-device 불변 원장 검사 | `PASS` | SHA 일치·`quick_check=ok`·FK 0 |
+| 외장 cache·Python·frontend | `PASS` | 내장 참조 제거·frontend 87건·build PASS |
+| backend 전체 | `PASS` | 916건, 68.40초 |
+| Ruff·mypy·security | `PASS` | mypy 112 source·security 148 source·실제 주문 경로 0 |
+| repository hygiene·누적 회귀계약 | `PASS` | 위반 0·30계약·59 anchor |
+| plist·runner·bootstrap 계약 | `PASS_SOURCE` | 관련 22건·`zsh -n`·`plutil -lint` |
+| 커밋된 불변 릴리스 설치 | `NOT_RUN_PENDING` | 소스 commit 후 실행 |
+| 실제 8870·Run·공개 event·거래기록·다시보기 | `NOT_RUN_PENDING` | 설치 후 실제 브라우저 검증 |
+| 6시간·24시간 | `NOT_RUN` | 이번 변경 후 실제 경과 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 저장·시작 복구는 수익성 증거가 아님 |
+
+현 수용상태는
+`EXTERNAL_ONLY_SOURCE_PASS_COMMITTED_INSTALL_AND_RUNTIME_VERIFICATION_PENDING_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

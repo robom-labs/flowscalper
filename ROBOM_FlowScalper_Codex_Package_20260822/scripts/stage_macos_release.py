@@ -246,7 +246,7 @@ def stage_release(
 def _default_runtime_root(source_root: Path) -> Path:
     if len(source_root.parts) >= 3 and source_root.parts[1] == "Volumes":
         return Path("/Volumes") / source_root.parts[2] / "05_RUNTIME" / "ROBOM_FlowScalper"
-    return Path.home() / "Library" / "Application Support" / "ROBOM FlowScalper"
+    raise RuntimeError("macOS 불변 실행 릴리스는 외장 볼륨 소스가 필요합니다.")
 
 
 def main() -> None:
