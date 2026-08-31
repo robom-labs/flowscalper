@@ -41,7 +41,7 @@ from backend.app.strategies.orderflow_confirmation import (
 from backend.app.strategies.registry import StrategyRegistry
 from backend.app.ui_v6 import compact_ui_summary, diagnostics_rows, settings_summary
 from scripts import stage_macos_release
-from scripts.verify_legacy_runtime_preflight import (
+from scripts.verify_compatibility_runtime_preflight import (
     LegacyRuntimePreflightError,
     verify_running_process_binding,
 )

@@ -27,7 +27,7 @@ from scripts import benchmark_dashboard_payload as benchmark
 from scripts import generate_v6_browser_evidence as browser_evidence
 from scripts import generate_v6_final_validation as final_validation
 from scripts import stage_macos_release
-from scripts.verify_legacy_runtime_preflight import LegacyRuntimePreflightError
+from scripts.verify_compatibility_runtime_preflight import LegacyRuntimePreflightError
 
 
 def _current_network_timing_evidence(

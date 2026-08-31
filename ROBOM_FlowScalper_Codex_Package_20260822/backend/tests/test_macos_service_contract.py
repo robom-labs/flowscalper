@@ -19,7 +19,7 @@ import pytest
 from backend.app.api.dashboard import release_identity
 from backend.app.storage.integrity import RuntimeSafetyViolation
 from scripts import stage_macos_release as stage_macos_release_module
-from scripts import verify_legacy_runtime_preflight as legacy_preflight_module
+from scripts import verify_compatibility_runtime_preflight as legacy_preflight_module
 from scripts.stage_macos_release import (
     _default_runtime_root,
     _verify_release_tree,
@@ -30,7 +30,7 @@ from scripts.stage_macos_release import (
     prune_obsolete_releases,
     stage_release,
 )
-from scripts.verify_legacy_runtime_preflight import (
+from scripts.verify_compatibility_runtime_preflight import (
     LegacyRuntimePreflightError,
     _parse_lsof_records,
     _read_json_object,
@@ -84,7 +84,13 @@ def _safe_install_dashboard() -> dict[str, object]:
             "persistence_worker_warmed": True,
             "persistence_flush_count": 4,
             "persistence_flush_last_ms": 1.0,
+            "persistence_flush_last_completed_ts_ms": 1_000,
             "persistence_fault_count": 0,
+            "persistence_fault_active": False,
+            "persistence_fault_recoverable": False,
+            "persistence_recovery_count": 0,
+            "persistence_last_error": "NONE",
+            "persistence_last_recovered_ts_ms": None,
             "persistence_buffer_dropped": 0,
             "storage_entry_allowed": True,
         },
@@ -284,7 +290,14 @@ def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> Non
     assert '("trade_lag_p95_ms", 1000.0)' in contract
     assert '("persistence_flush_last_ms", 20000.0)' in contract
     assert "type(flush_count) is int and flush_count >= 4" in contract
-    assert "type(value) is int and value == 0" in contract
+    assert "type(fault_count) is int and fault_count >= 0" in contract
+    assert "recovery_count == fault_count" in contract
+    assert "type(dropped_count) is int and dropped_count >= 0" in contract
+    assert 'system.get("persistence_fault_active") is False' in contract
+    assert 'system.get("persistence_fault_recoverable") is False' in contract
+    assert 'system.get("persistence_last_error") == "NONE"' in contract
+    assert 'system.get("persistence_last_recovered_ts_ms")' in contract
+    assert 'system.get("persistence_flush_last_completed_ts_ms")' in contract
     assert 'system.get("persistence_worker_warmed") is True' in contract
     assert 'system.get("storage_entry_allowed") is True' in contract
     assert 'rollback_previous_release "READINESS_FAILED"' in readiness
@@ -382,6 +395,57 @@ def test_installer_dashboard_health_contract_rejects_type_and_infinity_bypasses(
     assert _run_dashboard_install_contract(payload).returncode != 0
 
 
+def test_installer_dashboard_health_contract_allows_fully_recovered_history() -> None:
+    payload = _safe_install_dashboard()
+    payload["system"].update(  # type: ignore[union-attr]
+        {
+            "persistence_fault_count": 6,
+            "persistence_fault_active": False,
+            "persistence_fault_recoverable": False,
+            "persistence_recovery_count": 6,
+            "persistence_last_error": "NONE",
+            "persistence_last_recovered_ts_ms": 8_000,
+            "persistence_flush_last_completed_ts_ms": 9_000,
+            "persistence_buffer_dropped": 5_104,
+        }
+    )
+
+    result = _run_dashboard_install_contract(payload)
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe_value"),
+    [
+        ("persistence_fault_active", True),
+        ("persistence_recovery_count", 5),
+        ("persistence_last_error", "StoragePressureError"),
+        ("persistence_flush_last_completed_ts_ms", 7_999),
+    ],
+)
+def test_installer_dashboard_health_contract_rejects_active_or_unrecovered_fault(
+    field: str,
+    unsafe_value: object,
+) -> None:
+    payload = _safe_install_dashboard()
+    payload["system"].update(  # type: ignore[union-attr]
+        {
+            "persistence_fault_count": 6,
+            "persistence_fault_active": False,
+            "persistence_fault_recoverable": False,
+            "persistence_recovery_count": 6,
+            "persistence_last_error": "NONE",
+            "persistence_last_recovered_ts_ms": 8_000,
+            "persistence_flush_last_completed_ts_ms": 9_000,
+            "persistence_buffer_dropped": 5_104,
+            field: unsafe_value,
+        }
+    )
+
+    assert _run_dashboard_install_contract(payload).returncode != 0
+
+
 def test_preflight_and_readiness_share_strict_flat_funding_contract() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
     preflight = installer[
@@ -406,7 +470,14 @@ def test_preflight_and_readiness_share_strict_flat_funding_contract() -> None:
         assert "math.isfinite(value)" in contract
         assert "type(value) in (int, float)" in contract
         assert "type(flush_count) is int and flush_count >= 4" in contract
-        assert "type(value) is int and value == 0" in contract
+        assert "type(fault_count) is int and fault_count >= 0" in contract
+        assert "recovery_count == fault_count" in contract
+        assert "type(dropped_count) is int and dropped_count >= 0" in contract
+        assert 'system.get("persistence_fault_active") is False' in contract
+        assert 'system.get("persistence_fault_recoverable") is False' in contract
+        assert 'system.get("persistence_last_error") == "NONE"' in contract
+        assert 'system.get("persistence_last_recovered_ts_ms")' in contract
+        assert 'system.get("persistence_flush_last_completed_ts_ms")' in contract
     assert 'system.get("funding_readiness") == "NOT_READY"' in preflight
     assert 'system["funding_readiness"] == "NOT_READY"' in readiness
 
@@ -490,6 +561,9 @@ def test_installer_rechecks_pause_revision_and_flat_contract_immediately_before_
     assert "latest-install-prestop-dashboard.json" in pre_stop
     assert "http://127.0.0.1:8870/api/dashboard" in pre_stop
     assert 'dashboard_matches_install_contract "$PREVIOUS_RELEASE_COMMIT" "true"' in pre_stop
+    assert "verify_persistence_counters_unchanged()" in installer
+    assert '"$PREFLIGHT_DASHBOARD" "$prestop_dashboard"' in pre_stop
+    assert '"$prestop_dashboard" "$bracket_dashboard"' in pre_stop
     assert 'abort_before_transition "PRESTOP_CONTRACT_CHANGED" 4' in pre_stop
 
 
@@ -930,9 +1004,12 @@ def test_poststage_control_plane_runs_only_from_staged_verifier_release() -> Non
         assert "PYTHONNOUSERSITE=1" in helper
         assert 'PYTHONPATH="$VERIFIER_RELEASE"' in helper
         assert '"$RUNTIME_VENV/bin/python" -P' in helper
-        assert '"$VERIFIER_RELEASE/scripts/verify_legacy_runtime_preflight.py"' in helper
+        assert '"$VERIFIER_RELEASE/scripts/verify_compatibility_runtime_preflight.py"' in helper
         assert '"$SOURCE_PROJECT_DIR/.venv/bin/python"' not in helper
-        assert '"$SOURCE_PROJECT_DIR/scripts/verify_legacy_runtime_preflight.py"' not in helper
+        assert (
+            '"$SOURCE_PROJECT_DIR/scripts/verify_compatibility_runtime_preflight.py"'
+            not in helper
+        )
 
     dashboard_gate = installer[
         installer.index("dashboard_matches_install_contract()") : installer.index(

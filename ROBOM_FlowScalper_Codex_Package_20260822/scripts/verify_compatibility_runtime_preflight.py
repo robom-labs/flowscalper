@@ -1,4 +1,4 @@
-# 검증된 V1 PAPER 서비스의 누락 안전 필드를 dashboard와 읽기 전용 원장으로 동등 증명한다.
+# 검증된 V1 호환 PAPER 서비스의 누락 안전 필드를 dashboard와 읽기 전용 원장으로 동등 증명한다.
 from __future__ import annotations
 
 import argparse
@@ -401,18 +401,60 @@ def _verify_dashboard(
     ):
         value = _finite_number(system.get(field), f"dashboard {field}")
         _require(0 <= value <= maximum, f"dashboard {field}가 0..{maximum} 범위를 벗어났습니다.")
+    persistence_flush_count = _exact_non_negative_int(
+        system.get("persistence_flush_count"),
+        "dashboard persistence_flush_count",
+    )
     _require(
-        _exact_non_negative_int(
-            system.get("persistence_flush_count"),
-            "dashboard persistence_flush_count",
-        )
-        >= 4,
+        persistence_flush_count >= 4,
         "dashboard persistence_flush_count가 4보다 작습니다.",
     )
-    for field in ("persistence_fault_count", "persistence_buffer_dropped"):
+    persistence_flush_last_completed_ts_ms = _exact_non_negative_int(
+        system.get("persistence_flush_last_completed_ts_ms"),
+        "dashboard persistence_flush_last_completed_ts_ms",
+    )
+    persistence_fault_count = _exact_non_negative_int(
+        system.get("persistence_fault_count"),
+        "dashboard persistence_fault_count",
+    )
+    persistence_recovery_count = _exact_non_negative_int(
+        system.get("persistence_recovery_count"),
+        "dashboard persistence_recovery_count",
+    )
+    _exact_non_negative_int(
+        system.get("persistence_buffer_dropped"),
+        "dashboard persistence_buffer_dropped",
+    )
+    _require(
+        system.get("persistence_fault_active") is False,
+        "dashboard persistence fault가 현재 활성 상태입니다.",
+    )
+    _require(
+        system.get("persistence_fault_recoverable") is False,
+        "dashboard persistence fault recovery가 아직 진행 상태입니다.",
+    )
+    _require(
+        persistence_recovery_count == persistence_fault_count,
+        "dashboard persistence fault와 recovery 누적 횟수가 다릅니다.",
+    )
+    _require(
+        system.get("persistence_last_error") == "NONE",
+        "dashboard persistence에 현재 error가 남아 있습니다.",
+    )
+    persistence_last_recovered_ts_ms = system.get("persistence_last_recovered_ts_ms")
+    if persistence_recovery_count == 0:
         _require(
-            _exact_non_negative_int(system.get(field), f"dashboard {field}") == 0,
-            f"dashboard {field}가 0이 아닙니다.",
+            persistence_last_recovered_ts_ms is None,
+            "dashboard persistence recovery 이력 없이 복구 시각이 보고됐습니다.",
+        )
+    else:
+        recovered_ts_ms = _exact_non_negative_int(
+            persistence_last_recovered_ts_ms,
+            "dashboard persistence_last_recovered_ts_ms",
+        )
+        _require(
+            recovered_ts_ms <= persistence_flush_last_completed_ts_ms,
+            "dashboard persistence 복구 뒤 성공 flush가 확인되지 않았습니다.",
         )
     _require(
         system.get("persistence_worker_warmed") is True,

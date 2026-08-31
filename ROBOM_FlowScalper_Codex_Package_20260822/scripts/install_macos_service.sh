@@ -305,7 +305,7 @@ from scripts.stage_macos_release import (
     _verify_release_tree,
     legacy_runtime_safety_fields_missing,
 )
-from scripts.verify_legacy_runtime_preflight import verify_legacy_runtime_preflight
+from scripts.verify_compatibility_runtime_preflight import verify_legacy_runtime_preflight
 
 dashboard_path, identity_path, runtime_root, previous_release = map(Path, sys.argv[1:5])
 payload = json.loads(dashboard_path.read_text(encoding="utf-8"))
@@ -370,9 +370,41 @@ def require_runtime_health() -> None:
         type(flush_count) is int and flush_count >= 4,
         f"persistence_flush_count가 4 이상의 int가 아닙니다: {flush_count!r}",
     )
-    for field in ("persistence_fault_count", "persistence_buffer_dropped"):
-        value = system.get(field)
-        require(type(value) is int and value == 0, f"{field}가 int 0이 아닙니다: {value!r}")
+    fault_count = system.get("persistence_fault_count")
+    recovery_count = system.get("persistence_recovery_count")
+    dropped_count = system.get("persistence_buffer_dropped")
+    require(
+        type(fault_count) is int and fault_count >= 0,
+        f"persistence_fault_count가 0 이상의 int가 아닙니다: {fault_count!r}",
+    )
+    require(
+        type(recovery_count) is int and recovery_count == fault_count,
+        "persistence_recovery_count가 fault 누적과 다릅니다: "
+        f"fault={fault_count!r}, recovery={recovery_count!r}",
+    )
+    require(
+        type(dropped_count) is int and dropped_count >= 0,
+        f"persistence_buffer_dropped가 0 이상의 int가 아닙니다: {dropped_count!r}",
+    )
+    require(system.get("persistence_fault_active") is False, "persistence fault가 활성 상태입니다.")
+    require(
+        system.get("persistence_fault_recoverable") is False,
+        "persistence recovery가 아직 진행 중입니다.",
+    )
+    require(system.get("persistence_last_error") == "NONE", "persistence 현재 오류가 남아 있습니다.")
+    if fault_count > 0:
+        require(recovery_count > 0, "persistence fault 복구 이력이 없습니다.")
+        recovered_ts = system.get("persistence_last_recovered_ts_ms")
+        completed_ts = system.get("persistence_flush_last_completed_ts_ms")
+        require(
+            type(recovered_ts) is int and recovered_ts > 0,
+            f"마지막 persistence 복구 시각이 올바르지 않습니다: {recovered_ts!r}",
+        )
+        require(
+            type(completed_ts) is int and completed_ts >= recovered_ts,
+            "마지막 persistence 복구 뒤 성공 flush가 증명되지 않았습니다: "
+            f"recovered={recovered_ts!r}, flushed={completed_ts!r}",
+        )
     require(system.get("persistence_worker_warmed") is True, "persistence worker가 warmed 상태가 아닙니다.")
     require(system.get("storage_entry_allowed") is True, "storage entry가 허용 상태가 아닙니다.")
 
@@ -501,7 +533,7 @@ verify_legacy_runtime_contract_file() {
   fi
   if ! PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
     PYTHONPATH="$VERIFIER_RELEASE" "$RUNTIME_VENV/bin/python" -P \
-    "$VERIFIER_RELEASE/scripts/verify_legacy_runtime_preflight.py" \
+    "$VERIFIER_RELEASE/scripts/verify_compatibility_runtime_preflight.py" \
     "${arguments[@]}" > "$evidence_file"; then
     echo "legacy dashboard·원장·LaunchAgent 동등 안전 검증이 실패했습니다." >&2
     return 1
@@ -528,7 +560,7 @@ verify_legacy_offline_after_stop() {
   fi
   if ! PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
     PYTHONPATH="$VERIFIER_RELEASE" "$RUNTIME_VENV/bin/python" -P \
-    "$VERIFIER_RELEASE/scripts/verify_legacy_runtime_preflight.py" \
+    "$VERIFIER_RELEASE/scripts/verify_compatibility_runtime_preflight.py" \
     --dashboard "$dashboard_file" \
     --ledger "$RUNTIME_ROOT/active-ledger/run-ledger.sqlite3" \
     --runtime-root "$RUNTIME_ROOT" \
@@ -846,9 +878,21 @@ def require_runtime_health():
         require(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= maximum, f"{field}가 유한한 0..{maximum} 숫자가 아닙니다: {value!r}")
     flush_count=system.get("persistence_flush_count")
     require(type(flush_count) is int and flush_count >= 4, f"persistence_flush_count가 4 이상의 int가 아닙니다: {flush_count!r}")
-    for field in ("persistence_fault_count", "persistence_buffer_dropped"):
-        value=system.get(field)
-        require(type(value) is int and value == 0, f"{field}가 int 0이 아닙니다: {value!r}")
+    fault_count=system.get("persistence_fault_count")
+    recovery_count=system.get("persistence_recovery_count")
+    dropped_count=system.get("persistence_buffer_dropped")
+    require(type(fault_count) is int and fault_count >= 0, f"persistence_fault_count가 0 이상의 int가 아닙니다: {fault_count!r}")
+    require(type(recovery_count) is int and recovery_count == fault_count, f"persistence_recovery_count가 fault 누적과 다릅니다: fault={fault_count!r}, recovery={recovery_count!r}")
+    require(type(dropped_count) is int and dropped_count >= 0, f"persistence_buffer_dropped가 0 이상의 int가 아닙니다: {dropped_count!r}")
+    require(system.get("persistence_fault_active") is False, "persistence fault가 활성 상태입니다.")
+    require(system.get("persistence_fault_recoverable") is False, "persistence recovery가 아직 진행 중입니다.")
+    require(system.get("persistence_last_error") == "NONE", "persistence 현재 오류가 남아 있습니다.")
+    if fault_count > 0:
+        require(recovery_count > 0, "persistence fault 복구 이력이 없습니다.")
+        recovered_ts=system.get("persistence_last_recovered_ts_ms")
+        completed_ts=system.get("persistence_flush_last_completed_ts_ms")
+        require(type(recovered_ts) is int and recovered_ts > 0, f"마지막 persistence 복구 시각이 올바르지 않습니다: {recovered_ts!r}")
+        require(type(completed_ts) is int and completed_ts >= recovered_ts, f"마지막 persistence 복구 뒤 성공 flush가 증명되지 않았습니다: recovered={recovered_ts!r}, flushed={completed_ts!r}")
     require(system.get("persistence_worker_warmed") is True, "persistence worker가 warmed 상태가 아닙니다.")
     require(system.get("storage_entry_allowed") is True, "storage entry가 허용 상태가 아닙니다.")
 
@@ -904,6 +948,20 @@ require_runtime_health()' \
     "$EXPECTED_PAUSE_STATE" "$EXPECTED_PAUSE_REVISION"
 }
 
+verify_persistence_counters_unchanged() {
+  local earlier_dashboard="$1"
+  local later_dashboard="$2"
+  PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
+    "$RUNTIME_VENV/bin/python" -P -c \
+    'import json,sys
+earlier=json.load(open(sys.argv[1], encoding="utf-8"))["system"]
+later=json.load(open(sys.argv[2], encoding="utf-8"))["system"]
+for field in ("persistence_fault_count", "persistence_recovery_count", "persistence_buffer_dropped", "persistence_last_recovered_ts_ms"):
+    if earlier.get(field) != later.get(field):
+        raise RuntimeError(f"설치 검증 중 {field}가 증가하거나 변경됐습니다: {earlier.get(field)!r} -> {later.get(field)!r}")' \
+    "$earlier_dashboard" "$later_dashboard"
+}
+
 verify_loaded_service_unchanged_before_stop() {
   if [[ "$FIRST_INSTALL" == "true" ]]; then
     return 0
@@ -916,6 +974,11 @@ verify_loaded_service_unchanged_before_stop() {
   if ! dashboard_matches_install_contract "$PREVIOUS_RELEASE_COMMIT" "true" \
     "$LEGACY_RUNTIME_COMPATIBILITY" < "$prestop_dashboard"; then
     echo "서비스 중지 직전 Run·pause revision·flat·PAPER 안전 상태가 preflight와 달라졌습니다." >&2
+    return 1
+  fi
+  if ! verify_persistence_counters_unchanged \
+    "$PREFLIGHT_DASHBOARD" "$prestop_dashboard"; then
+    echo "설치 preflight 이후 persistence fault 또는 drop 누적치가 달라졌습니다." >&2
     return 1
   fi
   local prestop_legacy_evidence="$SUPPORT_DIR/latest-install-prestop-legacy-evidence.json"
@@ -940,6 +1003,8 @@ verify_loaded_service_unchanged_before_stop() {
     if ! curl -fsS --max-time 3 http://127.0.0.1:8870/api/dashboard > "$bracket_dashboard" || \
       ! dashboard_matches_install_contract "$PREVIOUS_RELEASE_COMMIT" "true" \
         "$LEGACY_RUNTIME_COMPATIBILITY" < "$bracket_dashboard" || \
+      ! verify_persistence_counters_unchanged \
+        "$prestop_dashboard" "$bracket_dashboard" || \
       ! verify_legacy_runtime_contract_file \
         "$bracket_dashboard" "$bracket_evidence" "true" \
         "$bracket_snapshot_id" "$bracket_recovery_audit_id"; then
