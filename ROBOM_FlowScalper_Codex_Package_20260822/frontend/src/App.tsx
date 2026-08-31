@@ -22,6 +22,7 @@ export default function App() {
   const {
     data,
     connected,
+    safetyVerified,
     connectionState,
     bootstrapState,
     lastUpdateMs,
@@ -36,6 +37,7 @@ export default function App() {
     selectChart,
     configureStrategy,
     rollbackStrategy,
+    configureStrategyFamilyResearch,
     selectedFamilyDetail,
     selectStrategyFamily,
     clearError,
@@ -126,12 +128,12 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <SafetyHeader data={data} connected={connected} connectionState={connectionState} onPauseToggle={pauseToggle} immediateAction={immediateBusyAction} />
+      <SafetyHeader data={data} connected={connected} safetyVerified={safetyVerified} connectionState={connectionState} onPauseToggle={pauseToggle} immediateAction={immediateBusyAction} />
       <Navigation page={page} onChange={changePage} />
       {globalError ? <p className="connection-error" role="alert">{globalError}</p> : null}
       {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}
-      {page === 'market' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} busy={busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
-      {page === 'strategies' ? <StrategiesPage data={data} history={data.history} strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} researchDetails={researchDetails} selectedFamilyDetail={selectedFamilyDetail} onSelectFamily={selectStrategyFamily} onConfigure={changeStrategy} onRollback={undoStrategy} /> : null}
+      {page === 'market' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} busy={!connected || !safetyVerified || busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
+      {page === 'strategies' ? <StrategiesPage data={data} history={data.history} strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} researchDetails={researchDetails} controlsEnabled={connected && safetyVerified} selectedFamilyDetail={selectedFamilyDetail} onSelectFamily={selectStrategyFamily} onConfigure={changeStrategy} onRollback={undoStrategy} onConfigureFamilyResearch={configureStrategyFamilyResearch} /> : null}
       {page === 'trades' ? <TradesPage data={data} /> : null}
       {page === 'settings' ? <SettingsPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} researchDetails={researchDetails} onResearchDetailsChange={changeResearchDetails} onNewRun={newRun} /> : null}
     </main>

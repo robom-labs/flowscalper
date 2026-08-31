@@ -6,18 +6,28 @@ import argparse
 import hashlib
 import json
 import math
+import plistlib
 import re
+import statistics
 import subprocess
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
+import zlib
 from collections.abc import Mapping
 from dataclasses import fields
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from backend.app.analytics.opportunities import OpportunityKey
 from backend.app.build_identity import STRATEGY_VERSION
+from backend.app.ops.service_soak import (
+    RunningServiceSample,
+    RunningServiceSoakThresholds,
+    StrategyState,
+    summarize_running_service_soak,
+)
 from backend.app.strategies.family import (
     FAMILY_CATALOG,
     STRATEGY_VARIANT_CONTRACTS,
@@ -31,10 +41,20 @@ from backend.app.strategies.orderflow_confirmation import (
 from backend.app.strategies.registry import StrategyRegistry
 from backend.app.ui_v6 import compact_ui_summary, diagnostics_rows, settings_summary
 from scripts import stage_macos_release
+from scripts.verify_legacy_runtime_preflight import (
+    LegacyRuntimePreflightError,
+    verify_running_process_binding,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = PROJECT_ROOT / "evidence/V6_CURRENT_SYSTEM_TRUTH.json"
 RUNTIME_ROOT = Path("/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper")
+LAUNCH_AGENT_LABEL = "kr.robom.flowscalper"
+LAUNCH_AGENT_PLIST_PATH = Path.home() / "Library/LaunchAgents/kr.robom.flowscalper.plist"
+LAUNCH_AGENT_EVIDENCE_BOUNDARY = "EXACT_INSTALLED_PLIST_AND_CURRENT_RUNNING_PROCESS"
+INSTALLED_RELEASE_EVIDENCE_BOUNDARY = (
+    "CURRENT_DEPLOYMENT_RELEASE_TREE_EXACT_LAUNCH_AGENT_AND_RUNNING_PROCESS"
+)
 BASELINE_COMMIT = "ac5634a53da623721dc3bb6113427a32d4a677db"
 EXPECTED_PAGE_IDS = ["market", "strategies", "trades", "settings"]
 EXPECTED_OPPORTUNITY_KEY_FIELDS = [
@@ -73,6 +93,16 @@ BENCHMARK_REQUIRED_CHECKS = frozenset(
         "auth_not_required",
     }
 )
+BENCHMARK_RAW_FORMATS = frozenset(
+    {
+        "dashboard_payload_json",
+        "summary_payload_json",
+        "strategy_summary_payload_json",
+        "chart_delta_message_json",
+        "full_chart_payload_json",
+        "dashboard_latency_samples_json",
+    }
+)
 BROWSER_REQUIRED_CHECKS = frozenset(
     {
         "all_four_pages_rendered",
@@ -88,6 +118,39 @@ BROWSER_REQUIRED_CHECKS = frozenset(
         "paper_safety_visible",
     }
 )
+BROWSER_EXPECTED_PAPER_SAFETY = {
+    "paper_only": True,
+    "real_orders_enabled": False,
+    "auth_required": False,
+    "private_api_enabled": False,
+    "api_key_enabled": False,
+    "wallet_enabled": False,
+    "runtime_ai_order_decision_enabled": False,
+    "funding_readiness": "NOT_READY",
+}
+BROWSER_PAPER_SAFETY_SOURCE_PATHS = {
+    "paper_only": "risk.paper_only",
+    "real_orders_enabled": "status.real_orders_enabled",
+    "auth_required": "status.auth_required",
+    "private_api_enabled": "system.private_api_enabled",
+    "api_key_enabled": "system.api_key_enabled",
+    "wallet_enabled": "system.wallet_enabled",
+    "runtime_ai_order_decision_enabled": ("system.runtime_ai_order_decision_enabled"),
+    "funding_readiness": "system.funding_readiness",
+}
+BROWSER_REQUIRED_TEST_PROJECTS = {
+    "all_four_pages_rendered": frozenset({"desktop", "tablet", "mobile"}),
+    "desktop_project_passed": frozenset({"desktop"}),
+    "tablet_project_passed": frozenset({"tablet"}),
+    "mobile_project_passed": frozenset({"mobile"}),
+    "keyboard_navigation_passed": frozenset({"desktop", "tablet", "mobile"}),
+    "escape_and_focus_restore_passed": frozenset({"desktop", "tablet", "mobile"}),
+    "interactive_targets_48px_passed": frozenset({"desktop", "tablet", "mobile"}),
+    "horizontal_overflow_zero": frozenset({"desktop", "tablet", "mobile"}),
+    "console_errors_zero": frozenset({"desktop", "tablet", "mobile"}),
+    "zoom_200_percent_reflow_passed": frozenset({"desktop"}),
+    "paper_safety_visible": frozenset({"desktop", "tablet", "mobile"}),
+}
 FULL_SUITE_REQUIRED_CHECKS = frozenset(
     {
         "backend_pytest_passed",
@@ -98,20 +161,136 @@ FULL_SUITE_REQUIRED_CHECKS = frozenset(
         "frontend_typecheck_passed",
         "frontend_build_passed",
         "build_safety_passed",
+        "setup_passed",
+        "master_e2e_passed",
+        "network_smoke_passed",
+        "security_scan_passed",
+        "repo_hygiene_passed",
     }
 )
-FULL_SUITE_COMMAND_NAMES = frozenset(
-    {
-        "backend_pytest",
-        "backend_ruff",
-        "backend_mypy",
-        "frontend_tests",
-        "frontend_lint",
-        "frontend_typecheck",
-        "frontend_build",
-        "build_safety",
-    }
+FULL_SUITE_COMMAND_ORDER = (
+    "setup",
+    "backend_pytest",
+    "frontend_tests",
+    "backend_ruff",
+    "frontend_lint",
+    "backend_mypy",
+    "frontend_typecheck",
+    "frontend_build",
+    "build_safety",
+    "master_e2e",
+    "network_smoke",
+    "security_scan",
+    "repo_hygiene",
 )
+FULL_SUITE_COMMAND_NAMES = frozenset(FULL_SUITE_COMMAND_ORDER)
+FULL_SUITE_REPORT_FORMATS = {
+    "backend_pytest": "pytest_junit_xml",
+    "backend_ruff": "ruff_json",
+    "backend_mypy": "mypy_text",
+    "frontend_tests": "vitest_json",
+    "frontend_lint": "eslint_json",
+    "frontend_typecheck": "tsc_list_files_text",
+    "frontend_build": "vite_build_text",
+    "build_safety": "paper_build_safety_text",
+    "setup": "setup_validation_json",
+    "master_e2e": "master_e2e_bundle_json",
+    "network_smoke": "network_smoke_json",
+    "security_scan": "security_scan_json",
+    "repo_hygiene": "repo_hygiene_json",
+}
+FULL_SUITE_COMMAND_TOKENS = {
+    "backend_pytest": ("pytest", "junit"),
+    "backend_ruff": ("ruff", "json"),
+    "backend_mypy": ("mypy",),
+    "frontend_tests": ("vitest", "json"),
+    "frontend_lint": ("eslint", "json"),
+    "frontend_typecheck": ("tsc", "listFiles"),
+    "frontend_build": ("vite", "build"),
+    "build_safety": ("assert_build_safety.py",),
+    "setup": ("make", "setup"),
+    "master_e2e": ("make", "e2e"),
+    "network_smoke": ("make", "network-smoke"),
+    "security_scan": ("make", "security-scan"),
+    "repo_hygiene": ("make", "repo-hygiene"),
+}
+FULL_SUITE_CANONICAL_COMMANDS = {
+    "backend_pytest": (
+        "uv",
+        "run",
+        "pytest",
+        "--junitxml={report_path}",
+    ),
+    "backend_ruff": (
+        "uv",
+        "run",
+        "ruff",
+        "check",
+        "backend",
+        "--output-format",
+        "json",
+        "--output-file",
+        "{report_path}",
+    ),
+    "backend_mypy": ("uv", "run", "mypy"),
+    "frontend_tests": (
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "vitest",
+        "run",
+        "tests",
+        "--environment",
+        "jsdom",
+        "--reporter=json",
+        "--outputFile={report_path}",
+    ),
+    "frontend_lint": (
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "eslint",
+        ".",
+        "--format",
+        "json",
+        "--output-file",
+        "{report_path}",
+    ),
+    "frontend_typecheck": (
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "tsc",
+        "-b",
+        "--pretty",
+        "false",
+        "--listFiles",
+    ),
+    "frontend_build": ("pnpm", "--dir", "frontend", "exec", "vite", "build"),
+    "build_safety": ("uv", "run", "python", "scripts/assert_build_safety.py"),
+    "setup": ("make", "setup"),
+    "master_e2e": ("make", "e2e"),
+    "network_smoke": ("make", "network-smoke"),
+    "security_scan": ("make", "security-scan"),
+    "repo_hygiene": ("make", "repo-hygiene"),
+}
+FULL_SUITE_COLLECTION_COMMANDS = {
+    "backend": ["uv", "run", "pytest", "--collect-only", "-q"],
+    "frontend": [
+        "pnpm",
+        "--dir",
+        "frontend",
+        "exec",
+        "vitest",
+        "list",
+        "tests",
+        "--environment",
+        "jsdom",
+    ],
+}
 SOAK_REQUIRED_CHECKS = frozenset(
     {
         "samples_present",
@@ -132,6 +311,31 @@ SOAK_REQUIRED_CHECKS = frozenset(
         "strategy_mode_counts_stable_and_observed",
     }
 )
+SOAK_PROVENANCE_CHECKS = frozenset(
+    {
+        "source_worktree_clean_at_start",
+        "source_worktree_clean_at_end",
+        "source_commit_stable",
+        "release_commit_stable",
+        "release_isolated_throughout",
+        "source_release_commit_match",
+        "strategy_ids_stable_and_observed",
+        "league_account_ids_stable_and_observed",
+        "strategy_mode_counts_stable_and_observed",
+    }
+)
+SOAK_AUDIT_SAMPLE_FIELDS = frozenset(
+    {
+        "main_pending_entry_count",
+        "league_pending_entry_count",
+        "total_pending_entry_count",
+        "total_open_position_count",
+        "paper_portfolio_flat",
+        "league_account_ids",
+        "release_commit",
+        "release_isolated",
+    }
+)
 CHECKED_EVIDENCE_KINDS_BY_PATH = {
     EVIDENCE_PATHS["dashboard_payload_benchmark"]: "dashboard_payload_benchmark",
     EVIDENCE_PATHS["browser_e2e_after_latest_change"]: "browser_e2e_after_latest_change",
@@ -146,7 +350,12 @@ EVIDENCE_SOURCE_PATHS = (
     "uv.lock",
     "backend",
     "config",
+    "data",
     "frontend",
+    "packaging",
+    "ROBOM_FlowScalper.app",
+    "ROBOM_FlowScalper.command",
+    "schemas",
     "scripts",
 )
 
@@ -242,6 +451,18 @@ def _commits_have_equivalent_source(left: str, right: str) -> bool:
         text=True,
     )
     return result.returncode == 0
+
+
+def _release_commit_matches_source(release_commit: object, source_commit: object) -> bool:
+    """40자 commit끼리만 실행 소스 동등성을 비교한다."""
+
+    return (
+        isinstance(release_commit, str)
+        and isinstance(source_commit, str)
+        and re.fullmatch(r"[0-9a-f]{40}", release_commit) is not None
+        and re.fullmatch(r"[0-9a-f]{40}", source_commit) is not None
+        and _commits_have_equivalent_source(release_commit, source_commit)
+    )
 
 
 def _valid_evidence_timestamp(value: object) -> bool:
@@ -372,26 +593,19 @@ def _live_runtime_observation() -> dict[str, Any]:
         and all(count is not None for count in league_account_pending_counts)
         else None
     )
-    main_pending_entry_count = _strict_non_negative_int(
-        dashboard.get("main_pending_entry_count")
-    )
+    main_pending_entry_count = _strict_non_negative_int(dashboard.get("main_pending_entry_count"))
     league_pending_entry_count = _strict_non_negative_int(
         dashboard.get("league_pending_entry_count")
     )
-    total_pending_entry_count = _strict_non_negative_int(
-        dashboard.get("total_pending_entry_count")
-    )
-    total_open_position_count = _strict_non_negative_int(
-        dashboard.get("total_open_position_count")
-    )
+    total_pending_entry_count = _strict_non_negative_int(dashboard.get("total_pending_entry_count"))
+    total_open_position_count = _strict_non_negative_int(dashboard.get("total_open_position_count"))
     paper_portfolio_flat = dashboard.get("paper_portfolio_flat")
     pending_scope_valid = (
         main_pending_entry_count is not None
         and league_pending_entry_count is not None
         and league_pending_entry_count == derived_league_pending_entries
         and total_pending_entry_count is not None
-        and total_pending_entry_count
-        == main_pending_entry_count + league_pending_entry_count
+        and total_pending_entry_count == main_pending_entry_count + league_pending_entry_count
         and total_open_position_count is not None
         and isinstance(paper_portfolio_flat, bool)
     )
@@ -403,11 +617,7 @@ def _live_runtime_observation() -> dict[str, Any]:
         and total_pending_entry_count == 0
     )
     mode_counts = {
-        mode: sum(
-            row.get("mode") == mode
-            for row in strategies
-            if isinstance(row, dict)
-        )
+        mode: sum(row.get("mode") == mode for row in strategies if isinstance(row, dict))
         for mode in ("ACTIVE", "SHADOW", "OFF")
     }
     runtime_account_ids = sorted(
@@ -422,9 +632,7 @@ def _live_runtime_observation() -> dict[str, Any]:
         "private_api_enabled": safety.get("private_api_enabled"),
         "api_key_enabled": safety.get("api_key_enabled"),
         "wallet_enabled": safety.get("wallet_enabled"),
-        "runtime_ai_order_decision_enabled": safety.get(
-            "runtime_ai_order_decision_enabled"
-        ),
+        "runtime_ai_order_decision_enabled": safety.get("runtime_ai_order_decision_enabled"),
         "funding_readiness": settings.get("funding_readiness"),
     }
     runtime_safety = {
@@ -523,9 +731,7 @@ def _runtime_report_fields(observation: dict[str, Any]) -> dict[str, Any]:
         else None
     )
     raw_mode_counts = observation.get("strategy_mode_counts")
-    runtime_mode_counts = (
-        dict(raw_mode_counts) if isinstance(raw_mode_counts, dict) else None
-    )
+    runtime_mode_counts = dict(raw_mode_counts) if isinstance(raw_mode_counts, dict) else None
     observed_safety = observation.get("runtime_safety_observed")
     if not isinstance(observed_safety, dict):
         observed_safety = {}
@@ -584,9 +790,7 @@ def _runtime_report_fields(observation: dict[str, Any]) -> dict[str, Any]:
         ),
         "runtime_scalar_evidence": "CURRENT_LOCALHOST_RUNTIME",
         "wallet_runtime_evidence": (
-            "CURRENT_SETTINGS_SUMMARY"
-            if isinstance(wallet_value, bool)
-            else "NOT_PROVEN"
+            "CURRENT_SETTINGS_SUMMARY" if isinstance(wallet_value, bool) else "NOT_PROVEN"
         ),
     }
 
@@ -618,28 +822,20 @@ def _runtime_contract_evidence(
         "manual_pause": observation.get("manual_pause_requested") is True,
         "market_observation_active": observation.get("market_observation_active") is True,
         "flat": observation.get("flat") is True,
-        "runtime_mode_live_shadow_paper": (
-            observation.get("runtime_mode") == "LIVE_SHADOW_PAPER"
-        ),
+        "runtime_mode_live_shadow_paper": (observation.get("runtime_mode") == "LIVE_SHADOW_PAPER"),
         "market_data_live": observation.get("market_data_state") == "LIVE",
         "execution_paper": observation.get("execution_state") == "PAPER",
-        "operation_manually_paused": (
-            observation.get("operation_state") == "MANUALLY_PAUSED"
-        ),
+        "operation_manually_paused": (observation.get("operation_state") == "MANUALLY_PAUSED"),
         "paper_entry_inactive": observation.get("paper_entry_active") is False,
         "pending_scope_valid": observation.get("pending_scope_valid") is True,
         "paper_portfolio_flat": observation.get("paper_portfolio_flat") is True,
         "main_pending_entries_zero": observation.get("main_pending_entry_count") == 0,
-        "league_pending_entries_zero": (
-            observation.get("league_pending_entry_count") == 0
+        "league_pending_entries_zero": (observation.get("league_pending_entry_count") == 0),
+        "total_pending_entries_zero": (observation.get("total_pending_entry_count") == 0),
+        "total_open_positions_zero": (observation.get("total_open_position_count") == 0),
+        "release_commit_matches_head": _release_commit_matches_source(
+            observation.get("release_commit"), latest_commit
         ),
-        "total_pending_entries_zero": (
-            observation.get("total_pending_entry_count") == 0
-        ),
-        "total_open_positions_zero": (
-            observation.get("total_open_position_count") == 0
-        ),
-        "release_commit_matches_head": observation.get("release_commit") == latest_commit,
         "release_isolated": observation.get("release_isolated") is True,
         "strategy_ids_exact": observation.get("strategy_ids") == sorted(expected_strategy_ids),
         "league_account_ids_exact": observation.get("league_account_ids")
@@ -843,9 +1039,7 @@ def _source_safety_contract() -> dict[str, Any]:
         diagnostics = diagnostics_rows(snapshot)
         settings = settings_summary(snapshot)
         settings_safety = settings.get("safety")
-        normalized_settings = (
-            dict(settings_safety) if isinstance(settings_safety, Mapping) else {}
-        )
+        normalized_settings = dict(settings_safety) if isinstance(settings_safety, Mapping) else {}
         normalized_settings["funding_readiness"] = settings.get("funding_readiness")
         return {
             "summary": compact,
@@ -860,9 +1054,7 @@ def _source_safety_contract() -> dict[str, Any]:
     ):
         for surface_name, payload in surfaces(snapshot).items():
             for field, expected_value in expected.items():
-                checks[f"{case}_{surface_name}_{field}"] = (
-                    payload.get(field) == expected_value
-                )
+                checks[f"{case}_{surface_name}_{field}"] = payload.get(field) == expected_value
     for surface_name, payload in surfaces({}).items():
         for field in expected_safe:
             checks[f"missing_{surface_name}_{field}_not_proven"] = (
@@ -878,8 +1070,10 @@ def _command_succeeded(payload: Mapping[str, object], *, token: str) -> bool:
     command = payload.get("command")
     if isinstance(command, str):
         normalized = command.strip()
-    elif isinstance(command, list) and command and all(
-        isinstance(part, str) and part.strip() for part in command
+    elif (
+        isinstance(command, list)
+        and command
+        and all(isinstance(part, str) and part.strip() for part in command)
     ):
         normalized = " ".join(command)
     else:
@@ -970,6 +1164,1429 @@ def _validate_artifacts(
     return None
 
 
+def _artifact_records(payload: Mapping[str, object]) -> list[dict[str, Any]]:
+    records = payload.get("artifacts")
+    if not isinstance(records, list):
+        return []
+    return [dict(record) for record in records if isinstance(record, dict)]
+
+
+def _artifact_with_format(
+    payload: Mapping[str, object],
+    artifact_format: str,
+) -> dict[str, Any] | None:
+    matches = [
+        record for record in _artifact_records(payload) if record.get("format") == artifact_format
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _artifact_path(record: Mapping[str, object]) -> Path | None:
+    raw_path = record.get("path")
+    if not isinstance(raw_path, str):
+        return None
+    path = PROJECT_ROOT / raw_path
+    return path if path.is_file() else None
+
+
+def _json_artifact(record: Mapping[str, object]) -> object | None:
+    path = _artifact_path(record)
+    if path is None:
+        return None
+    try:
+        loaded: object = json.loads(path.read_text(encoding="utf-8"))
+        return loaded
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def _png_dimensions(record: Mapping[str, object]) -> tuple[int, int] | None:
+    path = _artifact_path(record)
+    if path is None:
+        return None
+    try:
+        payload = path.read_bytes()
+    except OSError:
+        return None
+    if len(payload) < 45 or payload[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    offset = 8
+    header: bytes | None = None
+    compressed = bytearray()
+    ended = False
+    while offset + 12 <= len(payload):
+        chunk_length = int.from_bytes(payload[offset : offset + 4], "big")
+        chunk_type = payload[offset + 4 : offset + 8]
+        chunk_end = offset + 12 + chunk_length
+        if chunk_end > len(payload):
+            return None
+        chunk_data = payload[offset + 8 : offset + 8 + chunk_length]
+        expected_crc = int.from_bytes(
+            payload[offset + 8 + chunk_length : chunk_end],
+            "big",
+        )
+        if zlib.crc32(chunk_type + chunk_data) & 0xFFFFFFFF != expected_crc:
+            return None
+        if chunk_type == b"IHDR":
+            if header is not None or chunk_length != 13 or offset != 8:
+                return None
+            header = chunk_data
+        elif chunk_type == b"IDAT":
+            compressed.extend(chunk_data)
+        elif chunk_type == b"IEND":
+            if chunk_data or chunk_end != len(payload):
+                return None
+            ended = True
+            break
+        offset = chunk_end
+    if header is None or not compressed or not ended:
+        return None
+    width = int.from_bytes(header[:4], "big")
+    height = int.from_bytes(header[4:8], "big")
+    bit_depth, color_type, compression, filtering, interlace = header[8:]
+    channels = {0: 1, 2: 3, 4: 2, 6: 4}.get(color_type)
+    if (
+        width <= 0
+        or height <= 0
+        or bit_depth != 8
+        or channels is None
+        or compression != 0
+        or filtering != 0
+        or interlace != 0
+    ):
+        return None
+    row_bytes = width * channels
+    try:
+        raw_pixels = zlib.decompress(bytes(compressed))
+    except zlib.error:
+        return None
+    if len(raw_pixels) != (row_bytes + 1) * height:
+        return None
+
+    previous = bytearray(row_bytes)
+    observed_colors: set[bytes] = set()
+    cursor = 0
+    for _ in range(height):
+        filter_type = raw_pixels[cursor]
+        filtered = raw_pixels[cursor + 1 : cursor + 1 + row_bytes]
+        cursor += row_bytes + 1
+        if filter_type not in {0, 1, 2, 3, 4}:
+            return None
+        current = bytearray(row_bytes)
+        for index, encoded in enumerate(filtered):
+            left = current[index - channels] if index >= channels else 0
+            above = previous[index]
+            upper_left = previous[index - channels] if index >= channels else 0
+            if filter_type == 0:
+                predictor = 0
+            elif filter_type == 1:
+                predictor = left
+            elif filter_type == 2:
+                predictor = above
+            elif filter_type == 3:
+                predictor = (left + above) // 2
+            else:
+                estimate = left + above - upper_left
+                left_distance = abs(estimate - left)
+                above_distance = abs(estimate - above)
+                upper_left_distance = abs(estimate - upper_left)
+                predictor = (
+                    left
+                    if left_distance <= above_distance and left_distance <= upper_left_distance
+                    else above
+                    if above_distance <= upper_left_distance
+                    else upper_left
+                )
+            current[index] = (encoded + predictor) & 0xFF
+        for index in range(0, row_bytes, channels):
+            observed_colors.add(bytes(current[index : index + channels]))
+            if len(observed_colors) > 1:
+                break
+        previous = current
+    return (width, height) if len(observed_colors) >= 16 else None
+
+
+def _playwright_report_summary(
+    report: Mapping[str, object],
+) -> (
+    tuple[
+        int,
+        set[str],
+        dict[str, frozenset[str]],
+        dict[tuple[str, str], frozenset[str]],
+    ]
+    | None
+):
+    config = report.get("config")
+    stats = report.get("stats")
+    suites = report.get("suites")
+    errors = report.get("errors", [])
+    if (
+        not isinstance(config, dict)
+        or not isinstance(stats, dict)
+        or not isinstance(suites, list)
+        or not suites
+        or errors != []
+    ):
+        return None
+    configured_projects = config.get("projects")
+    if not isinstance(configured_projects, list):
+        return None
+    project_names = {
+        str(project["name"])
+        for project in configured_projects
+        if isinstance(project, dict) and isinstance(project.get("name"), str)
+    }
+    if project_names != {"desktop", "tablet", "mobile"}:
+        return None
+    expected_count = _strict_non_negative_int(stats.get("expected"))
+    if (
+        expected_count is None
+        or expected_count <= 0
+        or stats.get("unexpected") != 0
+        or stats.get("flaky") != 0
+        or stats.get("skipped") != 0
+    ):
+        return None
+
+    observed_projects: set[str] = set()
+    passed_expected_count = 0
+    observed_check_projects: dict[str, set[str]] = {
+        check_id: set() for check_id in BROWSER_REQUIRED_CHECKS
+    }
+    screenshot_attachments: dict[tuple[str, str], set[str]] = {}
+    observed_spec_ids: set[str] = set()
+
+    def visit_suite(raw_suite: object) -> bool:
+        nonlocal passed_expected_count
+        if not isinstance(raw_suite, dict):
+            return False
+        nested = raw_suite.get("suites", [])
+        specs = raw_suite.get("specs", [])
+        if not isinstance(nested, list) or not isinstance(specs, list):
+            return False
+        if not all(visit_suite(child) for child in nested):
+            return False
+        for spec in specs:
+            if not isinstance(spec, dict):
+                return False
+            title = spec.get("title")
+            if not isinstance(title, str) or not title.startswith("audit:"):
+                return False
+            check_id = title.removeprefix("audit:")
+            if check_id not in BROWSER_REQUIRED_CHECKS or check_id in observed_spec_ids:
+                return False
+            observed_spec_ids.add(check_id)
+            tests = spec.get("tests")
+            if not isinstance(tests, list):
+                return False
+            for test in tests:
+                if not isinstance(test, dict):
+                    return False
+                project_name = test.get("projectName")
+                expected_status = test.get("expectedStatus")
+                results = test.get("results")
+                if not isinstance(project_name, str) or project_name not in project_names:
+                    return False
+                observed_projects.add(project_name)
+                if expected_status == "skipped":
+                    continue
+                if expected_status != "passed" or not isinstance(results, list) or not results:
+                    return False
+                final_result = results[-1]
+                if (
+                    not isinstance(final_result, dict)
+                    or final_result.get("status") != "passed"
+                    or final_result.get("errors", []) != []
+                ):
+                    return False
+                attachments = final_result.get("attachments")
+                if not isinstance(attachments, list):
+                    return False
+                attachment_paths = {
+                    str(attachment["path"])
+                    for attachment in attachments
+                    if isinstance(attachment, dict)
+                    and attachment.get("contentType") == "image/png"
+                    and isinstance(attachment.get("path"), str)
+                    and attachment["path"]
+                }
+                if not attachment_paths:
+                    return False
+                if project_name in observed_check_projects[check_id]:
+                    return False
+                observed_check_projects[check_id].add(project_name)
+                screenshot_attachments[(check_id, project_name)] = attachment_paths
+                passed_expected_count += 1
+        return True
+
+    if not all(visit_suite(suite) for suite in suites):
+        return None
+    expected_total = sum(len(projects) for projects in BROWSER_REQUIRED_TEST_PROJECTS.values())
+    if (
+        passed_expected_count != expected_count
+        or passed_expected_count != expected_total
+        or observed_projects != project_names
+        or observed_spec_ids != BROWSER_REQUIRED_CHECKS
+        or any(
+            observed_check_projects[check_id] != expected_projects
+            for check_id, expected_projects in BROWSER_REQUIRED_TEST_PROJECTS.items()
+        )
+    ):
+        return None
+    return (
+        passed_expected_count,
+        project_names,
+        {check_id: frozenset(projects) for check_id, projects in observed_check_projects.items()},
+        {key: frozenset(paths) for key, paths in screenshot_attachments.items()},
+    )
+
+
+def _file_sha256(path: Path) -> str | None:
+    try:
+        content = path.read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha256(content).hexdigest()
+
+
+def _embedded_artifact(
+    report: Mapping[str, object],
+    key: str,
+    artifact_format: str,
+) -> dict[str, Any] | None:
+    raw_record = report.get(key)
+    if not isinstance(raw_record, dict) or raw_record.get("format") != artifact_format:
+        return None
+    record = dict(raw_record)
+    failure = _validate_artifacts(
+        {"artifact_count": 1, "artifacts": [record]},
+        required_kinds=frozenset({"artifact"}),
+    )
+    return record if failure is None else None
+
+
+def _playwright_e2e_case_ids(
+    report: Mapping[str, object],
+    *,
+    require_results: bool,
+) -> tuple[set[str], int] | None:
+    config = report.get("config")
+    errors = report.get("errors")
+    stats = report.get("stats")
+    suites = report.get("suites")
+    if (
+        not isinstance(config, dict)
+        or not isinstance(stats, dict)
+        or errors != []
+        or not isinstance(suites, list)
+    ):
+        return None
+    projects = config.get("projects")
+    project_names = (
+        {
+            project.get("name")
+            for project in projects
+            if isinstance(project, dict) and isinstance(project.get("name"), str)
+        }
+        if isinstance(projects, list)
+        else set()
+    )
+    if project_names != {"desktop", "tablet", "mobile"}:
+        return None
+    case_ids: set[str] = set()
+    passed_count = 0
+    skipped_count = 0
+
+    def visit_suite(raw_suite: object, inherited_file: str | None = None) -> bool:
+        nonlocal passed_count, skipped_count
+        if not isinstance(raw_suite, dict):
+            return False
+        suite_file = raw_suite.get("file", inherited_file)
+        nested = raw_suite.get("suites", [])
+        specs = raw_suite.get("specs", [])
+        if not isinstance(nested, list) or not isinstance(specs, list):
+            return False
+        if not all(visit_suite(child, suite_file) for child in nested):
+            return False
+        for spec in specs:
+            if not isinstance(spec, dict):
+                return False
+            title = spec.get("title")
+            spec_file = spec.get("file", suite_file)
+            tests = spec.get("tests")
+            if (
+                not isinstance(title, str)
+                or not title
+                or spec_file != "dashboard.spec.ts"
+                or not isinstance(tests, list)
+                or not tests
+            ):
+                return False
+            for test in tests:
+                if not isinstance(test, dict):
+                    return False
+                project = test.get("projectName")
+                if not isinstance(project, str) or project not in project_names:
+                    return False
+                case_id = f"frontend/e2e/{spec_file}::{title}::{project}"
+                if case_id in case_ids:
+                    return False
+                case_ids.add(case_id)
+                if not require_results:
+                    continue
+                results = test.get("results")
+                if not isinstance(results, list) or not results:
+                    return False
+                final_result = results[-1]
+                status = final_result.get("status") if isinstance(final_result, dict) else None
+                if status == "passed" and final_result.get("errors", []) == []:
+                    passed_count += 1
+                elif status == "skipped":
+                    skipped_count += 1
+                else:
+                    return False
+        return True
+
+    if not all(visit_suite(suite) for suite in suites) or not case_ids:
+        return None
+    if require_results:
+        expected = _strict_non_negative_int(stats.get("expected"))
+        skipped = _strict_non_negative_int(stats.get("skipped"))
+        unexpected = _strict_non_negative_int(stats.get("unexpected"))
+        flaky = _strict_non_negative_int(stats.get("flaky"))
+        if (
+            expected != passed_count
+            or skipped != skipped_count
+            or unexpected != 0
+            or flaky != 0
+            or passed_count <= 0
+            or passed_count + skipped_count != len(case_ids)
+        ):
+            return None
+    return case_ids, passed_count
+
+
+def _current_fixture_e2e_test_ids() -> set[str] | None:
+    try:
+        completed = subprocess.run(
+            [
+                "uv",
+                "run",
+                "pytest",
+                "backend/tests/test_fixture_app.py",
+                "--collect-only",
+                "-q",
+            ],
+            cwd=PROJECT_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    return _parse_collection_test_ids(completed.stdout, "pytest_collection_text")
+
+
+def _current_master_e2e_case_ids() -> set[str] | None:
+    try:
+        completed = subprocess.run(
+            [
+                "pnpm",
+                "--dir",
+                "frontend",
+                "exec",
+                "playwright",
+                "test",
+                "--config",
+                "playwright.config.ts",
+                "--list",
+                "--reporter=json",
+            ],
+            cwd=PROJECT_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        report = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+    summary = (
+        _playwright_e2e_case_ids(report, require_results=False)
+        if isinstance(report, dict)
+        else None
+    )
+    return summary[0] if summary is not None else None
+
+
+def _current_machine_check_report(command: list[str]) -> dict[str, object] | None:
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=PROJECT_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    decoder = json.JSONDecoder()
+    combined = completed.stdout + completed.stderr
+    for index, character in enumerate(combined):
+        if character != "{":
+            continue
+        try:
+            loaded, _ = decoder.raw_decode(combined[index:])
+        except json.JSONDecodeError:
+            continue
+        return dict(loaded) if isinstance(loaded, dict) else None
+    return None
+
+
+def _current_security_scan_report() -> dict[str, object] | None:
+    return _current_machine_check_report(["uv", "run", "python", "scripts/security_scan.py"])
+
+
+def _current_repo_hygiene_report() -> dict[str, object] | None:
+    return _current_machine_check_report(
+        ["uv", "run", "python", "scripts/check_repository_hygiene.py"]
+    )
+
+
+def _full_suite_report_count(name: str, record: Mapping[str, object]) -> int | None:
+    path = _artifact_path(record)
+    if path is None:
+        return None
+    if name == "backend_pytest":
+        try:
+            root = ET.parse(path).getroot()
+        except (OSError, ET.ParseError):
+            return None
+
+        def declared_count(node: ET.Element, attribute: str) -> int | None:
+            raw_value = node.get(attribute)
+            if raw_value is None or re.fullmatch(r"[0-9]+", raw_value) is None:
+                return None
+            return int(raw_value)
+
+        def computed_counts(node: ET.Element) -> tuple[int, int, int, int] | None:
+            if node.tag not in {"testsuite", "testsuites"}:
+                return None
+            tests = failures = errors = skipped = 0
+            for case in node.findall("testcase"):
+                children = [
+                    child.tag for child in case if child.tag in {"failure", "error", "skipped"}
+                ]
+                if len(children) > 1:
+                    return None
+                tests += 1
+                failures += children == ["failure"]
+                errors += children == ["error"]
+                skipped += children == ["skipped"]
+            for child_suite in node.findall("testsuite"):
+                child_counts = computed_counts(child_suite)
+                if child_counts is None:
+                    return None
+                child_tests, child_failures, child_errors, child_skipped = child_counts
+                tests += child_tests
+                failures += child_failures
+                errors += child_errors
+                skipped += child_skipped
+            declared = tuple(
+                declared_count(node, attribute)
+                for attribute in ("tests", "failures", "errors", "skipped")
+            )
+            actual = (tests, failures, errors, skipped)
+            if node.tag == "testsuites" and declared == (None, None, None, None):
+                return actual
+            return actual if declared == actual else None
+
+        counts = computed_counts(root)
+        if counts is None:
+            return None
+        tests, failures, errors, skipped = counts
+        junit_passed = tests - failures - errors - skipped
+        return junit_passed if junit_passed > 0 and failures == 0 and errors == 0 else None
+    if name in {
+        "backend_ruff",
+        "frontend_tests",
+        "frontend_lint",
+        "setup",
+        "master_e2e",
+        "network_smoke",
+        "security_scan",
+        "repo_hygiene",
+    }:
+        report = _json_artifact(record)
+        if name == "backend_ruff":
+            return 1 if report == [] else None
+        if name == "frontend_tests":
+            if not isinstance(report, dict):
+                return None
+            total = _strict_non_negative_int(report.get("numTotalTests"))
+            passed = _strict_non_negative_int(report.get("numPassedTests"))
+            failed = _strict_non_negative_int(report.get("numFailedTests"))
+            test_results = report.get("testResults")
+            report_ids = _frontend_vitest_test_ids(record)
+            if (
+                total is None
+                or total <= 0
+                or passed != total
+                or failed != 0
+                or report.get("success") is not True
+                or not isinstance(test_results, list)
+                or not test_results
+                or report_ids is None
+                or len(report_ids) != total
+            ):
+                return None
+            return total
+        if name == "frontend_lint":
+            if not isinstance(report, list) or not report:
+                return None
+            if any(
+                not isinstance(row, dict)
+                or row.get("errorCount") != 0
+                or row.get("fatalErrorCount", 0) != 0
+                or row.get("messages") != []
+                for row in report
+            ):
+                return None
+            return len(report)
+        if not isinstance(report, dict):
+            return None
+        if name == "setup":
+            lock_sha256 = report.get("lock_sha256")
+            python_path = PROJECT_ROOT / ".venv/bin/python"
+            node_modules_marker = PROJECT_ROOT / "frontend/node_modules/.modules.yaml"
+            expected_locks = {
+                "uv.lock": _file_sha256(PROJECT_ROOT / "uv.lock"),
+                "frontend/pnpm-lock.yaml": _file_sha256(PROJECT_ROOT / "frontend/pnpm-lock.yaml"),
+            }
+            try:
+                python_target = python_path.resolve(strict=True)
+                marker_size = node_modules_marker.stat().st_size
+                python_mode = python_target.stat().st_mode
+            except OSError:
+                return None
+            if (
+                report.get("schema") != "flowscalper.setup_validation.v1"
+                or report.get("command") != ["make", "setup"]
+                or report.get("exit_code") != 0
+                or lock_sha256 != expected_locks
+                or any(value is None for value in expected_locks.values())
+                or report.get("python_executable_path") != ".venv/bin/python"
+                or not python_target.is_file()
+                or python_mode & 0o111 == 0
+                or report.get("node_modules_marker_path") != "frontend/node_modules/.modules.yaml"
+                or marker_size <= 0
+            ):
+                return None
+            return 2
+        if name == "master_e2e":
+            if (
+                report.get("schema") != "flowscalper.master_e2e_bundle.v1"
+                or report.get("command") != ["make", "e2e"]
+                or report.get("exit_code") != 0
+            ):
+                return None
+            pytest_record = _embedded_artifact(
+                report,
+                "pytest_junit",
+                "master_e2e_pytest_junit_xml",
+            )
+            playwright_record = _embedded_artifact(
+                report,
+                "playwright_json",
+                "master_e2e_playwright_json",
+            )
+            if pytest_record is None or playwright_record is None:
+                return None
+            pytest_count = _full_suite_report_count("backend_pytest", pytest_record)
+            pytest_ids = _pytest_junit_test_ids(pytest_record)
+            trusted_pytest_ids = _current_fixture_e2e_test_ids()
+            playwright_report = _json_artifact(playwright_record)
+            playwright_summary = (
+                _playwright_e2e_case_ids(playwright_report, require_results=True)
+                if isinstance(playwright_report, dict)
+                else None
+            )
+            trusted_playwright_ids = _current_master_e2e_case_ids()
+            if (
+                pytest_count is None
+                or pytest_ids is None
+                or pytest_ids != trusted_pytest_ids
+                or playwright_summary is None
+                or playwright_summary[0] != trusted_playwright_ids
+            ):
+                return None
+            return pytest_count + playwright_summary[1]
+        if name == "network_smoke":
+            positive_fields = (
+                "eligible_symbol_count",
+                "binance_catalog_count",
+                "upbit_krw_catalog_count",
+                "binance_btcusdt_3m_candle_count",
+                "binance_catalog_tail_3m_candle_count",
+                "upbit_krw_btc_3m_candle_count",
+                "websocket_events",
+            )
+            event_samples = report.get("event_samples")
+            started_ts = report.get("started_ts_utc")
+            completed_ts = report.get("completed_ts_utc")
+            try:
+                started_at = datetime.fromisoformat(str(started_ts).removesuffix("Z") + "+00:00")
+                completed_at = datetime.fromisoformat(
+                    str(completed_ts).removesuffix("Z") + "+00:00"
+                )
+            except ValueError:
+                return None
+            now = datetime.now(UTC)
+            started_epoch_ms = started_at.timestamp() * 1_000
+            completed_epoch_ms = completed_at.timestamp() * 1_000
+            measured_window_ms = completed_epoch_ms - started_epoch_ms
+            maximum_event_lag_ms = 60_000.0
+            elapsed_ms = _positive_number(report.get("elapsed_ms"))
+            event_lags: list[float] = []
+            observed_streams: set[str] = set()
+            if not isinstance(event_samples, list) or not event_samples:
+                return None
+            for sample in event_samples:
+                if not isinstance(sample, dict):
+                    return None
+                stream = sample.get("stream")
+                source_ts_ms = _positive_number(sample.get("source_ts_ms"))
+                received_ts_ms = _positive_number(sample.get("received_ts_ms"))
+                if (
+                    stream not in {"binance-public-depth", "binance-market-aggtrade"}
+                    or source_ts_ms is None
+                    or received_ts_ms is None
+                    or received_ts_ms < source_ts_ms
+                    or received_ts_ms < started_epoch_ms
+                    or received_ts_ms > completed_epoch_ms
+                    or source_ts_ms < started_epoch_ms - maximum_event_lag_ms
+                    or source_ts_ms > completed_epoch_ms
+                    or received_ts_ms - source_ts_ms > maximum_event_lag_ms
+                ):
+                    return None
+                assert isinstance(stream, str)
+                observed_streams.add(stream)
+                event_lags.append(received_ts_ms - source_ts_ms)
+            recomputed_p50 = round(statistics.median(event_lags), 3)
+            recomputed_p95 = round(max(event_lags), 3)
+            stored_p50 = _positive_number(report.get("lag_p50_ms"))
+            stored_p95 = _positive_number(report.get("lag_p95_ms"))
+            if (
+                report.get("status") != "PASS"
+                or report.get("venue") != "BINANCE_USDM"
+                or any(_positive_number(report.get(field)) is None for field in positive_fields)
+                or report.get("websocket_events") != len(event_samples)
+                or observed_streams != {"binance-public-depth", "binance-market-aggtrade"}
+                or stored_p50 is None
+                or stored_p95 is None
+                or not math.isclose(
+                    stored_p50,
+                    recomputed_p50,
+                    abs_tol=0.001,
+                )
+                or not math.isclose(
+                    stored_p95,
+                    recomputed_p95,
+                    abs_tol=0.001,
+                )
+                or not isinstance(started_ts, str)
+                or not started_ts.endswith("Z")
+                or not isinstance(completed_ts, str)
+                or not completed_ts.endswith("Z")
+                or started_at > completed_at
+                or completed_at > now
+                or completed_at < now - timedelta(minutes=10)
+                or measured_window_ms <= 0
+                or elapsed_ms is None
+                or not math.isclose(
+                    elapsed_ms,
+                    measured_window_ms,
+                    abs_tol=max(1_000.0, measured_window_ms * 0.25),
+                )
+                or report.get("credentials_sent") is not False
+                or report.get("authorization_header_sent") is not False
+                or report.get("auth_required") is not False
+                or report.get("real_orders_enabled") is not False
+            ):
+                return None
+            return sum(int(report[field]) for field in positive_fields)
+        if name == "security_scan":
+            checked = _strict_non_negative_int(report.get("checked_source_files"))
+            forbidden = report.get("forbidden_fragments")
+            current_report = _current_security_scan_report()
+            if (
+                report.get("status") != "PASS"
+                or checked is None
+                or checked <= 0
+                or not isinstance(forbidden, list)
+                or not forbidden
+                or not all(isinstance(item, str) and item for item in forbidden)
+                or report.get("violations") != []
+                or report.get("secret_like_files") != []
+                or report.get("real_order_path") is not False
+                or report != current_report
+            ):
+                return None
+            return checked
+        if name == "repo_hygiene":
+            version_path = PROJECT_ROOT / "VERSION"
+            try:
+                version = version_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                return None
+            current_report = _current_repo_hygiene_report()
+            return (
+                1
+                if report.get("status") == "PASS"
+                and report.get("version") == version
+                and re.fullmatch(r"\d+\.\d+\.\d+-paper", version) is not None
+                and report.get("violations") == []
+                and report == current_report
+                else None
+            )
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if name == "backend_mypy":
+        match = re.fullmatch(
+            r"Success: no issues found in ([1-9][0-9]*) source files?\s*",
+            text,
+        )
+        return int(match.group(1)) if match is not None else None
+    if name == "frontend_typecheck":
+        if re.search(r"error TS[0-9]+", text) is not None:
+            return None
+        source_lines = [
+            line for line in text.splitlines() if line.strip().endswith((".ts", ".tsx"))
+        ]
+        return len(source_lines) if source_lines else None
+    if name == "frontend_build":
+        modules = re.search(r"(?:✓|\b)([1-9][0-9]*) modules transformed", text)
+        built = re.search(r"(?:✓|\b) built in [0-9.]+(?:ms|s)", text)
+        return int(modules.group(1)) if modules is not None and built is not None else None
+    if name == "build_safety":
+        return 1 if text.strip() == "PASS: PAPER 전용 빌드 불변조건" else None
+    return None
+
+
+def _pytest_junit_test_ids(record: Mapping[str, object]) -> set[str] | None:
+    path = _artifact_path(record)
+    if path is None:
+        return None
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    source_modules = {
+        path.relative_to(PROJECT_ROOT).as_posix(): path.relative_to(PROJECT_ROOT)
+        .with_suffix("")
+        .as_posix()
+        .replace("/", ".")
+        for path in (PROJECT_ROOT / "backend/tests").glob("test_*.py")
+        if path.is_file() and not path.is_symlink()
+    }
+    test_ids: set[str] = set()
+    test_cases = list(root.iter("testcase"))
+    for case in test_cases:
+        class_name = case.get("classname")
+        test_name = case.get("name")
+        if (
+            not isinstance(class_name, str)
+            or not class_name
+            or not isinstance(test_name, str)
+            or not test_name
+        ):
+            return None
+        matching_sources = [
+            (relative_path, module)
+            for relative_path, module in source_modules.items()
+            if class_name == module or class_name.startswith(f"{module}.")
+        ]
+        if len(matching_sources) != 1:
+            return None
+        relative_path, module = matching_sources[0]
+        class_suffix = class_name.removeprefix(module).lstrip(".")
+        class_scope = "::".join(class_suffix.split("."))
+        test_id = (
+            f"{relative_path}::{class_scope}::{test_name}"
+            if class_scope
+            else f"{relative_path}::{test_name}"
+        )
+        if test_id in test_ids:
+            return None
+        test_ids.add(test_id)
+    return test_ids if len(test_ids) == len(test_cases) and test_ids else None
+
+
+def _parse_collection_test_ids(
+    text: str,
+    artifact_format: str,
+) -> set[str] | None:
+    lines = [line.strip() for line in text.splitlines()]
+    if artifact_format == "pytest_collection_text":
+        test_ids = {
+            line
+            for line in lines
+            if re.fullmatch(r"backend/tests/test_[^:]+\.py::\S+", line) is not None
+        }
+        summary_counts = [
+            int(match.group(1))
+            for line in lines
+            if (match := re.fullmatch(r"([1-9][0-9]*) tests? collected in [0-9.]+s", line))
+            is not None
+        ]
+    elif artifact_format == "vitest_collection_text":
+        listed = [line for line in lines if re.fullmatch(r"tests/\S+ > .+", line)]
+        test_ids = {f"frontend/{relative_path.replace(' > ', '::', 1)}" for relative_path in listed}
+        summary_counts = [len(listed)]
+    else:
+        return None
+    if len(summary_counts) != 1 or summary_counts[0] != len(test_ids):
+        return None
+    return test_ids or None
+
+
+def _collection_test_ids(
+    payload: Mapping[str, object],
+    artifact_format: str,
+) -> set[str] | None:
+    record = _artifact_with_format(payload, artifact_format)
+    path = _artifact_path(record) if record is not None else None
+    if path is None:
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return _parse_collection_test_ids(text, artifact_format)
+
+
+def _current_full_suite_collection_ids() -> dict[str, set[str]] | None:
+    observed: dict[str, set[str]] = {}
+    for section, artifact_format in (
+        ("backend", "pytest_collection_text"),
+        ("frontend", "vitest_collection_text"),
+    ):
+        try:
+            completed = subprocess.run(
+                FULL_SUITE_COLLECTION_COMMANDS[section],
+                cwd=PROJECT_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if completed.returncode != 0:
+            return None
+        test_ids = _parse_collection_test_ids(completed.stdout, artifact_format)
+        if test_ids is None:
+            return None
+        observed[section] = test_ids
+    return observed
+
+
+def _frontend_vitest_test_ids(record: Mapping[str, object]) -> set[str] | None:
+    report = _json_artifact(record)
+    if not isinstance(report, dict):
+        return None
+    test_results = report.get("testResults")
+    if not isinstance(test_results, list) or not test_results:
+        return None
+    test_ids: set[str] = set()
+    try:
+        project_root = PROJECT_ROOT.resolve(strict=True)
+    except OSError:
+        return None
+    for result in test_results:
+        if not isinstance(result, dict):
+            return None
+        raw_path = result.get("name")
+        assertions = result.get("assertionResults")
+        if not isinstance(raw_path, str) or not isinstance(assertions, list) or not assertions:
+            return None
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError:
+            return None
+        if not resolved.is_relative_to(project_root):
+            return None
+        relative_path = resolved.relative_to(project_root).as_posix()
+        if not relative_path.startswith("frontend/tests/"):
+            return None
+        for assertion in assertions:
+            if not isinstance(assertion, dict):
+                return None
+            full_name = assertion.get("fullName")
+            status = assertion.get("status")
+            failure_messages = assertion.get("failureMessages", [])
+            if (
+                not isinstance(full_name, str)
+                or not full_name
+                or status not in {"passed", "pending", "skipped", "todo"}
+                or failure_messages != []
+            ):
+                return None
+            test_id = f"{relative_path}::{full_name}"
+            if test_id in test_ids:
+                return None
+            test_ids.add(test_id)
+    return test_ids or None
+
+
+def _full_suite_manifest_test_ids(
+    payload: Mapping[str, object],
+    *,
+    backend_report_ids: set[str],
+    frontend_report_ids: set[str],
+) -> tuple[str, str] | None:
+    record = _artifact_with_format(payload, "full_suite_test_manifest_json")
+    raw_manifest = _json_artifact(record) if record is not None else None
+    if not isinstance(raw_manifest, dict):
+        return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_MISSING_OR_INVALID"
+    if (
+        raw_manifest.get("schema") != "flowscalper.full_suite_test_manifest.v1"
+        or raw_manifest.get("status") != "PASS"
+        or raw_manifest.get("source_commit") != payload.get("source_commit")
+        or raw_manifest.get("collection_commands") != FULL_SUITE_COLLECTION_COMMANDS
+    ):
+        return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_BINDING_MISMATCH"
+    collection_ids = {
+        "backend": _collection_test_ids(payload, "pytest_collection_text"),
+        "frontend": _collection_test_ids(payload, "vitest_collection_text"),
+    }
+    if any(test_ids is None for test_ids in collection_ids.values()):
+        return "NOT_PROVEN", "FULL_SUITE_COLLECTION_OUTPUT_MISSING_OR_INVALID"
+    trusted_collection_ids = _current_full_suite_collection_ids()
+    if trusted_collection_ids is None:
+        return "NOT_PROVEN", "FULL_SUITE_TRUSTED_COLLECTION_NOT_RUN"
+    if any(
+        collection_ids[section] != trusted_collection_ids[section]
+        for section in ("backend", "frontend")
+    ):
+        return "NOT_PROVEN", "FULL_SUITE_COLLECTION_DIFFERS_FROM_CURRENT_SOURCE"
+    expected_paths = {
+        "backend": sorted(
+            path.relative_to(PROJECT_ROOT).as_posix()
+            for path in (PROJECT_ROOT / "backend/tests").glob("test_*.py")
+            if path.is_file() and not path.is_symlink()
+        ),
+        "frontend": sorted(
+            path.relative_to(PROJECT_ROOT).as_posix()
+            for pattern in ("*.test.ts", "*.test.tsx")
+            for path in (PROJECT_ROOT / "frontend/tests").glob(pattern)
+            if path.is_file() and not path.is_symlink()
+        ),
+    }
+    expected_report_ids = {
+        "backend": backend_report_ids,
+        "frontend": frontend_report_ids,
+    }
+    for section in ("backend", "frontend"):
+        rows = raw_manifest.get(section)
+        if not isinstance(rows, list) or len(rows) != len(expected_paths[section]):
+            return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_FILE_SCOPE_MISMATCH"
+        observed_paths: list[str] = []
+        observed_ids: set[str] = set()
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != {"path", "sha256", "test_ids"}:
+                return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_ROW_INVALID"
+            relative_path = row.get("path")
+            sha256 = row.get("sha256")
+            test_ids = row.get("test_ids")
+            if (
+                not isinstance(relative_path, str)
+                or relative_path in observed_paths
+                or not isinstance(sha256, str)
+                or re.fullmatch(r"[0-9a-f]{64}", sha256) is None
+                or not isinstance(test_ids, list)
+                or not test_ids
+                or any(not isinstance(test_id, str) or not test_id for test_id in test_ids)
+                or len(set(test_ids)) != len(test_ids)
+            ):
+                return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_ROW_INVALID"
+            source_path = PROJECT_ROOT / relative_path
+            try:
+                content = source_path.read_bytes()
+            except OSError:
+                return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_SOURCE_MISSING"
+            if hashlib.sha256(content).hexdigest() != sha256:
+                return "FAIL", "FULL_SUITE_COLLECTION_MANIFEST_SOURCE_SHA_MISMATCH"
+            if section == "backend":
+                if any(not test_id.startswith(f"{relative_path}::") for test_id in test_ids):
+                    return "NOT_PROVEN", "FULL_SUITE_COLLECTION_TEST_ID_PATH_MISMATCH"
+            elif any(not test_id.startswith(f"{relative_path}::") for test_id in test_ids):
+                return "NOT_PROVEN", "FULL_SUITE_COLLECTION_TEST_ID_PATH_MISMATCH"
+            observed_paths.append(relative_path)
+            observed_ids.update(test_ids)
+        if sorted(observed_paths) != expected_paths[section]:
+            return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_FILE_SCOPE_MISMATCH"
+        if observed_ids != expected_report_ids[section] or observed_ids != collection_ids[section]:
+            return "NOT_PROVEN", "FULL_SUITE_REPORT_IDS_DIFFER_FROM_COLLECTION_MANIFEST"
+    return None
+
+
+def _running_service_soak_measurement(
+    payload: Mapping[str, object],
+) -> dict[str, Any] | None:
+    record = _artifact_with_format(payload, "running_service_soak_json")
+    measurement = _json_artifact(record) if record is not None else None
+    return dict(measurement) if isinstance(measurement, dict) else None
+
+
+def _sample_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _strict_soak_scalar(value: object, annotation: str) -> object | None:
+    if annotation == "bool":
+        return value if isinstance(value, bool) else None
+    if annotation == "int":
+        return (
+            value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+        )
+    if annotation == "float":
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not math.isfinite(float(value))
+            or float(value) < 0
+        ):
+            return None
+        return float(value)
+    if annotation == "str":
+        return value if isinstance(value, str) and value else None
+    if annotation == "str | None":
+        return value if value is None or isinstance(value, str) and value else None
+    return None
+
+
+def _strict_strategy_state(value: object) -> StrategyState | None:
+    if not isinstance(value, dict):
+        return None
+    expected_fields = {field.name for field in fields(StrategyState)}
+    if set(value) != expected_fields:
+        return None
+    normalized: dict[str, Any] = {}
+    for field in fields(StrategyState):
+        parsed = _strict_soak_scalar(value[field.name], str(field.type))
+        if parsed is None:
+            return None
+        normalized[field.name] = parsed
+    return StrategyState(**normalized)
+
+
+def _strict_running_service_sample(value: object) -> RunningServiceSample | None:
+    if not isinstance(value, dict):
+        return None
+    expected_fields = {field.name for field in fields(RunningServiceSample)}
+    if set(value) != expected_fields | SOAK_AUDIT_SAMPLE_FIELDS:
+        return None
+    normalized: dict[str, Any] = {}
+    for field in fields(RunningServiceSample):
+        raw_value = value[field.name]
+        if field.name == "strategy_states":
+            if not isinstance(raw_value, list) or not raw_value:
+                return None
+            states = tuple(_strict_strategy_state(state) for state in raw_value)
+            if any(state is None for state in states):
+                return None
+            normalized[field.name] = tuple(
+                state for state in states if isinstance(state, StrategyState)
+            )
+            continue
+        parsed = _strict_soak_scalar(raw_value, str(field.type))
+        if parsed is None and not (str(field.type) == "str | None" and raw_value is None):
+            return None
+        normalized[field.name] = parsed
+    pending_counts = tuple(
+        _strict_non_negative_int(value[field_name])
+        for field_name in (
+            "main_pending_entry_count",
+            "league_pending_entry_count",
+            "total_pending_entry_count",
+            "total_open_position_count",
+        )
+    )
+    if any(count is None for count in pending_counts):
+        return None
+    main_pending, league_pending, total_pending, total_open = pending_counts
+    assert main_pending is not None
+    assert league_pending is not None
+    assert total_pending is not None
+    assert total_open is not None
+    if (
+        total_pending != main_pending + league_pending
+        or total_open != normalized["position_count"]
+        or value["paper_portfolio_flat"] is not (total_pending == 0 and total_open == 0)
+    ):
+        return None
+    return RunningServiceSample(**normalized)
+
+
+def _strict_soak_thresholds(value: object) -> RunningServiceSoakThresholds | None:
+    if not isinstance(value, dict):
+        return None
+    expected_fields = {field.name for field in fields(RunningServiceSoakThresholds)}
+    if set(value) != expected_fields:
+        return None
+    normalized: dict[str, Any] = {}
+    for field in fields(RunningServiceSoakThresholds):
+        parsed = _strict_soak_scalar(value[field.name], str(field.type))
+        if parsed is None:
+            return None
+        normalized[field.name] = parsed
+    try:
+        return RunningServiceSoakThresholds(**normalized)
+    except ValueError:
+        return None
+
+
+def _validate_running_service_soak(
+    payload: Mapping[str, object],
+    checks: Mapping[str, object],
+) -> tuple[str, str]:
+    if not SOAK_REQUIRED_CHECKS.issubset(checks):
+        return "NOT_PROVEN", "SOAK_REQUIRED_CHECK_SET_MISMATCH"
+    if not _command_succeeded(payload, token="observe_running_service.py"):
+        return "NOT_PROVEN", "SOAK_COMMAND_OR_EXIT_CODE_NOT_PROVEN"
+    artifact_failure = _validate_artifacts(
+        payload,
+        required_kinds=frozenset({"artifact"}),
+    )
+    if artifact_failure is not None:
+        return artifact_failure
+    measurement = _running_service_soak_measurement(payload)
+    if measurement is None:
+        return "NOT_PROVEN", "SOAK_MACHINE_REPORT_INVALID"
+    generated_at = _sample_timestamp(measurement.get("generated_ts_utc"))
+    started_at = _sample_timestamp(measurement.get("started_at"))
+    completed_at = _sample_timestamp(measurement.get("completed_at"))
+    wall_duration_seconds = _positive_number(measurement.get("wall_duration_seconds"))
+    if (
+        measurement.get("generated_ts_utc") != payload.get("generated_ts_utc")
+        or generated_at is None
+        or started_at is None
+        or completed_at is None
+        or any(
+            timestamp.utcoffset() != timedelta(0)
+            for timestamp in (generated_at, started_at, completed_at)
+        )
+        or generated_at > datetime.now(UTC) + timedelta(minutes=5)
+        or completed_at != generated_at
+        or started_at >= completed_at
+        or wall_duration_seconds is None
+        or not math.isclose(
+            wall_duration_seconds,
+            round((completed_at - started_at).total_seconds(), 3),
+            abs_tol=0.001,
+        )
+    ):
+        return "NOT_PROVEN", "SOAK_MEASUREMENT_TIME_BINDING_INVALID"
+    measurement_checks = measurement.get("checks")
+    if (
+        measurement.get("status") != "PASS"
+        or not isinstance(measurement_checks, dict)
+        or not SOAK_REQUIRED_CHECKS.issubset(measurement_checks)
+        or any(value is not True for value in measurement_checks.values())
+        or measurement_checks != checks
+        or measurement.get("source_commit") != payload.get("source_commit")
+        or measurement.get("release_commit") != payload.get("release_commit")
+        or measurement.get("run_id") != payload.get("run_id")
+        or measurement.get("source_worktree_clean_at_measurement") is not True
+        or measurement.get("release_isolated_throughout") is not True
+    ):
+        return "NOT_PROVEN", "SOAK_MACHINE_REPORT_BINDING_MISMATCH"
+    if not isinstance(measurement.get("run_id"), str) or not measurement["run_id"].strip():
+        return "NOT_PROVEN", "SOAK_RUN_BINDING_MISSING"
+    requested_seconds = _positive_number(measurement.get("requested_duration_seconds"))
+    declared_observed_seconds = _positive_number(measurement.get("observed_duration_seconds"))
+    sample_interval = _positive_number(measurement.get("sample_seconds"))
+    sample_count = _strict_non_negative_int(measurement.get("sample_count"))
+    samples = measurement.get("samples")
+    if (
+        requested_seconds is None
+        or requested_seconds < 1_800
+        or declared_observed_seconds is None
+        or sample_interval is None
+        or sample_count is None
+        or sample_count < 3
+        or not isinstance(samples, list)
+        or len(samples) != sample_count
+    ):
+        return "NOT_PROVEN", "SOAK_SAMPLE_COUNT_OR_DURATION_METADATA_INVALID"
+    parsed_samples: list[tuple[RunningServiceSample, datetime]] = []
+    root_strategy_ids = measurement.get("strategy_ids")
+    if (
+        not isinstance(root_strategy_ids, list)
+        or not root_strategy_ids
+        or any(
+            not isinstance(strategy_id, str) or not strategy_id for strategy_id in root_strategy_ids
+        )
+        or len(set(root_strategy_ids)) != len(root_strategy_ids)
+    ):
+        return "NOT_PROVEN", "SOAK_STRATEGY_SCOPE_MISSING"
+    expected_strategy_ids = set(root_strategy_ids)
+    root_account_ids = measurement.get("league_account_ids")
+    root_mode_counts = measurement.get("strategy_mode_counts")
+    if (
+        not isinstance(root_account_ids, list)
+        or len(root_account_ids) != len(expected_strategy_ids) * 2
+        or any(not isinstance(account_id, str) or not account_id for account_id in root_account_ids)
+        or len(set(root_account_ids)) != len(root_account_ids)
+        or not isinstance(root_mode_counts, dict)
+        or set(root_mode_counts) != {"ACTIVE", "SHADOW", "OFF"}
+        or any(
+            _strict_non_negative_int(root_mode_counts.get(mode)) is None
+            for mode in ("ACTIVE", "SHADOW", "OFF")
+        )
+        or sum(int(root_mode_counts[mode]) for mode in ("ACTIVE", "SHADOW", "OFF"))
+        != len(expected_strategy_ids)
+    ):
+        return "NOT_PROVEN", "SOAK_ACCOUNT_OR_MODE_SCOPE_MISSING"
+    for raw_sample in samples:
+        if not isinstance(raw_sample, dict):
+            return "NOT_PROVEN", "SOAK_SAMPLE_RECORD_INVALID"
+        parsed_sample = _strict_running_service_sample(raw_sample)
+        observed_at = _sample_timestamp(raw_sample.get("observed_at"))
+        if parsed_sample is None or observed_at is None:
+            return "NOT_PROVEN", "SOAK_SAMPLE_RECORD_INVALID"
+        if (
+            parsed_sample.run_id != measurement.get("run_id")
+            or parsed_sample.execution_state != "PAPER"
+            or parsed_sample.market_data_state != "LIVE"
+            or parsed_sample.real_orders_enabled
+            or parsed_sample.auth_required
+            or parsed_sample.strategy_count != len(expected_strategy_ids)
+            or parsed_sample.league_account_count != len(expected_strategy_ids) * 2
+            or {state.strategy_id for state in parsed_sample.strategy_states}
+            != expected_strategy_ids
+            or len(parsed_sample.strategy_states) != len(expected_strategy_ids)
+            or raw_sample.get("league_account_ids") != root_account_ids
+            or raw_sample.get("release_commit") != measurement.get("release_commit")
+            or raw_sample.get("release_isolated") is not True
+            or {
+                mode: sum(state.mode == mode for state in parsed_sample.strategy_states)
+                for mode in ("ACTIVE", "SHADOW", "OFF")
+            }
+            != root_mode_counts
+        ):
+            return "NOT_PROVEN", "SOAK_SAMPLE_SCOPE_OR_PAPER_SAFETY_INVALID"
+        parsed_samples.append((parsed_sample, observed_at))
+    elapsed_values = [sample[0].elapsed_seconds for sample in parsed_samples]
+    observed_times = [sample[1] for sample in parsed_samples]
+    elapsed_gaps = [
+        current - previous
+        for previous, current in zip(elapsed_values, elapsed_values[1:], strict=False)
+    ]
+    timestamp_gaps = [
+        (current - previous).total_seconds()
+        for previous, current in zip(observed_times, observed_times[1:], strict=False)
+    ]
+    recomputed_observed_seconds = (observed_times[-1] - observed_times[0]).total_seconds()
+    maximum_gap = max(sample_interval * 2.5, sample_interval + 5.0)
+    if (
+        any(timestamp.utcoffset() != timedelta(0) for timestamp in observed_times)
+        or observed_times[0] < started_at
+        or observed_times[-1] > completed_at
+        or any(gap <= 0 or gap > maximum_gap for gap in elapsed_gaps)
+        or any(gap <= 0 or gap > maximum_gap for gap in timestamp_gaps)
+        or recomputed_observed_seconds < requested_seconds
+        or elapsed_values[-1] - elapsed_values[0] < requested_seconds
+        or abs(recomputed_observed_seconds - declared_observed_seconds) > maximum_gap
+    ):
+        return "NOT_PROVEN", "SOAK_RECOMPUTED_DURATION_OR_CONTINUITY_FAILED"
+    thresholds = _strict_soak_thresholds(measurement.get("thresholds"))
+    probe_error_count = _strict_non_negative_int(measurement.get("probe_error_count"))
+    maximum_consecutive_probe_errors = _strict_non_negative_int(
+        measurement.get("maximum_consecutive_probe_errors")
+    )
+    max_consecutive_probe_errors = _strict_non_negative_int(
+        measurement.get("max_consecutive_probe_errors")
+    )
+    if (
+        thresholds is None
+        or probe_error_count is None
+        or maximum_consecutive_probe_errors is None
+        or max_consecutive_probe_errors in {None, 0}
+    ):
+        return "NOT_PROVEN", "SOAK_RECOMPUTATION_INPUT_MISSING_OR_INVALID"
+    assert max_consecutive_probe_errors is not None
+    recomputed = summarize_running_service_soak(
+        [sample for sample, _observed_at in parsed_samples],
+        requested_duration_seconds=requested_seconds,
+        thresholds=thresholds,
+        probe_error_count=probe_error_count,
+        maximum_consecutive_probe_errors=maximum_consecutive_probe_errors,
+        max_consecutive_probe_errors=max_consecutive_probe_errors,
+        operator_aborted=False,
+    )
+    recomputed_checks = recomputed.get("checks")
+    if not isinstance(recomputed_checks, dict):
+        return "NOT_PROVEN", "SOAK_RECOMPUTED_CHECKS_MISSING"
+    if measurement.get("baseline") != samples[0] or measurement.get("final") != samples[-1]:
+        return "FAIL", "SOAK_BASELINE_OR_FINAL_DIFFERS_FROM_SAMPLE_SERIES"
+    if (
+        set(measurement_checks) != set(recomputed_checks) | SOAK_PROVENANCE_CHECKS
+        or any(measurement_checks.get(name) != value for name, value in recomputed_checks.items())
+        or any(measurement_checks.get(name) is not True for name in SOAK_PROVENANCE_CHECKS)
+    ):
+        return "FAIL", "SOAK_DECLARED_CHECKS_DIFFER_FROM_RECOMPUTED_SAMPLES"
+    for name, value in recomputed.items():
+        if (
+            name not in {"checks", "baseline", "final", "samples"}
+            and measurement.get(name) != value
+        ):
+            return "FAIL", "SOAK_DECLARED_RESULT_DIFFERS_FROM_RECOMPUTED_SAMPLES"
+    if recomputed.get("status") != "PASS":
+        return "FAIL", "SOAK_RECOMPUTED_SAMPLE_CHECKS_FAILED"
+    release_commits = measurement.get("release_commits_observed")
+    safety = measurement.get("paper_safety")
+    if (
+        release_commits != [measurement.get("release_commit")]
+        or measurement.get("source_commit_at_end") != measurement.get("source_commit")
+        or measurement.get("source_worktree_clean_at_start") is not True
+        or measurement.get("source_worktree_clean_at_end") is not True
+        or not isinstance(safety, dict)
+        or safety.get("real_orders_enabled") is not False
+        or safety.get("auth_required") is not False
+        or safety.get("private_api_requested") is not False
+        or safety.get("api_key_requested") is not False
+        or safety.get("wallet_requested") is not False
+        or safety.get("additional_market_connection_started") is not False
+    ):
+        return "FAIL", "SOAK_RELEASE_OR_PAPER_SAFETY_FAILED"
+    return "PASS", "SOAK_MACHINE_SAMPLES_DURATION_SCOPE_AND_SAFETY_PASS"
+
+
 def _validate_dashboard_benchmark(
     payload: Mapping[str, object],
     checks: Mapping[str, object],
@@ -978,56 +2595,123 @@ def _validate_dashboard_benchmark(
         return "NOT_PROVEN", "BENCHMARK_REQUIRED_CHECK_SET_MISMATCH"
     if not _command_succeeded(payload, token="benchmark_dashboard_payload.py"):
         return "NOT_PROVEN", "BENCHMARK_COMMAND_OR_EXIT_CODE_NOT_PROVEN"
-    artifact_failure = _validate_artifacts(payload, required_kinds=frozenset({"log"}))
+    artifact_failure = _validate_artifacts(payload, required_kinds=frozenset({"artifact"}))
     if artifact_failure is not None:
         return artifact_failure
-    if _strict_non_negative_int(payload.get("fixture_events")) in {None, 0}:
+    measurement_record = _artifact_with_format(payload, "dashboard_benchmark_json")
+    raw_measurement = _json_artifact(measurement_record) if measurement_record is not None else None
+    if not isinstance(raw_measurement, dict):
+        return "NOT_PROVEN", "BENCHMARK_MACHINE_REPORT_INVALID"
+    raw_records = {
+        artifact_format: _artifact_with_format(payload, artifact_format)
+        for artifact_format in BENCHMARK_RAW_FORMATS
+    }
+    if any(record is None for record in raw_records.values()):
+        return "NOT_PROVEN", "BENCHMARK_RAW_PAYLOAD_OR_LATENCY_ARTIFACT_MISSING"
+    raw_artifacts = {
+        artifact_format: _json_artifact(record)
+        for artifact_format, record in raw_records.items()
+        if record is not None
+    }
+    if set(raw_artifacts) != BENCHMARK_RAW_FORMATS or any(
+        not isinstance(value, dict) for value in raw_artifacts.values()
+    ):
+        return "NOT_PROVEN", "BENCHMARK_RAW_PAYLOAD_OR_LATENCY_ARTIFACT_INVALID"
+    measurement_checks = raw_measurement.get("checks")
+    if (
+        raw_measurement.get("status") != "PASS"
+        or not isinstance(measurement_checks, dict)
+        or measurement_checks != checks
+        or set(measurement_checks) != BENCHMARK_REQUIRED_CHECKS
+        or raw_measurement.get("source_commit") != payload.get("source_commit")
+        or raw_measurement.get("source_worktree_clean_at_measurement") is not True
+        or raw_measurement.get("fixture_events") != payload.get("fixture_events")
+    ):
+        return "NOT_PROVEN", "BENCHMARK_MACHINE_REPORT_BINDING_MISMATCH"
+    if _strict_non_negative_int(raw_measurement.get("fixture_events")) in {None, 0}:
         return "NOT_PROVEN", "BENCHMARK_FIXTURE_EVENT_COUNT_NOT_POSITIVE"
 
-    raw_metrics = payload.get("payload")
-    raw_delta = payload.get("websocket_chart_delta")
-    raw_latency = payload.get("transform_latency")
+    raw_metrics = raw_measurement.get("payload")
+    raw_delta = raw_measurement.get("websocket_chart_delta")
+    raw_latency = raw_measurement.get("transform_latency")
     if (
         not isinstance(raw_metrics, dict)
         or not isinstance(raw_delta, dict)
         or not isinstance(raw_latency, dict)
     ):
         return "NOT_PROVEN", "BENCHMARK_REQUIRED_MEASUREMENT_OBJECT_MISSING"
-    dashboard_bytes = _positive_number(raw_metrics.get("dashboard_payload_bytes"))
-    summary_bytes = _positive_number(raw_metrics.get("summary_payload_bytes"))
-    strategy_bytes = _positive_number(raw_metrics.get("strategy_summary_payload_bytes"))
+    dashboard_payload = raw_artifacts["dashboard_payload_json"]
+    summary_payload = raw_artifacts["summary_payload_json"]
+    strategy_payload = raw_artifacts["strategy_summary_payload_json"]
+    delta_message = raw_artifacts["chart_delta_message_json"]
+    full_chart = raw_artifacts["full_chart_payload_json"]
+    latency_samples = raw_artifacts["dashboard_latency_samples_json"]
+    assert isinstance(dashboard_payload, dict)
+    assert isinstance(summary_payload, dict)
+    assert isinstance(strategy_payload, dict)
+    assert isinstance(delta_message, dict)
+    assert isinstance(full_chart, dict)
+    assert isinstance(latency_samples, dict)
+
+    def encoded_size(value: object) -> int:
+        return len(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        )
+
+    dashboard_bytes = encoded_size(dashboard_payload)
+    summary_bytes = encoded_size(summary_payload)
+    strategy_bytes = encoded_size(strategy_payload)
+    delta_bytes = encoded_size(delta_message)
+    full_chart_bytes = encoded_size(full_chart)
+    declared_dashboard_bytes = _positive_number(raw_metrics.get("dashboard_payload_bytes"))
+    declared_summary_bytes = _positive_number(raw_metrics.get("summary_payload_bytes"))
+    declared_strategy_bytes = _positive_number(raw_metrics.get("strategy_summary_payload_bytes"))
     stored_summary_ratio = _positive_number(raw_metrics.get("summary_to_dashboard_ratio"))
     stored_strategy_ratio = _positive_number(raw_metrics.get("strategy_summary_to_dashboard_ratio"))
-    delta_bytes = _positive_number(raw_delta.get("delta_envelope_bytes"))
-    full_chart_bytes = _positive_number(raw_delta.get("full_chart_bytes"))
+    declared_delta_bytes = _positive_number(raw_delta.get("delta_envelope_bytes"))
+    declared_full_chart_bytes = _positive_number(raw_delta.get("full_chart_bytes"))
     stored_delta_ratio = _positive_number(raw_delta.get("delta_to_full_chart_ratio"))
     measurements = (
-        dashboard_bytes,
-        summary_bytes,
-        strategy_bytes,
+        declared_dashboard_bytes,
+        declared_summary_bytes,
+        declared_strategy_bytes,
         stored_summary_ratio,
         stored_strategy_ratio,
-        delta_bytes,
-        full_chart_bytes,
+        declared_delta_bytes,
+        declared_full_chart_bytes,
         stored_delta_ratio,
     )
     if any(value is None for value in measurements):
         return "NOT_PROVEN", "BENCHMARK_BYTES_OR_RATIO_NOT_POSITIVE"
-    assert dashboard_bytes is not None
-    assert summary_bytes is not None
-    assert strategy_bytes is not None
+    assert declared_dashboard_bytes is not None
+    assert declared_summary_bytes is not None
+    assert declared_strategy_bytes is not None
     assert stored_summary_ratio is not None
     assert stored_strategy_ratio is not None
-    assert delta_bytes is not None
-    assert full_chart_bytes is not None
+    assert declared_delta_bytes is not None
+    assert declared_full_chart_bytes is not None
     assert stored_delta_ratio is not None
     summary_ratio = summary_bytes / dashboard_bytes
     strategy_ratio = strategy_bytes / dashboard_bytes
     delta_ratio = delta_bytes / full_chart_bytes
+    delta_data = delta_message.get("data")
+    system = dashboard_payload.get("system")
     target_summary = raw_metrics.get("target_summary_ratio_strictly_less_than")
     target_strategy = raw_metrics.get("target_strategy_ratio_strictly_less_than")
     calculations_valid = (
-        target_summary == 0.50
+        isinstance(system, dict)
+        and system.get("event_count") == raw_measurement.get("fixture_events")
+        and declared_dashboard_bytes == dashboard_bytes
+        and declared_summary_bytes == summary_bytes
+        and declared_strategy_bytes == strategy_bytes
+        and declared_delta_bytes == delta_bytes
+        and declared_full_chart_bytes == full_chart_bytes
+        and target_summary == 0.50
         and target_strategy == 0.35
         and summary_ratio < 0.50
         and strategy_ratio < 0.35
@@ -1035,14 +2719,25 @@ def _validate_dashboard_benchmark(
         and math.isclose(stored_summary_ratio, summary_ratio, abs_tol=0.000001)
         and math.isclose(stored_strategy_ratio, strategy_ratio, abs_tol=0.000001)
         and math.isclose(stored_delta_ratio, delta_ratio, abs_tol=0.000001)
-        and raw_delta.get("message_type") == "chart_delta"
-        and raw_delta.get("refresh_required") is False
-        and raw_delta.get("point_upserts") == 1
-        and isinstance(raw_delta.get("candle_upserts"), int)
-        and not isinstance(raw_delta.get("candle_upserts"), bool)
-        and 0 <= raw_delta["candle_upserts"] <= 1
-        and payload.get("paper_only") is True
-        and payload.get("real_orders_enabled") is False
+        and delta_message.get("type") == "chart_delta"
+        and isinstance(delta_data, dict)
+        and delta_data.get("refresh_required") is False
+        and isinstance(delta_data.get("point_upserts"), list)
+        and len(delta_data["point_upserts"]) == 1
+        and isinstance(delta_data.get("candle_upserts"), list)
+        and len(delta_data["candle_upserts"]) <= 1
+        and raw_delta.get("message_type") == delta_message.get("type")
+        and raw_delta.get("refresh_required") == delta_data.get("refresh_required")
+        and raw_delta.get("point_upserts") == len(delta_data["point_upserts"])
+        and raw_delta.get("candle_upserts") == len(delta_data["candle_upserts"])
+        and "history" not in summary_payload
+        and "strategies" not in summary_payload
+        and "league_accounts" not in summary_payload
+        and summary_payload.get("paper_only") is True
+        and summary_payload.get("real_orders_enabled") is False
+        and summary_payload.get("auth_required") is False
+        and raw_measurement.get("paper_only") is True
+        and raw_measurement.get("real_orders_enabled") is False
     )
     if not calculations_valid:
         return "FAIL", "BENCHMARK_RECOMPUTED_TARGET_OR_DELTA_MISMATCH"
@@ -1054,13 +2749,30 @@ def _validate_dashboard_benchmark(
     }
     if set(raw_latency) != required_latency_names:
         return "NOT_PROVEN", "BENCHMARK_LATENCY_SCOPE_MISMATCH"
-    for measurement in raw_latency.values():
+    if set(latency_samples) != required_latency_names:
+        return "NOT_PROVEN", "BENCHMARK_LATENCY_RAW_SAMPLE_SCOPE_MISMATCH"
+    for name, measurement in raw_latency.items():
+        samples = latency_samples[name]
+        stored_p95 = (
+            _positive_number(measurement.get("p95_ms")) if isinstance(measurement, dict) else None
+        )
         if (
             not isinstance(measurement, dict)
-            or _strict_non_negative_int(measurement.get("iterations")) in {None, 0}
-            or _positive_number(measurement.get("p95_ms")) is None
+            or not isinstance(samples, list)
+            or not samples
+            or any(_positive_number(sample) is None for sample in samples)
+            or stored_p95 is None
         ):
             return "NOT_PROVEN", "BENCHMARK_LATENCY_COUNT_OR_VALUE_NOT_POSITIVE"
+        ordered_samples = sorted(float(sample) for sample in samples)
+        p95_index = max(0, math.ceil(len(ordered_samples) * 0.95) - 1)
+        assert stored_p95 is not None
+        if measurement.get("iterations") != len(ordered_samples) or not math.isclose(
+            stored_p95,
+            round(ordered_samples[p95_index], 6),
+            abs_tol=0.000001,
+        ):
+            return "FAIL", "BENCHMARK_RECOMPUTED_LATENCY_MISMATCH"
     return "PASS", "BENCHMARK_REQUIRED_CHECKS_COMMAND_ARTIFACTS_AND_FORMULAS_PASS"
 
 
@@ -1074,13 +2786,105 @@ def _validate_browser_e2e(
         return "NOT_PROVEN", "BROWSER_COMMAND_OR_EXIT_CODE_NOT_PROVEN"
     artifact_failure = _validate_artifacts(
         payload,
-        required_kinds=frozenset({"log", "screenshot"}),
+        required_kinds=frozenset({"artifact", "screenshot"}),
     )
     if artifact_failure is not None:
         return artifact_failure
+    playwright_record = _artifact_with_format(payload, "playwright_json")
+    measurement_record = _artifact_with_format(payload, "browser_measurements_json")
+    raw_playwright = _json_artifact(playwright_record) if playwright_record is not None else None
+    raw_measurements = (
+        _json_artifact(measurement_record) if measurement_record is not None else None
+    )
+    if not isinstance(raw_playwright, dict) or not isinstance(raw_measurements, dict):
+        return "NOT_PROVEN", "BROWSER_MACHINE_REPORT_INVALID"
+    report_summary = _playwright_report_summary(raw_playwright)
+    measurement_checks = raw_measurements.get("checks")
+    measured_projects = raw_measurements.get("projects")
+    if (
+        report_summary is None
+        or raw_measurements.get("schema") != "flowscalper.browser_measurements.v1"
+        or not isinstance(measurement_checks, dict)
+        or measurement_checks != checks
+        or set(measurement_checks) != BROWSER_REQUIRED_CHECKS
+        or not isinstance(measured_projects, dict)
+        or set(measured_projects) != {"desktop", "tablet", "mobile"}
+    ):
+        return "NOT_PROVEN", "BROWSER_MACHINE_REPORT_BINDING_MISMATCH"
+    paper_safety_at_start = payload.get("paper_safety_at_start")
+    paper_safety_at_end = payload.get("paper_safety_at_end")
+    measured_paper_safety_at_start = raw_measurements.get("paper_safety_at_start")
+    measured_paper_safety_at_end = raw_measurements.get("paper_safety_at_end")
+
+    def exact_paper_safety(value: object) -> bool:
+        if not isinstance(value, dict) or set(value) != set(BROWSER_EXPECTED_PAPER_SAFETY):
+            return False
+        return (
+            value.get("paper_only") is True
+            and all(
+                value.get(field) is False
+                for field in (
+                    "real_orders_enabled",
+                    "auth_required",
+                    "private_api_enabled",
+                    "api_key_enabled",
+                    "wallet_enabled",
+                    "runtime_ai_order_decision_enabled",
+                )
+            )
+            and value.get("funding_readiness") == "NOT_READY"
+        )
+
+    if (
+        not exact_paper_safety(paper_safety_at_start)
+        or not exact_paper_safety(paper_safety_at_end)
+        or measured_paper_safety_at_start != paper_safety_at_start
+        or measured_paper_safety_at_end != paper_safety_at_end
+        or payload.get("paper_safety_source_paths") != BROWSER_PAPER_SAFETY_SOURCE_PATHS
+        or raw_measurements.get("paper_safety_source_paths") != BROWSER_PAPER_SAFETY_SOURCE_PATHS
+    ):
+        return "NOT_PROVEN", "BROWSER_PAPER_SAFETY_BINDING_MISMATCH"
+    source_commit = payload.get("source_commit")
+    run_id = payload.get("run_id")
+    runtime_provenance = raw_measurements.get("runtime_provenance")
+    expected_runtime_provenance = {
+        "run_id_at_start": run_id,
+        "run_id_at_end": payload.get("run_id_at_end"),
+        "execution_state_at_start": payload.get("execution_state"),
+        "execution_state_at_end": payload.get("execution_state_at_end"),
+        "release_commit_at_start": payload.get("release_commit"),
+        "release_commit_at_end": payload.get("release_commit_at_end"),
+        "release_isolated_at_start": payload.get("release_isolated"),
+        "release_isolated_at_end": payload.get("release_isolated_at_end"),
+    }
+    if (
+        not isinstance(source_commit, str)
+        or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None
+        or payload.get("source_commit_at_end") != source_commit
+        or payload.get("source_worktree_clean_at_start") is not True
+        or payload.get("source_worktree_clean_at_end") is not True
+        or payload.get("source_worktree_clean_at_measurement") is not True
+        or payload.get("release_commit") != source_commit
+        or payload.get("release_commit_at_end") != source_commit
+        or payload.get("release_isolated") is not True
+        or payload.get("release_isolated_at_end") is not True
+        or not isinstance(run_id, str)
+        or not run_id.strip()
+        or payload.get("run_id_at_end") != run_id
+        or payload.get("execution_state") != "PAPER"
+        or payload.get("execution_state_at_end") != "PAPER"
+        or runtime_provenance != expected_runtime_provenance
+    ):
+        return "NOT_PROVEN", "BROWSER_RUNTIME_PROVENANCE_BINDING_MISMATCH"
+    (
+        reporter_test_count,
+        reporter_projects,
+        reporter_check_projects,
+        reporter_screenshot_attachments,
+    ) = report_summary
     counts = payload.get("counts")
-    artifacts = payload.get("artifacts")
-    if not isinstance(counts, dict) or not isinstance(artifacts, list):
+    artifacts = _artifact_records(payload)
+    if not isinstance(counts, dict):
         return "NOT_PROVEN", "BROWSER_COUNTS_OR_ARTIFACTS_MISSING"
     if set(counts) != {
         "page_count",
@@ -1090,20 +2894,109 @@ def _validate_browser_e2e(
         "console_error_count",
     }:
         return "NOT_PROVEN", "BROWSER_COUNT_SCOPE_MISMATCH"
-    screenshot_count = sum(
-        isinstance(record, dict) and record.get("kind") == "screenshot"
-        for record in artifacts
+    screenshot_records = [record for record in artifacts if record.get("kind") == "screenshot"]
+    screenshot_projects: set[str] = set()
+    screenshot_paths_by_project: dict[str, set[str]] = {
+        "desktop": set(),
+        "tablet": set(),
+        "mobile": set(),
+    }
+    screenshot_sha256_by_project: dict[str, set[str]] = {
+        "desktop": set(),
+        "tablet": set(),
+        "mobile": set(),
+    }
+    screenshot_paths_by_check_project: dict[tuple[str, str], set[str]] = {
+        (check_id, project): set()
+        for check_id, projects in BROWSER_REQUIRED_TEST_PROJECTS.items()
+        for project in projects
+    }
+    minimum_dimensions = {
+        "desktop": (1408, 900),
+        "tablet": (820, 1180),
+        "mobile": (390, 844),
+    }
+    for record in screenshot_records:
+        project = record.get("project")
+        raw_path = record.get("path")
+        sha256 = record.get("sha256")
+        check_ids = record.get("check_ids")
+        dimensions = _png_dimensions(record)
+        allowed_check_ids = (
+            {
+                check_id
+                for check_id, projects in BROWSER_REQUIRED_TEST_PROJECTS.items()
+                if isinstance(project, str) and project in projects
+            }
+            if isinstance(project, str)
+            else set()
+        )
+        if (
+            record.get("format") != "png"
+            or not isinstance(project, str)
+            or project not in minimum_dimensions
+            or not isinstance(raw_path, str)
+            or not isinstance(sha256, str)
+            or sha256 in screenshot_sha256_by_project[project]
+            or not isinstance(check_ids, list)
+            or len(check_ids) != 1
+            or check_ids != sorted(set(check_ids))
+            or any(
+                not isinstance(check_id, str) or check_id not in allowed_check_ids
+                for check_id in check_ids
+            )
+            or dimensions is None
+            or dimensions[0] < minimum_dimensions[project][0]
+            or dimensions[1] < minimum_dimensions[project][1]
+        ):
+            return "NOT_PROVEN", "BROWSER_SCREENSHOT_PNG_OR_DIMENSIONS_INVALID"
+        screenshot_projects.add(project)
+        screenshot_sha256_by_project[project].add(sha256)
+        screenshot_paths_by_project[project].add(raw_path)
+        for check_id in check_ids:
+            assert isinstance(check_id, str)
+            screenshot_paths_by_check_project[(check_id, project)].add(raw_path)
+    if any(
+        reporter_screenshot_attachments[(check_id, project)]
+        != frozenset(screenshot_paths_by_check_project[(check_id, project)])
+        for check_id, projects in BROWSER_REQUIRED_TEST_PROJECTS.items()
+        for project in projects
+    ):
+        return "NOT_PROVEN", "BROWSER_REPORTER_SCREENSHOT_BINDING_MISMATCH"
+    measured_console_errors = 0
+    for project, project_payload in measured_projects.items():
+        if not isinstance(project_payload, dict):
+            return "NOT_PROVEN", "BROWSER_PROJECT_MEASUREMENT_INVALID"
+        console_errors = _strict_non_negative_int(project_payload.get("console_error_count"))
+        screenshot_paths = project_payload.get("screenshot_paths")
+        if (
+            project_payload.get("status") != "PASS"
+            or console_errors is None
+            or console_errors != 0
+            or not isinstance(screenshot_paths, list)
+            or not screenshot_paths
+            or set(screenshot_paths) != screenshot_paths_by_project[project]
+        ):
+            return "NOT_PROVEN", "BROWSER_PROJECT_MEASUREMENT_SCOPE_MISMATCH"
+        measured_console_errors += console_errors
+    screenshot_count = len(screenshot_records)
+    expected_screenshot_count = sum(
+        len(projects) for projects in BROWSER_REQUIRED_TEST_PROJECTS.values()
     )
     if (
         counts.get("page_count") != len(EXPECTED_PAGE_IDS)
-        or counts.get("project_count") != 3
-        or _strict_non_negative_int(counts.get("test_count")) in {None, 0}
+        or counts.get("project_count") != len(reporter_projects)
+        or counts.get("test_count") != reporter_test_count
         or counts.get("screenshot_count") != screenshot_count
-        or screenshot_count < 3
-        or counts.get("console_error_count") != 0
+        or screenshot_count != expected_screenshot_count
+        or counts.get("console_error_count") != measured_console_errors
+        or screenshot_projects != reporter_projects
         or payload.get("page_ids") != EXPECTED_PAGE_IDS
         or payload.get("projects") != ["desktop", "tablet", "mobile"]
         or payload.get("runtime_url") != "http://127.0.0.1:8870"
+        or raw_measurements.get("page_ids") != EXPECTED_PAGE_IDS
+        or raw_measurements.get("runtime_url") != "http://127.0.0.1:8870"
+        or reporter_check_projects != BROWSER_REQUIRED_TEST_PROJECTS
     ):
         return "NOT_PROVEN", "BROWSER_POSITIVE_COUNTS_OR_EXACT_SCOPE_MISMATCH"
     return "PASS", "BROWSER_REQUIRED_CHECKS_COMMAND_COUNTS_AND_ARTIFACTS_PASS"
@@ -1115,63 +3008,142 @@ def _validate_full_suite(
 ) -> tuple[str, str]:
     if set(checks) != FULL_SUITE_REQUIRED_CHECKS:
         return "NOT_PROVEN", "FULL_SUITE_REQUIRED_CHECK_SET_MISMATCH"
+    source_commit = payload.get("source_commit")
+    if (
+        not isinstance(source_commit, str)
+        or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None
+        or payload.get("source_commit_at_end") != source_commit
+        or payload.get("source_worktree_clean_at_start") is not True
+        or payload.get("source_worktree_clean_at_end") is not True
+        or payload.get("source_worktree_clean_at_measurement") is not True
+    ):
+        return "NOT_PROVEN", "FULL_SUITE_SOURCE_PROVENANCE_BINDING_MISMATCH"
     commands = payload.get("commands")
     counts = payload.get("counts")
     if not isinstance(commands, list) or not isinstance(counts, dict):
         return "NOT_PROVEN", "FULL_SUITE_COMMANDS_OR_COUNTS_MISSING"
     if set(counts) != {"command_count", "backend_test_count", "frontend_test_count"}:
         return "NOT_PROVEN", "FULL_SUITE_COUNT_SCOPE_MISMATCH"
-    if (
-        counts.get("command_count") != len(FULL_SUITE_COMMAND_NAMES)
-        or len(commands) != len(FULL_SUITE_COMMAND_NAMES)
-        or _strict_non_negative_int(counts.get("backend_test_count")) in {None, 0}
-        or _strict_non_negative_int(counts.get("frontend_test_count")) in {None, 0}
+    artifact_failure = _validate_artifacts(
+        payload,
+        required_kinds=frozenset({"artifact", "log"}),
+    )
+    if artifact_failure is not None:
+        return artifact_failure
+    artifacts = _artifact_records(payload)
+    artifact_by_path = {
+        str(record["path"]): record for record in artifacts if isinstance(record.get("path"), str)
+    }
+    manifest_record = _artifact_with_format(payload, "full_suite_test_manifest_json")
+    manifest_path = manifest_record.get("path") if manifest_record is not None else None
+    if not isinstance(manifest_path, str):
+        return "NOT_PROVEN", "FULL_SUITE_COLLECTION_MANIFEST_MISSING_OR_INVALID"
+    collection_paths: set[str] = set()
+    for artifact_format in ("pytest_collection_text", "vitest_collection_text"):
+        collection_record = _artifact_with_format(payload, artifact_format)
+        collection_path = collection_record.get("path") if collection_record is not None else None
+        if not isinstance(collection_path, str):
+            return "NOT_PROVEN", "FULL_SUITE_COLLECTION_OUTPUT_MISSING_OR_INVALID"
+        collection_paths.add(collection_path)
+    master_e2e_record = _artifact_with_format(payload, "master_e2e_bundle_json")
+    master_e2e_report = _json_artifact(master_e2e_record) if master_e2e_record is not None else None
+    auxiliary_paths: set[str] = set()
+    if not isinstance(master_e2e_report, dict):
+        return "NOT_PROVEN", "FULL_SUITE_MASTER_E2E_BUNDLE_MISSING_OR_INVALID"
+    for key, artifact_format in (
+        ("pytest_junit", "master_e2e_pytest_junit_xml"),
+        ("playwright_json", "master_e2e_playwright_json"),
     ):
-        return "NOT_PROVEN", "FULL_SUITE_POSITIVE_COUNTS_NOT_PROVEN"
+        embedded_record = master_e2e_report.get(key)
+        top_level_record = _artifact_with_format(payload, artifact_format)
+        embedded_path = embedded_record.get("path") if isinstance(embedded_record, dict) else None
+        if (
+            not isinstance(embedded_path, str)
+            or top_level_record is None
+            or embedded_record != top_level_record
+        ):
+            return "NOT_PROVEN", "FULL_SUITE_MASTER_E2E_ARTIFACT_BINDING_MISMATCH"
+        auxiliary_paths.add(embedded_path)
     command_names: set[str] = set()
-    log_paths: set[str] = set()
+    command_order: list[str] = []
+    report_paths: set[str] = set()
+    derived_counts: dict[str, int] = {}
     for command_record in commands:
         if not isinstance(command_record, dict):
             return "NOT_PROVEN", "FULL_SUITE_COMMAND_RECORD_INVALID"
         name = command_record.get("name")
         command = command_record.get("command")
         exit_code = command_record.get("exit_code")
-        log_path = command_record.get("log_path")
+        report_path = command_record.get("report_path")
+        expected_command = (
+            [part.format(report_path=report_path) for part in FULL_SUITE_CANONICAL_COMMANDS[name]]
+            if isinstance(name, str)
+            and name in FULL_SUITE_CANONICAL_COMMANDS
+            and isinstance(report_path, str)
+            else None
+        )
         if (
             not isinstance(name, str)
             or name not in FULL_SUITE_COMMAND_NAMES
             or name in command_names
-            or not (
-                isinstance(command, str)
-                and command.strip()
-                or isinstance(command, list)
-                and command
-                and all(isinstance(part, str) and part.strip() for part in command)
-            )
+            or command != expected_command
             or not isinstance(exit_code, int)
             or isinstance(exit_code, bool)
             or exit_code != 0
-            or not isinstance(log_path, str)
-            or not log_path.strip()
-            or log_path in log_paths
+            or not isinstance(report_path, str)
+            or not report_path.strip()
+            or report_path in report_paths
         ):
             return "NOT_PROVEN", "FULL_SUITE_COMMAND_NAME_EXIT_OR_LOG_INVALID"
+        artifact_record = artifact_by_path.get(report_path)
+        if (
+            artifact_record is None
+            or artifact_record.get("format") != FULL_SUITE_REPORT_FORMATS[name]
+        ):
+            return "NOT_PROVEN", "FULL_SUITE_REPORT_FORMAT_OR_PATH_MISMATCH"
+        derived_count = _full_suite_report_count(name, artifact_record)
+        if derived_count is None or derived_count <= 0:
+            return "NOT_PROVEN", "FULL_SUITE_MACHINE_REPORT_PARSE_FAILED"
         command_names.add(name)
-        log_paths.add(log_path)
-    if command_names != FULL_SUITE_COMMAND_NAMES:
+        command_order.append(name)
+        report_paths.add(report_path)
+        derived_counts[name] = derived_count
+    if command_names != FULL_SUITE_COMMAND_NAMES or command_order != list(FULL_SUITE_COMMAND_ORDER):
         return "NOT_PROVEN", "FULL_SUITE_REQUIRED_COMMAND_MISSING"
-    artifact_failure = _validate_artifacts(payload, required_kinds=frozenset({"log"}))
-    if artifact_failure is not None:
-        return artifact_failure
-    artifacts = payload.get("artifacts")
-    assert isinstance(artifacts, list)
-    artifact_log_paths = {
-        str(record["path"])
-        for record in artifacts
-        if isinstance(record, dict) and record.get("kind") == "log"
-    }
-    if log_paths != artifact_log_paths:
+    if report_paths | {manifest_path} | collection_paths | auxiliary_paths != set(artifact_by_path):
         return "NOT_PROVEN", "FULL_SUITE_COMMAND_LOG_ARTIFACT_SCOPE_MISMATCH"
+    if (
+        counts.get("command_count") != len(FULL_SUITE_COMMAND_NAMES)
+        or len(commands) != len(FULL_SUITE_COMMAND_NAMES)
+        or counts.get("backend_test_count") != derived_counts["backend_pytest"]
+        or counts.get("frontend_test_count") != derived_counts["frontend_tests"]
+    ):
+        return "NOT_PROVEN", "FULL_SUITE_RECOMPUTED_COUNTS_MISMATCH"
+    backend_report = artifact_by_path[
+        next(
+            command["report_path"]
+            for command in commands
+            if isinstance(command, dict) and command.get("name") == "backend_pytest"
+        )
+    ]
+    frontend_report = artifact_by_path[
+        next(
+            command["report_path"]
+            for command in commands
+            if isinstance(command, dict) and command.get("name") == "frontend_tests"
+        )
+    ]
+    backend_report_ids = _pytest_junit_test_ids(backend_report)
+    frontend_report_ids = _frontend_vitest_test_ids(frontend_report)
+    if backend_report_ids is None or frontend_report_ids is None:
+        return "NOT_PROVEN", "FULL_SUITE_MACHINE_TEST_IDS_MISSING"
+    manifest_failure = _full_suite_manifest_test_ids(
+        payload,
+        backend_report_ids=backend_report_ids,
+        frontend_report_ids=frontend_report_ids,
+    )
+    if manifest_failure is not None:
+        return manifest_failure
     return "PASS", "FULL_SUITE_REQUIRED_CHECKS_COMMANDS_COUNTS_AND_LOGS_PASS"
 
 
@@ -1187,9 +3159,7 @@ def _validate_checked_evidence_kind(
     if kind == "full_suite_after_latest_change":
         return _validate_full_suite(payload, checks)
     if kind == "thirty_minute_soak":
-        if not SOAK_REQUIRED_CHECKS.issubset(checks):
-            return "NOT_PROVEN", "SOAK_REQUIRED_CHECK_SET_MISMATCH"
-        return "PASS", "SOAK_REQUIRED_CHECK_SET_PRESENT"
+        return _validate_running_service_soak(payload, checks)
     return "NOT_PROVEN", "EVIDENCE_KIND_NOT_SUPPORTED"
 
 
@@ -1358,9 +3328,7 @@ def _validated_soak_runtime_observation(
         mode_counts = None
 
     raw_rows = _strict_non_negative_int(payload.get("history_raw_rows"))
-    unique_opportunities = _strict_non_negative_int(
-        payload.get("unique_opportunities")
-    )
+    unique_opportunities = _strict_non_negative_int(payload.get("unique_opportunities"))
     analytics_cache_ready = payload.get("analytics_cache_ready")
     if not isinstance(analytics_cache_ready, bool):
         analytics_cache_ready = None
@@ -1375,10 +3343,8 @@ def _validated_soak_runtime_observation(
         "release_commit": release_commit,
         "release_isolated": True,
         "strategy_mode_counts": mode_counts,
-        "open_positions": _strict_non_negative_int(final.get("position_count")),
-        "main_pending_entry_count": _strict_non_negative_int(
-            final.get("main_pending_entry_count")
-        ),
+        "open_positions": _strict_non_negative_int(final.get("total_open_position_count")),
+        "main_pending_entry_count": _strict_non_negative_int(final.get("main_pending_entry_count")),
         "league_pending_entry_count": _strict_non_negative_int(
             final.get("league_pending_entry_count")
         ),
@@ -1412,10 +3378,15 @@ def _thirty_minute_soak_evidence(
     if evidence["status"] != "PASS":
         evidence.pop("payload", None)
         return evidence
-    payload = evidence.pop("payload")
-    if not isinstance(payload, dict):
+    wrapper_payload = evidence.pop("payload")
+    if not isinstance(wrapper_payload, dict):
         evidence["status"] = "FAIL"
         evidence["reason"] = "EVIDENCE_ROOT_NOT_OBJECT"
+        return evidence
+    payload = _running_service_soak_measurement(wrapper_payload)
+    if payload is None:
+        evidence["status"] = "NOT_PROVEN"
+        evidence["reason"] = "SOAK_MACHINE_REPORT_INVALID"
         return evidence
     final = payload.get("final")
     safety = payload.get("paper_safety")
@@ -1470,12 +3441,207 @@ def _thirty_minute_soak_evidence(
         if validated_observation is None:
             evidence["status"] = "NOT_PROVEN"
             evidence["reason"] = (
-                _soak_runtime_binding_failure(payload)
-                or "SOAK_RUNTIME_PROVENANCE_BINDING_MISSING"
+                _soak_runtime_binding_failure(payload) or "SOAK_RUNTIME_PROVENANCE_BINDING_MISSING"
             )
         else:
             evidence["reason"] = "V6_30_MINUTE_SCOPE_AND_SAFETY_PASS"
             evidence["validated_runtime_observation"] = validated_observation
+    return evidence
+
+
+def _validated_current_thirty_minute_soak(
+    expected_source_commit: str,
+) -> dict[str, Any]:
+    registry = StrategyRegistry()
+    strategy_ids = list(registry.strategy_ids)
+    registry_rows = registry.rows()
+    account_ids = [
+        f"{strategy_id}:{profile}" for strategy_id in strategy_ids for profile in ("BASE", "STRESS")
+    ]
+    mode_counts = {
+        mode: sum(row["mode"] == mode for row in registry_rows)
+        for mode in ("ACTIVE", "SHADOW", "OFF")
+    }
+    return _thirty_minute_soak_evidence(
+        expected_strategy_ids=strategy_ids,
+        expected_account_ids=account_ids,
+        expected_mode_counts=mode_counts,
+        expected_source_commit=expected_source_commit,
+        source_working_tree_changes=[],
+    )
+
+
+def _launch_agent_evidence(
+    deployment: dict[str, Any],
+    *,
+    runtime_observation: dict[str, Any],
+) -> dict[str, Any]:
+    """설치 plist와 현재 LaunchAgent 프로세스를 동일 릴리스에 결합한다."""
+
+    plist_path = LAUNCH_AGENT_PLIST_PATH
+    evidence: dict[str, Any] = {
+        "status": "NOT_RUN",
+        "reason": "LAUNCH_AGENT_PLIST_NOT_FOUND",
+        "path": str(plist_path),
+        "evidence_boundary": LAUNCH_AGENT_EVIDENCE_BOUNDARY,
+        "plist_contract": {"status": "NOT_RUN"},
+        "process_binding": {"status": "NOT_RUN"},
+    }
+    if plist_path.is_symlink():
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_PLIST_NOT_REGULAR_FILE"
+        evidence["plist_contract"] = {"status": "FAIL"}
+        return evidence
+    if not plist_path.is_file():
+        return evidence
+
+    try:
+        plist_bytes = plist_path.read_bytes()
+        payload = plistlib.loads(plist_bytes)
+    except (OSError, plistlib.InvalidFileException, ValueError):
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_PLIST_INVALID"
+        evidence["plist_contract"] = {"status": "FAIL"}
+        return evidence
+    expected_runner = RUNTIME_ROOT / "support/run_macos_service.sh"
+    expected_stdout = RUNTIME_ROOT / "logs/service.log"
+    expected_stderr = RUNTIME_ROOT / "logs/service-error.log"
+    expected_fields = {
+        "Label",
+        "ProgramArguments",
+        "RunAtLoad",
+        "KeepAlive",
+        "ThrottleInterval",
+        "ExitTimeOut",
+        "ProcessType",
+        "StandardOutPath",
+        "StandardErrorPath",
+    }
+    arguments = payload.get("ProgramArguments") if isinstance(payload, dict) else None
+    exact_contract = (
+        isinstance(payload, dict)
+        and set(payload) == expected_fields
+        and type(payload.get("Label")) is str
+        and payload.get("Label") == LAUNCH_AGENT_LABEL
+        and type(arguments) is list
+        and len(arguments) == 2
+        and all(type(value) is str for value in arguments)
+        and arguments == ["/bin/zsh", str(expected_runner)]
+        and type(payload.get("RunAtLoad")) is bool
+        and payload.get("RunAtLoad") is True
+        and type(payload.get("KeepAlive")) is bool
+        and payload.get("KeepAlive") is True
+        and type(payload.get("ThrottleInterval")) is int
+        and payload.get("ThrottleInterval") == 10
+        and type(payload.get("ExitTimeOut")) is int
+        and payload.get("ExitTimeOut") == 60
+        and type(payload.get("ProcessType")) is str
+        and payload.get("ProcessType") == "Background"
+        and type(payload.get("StandardOutPath")) is str
+        and payload.get("StandardOutPath") == str(expected_stdout)
+        and type(payload.get("StandardErrorPath")) is str
+        and payload.get("StandardErrorPath") == str(expected_stderr)
+    )
+    if not exact_contract:
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_PLIST_EXACT_CONTRACT_MISMATCH"
+        evidence["plist_contract"] = {"status": "FAIL"}
+        return evidence
+    if expected_runner.is_symlink() or not expected_runner.is_file():
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_TRUSTED_RUNNER_NOT_REGULAR_FILE"
+        evidence["plist_contract"] = {"status": "FAIL"}
+        return evidence
+
+    try:
+        runner_sha256 = hashlib.sha256(expected_runner.read_bytes()).hexdigest()
+    except OSError:
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_TRUSTED_RUNNER_NOT_READABLE"
+        evidence["plist_contract"] = {"status": "FAIL"}
+        return evidence
+    plist_sha256 = hashlib.sha256(plist_bytes).hexdigest()
+    evidence["plist_contract"] = {
+        "status": "PASS",
+        "label": LAUNCH_AGENT_LABEL,
+        "program_arguments": arguments,
+        "run_at_load": True,
+        "keep_alive": True,
+        "throttle_interval_seconds": 10,
+        "exit_timeout_seconds": 60,
+        "process_type": "Background",
+        "stdout_path": str(expected_stdout),
+        "stderr_path": str(expected_stderr),
+        "sha256": plist_sha256,
+        "trusted_runner_sha256": runner_sha256,
+    }
+    if runtime_observation.get("available") is not True:
+        evidence["reason"] = "LAUNCH_AGENT_PROCESS_NOT_OBSERVED"
+        return evidence
+
+    release_commit = deployment.get("release_commit")
+    if not isinstance(release_commit, str) or re.fullmatch(r"[0-9a-f]{40}", release_commit) is None:
+        evidence["status"] = "NOT_PROVEN"
+        evidence["reason"] = "LAUNCH_AGENT_DEPLOYMENT_COMMIT_INVALID"
+        return evidence
+    if (
+        runtime_observation.get("release_commit") != release_commit
+        or runtime_observation.get("release_isolated") is not True
+    ):
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_RUNTIME_RELEASE_BINDING_MISMATCH"
+        return evidence
+
+    release_path = RUNTIME_ROOT / "releases" / release_commit
+    ledger_path = RUNTIME_ROOT / "active-ledger/run-ledger.sqlite3"
+    try:
+        process_binding = verify_running_process_binding(
+            ledger_path=ledger_path,
+            release_path=release_path,
+        )
+        service_pid = process_binding.get("service_pid")
+        binding_exact = (
+            type(service_pid) is int
+            and service_pid > 0
+            and process_binding.get("launch_agent_label") == LAUNCH_AGENT_LABEL
+            and process_binding.get("listener") == "127.0.0.1:8870"
+            and process_binding.get("cwd") == str(release_path)
+            and process_binding.get("ledger_open_by_service_pid") is True
+        )
+        plist_unchanged = (
+            not plist_path.is_symlink()
+            and plist_path.is_file()
+            and hashlib.sha256(plist_path.read_bytes()).hexdigest() == plist_sha256
+        )
+        runner_unchanged = (
+            not expected_runner.is_symlink()
+            and expected_runner.is_file()
+            and hashlib.sha256(expected_runner.read_bytes()).hexdigest() == runner_sha256
+        )
+    except (LegacyRuntimePreflightError, OSError):
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_RUNNING_PROCESS_BINDING_FAILED"
+        evidence["process_binding"] = {"status": "FAIL"}
+        return evidence
+    if not binding_exact:
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_RUNNING_PROCESS_BINDING_MISMATCH"
+        evidence["process_binding"] = {"status": "FAIL"}
+        return evidence
+    if not plist_unchanged:
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_PLIST_CHANGED_DURING_VERIFICATION"
+        evidence["process_binding"] = {"status": "FAIL"}
+        return evidence
+    if not runner_unchanged:
+        evidence["status"] = "FAIL"
+        evidence["reason"] = "LAUNCH_AGENT_TRUSTED_RUNNER_CHANGED_DURING_VERIFICATION"
+        evidence["process_binding"] = {"status": "FAIL"}
+        return evidence
+
+    evidence["status"] = "PASS"
+    evidence["reason"] = "EXACT_PLIST_AND_RUNNING_PROCESS_BOUND_TO_INSTALLED_RELEASE"
+    evidence["process_binding"] = {**process_binding, "status": "PASS"}
     return evidence
 
 
@@ -1485,30 +3651,63 @@ def _installed_release_evidence(
     latest_commit: str,
     working_tree_changes: list[str],
     release_package_evidence: dict[str, Any],
+    launch_agent_evidence: dict[str, Any],
 ) -> dict[str, Any]:
+    def result(status: str, reason: str) -> dict[str, Any]:
+        return {
+            "status": status,
+            "reason": reason,
+            "evidence_boundary": INSTALLED_RELEASE_EVIDENCE_BOUNDARY,
+        }
+
     status = _normalize_evidence_status(deployment.get("status"))
     reason = "CURRENT_DEPLOYMENT_DECLARATION"
     if status != "PASS":
-        return {"status": status, "reason": reason}
+        return result(status, reason)
     if (
         deployment.get("paper_only") is not True
         or deployment.get("real_orders_enabled") is not False
         or deployment.get("auth_required") is not False
     ):
-        return {"status": "FAIL", "reason": "INSTALLED_PAPER_SAFETY_CONTRACT_FAILED"}
+        return result("FAIL", "INSTALLED_PAPER_SAFETY_CONTRACT_FAILED")
     if release_package_evidence["status"] != "PASS":
-        return {
-            "status": release_package_evidence["status"],
-            "reason": f"INSTALLED_{release_package_evidence['reason']}",
-        }
-    if deployment.get("release_commit") != latest_commit:
-        return {"status": "NOT_PROVEN", "reason": "INSTALLED_COMMIT_DIFFERS_FROM_HEAD"}
+        return result(
+            str(release_package_evidence["status"]),
+            f"INSTALLED_{release_package_evidence['reason']}",
+        )
+    launch_agent_status = _normalize_evidence_status(launch_agent_evidence.get("status"))
+    if launch_agent_status != "PASS":
+        return result(
+            launch_agent_status,
+            f"INSTALLED_{launch_agent_evidence.get('reason', 'LAUNCH_AGENT_NOT_PROVEN')}",
+        )
+    if not _release_commit_matches_source(deployment.get("release_commit"), latest_commit):
+        return result("NOT_PROVEN", "INSTALLED_COMMIT_DIFFERS_FROM_HEAD")
     if working_tree_changes:
-        return {
-            "status": "NOT_PROVEN",
-            "reason": "WORKING_TREE_DIFFERS_FROM_INSTALLED_HEAD",
-        }
-    return {"status": "PASS", "reason": "INSTALLED_SAFE_COMMIT_MATCHES_CLEAN_HEAD"}
+        return result("NOT_PROVEN", "WORKING_TREE_DIFFERS_FROM_INSTALLED_HEAD")
+    return result("PASS", "INSTALLED_SAFE_COMMIT_LAUNCH_AGENT_AND_PROCESS_MATCH_CLEAN_HEAD")
+
+
+def _strict_json_file_object(path: Path) -> dict[str, Any]:
+    def reject_constant(value: str) -> object:
+        raise ValueError(f"비표준 JSON 숫자: {value}")
+
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"중복 JSON key: {key}")
+            result[key] = value
+        return result
+
+    payload = json.loads(
+        path.read_text(encoding="utf-8"),
+        object_pairs_hook=unique_object,
+        parse_constant=reject_constant,
+    )
+    if not isinstance(payload, dict):
+        raise ValueError("JSON object가 아닙니다.")
+    return payload
 
 
 def _release_package_evidence(
@@ -1520,6 +3719,11 @@ def _release_package_evidence(
     release_commit = deployment.get("release_commit")
     if not isinstance(release_commit, str) or not release_commit:
         return {"status": "NOT_RUN", "reason": "INSTALLED_RELEASE_COMMIT_NOT_FOUND"}
+    if re.fullmatch(r"[0-9a-f]{40}", release_commit) is None:
+        return {
+            "status": "NOT_PROVEN",
+            "reason": "INSTALLED_RELEASE_COMMIT_INVALID",
+        }
     relative_path = f"releases/{release_commit}/release-manifest.json"
     manifest_path = RUNTIME_ROOT / relative_path
     if not manifest_path.is_file():
@@ -1529,8 +3733,8 @@ def _release_package_evidence(
             "reason": "RELEASE_MANIFEST_NOT_FOUND",
         }
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        manifest = _strict_json_file_object(manifest_path)
+    except (json.JSONDecodeError, OSError, UnicodeError, ValueError):
         return {"status": "FAIL", "path": relative_path, "reason": "INVALID_MANIFEST"}
     if not isinstance(manifest, dict):
         return {"status": "FAIL", "path": relative_path, "reason": "INVALID_MANIFEST"}
@@ -1557,6 +3761,148 @@ def _release_package_evidence(
             "path": relative_path,
             "reason": "CURRENT_LINK_NOT_DIRECT_RELEASE_COMMIT_CHILD",
         }
+    support_path = RUNTIME_ROOT / "support"
+    anchor_path = support_path / "current-release-integrity.json"
+    launcher_path = support_path / "run_macos_service.sh"
+    if (
+        support_path.is_symlink()
+        or anchor_path.is_symlink()
+        or not anchor_path.is_file()
+        or launcher_path.is_symlink()
+        or not launcher_path.is_file()
+    ):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_OR_VERIFIER_INVALID",
+        }
+    try:
+        anchor = _strict_json_file_object(anchor_path)
+        resolved_launcher = launcher_path.resolve(strict=True)
+        manifest_bytes = manifest_path.read_bytes()
+        launcher_bytes = resolved_launcher.read_bytes()
+    except (json.JSONDecodeError, OSError, UnicodeError, ValueError):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_OR_VERIFIER_INVALID",
+        }
+    expected_anchor_fields = {
+        "schema_version",
+        "release_path",
+        "release_commit",
+        "manifest_sha256",
+        "launcher_path",
+        "launcher_sha256",
+        "launcher_source_release_path",
+        "launcher_source_commit",
+        "launcher_source_manifest_sha256",
+        "paper_only",
+        "real_orders_enabled",
+    }
+    if not isinstance(anchor, dict) or set(anchor) != expected_anchor_fields:
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_SCHEMA_INVALID",
+        }
+    if (
+        type(anchor.get("schema_version")) is not int
+        or anchor.get("schema_version") != 2
+        or anchor.get("release_path") != str(current_release)
+        or anchor.get("release_commit") != release_commit
+        or anchor.get("launcher_path") != str(resolved_launcher)
+        or anchor.get("paper_only") is not True
+        or anchor.get("real_orders_enabled") is not False
+    ):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_BINDING_MISMATCH",
+        }
+    source_release_value = anchor.get("launcher_source_release_path")
+    source_commit = anchor.get("launcher_source_commit")
+    if (
+        not isinstance(source_release_value, str)
+        or not source_release_value
+        or not isinstance(source_commit, str)
+        or re.fullmatch(r"[0-9a-f]{40}", source_commit) is None
+    ):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_SOURCE_BINDING_INVALID",
+        }
+    source_release = Path(source_release_value)
+    source_manifest_path = source_release / "release-manifest.json"
+    source_launcher_path = source_release / "scripts/run_macos_service.sh"
+    try:
+        resolved_source_release = source_release.resolve(strict=True)
+    except OSError:
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_SOURCE_NOT_RESOLVABLE",
+        }
+    if (
+        source_release.is_symlink()
+        or resolved_source_release != source_release.absolute()
+        or resolved_source_release.parent != releases_root
+        or resolved_source_release.name != source_commit
+        or source_manifest_path.is_symlink()
+        or not source_manifest_path.is_file()
+        or source_launcher_path.is_symlink()
+        or not source_launcher_path.is_file()
+    ):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_SOURCE_BINDING_INVALID",
+        }
+    try:
+        source_manifest_bytes = source_manifest_path.read_bytes()
+        source_launcher_bytes = source_launcher_path.read_bytes()
+        source_manifest = _strict_json_file_object(source_manifest_path)
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_SOURCE_NOT_READABLE",
+        }
+    if (
+        type(source_manifest.get("schema_version")) is not int
+        or source_manifest.get("schema_version") != 2
+        or source_manifest.get("commit") != source_commit
+    ):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_SOURCE_MANIFEST_INVALID",
+        }
+    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    launcher_sha256 = hashlib.sha256(launcher_bytes).hexdigest()
+    if anchor.get("manifest_sha256") != manifest_sha256:
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_MANIFEST_SHA_MISMATCH",
+        }
+    source_manifest_sha256 = hashlib.sha256(source_manifest_bytes).hexdigest()
+    if anchor.get("launcher_source_manifest_sha256") != source_manifest_sha256:
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_SOURCE_MANIFEST_SHA_MISMATCH",
+        }
+    if (
+        anchor.get("launcher_sha256") != launcher_sha256
+        or launcher_sha256 != hashlib.sha256(source_launcher_bytes).hexdigest()
+    ):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_INTEGRITY_ANCHOR_VERIFIER_SHA_MISMATCH",
+        }
     manifest_commit = manifest.get("commit")
     safety_passed = (
         manifest.get("paper_only") is True
@@ -1571,7 +3917,11 @@ def _release_package_evidence(
             "path": relative_path,
             "reason": "RELEASE_MANIFEST_PAPER_SAFETY_FAILED",
         }
-    if manifest.get("schema_version") != 2 or manifest_commit != release_commit:
+    if (
+        type(manifest.get("schema_version")) is not int
+        or manifest.get("schema_version") != 2
+        or manifest_commit != release_commit
+    ):
         return {
             "status": "NOT_PROVEN",
             "path": relative_path,
@@ -1582,13 +3932,46 @@ def _release_package_evidence(
             current_release,
             expected_commit=release_commit,
         )
-    except RuntimeError:
+        stage_macos_release._verify_release_tree(  # noqa: SLF001
+            resolved_source_release,
+            expected_commit=source_commit,
+        )
+    except (RuntimeError, OSError, UnicodeError, json.JSONDecodeError):
         return {
             "status": "FAIL",
             "path": relative_path,
             "reason": "RELEASE_TREE_FULL_HASH_VERIFICATION_FAILED",
         }
-    if release_commit != latest_commit or working_tree_changes:
+    try:
+        manifest_sha256_after_tree_verification = hashlib.sha256(
+            manifest_path.read_bytes()
+        ).hexdigest()
+        source_manifest_sha256_after_tree_verification = hashlib.sha256(
+            source_manifest_path.read_bytes()
+        ).hexdigest()
+        launcher_sha256_after_tree_verification = hashlib.sha256(
+            launcher_path.read_bytes()
+        ).hexdigest()
+        source_launcher_sha256_after_tree_verification = hashlib.sha256(
+            source_launcher_path.read_bytes()
+        ).hexdigest()
+    except OSError:
+        manifest_sha256_after_tree_verification = ""
+        source_manifest_sha256_after_tree_verification = ""
+        launcher_sha256_after_tree_verification = ""
+        source_launcher_sha256_after_tree_verification = ""
+    if (
+        manifest_sha256_after_tree_verification != manifest_sha256
+        or source_manifest_sha256_after_tree_verification != source_manifest_sha256
+        or launcher_sha256_after_tree_verification != launcher_sha256
+        or source_launcher_sha256_after_tree_verification != launcher_sha256
+    ):
+        return {
+            "status": "FAIL",
+            "path": relative_path,
+            "reason": "RELEASE_MANIFEST_CHANGED_DURING_VERIFICATION",
+        }
+    if not _release_commit_matches_source(release_commit, latest_commit) or working_tree_changes:
         return {
             "status": "NOT_PROVEN",
             "path": relative_path,
@@ -1597,7 +3980,7 @@ def _release_package_evidence(
     return {
         "status": "PASS",
         "path": relative_path,
-        "reason": "V2_SAFE_RELEASE_TREE_HASHES_MATCH_CLEAN_HEAD",
+        "reason": "V2_SAFE_RELEASE_TREE_AND_EXTERNAL_ANCHOR_MATCH_CLEAN_HEAD",
     }
 
 
@@ -1640,6 +4023,7 @@ def _overall_report_status(
         "full_suite_after_latest_change",
         "thirty_minute_soak",
         "release_package",
+        "launch_agent",
         "installed_release",
         "remote_push",
     )
@@ -1700,8 +4084,7 @@ def build_report() -> dict[str, Any]:
             opportunity_key_fields == EXPECTED_OPPORTUNITY_KEY_FIELDS
         ),
         "orderflow_affected_ids_exactly_two": (
-            tuple(ORDERFLOW_AFFECTED_STRATEGY_IDS)
-            == EXPECTED_ORDERFLOW_AFFECTED_STRATEGY_IDS
+            tuple(ORDERFLOW_AFFECTED_STRATEGY_IDS) == EXPECTED_ORDERFLOW_AFFECTED_STRATEGY_IDS
         ),
         "orderflow_filter_default_off": orderflow_filter.get("enabled") is False,
         "orderflow_filter_creates_no_candidate_plan": (
@@ -1749,6 +4132,10 @@ def build_report() -> dict[str, Any]:
         latest_commit=latest_commit,
         working_tree_changes=working_tree_changes,
     )
+    launch_agent_evidence = _launch_agent_evidence(
+        deployment,
+        runtime_observation=live_runtime,
+    )
     evidence_details = {
         "v2_v3_comparison": _load_evidence(
             EVIDENCE_PATHS["v2_v3_comparison"],
@@ -1789,11 +4176,13 @@ def build_report() -> dict[str, Any]:
             source_working_tree_changes=source_working_tree_changes,
         ),
         "release_package": release_package_evidence,
+        "launch_agent": launch_agent_evidence,
         "installed_release": _installed_release_evidence(
             deployment,
             latest_commit=latest_commit,
             working_tree_changes=working_tree_changes,
             release_package_evidence=release_package_evidence,
+            launch_agent_evidence=launch_agent_evidence,
         ),
         "remote_push": _remote_sync_evidence(
             latest_commit=latest_commit,
@@ -1803,22 +4192,13 @@ def build_report() -> dict[str, Any]:
     }
     for detail in evidence_details.values():
         detail.pop("payload", None)
-    evidence_statuses = {
-        name: str(detail["status"])
-        for name, detail in evidence_details.items()
-    }
+    evidence_statuses = {name: str(detail["status"]) for name, detail in evidence_details.items()}
     runtime_available = live_runtime.get("available") is True
     runtime_report_fields = _runtime_report_fields(live_runtime)
-    raw_past_runtime = evidence_details["thirty_minute_soak"].get(
-        "validated_runtime_observation"
-    )
-    past_runtime = (
-        dict(raw_past_runtime) if isinstance(raw_past_runtime, dict) else None
-    )
+    raw_past_runtime = evidence_details["thirty_minute_soak"].get("validated_runtime_observation")
+    past_runtime = dict(raw_past_runtime) if isinstance(raw_past_runtime, dict) else None
     raw_past_mode_counts = (
-        past_runtime.get("strategy_mode_counts")
-        if past_runtime is not None
-        else None
+        past_runtime.get("strategy_mode_counts") if past_runtime is not None else None
     )
     past_runtime_mode_counts = (
         dict(raw_past_mode_counts) if isinstance(raw_past_mode_counts, dict) else None
@@ -1831,11 +4211,21 @@ def build_report() -> dict[str, Any]:
     )
     unresolved: list[dict[str, Any]] = []
     if evidence_statuses["installed_release"] != "PASS":
-        unresolved.append({
-            "id": "SOURCE_INSTALL_COMMIT_MISMATCH",
-            "status": evidence_statuses["installed_release"],
-            "detail": evidence_details["installed_release"],
-        })
+        unresolved.append(
+            {
+                "id": "SOURCE_INSTALL_COMMIT_MISMATCH",
+                "status": evidence_statuses["installed_release"],
+                "detail": evidence_details["installed_release"],
+            }
+        )
+    if evidence_statuses["launch_agent"] != "PASS":
+        unresolved.append(
+            {
+                "id": "LAUNCH_AGENT_INSTALL_AND_PROCESS_BINDING",
+                "status": evidence_statuses["launch_agent"],
+                "detail": evidence_details["launch_agent"],
+            }
+        )
     unresolved.append(
         {
             "id": "V3_FIXED_INPUT_COMPARISON",
@@ -1844,17 +4234,23 @@ def build_report() -> dict[str, Any]:
         }
     )
     if not runtime_available:
-        unresolved.append({
-            "id": "CURRENT_RUNTIME_DYNAMIC_STATE",
-            "status": runtime_status,
-            "detail": "서비스가 중지됐거나 도달할 수 없어 동적 상태를 실행 검증하지 않았습니다.",
-        })
+        unresolved.append(
+            {
+                "id": "CURRENT_RUNTIME_DYNAMIC_STATE",
+                "status": runtime_status,
+                "detail": (
+                    "서비스가 중지됐거나 도달할 수 없어 동적 상태를 실행 검증하지 않았습니다."
+                ),
+            }
+        )
     elif runtime_status != "PASS":
-        unresolved.append({
-            "id": "CURRENT_RUNTIME_SAFETY_CONTRACT",
-            "status": runtime_status,
-            "detail": runtime_evidence,
-        })
+        unresolved.append(
+            {
+                "id": "CURRENT_RUNTIME_SAFETY_CONTRACT",
+                "status": runtime_status,
+                "detail": runtime_evidence,
+            }
+        )
     if legacy_paths:
         unresolved.append(
             {
@@ -1896,6 +4292,8 @@ def build_report() -> dict[str, Any]:
         "git_commit_matches_requested_baseline": latest_commit == BASELINE_COMMIT,
         "installed_release_commit": deployment["release_commit"],
         "installed_release_state": deployment["status"],
+        "installed_release_evidence_boundary": INSTALLED_RELEASE_EVIDENCE_BOUNDARY,
+        "launch_agent_evidence_boundary": LAUNCH_AGENT_EVIDENCE_BOUNDARY,
         "report_provenance": {
             "head_scope": "TRACKED_HEAD_REFERENCE_AT_GENERATION_TIME",
             "working_tree_clean_excluding_this_report": not working_tree_changes,
@@ -1908,9 +4306,7 @@ def build_report() -> dict[str, Any]:
         "source_strategy_ids": source_strategy_ids,
         "runtime_strategy_ids": runtime_report_fields["runtime_strategy_ids"],
         "runtime_strategy_ids_evidence": (
-            "CURRENT_LOCALHOST_RUNTIME"
-            if runtime_available
-            else "NOT_PROVEN"
+            "CURRENT_LOCALHOST_RUNTIME" if runtime_available else "NOT_PROVEN"
         ),
         "catalog_strategy_ids": source_strategy_ids,
         "frontend_fallback_strategy_ids": [],
@@ -1931,33 +4327,20 @@ def build_report() -> dict[str, Any]:
         "current_off_count": runtime_report_fields["current_off_count"],
         "retired_count": sum(row["lifecycle"] == "RETIRED" for row in registry_rows),
         "research_off_count": sum(
-            row["mode"] == "OFF" and row["lifecycle"] == "RESEARCH"
-            for row in registry_rows
+            row["mode"] == "OFF" and row["lifecycle"] == "RESEARCH" for row in registry_rows
         ),
         "last_observed_runtime_mode_counts": past_runtime_mode_counts,
         "last_observed_runtime_mode_counts_evidence": (
             "VALIDATED_30_MINUTE_SOAK" if past_runtime is not None else "NOT_PROVEN"
         ),
-        "current_runtime_mode_counts": runtime_report_fields[
-            "current_runtime_mode_counts"
-        ],
+        "current_runtime_mode_counts": runtime_report_fields["current_runtime_mode_counts"],
         "open_position_count": runtime_report_fields["open_position_count"],
-        "total_open_position_count": runtime_report_fields[
-            "total_open_position_count"
-        ],
-        "main_pending_entry_count": runtime_report_fields[
-            "main_pending_entry_count"
-        ],
-        "league_pending_entry_count": runtime_report_fields[
-            "league_pending_entry_count"
-        ],
-        "total_pending_entry_count": runtime_report_fields[
-            "total_pending_entry_count"
-        ],
+        "total_open_position_count": runtime_report_fields["total_open_position_count"],
+        "main_pending_entry_count": runtime_report_fields["main_pending_entry_count"],
+        "league_pending_entry_count": runtime_report_fields["league_pending_entry_count"],
+        "total_pending_entry_count": runtime_report_fields["total_pending_entry_count"],
         "paper_portfolio_flat": runtime_report_fields["paper_portfolio_flat"],
-        "open_position_count_evidence": (
-            runtime_report_fields["runtime_scalar_evidence"]
-        ),
+        "open_position_count_evidence": (runtime_report_fields["runtime_scalar_evidence"]),
         "page_ids": page_ids,
         "navigation_groups": navigation_groups,
         "duplicate_ui_metrics": {
@@ -1995,19 +4378,13 @@ def build_report() -> dict[str, Any]:
         "base_stress_double_count_risk": {
             "status": "MITIGATED_IN_V6_GROUPED_API",
             "last_observed_raw_rows": (
-                past_runtime.get("history_raw_rows")
-                if past_runtime is not None
-                else None
+                past_runtime.get("history_raw_rows") if past_runtime is not None else None
             ),
             "last_observed_unique_opportunities": (
-                past_runtime.get("unique_opportunities")
-                if past_runtime is not None
-                else None
+                past_runtime.get("unique_opportunities") if past_runtime is not None else None
             ),
             "last_observation_evidence": (
-                "VALIDATED_30_MINUTE_SOAK"
-                if past_runtime is not None
-                else "NOT_PROVEN"
+                "VALIDATED_30_MINUTE_SOAK" if past_runtime is not None else "NOT_PROVEN"
             ),
             "rule": "BASE_STRESS_ARE_COST_RESULTS_OF_ONE_OPPORTUNITY",
         },
@@ -2045,22 +4422,15 @@ def build_report() -> dict[str, Any]:
         "evidence_classification": {
             "v2_v3_comparison": evidence_statuses["v2_v3_comparison"],
             "v3_profitability": "NOT_PROVEN",
-            "conditions_telemetry_api_ui": evidence_statuses[
-                "full_suite_after_latest_change"
-            ],
-            "dashboard_payload_benchmark": evidence_statuses[
-                "dashboard_payload_benchmark"
-            ],
-            "browser_e2e_after_latest_change": evidence_statuses[
-                "browser_e2e_after_latest_change"
-            ],
-            "full_suite_after_latest_change": evidence_statuses[
-                "full_suite_after_latest_change"
-            ],
+            "conditions_telemetry_api_ui": evidence_statuses["full_suite_after_latest_change"],
+            "dashboard_payload_benchmark": evidence_statuses["dashboard_payload_benchmark"],
+            "browser_e2e_after_latest_change": evidence_statuses["browser_e2e_after_latest_change"],
+            "full_suite_after_latest_change": evidence_statuses["full_suite_after_latest_change"],
             "thirty_minute_soak": evidence_statuses["thirty_minute_soak"],
             "six_hour_soak": "NOT_RUN",
             "twenty_four_hour_soak": "NOT_RUN",
             "release_package": evidence_statuses["release_package"],
+            "launch_agent": evidence_statuses["launch_agent"],
             "installed_release": evidence_statuses["installed_release"],
             "remote_push": evidence_statuses["remote_push"],
             "runtime": runtime_status,

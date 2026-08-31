@@ -67,6 +67,7 @@ from backend.app.ui_v6 import (
     compact_selected_family_detail,
     compact_ui_summary,
     diagnostics_rows,
+    paper_safety_contract,
     settings_summary,
     stable_etag,
     strategy_page_summary,
@@ -892,9 +893,7 @@ def create_app(
             for variant in v6_preregistered_variants()
             if variant.family_id == resolved_family_id
         ]
-        detail["paper_only"] = True
-        detail["real_orders_enabled"] = False
-        detail["auth_required"] = False
+        detail.update(paper_safety_contract(snapshot))
         return detail
 
     def static_family_catalog() -> list[dict[str, object]]:
@@ -942,6 +941,52 @@ def create_app(
                 }
             )
         return catalog
+
+    def history_with_trade_fill_evidence(
+        history: Mapping[str, object],
+    ) -> dict[str, object]:
+        """`/api/trades` 행에만 strict main fill 증거와 shadow 부재 상태를 붙인다."""
+
+        raw_rows = history.get("rows")
+        rows = (
+            [dict(row) for row in raw_rows if isinstance(row, Mapping)]
+            if isinstance(raw_rows, list)
+            else []
+        )
+        main_keys = [
+            (str(row.get("run_id", "")), str(row.get("trade_id", "")))
+            for row in rows
+            if str(row.get("account_scope", "MAIN")).upper() == "MAIN"
+        ]
+        main_evidence = (
+            active_runtime.ledger.list_trade_fill_evidence(main_keys)
+            if active_runtime.ledger is not None
+            else {}
+        )
+        enriched: list[dict[str, object]] = []
+        for row in rows:
+            if str(row.get("account_scope", "MAIN")).upper() == "LEAGUE":
+                fill_evidence: dict[str, object] = {
+                    "fill_evidence_state": "SHADOW_UNAVAILABLE",
+                    "fill_evidence_reason_ko": (
+                        "전략별 가상계좌 기록은 집계 결과만 보존되어 원시 fill이 제공되지 않습니다."
+                    ),
+                    "fills": [],
+                }
+            else:
+                key = (str(row.get("run_id", "")), str(row.get("trade_id", "")))
+                fill_evidence = main_evidence.get(
+                    key,
+                    {
+                        "fill_evidence_state": "CURRENT_MAIN_NO_FILL",
+                        "fill_evidence_reason_ko": (
+                            "현재 공동 가상계좌 거래의 원시 체결을 확인하지 못했습니다."
+                        ),
+                        "fills": [],
+                    },
+                )
+            enriched.append(row | fill_evidence)
+        return dict(history) | {"rows": enriched}
 
     def grouped_trade_payload(
         history: Mapping[str, object],
@@ -1399,14 +1444,12 @@ def create_app(
     async def strategy_families(
         if_none_match: str | None = Header(default=None, alias="If-None-Match"),
     ) -> Response:
+        snapshot, _ = await cached_dashboard()
         catalog = static_family_catalog()
         payload = {
             "schema_version": 1,
             "families": catalog,
-            "paper_only": True,
-            "real_orders_enabled": False,
-            "auth_required": False,
-        }
+        } | paper_safety_contract(snapshot)
         etag = stable_etag(payload)
         if if_none_match == etag:
             return Response(status_code=304, headers={"ETag": etag})
@@ -2016,7 +2059,18 @@ def create_app(
             sample_type=sample_type,
             limit=2_000,
         )
-        return grouped_trade_payload(history, limit=limit)
+        try:
+            enriched_history = await asyncio.to_thread(history_with_trade_fill_evidence, history)
+        except LedgerInvariantError as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "TRADE_FILL_LEDGER_INVARIANT",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        return grouped_trade_payload(enriched_history, limit=limit)
 
     @app.get("/api/history")
     async def history_records(

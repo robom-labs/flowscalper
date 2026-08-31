@@ -9,10 +9,11 @@ import json
 import math
 import re
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from statistics import NormalDist, fmean, stdev
 from typing import Any
 
 from backend.app.research.v6_candidates import (
@@ -40,6 +41,24 @@ DATA_MANIFEST_SCHEMA = "flowscalper.v6_fixed_input_data_manifest.v1"
 COMPARISON_MANIFEST_SCHEMA = "flowscalper.v6_strategy_comparison.v1"
 MEASUREMENT_SCHEMA = "flowscalper.v6_strategy_measurement.v1"
 RAW_MEASUREMENT_SCHEMA = "flowscalper.v6_raw_measurement_results.v1"
+RAW_COST_FIELDS = (
+    "fee_usdt",
+    "spread_cost_usdt",
+    "slippage_usdt",
+    "latency_penalty_usdt",
+    "funding_usdt",
+)
+OPERATIONAL_CHECK_IDS = (
+    "paper_only",
+    "real_orders_disabled",
+    "auth_disabled",
+    "private_api_disabled",
+    "api_key_disabled",
+    "wallet_disabled",
+    "runtime_ai_order_decisions_disabled",
+    "entry_history_parity",
+    "no_console_errors",
+)
 COMPARISON_NUMERIC_FIELDS = {
     "base_sample_size",
     "stress_sample_size",
@@ -260,19 +279,26 @@ def _validate_public_market_record(
     if kind == "DATASET":
         if not isinstance(row.get("interval"), str) or not row.get("interval"):
             errors.append("INTERVAL_MISSING")
-        values = {
-            field: _finite_number(row.get(field))
-            for field in ("open", "high", "low", "close", "volume")
-        }
-        if any(values[field] is None or values[field] <= 0 for field in ("open", "high", "low", "close")):
+        open_price = _finite_number(row.get("open"))
+        high_price = _finite_number(row.get("high"))
+        low_price = _finite_number(row.get("low"))
+        close_price = _finite_number(row.get("close"))
+        volume = _finite_number(row.get("volume"))
+        if any(
+            value is None or value <= 0
+            for value in (open_price, high_price, low_price, close_price)
+        ):
             errors.append("OHLC_INVALID")
-        if values["volume"] is None or values["volume"] < 0:
+        if volume is None or volume < 0:
             errors.append("VOLUME_INVALID")
-        if all(values[field] is not None for field in ("open", "high", "low", "close")):
-            open_price = float(values["open"])
-            high_price = float(values["high"])
-            low_price = float(values["low"])
-            close_price = float(values["close"])
+        if all(
+            value is not None
+            for value in (open_price, high_price, low_price, close_price)
+        ):
+            assert open_price is not None
+            assert high_price is not None
+            assert low_price is not None
+            assert close_price is not None
             if high_price < max(open_price, low_price, close_price):
                 errors.append("HIGH_INCONSISTENT")
             if low_price > min(open_price, high_price, close_price):
@@ -322,17 +348,27 @@ def _validate_data_manifest_artifacts(
     kind: str,
     count_field: str,
     expected_window: Mapping[str, object],
-) -> list[str]:
+) -> tuple[list[str], dict[str, object]]:
     errors: list[str] = []
     raw_artifacts = manifest.get("artifacts")
     if not isinstance(raw_artifacts, list) or not raw_artifacts:
-        return [f"{kind}_ARTIFACTS_MISSING"]
+        return [f"{kind}_ARTIFACTS_MISSING"], {
+            "identities": set(),
+            "symbols": set(),
+            "sources": set(),
+        }
     collection_key = "records" if kind == "DATASET" else "events"
+    expected_timestamp_field = "open_ts_ms" if kind == "DATASET" else "event_ts_ms"
     expected_total = manifest.get(count_field)
     measured_total = 0
     measured_start: int | None = None
     measured_end: int | None = None
     seen_paths: set[Path] = set()
+    seen_identities: set[str] = set()
+    observed_symbols: set[str] = set()
+    observed_sources: set[str] = set()
+    observed_intervals: set[str] = set()
+    observed_event_types: set[str] = set()
     for index, raw_artifact in enumerate(raw_artifacts):
         prefix = f"{kind}_ARTIFACT_{index}"
         if not isinstance(raw_artifact, Mapping):
@@ -371,9 +407,29 @@ def _validate_data_manifest_artifacts(
             errors.append(f"{prefix}_EMPTY")
             continue
         timestamp_field = raw_artifact.get("timestamp_field")
-        if not isinstance(timestamp_field, str) or not timestamp_field:
-            errors.append(f"{prefix}_TIMESTAMP_FIELD_MISSING")
+        if timestamp_field != expected_timestamp_field:
+            errors.append(f"{prefix}_TIMESTAMP_FIELD_MISMATCH")
             continue
+        for row_index, row in enumerate(records):
+            source, symbol, identity, row_errors = _validate_public_market_record(
+                row,
+                kind=kind,
+            )
+            errors.extend(
+                f"{prefix}_ROW_{row_index}_{error}" for error in row_errors
+            )
+            if source is not None:
+                observed_sources.add(source)
+            if symbol is not None:
+                observed_symbols.add(symbol)
+            if identity is not None:
+                if identity in seen_identities:
+                    errors.append(f"{prefix}_ROW_{row_index}_IDENTITY_DUPLICATE")
+                seen_identities.add(identity)
+            if kind == "DATASET" and isinstance(row.get("interval"), str):
+                observed_intervals.add(str(row["interval"]))
+            if kind == "EVENT_SET" and isinstance(row.get("event_type"), str):
+                observed_event_types.add(str(row["event_type"]))
         timestamps = [_record_timestamp(row.get(timestamp_field)) for row in records]
         if any(timestamp is None for timestamp in timestamps):
             errors.append(f"{prefix}_TIMESTAMP_INVALID")
@@ -412,7 +468,34 @@ def _validate_data_manifest_artifacts(
     )
     if manifest.get("observed_window") != measured_window:
         errors.append(f"{kind}_OBSERVED_WINDOW_MISMATCH")
-    return sorted(set(errors))
+    if manifest.get("symbols") != sorted(observed_symbols):
+        errors.append(f"{kind}_SYMBOLS_MISMATCH")
+    public_sources = manifest.get("public_sources")
+    if not isinstance(public_sources, Mapping) or set(public_sources) != observed_sources:
+        errors.append(f"{kind}_PUBLIC_SOURCES_MISMATCH")
+    else:
+        for source, url in public_sources.items():
+            if (
+                not isinstance(source, str)
+                or not isinstance(url, str)
+                or re.fullmatch(
+                    r"https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/[^?#]*)?",
+                    url,
+                )
+                is None
+            ):
+                errors.append(f"{kind}_PUBLIC_SOURCE_URL_INVALID")
+    if kind == "DATASET" and manifest.get("intervals") != sorted(observed_intervals):
+        errors.append("DATASET_INTERVALS_MISMATCH")
+    if kind == "EVENT_SET" and manifest.get("event_types") != sorted(
+        observed_event_types
+    ):
+        errors.append("EVENT_SET_EVENT_TYPES_MISMATCH")
+    return sorted(set(errors)), {
+        "identities": seen_identities,
+        "symbols": observed_symbols,
+        "sources": observed_sources,
+    }
 
 
 def _fixed_input_lineage_sha256(binding: Mapping[str, object]) -> str:
@@ -441,8 +524,14 @@ def _validate_input_binding(
     input_path: Path,
     source_commit: str,
     source_worktree_clean: bool,
-) -> tuple[dict[str, object], list[str]]:
+) -> tuple[dict[str, object], dict[str, object], list[str]]:
     errors: list[str] = []
+    data_context: dict[str, object] = {
+        "dataset_identities": set(),
+        "event_set_identities": set(),
+        "dataset_symbols": set(),
+        "event_set_symbols": set(),
+    }
     if payload.get("schema_version") != 1 or payload.get("schema") != FIXED_INPUT_SCHEMA:
         errors.append("FIXED_INPUT_SCHEMA_MISMATCH")
     if not _valid_timestamp(payload.get("generated_ts_utc")):
@@ -520,15 +609,29 @@ def _validate_input_binding(
         if manifest_path is None:
             errors.append(f"{kind.upper()}_MANIFEST_FILE_NOT_FOUND")
         else:
-            errors.extend(
-                _validate_data_manifest_artifacts(
-                    manifest,
-                    manifest_path=manifest_path,
-                    kind=declared_kind,
-                    count_field=count_field,
-                    expected_window=window,
-                )
+            artifact_errors, artifact_context = _validate_data_manifest_artifacts(
+                manifest,
+                manifest_path=manifest_path,
+                kind=declared_kind,
+                count_field=count_field,
+                expected_window=window,
             )
+            errors.extend(artifact_errors)
+            identity_key = (
+                "dataset_identities"
+                if declared_kind == "DATASET"
+                else "event_set_identities"
+            )
+            data_context[identity_key] = artifact_context["identities"]
+            symbol_key = (
+                "dataset_symbols"
+                if declared_kind == "DATASET"
+                else "event_set_symbols"
+            )
+            data_context[symbol_key] = artifact_context["symbols"]
+
+    if data_context["dataset_symbols"] != data_context["event_set_symbols"]:
+        errors.append("FIXED_INPUT_DATA_EVENT_SYMBOLS_MISMATCH")
 
     binding = {
         "run_id": run_id,
@@ -543,7 +646,7 @@ def _validate_input_binding(
         "source_commit": declared_commit,
     }
     binding["sample_lineage_sha256"] = _fixed_input_lineage_sha256(binding)
-    return binding, sorted(set(errors))
+    return binding, data_context, sorted(set(errors))
 
 
 def _validated_measurement_metrics(
@@ -588,13 +691,391 @@ def _validated_measurement_metrics(
     return normalized, sorted(set(errors))
 
 
-def _validate_measurement_artifact(
+def _finite_decimal(value: object) -> Decimal | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    parsed = Decimal(str(value))
+    return parsed if parsed.is_finite() else None
+
+
+def _mean_decimal(values: list[Decimal]) -> Decimal:
+    return sum(values, start=Decimal(0)) / Decimal(len(values))
+
+
+def _raw_result_fingerprint(row: Mapping[str, object]) -> tuple[object, ...]:
+    return (
+        row["opportunity_id"],
+        row["symbol"],
+        row["side"],
+        row["entry_ts_ms"],
+        row["exit_ts_ms"],
+        row["period_id"],
+        row["dataset_record_id"],
+        row["event_id"],
+    )
+
+
+def _validate_raw_result_row(
+    raw: Mapping[str, object],
+    *,
+    role: str,
+    measurement_id: object,
+    strategy_ids: list[str],
+    binding: Mapping[str, object],
+    data_context: Mapping[str, object],
+) -> tuple[dict[str, object] | None, list[str]]:
+    errors: list[str] = []
+    normalized: dict[str, object] = {}
+    expected_values = {
+        "run_id": binding.get("run_id"),
+        "replay_id": binding.get("replay_id"),
+        "measurement_id": measurement_id,
+    }
+    for field, expected in expected_values.items():
+        if raw.get(field) != expected:
+            errors.append(f"{field.upper()}_MISMATCH")
+    strategy_id = raw.get("strategy_id")
+    if strategy_id not in strategy_ids:
+        errors.append("STRATEGY_ID_MISMATCH")
+    for field in (
+        "strategy_version",
+        "opportunity_id",
+        "period_id",
+        "dataset_record_id",
+        "event_id",
+    ):
+        value = raw.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{field.upper()}_INVALID")
+        else:
+            normalized[field] = value
+    if raw.get("evaluation_scope") != "OOS":
+        errors.append("EVALUATION_SCOPE_NOT_OOS")
+    profile = raw.get("profile")
+    if profile not in {"BASE", "STRESS"}:
+        errors.append("PROFILE_INVALID")
+    else:
+        normalized["profile"] = profile
+    symbol = raw.get("symbol")
+    symbols = data_context.get("dataset_symbols")
+    if (
+        not isinstance(symbol, str)
+        or not isinstance(symbols, set)
+        or symbol not in symbols
+    ):
+        errors.append("SYMBOL_NOT_IN_FIXED_INPUT")
+    else:
+        normalized["symbol"] = symbol
+    side = raw.get("side")
+    if side not in {"LONG", "SHORT"}:
+        errors.append("SIDE_INVALID")
+    else:
+        normalized["side"] = side
+    dataset_identities = data_context.get("dataset_identities")
+    event_identities = data_context.get("event_set_identities")
+    if (
+        not isinstance(dataset_identities, set)
+        or raw.get("dataset_record_id") not in dataset_identities
+    ):
+        errors.append("DATASET_RECORD_ID_NOT_IN_FIXED_INPUT")
+    if (
+        not isinstance(event_identities, set)
+        or raw.get("event_id") not in event_identities
+    ):
+        errors.append("EVENT_ID_NOT_IN_FIXED_INPUT")
+
+    window = binding.get("window")
+    entry_ts_ms = raw.get("entry_ts_ms")
+    exit_ts_ms = raw.get("exit_ts_ms")
+    window_start = window.get("start_ts_ms") if isinstance(window, Mapping) else None
+    window_end = window.get("end_ts_ms") if isinstance(window, Mapping) else None
+    if (
+        isinstance(entry_ts_ms, bool)
+        or not isinstance(entry_ts_ms, int)
+        or isinstance(exit_ts_ms, bool)
+        or not isinstance(exit_ts_ms, int)
+        or not isinstance(window_start, int)
+        or not isinstance(window_end, int)
+        or entry_ts_ms < window_start
+        or exit_ts_ms < entry_ts_ms
+        or exit_ts_ms > window_end
+    ):
+        errors.append("TIMESTAMP_OUTSIDE_FIXED_WINDOW")
+    else:
+        normalized["entry_ts_ms"] = entry_ts_ms
+        normalized["exit_ts_ms"] = exit_ts_ms
+
+    numeric_fields = (
+        "gross_pnl_usdt",
+        *RAW_COST_FIELDS,
+        "net_pnl_usdt",
+        "initial_risk_usdt",
+        "return_r",
+        "gross_mfe_usdt",
+    )
+    numeric = {field: _finite_decimal(raw.get(field)) for field in numeric_fields}
+    errors.extend(
+        f"{field.upper()}_INVALID" for field, value in numeric.items() if value is None
+    )
+    if not errors:
+        assert all(value is not None for value in numeric.values())
+        values = {field: value for field, value in numeric.items() if value is not None}
+        if any(values[field] < 0 for field in RAW_COST_FIELDS):
+            errors.append("COST_NEGATIVE")
+        if values["initial_risk_usdt"] <= 0:
+            errors.append("INITIAL_RISK_NOT_POSITIVE")
+        if values["gross_mfe_usdt"] < 0:
+            errors.append("GROSS_MFE_NEGATIVE")
+        total_cost = sum((values[field] for field in RAW_COST_FIELDS), Decimal(0))
+        expected_net = values["gross_pnl_usdt"] - total_cost
+        if values["net_pnl_usdt"] != expected_net:
+            errors.append("NET_PNL_NOT_RECOMPUTABLE")
+        expected_return = expected_net / values["initial_risk_usdt"]
+        if values["return_r"] != expected_return:
+            errors.append("RETURN_R_NOT_RECOMPUTABLE")
+        normalized.update({field: float(value) for field, value in values.items()})
+        normalized["total_cost_usdt"] = float(total_cost)
+    normalized["run_id"] = raw.get("run_id")
+    normalized["replay_id"] = raw.get("replay_id")
+    normalized["measurement_id"] = raw.get("measurement_id")
+    normalized["strategy_id"] = strategy_id
+    normalized["strategy_version"] = raw.get("strategy_version")
+    return (normalized if not errors else None), sorted(set(errors))
+
+
+def _validate_cscv_splits(
+    raw_splits: object,
+    *,
+    period_ids: set[str],
+) -> tuple[list[dict[str, object]], list[str]]:
+    if not isinstance(raw_splits, list) or len(raw_splits) < 4:
+        return [], ["CSCV_SPLITS_INSUFFICIENT"]
+    errors: list[str] = []
+    normalized: list[dict[str, object]] = []
+    seen_split_ids: set[str] = set()
+    for index, raw_split in enumerate(raw_splits):
+        prefix = f"CSCV_SPLIT_{index}"
+        if not isinstance(raw_split, Mapping):
+            errors.append(f"{prefix}_NOT_OBJECT")
+            continue
+        split_id = raw_split.get("split_id")
+        in_periods = raw_split.get("in_sample_period_ids")
+        out_periods = raw_split.get("out_of_sample_period_ids")
+        if not isinstance(split_id, str) or not split_id.strip():
+            errors.append(f"{prefix}_ID_INVALID")
+            continue
+        if split_id in seen_split_ids:
+            errors.append(f"{prefix}_ID_DUPLICATE")
+        seen_split_ids.add(split_id)
+        if (
+            not isinstance(in_periods, list)
+            or not in_periods
+            or not all(isinstance(value, str) for value in in_periods)
+            or len(set(in_periods)) != len(in_periods)
+            or not isinstance(out_periods, list)
+            or not out_periods
+            or not all(isinstance(value, str) for value in out_periods)
+            or len(set(out_periods)) != len(out_periods)
+        ):
+            errors.append(f"{prefix}_PERIODS_INVALID")
+            continue
+        in_set = set(in_periods)
+        out_set = set(out_periods)
+        if in_set & out_set or in_set | out_set != period_ids:
+            errors.append(f"{prefix}_PERIOD_PARTITION_INVALID")
+            continue
+        normalized.append(
+            {
+                "split_id": split_id,
+                "in_sample_period_ids": sorted(in_set),
+                "out_of_sample_period_ids": sorted(out_set),
+            }
+        )
+    return normalized, sorted(set(errors))
+
+
+def _validated_number(value: object) -> float:
+    parsed = _finite_number(value)
+    assert parsed is not None
+    return parsed
+
+
+def _validated_integer(value: object) -> int:
+    assert isinstance(value, int) and not isinstance(value, bool)
+    return value
+
+
+def _profile_metrics(rows: Sequence[Mapping[str, object]]) -> dict[str, float]:
+    returns = [_validated_number(row["return_r"]) for row in rows]
+    costs = [_validated_number(row["total_cost_usdt"]) for row in rows]
+    risks = [_validated_number(row["initial_risk_usdt"]) for row in rows]
+    total_cost = sum(costs)
+    coverage = (
+        sum(_validated_number(row["gross_mfe_usdt"]) for row in rows) / total_cost
+    )
+    cumulative = 0.0
+    peak = 0.0
+    drawdown = 0.0
+    for row in sorted(
+        rows,
+        key=lambda item: (
+            _validated_integer(item["exit_ts_ms"]),
+            str(item["opportunity_id"]),
+        ),
+    ):
+        cumulative += _validated_number(row["net_pnl_usdt"])
+        peak = max(peak, cumulative)
+        drawdown = max(drawdown, peak - cumulative)
+    standard_error = stdev(returns) / math.sqrt(len(returns)) if len(returns) > 1 else math.inf
+    return {
+        "sample_size": float(len(rows)),
+        "expectancy": fmean(returns),
+        "cost_coverage": coverage,
+        "drawdown": drawdown,
+        "cost_burden": fmean(cost / risk for cost, risk in zip(costs, risks, strict=True)),
+        "oos_lower_bound": fmean(returns) - 1.959963984540054 * standard_error,
+    }
+
+
+def _validate_raw_measurement_results(
     payload: Mapping[str, object],
     *,
     role: str,
     measurement_id: object,
     strategy_ids: list[str],
     binding: Mapping[str, object],
+    data_context: Mapping[str, object],
+) -> tuple[dict[str, object], list[str]]:
+    errors: list[str] = []
+    if (
+        payload.get("schema_version") != 1
+        or payload.get("schema") != RAW_MEASUREMENT_SCHEMA
+        or payload.get("kind") != "V6_RAW_MEASUREMENT_RESULTS"
+    ):
+        errors.append("RAW_RESULTS_SCHEMA_MISMATCH")
+    for field, expected in (
+        ("role", role),
+        ("measurement_id", measurement_id),
+        ("strategy_ids", strategy_ids),
+    ):
+        if payload.get(field) != expected:
+            errors.append(f"RAW_RESULTS_{field.upper()}_MISMATCH")
+    if not _valid_timestamp(payload.get("generated_ts_utc")):
+        errors.append("RAW_RESULTS_TIMESTAMP_INVALID")
+    if payload.get("source_worktree_clean_at_measurement") is not True:
+        errors.append("RAW_RESULTS_SOURCE_NOT_CLEAN")
+    for field in (
+        "run_id",
+        "replay_id",
+        "cost_model_version",
+        "profile_ids",
+        "window",
+        "dataset_manifest_sha256",
+        "event_set_manifest_sha256",
+        "dataset_record_count",
+        "event_set_event_count",
+        "source_commit",
+        "sample_lineage_sha256",
+    ):
+        if payload.get(field) != binding.get(field):
+            errors.append(f"RAW_RESULTS_{field.upper()}_MISMATCH")
+    operational_checks = payload.get("operational_checks")
+    if (
+        not isinstance(operational_checks, Mapping)
+        or set(operational_checks) != set(OPERATIONAL_CHECK_IDS)
+        or any(operational_checks.get(check_id) is not True for check_id in OPERATIONAL_CHECK_IDS)
+    ):
+        errors.append("RAW_RESULTS_OPERATIONAL_CHECKS_INVALID")
+
+    raw_results = payload.get("results")
+    if not isinstance(raw_results, list) or not raw_results:
+        return {}, sorted(set(errors + ["RAW_RESULTS_MISSING"]))
+    if payload.get("result_count") != len(raw_results):
+        errors.append("RAW_RESULTS_COUNT_MISMATCH")
+    rows: list[dict[str, object]] = []
+    for index, raw_result in enumerate(raw_results):
+        if not isinstance(raw_result, Mapping):
+            errors.append(f"RAW_RESULT_{index}_NOT_OBJECT")
+            continue
+        row, row_errors = _validate_raw_result_row(
+            raw_result,
+            role=role,
+            measurement_id=measurement_id,
+            strategy_ids=strategy_ids,
+            binding=binding,
+            data_context=data_context,
+        )
+        errors.extend(f"RAW_RESULT_{index}_{error}" for error in row_errors)
+        if row is not None:
+            rows.append(row)
+
+    by_profile: dict[str, dict[str, dict[str, object]]] = {"BASE": {}, "STRESS": {}}
+    for row in rows:
+        profile = str(row["profile"])
+        opportunity_id = str(row["opportunity_id"])
+        if opportunity_id in by_profile[profile]:
+            errors.append(f"RAW_RESULTS_{profile}_OPPORTUNITY_DUPLICATE")
+        by_profile[profile][opportunity_id] = row
+    base_ids = set(by_profile["BASE"])
+    stress_ids = set(by_profile["STRESS"])
+    if not base_ids or base_ids != stress_ids:
+        errors.append("RAW_RESULTS_PROFILE_OPPORTUNITIES_MISMATCH")
+    for opportunity_id in sorted(base_ids & stress_ids):
+        base = by_profile["BASE"][opportunity_id]
+        stress = by_profile["STRESS"][opportunity_id]
+        if _raw_result_fingerprint(base) != _raw_result_fingerprint(stress):
+            errors.append("RAW_RESULTS_PROFILE_FINGERPRINT_MISMATCH")
+        if _validated_number(stress["total_cost_usdt"]) < _validated_number(
+            base["total_cost_usdt"]
+        ):
+            errors.append("RAW_RESULTS_STRESS_COST_BELOW_BASE")
+    for profile, profile_rows in by_profile.items():
+        dataset_refs = [str(row["dataset_record_id"]) for row in profile_rows.values()]
+        event_refs = [str(row["event_id"]) for row in profile_rows.values()]
+        if len(set(dataset_refs)) != len(dataset_refs):
+            errors.append(f"RAW_RESULTS_{profile}_DATASET_REFERENCE_DUPLICATE")
+        if len(set(event_refs)) != len(event_refs):
+            errors.append(f"RAW_RESULTS_{profile}_EVENT_REFERENCE_DUPLICATE")
+
+    period_ids = {str(row["period_id"]) for row in by_profile["STRESS"].values()}
+    splits, split_errors = _validate_cscv_splits(
+        payload.get("cscv_splits"),
+        period_ids=period_ids,
+    )
+    errors.extend(split_errors)
+    if errors:
+        return {}, sorted(set(errors))
+
+    base_rows = list(by_profile["BASE"].values())
+    stress_rows = list(by_profile["STRESS"].values())
+    base_metrics = _profile_metrics(base_rows)
+    stress_metrics = _profile_metrics(stress_rows)
+    derived: dict[str, object] = {
+        "base_sample_size": base_metrics["sample_size"],
+        "stress_sample_size": stress_metrics["sample_size"],
+        "base_expectancy": base_metrics["expectancy"],
+        "stress_expectancy": stress_metrics["expectancy"],
+        "base_cost_coverage": base_metrics["cost_coverage"],
+        "stress_cost_coverage": stress_metrics["cost_coverage"],
+        "drawdown": max(base_metrics["drawdown"], stress_metrics["drawdown"]),
+        "cost_burden": stress_metrics["cost_burden"],
+        "oos_lower_bound": stress_metrics["oos_lower_bound"],
+        "operational_regression": False,
+        "_rows_by_profile": by_profile,
+        "_cscv_splits": splits,
+    }
+    return derived, []
+
+
+def _validate_measurement_artifact(
+    payload: Mapping[str, object],
+    *,
+    measurement_path: Path,
+    role: str,
+    measurement_id: object,
+    strategy_ids: list[str],
+    binding: Mapping[str, object],
+    data_context: Mapping[str, object],
 ) -> tuple[dict[str, object], list[str]]:
     errors: list[str] = []
     if (
@@ -630,17 +1111,182 @@ def _validate_measurement_artifact(
             errors.append(f"{role}_MEASUREMENT_{field.upper()}_MISMATCH")
     metrics, metric_errors = _validated_measurement_metrics(payload, role=role)
     errors.extend(metric_errors)
-    return metrics, sorted(set(errors))
+    raw_results, raw_results_error = _load_bound_manifest(
+        measurement_path,
+        path_value=payload.get("raw_results_path"),
+        sha_value=payload.get("raw_results_sha256"),
+    )
+    if raw_results_error is not None or raw_results is None:
+        errors.append(f"{role}_RAW_RESULTS_{raw_results_error}")
+        return {}, sorted(set(errors))
+    derived, raw_errors = _validate_raw_measurement_results(
+        raw_results,
+        role=role,
+        measurement_id=measurement_id,
+        strategy_ids=strategy_ids,
+        binding=binding,
+        data_context=data_context,
+    )
+    errors.extend(f"{role}_{error}" for error in raw_errors)
+    for field, declared_value in metrics.items():
+        if field in {"dsr", "pbo"}:
+            continue
+        if field not in derived or not _comparison_value_matches(
+            declared_value,
+            derived[field],
+        ):
+            errors.append(f"{role}_MEASUREMENT_{field.upper()}_NOT_RECOMPUTABLE")
+    if role == "CANDIDATE":
+        derived["_declared_dsr"] = metrics.get("dsr")
+        derived["_declared_pbo"] = metrics.get("pbo")
+    return derived, sorted(set(errors))
+
+
+def _paired_deflated_confidence(
+    baseline_returns: list[float],
+    candidate_returns: list[float],
+) -> float:
+    """Return a deterministic one-sided confidence from paired OOS return deltas."""
+    deltas = [
+        candidate - baseline
+        for baseline, candidate in zip(
+            baseline_returns,
+            candidate_returns,
+            strict=True,
+        )
+    ]
+    mean_delta = fmean(deltas)
+    if len(deltas) < 2:
+        return 0.0
+    delta_stdev = stdev(deltas)
+    if delta_stdev == 0:
+        return 1.0 if mean_delta > 0 else 0.0
+    z_score = mean_delta / (delta_stdev / math.sqrt(len(deltas)))
+    return NormalDist().cdf(z_score)
+
+
+def _period_return_mean(
+    rows: Mapping[str, Mapping[str, object]],
+    period_ids: set[str],
+) -> float | None:
+    values = [
+        _validated_number(row["return_r"])
+        for row in rows.values()
+        if row["period_id"] in period_ids
+    ]
+    return fmean(values) if values else None
+
+
+def _cscv_pbo(
+    baseline_rows: Mapping[str, Mapping[str, object]],
+    candidate_rows: Mapping[str, Mapping[str, object]],
+    splits: list[Mapping[str, object]],
+) -> float | None:
+    underperformed = 0
+    for split in splits:
+        raw_in = split.get("in_sample_period_ids")
+        raw_out = split.get("out_of_sample_period_ids")
+        if not isinstance(raw_in, list) or not isinstance(raw_out, list):
+            return None
+        in_periods = {str(value) for value in raw_in}
+        out_periods = {str(value) for value in raw_out}
+        baseline_in = _period_return_mean(baseline_rows, in_periods)
+        candidate_in = _period_return_mean(candidate_rows, in_periods)
+        baseline_out = _period_return_mean(baseline_rows, out_periods)
+        candidate_out = _period_return_mean(candidate_rows, out_periods)
+        if any(
+            value is None
+            for value in (baseline_in, candidate_in, baseline_out, candidate_out)
+        ):
+            return None
+        assert baseline_in is not None
+        assert candidate_in is not None
+        assert baseline_out is not None
+        assert candidate_out is not None
+        if baseline_in == candidate_in:
+            return None
+        selected_candidate = candidate_in > baseline_in
+        if (
+            selected_candidate
+            and candidate_out <= baseline_out
+            or not selected_candidate
+            and baseline_out <= candidate_out
+        ):
+            underperformed += 1
+    return underperformed / len(splits) if splits else None
 
 
 def _comparison_from_measurements(
     baseline: Mapping[str, object],
     candidate: Mapping[str, object],
-) -> dict[str, object]:
+) -> tuple[dict[str, object], list[str]]:
+    errors: list[str] = []
+
     def difference(field: str) -> float:
         return float(Decimal(str(candidate[field])) - Decimal(str(baseline[field])))
 
-    return {
+    baseline_profiles = baseline.get("_rows_by_profile")
+    candidate_profiles = candidate.get("_rows_by_profile")
+    baseline_splits = baseline.get("_cscv_splits")
+    candidate_splits = candidate.get("_cscv_splits")
+    if (
+        not isinstance(baseline_profiles, Mapping)
+        or not isinstance(candidate_profiles, Mapping)
+        or not isinstance(baseline_splits, list)
+        or baseline_splits != candidate_splits
+    ):
+        return {}, ["ROW_RAW_MEASUREMENT_STRUCTURE_MISMATCH"]
+    baseline_stress = baseline_profiles.get("STRESS")
+    candidate_stress = candidate_profiles.get("STRESS")
+    if not isinstance(baseline_stress, Mapping) or not isinstance(
+        candidate_stress,
+        Mapping,
+    ):
+        return {}, ["ROW_RAW_STRESS_RESULTS_MISSING"]
+    if set(baseline_stress) != set(candidate_stress):
+        return {}, ["ROW_RAW_OPPORTUNITY_SET_MISMATCH"]
+    opportunity_ids = sorted(str(value) for value in baseline_stress)
+    for profile in ("BASE", "STRESS"):
+        baseline_rows = baseline_profiles.get(profile)
+        candidate_rows = candidate_profiles.get(profile)
+        if not isinstance(baseline_rows, Mapping) or not isinstance(
+            candidate_rows,
+            Mapping,
+        ):
+            errors.append(f"ROW_RAW_{profile}_RESULTS_MISSING")
+            continue
+        if set(baseline_rows) != set(candidate_rows):
+            errors.append(f"ROW_RAW_{profile}_OPPORTUNITY_SET_MISMATCH")
+            continue
+        for opportunity_id in baseline_rows:
+            baseline_row = baseline_rows[opportunity_id]
+            candidate_row = candidate_rows[opportunity_id]
+            if (
+                not isinstance(baseline_row, Mapping)
+                or not isinstance(candidate_row, Mapping)
+                or _raw_result_fingerprint(baseline_row)
+                != _raw_result_fingerprint(candidate_row)
+            ):
+                errors.append(f"ROW_RAW_{profile}_FINGERPRINT_MISMATCH")
+                break
+    baseline_returns = [
+        float(baseline_stress[opportunity_id]["return_r"])
+        for opportunity_id in opportunity_ids
+    ]
+    candidate_returns = [
+        float(candidate_stress[opportunity_id]["return_r"])
+        for opportunity_id in opportunity_ids
+    ]
+    dsr = _paired_deflated_confidence(baseline_returns, candidate_returns)
+    pbo = _cscv_pbo(baseline_stress, candidate_stress, baseline_splits)
+    if pbo is None:
+        errors.append("ROW_RAW_PBO_NOT_RECOMPUTABLE")
+        pbo = 1.0
+    if not _comparison_value_matches(candidate.get("_declared_dsr"), dsr):
+        errors.append("ROW_CANDIDATE_MEASUREMENT_DSR_NOT_RECOMPUTABLE")
+    if not _comparison_value_matches(candidate.get("_declared_pbo"), pbo):
+        errors.append("ROW_CANDIDATE_MEASUREMENT_PBO_NOT_RECOMPUTABLE")
+    comparison = {
         "same_frozen_input": True,
         "base_sample_size": candidate["base_sample_size"],
         "stress_sample_size": candidate["stress_sample_size"],
@@ -653,10 +1299,11 @@ def _comparison_from_measurements(
         "drawdown_delta": difference("drawdown"),
         "cost_burden_delta": difference("cost_burden"),
         "oos_lower_bound": candidate["oos_lower_bound"],
-        "dsr": candidate["dsr"],
-        "pbo": candidate["pbo"],
+        "dsr": dsr,
+        "pbo": pbo,
         "operational_regression": candidate["operational_regression"],
     }
+    return comparison, sorted(set(errors))
 
 
 def _comparison_value_matches(actual: object, expected: object) -> bool:
@@ -675,6 +1322,7 @@ def _validate_row_lineage(
     *,
     input_path: Path,
     binding: Mapping[str, object],
+    data_context: Mapping[str, object],
 ) -> list[str]:
     errors: list[str] = []
     required = {
@@ -742,20 +1390,30 @@ def _validate_row_lineage(
         ("CANDIDATE", candidate_measurement_id, [variant.strategy_id]),
     ):
         key_prefix = role.lower()
+        measurement_path = _evidence_path(
+            comparison_manifest_path,
+            manifest.get(f"{key_prefix}_measurement_path"),
+        )
         measurement, measurement_error = _load_bound_manifest(
             comparison_manifest_path,
             path_value=manifest.get(f"{key_prefix}_measurement_path"),
             sha_value=manifest.get(f"{key_prefix}_measurement_sha256"),
         )
-        if measurement_error is not None or measurement is None:
+        if (
+            measurement_error is not None
+            or measurement is None
+            or measurement_path is None
+        ):
             errors.append(f"ROW_{role}_MEASUREMENT_{measurement_error}")
             continue
         metrics, measurement_errors = _validate_measurement_artifact(
             measurement,
+            measurement_path=measurement_path,
             role=role,
             measurement_id=measurement_id,
             strategy_ids=strategy_ids,
             binding=binding,
+            data_context=data_context,
         )
         errors.extend(f"ROW_{error}" for error in measurement_errors)
         if not measurement_errors:
@@ -765,9 +1423,12 @@ def _validate_row_lineage(
     if not isinstance(manifest_comparison, Mapping):
         errors.append("ROW_COMPARISON_MANIFEST_METRICS_MISSING")
     if {"BASELINE", "CANDIDATE"} <= measurements.keys():
-        derived_comparison = _comparison_from_measurements(
+        derived_comparison, comparison_errors = _comparison_from_measurements(
             measurements["BASELINE"], measurements["CANDIDATE"]
         )
+        errors.extend(comparison_errors)
+        if comparison_errors:
+            return sorted(set(errors))
         for sample_field, count_field in (
             ("base_sample_size", "dataset_record_count"),
             ("base_sample_size", "event_set_event_count"),
@@ -797,6 +1458,10 @@ def _validate_row_lineage(
             for field in COMPARISON_REQUIRED_FIELDS
         ):
             errors.append("ROW_COMPARISON_MANIFEST_METRICS_MISMATCH")
+        # Raw outcome tables can prove arithmetic consistency, not that strategy rules
+        # actually produced their entries/fills. Promotion stays fail-closed until the
+        # repository replay engine independently emits and replays those decisions.
+        errors.append("ROW_REPLAY_OUTCOMES_NOT_INDEPENDENTLY_RECOMPUTED")
     return sorted(set(errors))
 
 
@@ -925,13 +1590,14 @@ def build_report(input_path: Path) -> dict[str, Any]:
     duplicate_strategy_ids: list[str] = []
     unexpected_strategy_ids: list[str] = []
     input_binding: dict[str, object] = {}
+    input_data_context: dict[str, object] = {}
     input_binding_errors: list[str] = []
     input_status = "NOT_RUN_NO_FIXED_INPUT_RESULT"
     if input_path.exists():
         payload = json.loads(input_path.read_text(encoding="utf-8"))
         if not isinstance(payload, Mapping):
             raise ValueError("fixed input evidence root는 object여야 합니다.")
-        input_binding, input_binding_errors = _validate_input_binding(
+        input_binding, input_data_context, input_binding_errors = _validate_input_binding(
             payload,
             input_path=input_path,
             source_commit=commit,
@@ -984,6 +1650,7 @@ def build_report(input_path: Path) -> dict[str, Any]:
                     input_rows[variant.strategy_id],
                     input_path=input_path,
                     binding=input_binding,
+                    data_context=input_data_context,
                 )
             ),
         )

@@ -119,6 +119,11 @@ export const initialDashboard: DashboardData = {
   system: {
     api_host: '127.0.0.1:8765',
     auth_headers: false,
+    private_api_enabled: false,
+    api_key_enabled: false,
+    wallet_enabled: false,
+    runtime_ai_order_decision_enabled: false,
+    funding_readiness: 'NOT_READY',
     storage: 'loading',
     app_version: '0.3.0-paper',
   },

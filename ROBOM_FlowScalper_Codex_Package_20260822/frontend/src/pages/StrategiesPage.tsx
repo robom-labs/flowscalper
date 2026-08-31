@@ -28,6 +28,12 @@ type StrategyConfiguration = {
   expected_revision: number
 }
 
+type FamilyResearchConfiguration = {
+  research_enabled: boolean
+  expected_revision: number
+  reason: string
+}
+
 type Props = {
   strategies: StrategySummaryRow[]
   leagueAccounts: LeagueAccount[]
@@ -36,12 +42,18 @@ type Props = {
   analyticsReady?: boolean
   researchDetails?: boolean
   selectedFamilyDetail?: StrategyFamilyDetail | null
+  controlsEnabled: boolean
   onSelectFamily?: (familyId: string | null) => void
   onConfigure: (strategyId: string, configuration: StrategyConfiguration) => Promise<unknown>
   onRollback?: (strategyId: string, targetRevision: number, expectedRevision: number) => Promise<unknown>
+  onConfigureFamilyResearch?: (
+    familyId: string,
+    configuration: FamilyResearchConfiguration,
+  ) => Promise<StrategyFamilyDetail>
 }
 
 type CostProfile = 'BASE' | 'STRESS'
+type StrategyDetailTab = 'status' | 'conditions' | 'exit' | 'performance' | 'sources' | 'previous'
 type StrategySortKey = 'strategy' | 'status' | 'wilson' | 'sampleSize' | 'expectancy' | 'net' | 'openPositions'
 type SortDirection = 'ascending' | 'descending'
 type FamilyCategoryFilter = 'all' | 'trend' | 'breakout' | 'reversal' | 'filter' | 'marketNeutral' | 'ranking'
@@ -69,6 +81,15 @@ type FamilyResearchUndo = {
 
 const orderflowFamilyId = 'ORDERFLOW_CONFIRMATION'
 
+const strategyDetailTabs: Array<{ id: StrategyDetailTab; label: string }> = [
+  { id: 'status', label: '지금 상태' },
+  { id: 'conditions', label: '진입조건' },
+  { id: 'exit', label: '청산' },
+  { id: 'performance', label: '성과' },
+  { id: 'sources', label: '출처' },
+  { id: 'previous', label: '이전 버전' },
+]
+
 const familyCategoryOptions: Array<{ id: FamilyCategoryFilter; label: string }> = [
   { id: 'all', label: '전체' },
   { id: 'trend', label: '추세' },
@@ -79,11 +100,17 @@ const familyCategoryOptions: Array<{ id: FamilyCategoryFilter; label: string }> 
   { id: 'ranking', label: '순위' },
 ]
 
+function profileUniqueSamples(
+  report: Pick<StrategyPerformance, 'sample_size' | 'profile_unique_opportunity_count'>,
+) {
+  return report.profile_unique_opportunity_count ?? report.sample_size
+}
+
 function inFamilyCategory(strategy: StrategySummaryRow, filter: FamilyCategoryFilter, profile: CostProfile) {
   if (filter === 'all') return true
   if (filter === 'ranking') {
     const report = strategy.performance[profile]
-    return (report.unique_opportunity_count ?? report.sample_size) >= 30
+    return profileUniqueSamples(report) >= 30
       && strategy.final_ranking_eligible === true
   }
   if (filter === 'trend') return strategy.family_id === 'TREND_PULLBACK'
@@ -264,14 +291,27 @@ function ResearchSources({ sources, sourceIds }: { sources: ResearchSourceMetada
   </section>
 }
 
-function StrategyConditionsPanel({ familyId }: { familyId: string }) {
+type StrategyConditionsView = 'status' | 'conditions' | 'exit'
+
+function StrategyConditionsPanel({
+  familyId,
+  view,
+}: {
+  familyId: string
+  view: StrategyConditionsView
+}) {
   const { result, retry } = useFamilyConditions(familyId)
   const data = result?.state === 'ready' ? result.data : null
   const blockers = data ? humanConditionBlockers(data) : []
+  const heading = view === 'status'
+    ? '지금 상태'
+    : view === 'conditions'
+      ? '진입 조건 실측'
+      : '청산 계획'
   return (
     <section className="profile-detail-block strategy-conditions" aria-labelledby="strategy-conditions-heading">
-      <h3 id="strategy-conditions-heading">진입 조건 실측</h3>
-      <p className="profile-scope-note">공개시장 PAPER 판단값이며 진행 중 상태와 청산 계획을 함께 표시합니다.</p>
+      <h3 id="strategy-conditions-heading">{heading}</h3>
+      <p className="profile-scope-note">공개시장 PAPER 판단값이며 5초마다 선택한 family의 최신 상태를 다시 확인합니다.</p>
       {!result || result.state === 'loading' ? <p role="status">조건과 현재값을 불러오는 중입니다.</p> : null}
       {result?.state === 'error' ? <div className="strategy-condition-error" role="alert"><p>{result.error}</p><button type="button" className="secondary-button" onClick={retry}>조건 다시 불러오기</button></div> : null}
       {data ? <>
@@ -281,16 +321,16 @@ function StrategyConditionsPanel({ familyId }: { familyId: string }) {
             ? `5초마다 자동 확인 · 마지막 ${evaluationTime(result.lastUpdatedMs)}`
             : '최신 조건값 확인 전입니다.'}</p>
         {result?.refreshError ? <div className="strategy-condition-error" role="alert"><p>{result.refreshError}</p><button type="button" className="secondary-button" onClick={retry}>조건 다시 불러오기</button></div> : null}
-        <dl className="strategy-condition-summary">
+        {view === 'status' ? <dl className="strategy-condition-summary">
           <div><dt>준비 상태</dt><dd>{setupStateLabel(data.setup_state)}</dd></div>
           <div><dt>충족 조건</dt><dd>{data.passed === null ? '측정 전' : `${data.passed}/${data.total}`}</dd></div>
           <div><dt>확인 종목</dt><dd>{data.symbol || '선택 종목 측정 대기'}</dd></div>
           <div><dt>진입 대기</dt><dd>{typeof data.pending_count === 'number' ? `${data.pending_count}건` : '정보 없음'}</dd></div>
           <div><dt>진행 포지션</dt><dd>{typeof data.open_count === 'number' ? `${data.open_count}건` : '정보 없음'}</dd></div>
           <div><dt>만료</dt><dd>{executionExpiry(data)}</dd></div>
-        </dl>
-        {blockers.length ? <div className="strategy-blockers"><strong>먼저 확인할 조건</strong><ul>{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></div> : data.top_blockers.length ? <p className="profile-scope-note">세부 미충족 사유는 아래 조건 상태에서 확인할 수 있습니다.</p> : null}
-        {data.conditions.length ? <div className="table-scroll"><table className="strategy-condition-table" aria-label="선택 전략의 진입 조건 실측"><thead><tr><th>조건</th><th>기준</th><th>현재값</th><th>상태</th></tr></thead><tbody>{data.conditions.map((condition, index) => {
+        </dl> : null}
+        {view === 'status' && blockers.length ? <div className="strategy-blockers"><strong>먼저 확인할 조건</strong><ul>{blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></div> : view === 'status' && data.top_blockers.length ? <p className="profile-scope-note">세부 미충족 사유는 진입조건 탭에서 확인할 수 있습니다.</p> : null}
+        {view === 'conditions' && data.conditions.length ? <div className="table-scroll"><table className="strategy-condition-table" aria-label="선택 전략의 진입 조건 실측"><thead><tr><th>조건</th><th>기준</th><th>현재값</th><th>상태</th></tr></thead><tbody>{data.conditions.map((condition, index) => {
           const state = conditionStatus(condition.status)
           return <tr key={condition.condition_id || index}>
             <td data-label="조건">{includesKorean(condition.label_ko) ? condition.label_ko : `조건 ${index + 1}`}</td>
@@ -298,8 +338,8 @@ function StrategyConditionsPanel({ familyId }: { familyId: string }) {
             <td data-label="현재값">{conditionCurrentValue(condition)}</td>
             <td data-label="상태"><span className={`condition-state ${state.tone}`}>{state.label}</span>{condition.reason_ko && includesKorean(condition.reason_ko) ? <small>{condition.reason_ko}</small> : null}</td>
           </tr>
-        })}</tbody></table></div> : <p className="strategy-condition-empty">조건별 측정값이 아직 없습니다. 전략 설명은 볼 수 있지만 진입 여부를 단정하지 않습니다.</p>}
-        <section className="strategy-execution-plan" aria-label="선택 전략의 청산 정보">
+        })}</tbody></table></div> : view === 'conditions' ? <p className="strategy-condition-empty">조건별 측정값이 아직 없습니다. 전략 설명은 볼 수 있지만 진입 여부를 단정하지 않습니다.</p> : null}
+        {view === 'exit' ? <section className="strategy-execution-plan" aria-label="선택 전략의 청산 정보">
           <h4>청산 정보</h4>
           <dl className="drawer-detail-list">
             <div><dt>entry</dt><dd>{executionValue(data.execution?.entry)}</dd></div>
@@ -310,7 +350,7 @@ function StrategyConditionsPanel({ familyId }: { familyId: string }) {
             <div><dt>current trail</dt><dd>{executionValue(data.execution?.current_trail)}</dd></div>
             <div><dt>remaining quantity</dt><dd>{executionValue(data.execution?.remaining_quantity)}</dd></div>
           </dl>
-        </section>
+        </section> : null}
       </> : null}
     </section>
   )
@@ -361,7 +401,15 @@ function summaryStrategyLabel(strategy: StrategySummaryRow | undefined, strategy
   return family === variant ? family : `${family} · ${variant}`
 }
 
-function OrderflowFilterPanel({ strategies }: { strategies: StrategySummaryRow[] }) {
+function OrderflowFilterPanel({
+  strategies,
+  controlsEnabled,
+  onConfigureFamilyResearch,
+}: {
+  strategies: StrategySummaryRow[]
+  controlsEnabled: boolean
+  onConfigureFamilyResearch?: Props['onConfigureFamilyResearch']
+}) {
   const { result, retry } = useFamilyConditions(orderflowFamilyId)
   const [saving, setSaving] = useState(false)
   const [mutationMessage, setMutationMessage] = useState('')
@@ -380,14 +428,20 @@ function OrderflowFilterPanel({ strategies }: { strategies: StrategySummaryRow[]
     setMutationMessage('')
     setMutationError('')
     try {
-      const detail = await fetchJson<StrategyFamilyDetail>(`/api/strategy-families/${orderflowFamilyId}/research-enabled`, {
-        method: 'PATCH',
-        body: JSON.stringify({
+      if (!controlsEnabled || !onConfigureFamilyResearch) {
+        throw new ApiError({
+          code: 'PAPER_SAFETY_NOT_VERIFIED',
+          messageKo: 'PAPER 안전 상태를 확인할 때까지 전략 변경을 잠급니다.',
+        })
+      }
+      const detail = await onConfigureFamilyResearch(
+        orderflowFamilyId,
+        {
           research_enabled: nextEnabled,
           expected_revision: expectedRevision,
           reason,
-        }),
-      })
+        },
+      )
       const current = detail.variants.find((variant) => variant.is_current_variant)?.setting
       const responseRevision = current?.settings_revision ?? current?.revision
       if (typeof responseRevision !== 'number') throw new Error('missing family revision')
@@ -404,7 +458,7 @@ function OrderflowFilterPanel({ strategies }: { strategies: StrategySummaryRow[]
     } finally {
       setSaving(false)
     }
-  }, [retry])
+  }, [controlsEnabled, onConfigureFamilyResearch, retry])
   const toggle = useCallback(async () => {
     if (!filter || typeof enabled !== 'boolean' || typeof revision !== 'number') return
     const nextEnabled = !enabled
@@ -428,7 +482,7 @@ function OrderflowFilterPanel({ strategies }: { strategies: StrategySummaryRow[]
     <section className="panel orderflow-filter-panel" aria-labelledby="orderflow-filter-heading" aria-busy={!result || result.state === 'loading'}>
       <div className="orderflow-filter-heading">
         <div><p className="section-kicker">진입 품질 보조 필터</p><h3 id="orderflow-filter-heading">주문흐름 확인 필터</h3><p>PAPER 후보의 체결·호가 흐름을 한 번 더 확인하며 자체 진입 신호는 만들지 않습니다.</p></div>
-        {filter && typeof enabled === 'boolean' ? <div className="orderflow-filter-action"><span className={enabled ? 'orderflow-state on' : 'orderflow-state off'}>{enabled ? 'ON' : 'OFF'}</span><button type="button" className="secondary-button" aria-label={`주문흐름 확인 필터 ${enabled ? '끄기' : '켜기'}`} aria-pressed={enabled} disabled={saving || typeof revision !== 'number'} onClick={() => void toggle()}>{saving ? '저장 중' : enabled ? '연구 필터 끄기' : '연구 필터 켜기'}</button></div> : null}
+        {filter && typeof enabled === 'boolean' ? <div className="orderflow-filter-action"><span className={enabled ? 'orderflow-state on' : 'orderflow-state off'}>{enabled ? 'ON' : 'OFF'}</span><button type="button" className="secondary-button" aria-label={`주문흐름 확인 필터 ${enabled ? '끄기' : '켜기'}`} aria-pressed={enabled} disabled={!controlsEnabled || !onConfigureFamilyResearch || saving || typeof revision !== 'number'} onClick={() => void toggle()}>{saving ? '저장 중' : enabled ? '연구 필터 끄기' : '연구 필터 켜기'}</button></div> : null}
       </div>
       {!result || result.state === 'loading' ? <p className="orderflow-filter-state">주문흐름 필터 상태를 불러오는 중입니다.</p> : null}
       {result?.state === 'error' ? <div className="strategy-condition-error" role="alert"><p>{result.error}</p><button type="button" className="secondary-button" onClick={retry}>필터 상태 다시 불러오기</button></div> : null}
@@ -440,7 +494,7 @@ function OrderflowFilterPanel({ strategies }: { strategies: StrategySummaryRow[]
         <div><dt>데이터 상태</dt><dd>{orderflowDataHealth(filter)}</dd></div>
       </dl> : null}
       <p className="orderflow-safety-note">자체 CandidatePlan·계좌·거래를 만들지 않는 PAPER 확인 필터입니다.</p>
-      {mutationMessage ? <div className="orderflow-mutation-message" role="status"><span>{mutationMessage}</span>{undo ? <button type="button" className="secondary-button" disabled={saving} onClick={() => void undoMutation()}>실행 취소</button> : null}</div> : null}
+      {mutationMessage ? <div className="orderflow-mutation-message" role="status"><span>{mutationMessage}</span>{undo ? <button type="button" className="secondary-button" disabled={!controlsEnabled || !onConfigureFamilyResearch || saving} onClick={() => void undoMutation()}>실행 취소</button> : null}</div> : null}
       {mutationError ? <p className="strategy-condition-error" role="alert">{mutationError}</p> : null}
     </section>
   )
@@ -660,7 +714,7 @@ function ProfileDetails({
       <dl className="drawer-detail-list">
         <div><dt>현재 자산</dt><dd>{formatUsdt(account?.current_equity_usdt ?? '1000', { equity: true })}</dd></div>
         <div><dt>이번 실행 순손익</dt><dd>{formatUsdt(account ? number(account.current_equity_usdt) - number(account.starting_equity_usdt) : 0, { signed: true })}</dd></div>
-        <div><dt>고유 진입기회</dt><dd>{report.unique_opportunity_count ?? report.sample_size}건 <small>· 원장 {report.raw_ledger_row_count ?? report.sample_size}행</small></dd></div>
+        <div><dt>고유 진입기회</dt><dd>{profileUniqueSamples(report)}건 <small>· 원장 {report.raw_ledger_row_count ?? report.sample_size}행</small></dd></div>
         <div><dt>승률 · Wilson 하한</dt><dd>{report.win_rate === null ? '아직 표본 없음' : formatPercentFraction(report.win_rate)}<small>{report.win_rate_ci95 ? ` · ${formatPercentFraction(report.win_rate_ci95.lower)}` : ' · 측정 전'}</small></dd></div>
         <div><dt>거래당 기대값</dt><dd>{formatUsdt(report.expectancy_usdt)}</dd></div>
         <div><dt>Profit Factor</dt><dd>{formatRatio(report.profit_factor)}</dd></div>
@@ -705,12 +759,15 @@ function StrategyOverview({
   analyticsReady = true,
   researchDetails = false,
   selectedFamilyDetail: streamedFamilyDetail,
+  controlsEnabled,
   onSelectFamily,
   onConfigure,
   onRollback,
+  onConfigureFamilyResearch,
 }: Props) {
   const [saving, setSaving] = useState('')
   const [selectedId, setSelectedId] = useState('')
+  const [detailTab, setDetailTab] = useState<StrategyDetailTab>('status')
   const [profile, setProfile] = useState<CostProfile>('BASE')
   const [familyCategory, setFamilyCategory] = useState<FamilyCategoryFilter>('all')
   const [sortKey, setSortKey] = useState<StrategySortKey>('wilson')
@@ -804,6 +861,7 @@ function StrategyOverview({
     }
   }, [familyDetailRefreshRevision, selectedFamilyId])
   const configure = useCallback(async (strategy: StrategyRow, configuration: Partial<StrategyConfiguration>) => {
+    if (!controlsEnabled) return
     setSaving(strategy.strategy_id)
     try {
       await onConfigure(strategy.strategy_id, {
@@ -818,7 +876,7 @@ function StrategyOverview({
     } finally {
       setSaving('')
     }
-  }, [onConfigure])
+  }, [controlsEnabled, onConfigure])
   const applyFamilyResearchEnabled = useCallback(async (
     familyId: string,
     nextEnabled: boolean,
@@ -830,17 +888,17 @@ function StrategyOverview({
     setSaving(familyId)
     setFamilyMutationError('')
     try {
-      const detail = await fetchJson<StrategyFamilyDetail>(
-        `/api/strategy-families/${encodeURIComponent(familyId)}/research-enabled`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({
-            research_enabled: nextEnabled,
-            expected_revision: expectedRevision,
-            reason,
-          }),
-        },
-      )
+      if (!controlsEnabled || !onConfigureFamilyResearch) {
+        throw new ApiError({
+          code: 'PAPER_SAFETY_NOT_VERIFIED',
+          messageKo: 'PAPER 안전 상태를 확인할 때까지 전략 변경을 잠급니다.',
+        })
+      }
+      const detail = await onConfigureFamilyResearch(familyId, {
+        research_enabled: nextEnabled,
+        expected_revision: expectedRevision,
+        reason,
+      })
       if (detail.family_id !== familyId) throw new Error('family response mismatch')
       const setting = detail.variants.find((variant) => variant.is_current_variant)?.setting
       const responseRevision = setting?.settings_revision ?? setting?.revision
@@ -864,7 +922,7 @@ function StrategyOverview({
     } finally {
       setSaving('')
     }
-  }, [])
+  }, [controlsEnabled, onConfigureFamilyResearch])
   const toggleFamilyResearch = useCallback(async (nextEnabled: boolean) => {
     if (!selectedFamilyId || typeof selectedFamilyRevision !== 'number') return
     if (!window.confirm(`이 family의 모의평가를 ${nextEnabled ? '켜' : '끌'}까요? 진행 중 PAPER 포지션과 과거 기록은 그대로 보존됩니다.`)) return
@@ -889,7 +947,7 @@ function StrategyOverview({
     )
   }, [applyFamilyResearchEnabled, familyMutation?.undo])
   const rollback = useCallback(async (strategy: StrategyRow, targetRevision: number) => {
-    if (!onRollback) return
+    if (!controlsEnabled || !onRollback) return
     setSaving(strategy.strategy_id)
     try {
       await onRollback(strategy.strategy_id, targetRevision, strategy.settings_revision)
@@ -898,9 +956,10 @@ function StrategyOverview({
     } finally {
       setSaving('')
     }
-  }, [onRollback])
+  }, [controlsEnabled, onRollback])
   const closeDrawer = useCallback(() => {
     setSelectedId('')
+    setDetailTab('status')
     setFamilyMutation(null)
     setFamilyMutationError('')
     onSelectFamily?.(null)
@@ -922,11 +981,11 @@ function StrategyOverview({
         account,
         report,
         monitor: monitorState(strategy, strategyAccounts),
-        uniqueSamples: report.unique_opportunity_count ?? report.sample_size,
+        uniqueSamples: profileUniqueSamples(report),
         wilson: report.win_rate_ci95?.lower == null ? null : number(report.win_rate_ci95.lower),
         expectancy: report.expectancy_usdt == null ? null : number(report.expectancy_usdt),
         net: number(report.net_pnl),
-        rankingEligible: (report.unique_opportunity_count ?? report.sample_size) >= 30 && strategy.final_ranking_eligible !== false,
+        rankingEligible: profileUniqueSamples(report) >= 30 && strategy.final_ranking_eligible !== false,
         originalIndex,
       }
     }).sort((left, right) => {
@@ -962,13 +1021,13 @@ function StrategyOverview({
   const openPositionCount = leagueAccounts.reduce((total, account) => total + account.open_positions, 0)
   const provenSampleCount = currentStrategies.filter((strategy) => {
     const report = strategy.performance[profile]
-    return (report.unique_opportunity_count ?? report.sample_size) >= 30
+    return profileUniqueSamples(report) >= 30
   }).length
   const positiveAfterCostCount = currentStrategies.filter((strategy) => Number(strategy.performance[profile].expectancy_usdt ?? 0) > 0).length
   const topCandidateCount = currentStrategies
     .filter((strategy) => {
       const report = strategy.performance[profile]
-      return (report.unique_opportunity_count ?? report.sample_size) >= 30
+      return profileUniqueSamples(report) >= 30
         && strategy.final_ranking_eligible === true
         && Number(report.expectancy_usdt ?? 0) > 0
     })
@@ -987,7 +1046,7 @@ function StrategyOverview({
       {!analyticsReady ? <p className="profile-scope-note" role="status">과거 거래통계를 전략 버전별로 불러오는 중입니다. 준비 전 숫자는 순위나 승률로 사용하지 않습니다.</p> : null}
       <div className="family-category-tabs" role="tablist" aria-label="전략 family 분류">{familyCategoryOptions.map((option) => <button type="button" role="tab" aria-selected={familyCategory === option.id} key={option.id} onClick={() => setFamilyCategory(option.id)}>{option.label}</button>)}</div>
       {currentStrategies.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
-      {familyCategory === 'all' || familyCategory === 'filter' ? <OrderflowFilterPanel strategies={strategies} /> : null}
+      {familyCategory === 'all' || familyCategory === 'filter' ? <OrderflowFilterPanel strategies={strategies} controlsEnabled={controlsEnabled} onConfigureFamilyResearch={onConfigureFamilyResearch} /> : null}
       <PlaceholderFamilies families={placeholderFamilies} />
       {currentStrategies.length > 0 && ordered.length === 0 ? <div className="panel empty-state"><b>{familyCategory === 'ranking' ? '아직 순위에 넣을 전략이 없습니다.' : '이 분류에서 표시할 현재 전략이 없습니다.'}</b><span>{familyCategory === 'ranking' ? '고유 진입기회 30건과 최종 순위 자격을 모두 충족해야 표시합니다.' : '실행 전 연구 family는 조건 정보가 준비되면 표시합니다.'}</span></div> : null}
       <section className="panel strategy-compact-panel">
@@ -1026,38 +1085,71 @@ function StrategyOverview({
             <td data-label="PF"><strong>{formatRatio(report.profit_factor)}</strong><small>비용 후</small></td>
             <td data-label="주요 대기이유"><span>{monitor.detail}</span></td>
             <td data-label="보유"><strong>{account?.open_positions ?? 0}건</strong><small>{costProfileLabel(profile)}</small></td>
-            <td data-label="보기"><button type="button" className="secondary-button" onClick={() => { setFamilyMutation(null); setFamilyMutationError(''); setSelectedId(strategy.strategy_id); onSelectFamily?.(strategy.family_id ?? null) }}>자세히·설정</button></td>
+            <td data-label="보기"><button type="button" className="secondary-button" onClick={() => { setDetailTab('status'); setFamilyMutation(null); setFamilyMutationError(''); setSelectedId(strategy.strategy_id); onSelectFamily?.(strategy.family_id ?? null) }}>자세히·설정</button></td>
           </tr>
         })}</tbody></table></div>
       </section>
       <SideDrawer title={selectedSummary ? `${selectedSummary.short_name} · ${selectedSummary.display_name_ko}` : '전략 상세'} open={selectedSummary !== null} onClose={closeDrawer} label="전략 상세 정보">
         {selectedSummary ? <>
           <p className="drawer-subtitle"><b>{lifecycleLabels[selectedSummary.lifecycle]}</b> · {modeLabels[selectedSummary.mode]}</p>
-          {selectedFamilyId ? <section className="profile-detail-block">
+          <div className="strategy-detail-tabs" role="tablist" aria-label="전략 상세 항목">
+            {strategyDetailTabs.map((option, index) => <button
+              type="button"
+              role="tab"
+              id={`strategy-detail-tab-${option.id}`}
+              aria-controls={`strategy-detail-panel-${option.id}`}
+              aria-selected={detailTab === option.id}
+              tabIndex={detailTab === option.id ? 0 : -1}
+              key={option.id}
+              onClick={() => setDetailTab(option.id)}
+              onKeyDown={(event) => {
+                let nextIndex: number | null = null
+                if (event.key === 'ArrowRight') nextIndex = (index + 1) % strategyDetailTabs.length
+                if (event.key === 'ArrowLeft') nextIndex = (index - 1 + strategyDetailTabs.length) % strategyDetailTabs.length
+                if (event.key === 'Home') nextIndex = 0
+                if (event.key === 'End') nextIndex = strategyDetailTabs.length - 1
+                if (nextIndex === null) return
+                event.preventDefault()
+                const next = strategyDetailTabs[nextIndex]
+                setDetailTab(next.id)
+                document.getElementById(`strategy-detail-tab-${next.id}`)?.focus()
+              }}
+            >{option.label}</button>)}
+          </div>
+          <div
+            id={`strategy-detail-panel-${detailTab}`}
+            role="tabpanel"
+            aria-labelledby={`strategy-detail-tab-${detailTab}`}
+            tabIndex={0}
+          >
+          {detailTab === 'status' && selectedFamilyId ? <section className="profile-detail-block">
             <h3>전략 family</h3>
             {familyDetailLoading ? <p role="status">family 상세를 불러오는 중입니다.</p> : familyDetail ? <><p>{familyDetail.description_ko || '전략 설명을 준비하고 있습니다.'}</p><dl className="drawer-detail-list"><div><dt>분류</dt><dd>{familyDetail.category_ko || '분류 확인 중'}</dd></div><div><dt>현재 variant</dt><dd>{familyDetail.variants.find((variant) => variant.is_current_variant)?.variant_label_ko ?? selectedSummary.variant_label_ko ?? selectedSummary.display_name_ko}</dd></div>{researchDetails ? <div><dt>오프라인 후보</dt><dd>{familyDetail.offline_challengers?.length ?? 0}개 · 실행 전 연구</dd></div> : null}</dl></> : <p>{familyDetailError || '현재 dashboard의 family·variant 정보로 표시합니다.'}</p>}
           </section> : null}
-          {researchDetails && familyDetail ? <section className="profile-detail-block strategy-previous-variants">
+          {detailTab === 'previous' && familyDetail ? <section className="profile-detail-block strategy-previous-variants">
             <h3>이전 버전</h3>
             {previousVariants.length ? <ul>{previousVariants.map((variant) => <li key={variant.strategy_id}><strong>{variant.variant_label_ko || variant.strategy_id}</strong><span>{variant.setting?.lifecycle || variant.role || '기록 보존'} · {variant.setting?.mode || '실행 안 함'}</span></li>)}</ul> : <p>등록된 이전 runtime variant가 없습니다.</p>}
           </section> : null}
-          {selectedFamilyId ? <StrategyConditionsPanel familyId={selectedFamilyId} /> : null}
+          {detailTab === 'previous' && !familyDetail ? <section className="profile-detail-block"><h3>이전 버전</h3><p role="status">{familyDetailLoading ? '이전 버전 기록을 불러오는 중입니다.' : familyDetailError || '등록된 이전 버전 정보를 확인하지 못했습니다.'}</p></section> : null}
+          {selectedFamilyId && (detailTab === 'status' || detailTab === 'conditions' || detailTab === 'exit') ? <div>
+            <StrategyConditionsPanel familyId={selectedFamilyId} view={detailTab} />
+          </div> : null}
           {selected ? <>
-          <section className="profile-detail-block strategy-drawer-settings">
+          {detailTab === 'status' ? <><section className="profile-detail-block strategy-drawer-settings">
             <h3>작동 설정</h3>
             {selected.policy_reactivation_locked ? <div className="strategy-retired-note"><strong>검증 종료</strong><span>새 진입 없음 · 거래기록과 가상계좌 보존</span><span>과거 상승·하락 설정만 보존합니다.</span></div> : <>
               <p className="profile-scope-note">설정을 바꿔도 진행 중인 PAPER 포지션은 기존 진입 계획대로 관리됩니다.</p>
               <span className="strategy-setting-label">모의평가</span>
               {selected.mode === 'ACTIVE' ? <p className="profile-scope-note">공동 PAPER 참여는 검증 gate를 통과한 Governor만 정합니다. 사용자는 독립 검증 또는 중지로만 낮출 수 있습니다.</p> : null}
               <div className="strategy-inline-modes">
-                <button type="button" aria-label={`${selected.short_name} 모의평가 켜기`} aria-pressed={selectedFamilyResearchEnabled} disabled={!selectedFamilyId || typeof selectedFamilyRevision !== 'number' || saving === selectedFamilyId} onClick={() => { if (!selectedFamilyResearchEnabled) void toggleFamilyResearch(true) }}>{saving === selectedFamilyId && !selectedFamilyResearchEnabled ? '저장 중' : 'ON'}</button>
-                <button type="button" aria-label={`${selected.short_name} 모의평가 끄기`} aria-pressed={!selectedFamilyResearchEnabled} disabled={!selectedFamilyId || typeof selectedFamilyRevision !== 'number' || saving === selectedFamilyId} onClick={() => { if (selectedFamilyResearchEnabled) void toggleFamilyResearch(false) }}>{saving === selectedFamilyId && selectedFamilyResearchEnabled ? '저장 중' : 'OFF'}</button>
+                <button type="button" aria-label={`${selected.short_name} 모의평가 켜기`} aria-pressed={selectedFamilyResearchEnabled} disabled={!controlsEnabled || !onConfigureFamilyResearch || !selectedFamilyId || typeof selectedFamilyRevision !== 'number' || saving === selectedFamilyId} onClick={() => { if (!selectedFamilyResearchEnabled) void toggleFamilyResearch(true) }}>{saving === selectedFamilyId && !selectedFamilyResearchEnabled ? '저장 중' : 'ON'}</button>
+                <button type="button" aria-label={`${selected.short_name} 모의평가 끄기`} aria-pressed={!selectedFamilyResearchEnabled} disabled={!controlsEnabled || !onConfigureFamilyResearch || !selectedFamilyId || typeof selectedFamilyRevision !== 'number' || saving === selectedFamilyId} onClick={() => { if (selectedFamilyResearchEnabled) void toggleFamilyResearch(false) }}>{saving === selectedFamilyId && selectedFamilyResearchEnabled ? '저장 중' : 'OFF'}</button>
               </div>
               <p className="profile-scope-note">OFF는 신규 평가·신규 entry만 중지하며 진행 포지션과 과거 기록을 보존합니다.</p>
-              {selectedFamilyMutation ? <div className="strategy-mutation-toast" role="status"><span>{selectedFamilyMutation.message}</span>{selectedFamilyMutation.undo ? <button type="button" className="secondary-button" disabled={saving === selectedFamilyId} onClick={() => void undoFamilyResearch()}>실행 취소</button> : null}</div> : null}
+              {selectedFamilyMutation ? <div className="strategy-mutation-toast" role="status"><span>{selectedFamilyMutation.message}</span>{selectedFamilyMutation.undo ? <button type="button" className="secondary-button" disabled={!controlsEnabled || !onConfigureFamilyResearch || saving === selectedFamilyId} onClick={() => void undoFamilyResearch()}>실행 취소</button> : null}</div> : null}
               {familyMutationError ? <p className="strategy-condition-error" role="alert">{familyMutationError}</p> : null}
               <span className="strategy-setting-label">거래 방향</span>
-              <div className="strategy-inline-directions"><button type="button" aria-pressed={selected.long_enabled} disabled={saving === selected.strategy_id || saving === selectedFamilyId} onClick={() => void configure(selected, { long_enabled: !selected.long_enabled })}>상승 {selected.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={selected.short_enabled} disabled={saving === selected.strategy_id || saving === selectedFamilyId} onClick={() => void configure(selected, { short_enabled: !selected.short_enabled })}>하락 {selected.short_enabled ? '켜짐' : '꺼짐'}</button></div>
+              <div className="strategy-inline-directions"><button type="button" aria-pressed={selected.long_enabled} disabled={!controlsEnabled || saving === selected.strategy_id || saving === selectedFamilyId} onClick={() => void configure(selected, { long_enabled: !selected.long_enabled })}>상승 {selected.long_enabled ? '켜짐' : '꺼짐'}</button><button type="button" aria-pressed={selected.short_enabled} disabled={!controlsEnabled || saving === selected.strategy_id || saving === selectedFamilyId} onClick={() => void configure(selected, { short_enabled: !selected.short_enabled })}>하락 {selected.short_enabled ? '켜짐' : '꺼짐'}</button></div>
               <p className="profile-scope-note">{selected.manual_lock ? '사용자가 고정한 설정입니다.' : '검증 결과에 따라 안전하게 자동 관리됩니다.'}</p>
             </>}
           </section>
@@ -1071,17 +1163,17 @@ function StrategyOverview({
               <div><dt>종료 원칙</dt><dd>{selected.edge_decay_policy_ko}</dd></div>
             </dl>
             {researchDetails ? <details className="advanced-details"><summary>고급 기술 정보</summary><dl className="drawer-detail-list"><div><dt>전략 코드</dt><dd>{selected.strategy_id}</dd></div><div><dt>전략 시간축</dt><dd>{selected.horizon_class}</dd></div><div><dt>신호 반감기</dt><dd>{selected.signal_half_life_seconds}초</dd></div><div><dt>사용 시간구간</dt><dd>{selected.required_timeframes.join(' · ')}</dd></div><div><dt>자동 관리 모델</dt><dd>{selected.exit_model} · {selected.max_hold_seconds === null ? '시간청산 없음' : `최대 ${formatDurationMs(selected.max_hold_seconds * 1_000)}`}</dd></div><div><dt>비용 모델</dt><dd>{selected.cost_model_version}</dd></div><div><dt>전략 버전</dt><dd>{selected.strategy_version}</dd></div><div><dt>필요 데이터</dt><dd>{selected.required_market_data.join(' · ')}</dd></div><div><dt>반증 조건</dt><dd>{selected.falsification_conditions_ko.join(' · ')}</dd></div><div><dt>위험예산</dt><dd>{selected.risk_budget_rule_ko}</dd></div><div><dt>대상 범위</dt><dd>{selected.target_universe_ko} · {selected.supported_regimes.join(' · ')}</dd></div><div><dt>미래정보 방지</dt><dd>{selected.data_leakage_guards_ko.join(' · ')}</dd></div><div><dt>현재 상태 코드</dt><dd>{selected.change_reason}</dd></div><div><dt>설정 개정</dt><dd>rev {selected.settings_revision} · {selected.changed_by}</dd></div></dl></details> : null}
-          </section>
-          {researchDetails ? <ResearchSources sources={selectedVariant?.research_sources} sourceIds={selected.research_source_ids} /> : null}
-          {selected.entry_rules_ko.length || selected.exit_rules_ko.length ? <section className="profile-detail-block">
-            <h3>언제 진입하고 언제 나오나요?</h3>
+          </section></> : null}
+          {detailTab === 'sources' ? <div><ResearchSources sources={selectedVariant?.research_sources} sourceIds={selected.research_source_ids} /></div> : null}
+          {(detailTab === 'conditions' && selected.entry_rules_ko.length) || (detailTab === 'exit' && selected.exit_rules_ko.length) ? <section className="profile-detail-block">
+            <h3>{detailTab === 'conditions' ? '진입 규칙 설명' : '청산 규칙 설명'}</h3>
             <dl className="drawer-detail-list">
-              {selected.entry_rules_ko.length ? <div><dt>진입 조건</dt><dd>{selected.entry_rules_ko.join(' · ')}</dd></div> : null}
-              {selected.exit_rules_ko.length ? <div><dt>종료 규칙</dt><dd>{selected.exit_rules_ko.join(' · ')}</dd></div> : null}
+              {detailTab === 'conditions' ? <div><dt>진입 조건</dt><dd>{selected.entry_rules_ko.join(' · ')}</dd></div> : null}
+              {detailTab === 'exit' ? <div><dt>종료 규칙</dt><dd>{selected.exit_rules_ko.join(' · ')}</dd></div> : null}
             </dl>
             <p className="profile-scope-note">아직 수익성이 입증되지 않은 독립 PAPER 검증 전략이며 공동계좌에는 연결되지 않습니다.</p>
           </section> : null}
-          {researchDetails ? <section className="profile-detail-block">
+          {detailTab === 'status' && researchDetails ? <section className="profile-detail-block">
             <h3>자동 평가 상태</h3>
             <dl className="drawer-detail-list">
               <div><dt>공동계좌 현재 대표</dt><dd>{selected.governance.champion_id ? summaryStrategyLabel(strategies.find((item) => item.strategy_id === selected.governance.champion_id), selected.governance.champion_id) : selected.lifecycle === 'ACTIVE' ? selected.short_name : '없음'}</dd></div>
@@ -1093,14 +1185,20 @@ function StrategyOverview({
             </dl>
             <details><summary>변경 이력</summary><ol>{selected.governance.change_history.map((row) => <li key={row.transition_id}><strong>rev {row.response_revision}</strong> · {row.description_ko}<small>{row.previous_state} → {row.new_state} · {row.actor} · {row.cause_code} · {evaluationTime(row.occurred_ts_ms)}</small></li>)}</ol></details>
             {selected.policy_reactivation_locked ? <p className="profile-scope-note">비용후 검증으로 퇴역한 전략입니다. 과거 변경 기록은 보존되지만 새 연구 승인 전에는 복원할 수 없습니다.</p> : null}
-            {onRollback && !selected.policy_reactivation_locked && selected.governance.change_history.length > 1 ? <button type="button" className="secondary-button" disabled={saving === selected.strategy_id} onClick={() => {
+            {onRollback && !selected.policy_reactivation_locked && selected.governance.change_history.length > 1 ? <button type="button" className="secondary-button" disabled={!controlsEnabled || saving === selected.strategy_id} onClick={() => {
               const previous = selected.governance.change_history.at(-2)
               if (previous && window.confirm(`${selected.short_name} 설정을 rev ${previous.settings_revision}로 복원할까요? 현재 기록은 삭제되지 않습니다.`)) void rollback(selected, previous.settings_revision)
             }}>직전 설정으로 복원</button> : null}
           </section> : null}
-          <ProfileDetails report={selected.performance.BASE} account={accounts.find((account) => account.profile === 'BASE')} analyticsReady={analyticsReady} researchDetails={researchDetails} />
-          <ProfileDetails report={selected.performance.STRESS} account={accounts.find((account) => account.profile === 'STRESS')} analyticsReady={analyticsReady} researchDetails={researchDetails} />
+          {detailTab === 'performance' ? <div>
+            <div className="segmented-control strategy-detail-profile-toggle" role="group" aria-label="전략 상세 성과 비용 기준">
+              <button type="button" className={profile === 'BASE' ? 'selected' : ''} aria-pressed={profile === 'BASE'} onClick={() => setProfile('BASE')}>기본 비용</button>
+              <button type="button" className={profile === 'STRESS' ? 'selected' : ''} aria-pressed={profile === 'STRESS'} onClick={() => setProfile('STRESS')}>보수 비용</button>
+            </div>
+            <ProfileDetails report={selected.performance[profile]} account={accounts.find((account) => account.profile === profile)} analyticsReady={analyticsReady} researchDetails={researchDetails} />
+          </div> : null}
           </> : <section className="profile-detail-block"><h3>전략 상세</h3><p role="status">{familyDetailLoading ? '전략의 전체 규칙과 설정을 불러오는 중입니다.' : familyDetailError || '전체 전략 상세값이 아직 없습니다. 요약표는 볼 수 있지만 설정을 변경하지 않습니다.'}</p></section>}
+          </div>
         </> : null}
       </SideDrawer>
     </section>

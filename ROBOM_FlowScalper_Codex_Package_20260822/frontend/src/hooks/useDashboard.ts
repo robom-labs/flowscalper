@@ -10,9 +10,11 @@ import type {
   PageId,
   SettingsSummaryPayload,
   StrategyFamilyCatalogPayload,
+  StrategyFamilyDetail,
   StrategyPageSummaryPayload,
   StrategySummaryRow,
   UiChartDelta,
+  UiSelectedDetailDelta,
   UiSelectedFamilyDetail,
   UiStrategyRowDelta,
   UiStrategyStateRow,
@@ -26,6 +28,97 @@ type LongAction = 'new-run' | 'start-live' | 'start-demo'
 export type DashboardControlAction = ImmediateAction | LongAction
 type ConnectionState = 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
 type BootstrapState = 'LOADING' | 'READY' | 'ERROR'
+type UnknownRecord = Record<string, unknown>
+
+const falseSafetyFields = [
+  'real_orders_enabled',
+  'auth_required',
+  'private_api_enabled',
+  'api_key_enabled',
+  'wallet_enabled',
+  'runtime_ai_order_decision_enabled',
+] as const
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as UnknownRecord
+    : null
+}
+
+function hasCompletePaperSafetyContract(value: unknown): boolean {
+  const candidate = asRecord(value)
+  if (!candidate) return false
+  const topLevelSafe = candidate.paper_only === true
+    && falseSafetyFields.every((field) => candidate[field] === false)
+    && candidate.funding_readiness === 'NOT_READY'
+  const status = asRecord(candidate.status)
+  const risk = asRecord(candidate.risk)
+  const system = asRecord(candidate.system)
+  const nestedSafe = status?.execution_state === 'PAPER'
+    && status.real_orders_enabled === false
+    && status.auth_required === false
+    && risk?.paper_only === true
+    && falseSafetyFields
+      .filter((field) => !['real_orders_enabled', 'auth_required'].includes(field))
+      .every((field) => system?.[field] === false)
+    && system?.funding_readiness === 'NOT_READY'
+  return topLevelSafe || nestedSafe
+}
+
+function hasCompleteFlatPaperSafetyContract(value: unknown): boolean {
+  const candidate = asRecord(value)
+  return Boolean(
+    candidate
+    && candidate.paper_only === true
+    && falseSafetyFields.every((field) => candidate[field] === false)
+    && candidate.funding_readiness === 'NOT_READY',
+  )
+}
+
+function isSafeUiSummaryDelta(value: unknown): boolean {
+  const candidate = asRecord(value)
+  if (!candidate) return false
+  if ('schema_version' in candidate && candidate.schema_version !== 1) return false
+  if ('paper_only' in candidate && candidate.paper_only !== true) return false
+  for (const field of falseSafetyFields) {
+    if (field in candidate && candidate[field] !== false) return false
+  }
+  if ('funding_readiness' in candidate && candidate.funding_readiness !== 'NOT_READY') return false
+  const status = asRecord(candidate.status)
+  if ('status' in candidate && !status) return false
+  if (status) {
+    if ('execution_state' in status && status.execution_state !== 'PAPER') return false
+    if ('real_orders_enabled' in status && status.real_orders_enabled !== false) return false
+    if ('auth_required' in status && status.auth_required !== false) return false
+  }
+  const risk = asRecord(candidate.risk)
+  if ('risk' in candidate && !risk) return false
+  if (risk && 'paper_only' in risk && risk.paper_only !== true) return false
+  const system = asRecord(candidate.system)
+  if ('system' in candidate && !system) return false
+  if (system) {
+    for (const field of falseSafetyFields) {
+      if (field in system && system[field] !== false) return false
+    }
+    if ('funding_readiness' in system && system.funding_readiness !== 'NOT_READY') return false
+  }
+  if ('paper_entry_intent' in candidate && !asRecord(candidate.paper_entry_intent)) return false
+  if ('strategy_state' in candidate && !Array.isArray(candidate.strategy_state)) return false
+  for (const field of [
+    'main_pending_entry_count',
+    'league_pending_entry_count',
+    'total_pending_entry_count',
+    'total_open_position_count',
+  ]) {
+    if (field in candidate && (
+      typeof candidate[field] !== 'number'
+      || !Number.isInteger(candidate[field])
+      || Number(candidate[field]) < 0
+    )) return false
+  }
+  if ('paper_portfolio_flat' in candidate && typeof candidate.paper_portfolio_flat !== 'boolean') return false
+  return true
+}
 
 const terminalStates = new Set([
   'COMPLETED',
@@ -44,18 +137,6 @@ const endpointByAction: Record<ControlAction, LongAction> = {
   START_LIVE: 'start-live',
   START_DEMO: 'start-demo',
   NEW_RUN: 'new-run',
-}
-
-function isDashboardData(value: unknown): value is DashboardData {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<DashboardData>
-  return Boolean(
-    candidate.status
-    && Array.isArray(candidate.scanner)
-    && Array.isArray(candidate.strategies)
-    && Array.isArray(candidate.league_accounts)
-    && Array.isArray(candidate.league_positions),
-  )
 }
 
 function isUiWebSocketServerMessage(value: unknown): value is UiWebSocketServerMessage {
@@ -77,23 +158,120 @@ function isUiWebSocketServerMessage(value: unknown): value is UiWebSocketServerM
     && 'data' in candidate
 }
 
+function isUiChartDeltaPayload(value: unknown): value is UiChartDelta {
+  const candidate = asRecord(value)
+  if (!candidate || !isSafeUiSummaryDelta(candidate)) return false
+  if (typeof candidate.refresh_required !== 'boolean') return false
+  if (candidate.refresh_required) return true
+  return typeof candidate.symbol === 'string'
+    && typeof candidate.interval === 'string'
+    && typeof candidate.fixture === 'boolean'
+    && (!('point_upserts' in candidate) || Array.isArray(candidate.point_upserts))
+    && (!('removed_point_ts_ms' in candidate) || Array.isArray(candidate.removed_point_ts_ms))
+    && (!('candle_upserts' in candidate) || Array.isArray(candidate.candle_upserts))
+    && (!('removed_candle_open_ts_ms' in candidate) || Array.isArray(candidate.removed_candle_open_ts_ms))
+}
+
+function isUiStrategyStateRow(value: unknown): value is UiStrategyStateRow {
+  const candidate = asRecord(value)
+  if (!candidate || !isSafeUiSummaryDelta(candidate)) return false
+  if (typeof candidate.strategy_id !== 'string' || !candidate.strategy_id.trim()) return false
+  if ('mode' in candidate && !['ACTIVE', 'SHADOW', 'OFF'].includes(String(candidate.mode))) return false
+  if ('lifecycle' in candidate && ![
+    'ACTIVE',
+    'CHALLENGER',
+    'SHADOW',
+    'RESEARCH',
+    'RETIRED',
+  ].includes(String(candidate.lifecycle))) return false
+  for (const field of ['long_enabled', 'short_enabled', 'manual_lock']) {
+    if (field in candidate && typeof candidate[field] !== 'boolean') return false
+  }
+  if ('settings_revision' in candidate && (
+    typeof candidate.settings_revision !== 'number'
+    || !Number.isInteger(candidate.settings_revision)
+    || candidate.settings_revision < 0
+  )) return false
+  return !('performance' in candidate) || asRecord(candidate.performance) !== null
+}
+
+function isUiStrategyRowDeltaPayload(value: unknown): value is UiStrategyRowDelta {
+  const candidate = asRecord(value)
+  return Boolean(
+    candidate
+    && isSafeUiSummaryDelta(candidate)
+    && Array.isArray(candidate.rows)
+    && candidate.rows.every(isUiStrategyStateRow)
+    && Array.isArray(candidate.removed_strategy_ids)
+    && candidate.removed_strategy_ids.every((strategyId) => (
+      typeof strategyId === 'string' && strategyId.trim().length > 0
+    )),
+  )
+}
+
+function isUiSelectedDetailDeltaPayload(value: unknown): value is UiSelectedDetailDelta {
+  const candidate = asRecord(value)
+  if (!candidate || !isSafeUiSummaryDelta(candidate)) return false
+  if (candidate.family_id !== null && typeof candidate.family_id !== 'string') return false
+  if (candidate.detail === null) return true
+  const detail = asRecord(candidate.detail)
+  return Boolean(
+    detail
+    && isSafeUiSummaryDelta(detail)
+    && typeof detail.family_id === 'string'
+    && detail.family_id === candidate.family_id
+    && hasCompleteFlatPaperSafetyContract(detail)
+    && Array.isArray(detail.variants),
+  )
+}
+
+function isUiHeartbeatPayload(value: unknown): value is { server_ts_ms: number } {
+  const candidate = asRecord(value)
+  return Boolean(
+    candidate
+    && isSafeUiSummaryDelta(candidate)
+    && typeof candidate.server_ts_ms === 'number'
+    && Number.isFinite(candidate.server_ts_ms),
+  )
+}
+
+function isUiErrorPayload(value: unknown): value is { error_message_ko: string } {
+  const candidate = asRecord(value)
+  return Boolean(
+    candidate
+    && isSafeUiSummaryDelta(candidate)
+    && typeof candidate.error_message_ko === 'string'
+    && candidate.error_message_ko.trim(),
+  )
+}
+
 function errorMessage(error: unknown) {
   return error instanceof ApiError ? error.messageKo : '프로그램 요청을 처리하지 못했습니다.'
 }
 
+function unverifiedSafetyError() {
+  return new ApiError({
+    code: 'PAPER_SAFETY_NOT_VERIFIED',
+    messageKo: 'PAPER 안전 상태를 확인할 때까지 변경 조작을 잠급니다.',
+  })
+}
+
 function isUiSummaryPayload(value: unknown): value is UiSummaryPayload {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as UiSummaryPayload
-  return Boolean(candidate.status && candidate.paper_entry_intent)
+  const candidate = asRecord(value)
+  return Boolean(
+    candidate
+    && candidate.status
+    && candidate.paper_entry_intent
+    && hasCompletePaperSafetyContract(candidate)
+    && isSafeUiSummaryDelta(candidate),
+  )
 }
 
 function isStrategyPageSummaryPayload(value: unknown): value is StrategyPageSummaryPayload {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<StrategyPageSummaryPayload>
   return candidate.schema_version === 1
-    && candidate.paper_only === true
-    && candidate.real_orders_enabled === false
-    && candidate.auth_required === false
+    && hasCompleteFlatPaperSafetyContract(candidate)
     && Array.isArray(candidate.strategies)
     && Array.isArray(candidate.league_accounts)
 }
@@ -102,17 +280,19 @@ function isStrategyFamilyCatalogPayload(value: unknown): value is StrategyFamily
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<StrategyFamilyCatalogPayload>
   return candidate.schema_version === 1
-    && candidate.paper_only === true
-    && candidate.real_orders_enabled === false
-    && candidate.auth_required === false
+    && hasCompleteFlatPaperSafetyContract(candidate)
     && Array.isArray(candidate.families)
 }
 
 function isSettingsSummaryPayload(value: unknown): value is SettingsSummaryPayload {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<SettingsSummaryPayload>
+  const safety = asRecord(candidate.safety)
   return candidate.schema_version === 1
     && candidate.funding_readiness === 'NOT_READY'
+    && safety?.paper_only === true
+    && falseSafetyFields.every((field) => safety?.[field] === false)
+    && candidate.connection?.public_market_only === true
     && Boolean(candidate.run && candidate.safety && candidate.costs && candidate.storage && candidate.connection && candidate.autostart)
 }
 
@@ -120,11 +300,22 @@ function isDiagnosticsPayload(value: unknown): value is DiagnosticsPayload {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<DiagnosticsPayload>
   return candidate.schema_version === 1
-    && candidate.paper_only === true
-    && candidate.real_orders_enabled === false
-    && candidate.auth_required === false
+    && hasCompleteFlatPaperSafetyContract(candidate)
     && Array.isArray(candidate.rows)
-    && Boolean(candidate.raw && typeof candidate.raw === 'object')
+    && Boolean(candidate.raw && typeof candidate.raw === 'object' && isSafeUiSummaryDelta(candidate.raw))
+}
+
+function isStrategyFamilyDetailPayload(
+  value: unknown,
+  familyId: string,
+): value is StrategyFamilyDetail {
+  const candidate = asRecord(value)
+  return Boolean(
+    candidate
+    && candidate.family_id === familyId
+    && Array.isArray(candidate.variants)
+    && hasCompleteFlatPaperSafetyContract(candidate),
+  )
 }
 
 function mergeStrategyState(current: StrategySummaryRow, update: UiStrategyStateRow): StrategySummaryRow {
@@ -237,6 +428,7 @@ function mergeSettingsSummary(current: DashboardData, summary: SettingsSummaryPa
 export function useDashboard(page: PageId = 'market') {
   const [data, setData] = useState<DashboardData>(initialDashboard)
   const [connected, setConnected] = useState(false)
+  const [safetyVerified, setSafetyVerified] = useState(false)
   const [connectionState, setConnectionState] = useState<ConnectionState>('CONNECTING')
   const [bootstrapState, setBootstrapState] = useState<BootstrapState>('LOADING')
   const [lastUpdateMs, setLastUpdateMs] = useState<number | null>(null)
@@ -255,24 +447,16 @@ export function useDashboard(page: PageId = 'market') {
   const uiSequence = useRef(0)
   const selectedFamilyIdRef = useRef<string | null>(null)
   const strategyStateById = useRef(new Map<string, UiStrategyStateRow>())
+  const safetyEpoch = useRef(0)
 
-  const applySnapshot = useCallback((snapshot: DashboardData) => {
-    if (!mounted.current) return
-    setData(snapshot)
-    setLastUpdateMs(Date.now())
-    setBootstrapState('READY')
-    setConnectionError('')
-    if (snapshot.control_operation) {
-      setSubmittedOperation(snapshot.control_operation)
-      if (terminalStates.has(snapshot.control_operation.state)) {
-        setBusyAction(null)
-        idempotencyKeys.current.delete(endpointByAction[snapshot.control_operation.action])
-      }
-    }
+  const invalidateSafety = useCallback(() => {
+    safetyEpoch.current += 1
+    setSafetyVerified(false)
   }, [])
 
   const applyUiSummary = useCallback((summary: UiSummaryPayload) => {
     if (!mounted.current) return
+    if (hasCompletePaperSafetyContract(summary)) setSafetyVerified(true)
     for (const row of summary.strategy_state ?? []) {
       strategyStateById.current.set(row.strategy_id, row)
     }
@@ -290,11 +474,13 @@ export function useDashboard(page: PageId = 'market') {
   }, [])
 
   const refreshUiSummary = useCallback(async (signal?: AbortSignal) => {
+    const requestSafetyEpoch = safetyEpoch.current
     const summary = await fetchJson<UiSummaryPayload>(
       '/api/ui/summary',
       signal ? { signal } : {},
       10_000,
     )
+    if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
     if (!isUiSummaryPayload(summary)) {
       throw new ApiError({
         code: 'INVALID_RESPONSE',
@@ -316,44 +502,44 @@ export function useDashboard(page: PageId = 'market') {
       if (!('WebSocket' in window) || disposed) return
       setConnectionState(hasConnected.current ? 'RECONNECTING' : 'CONNECTING')
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      socket = new WebSocket(`${protocol}//${window.location.host}/ws/ui`)
-      uiSocket.current = socket
-      socket.addEventListener('open', () => {
-        if (disposed) return
+      const currentSocket = new WebSocket(`${protocol}//${window.location.host}/ws/ui`)
+      socket = currentSocket
+      uiSocket.current = currentSocket
+      currentSocket.addEventListener('open', () => {
+        if (disposed || uiSocket.current !== currentSocket) return
         uiSequence.current = 0
         hasConnected.current = true
         setConnected(true)
         setConnectionState('CONNECTED')
         setConnectionError('')
-        if (selectedFamilyIdRef.current && socket?.readyState === 1) {
+        if (selectedFamilyIdRef.current && currentSocket.readyState === 1) {
           const request: UiWebSocketClientMessage = {
             type: 'select_family',
             family_id: selectedFamilyIdRef.current,
           }
-          socket.send(JSON.stringify(request))
+          currentSocket.send(JSON.stringify(request))
         }
       })
-      socket.addEventListener('message', (event) => {
-        if (disposed) return
+      currentSocket.addEventListener('message', (event) => {
+        if (disposed || uiSocket.current !== currentSocket) return
         try {
           const parsed = JSON.parse(String(event.data)) as unknown
-          const legacy = parsed && typeof parsed === 'object'
-            ? parsed as { type?: unknown; data?: unknown }
-            : null
-          if (legacy?.type === 'dashboard' && isDashboardData(legacy.data)) applySnapshot(legacy.data)
-          else if (legacy?.type === 'ui_summary' && legacy.data && typeof legacy.data === 'object') applyUiSummary(legacy.data as UiSummaryPayload)
-          else {
-            if (!isUiWebSocketServerMessage(parsed)) throw new Error('malformed V6 UI envelope')
-            const payload = parsed
-            if (payload.sequence <= uiSequence.current) return
-            uiSequence.current = payload.sequence
-            switch (payload.type) {
+          if (!isUiWebSocketServerMessage(parsed)) throw new Error('malformed V6 UI envelope')
+          const payload = parsed
+          if (payload.sequence <= uiSequence.current) return
+          uiSequence.current = payload.sequence
+          switch (payload.type) {
               case 'snapshot':
+                if (!isUiSummaryPayload(payload.data)) throw new Error('unsafe V6 UI snapshot')
+                applyUiSummary(payload.data)
+                break
               case 'summary_delta':
               case 'position_delta':
+                if (!isSafeUiSummaryDelta(payload.data)) throw new Error('unsafe V6 UI delta')
                 applyUiSummary(payload.data)
                 break
               case 'chart_delta':
+                if (!isUiChartDeltaPayload(payload.data)) throw new Error('unsafe V6 chart delta')
                 if (payload.data.refresh_required) {
                   void refreshUiSummary().catch((error: unknown) => {
                     if (mounted.current) setConnectionError(errorMessage(error))
@@ -364,6 +550,7 @@ export function useDashboard(page: PageId = 'market') {
                 }
                 break
               case 'strategy_row_delta':
+                if (!isUiStrategyRowDeltaPayload(payload.data)) throw new Error('unsafe V6 strategy delta')
                 for (const strategyId of payload.data.removed_strategy_ids) {
                   strategyStateById.current.delete(strategyId)
                 }
@@ -374,43 +561,49 @@ export function useDashboard(page: PageId = 'market') {
                 setLastUpdateMs(Date.now())
                 break
               case 'selected_detail_delta':
+                if (!isUiSelectedDetailDeltaPayload(payload.data)) throw new Error('unsafe V6 detail delta')
                 if (payload.data.family_id === selectedFamilyIdRef.current) {
                   setSelectedFamilyDetail(payload.data.detail)
                   setLastUpdateMs(Date.now())
                 }
                 break
               case 'heartbeat':
+                if (!isUiHeartbeatPayload(payload.data)) throw new Error('unsafe V6 heartbeat')
                 setLastUpdateMs(Date.now())
                 break
               case 'error':
+                if (!isUiErrorPayload(payload.data)) throw new Error('unsafe V6 error')
                 setRequestError(payload.data.error_message_ko)
                 break
-              default:
-                throw new Error('unsupported V6 UI message')
-            }
+            default:
+              throw new Error('unsupported V6 UI message')
           }
           setConnected(true)
           setConnectionState('CONNECTED')
         } catch {
+          invalidateSafety()
           setConnected(false)
           setConnectionState('RECONNECTING')
           setConnectionError('화면 데이터를 다시 연결하고 있습니다.')
-          socket?.close()
+          currentSocket.close()
         }
       })
-      socket.addEventListener('close', () => {
-        if (disposed) return
-        if (uiSocket.current === socket) uiSocket.current = null
+      currentSocket.addEventListener('close', () => {
+        if (disposed || uiSocket.current !== currentSocket) return
+        uiSocket.current = null
+        invalidateSafety()
         setConnected(false)
         setConnectionState('RECONNECTING')
         setConnectionError('프로그램 화면 연결이 끊겨 다시 연결하고 있습니다.')
         reconnectTimer = window.setTimeout(connect, 1_000)
       })
-      socket.addEventListener('error', () => socket?.close())
+      currentSocket.addEventListener('error', () => currentSocket.close())
     }
 
+    const initialSafetyEpoch = safetyEpoch.current
     void fetchJson<UiSummaryPayload>('/api/ui/summary', { signal: controller.signal }, 10_000)
       .then((summary) => {
+        if (initialSafetyEpoch !== safetyEpoch.current) return
         if (!isUiSummaryPayload(summary)) {
           throw new ApiError({
             code: 'INVALID_RESPONSE',
@@ -421,6 +614,7 @@ export function useDashboard(page: PageId = 'market') {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted || disposed) return
+        invalidateSafety()
         setBootstrapState('ERROR')
         setConnectionError(errorMessage(error))
       })
@@ -434,11 +628,12 @@ export function useDashboard(page: PageId = 'market') {
       socket?.close()
       if (uiSocket.current === socket) uiSocket.current = null
     }
-  }, [applySnapshot, applyUiSummary, refreshUiSummary])
+  }, [applyUiSummary, invalidateSafety, refreshUiSummary])
 
   useEffect(() => {
     if (page !== 'market' && page !== 'strategies' && page !== 'settings') return
     const controller = new AbortController()
+    const requestSafetyEpoch = safetyEpoch.current
     if (page === 'market' || page === 'strategies') {
       void (async () => {
         const summary = await fetchJson<StrategyPageSummaryPayload>(
@@ -447,6 +642,7 @@ export function useDashboard(page: PageId = 'market') {
           10_000,
         )
         if (!isStrategyPageSummaryPayload(summary)) {
+          invalidateSafety()
           throw new ApiError({
             code: 'INVALID_RESPONSE',
             messageKo: '전략 화면 요약이 올바르지 않습니다.',
@@ -460,12 +656,13 @@ export function useDashboard(page: PageId = 'market') {
             )
           : null
         if (catalog && !isStrategyFamilyCatalogPayload(catalog)) {
+          invalidateSafety()
           throw new ApiError({
             code: 'INVALID_RESPONSE',
             messageKo: '전략 family 목록이 올바르지 않습니다.',
           })
         }
-        if (!mounted.current) return
+        if (!mounted.current || requestSafetyEpoch !== safetyEpoch.current) return
         setData((current) => ({
           ...current,
           strategies: summary.strategies.map((strategy) => {
@@ -492,18 +689,20 @@ export function useDashboard(page: PageId = 'market') {
         ),
       ]).then(([summary, diagnostics]) => {
         if (!isSettingsSummaryPayload(summary)) {
+          invalidateSafety()
           throw new ApiError({
             code: 'INVALID_RESPONSE',
             messageKo: '설정 화면 요약이 올바르지 않습니다.',
           })
         }
         if (!isDiagnosticsPayload(diagnostics)) {
+          invalidateSafety()
           throw new ApiError({
             code: 'INVALID_RESPONSE',
             messageKo: '전문가 진단 정보가 올바르지 않습니다.',
           })
         }
-        if (mounted.current) {
+        if (mounted.current && requestSafetyEpoch === safetyEpoch.current) {
           setData((current) => {
             const merged = mergeSettingsSummary(current, summary)
             return {
@@ -518,10 +717,17 @@ export function useDashboard(page: PageId = 'market') {
       })
     }
     return () => controller.abort()
-  }, [page])
+  }, [invalidateSafety, page])
 
   const updateUiSummary = useCallback(async (path: string, init: RequestInit) => {
+    if (!connected || !safetyVerified) {
+      const error = unverifiedSafetyError()
+      if (mounted.current) setRequestError(error.messageKo)
+      throw error
+    }
+    const requestSafetyEpoch = safetyEpoch.current
     const summary = await fetchJson<UiSummaryPayload>(path, init)
+    if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
     if (!isUiSummaryPayload(summary)) {
       throw new ApiError({
         code: 'INVALID_RESPONSE',
@@ -530,13 +736,19 @@ export function useDashboard(page: PageId = 'market') {
     }
     applyUiSummary(summary)
     return summary
-  }, [applyUiSummary])
+  }, [applyUiSummary, connected, safetyVerified])
 
   const submitLongControl = useCallback(async (action: LongAction) => {
+    if (!connected || !safetyVerified) {
+      const error = unverifiedSafetyError()
+      if (mounted.current) setRequestError(error.messageKo)
+      throw error
+    }
     if (busyAction) return submittedOperation
     setBusyAction(action)
     setRequestError('')
     try {
+      const requestSafetyEpoch = safetyEpoch.current
       const idempotencyKey = idempotencyKeys.current.get(action) ?? crypto.randomUUID()
       idempotencyKeys.current.set(action, idempotencyKey)
       const operation = await fetchJson<ControlOperation>(
@@ -550,6 +762,7 @@ export function useDashboard(page: PageId = 'market') {
           }),
         },
       )
+      if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
       if (!mounted.current) return operation
       setSubmittedOperation(operation)
       if (terminalStates.has(operation.state)) setBusyAction(null)
@@ -561,7 +774,7 @@ export function useDashboard(page: PageId = 'market') {
       }
       throw error
     }
-  }, [busyAction, data.control_revision, submittedOperation])
+  }, [busyAction, connected, data.control_revision, safetyVerified, submittedOperation])
 
   const control = useCallback(async (action: DashboardControlAction) => {
     if (action in actionNames) return submitLongControl(action as LongAction)
@@ -594,21 +807,28 @@ export function useDashboard(page: PageId = 'market') {
   }, [data.paper_entry_intent.revision, submitLongControl, updateUiSummary])
 
   const cancelControl = useCallback(async () => {
+    if (!connected || !safetyVerified) {
+      const error = unverifiedSafetyError()
+      if (mounted.current) setRequestError(error.messageKo)
+      throw error
+    }
     const operation = data.control_operation ?? submittedOperation
     if (!operation || terminalStates.has(operation.state)) return operation
     setRequestError('')
     try {
+      const requestSafetyEpoch = safetyEpoch.current
       const cancelled = await fetchJson<ControlOperation>(
         `/api/control/operations/${encodeURIComponent(operation.operation_id)}/cancel`,
         { method: 'POST' },
       )
+      if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
       if (mounted.current) setSubmittedOperation(cancelled)
       return cancelled
     } catch (error) {
       if (mounted.current) setRequestError(errorMessage(error))
       throw error
     }
-  }, [data.control_operation, submittedOperation])
+  }, [connected, data.control_operation, safetyVerified, submittedOperation])
 
   const retryControl = useCallback(() => {
     const operation = data.control_operation ?? submittedOperation
@@ -656,6 +876,38 @@ export function useDashboard(page: PageId = 'market') {
     [updateUiSummary],
   )
 
+  const configureStrategyFamilyResearch = useCallback(async (
+    familyId: string,
+    configuration: {
+      research_enabled: boolean
+      expected_revision: number
+      reason: string
+    },
+  ) => {
+    if (!connected || !safetyVerified) {
+      const error = unverifiedSafetyError()
+      if (mounted.current) setRequestError(error.messageKo)
+      throw error
+    }
+    const requestSafetyEpoch = safetyEpoch.current
+    const detail = await fetchJson<StrategyFamilyDetail>(
+      `/api/strategy-families/${encodeURIComponent(familyId)}/research-enabled`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(configuration),
+      },
+    )
+    if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
+    if (!isStrategyFamilyDetailPayload(detail, familyId)) {
+      invalidateSafety()
+      throw new ApiError({
+        code: 'INVALID_RESPONSE',
+        messageKo: '전략 family 변경 응답의 PAPER 안전 상태가 올바르지 않습니다.',
+      })
+    }
+    return detail
+  }, [connected, invalidateSafety, safetyVerified])
+
   const selectStrategyFamily = useCallback((familyId: string | null) => {
     selectedFamilyIdRef.current = familyId
     setSelectedFamilyId(familyId)
@@ -678,6 +930,7 @@ export function useDashboard(page: PageId = 'market') {
   return {
     data,
     connected,
+    safetyVerified,
     connectionState,
     bootstrapState,
     lastUpdateMs,
@@ -692,6 +945,7 @@ export function useDashboard(page: PageId = 'market') {
     selectChart,
     configureStrategy,
     rollbackStrategy,
+    configureStrategyFamilyResearch,
     selectedFamilyId,
     selectedFamilyDetail,
     selectStrategyFamily,

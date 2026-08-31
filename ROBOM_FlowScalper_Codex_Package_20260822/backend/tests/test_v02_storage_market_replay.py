@@ -592,7 +592,7 @@ def test_history_api_separates_main_league_profile_and_version_scope(
     assert league["account_id"].endswith(":STRESS")
     assert league["candidate_id"] == "candidate-shadow-current"
     assert league["signal_event_id"] == "signal-shadow-current"
-    assert league["opportunity_id"] == "candidate-shadow-current"
+    assert league["opportunity_id"] == "shadow-current"
     assert league["replay_available"] is False
     assert payload["scope"]["strategy_version"] == STRATEGY_VERSION
     assert payload["paper_only"] is True
@@ -1710,6 +1710,9 @@ def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(
     }
     assert diagnostics["last_paper_transition_symbol"] == plan.symbol
     trade = ledger.list_trades(runtime.run_id)[0]
+    fill_evidence = ledger.list_trade_fill_evidence(
+        [(runtime.run_id, str(trade["trade_id"]))]
+    )[(runtime.run_id, str(trade["trade_id"]))]
     run = ledger.get_run(runtime.run_id)
     assert run is not None
     assert trade["config_hash"] == run["config_hash"]
@@ -1722,6 +1725,17 @@ def test_main_orders_fills_trade_and_shadow_trades_persist_from_real_engine(
         - Decimal(str(trade["fees_usdt"]))
         - Decimal(str(trade["slippage_usdt"]))
     )
+    assert fill_evidence["fill_evidence_state"] == "PRESENT"
+    assert len(fill_evidence["fills"]) == 3
+    assert [fill["ts_ms"] for fill in fill_evidence["fills"]] == sorted(
+        fill["ts_ms"] for fill in fill_evidence["fills"]
+    )
+    assert sum(
+        Decimal(str(fill["fee_usdt"])) for fill in fill_evidence["fills"]
+    ) == Decimal(str(trade["fees_usdt"]))
+    assert sum(
+        Decimal(str(fill["slippage_usdt"])) for fill in fill_evidence["fills"]
+    ) == Decimal(str(trade["slippage_usdt"]))
     ledger.close()
 
 

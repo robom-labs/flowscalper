@@ -195,6 +195,21 @@ export type HistoryRow = {
   strategy_version?: string
   config_hash?: string
   replay_available?: boolean
+  fill_evidence_state?: 'PRESENT' | 'CURRENT_MAIN_NO_FILL' | 'LEGACY_UNAVAILABLE' | 'SHADOW_UNAVAILABLE'
+  fill_evidence_reason_ko?: string
+  fills?: TradeFill[]
+}
+
+export type TradeFill = {
+  fill_id: string
+  order_id: string
+  ts_ms: number
+  side: string
+  intent: string
+  price: string
+  quantity: string
+  fee_usdt: string
+  slippage_usdt: string
 }
 
 export type HistoryResponse = {
@@ -464,12 +479,20 @@ export type StrategyFamilyCatalogRow = {
   variants: StrategyFamilyCatalogVariant[]
 }
 
-export type StrategyFamilyCatalogPayload = {
-  schema_version: 1
-  families: StrategyFamilyCatalogRow[]
+export type FlatPaperSafetyContract = {
   paper_only: true
   real_orders_enabled: false
   auth_required: false
+  private_api_enabled: false
+  api_key_enabled: false
+  wallet_enabled: false
+  runtime_ai_order_decision_enabled: false
+  funding_readiness: 'NOT_READY'
+}
+
+export type StrategyFamilyCatalogPayload = FlatPaperSafetyContract & {
+  schema_version: 1
+  families: StrategyFamilyCatalogRow[]
 }
 
 export type StrategyFamilyCondition = {
@@ -591,6 +614,7 @@ export type StrategyPerformance = {
   profile: 'BASE' | 'STRESS'
   sample_size: number
   unique_opportunity_count?: number
+  profile_unique_opportunity_count?: number
   raw_ledger_row_count?: number
   wins: number
   losses: number
@@ -950,16 +974,13 @@ export type UiStrategyStateRow = Partial<Omit<StrategySummaryRow, 'strategy_id' 
   performance?: Partial<Record<'BASE' | 'STRESS', Partial<StrategyPerformanceSummary>>>
 }
 
-export type StrategyPageSummaryPayload = {
+export type StrategyPageSummaryPayload = FlatPaperSafetyContract & {
   schema_version: 1
   analysis_scope: 'CURRENT_STRATEGY_VERSION'
   strategies: StrategySummaryRow[]
   league_accounts: LeagueAccount[]
   strategy_count: number
   league_account_count: number
-  paper_only: true
-  real_orders_enabled: false
-  auth_required: false
 }
 
 export type SettingsSummaryPayload = {
@@ -1006,7 +1027,7 @@ export type SettingsSummaryPayload = {
   funding_readiness: 'NOT_READY'
 }
 
-export type DiagnosticsPayload = {
+export type DiagnosticsPayload = FlatPaperSafetyContract & {
   schema_version: 1
   rows: {
     key: string
@@ -1017,9 +1038,6 @@ export type DiagnosticsPayload = {
     group: string
   }[]
   raw: Record<string, string | number | boolean>
-  paper_only: true
-  real_orders_enabled: false
-  auth_required: false
 }
 
 export type UiSummaryPayload = Partial<Omit<DashboardData, 'strategies'>> & {
@@ -1028,6 +1046,11 @@ export type UiSummaryPayload = Partial<Omit<DashboardData, 'strategies'>> & {
   paper_only?: true
   real_orders_enabled?: false
   auth_required?: false
+  private_api_enabled?: false
+  api_key_enabled?: false
+  wallet_enabled?: false
+  runtime_ai_order_decision_enabled?: false
+  funding_readiness?: 'NOT_READY'
 }
 
 export type UiStrategyRowDelta = {

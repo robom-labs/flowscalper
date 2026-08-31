@@ -37,6 +37,11 @@ function emptyConditions(familyId: string) {
     paper_only: true,
     real_orders_enabled: false,
     auth_required: false,
+    private_api_enabled: false,
+    api_key_enabled: false,
+    wallet_enabled: false,
+    runtime_ai_order_decision_enabled: false,
+    funding_readiness: 'NOT_READY',
   }
 }
 
@@ -276,16 +281,15 @@ test('keeps shared and League account quantities and PnL in separate result rows
   fireEvent.click(screen.getByRole('tab', { name: '완료' }))
 
   const resultRows = [...document.querySelectorAll<HTMLTableRowElement>('.history-table tbody tr')]
-  expect(resultRows).toHaveLength(2)
-  const sharedRow = resultRows.find((row) => row.textContent?.includes('공동 가상계좌'))
-  const leagueRow = resultRows.find((row) => row.textContent?.includes('전략별 가상계좌'))
-  if (!sharedRow || !leagueRow) throw new Error('account result rows missing')
-  expect(within(sharedRow).getByText('+100 USDT')).toBeInTheDocument()
-  expect(within(sharedRow).queryByText('+101 USDT')).not.toBeInTheDocument()
-  expect(within(leagueRow).getByText('+1 USDT')).toBeInTheDocument()
-  expect(within(leagueRow).getByText('+0.5 USDT')).toBeInTheDocument()
+  expect(resultRows).toHaveLength(1)
+  const resultRow = resultRows[0]
+  expect(within(resultRow).getByText('+100 USDT')).toBeInTheDocument()
+  expect(within(resultRow).queryByText('+101 USDT')).not.toBeInTheDocument()
+  expect(within(resultRow).getByText('+1 USDT')).toBeInTheDocument()
+  expect(within(resultRow).getByText('+0.5 USDT')).toBeInTheDocument()
+  expect(within(resultRow).getByText(/같은 진입기회/)).toBeInTheDocument()
 
-  fireEvent.click(within(sharedRow).getByRole('button', { name: '자세히' }))
+  fireEvent.click(within(resultRow).getByRole('button', { name: '결과 비교' }))
   fireEvent.click(screen.getByText('기술 정보'))
   expect(screen.getByText('계좌 코드').parentElement).toHaveTextContent('SHARED_PAPER')
   expect(screen.getByText('수량').parentElement).toHaveTextContent('10')
@@ -370,48 +374,81 @@ test('loads a selected strategy family detail on demand and keeps the registry r
     onSelectFamily,
     onConfigure: vi.fn(async () => undefined),
   }
-  const view = render(<StrategiesPage {...drawerProps} researchDetails={false} />)
+  const view = render(<StrategiesPage {...drawerProps} researchDetails={false} controlsEnabled />)
   const row = document.querySelector(`[data-strategy-id="${strategy.strategy_id}"]`)
   if (!(row instanceof HTMLElement)) throw new Error('strategy row missing')
   const openButton = within(row).getByRole('button', { name: '자세히·설정' })
   openButton.focus()
   fireEvent.click(openButton)
   expect(onSelectFamily).toHaveBeenCalledWith('BREAKOUT_RUNNER')
+  const dialog = screen.getByRole('dialog', { name: '전략 상세 정보' })
+  expect(within(dialog).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+    '지금 상태',
+    '진입조건',
+    '청산',
+    '성과',
+    '출처',
+    '이전 버전',
+  ])
+  expect(within(dialog).getByRole('button', { name: '전략 상세 정보 닫기' })).toHaveFocus()
 
   expect(await screen.findByText('family 상세 설명입니다.')).toBeInTheDocument()
   expect(screen.queryByText('1개 · 실행 전 연구')).not.toBeInTheDocument()
-  expect(await screen.findByRole('table', { name: '선택 전략의 진입 조건 실측' })).toBeInTheDocument()
   expect(screen.getByText('진입 조건 대기')).toBeInTheDocument()
   expect(screen.getByText('1/2')).toBeInTheDocument()
+  expect(screen.getAllByText('현재 호가 흐름의 지속 확인이 필요합니다.')).toHaveLength(1)
+  expect(screen.getByText('1건')).toBeInTheDocument()
+  expect(screen.getByText('2건')).toBeInTheDocument()
+
+  const statusTab = within(dialog).getByRole('tab', { name: '지금 상태' })
+  statusTab.focus()
+  fireEvent.keyDown(statusTab, { key: 'ArrowRight' })
+  const conditionsTab = within(dialog).getByRole('tab', { name: '진입조건' })
+  expect(conditionsTab).toHaveFocus()
+  expect(conditionsTab).toHaveAttribute('aria-selected', 'true')
+  expect(within(dialog).getAllByRole('tab').filter((tab) => tab.tabIndex === 0)).toEqual([conditionsTab])
+  const conditionsPanel = within(dialog).getByRole('tabpanel')
+  expect(conditionsTab).toHaveAttribute('aria-controls', conditionsPanel.id)
+  expect(conditionsPanel).toHaveAttribute('aria-labelledby', conditionsTab.id)
+  expect(await screen.findByRole('table', { name: '선택 전략의 진입 조건 실측' })).toBeInTheDocument()
   expect(screen.getByText('0.65 이상')).toBeInTheDocument()
   expect(screen.getByText('0.72')).toBeInTheDocument()
   expect(screen.getByText('기술 값 숨김')).toBeInTheDocument()
-  expect(screen.getAllByText('현재 호가 흐름의 지속 확인이 필요합니다.')).toHaveLength(2)
-  expect(screen.getByText('1건')).toBeInTheDocument()
-  expect(screen.getByText('2건')).toBeInTheDocument()
+  expect(screen.getAllByText('현재 호가 흐름의 지속 확인이 필요합니다.')).toHaveLength(1)
+
+  fireEvent.click(within(dialog).getByRole('tab', { name: '청산' }))
+  expect(await screen.findByRole('region', { name: '선택 전략의 청산 정보' })).toBeInTheDocument()
   expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('101.5')
   expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('99.0')
   expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('104.0')
   expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('108.0')
+
   expect(screen.queryByText('30분 돌파 V1')).not.toBeInTheDocument()
   expect(screen.queryByText('Time Series Momentum')).not.toBeInTheDocument()
-  view.rerender(<StrategiesPage {...drawerProps} researchDetails />)
-  expect(screen.getByText('1개 · 실행 전 연구')).toBeInTheDocument()
-  expect(screen.getByText('30분 돌파 V1')).toBeInTheDocument()
+  fireEvent.click(within(dialog).getByRole('tab', { name: '이전 버전' }))
+  expect(await screen.findByText('30분 돌파 V1')).toBeInTheDocument()
+  fireEvent.click(within(dialog).getByRole('tab', { name: '출처' }))
+  expect(await screen.findByText('Time Series Momentum')).toBeInTheDocument()
   const sourceLink = screen.getByRole('link', { name: '원문 새 창에서 열기' })
   expect(sourceLink).toHaveAttribute('target', '_blank')
   expect(sourceLink).toHaveAttribute('rel', 'noopener noreferrer')
-  expect(screen.getByText('Time Series Momentum')).toBeInTheDocument()
-  expect(screen.getAllByText('고유 진입기회')).toHaveLength(2)
-  expect(screen.getAllByText('승률 · Wilson 하한')).toHaveLength(2)
-  expect(screen.getAllByText('Profit Factor')).toHaveLength(2)
-  expect(screen.getAllByText('현재 버전 순손익')).toHaveLength(2)
-  expect(screen.getAllByText('Runner 기여')).toHaveLength(2)
+
+  fireEvent.click(within(dialog).getByRole('tab', { name: '성과' }))
+  expect(screen.getAllByText('고유 진입기회')).toHaveLength(1)
+  expect(screen.getAllByText('승률 · Wilson 하한')).toHaveLength(1)
+  expect(screen.getAllByText('Profit Factor')).toHaveLength(1)
+  expect(screen.getAllByText('현재 버전 순손익')).toHaveLength(1)
+  expect(screen.getAllByText('Runner 기여')).toHaveLength(1)
+  fireEvent.click(within(dialog).getByRole('button', { name: '보수 비용' }))
+  expect(within(dialog).getByRole('heading', { name: '보수 비용 가상계좌' })).toBeInTheDocument()
+
+  fireEvent.click(within(dialog).getByRole('tab', { name: '지금 상태' }))
+  view.rerender(<StrategiesPage {...drawerProps} researchDetails controlsEnabled />)
+  expect(screen.getByText('1개 · 실행 전 연구')).toBeInTheDocument()
   expect(screen.queryByText('RAW_SETUP_REASON_CODE')).not.toBeInTheDocument()
   expect(screen.queryByText('a'.repeat(64))).not.toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledWith('/api/strategy-families/BREAKOUT_RUNNER', expect.any(Object))
   expect(fetchMock).toHaveBeenCalledWith('/api/strategy-families/BREAKOUT_RUNNER/conditions', expect.any(Object))
-  expect(screen.getByRole('button', { name: '전략 상세 정보 닫기' })).toHaveFocus()
   fireEvent.keyDown(document, { key: 'Escape' })
   expect(onSelectFamily).toHaveBeenLastCalledWith(null)
   expect(openButton).toHaveFocus()
@@ -461,7 +498,7 @@ test('refreshes selected strategy conditions every five seconds while the drawer
   })
   vi.stubGlobal('fetch', fetchMock)
 
-  render(<StrategiesPage strategies={[strategy]} leagueAccounts={[]} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={[strategy]} leagueAccounts={[]} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
   const row = document.querySelector(`[data-strategy-id="${strategy.strategy_id}"]`)
   if (!(row instanceof HTMLElement)) throw new Error('strategy row missing')
   fireEvent.click(within(row).getByRole('button', { name: '자세히·설정' }))
@@ -492,33 +529,36 @@ test('changes current-family research through CAS and performs a real undo with 
       setting: {
         research_enabled: researchEnabled,
         settings_revision: revision,
-        mode: researchEnabled ? 'SHADOW' : 'OFF',
+        mode: (researchEnabled ? 'SHADOW' : 'OFF') as 'SHADOW' | 'OFF',
       },
       runtime_state: {
         ...strategy,
-        mode: researchEnabled ? 'SHADOW' : 'OFF',
+        mode: (researchEnabled ? 'SHADOW' : 'OFF') as 'SHADOW' | 'OFF',
         settings_revision: revision,
       },
     }],
     offline_challengers: [],
   })
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input)
     if (path.endsWith('/conditions')) return response(emptyConditions(path.includes('ORDERFLOW') ? 'ORDERFLOW_CONFIRMATION' : 'BREAKOUT_RUNNER'))
-    if (path.endsWith('/research-enabled')) {
-      const body = JSON.parse(String(init?.body)) as { research_enabled: boolean; expected_revision: number }
-      expect(body.expected_revision).toBe(revision)
-      researchEnabled = body.research_enabled
-      revision += 1
-      return response(detail())
-    }
     return response(detail())
   })
   const onConfigure = vi.fn(async () => undefined)
+  const onConfigureFamilyResearch = vi.fn(async (
+    familyId: string,
+    configuration: { research_enabled: boolean; expected_revision: number; reason: string },
+  ) => {
+    expect(familyId).toBe('BREAKOUT_RUNNER')
+    expect(configuration.expected_revision).toBe(revision)
+    researchEnabled = configuration.research_enabled
+    revision += 1
+    return detail()
+  })
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 
-  render(<StrategiesPage strategies={[strategy]} leagueAccounts={[]} researchDetails onConfigure={onConfigure} />)
+  render(<StrategiesPage strategies={[strategy]} leagueAccounts={[]} researchDetails controlsEnabled onConfigure={onConfigure} onConfigureFamilyResearch={onConfigureFamilyResearch} />)
   const row = document.querySelector(`[data-strategy-id="${strategy.strategy_id}"]`)
   if (!(row instanceof HTMLElement)) throw new Error('strategy row missing')
   fireEvent.click(within(row).getByRole('button', { name: '자세히·설정' }))
@@ -526,30 +566,71 @@ test('changes current-family research through CAS and performs a real undo with 
 
   fireEvent.click(offButton)
 
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-    '/api/strategy-families/BREAKOUT_RUNNER/research-enabled',
-    expect.objectContaining({ method: 'PATCH' }),
-  ))
-  const firstPatch = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/research-enabled'))
-  expect(JSON.parse(String(firstPatch?.[1]?.body))).toEqual({
+  await waitFor(() => expect(onConfigureFamilyResearch).toHaveBeenCalledTimes(1))
+  expect(onConfigureFamilyResearch.mock.calls[0]).toEqual(['BREAKOUT_RUNNER', {
     research_enabled: false,
     expected_revision: 7,
     reason: 'USER_STRATEGY_CENTER_RESEARCH_OFF',
-  })
+  }])
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/research-enabled'))).toBe(false)
   expect(await screen.findByRole('button', { name: `${strategy.short_name} 모의평가 끄기` })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByText('rev 8', { exact: false })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '실행 취소' }))
 
-  await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/research-enabled'))).toHaveLength(2))
-  const secondPatch = fetchMock.mock.calls.filter(([input]) => String(input).endsWith('/research-enabled'))[1]
-  expect(JSON.parse(String(secondPatch?.[1]?.body))).toEqual({
+  await waitFor(() => expect(onConfigureFamilyResearch).toHaveBeenCalledTimes(2))
+  expect(onConfigureFamilyResearch.mock.calls[1]).toEqual(['BREAKOUT_RUNNER', {
     research_enabled: true,
     expected_revision: 8,
     reason: 'USER_STRATEGY_CENTER_RESEARCH_UNDO',
-  })
+  }])
   expect(await screen.findByRole('button', { name: `${strategy.short_name} 모의평가 켜기` })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByText('rev 9', { exact: false })).toBeInTheDocument()
   expect(onConfigure).not.toHaveBeenCalled()
+})
+
+test('keeps family research controls locked and sends no mutation when PAPER safety is unverified', async () => {
+  const strategy = {
+    ...strategies[1],
+    family_id: 'BREAKOUT_RUNNER',
+    family_label_ko: '돌파·큰 추세',
+    is_current_variant: true,
+    user_visible_by_default: true,
+    settings_revision: 7,
+  }
+  const detail = {
+    family_id: 'BREAKOUT_RUNNER',
+    label_ko: '돌파·큰 추세',
+    current_variant_id: strategy.strategy_id,
+    variants: [{
+      strategy_id: strategy.strategy_id,
+      is_current_variant: true,
+      setting: { research_enabled: true, settings_revision: 7, mode: 'SHADOW' as const },
+      runtime_state: strategy,
+    }],
+    offline_challengers: [],
+  }
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => (
+    response(String(input).endsWith('/conditions') ? emptyConditions('BREAKOUT_RUNNER') : detail)
+  ))
+  const onConfigureFamilyResearch = vi.fn(async () => detail)
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<StrategiesPage
+    strategies={[strategy]}
+    leagueAccounts={[]}
+    controlsEnabled={false}
+    onConfigure={vi.fn(async () => undefined)}
+    onConfigureFamilyResearch={onConfigureFamilyResearch}
+  />)
+  const row = document.querySelector(`[data-strategy-id="${strategy.strategy_id}"]`)
+  if (!(row instanceof HTMLElement)) throw new Error('strategy row missing')
+  fireEvent.click(within(row).getByRole('button', { name: '자세히·설정' }))
+  const offButton = await screen.findByRole('button', { name: `${strategy.short_name} 모의평가 끄기` })
+
+  expect(offButton).toBeDisabled()
+  fireEvent.click(offButton)
+  expect(onConfigureFamilyResearch).not.toHaveBeenCalled()
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/research-enabled'))).toBe(false)
 })
 
 test('shows the ORDERFLOW research filter truth and toggles it with the visible CAS revision', async () => {
@@ -580,27 +661,31 @@ test('shows the ORDERFLOW research filter truth and toggles it with the visible 
       paper_only: true,
     },
   })
-  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const path = String(input)
-    if (path.endsWith('/research-enabled')) {
-      const body = JSON.parse(String(init?.body)) as { research_enabled: boolean; expected_revision: number }
-      enabled = body.research_enabled
-      revision += 1
-      return response({
-        family_id: 'ORDERFLOW_CONFIRMATION',
-        variants: [{
-          strategy_id: 'ORDERFLOW_CONFIRMATION_FILTER_V2',
-          is_current_variant: true,
-          setting: { research_enabled: enabled, settings_revision: revision },
-        }],
-      })
-    }
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    void input
     return response(orderflowPayload())
+  })
+  const onConfigureFamilyResearch = vi.fn(async (
+    familyId: string,
+    configuration: { research_enabled: boolean; expected_revision: number; reason: string },
+  ) => {
+    expect(familyId).toBe('ORDERFLOW_CONFIRMATION')
+    expect(configuration.expected_revision).toBe(revision)
+    enabled = configuration.research_enabled
+    revision += 1
+    return {
+      family_id: 'ORDERFLOW_CONFIRMATION',
+      variants: [{
+        strategy_id: 'ORDERFLOW_CONFIRMATION_FILTER_V2',
+        is_current_variant: true,
+        setting: { research_enabled: enabled, settings_revision: revision },
+      }],
+    }
   })
   vi.stubGlobal('fetch', fetchMock)
   vi.spyOn(window, 'confirm').mockReturnValue(true)
 
-  render(<StrategiesPage strategies={affected} leagueAccounts={[]} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={affected} leagueAccounts={[]} controlsEnabled onConfigure={vi.fn(async () => undefined)} onConfigureFamilyResearch={onConfigureFamilyResearch} />)
 
   expect(await screen.findByText('OFF')).toBeInTheDocument()
   expect(screen.getByText('0.72 / 1.00')).toBeInTheDocument()
@@ -615,17 +700,13 @@ test('shows the ORDERFLOW research filter truth and toggles it with the visible 
 
   fireEvent.click(screen.getByRole('button', { name: '주문흐름 확인 필터 켜기' }))
 
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-    '/api/strategy-families/ORDERFLOW_CONFIRMATION/research-enabled',
-    expect.objectContaining({ method: 'PATCH' }),
-  ))
-  const patchCall = fetchMock.mock.calls.find(([input]) => String(input).endsWith('/research-enabled'))
-  expect(patchCall).toBeDefined()
-  expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+  await waitFor(() => expect(onConfigureFamilyResearch).toHaveBeenCalledTimes(1))
+  expect(onConfigureFamilyResearch.mock.calls[0]).toEqual(['ORDERFLOW_CONFIRMATION', {
     research_enabled: true,
     expected_revision: 4,
     reason: 'USER_STRATEGY_CENTER_ORDERFLOW_FILTER',
-  })
+  }])
+  expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith('/research-enabled'))).toBe(false)
   expect(await screen.findByRole('button', { name: '주문흐름 확인 필터 끄기' })).toHaveAttribute('aria-pressed', 'true')
 })
 
@@ -637,7 +718,7 @@ test('makes ORDERFLOW loading, error and missing runtime states explicit', async
     return response(emptyConditions('ORDERFLOW_CONFIRMATION'))
   }))
 
-  render(<StrategiesPage strategies={strategies.slice(1, 2)} leagueAccounts={[]} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={strategies.slice(1, 2)} leagueAccounts={[]} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
 
   expect(screen.getByText('주문흐름 필터 상태를 불러오는 중입니다.')).toBeInTheDocument()
   expect(await screen.findByRole('alert')).toHaveTextContent('주문흐름 상태를 읽지 못했습니다.')
@@ -678,7 +759,7 @@ test('filters the seven family categories and ranks only eligible strategies wit
   ]
   vi.stubGlobal('fetch', vi.fn(async () => response(emptyConditions('ORDERFLOW_CONFIRMATION'))))
 
-  render(<StrategiesPage strategies={rows} leagueAccounts={[]} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={rows} leagueAccounts={[]} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
   const categoryTabs = screen.getByRole('tablist', { name: '전략 family 분류' })
   const visibleIds = () => [...document.querySelectorAll<HTMLTableRowElement>('.strategy-compact-table tbody tr')].map((row) => row.dataset.strategyId)
 
@@ -731,10 +812,15 @@ test('shows catalog families without a runtime current variant as preparation st
     paper_only: true,
     real_orders_enabled: false,
     auth_required: false,
+    private_api_enabled: false,
+    api_key_enabled: false,
+    wallet_enabled: false,
+    runtime_ai_order_decision_enabled: false,
+    funding_readiness: 'NOT_READY',
   }
   vi.stubGlobal('fetch', vi.fn(async () => response(emptyConditions('ORDERFLOW_CONFIRMATION'))))
 
-  render(<StrategiesPage strategies={strategies.slice(11, 12)} leagueAccounts={[]} data={data} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={strategies.slice(11, 12)} leagueAccounts={[]} data={data} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
 
   expect(screen.getAllByText('연구 준비')).toHaveLength(2)
   expect(screen.getByText('라우터 전용')).toBeInTheDocument()
@@ -773,6 +859,11 @@ test('renders backend diagnostic labels and keeps macOS autostart explicitly not
     paper_only: true,
     real_orders_enabled: false,
     auth_required: false,
+    private_api_enabled: false,
+    api_key_enabled: false,
+    wallet_enabled: false,
+    runtime_ai_order_decision_enabled: false,
+    funding_readiness: 'NOT_READY',
   }
 
   const onResearchDetailsChange = vi.fn()

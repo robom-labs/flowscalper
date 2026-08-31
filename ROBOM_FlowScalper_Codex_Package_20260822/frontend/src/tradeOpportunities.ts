@@ -7,6 +7,31 @@ function sumRows(rows: HistoryRow[], key: 'quantity' | 'gross_pnl' | 'fees' | 's
   return String(rows.reduce((total, row) => total + Number(row[key] || 0), 0))
 }
 
+function mergedFills(rows: HistoryRow[]) {
+  const unique = new Map<string, NonNullable<HistoryRow['fills']>[number]>()
+  for (const fill of rows.flatMap((row) => row.fills ?? [])) {
+    unique.set(`${fill.order_id}:${fill.fill_id}`, fill)
+  }
+  return [...unique.values()].sort((left, right) => (
+    left.ts_ms - right.ts_ms || left.fill_id.localeCompare(right.fill_id)
+  ))
+}
+
+function mergedFillEvidence(rows: HistoryRow[], fills: NonNullable<HistoryRow['fills']>) {
+  if (fills.length > 0 && rows.every((row) => row.fill_evidence_state === 'PRESENT')) {
+    return {
+      fill_evidence_state: 'PRESENT' as const,
+      fill_evidence_reason_ko: rows[0]?.fill_evidence_reason_ko,
+    }
+  }
+  const unavailable = ['LEGACY_UNAVAILABLE', 'SHADOW_UNAVAILABLE', 'CURRENT_MAIN_NO_FILL']
+    .flatMap((state) => rows.filter((row) => row.fill_evidence_state === state))[0]
+  return {
+    fill_evidence_state: unavailable?.fill_evidence_state,
+    fill_evidence_reason_ko: unavailable?.fill_evidence_reason_ko,
+  }
+}
+
 function fallbackAccountGroups(opportunity: TradeOpportunity) {
   const grouped = new Map<string, TradeAccountGroup>()
   for (const row of opportunity.rows) {
@@ -73,6 +98,8 @@ function collapseProfileRows(
   const latest = [...rows].sort((left, right) => right.exit_ts_ms - left.exit_ts_ms)[0]
   const representative = rows.find((row) => row.replay_available) ?? latest
   const accountRef = accountGroup.profile_account_refs[profile]
+  const fills = mergedFills(rows)
+  const fillEvidence = mergedFillEvidence(rows, fills)
   return [{
     ...representative,
     run_id: opportunity.key.run_id,
@@ -95,6 +122,8 @@ function collapseProfileRows(
     holding_ms: Math.max(...rows.map((row) => row.holding_ms)),
     holding_seconds: Math.max(...rows.map((row) => row.holding_seconds)),
     replay_available: rows.some((row) => row.replay_available),
+    fills,
+    ...fillEvidence,
   } satisfies HistoryRow]
 }
 

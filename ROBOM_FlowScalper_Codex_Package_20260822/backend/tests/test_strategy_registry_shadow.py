@@ -28,7 +28,7 @@ from backend.app.domain.models import (
 )
 from backend.app.regime import Regime
 from backend.app.runtime import PaperRuntime
-from backend.app.storage.sqlite import RecoveryState, SQLiteLedger
+from backend.app.storage.sqlite import LedgerInvariantError, RecoveryState, SQLiteLedger
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.governor import GovernanceEvidence, StrategyGovernor
 from backend.app.strategies.registry import (
@@ -248,7 +248,7 @@ def test_retired_hourly_strategy_repairs_legacy_generic_reason() -> None:
         lifecycle=StrategyLifecycle.RETIRED,
         long_enabled=True,
         short_enabled=True,
-        revision=0,
+        revision=1,
         manual_lock=False,
         changed_by=StrategyChangeSource.MIGRATION,
         change_reason="SAFE_DEFAULT",
@@ -259,7 +259,7 @@ def test_retired_hourly_strategy_repairs_legacy_generic_reason() -> None:
     setting = registry.setting("HOURLY_MOMENTUM_BREAKOUT_V1")
 
     assert len(migrated) == 1
-    assert setting.revision == 1
+    assert setting.revision == 2
     assert setting.change_reason == "FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46"
 
 
@@ -283,7 +283,7 @@ def test_legacy_default_active_is_migrated_to_shadow_until_proven() -> None:
         lifecycle=StrategyLifecycle.ACTIVE,
         long_enabled=True,
         short_enabled=True,
-        revision=0,
+        revision=1,
         manual_lock=False,
         changed_by=StrategyChangeSource.MIGRATION,
         change_reason="LEGACY_ACTIVE_DEFAULT",
@@ -296,7 +296,7 @@ def test_legacy_default_active_is_migrated_to_shadow_until_proven() -> None:
     assert len(migrated) == 1
     assert setting.mode is StrategyMode.SHADOW
     assert setting.lifecycle is StrategyLifecycle.SHADOW
-    assert setting.revision == 1
+    assert setting.revision == 2
     assert registry.enforce_unproven_active_defaults(updated_ts_ms=3_000) == ()
 
 
@@ -366,13 +366,12 @@ def test_recovery_preserves_only_revalidated_governor_active_lineage() -> None:
         changed_by=StrategyChangeSource.AUTO_GOVERNOR,
         change_reason="CHALLENGER_BEATS_CHAMPION",
         updated_ts_ms=1_000,
+        recovery_row_token="validated-rev-7",
     )
     assert (
         validated_governor_active.enforce_unproven_active_defaults(
             updated_ts_ms=2_000,
-            validated_governor_active_revisions={
-                strategy_id: frozenset({7})
-            },
+            validated_governor_active_tokens={strategy_id: {7: "validated-rev-7"}},
         )
         == ()
     )
@@ -391,6 +390,7 @@ def test_recovery_preserves_only_revalidated_governor_active_lineage() -> None:
         changed_by=StrategyChangeSource.AUTO_GOVERNOR,
         change_reason="FORMAL_OOS_GATES_PASSED",
         updated_ts_ms=900,
+        recovery_row_token="locked-rev-6",
     )
     locked_governor_active.restore_setting(
         strategy_id,
@@ -408,9 +408,7 @@ def test_recovery_preserves_only_revalidated_governor_active_lineage() -> None:
     assert (
         locked_governor_active.enforce_unproven_active_defaults(
             updated_ts_ms=2_000,
-            validated_governor_active_revisions={
-                strategy_id: frozenset({6})
-            },
+            validated_governor_active_tokens={strategy_id: {6: "locked-rev-6"}},
         )
         == ()
     )
@@ -433,12 +431,13 @@ def test_recovery_preserves_only_revalidated_governor_active_lineage() -> None:
             changed_by=StrategyChangeSource.AUTO_GOVERNOR,
             change_reason="CHALLENGER_BEATS_CHAMPION",
             updated_ts_ms=900 + revision,
+            recovery_row_token=f"invalid-latest-rev-{revision}",
         )
     assert len(
         invalid_latest_governor.enforce_unproven_active_defaults(
             updated_ts_ms=2_000,
-            validated_governor_active_revisions={
-                strategy_id: frozenset({6})
+            validated_governor_active_tokens={
+                strategy_id: {6: "invalid-latest-rev-6"}
             },
         )
     ) == 1
@@ -456,6 +455,7 @@ def test_recovery_preserves_only_revalidated_governor_active_lineage() -> None:
         changed_by=StrategyChangeSource.AUTO_GOVERNOR,
         change_reason="OLD_FORMAL_OOS_GATES_PASSED",
         updated_ts_ms=700,
+        recovery_row_token="broken-rev-5",
     )
     broken_lineage.restore_setting(
         strategy_id,
@@ -485,12 +485,43 @@ def test_recovery_preserves_only_revalidated_governor_active_lineage() -> None:
     assert len(
         broken_lineage.enforce_unproven_active_defaults(
             updated_ts_ms=2_000,
-            validated_governor_active_revisions={
-                strategy_id: frozenset({5})
-            },
+            validated_governor_active_tokens={strategy_id: {5: "broken-rev-5"}},
         )
     ) == 1
     assert broken_lineage.setting(strategy_id).mode is StrategyMode.SHADOW
+
+
+def test_restore_setting_accepts_only_exact_equal_revision_duplicate() -> None:
+    registry = StrategyRegistry()
+    strategy_id = "BREAKOUT_RETEST_30M_V2"
+    restore_kwargs = {
+        "mode": StrategyMode.ACTIVE,
+        "lifecycle": StrategyLifecycle.ACTIVE,
+        "long_enabled": True,
+        "short_enabled": True,
+        "revision": 7,
+        "manual_lock": False,
+        "changed_by": StrategyChangeSource.AUTO_GOVERNOR,
+        "change_reason": "CHALLENGER_BEATS_CHAMPION",
+        "updated_ts_ms": 1_000,
+        "recovery_row_token": "canonical-row-token",
+    }
+
+    restored = registry.restore_setting(strategy_id, **restore_kwargs)
+    duplicate = registry.restore_setting(strategy_id, **restore_kwargs)
+
+    assert duplicate is restored
+    assert registry.setting(strategy_id).revision == 7
+    with pytest.raises(ValueError, match="복구 상태가 다릅니다"):
+        registry.restore_setting(
+            strategy_id,
+            **(restore_kwargs | {"change_reason": "DIVERGENT_REASON"}),
+        )
+    with pytest.raises(ValueError, match="복구 원장 행이 다릅니다"):
+        registry.restore_setting(
+            strategy_id,
+            **(restore_kwargs | {"recovery_row_token": "divergent-evidence-token"}),
+        )
 
 
 def _complete_active_governance_evidence(
@@ -584,16 +615,35 @@ def _restore_active_recovery_setting(
     *,
     recovery_ts_ms: int,
 ) -> tuple[PaperRuntime, SQLiteLedger]:
-    run_id = str(setting_row["run_id"])
+    restored, recovered_runtime, ledger = _restore_active_recovery_settings(
+        database,
+        (setting_row,),
+        recovery_ts_ms=recovery_ts_ms,
+    )
+    assert restored is True
+    return recovered_runtime, ledger
+
+
+def _restore_active_recovery_settings(
+    database: Path,
+    setting_rows: tuple[dict[str, object], ...],
+    *,
+    recovery_ts_ms: int,
+) -> tuple[bool, PaperRuntime, SQLiteLedger]:
+    first_setting_row = setting_rows[0]
+    run_id = str(first_setting_row["run_id"])
     ledger = SQLiteLedger(database)
     PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
-        clock=DeterministicClock(current_utc_ms=int(str(setting_row["ts_ms"])) - 1),
+        clock=DeterministicClock(
+            current_utc_ms=int(str(first_setting_row["ts_ms"])) - 1
+        ),
         run_id=run_id,
         ledger=ledger,
         venue=Venue.BINANCE_USDM,
     )
-    ledger.record_strategy_setting(setting_row)
+    for setting_row in setting_rows:
+        ledger.record_strategy_setting(setting_row)
     recovered_runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
         clock=DeterministicClock(current_utc_ms=recovery_ts_ms),
@@ -601,6 +651,9 @@ def _restore_active_recovery_setting(
         ledger=ledger,
         venue=Venue.BINANCE_USDM,
     )
+    recovered_runtime._persisted_main_order_ids = {"pre-restore-order"}
+    recovered_runtime._persisted_main_trade_ids = {"pre-restore-trade"}
+    recovered_runtime._persisted_shadow_trade_ids = {"pre-restore-shadow"}
     recovered = RecoveryState(
         run_id=run_id,
         venue=Venue.BINANCE_USDM.value,
@@ -609,8 +662,312 @@ def _restore_active_recovery_setting(
         transition_count=0,
         recovered_ts_ms=recovery_ts_ms,
     )
-    assert recovered_runtime.restore_recovery_state(recovered) is True
-    return recovered_runtime, ledger
+    restored = recovered_runtime.restore_recovery_state(recovered)
+    return restored, recovered_runtime, ledger
+
+
+def test_strategy_migration_batch_rolls_back_setting_when_incident_conflicts(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-atomic-migration-batch"
+    timestamp = 8_500
+    ledger = SQLiteLedger(tmp_path / "atomic-migration-batch.sqlite3")
+    PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=timestamp - 1),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    transition_id = "strategy-migration-conflict"
+    payload = {
+        "run_id": run_id,
+        "strategy_id": "HOURLY_MOMENTUM_BREAKOUT_V1",
+        "ts_ms": timestamp,
+        "transition_id": transition_id,
+    }
+    ledger.record_incident(
+        transition_id,
+        run_id=run_id,
+        severity="INFO",
+        category="PREEXISTING_TEST_INCIDENT",
+        ts_ms=timestamp - 1,
+        payload={"run_id": run_id},
+    )
+    settings_before = ledger.count("strategy_settings")
+    incidents_before = ledger.count("incidents")
+
+    with pytest.raises(LedgerInvariantError, match="원자적으로 저장"):
+        ledger.record_strategy_migration_batch(
+            ((payload, "STRATEGY_POLICY_MIGRATION"),)
+        )
+
+    assert ledger.count("strategy_settings") == settings_before
+    assert ledger.count("incidents") == incidents_before
+    ledger.close()
+
+
+def test_runtime_recovery_batch_failure_keeps_live_state_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = "run-recovery-batch-failure"
+    timestamp = 8_750
+    ledger = SQLiteLedger(tmp_path / "recovery-batch-failure.sqlite3")
+    PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=timestamp - 1),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    ledger.record_strategy_setting(
+        {
+            "run_id": run_id,
+            "ts_ms": timestamp,
+            "strategy_id": "HOURLY_MOMENTUM_BREAKOUT_V1",
+            "mode": "ACTIVE",
+            "lifecycle": "ACTIVE",
+            "long_enabled": True,
+            "short_enabled": True,
+            "settings_revision": 1,
+            "manual_lock": True,
+            "changed_by": "USER_UI",
+            "change_reason": "RECOVERY_ATOMICITY_TEST",
+            "settings_updated_ts_ms": timestamp,
+        }
+    )
+    recovered_runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=timestamp),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    recovered_runtime._persisted_main_order_ids = {"pre-restore-order"}
+    recovered_runtime._persisted_main_trade_ids = {"pre-restore-trade"}
+    recovered_runtime._persisted_shadow_trade_ids = {"pre-restore-shadow"}
+    registry_before = recovered_runtime.strategy_registry
+    portfolio_before = recovered_runtime.paper_portfolio
+    shadow_before = recovered_runtime.shadow_ledger
+
+    def fail_batch(
+        migrations: object,
+    ) -> None:
+        assert migrations
+        raise LedgerInvariantError("INJECTED_ATOMIC_BATCH_FAILURE")
+
+    monkeypatch.setattr(ledger, "record_strategy_migration_batch", fail_batch)
+    recovered = RecoveryState(
+        run_id=run_id,
+        venue=Venue.BINANCE_USDM.value,
+        lifecycle_state="SCANNING",
+        payload={},
+        transition_count=0,
+        recovered_ts_ms=timestamp,
+    )
+
+    assert recovered_runtime.restore_recovery_state(recovered) is False
+    assert recovered_runtime.strategy_registry is registry_before
+    assert recovered_runtime.paper_portfolio is portfolio_before
+    assert recovered_runtime.shadow_ledger is shadow_before
+    assert recovered_runtime._persisted_main_order_ids == {"pre-restore-order"}
+    assert recovered_runtime._persisted_main_trade_ids == {"pre-restore-trade"}
+    assert recovered_runtime._persisted_shadow_trade_ids == {"pre-restore-shadow"}
+    assert recovered_runtime.paused is True
+    assert recovered_runtime.paper_portfolio.main.risk_state.faulted is True
+    ledger.close()
+
+
+def test_runtime_recovery_rejects_malformed_snapshot_before_live_state_swap(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-recovery-malformed-snapshot-ts"
+    timestamp = 8_900
+    ledger = SQLiteLedger(tmp_path / "recovery-malformed-snapshot-ts.sqlite3")
+    PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=timestamp - 1),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    recovered_runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=timestamp),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    recovered_runtime._persisted_main_order_ids = {"pre-restore-order"}
+    recovered_runtime._persisted_main_trade_ids = {"pre-restore-trade"}
+    recovered_runtime._persisted_shadow_trade_ids = {"pre-restore-shadow"}
+    registry_before = recovered_runtime.strategy_registry
+    portfolio_before = recovered_runtime.paper_portfolio
+    shadow_before = recovered_runtime.shadow_ledger
+    orderflow_before = recovered_runtime.orderflow_confirmation_runtime
+    main_orders_before = recovered_runtime._persisted_main_order_ids
+    main_trades_before = recovered_runtime._persisted_main_trade_ids
+    shadow_trades_before = recovered_runtime._persisted_shadow_trade_ids
+    recovered = RecoveryState(
+        run_id=run_id,
+        venue=Venue.BINANCE_USDM.value,
+        lifecycle_state="SCANNING",
+        payload={"snapshot_ts_ms": "bogus"},
+        transition_count=0,
+        recovered_ts_ms=timestamp,
+    )
+
+    assert recovered_runtime.restore_recovery_state(recovered) is False
+    assert recovered_runtime.strategy_registry is registry_before
+    assert recovered_runtime.paper_portfolio is portfolio_before
+    assert recovered_runtime.shadow_ledger is shadow_before
+    assert recovered_runtime.orderflow_confirmation_runtime is orderflow_before
+    assert recovered_runtime._persisted_main_order_ids is main_orders_before
+    assert recovered_runtime._persisted_main_trade_ids is main_trades_before
+    assert recovered_runtime._persisted_shadow_trade_ids is shadow_trades_before
+    assert recovered_runtime.runtime_health_flags == [
+        "RECOVERY_FAIL_CLOSED",
+        "RECOVERY_STATE_REJECTED:ValueError",
+    ]
+    assert recovered_runtime.paused is True
+    assert recovered_runtime.paper_portfolio.main.risk_state.faulted is True
+    ledger.close()
+
+
+def test_runtime_recovery_preserves_exact_duplicate_active_row(tmp_path: Path) -> None:
+    timestamp = 9_000
+    setting_row = _complete_active_recovery_setting(
+        run_id="run-exact-duplicate-active",
+        timestamp=timestamp,
+    )
+
+    restored, recovered_runtime, ledger = _restore_active_recovery_settings(
+        tmp_path / "exact-duplicate-active.sqlite3",
+        (setting_row, dict(setting_row)),
+        recovery_ts_ms=timestamp,
+    )
+
+    setting = recovered_runtime.strategy_registry.setting(
+        "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert restored is True
+    assert setting.mode is StrategyMode.ACTIVE
+    assert setting.lifecycle is StrategyLifecycle.ACTIVE
+    assert setting.revision == 7
+    assert recovered_runtime.strategy_registry.main_enabled(
+        "VWAP_EXHAUSTION_REVERSION_V1", Side.LONG
+    ) is True
+    ledger.close()
+
+
+def test_runtime_recovery_rejects_divergent_equal_revision_active_row(
+    tmp_path: Path,
+) -> None:
+    timestamp = 9_500
+    setting_row = _complete_active_recovery_setting(
+        run_id="run-divergent-equal-revision-active",
+        timestamp=timestamp,
+    )
+    divergent_row = dict(setting_row)
+    divergent_row["ts_ms"] = timestamp + 1
+    divergent_row["settings_updated_ts_ms"] = timestamp + 1
+    divergent_row["change_reason"] = "DIVERGENT_WITHOUT_VALID_LINEAGE"
+    divergent_row.pop("change_evidence")
+
+    restored, recovered_runtime, ledger = _restore_active_recovery_settings(
+        tmp_path / "divergent-equal-revision-active.sqlite3",
+        (setting_row, divergent_row),
+        recovery_ts_ms=timestamp + 1,
+    )
+
+    setting = recovered_runtime.strategy_registry.setting(
+        "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert restored is False
+    assert setting.mode is StrategyMode.SHADOW
+    assert setting.lifecycle is StrategyLifecycle.SHADOW
+    assert recovered_runtime.strategy_registry.main_enabled(
+        "VWAP_EXHAUSTION_REVERSION_V1", Side.LONG
+    ) is False
+    assert recovered_runtime.paused is True
+    assert recovered_runtime.paper_portfolio.main.risk_state.faulted is True
+    assert recovered_runtime._persisted_main_order_ids == {"pre-restore-order"}
+    assert recovered_runtime._persisted_main_trade_ids == {"pre-restore-trade"}
+    assert recovered_runtime._persisted_shadow_trade_ids == {"pre-restore-shadow"}
+    ledger.close()
+
+
+def test_runtime_recovery_does_not_partially_apply_rows_before_later_malformed_row(
+    tmp_path: Path,
+) -> None:
+    timestamp = 9_600
+    setting_row = _complete_active_recovery_setting(
+        run_id="run-atomic-malformed-setting",
+        timestamp=timestamp,
+    )
+    malformed_row = dict(setting_row)
+    malformed_row.update(
+        {
+            "strategy_id": "BREAKOUT_RETEST_30M_V2",
+            "mode": "INVALID",
+            "lifecycle": "SHADOW",
+            "settings_revision": 1,
+            "settings_updated_ts_ms": timestamp + 1,
+            "ts_ms": timestamp + 1,
+            "changed_by": "RECOVERY",
+            "change_reason": "MALFORMED_LATER_ROW",
+        }
+    )
+    malformed_row.pop("change_evidence")
+
+    restored, recovered_runtime, ledger = _restore_active_recovery_settings(
+        tmp_path / "atomic-malformed-setting.sqlite3",
+        (setting_row, malformed_row),
+        recovery_ts_ms=timestamp + 1,
+    )
+
+    setting = recovered_runtime.strategy_registry.setting(
+        "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert restored is False
+    assert setting.mode is StrategyMode.SHADOW
+    assert setting.lifecycle is StrategyLifecycle.SHADOW
+    assert setting.revision == 0
+    assert recovered_runtime.strategy_registry.main_enabled(
+        "VWAP_EXHAUSTION_REVERSION_V1", Side.LONG
+    ) is False
+    assert recovered_runtime.paused is True
+    assert recovered_runtime.paper_portfolio.main.risk_state.faulted is True
+    ledger.close()
+
+
+def test_runtime_recovery_rejects_string_direction_boolean(tmp_path: Path) -> None:
+    timestamp = 9_750
+    setting_row = _complete_active_recovery_setting(
+        run_id="run-string-direction-active",
+        timestamp=timestamp,
+    )
+    setting_row["long_enabled"] = "false"
+
+    restored, recovered_runtime, ledger = _restore_active_recovery_settings(
+        tmp_path / "string-direction-active.sqlite3",
+        (setting_row,),
+        recovery_ts_ms=timestamp,
+    )
+
+    setting = recovered_runtime.strategy_registry.setting(
+        "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert restored is False
+    assert setting.mode is StrategyMode.SHADOW
+    assert setting.lifecycle is StrategyLifecycle.SHADOW
+    assert recovered_runtime.strategy_registry.main_enabled(
+        "VWAP_EXHAUSTION_REVERSION_V1", Side.LONG
+    ) is False
+    assert recovered_runtime.paused is True
+    assert recovered_runtime.paper_portfolio.main.risk_state.faulted is True
+    ledger.close()
 
 
 def test_runtime_recovery_preserves_complete_current_active_lineage(tmp_path: Path) -> None:
@@ -1154,6 +1511,22 @@ def test_governance_evidence_reads_family_metrics_without_universal_win_gate() -
     assert evidence.stress_win_rate_ci95_lower == Decimal("0.54")
     assert evidence.base_payoff_ratio == Decimal("2.10")
     assert evidence.stress_return_skew == Decimal("0.30")
+
+
+def test_governance_evidence_does_not_coerce_string_false_positive_gates() -> None:
+    evidence = GovernanceEvidence.from_reports(
+        {"sample_size": 150, "expectancy_usdt": "0.20", "profit_factor": "1.30"},
+        {"sample_size": 150, "expectancy_usdt": "0.10", "profit_factor": "1.30"},
+        multiple_testing={
+            "parameter_robustness_passed": "false",
+            "risk_contract_passed": "false",
+            "cooldown_elapsed": "false",
+        },
+    )
+
+    assert evidence.parameter_robustness_passed is False
+    assert evidence.risk_contract_passed is False
+    assert evidence.cooldown_elapsed is False
 
 
 def test_runtime_governance_cycle_quarantines_fault_but_does_not_promote_empty_sample() -> None:

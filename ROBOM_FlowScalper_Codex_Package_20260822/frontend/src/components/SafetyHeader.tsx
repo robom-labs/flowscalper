@@ -5,12 +5,13 @@ import type { DashboardData } from '../types'
 type Props = {
   data: DashboardData
   connected: boolean
+  safetyVerified: boolean
   connectionState: 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
   onPauseToggle: () => void
   immediateAction: 'pause' | 'resume' | null
 }
 
-export function SafetyHeader({ data, connected, connectionState, onPauseToggle, immediateAction }: Props) {
+export function SafetyHeader({ data, connected, safetyVerified, connectionState, onPauseToggle, immediateAction }: Props) {
   const { status } = data
   const action = data.operation_status.recommended_action
   const actionable = action === 'PAUSE' || action === 'RESUME'
@@ -34,11 +35,13 @@ export function SafetyHeader({ data, connected, connectionState, onPauseToggle, 
     <header className="topbar">
       <div className="brand-lockup"><h1>ROBOM FlowScalper</h1></div>
       <div className="header-status" aria-label="운영 상태">
-        <span className="paper-lock">PAPER · 실제 주문 0</span>
+        <span className={safetyVerified ? 'paper-lock' : 'connection-off'}>
+          {safetyVerified ? 'PAPER · 실제 주문 0' : '안전 상태 미확인 · 조작 잠금'}
+        </span>
         <span className={connected ? 'connection-on' : 'connection-off'}>{connectionLabel}</span>
         <span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>순손익 {formatUsdt(status.realized_pnl_usdt, { signed: true })}</span>
         <span>보유 {data.focus_positions.length}건</span>
-        <button type="button" className="header-action" disabled={!actionable || immediateAction !== null} onClick={onPauseToggle}>{actionLabel}</button>
+        <button type="button" className="header-action" disabled={!connected || !safetyVerified || !actionable || immediateAction !== null} onClick={onPauseToggle}>{actionLabel}</button>
       </div>
     </header>
   )

@@ -273,19 +273,23 @@ class OrderflowConfirmationRuntime:
     def restore_state(self, payload: dict[str, object]) -> None:
         with self._lock:
             revision = _non_negative_state_int(
-                payload.get("revision", 0),
+                payload.get("revision"),
                 field_name="revision",
             )
             updated_ts_ms = _non_negative_state_int(
-                payload.get("updated_ts_ms", 0),
+                payload.get("updated_ts_ms"),
                 field_name="updated_ts_ms",
             )
-            if revision < self.revision:
-                return
-            enabled = payload.get("enabled", False)
+            enabled = payload.get("enabled")
             if not isinstance(enabled, bool):
                 raise ValueError("복구 주문흐름 필터 enabled는 boolean이어야 합니다.")
-            change_reason = str(payload.get("change_reason", "RECOVERY"))
+            change_reason = payload.get("change_reason")
+            if not isinstance(change_reason, str) or not change_reason.strip():
+                raise ValueError(
+                    "복구 주문흐름 필터 change_reason은 빈 문자열이어서는 안 됩니다."
+                )
+            if revision < self.revision:
+                return
             if revision == self.revision:
                 if (
                     enabled == self.enabled
@@ -295,6 +299,10 @@ class OrderflowConfirmationRuntime:
                     return
                 raise ValueError(
                     "동일 revision 주문흐름 복구 상태가 현재 상태와 다릅니다."
+                )
+            if updated_ts_ms < self.updated_ts_ms:
+                raise ValueError(
+                    "새 revision 주문흐름 복구 시각이 현재 상태보다 이전입니다."
                 )
             self.enabled = enabled
             self.revision = revision
@@ -423,16 +431,10 @@ def evaluate_orderflow_confirmation(
 
 
 def _non_negative_state_int(value: object, *, field_name: str) -> int:
-    if isinstance(value, bool):
+    if type(value) is not int:
         raise ValueError(f"복구 주문흐름 필터 {field_name}는 정수여야 합니다.")
-    try:
-        parsed = int(str(value))
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"복구 주문흐름 필터 {field_name}는 정수여야 합니다."
-        ) from exc
-    if parsed < 0:
+    if value < 0:
         raise ValueError(
             f"복구 주문흐름 필터 {field_name}는 음수일 수 없습니다."
         )
-    return parsed
+    return value

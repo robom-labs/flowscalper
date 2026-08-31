@@ -68,6 +68,7 @@ _STRATEGY_PERFORMANCE_KEYS = (
     "profile",
     "sample_size",
     "unique_opportunity_count",
+    "profile_unique_opportunity_count",
     "wins",
     "losses",
     "breakevens",
@@ -200,7 +201,7 @@ def compact_ui_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
         for row in strategies
         if bool(row.get("user_visible_by_default", row.get("is_current_variant", False)))
     ]
-    safety = _safety_contract(snapshot)
+    safety = paper_safety_contract(snapshot)
     summary = {
         "schema_version": 1,
         "status": snapshot.get("status", {}),
@@ -294,7 +295,7 @@ def strategy_page_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
         if str(account.get("strategy_id")) in visible_ids
         and str(account.get("profile")) in {"BASE", "STRESS"}
     ]
-    safety = _safety_contract(snapshot)
+    safety = paper_safety_contract(snapshot)
     return {
         "schema_version": 1,
         "analysis_scope": "CURRENT_STRATEGY_VERSION",
@@ -302,10 +303,7 @@ def strategy_page_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
         "league_accounts": league_accounts,
         "strategy_count": len(strategies),
         "league_account_count": len(league_accounts),
-    } | {
-        key: safety[key]
-        for key in ("paper_only", "real_orders_enabled", "auth_required")
-    }
+    } | safety
 
 
 def ui_delta_messages(
@@ -419,6 +417,11 @@ def compact_selected_family_detail(detail: Mapping[str, object]) -> dict[str, ob
             "paper_only",
             "real_orders_enabled",
             "auth_required",
+            "private_api_enabled",
+            "api_key_enabled",
+            "wallet_enabled",
+            "runtime_ai_order_decision_enabled",
+            "funding_readiness",
         )
         if key in detail
     } | {
@@ -449,7 +452,7 @@ def settings_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
     risk = _mapping(snapshot.get("risk"))
     paper_intent = _mapping(snapshot.get("paper_entry_intent"))
     paper_state_recovery = system.get("automatic_recovery_enabled")
-    safety = _safety_contract(snapshot)
+    safety = paper_safety_contract(snapshot)
     return {
         "schema_version": 1,
         "run": {
@@ -510,7 +513,7 @@ def diagnostics_rows(snapshot: Mapping[str, object]) -> dict[str, object]:
     """Backend가 한국어 label과 severity를 정해 frontend 문자열 추론을 없앤다."""
 
     system = _mapping(snapshot.get("system"))
-    safety = _safety_contract(snapshot)
+    safety = paper_safety_contract(snapshot)
     rows: list[dict[str, object]] = []
     for key, (label_ko, group, user_visible) in _DIAGNOSTIC_LABELS.items():
         if key not in system:
@@ -568,35 +571,36 @@ def _diagnostic_severity(key: str, value: object) -> str:
     return "INFO"
 
 
-def _safety_contract(snapshot: Mapping[str, object]) -> dict[str, object]:
+def paper_safety_contract(snapshot: Mapping[str, object]) -> dict[str, object]:
     """안전값을 만들지 않고 dashboard의 명시된 원본만 전달한다."""
 
     status = _mapping(snapshot.get("status"))
     system = _mapping(snapshot.get("system"))
     safety = _mapping(snapshot.get("safety"))
+    risk = _mapping(snapshot.get("risk"))
 
-    def first(key: str, *sources: Mapping[str, object]) -> object:
-        for source in sources:
-            if key in source:
-                return source[key]
-        return "NOT_PROVEN"
+    def consistent(key: str, *sources: Mapping[str, object]) -> object:
+        values = [source[key] for source in sources if key in source]
+        if not values:
+            return "NOT_PROVEN"
+        expected = values[0]
+        if any(
+            type(value) is not type(expected) or value != expected
+            for value in values[1:]
+        ):
+            return "NOT_PROVEN"
+        return expected
 
-    real_orders = first("real_orders_enabled", snapshot, safety, status, system)
-    auth_required = first("auth_required", snapshot, safety, status, system)
-    private_api = first("private_api_enabled", snapshot, safety, system, status)
-    api_key = first("api_key_enabled", snapshot, safety, system, status)
-    wallet = first("wallet_enabled", snapshot, safety, system, status)
-    runtime_ai = first(
+    real_orders = consistent("real_orders_enabled", snapshot, safety, status, system)
+    auth_required = consistent("auth_required", snapshot, safety, status, system)
+    private_api = consistent("private_api_enabled", snapshot, safety, system, status)
+    api_key = consistent("api_key_enabled", snapshot, safety, system, status)
+    wallet = consistent("wallet_enabled", snapshot, safety, system, status)
+    runtime_ai = consistent(
         "runtime_ai_order_decision_enabled", snapshot, safety, system, status
     )
-    funding = first("funding_readiness", snapshot, safety, system, status)
-    paper_only = first("paper_only", snapshot, safety, status, system)
-    boundary_values = (real_orders, private_api, api_key, wallet, runtime_ai)
-    if paper_only == "NOT_PROVEN":
-        if any(value is True for value in boundary_values):
-            paper_only = False
-        elif all(value is False for value in boundary_values):
-            paper_only = True
+    funding = consistent("funding_readiness", snapshot, safety, system, status)
+    paper_only = consistent("paper_only", snapshot, safety, status, system, risk)
 
     return {
         "paper_only": paper_only,

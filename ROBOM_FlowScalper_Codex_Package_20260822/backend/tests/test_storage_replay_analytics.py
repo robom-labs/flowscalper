@@ -94,6 +94,398 @@ def test_completed_trade_accounting_and_finalized_run_are_immutable(tmp_path: Pa
     ledger.close()
 
 
+def test_trade_fill_evidence_batch_isolated_ordered_and_reconciled(tmp_path: Path) -> None:
+    ledger = _open_run(tmp_path)
+    for order in (
+        {
+            "order_id": "order-trade-001-entry",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": "BUY",
+            "intent": "ENTRY_IOC",
+            "filled_qty": "1",
+            "created_ts_ms": 1_100,
+        },
+        {
+            "order_id": "order-trade-001-exit",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": "SELL",
+            "intent": "TAKE_PROFIT",
+            "filled_qty": "1",
+            "created_ts_ms": 1_800,
+        },
+        {
+            "order_id": "order-trade-001-lookalike-other",
+            "run_id": "run-001",
+            "trade_id": "trade-other",
+            "status": "FILLED",
+            "side": "SELL",
+            "intent": "STOP_EXIT",
+            "filled_qty": "99",
+            "created_ts_ms": 1_050,
+        },
+    ):
+        ledger.record_order(order)
+    for fill in (
+        {
+            "fill_id": "fill-exit",
+            "run_id": "run-001",
+            "order_id": "order-trade-001-exit",
+            "side": "SELL",
+            "price": "101.90",
+            "quantity": "1",
+            "fee_usdt": "0.0612",
+            "slippage_usdt": "0.12",
+            "ts_ms": 2_000,
+        },
+        {
+            "fill_id": "fill-entry",
+            "run_id": "run-001",
+            "order_id": "order-trade-001-entry",
+            "side": "BUY",
+            "price": "100.10",
+            "quantity": "1",
+            "fee_usdt": "0.06",
+            "slippage_usdt": "0.08",
+            "ts_ms": 1_200,
+        },
+        {
+            "fill_id": "fill-other-trade",
+            "run_id": "run-001",
+            "order_id": "order-trade-001-lookalike-other",
+            "side": "SELL",
+            "price": "1",
+            "quantity": "99",
+            "fee_usdt": "9",
+            "slippage_usdt": "9",
+            "ts_ms": 1_150,
+        },
+    ):
+        ledger.record_fill(fill)
+    ledger.record_trade({**_sample_trade(), "entry_ts_ms": 1_200})
+    traced_sql: list[str] = []
+    ledger._read_connection.set_trace_callback(traced_sql.append)
+
+    evidence = ledger.list_trade_fill_evidence([("run-001", "trade-001")])
+
+    assert len([sql for sql in traced_sql if "WITH requested AS" in sql]) == 1
+    assert evidence[("run-001", "trade-001")]["fill_evidence_state"] == "PRESENT"
+    fills = evidence[("run-001", "trade-001")]["fills"]
+    assert [fill["fill_id"] for fill in fills] == ["fill-entry", "fill-exit"]
+    assert [fill["intent"] for fill in fills] == ["ENTRY_IOC", "TAKE_PROFIT"]
+    assert sum(Decimal(fill["fee_usdt"]) for fill in fills) == Decimal("0.1212")
+    assert sum(Decimal(fill["slippage_usdt"]) for fill in fills) == Decimal("0.20")
+    assert all(fill["order_id"] != "order-trade-001-lookalike-other" for fill in fills)
+    ledger.close()
+
+
+def test_trade_fill_evidence_distinguishes_missing_sources_and_fails_closed(
+    tmp_path: Path,
+) -> None:
+    ledger = _open_run(tmp_path)
+    ledger.record_trade(_sample_trade("trade-legacy"))
+    ledger.record_order(
+        {
+            "order_id": "order-current-no-fill",
+            "run_id": "run-001",
+            "trade_id": "trade-current-no-fill",
+            "status": "FILLED",
+            "side": "BUY",
+            "intent": "ENTRY_IOC",
+            "filled_qty": "1",
+            "created_ts_ms": 1_100,
+        }
+    )
+    ledger.record_trade(_sample_trade("trade-current-no-fill"))
+    states = ledger.list_trade_fill_evidence(
+        [
+            ("run-001", "trade-legacy"),
+            ("run-001", "trade-current-no-fill"),
+            ("run-001", "trade-not-persisted"),
+        ]
+    )
+    assert states[("run-001", "trade-legacy")]["fill_evidence_state"] == "LEGACY_UNAVAILABLE"
+    assert (
+        states[("run-001", "trade-current-no-fill")]["fill_evidence_state"]
+        == "CURRENT_MAIN_NO_FILL"
+    )
+    assert (
+        states[("run-001", "trade-not-persisted")]["fill_evidence_state"]
+        == "CURRENT_MAIN_NO_FILL"
+    )
+
+    ledger.record_order(
+        {
+            "order_id": "order-mismatch",
+            "run_id": "run-001",
+            "trade_id": "trade-mismatch",
+            "status": "FILLED",
+            "side": "BUY",
+            "intent": "ENTRY_IOC",
+            "filled_qty": "1",
+            "created_ts_ms": 1_100,
+        }
+    )
+    ledger.record_fill(
+        {
+            "fill_id": "fill-mismatch",
+            "run_id": "run-001",
+            "order_id": "order-mismatch",
+            "side": "BUY",
+            "price": "100.10",
+            "quantity": "1",
+            "fee_usdt": "0.10",
+            "slippage_usdt": "0.20",
+            "ts_ms": 1_200,
+        }
+    )
+    ledger.record_order(
+        {
+            "order_id": "order-mismatch-exit",
+            "run_id": "run-001",
+            "trade_id": "trade-mismatch",
+            "status": "FILLED",
+            "side": "SELL",
+            "intent": "TAKE_PROFIT",
+            "filled_qty": "1",
+            "created_ts_ms": 1_800,
+        }
+    )
+    ledger.record_fill(
+        {
+            "fill_id": "fill-mismatch-exit",
+            "run_id": "run-001",
+            "order_id": "order-mismatch-exit",
+            "side": "SELL",
+            "price": "101.90",
+            "quantity": "1",
+            "fee_usdt": "0",
+            "slippage_usdt": "0",
+            "ts_ms": 2_100,
+        }
+    )
+    ledger.record_trade({**_sample_trade("trade-mismatch"), "entry_ts_ms": 1_200})
+    with pytest.raises(LedgerInvariantError, match="fill 비용 합계"):
+        ledger.list_trade_fill_evidence([("run-001", "trade-mismatch")])
+    ledger.close()
+
+
+@pytest.mark.parametrize(
+    ("order_override", "fill_override", "expected_error"),
+    [
+        ({}, {"side": "SELL"}, "fill side"),
+        ({}, {"quantity": "NaN"}, "수량은 유한한 양수"),
+        ({}, {"ts_ms": 1_050}, "fill 시각이 주문 생성시각보다 빠릅니다"),
+        ({"status": "REJECTED"}, {}, "미체결 상태 주문에 fill이 연결됐습니다"),
+    ],
+)
+def test_trade_fill_evidence_rejects_malformed_present_payloads(
+    tmp_path: Path,
+    order_override: dict[str, object],
+    fill_override: dict[str, object],
+    expected_error: str,
+) -> None:
+    ledger = _open_run(tmp_path)
+    ledger.record_order(
+        {
+            "order_id": "order-strict",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": "BUY",
+            "intent": "ENTRY_IOC",
+            "filled_qty": "1",
+            "created_ts_ms": 1_100,
+            **order_override,
+        }
+    )
+    ledger.record_fill(
+        {
+            "fill_id": "fill-strict",
+            "run_id": "run-001",
+            "order_id": "order-strict",
+            "side": "BUY",
+            "price": "100.10",
+            "quantity": "1",
+            "fee_usdt": "0.1212",
+            "slippage_usdt": "0.20",
+            "ts_ms": 1_200,
+            **fill_override,
+        }
+    )
+    ledger.record_trade(_sample_trade())
+
+    with pytest.raises(LedgerInvariantError, match=expected_error):
+        ledger.list_trade_fill_evidence([("run-001", "trade-001")])
+    ledger.close()
+
+
+def test_trade_fill_evidence_rejects_oversized_entry_without_exit(tmp_path: Path) -> None:
+    ledger = _open_run(tmp_path)
+    ledger.record_order(
+        {
+            "order_id": "order-oversized-entry",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": "BUY",
+            "intent": "ENTRY_IOC",
+            "filled_qty": "999",
+            "created_ts_ms": 1_100,
+        }
+    )
+    ledger.record_fill(
+        {
+            "fill_id": "fill-oversized-entry",
+            "run_id": "run-001",
+            "order_id": "order-oversized-entry",
+            "side": "BUY",
+            "price": "100.10",
+            "quantity": "999",
+            "fee_usdt": "0.1212",
+            "slippage_usdt": "0.20",
+            "ts_ms": 1_200,
+        }
+    )
+    ledger.record_trade({**_sample_trade(), "entry_ts_ms": 1_200})
+
+    with pytest.raises(LedgerInvariantError, match="진입 fill과 청산 fill"):
+        ledger.list_trade_fill_evidence([("run-001", "trade-001")])
+    ledger.close()
+
+
+def test_trade_fill_evidence_rejects_exit_before_entry(tmp_path: Path) -> None:
+    ledger = _open_run(tmp_path)
+    for order in (
+        {
+            "order_id": "order-reversed-entry",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": "BUY",
+            "intent": "ENTRY_IOC",
+            "filled_qty": "1",
+            "created_ts_ms": 1_000,
+        },
+        {
+            "order_id": "order-reversed-exit",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": "SELL",
+            "intent": "TAKE_PROFIT",
+            "filled_qty": "1",
+            "created_ts_ms": 1_000,
+        },
+    ):
+        ledger.record_order(order)
+    for fill in (
+        {
+            "fill_id": "fill-reversed-entry",
+            "run_id": "run-001",
+            "order_id": "order-reversed-entry",
+            "side": "BUY",
+            "price": "100.10",
+            "quantity": "1",
+            "fee_usdt": "0.06",
+            "slippage_usdt": "0.08",
+            "ts_ms": 1_900,
+        },
+        {
+            "fill_id": "fill-reversed-exit",
+            "run_id": "run-001",
+            "order_id": "order-reversed-exit",
+            "side": "SELL",
+            "price": "101.90",
+            "quantity": "1",
+            "fee_usdt": "0.0612",
+            "slippage_usdt": "0.12",
+            "ts_ms": 1_200,
+        },
+    ):
+        ledger.record_fill(fill)
+    ledger.record_trade(
+        {**_sample_trade(), "entry_ts_ms": 1_200, "exit_ts_ms": 1_900}
+    )
+
+    with pytest.raises(LedgerInvariantError, match="청산 fill이 진입 fill보다 먼저"):
+        ledger.list_trade_fill_evidence([("run-001", "trade-001")])
+    ledger.close()
+
+
+@pytest.mark.parametrize(
+    ("entry_side", "exit_side", "fill_quantity", "expected_error"),
+    [
+        ("BUY", "SELL", "999", "진입·청산 fill 수량"),
+        ("SELL", "BUY", "1", "진입 fill 방향"),
+    ],
+)
+def test_trade_fill_evidence_rejects_complete_but_wrong_quantity_or_direction(
+    tmp_path: Path,
+    entry_side: str,
+    exit_side: str,
+    fill_quantity: str,
+    expected_error: str,
+) -> None:
+    ledger = _open_run(tmp_path)
+    for order in (
+        {
+            "order_id": "order-strict-entry",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": entry_side,
+            "intent": "ENTRY_IOC",
+            "filled_qty": fill_quantity,
+            "created_ts_ms": 1_100,
+        },
+        {
+            "order_id": "order-strict-exit",
+            "run_id": "run-001",
+            "trade_id": "trade-001",
+            "status": "FILLED",
+            "side": exit_side,
+            "intent": "TAKE_PROFIT",
+            "filled_qty": fill_quantity,
+            "created_ts_ms": 1_800,
+        },
+    ):
+        ledger.record_order(order)
+    for fill in (
+        {
+            "fill_id": "fill-strict-entry",
+            "run_id": "run-001",
+            "order_id": "order-strict-entry",
+            "side": entry_side,
+            "price": "100.10",
+            "quantity": fill_quantity,
+            "fee_usdt": "0.06",
+            "slippage_usdt": "0.08",
+            "ts_ms": 1_200,
+        },
+        {
+            "fill_id": "fill-strict-exit",
+            "run_id": "run-001",
+            "order_id": "order-strict-exit",
+            "side": exit_side,
+            "price": "101.90",
+            "quantity": fill_quantity,
+            "fee_usdt": "0.0612",
+            "slippage_usdt": "0.12",
+            "ts_ms": 2_000,
+        },
+    ):
+        ledger.record_fill(fill)
+    ledger.record_trade({**_sample_trade(), "entry_ts_ms": 1_200})
+
+    with pytest.raises(LedgerInvariantError, match=expected_error):
+        ledger.list_trade_fill_evidence([("run-001", "trade-001")])
+    ledger.close()
+
+
 def test_execution_state_batch_commits_all_recovery_rows_together(tmp_path: Path) -> None:
     ledger = _open_run(tmp_path)
     trade = _sample_trade()

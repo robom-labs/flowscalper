@@ -80,7 +80,7 @@
   "browser_e2e": {
     "status": "PASS",
     "scope": "LOCAL_DEMO_FIXTURE_PLAYWRIGHT",
-    "measured_ts_utc": "2026-08-31T14:47:05.239Z",
+    "measured_ts_utc": "2026-08-31T22:34:39.561Z",
     "measurement_boundary": "브라우저 화면 준비와 DOM 접근성 검증이며 실제 공개시장 서비스 성능은 아닙니다.",
     "projects": {
       "desktop": {
@@ -90,9 +90,9 @@
           "height": 900
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 535.3,
-          "strategy_list_ready_after_keyboard_navigation_ms": 42.9,
-          "selected_strategy_detail_ready_on_demand_ms": 105.7,
+          "first_meaningful_ready_view_ms": 109.1,
+          "strategy_list_ready_after_keyboard_navigation_ms": 66.4,
+          "selected_strategy_detail_ready_on_demand_ms": 197.4,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -108,7 +108,7 @@
           "interactive_target_audits": [
             {
               "stage": "market_and_symbol_drawer",
-              "measured_count": 53,
+              "measured_count": 54,
               "minimum_height_px": 48,
               "violations": []
             },
@@ -120,19 +120,19 @@
             },
             {
               "stage": "strategy_detail_drawer",
-              "measured_count": 41,
+              "measured_count": 39,
               "minimum_height_px": 48,
               "violations": []
             },
             {
               "stage": "trade_detail_drawer",
-              "measured_count": 21,
+              "measured_count": 22,
               "minimum_height_px": 48,
               "violations": []
             },
             {
               "stage": "trade_replay",
-              "measured_count": 38,
+              "measured_count": 39,
               "minimum_height_px": 48,
               "violations": []
             },
@@ -184,9 +184,9 @@
           "height": 1180
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 128.2,
-          "strategy_list_ready_after_keyboard_navigation_ms": 34.1,
-          "selected_strategy_detail_ready_on_demand_ms": 59.7,
+          "first_meaningful_ready_view_ms": 115.4,
+          "strategy_list_ready_after_keyboard_navigation_ms": 24.5,
+          "selected_strategy_detail_ready_on_demand_ms": 22.2,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -202,7 +202,7 @@
           "interactive_target_audits": [
             {
               "stage": "market_and_symbol_drawer",
-              "measured_count": 55,
+              "measured_count": 56,
               "minimum_height_px": 48,
               "violations": []
             },
@@ -214,19 +214,19 @@
             },
             {
               "stage": "strategy_detail_drawer",
-              "measured_count": 41,
+              "measured_count": 38,
               "minimum_height_px": 48,
               "violations": []
             },
             {
               "stage": "trade_detail_drawer",
-              "measured_count": 21,
+              "measured_count": 22,
               "minimum_height_px": 48,
               "violations": []
             },
             {
               "stage": "trade_replay",
-              "measured_count": 39,
+              "measured_count": 40,
               "minimum_height_px": 48,
               "violations": []
             },
@@ -253,9 +253,9 @@
           "height": 844
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 108.5,
-          "strategy_list_ready_after_keyboard_navigation_ms": 28.5,
-          "selected_strategy_detail_ready_on_demand_ms": 32.9,
+          "first_meaningful_ready_view_ms": 94,
+          "strategy_list_ready_after_keyboard_navigation_ms": 20.3,
+          "selected_strategy_detail_ready_on_demand_ms": 16.8,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -271,7 +271,7 @@
           "interactive_target_audits": [
             {
               "stage": "market_and_symbol_drawer",
-              "measured_count": 55,
+              "measured_count": 56,
               "minimum_height_px": 48,
               "violations": []
             },
@@ -283,19 +283,19 @@
             },
             {
               "stage": "strategy_detail_drawer",
-              "measured_count": 41,
+              "measured_count": 38,
               "minimum_height_px": 48,
               "violations": []
             },
             {
               "stage": "trade_detail_drawer",
-              "measured_count": 21,
+              "measured_count": 22,
               "minimum_height_px": 48,
               "violations": []
             },
             {
               "stage": "trade_replay",
-              "measured_count": 39,
+              "measured_count": 40,
               "minimum_height_px": 48,
               "violations": []
             },

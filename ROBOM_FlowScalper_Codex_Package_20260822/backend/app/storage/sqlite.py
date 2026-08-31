@@ -1402,6 +1402,61 @@ class SQLiteLedger:
             identity_columns=("run_id", "strategy_id", "ts_ms"),
         )
 
+    def record_strategy_migration_batch(
+        self,
+        migrations: Sequence[tuple[Mapping[str, object], str]],
+    ) -> None:
+        """복구 전략 setting과 대응 incident를 하나의 SQLite transaction에 저장한다."""
+
+        if not migrations:
+            return
+        try:
+            with self._transaction() as connection:
+                for payload, category in migrations:
+                    run_id = str(payload["run_id"])
+                    strategy_id = str(payload["strategy_id"])
+                    ts_ms = int(str(payload["ts_ms"]))
+                    transition_id = payload.get("transition_id")
+                    if transition_id is None or not str(transition_id).strip():
+                        raise LedgerInvariantError("전략 migration transition_id가 없습니다.")
+                    if not category.strip():
+                        raise LedgerInvariantError("전략 migration incident category가 없습니다.")
+                    self._assert_open_run(connection, run_id)
+                    payload_json = _canonical_json(payload)
+                    connection.execute(
+                        """
+                        INSERT INTO strategy_settings (
+                            run_id, strategy_id, ts_ms, payload_json, checksum
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            strategy_id,
+                            ts_ms,
+                            payload_json,
+                            hashlib.sha256(payload_json.encode()).hexdigest(),
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        INSERT INTO incidents (
+                            incident_id, run_id, severity, category, ts_ms, payload_json
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            str(transition_id),
+                            run_id,
+                            "INFO",
+                            category,
+                            ts_ms,
+                            payload_json,
+                        ),
+                    )
+        except sqlite3.Error as error:
+            raise LedgerInvariantError(
+                "전략 migration batch를 원자적으로 저장하지 못했습니다."
+            ) from error
+
     def list_strategy_settings(self, run_id: str) -> list[dict[str, Any]]:
         return self._verified_table_payloads("strategy_settings", run_id, "ts_ms, setting_id")
 
@@ -2136,6 +2191,394 @@ class SQLiteLedger:
     def list_fills(self, run_id: str) -> list[dict[str, Any]]:
         return self._list_payloads("fills", run_id, "ts_ms, fill_id")
 
+    def list_trade_fill_evidence(
+        self,
+        trade_keys: Sequence[tuple[str, str]],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """요청한 main 거래의 주문·체결만 strict batch join해 비용까지 대조한다."""
+
+        requested_keys = sorted(
+            {
+                (str(run_id).strip(), str(trade_id).strip())
+                for run_id, trade_id in trade_keys
+                if str(run_id).strip() and str(trade_id).strip()
+            }
+        )
+        if not requested_keys:
+            return {}
+        requested_json = _canonical_json(
+            [
+                {"run_id": run_id, "trade_id": trade_id}
+                for run_id, trade_id in requested_keys
+            ]
+        )
+        with self._read_lock:
+            rows = self._read_connection.execute(
+                """
+                WITH requested AS (
+                    SELECT
+                        CAST(json_extract(value, '$.run_id') AS TEXT) AS run_id,
+                        CAST(json_extract(value, '$.trade_id') AS TEXT) AS trade_id
+                    FROM json_each(?)
+                )
+                SELECT
+                    requested.run_id AS requested_run_id,
+                    requested.trade_id AS requested_trade_id,
+                    trades.run_id AS trade_run_id,
+                    trades.trade_id AS stored_trade_id,
+                    trades.payload_json AS trade_payload_json,
+                    paper_orders.run_id AS order_run_id,
+                    paper_orders.trade_id AS order_trade_id,
+                    paper_orders.order_id,
+                    paper_orders.status AS order_status,
+                    paper_orders.created_ts_ms,
+                    paper_orders.payload_json AS order_payload_json,
+                    fills.run_id AS fill_run_id,
+                    fills.order_id AS fill_order_id,
+                    fills.fill_id,
+                    fills.ts_ms AS fill_ts_ms,
+                    fills.payload_json AS fill_payload_json,
+                    (
+                        SELECT COUNT(*)
+                        FROM fills AS foreign_fills
+                        WHERE foreign_fills.order_id = paper_orders.order_id
+                          AND foreign_fills.run_id != paper_orders.run_id
+                    ) AS foreign_run_fill_count
+                FROM requested
+                LEFT JOIN trades
+                  ON trades.run_id = requested.run_id
+                 AND trades.trade_id = requested.trade_id
+                LEFT JOIN paper_orders
+                  ON paper_orders.run_id = trades.run_id
+                 AND paper_orders.trade_id = trades.trade_id
+                LEFT JOIN fills
+                  ON fills.run_id = paper_orders.run_id
+                 AND fills.order_id = paper_orders.order_id
+                ORDER BY
+                    requested.run_id,
+                    requested.trade_id,
+                    paper_orders.created_ts_ms,
+                    paper_orders.order_id,
+                    fills.ts_ms,
+                    fills.fill_id
+                """,
+                (requested_json,),
+            ).fetchall()
+
+        grouped: dict[tuple[str, str], dict[str, Any]] = {
+            key: {
+                "stored_trade": None,
+                "orders": {},
+                "fills": [],
+                "fill_ids": set(),
+            }
+            for key in requested_keys
+        }
+        valid_order_statuses = {
+            "CREATED",
+            "PENDING_LATENCY",
+            "PARTIALLY_FILLED",
+            "FILLED",
+            "CANCELED",
+            "REJECTED",
+            "FINALIZED",
+        }
+        valid_order_intents = {
+            "ENTRY_IOC",
+            "TAKE_PROFIT",
+            "STOP_EXIT",
+            "EDGE_DECAY_EXIT",
+            "EMERGENCY_EXIT",
+            "MANUAL_PAPER_EXIT",
+        }
+        try:
+            for row in rows:
+                key = (str(row["requested_run_id"]), str(row["requested_trade_id"]))
+                bucket = grouped[key]
+                stored_trade_id = row["stored_trade_id"]
+                if stored_trade_id is None:
+                    continue
+                trade_run_id = str(row["trade_run_id"])
+                if (trade_run_id, str(stored_trade_id)) != key:
+                    raise LedgerInvariantError("main 거래 batch join 식별자가 요청 키와 다릅니다.")
+                trade_payload = json.loads(str(row["trade_payload_json"]))
+                if not isinstance(trade_payload, dict):
+                    raise LedgerInvariantError("main 거래 payload는 객체여야 합니다.")
+                if (
+                    str(trade_payload.get("run_id", "")),
+                    str(trade_payload.get("trade_id", "")),
+                ) != key:
+                    raise LedgerInvariantError("main 거래 payload 식별자가 저장 컬럼과 다릅니다.")
+                previous_trade = bucket["stored_trade"]
+                if previous_trade is not None and previous_trade != trade_payload:
+                    raise LedgerInvariantError("main 거래 batch join 중 payload가 바뀌었습니다.")
+                bucket["stored_trade"] = trade_payload
+
+                order_id_value = row["order_id"]
+                if order_id_value is None:
+                    continue
+                order_id = str(order_id_value)
+                if int(row["foreign_run_fill_count"] or 0) != 0:
+                    raise LedgerInvariantError(
+                        f"다른 Run의 fill이 main 주문에 연결되어 있습니다: {order_id}"
+                    )
+                if (
+                    str(row["order_run_id"]),
+                    str(row["order_trade_id"]),
+                ) != key:
+                    raise LedgerInvariantError("main 주문이 요청 거래 경계를 벗어났습니다.")
+                order_payload = json.loads(str(row["order_payload_json"]))
+                if not isinstance(order_payload, dict):
+                    raise LedgerInvariantError("main 주문 payload는 객체여야 합니다.")
+                if (
+                    str(order_payload.get("run_id", "")),
+                    str(order_payload.get("trade_id", "")),
+                    str(order_payload.get("order_id", "")),
+                ) != (key[0], key[1], order_id):
+                    raise LedgerInvariantError("main 주문 payload 식별자가 저장 컬럼과 다릅니다.")
+                order: dict[str, Any] = {
+                    "order_id": order_id,
+                    "status": str(row["order_status"]),
+                    "created_ts_ms": int(row["created_ts_ms"]),
+                    "side": str(order_payload.get("side", "UNKNOWN")),
+                    "intent": str(order_payload.get("intent", "UNKNOWN")),
+                    "filled_qty": order_payload.get("filled_qty"),
+                    "fill_count": 0,
+                    "fill_quantity": Decimal(0),
+                }
+                if order["status"] not in valid_order_statuses:
+                    raise LedgerInvariantError(
+                        f"알 수 없는 main 주문 상태입니다: {order['status']}"
+                    )
+                if order["intent"] not in valid_order_intents:
+                    raise LedgerInvariantError(
+                        f"알 수 없는 main 주문 intent입니다: {order['intent']}"
+                    )
+                if order["side"] not in {"BUY", "SELL"}:
+                    raise LedgerInvariantError(f"알 수 없는 main 주문 side입니다: {order['side']}")
+                previous_order = bucket["orders"].get(order_id)
+                if previous_order is not None:
+                    order["fill_count"] = previous_order["fill_count"]
+                    order["fill_quantity"] = previous_order["fill_quantity"]
+                    if {
+                        **previous_order,
+                        "fill_count": 0,
+                        "fill_quantity": Decimal(0),
+                    } != {
+                        **order,
+                        "fill_count": 0,
+                        "fill_quantity": Decimal(0),
+                    }:
+                        raise LedgerInvariantError(
+                            "main 주문 batch join 중 payload가 바뀌었습니다."
+                        )
+                bucket["orders"][order_id] = order
+
+                fill_id_value = row["fill_id"]
+                if fill_id_value is None:
+                    continue
+                fill_id = str(fill_id_value)
+                if fill_id in bucket["fill_ids"]:
+                    raise LedgerInvariantError(f"main 거래에 fill이 중복 연결됐습니다: {fill_id}")
+                if (
+                    str(row["fill_run_id"]),
+                    str(row["fill_order_id"]),
+                ) != (key[0], order_id):
+                    raise LedgerInvariantError(
+                        "main fill이 요청 Run 또는 주문 경계를 벗어났습니다."
+                    )
+                fill_payload = json.loads(str(row["fill_payload_json"]))
+                if not isinstance(fill_payload, dict):
+                    raise LedgerInvariantError("main fill payload는 객체여야 합니다.")
+                fill_ts_ms = int(row["fill_ts_ms"])
+                if (
+                    str(fill_payload.get("run_id", "")),
+                    str(fill_payload.get("order_id", "")),
+                    str(fill_payload.get("fill_id", "")),
+                    int(str(fill_payload.get("ts_ms"))),
+                ) != (key[0], order_id, fill_id, fill_ts_ms):
+                    raise LedgerInvariantError("main fill payload 식별자가 저장 컬럼과 다릅니다.")
+                if fill_ts_ms < order["created_ts_ms"]:
+                    raise LedgerInvariantError("main fill 시각이 주문 생성시각보다 빠릅니다.")
+                fill_side = str(fill_payload.get("side", ""))
+                if fill_side not in {"BUY", "SELL"} or fill_side != order["side"]:
+                    raise LedgerInvariantError("main fill side가 주문 side와 일치하지 않습니다.")
+                price = _decimal(fill_payload["price"])
+                quantity = _decimal(fill_payload["quantity"])
+                fee = _decimal(fill_payload["fee_usdt"])
+                slippage = _decimal(fill_payload["slippage_usdt"])
+                if not price.is_finite() or price <= 0:
+                    raise LedgerInvariantError("main fill 가격은 유한한 양수여야 합니다.")
+                if not quantity.is_finite() or quantity <= 0:
+                    raise LedgerInvariantError("main fill 수량은 유한한 양수여야 합니다.")
+                if (
+                    not fee.is_finite()
+                    or not slippage.is_finite()
+                    or fee < 0
+                    or slippage < 0
+                ):
+                    raise LedgerInvariantError("main fill 비용은 음수일 수 없습니다.")
+                bucket["fill_ids"].add(fill_id)
+                order["fill_count"] += 1
+                order["fill_quantity"] += quantity
+                bucket["fills"].append(
+                    {
+                        "fill_id": fill_id,
+                        "order_id": order_id,
+                        "ts_ms": fill_ts_ms,
+                        "side": fill_side,
+                        "intent": order["intent"],
+                        "price": str(fill_payload["price"]),
+                        "quantity": str(fill_payload["quantity"]),
+                        "fee_usdt": str(fill_payload["fee_usdt"]),
+                        "slippage_usdt": str(fill_payload["slippage_usdt"]),
+                    }
+                )
+        except (ArithmeticError, KeyError, TypeError, ValueError) as error:
+            raise LedgerInvariantError(f"main 거래 fill payload 검증 실패: {error}") from error
+
+        evidence: dict[tuple[str, str], dict[str, Any]] = {}
+        for key, bucket in grouped.items():
+            trade = bucket["stored_trade"]
+            orders = bucket["orders"]
+            fills = sorted(
+                bucket["fills"],
+                key=lambda fill: (int(fill["ts_ms"]), str(fill["fill_id"])),
+            )
+            if trade is None:
+                evidence[key] = {
+                    "fill_evidence_state": "CURRENT_MAIN_NO_FILL",
+                    "fill_evidence_reason_ko": (
+                        "현재 공동 가상계좌 거래가 아직 원시 체결 원장에 "
+                        "확정되지 않았습니다."
+                    ),
+                    "fills": [],
+                }
+                continue
+            if not orders:
+                evidence[key] = {
+                    "fill_evidence_state": "LEGACY_UNAVAILABLE",
+                    "fill_evidence_reason_ko": (
+                        "과거 공동 가상계좌 기록에는 원시 체결 연결 정보가 없습니다."
+                    ),
+                    "fills": [],
+                }
+                continue
+            if not fills:
+                evidence[key] = {
+                    "fill_evidence_state": "CURRENT_MAIN_NO_FILL",
+                    "fill_evidence_reason_ko": (
+                        "현재 공동 가상계좌 거래에 연결된 원시 체결이 없습니다."
+                    ),
+                    "fills": [],
+                }
+                continue
+            for order_id, order in orders.items():
+                if order["filled_qty"] is None:
+                    raise LedgerInvariantError(
+                        f"main 주문 filled_qty가 없습니다: {order_id}"
+                    )
+                filled_quantity = _decimal(order["filled_qty"])
+                if not filled_quantity.is_finite() or filled_quantity < 0:
+                    raise LedgerInvariantError(
+                        f"main 주문 filled_qty가 유한한 비음수가 아닙니다: {order_id}"
+                    )
+                if filled_quantity != order["fill_quantity"]:
+                    raise LedgerInvariantError(
+                        "main 주문 filled_qty와 fill 수량 합계가 일치하지 않습니다: "
+                        f"{order_id} {filled_quantity}!={order['fill_quantity']}"
+                    )
+            unexpected_filled_orders = [
+                order_id
+                for order_id, order in orders.items()
+                if order["status"] in {"CREATED", "PENDING_LATENCY", "REJECTED"}
+                and order["fill_count"] > 0
+            ]
+            if unexpected_filled_orders:
+                raise LedgerInvariantError(
+                    "미체결 상태 주문에 fill이 연결됐습니다: "
+                    + ", ".join(sorted(unexpected_filled_orders))
+                )
+            missing_filled_orders = [
+                order_id
+                for order_id, order in orders.items()
+                if order["status"] in {"FILLED", "PARTIALLY_FILLED", "FINALIZED"}
+                and order["fill_count"] == 0
+            ]
+            if missing_filled_orders:
+                raise LedgerInvariantError(
+                    "체결 완료 주문의 fill이 누락됐습니다: "
+                    + ", ".join(sorted(missing_filled_orders))
+                )
+            trade_side = str(trade.get("side", ""))
+            if trade_side not in {"LONG", "SHORT"}:
+                raise LedgerInvariantError(f"알 수 없는 main 거래 side입니다: {trade_side}")
+            trade_quantity = _decimal(trade["quantity"])
+            if not trade_quantity.is_finite() or trade_quantity <= 0:
+                raise LedgerInvariantError("main 거래 수량은 유한한 양수여야 합니다.")
+            trade_entry_ts_ms = int(str(trade["entry_ts_ms"]))
+            trade_exit_ts_ms = int(str(trade["exit_ts_ms"]))
+            if trade_exit_ts_ms < trade_entry_ts_ms:
+                raise LedgerInvariantError("main 거래 종료시각이 진입시각보다 빠릅니다.")
+            entry_fills = [fill for fill in fills if fill["intent"] == "ENTRY_IOC"]
+            exit_fills = [fill for fill in fills if fill["intent"] != "ENTRY_IOC"]
+            if not entry_fills or not exit_fills:
+                raise LedgerInvariantError(
+                    "완료 main 거래에는 진입 fill과 청산 fill이 모두 필요합니다."
+                )
+            expected_entry_side = "BUY" if trade_side == "LONG" else "SELL"
+            expected_exit_side = "SELL" if trade_side == "LONG" else "BUY"
+            if any(fill["side"] != expected_entry_side for fill in entry_fills):
+                raise LedgerInvariantError("main 진입 fill 방향이 완료 거래 방향과 다릅니다.")
+            if any(fill["side"] != expected_exit_side for fill in exit_fills):
+                raise LedgerInvariantError("main 청산 fill 방향이 완료 거래 방향과 다릅니다.")
+            entry_quantity = sum(
+                (_decimal(fill["quantity"]) for fill in entry_fills),
+                start=Decimal(0),
+            )
+            exit_quantity = sum(
+                (_decimal(fill["quantity"]) for fill in exit_fills),
+                start=Decimal(0),
+            )
+            if entry_quantity != trade_quantity or exit_quantity != trade_quantity:
+                raise LedgerInvariantError(
+                    "main 거래와 진입·청산 fill 수량이 일치하지 않습니다: "
+                    f"trade {trade_quantity}, entry {entry_quantity}, exit {exit_quantity}"
+                )
+            entry_fill_times = [int(fill["ts_ms"]) for fill in entry_fills]
+            exit_fill_times = [int(fill["ts_ms"]) for fill in exit_fills]
+            if max(entry_fill_times) > min(exit_fill_times):
+                raise LedgerInvariantError("main 청산 fill이 진입 fill보다 먼저 기록됐습니다.")
+            if (
+                min(entry_fill_times) != trade_entry_ts_ms
+                or max(exit_fill_times) != trade_exit_ts_ms
+            ):
+                raise LedgerInvariantError(
+                    "main 거래 진입·종료시각이 원시 fill 경계와 일치하지 않습니다."
+                )
+            fill_fees = sum(
+                (_decimal(fill["fee_usdt"]) for fill in fills),
+                start=Decimal(0),
+            )
+            fill_slippage = sum(
+                (_decimal(fill["slippage_usdt"]) for fill in fills),
+                start=Decimal(0),
+            )
+            trade_fees = _decimal(trade["fees_usdt"])
+            trade_slippage = _decimal(trade["slippage_usdt"])
+            if fill_fees != trade_fees or fill_slippage != trade_slippage:
+                raise LedgerInvariantError(
+                    "main 거래와 fill 비용 합계가 일치하지 않습니다: "
+                    f"{key[0]}/{key[1]} fee {fill_fees}!={trade_fees}, "
+                    f"slippage {fill_slippage}!={trade_slippage}"
+                )
+            evidence[key] = {
+                "fill_evidence_state": "PRESENT",
+                "fill_evidence_reason_ko": "원시 PAPER 체결과 거래 비용 합계를 확인했습니다.",
+                "fills": fills,
+            }
+        return evidence
+
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         with self._replay_read_lock:
             row = self._replay_read_connection.execute(
@@ -2289,7 +2732,21 @@ class _Transaction:
         traceback: object,
     ) -> None:
         try:
-            self._connection.execute("COMMIT" if exc_type is None else "ROLLBACK")
+            if exc_type is not None:
+                self._connection.execute("ROLLBACK")
+                return
+            try:
+                self._connection.execute("COMMIT")
+            except BaseException as commit_error:
+                if self._connection.in_transaction:
+                    try:
+                        self._connection.execute("ROLLBACK")
+                    except BaseException as rollback_error:
+                        commit_error.add_note(
+                            "COMMIT 실패 뒤 후속 ROLLBACK도 실패했습니다."
+                        )
+                        raise commit_error from rollback_error
+                raise
         finally:
             self._lock.release()
 

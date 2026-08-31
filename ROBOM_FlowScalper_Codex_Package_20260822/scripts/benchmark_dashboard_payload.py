@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import subprocess
@@ -11,7 +12,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from backend.app.clocks import TestClock
 from backend.app.domain.models import RuntimeMode
@@ -24,6 +25,7 @@ from backend.app.ui_v6 import (
     strategy_page_summary,
     ui_delta_messages,
 )
+from scripts import audit_v6_system_truth as audit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = PROJECT_ROOT / "evidence/V6_DASHBOARD_PAYLOAD_BENCHMARK.json"
@@ -71,13 +73,25 @@ def _source_revision() -> tuple[str, bool]:
     return commit, not status
 
 
+def _require_validated_thirty_minute_soak(source_commit: str) -> None:
+    evidence = audit._validated_current_thirty_minute_soak(source_commit)  # noqa: SLF001
+    if (
+        evidence.get("status") != "PASS"
+        or not isinstance(evidence.get("validated_runtime_observation"), dict)
+    ):
+        raise RuntimeError(
+            "검증된 최신 30분 soak가 없어 benchmark evidence를 생성하지 않습니다."
+        )
+
+
 def _timing_ms(operation: Callable[[], object], *, iterations: int = 50) -> dict[str, Any]:
     durations: list[float] = []
     for _ in range(iterations):
         started = time.perf_counter_ns()
         operation()
         durations.append((time.perf_counter_ns() - started) / 1_000_000)
-    ordered = sorted(durations)
+    samples = [round(duration, 6) for duration in durations]
+    ordered = sorted(samples)
     p95_index = max(0, math.ceil(len(ordered) * 0.95) - 1)
     return {
         "iterations": iterations,
@@ -86,6 +100,7 @@ def _timing_ms(operation: Callable[[], object], *, iterations: int = 50) -> dict
         "p95_ms": round(ordered[p95_index], 6),
         "maximum_ms": round(ordered[-1], 6),
         "measurement_boundary": "IN_PROCESS_PURE_TRANSFORM_NOT_HTTP_OR_BROWSER_RENDER",
+        "samples_ms": samples,
     }
 
 
@@ -126,7 +141,7 @@ def _selected_family_detail(
     detail["paper_only"] = True
     detail["real_orders_enabled"] = False
     detail["auth_required"] = False
-    return compact_selected_family_detail(detail)
+    return cast(dict[str, object], compact_selected_family_detail(detail))
 
 
 def _single_tick_delta(summary: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -163,11 +178,11 @@ def _single_tick_delta(summary: dict[str, Any]) -> tuple[dict[str, Any], dict[st
     return current, chart_messages[0]
 
 
-def build_report(
+def _build_report_bundle(
     *,
     fixture_events: int,
     browser_e2e: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, object]]:
     if fixture_events <= 0:
         raise ValueError("fixture event 수는 양수여야 합니다.")
     source_commit, source_worktree_clean = _source_revision()
@@ -194,6 +209,20 @@ def build_report(
     ratio = summary_bytes / dashboard_bytes
     strategy_ratio = strategy_summary_bytes / dashboard_bytes
     chart_delta_ratio = chart_delta_bytes / chart_bytes
+    timing_with_samples = {
+        "ui_summary": _timing_ms(lambda: compact_ui_summary(dashboard)),
+        "strategy_list": _timing_ms(lambda: strategy_page_summary(dashboard)),
+        "selected_family_detail": _timing_ms(
+            lambda: _selected_family_detail(runtime, dashboard)
+        ),
+        "single_tick_delta": _timing_ms(
+            lambda: ui_delta_messages(summary, current_summary)
+        ),
+    }
+    latency_samples = {
+        name: measurement.pop("samples_ms")
+        for name, measurement in timing_with_samples.items()
+    }
     raw_system = dashboard.get("system")
     system: dict[str, Any] = dict(raw_system) if isinstance(raw_system, dict) else {}
     checks = {
@@ -210,7 +239,7 @@ def build_report(
         "real_orders_disabled": summary.get("real_orders_enabled") is False,
         "auth_not_required": summary.get("auth_required") is False,
     }
-    return {
+    report = {
         "schema_version": 2,
         "generated_ts_utc": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
         "source_commit": source_commit,
@@ -233,16 +262,7 @@ def build_report(
             "target_strategy_ratio_strictly_less_than": 0.35,
             "summary_reduction_percent": round((1 - ratio) * 100, 3),
         },
-        "transform_latency": {
-            "ui_summary": _timing_ms(lambda: compact_ui_summary(dashboard)),
-            "strategy_list": _timing_ms(lambda: strategy_page_summary(dashboard)),
-            "selected_family_detail": _timing_ms(
-                lambda: _selected_family_detail(runtime, dashboard)
-            ),
-            "single_tick_delta": _timing_ms(
-                lambda: ui_delta_messages(summary, current_summary)
-            ),
-        },
+        "transform_latency": timing_with_samples,
         "websocket_chart_delta": {
             "scope": "SYNTHETIC_SINGLE_TICK_FROM_DEMO_FIXTURE_CHART",
             "message_type": chart_message["type"],
@@ -283,10 +303,47 @@ def build_report(
         "paper_only": True,
         "real_orders_enabled": False,
     }
+    return report, {
+        "dashboard_payload_json": dashboard,
+        "summary_payload_json": summary,
+        "strategy_summary_payload_json": strategy_summary,
+        "chart_delta_message_json": chart_message,
+        "full_chart_payload_json": current_summary["chart"],
+        "dashboard_latency_samples_json": latency_samples,
+    }
+
+
+def build_report(
+    *,
+    fixture_events: int,
+    browser_e2e: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """기존 호출자에는 측정 report만 반환한다."""
+
+    report, _raw_artifacts = _build_report_bundle(
+        fixture_events=fixture_events,
+        browser_e2e=browser_e2e,
+    )
+    return report
 
 
 def main() -> None:
     args = _parse_args()
+    source_commit, source_clean = _source_revision()
+    try:
+        if not source_clean:
+            raise RuntimeError(
+                "source worktree가 clean하지 않아 benchmark evidence를 생성하지 않습니다."
+            )
+        _require_validated_thirty_minute_soak(source_commit)
+    except RuntimeError as error:
+        print(
+            json.dumps(
+                {"status": "NOT_RUN", "reason": str(error)},
+                ensure_ascii=False,
+            )
+        )
+        raise SystemExit(2) from error
     browser_e2e: dict[str, Any] | None = None
     try:
         existing = json.loads(args.output.read_text(encoding="utf-8"))
@@ -296,10 +353,56 @@ def main() -> None:
                 browser_e2e = prior_browser
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         browser_e2e = None
-    report = build_report(fixture_events=args.fixture_events, browser_e2e=browser_e2e)
+    report, raw_artifacts = _build_report_bundle(
+        fixture_events=args.fixture_events,
+        browser_e2e=browser_e2e,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    project_root = PROJECT_ROOT.resolve(strict=True)
+    output_path = args.output.resolve()
+    if not output_path.is_relative_to(project_root):
+        raise ValueError("benchmark 증거 output은 project root 안에 있어야 합니다.")
+    artifact_root = args.output.parent / "artifacts" / args.output.stem.lower()
+    artifact_root.mkdir(parents=True, exist_ok=True)
+
+    def write_artifact(name: str, artifact_format: str, value: object) -> dict[str, object]:
+        artifact_path = artifact_root / f"{name}.json"
+        content = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode()
+        artifact_path.write_bytes(content)
+        return {
+            "kind": "artifact",
+            "path": artifact_path.resolve().relative_to(project_root).as_posix(),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "byte_count": len(content),
+            "format": artifact_format,
+        }
+
+    artifacts = [
+        write_artifact("measurement", "dashboard_benchmark_json", report),
+        *[
+            write_artifact(name, artifact_format, raw_payload)
+            for artifact_format, raw_payload in raw_artifacts.items()
+            for name in (artifact_format.removesuffix("_json"),)
+        ],
+    ]
+    relative_output = output_path.relative_to(project_root).as_posix()
+    wrapper = dict(report) | {
+        "command": [
+            "uv",
+            "run",
+            "python",
+            "scripts/benchmark_dashboard_payload.py",
+            "--fixture-events",
+            str(args.fixture_events),
+            "--output",
+            relative_output,
+        ],
+        "exit_code": 0,
+        "artifact_count": len(artifacts),
+        "artifacts": artifacts,
+    }
     args.output.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(wrapper, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     print(

@@ -8,6 +8,7 @@ import json
 import socket
 import statistics
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -56,8 +57,28 @@ def _lag_ms(payload: dict[str, Any]) -> float | None:
     return max(0.0, float(received_ts_ms) - timestamp)
 
 
+def _event_observation(stream: str, payload: dict[str, Any]) -> dict[str, object]:
+    data = payload.get("data", payload)
+    if not isinstance(data, dict):
+        raise ValueError("WebSocket event data가 object가 아닙니다.")
+    source_ts_ms = data.get("E") or data.get("T") or payload.get("ts") or data.get("ts")
+    received_ts_ms = payload.get("_client_receive_ts_ms")
+    if (
+        not isinstance(source_ts_ms, int)
+        or not isinstance(received_ts_ms, int | float)
+        or float(received_ts_ms) < source_ts_ms
+    ):
+        raise ValueError("WebSocket event timestamp 결합이 유효하지 않습니다.")
+    return {
+        "stream": stream,
+        "source_ts_ms": source_ts_ms,
+        "received_ts_ms": round(float(received_ts_ms), 3),
+    }
+
+
 async def _binance() -> dict[str, object]:
     started = time.perf_counter()
+    started_at = datetime.now(UTC)
     socket.getaddrinfo("fapi.binance.com", 443)
     async with BinancePublicAdapter() as adapter:
         instruments, tickers = await asyncio.gather(
@@ -104,6 +125,17 @@ async def _binance() -> dict[str, object]:
         for lag in (_lag_ms(event) for event in [*public_events, *market_events])
         if lag is not None
     ]
+    event_samples = [
+        *(
+            _event_observation("binance-public-depth", event)
+            for event in public_events
+        ),
+        *(
+            _event_observation("binance-market-aggtrade", event)
+            for event in market_events
+        ),
+    ]
+    completed_at = datetime.now(UTC)
     return {
         "status": "PASS",
         "venue": "BINANCE_USDM",
@@ -115,6 +147,7 @@ async def _binance() -> dict[str, object]:
         "binance_catalog_tail_3m_candle_count": tail_candles["count"],
         "upbit_krw_btc_3m_candle_count": upbit_candles["count"],
         "websocket_events": len(public_events) + len(market_events),
+        "event_samples": event_samples,
         "lag_p50_ms": round(statistics.median(lags), 3) if lags else None,
         "lag_p95_ms": round(max(lags), 3) if lags else None,
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
@@ -122,6 +155,8 @@ async def _binance() -> dict[str, object]:
         "authorization_header_sent": False,
         "auth_required": False,
         "real_orders_enabled": False,
+        "started_ts_utc": started_at.isoformat().replace("+00:00", "Z"),
+        "completed_ts_utc": completed_at.isoformat().replace("+00:00", "Z"),
     }
 
 

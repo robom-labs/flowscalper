@@ -995,6 +995,9 @@ class StrategyRegistry:
         self._revision_history = {
             strategy_id: {0: self._setting_row(strategy_id)} for strategy_id in self._settings
         }
+        self._recovery_row_tokens: dict[str, dict[int, str]] = {
+            strategy_id: {} for strategy_id in self._settings
+        }
         validate_family_contract(self)
 
     @property
@@ -1050,12 +1053,12 @@ class StrategyRegistry:
         self,
         *,
         updated_ts_ms: int,
-        validated_governor_active_revisions: Mapping[str, frozenset[int]] | None = None,
+        validated_governor_active_tokens: Mapping[str, Mapping[int, str]] | None = None,
     ) -> tuple[dict[str, object], ...]:
         """현재 증거로 재검증된 Governor ACTIVE만 복구하고 나머지는 이관한다."""
 
         changed: list[dict[str, object]] = []
-        validated_revisions = validated_governor_active_revisions or {}
+        validated_tokens = validated_governor_active_tokens or {}
         for strategy_id in sorted(self.strategy_ids):
             setting = self.setting(strategy_id)
             descriptor = self.descriptor(strategy_id)
@@ -1072,7 +1075,7 @@ class StrategyRegistry:
                 and not self.is_policy_retired(strategy_id)
                 and self._has_active_governor_lineage(
                     strategy_id,
-                    validated_revisions=validated_revisions.get(strategy_id, frozenset()),
+                    validated_tokens=validated_tokens.get(strategy_id, {}),
                 )
             )
             if not has_active_state or valid_governor_active:
@@ -1110,7 +1113,7 @@ class StrategyRegistry:
         self,
         strategy_id: str,
         *,
-        validated_revisions: frozenset[int],
+        validated_tokens: Mapping[int, str],
     ) -> bool:
         """현재 ACTIVE 구간에 재검증된 Governor 승격 revision이 있는지 확인한다."""
 
@@ -1124,7 +1127,11 @@ class StrategyRegistry:
                 return False
             changed_by = row.get("changed_by")
             if changed_by == StrategyChangeSource.AUTO_GOVERNOR.value:
-                return revision in validated_revisions
+                recovery_token = self._recovery_row_tokens[strategy_id].get(revision)
+                return (
+                    recovery_token is not None
+                    and validated_tokens.get(revision) == recovery_token
+                )
             if changed_by != StrategyChangeSource.USER_UI.value:
                 return False
         return False
@@ -1305,12 +1312,37 @@ class StrategyRegistry:
         change_reason: str,
         updated_ts_ms: int,
         lifecycle: StrategyLifecycle | None = None,
+        recovery_row_token: str | None = None,
     ) -> StrategySetting:
         setting = self.setting(strategy_id)
+        restored_lifecycle = lifecycle or self.lifecycle_for_mode(mode)
+        restored_row: dict[str, object] = {
+            "strategy_id": strategy_id,
+            "mode": mode.value,
+            "lifecycle": restored_lifecycle.value,
+            "long_enabled": long_enabled,
+            "short_enabled": short_enabled,
+            "settings_revision": revision,
+            "manual_lock": manual_lock,
+            "changed_by": changed_by.value,
+            "change_reason": change_reason,
+            "settings_updated_ts_ms": updated_ts_ms,
+            "policy_reactivation_locked": self.is_policy_retired(strategy_id),
+        }
+        historical_row = self._revision_history[strategy_id].get(revision)
+        if historical_row is not None:
+            if historical_row != restored_row:
+                raise ValueError("동일 strategy settings revision의 복구 상태가 다릅니다.")
+            historical_token = self._recovery_row_tokens[strategy_id].get(revision)
+            if historical_token is not None and historical_token != recovery_row_token:
+                raise ValueError("동일 strategy settings revision의 복구 원장 행이 다릅니다.")
+            if recovery_row_token is not None:
+                self._recovery_row_tokens[strategy_id][revision] = recovery_row_token
+            return setting
         if revision < setting.revision:
             return setting
         setting.mode = mode
-        setting.lifecycle = lifecycle or self.lifecycle_for_mode(mode)
+        setting.lifecycle = restored_lifecycle
         setting.long_enabled = long_enabled
         setting.short_enabled = short_enabled
         setting.revision = revision
@@ -1319,6 +1351,8 @@ class StrategyRegistry:
         setting.change_reason = change_reason
         setting.updated_ts_ms = updated_ts_ms
         self._revision_history[strategy_id][setting.revision] = self._setting_row(strategy_id)
+        if recovery_row_token is not None:
+            self._recovery_row_tokens[strategy_id][setting.revision] = recovery_row_token
         return setting
 
     @_setting_locked

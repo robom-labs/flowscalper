@@ -122,6 +122,71 @@ def test_transaction_begin_failure_releases_process_lock() -> None:
             pass
 
 
+def test_transaction_commit_failure_rolls_back_and_allows_followup_transaction() -> None:
+    connection = sqlite3.connect(":memory:", isolation_level=None)
+    connection.execute("CREATE TABLE evidence (value INTEGER NOT NULL)")
+    lock = RLock()
+    transaction = _Transaction(connection, lock)
+    transaction.__enter__()
+    connection.execute("INSERT INTO evidence VALUES (1)")
+
+    def deny_commit(
+        action: int,
+        first: str | None,
+        second: str | None,
+        database: str | None,
+        trigger: str | None,
+    ) -> int:
+        del second, database, trigger
+        if action == sqlite3.SQLITE_TRANSACTION and first == "COMMIT":
+            return sqlite3.SQLITE_DENY
+        return sqlite3.SQLITE_OK
+
+    connection.set_authorizer(deny_commit)
+    with pytest.raises(sqlite3.DatabaseError, match="not authorized"):
+        transaction.__exit__(None, None, None)
+    connection.set_authorizer(None)
+
+    assert connection.in_transaction is False
+    assert connection.execute("SELECT COUNT(*) FROM evidence").fetchone() == (0,)
+    with _Transaction(connection, lock) as followup:
+        followup.execute("INSERT INTO evidence VALUES (2)")
+    assert connection.execute("SELECT value FROM evidence").fetchall() == [(2,)]
+    connection.close()
+
+
+def test_transaction_preserves_commit_error_when_followup_rollback_also_fails() -> None:
+    class CommitAndRollbackFailureConnection:
+        in_transaction = True
+
+        def __init__(self) -> None:
+            self.commit_error = sqlite3.OperationalError("injected commit failure")
+            self.rollback_error = sqlite3.DatabaseError("injected rollback failure")
+
+        def execute(self, statement: str) -> None:
+            if statement == "BEGIN IMMEDIATE":
+                return
+            if statement == "COMMIT":
+                raise self.commit_error
+            if statement == "ROLLBACK":
+                raise self.rollback_error
+            raise AssertionError(f"예상하지 못한 SQL: {statement}")
+
+    lock = RLock()
+    connection = CommitAndRollbackFailureConnection()
+    transaction = _Transaction(connection, lock)  # type: ignore[arg-type]
+    transaction.__enter__()
+
+    with pytest.raises(sqlite3.OperationalError, match="injected commit failure") as caught:
+        transaction.__exit__(None, None, None)
+
+    assert caught.value is connection.commit_error
+    assert caught.value.__cause__ is connection.rollback_error
+    assert caught.value.__notes__ == [
+        "COMMIT 실패 뒤 후속 ROLLBACK도 실패했습니다."
+    ]
+
+
 def test_online_snapshot_is_verified_without_direct_source_quick_check(tmp_path: Path) -> None:
     source = tmp_path / "active.sqlite3"
     snapshot = tmp_path / "snapshot.sqlite3"

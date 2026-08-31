@@ -2492,8 +2492,8 @@ def _risk_state_from_payload(payload: Mapping[str, object]) -> RiskState:
         pending_notional=Decimal(str(payload.get("pending_notional", "0"))),
         maximum_effective_leverage=Decimal(str(payload.get("maximum_effective_leverage", "0"))),
         global_consecutive_losses=int(str(payload["global_consecutive_losses"])),
-        paused=bool(payload["paused"]),
-        faulted=bool(payload["faulted"]),
+        paused=_strict_bool(payload["paused"], "risk_state.paused"),
+        faulted=_strict_bool(payload["faulted"], "risk_state.faulted"),
         cooldowns_until_ms={str(key): int(str(value)) for key, value in cooldowns.items()},
     )
     if state.current_equity > state.peak_equity or state.starting_equity <= 0:
@@ -2807,8 +2807,11 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         reason_codes=_strings(payload, "reason_codes"),
         plain_korean_explanation=_strings(payload, "plain_korean_explanation"),
         management_policy=_strings(payload, "management_policy"),
-        main_eligible=bool(payload["main_eligible"]),
-        shadow_eligible=bool(payload["shadow_eligible"]),
+        main_eligible=_strict_bool(payload["main_eligible"], "plan.main_eligible"),
+        shadow_eligible=_strict_bool(
+            payload["shadow_eligible"],
+            "plan.shadow_eligible",
+        ),
         shared_capital_evidence=SharedCapitalArbitrationEvidence(
             evidence_tier=int(str(shared_evidence.get("evidence_tier", 0))),
             stress_cost_adjusted_expectancy_usdt=(

@@ -4,16 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from backend.app.ops.service_soak import (
     RunningServiceSample,
     RunningServiceSoakThresholds,
     parse_running_service_sample,
+    sample_as_dict,
     summarize_running_service_soak,
 )
 from backend.app.storage.integrity import (
@@ -22,6 +25,47 @@ from backend.app.storage.integrity import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _non_negative_dashboard_int(payload: dict[str, object], field: str) -> int:
+    value = payload.get(field)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"{field}가 non-negative integer가 아닙니다.")
+    return value
+
+
+def _audit_sample(
+    sample: RunningServiceSample,
+    payload: dict[str, object],
+    *,
+    account_ids: tuple[str, ...],
+    release_commit: str,
+    release_isolated: bool,
+) -> dict[str, Any]:
+    main_pending = _non_negative_dashboard_int(payload, "main_pending_entry_count")
+    league_pending = _non_negative_dashboard_int(payload, "league_pending_entry_count")
+    total_pending = _non_negative_dashboard_int(payload, "total_pending_entry_count")
+    total_open = _non_negative_dashboard_int(payload, "total_open_position_count")
+    paper_portfolio_flat = payload.get("paper_portfolio_flat")
+    if not isinstance(paper_portfolio_flat, bool):
+        raise ValueError("paper_portfolio_flat이 boolean이 아닙니다.")
+    if (
+        total_pending != main_pending + league_pending
+        or total_open != sample.position_count
+        or paper_portfolio_flat is not (total_pending == 0 and total_open == 0)
+    ):
+        raise ValueError("pending/open/flat PAPER portfolio 합계가 일치하지 않습니다.")
+    serialized_sample = cast(dict[str, Any], sample_as_dict(sample))
+    return serialized_sample | {
+        "main_pending_entry_count": main_pending,
+        "league_pending_entry_count": league_pending,
+        "total_pending_entry_count": total_pending,
+        "total_open_position_count": total_open,
+        "paper_portfolio_flat": paper_portfolio_flat,
+        "league_account_ids": list(account_ids),
+        "release_commit": release_commit,
+        "release_isolated": release_isolated,
+    }
 
 
 def _source_revision() -> tuple[str, bool]:
@@ -55,9 +99,10 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
         max_wal_checkpoint_last_ms=arguments.max_wal_checkpoint_last_ms,
     )
     started_at = datetime.now(UTC)
-    started_monotonic = time.monotonic()
     source_commit, source_worktree_clean_at_start = _source_revision()
     samples: list[RunningServiceSample] = []
+    audit_samples: list[dict[str, Any]] = []
+    first_sample_monotonic: float | None = None
     observed_release_commits: set[str] = set()
     observed_release_isolation: set[bool] = set()
     observed_strategy_id_sets: set[tuple[str, ...]] = set()
@@ -72,7 +117,12 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
     dashboard_url = arguments.runtime_url.rstrip("/") + "/api/dashboard"
     try:
         while True:
-            elapsed = time.monotonic() - started_monotonic
+            probe_monotonic = time.monotonic()
+            elapsed = (
+                0.0
+                if first_sample_monotonic is None
+                else probe_monotonic - first_sample_monotonic
+            )
             try:
                 payload = fetch_dashboard_payload(
                     dashboard_url,
@@ -89,10 +139,11 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
                     raise ValueError("system.release_isolated가 boolean이 아닙니다.")
                 observed_release_commits.add(release_commit)
                 observed_release_isolation.add(release_isolated)
+                observed_at = datetime.now(UTC).isoformat()
                 sample = parse_running_service_sample(
                     payload,
                     elapsed_seconds=elapsed,
-                    observed_at=datetime.now(UTC).isoformat(),
+                    observed_at=observed_at,
                 )
                 strategy_ids = tuple(
                     sorted(state.strategy_id for state in sample.strategy_states)
@@ -109,13 +160,21 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
                 )
                 if len(account_ids) != len(league_accounts):
                     raise ValueError("league account_id 범위를 완전하게 읽지 못했습니다.")
-                mode_counts = tuple(
-                    sum(state.mode == mode for state in sample.strategy_states)
-                    for mode in ("ACTIVE", "SHADOW", "OFF")
+                mode_counts = (
+                    sum(state.mode == "ACTIVE" for state in sample.strategy_states),
+                    sum(state.mode == "SHADOW" for state in sample.strategy_states),
+                    sum(state.mode == "OFF" for state in sample.strategy_states),
                 )
                 observed_strategy_id_sets.add(strategy_ids)
                 observed_account_id_sets.add(account_ids)
                 observed_mode_counts.add(mode_counts)
+                enriched_sample = _audit_sample(
+                    sample,
+                    payload,
+                    account_ids=account_ids,
+                    release_commit=release_commit,
+                    release_isolated=release_isolated,
+                )
             except (OSError, ValueError, RuntimeSafetyViolation) as error:
                 probe_error_count += 1
                 consecutive_probe_errors += 1
@@ -131,8 +190,11 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
                     break
             else:
                 consecutive_probe_errors = 0
+                if first_sample_monotonic is None:
+                    first_sample_monotonic = probe_monotonic
                 samples.append(sample)
-            if elapsed >= arguments.duration_seconds:
+                audit_samples.append(enriched_sample)
+            if samples and elapsed >= arguments.duration_seconds:
                 break
             time.sleep(
                 max(
@@ -145,14 +207,17 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
             )
     except KeyboardInterrupt:
         operator_aborted = True
-    result = summarize_running_service_soak(
-        samples,
-        requested_duration_seconds=arguments.duration_seconds,
-        thresholds=thresholds,
-        probe_error_count=probe_error_count,
-        maximum_consecutive_probe_errors=maximum_consecutive_probe_errors,
-        max_consecutive_probe_errors=arguments.max_consecutive_probe_errors,
-        operator_aborted=operator_aborted,
+    result = cast(
+        dict[str, object],
+        summarize_running_service_soak(
+            samples,
+            requested_duration_seconds=arguments.duration_seconds,
+            thresholds=thresholds,
+            probe_error_count=probe_error_count,
+            maximum_consecutive_probe_errors=maximum_consecutive_probe_errors,
+            max_consecutive_probe_errors=arguments.max_consecutive_probe_errors,
+            operator_aborted=operator_aborted,
+        ),
     )
     if fatal_probe_error is not None:
         result["status"] = "FAIL"
@@ -239,7 +304,88 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
             "fatal_probe_error": fatal_probe_error,
         }
     )
+    if audit_samples:
+        result["baseline"] = audit_samples[0]
+        result["final"] = audit_samples[-1]
+        result["samples"] = audit_samples
     return result
+
+
+def _write_evidence_bundle(
+    arguments: argparse.Namespace,
+    measurement: dict[str, object],
+) -> dict[str, object]:
+    project_root = PROJECT_ROOT.resolve(strict=True)
+    output_path = arguments.output.resolve()
+    if not output_path.is_relative_to(project_root) or arguments.output.is_symlink():
+        raise ValueError("soak 증거 output은 project root 내부 regular file이어야 합니다.")
+    arguments.output.parent.mkdir(parents=True, exist_ok=True)
+    artifact_root = arguments.output.parent / "artifacts" / arguments.output.stem.lower()
+    artifact_root.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_root / "running-service-soak.json"
+    measurement_bytes = (
+        json.dumps(measurement, ensure_ascii=False, indent=2) + "\n"
+    ).encode()
+    artifact_path.write_bytes(measurement_bytes)
+    relative_output = output_path.relative_to(project_root).as_posix()
+    relative_artifact = artifact_path.resolve().relative_to(project_root).as_posix()
+    command = [
+        "uv",
+        "run",
+        "python",
+        "scripts/observe_running_service.py",
+        "--duration-seconds",
+        str(arguments.duration_seconds),
+        "--sample-seconds",
+        str(arguments.sample_seconds),
+        "--runtime-url",
+        str(arguments.runtime_url),
+        "--request-timeout-seconds",
+        str(arguments.request_timeout_seconds),
+        "--max-consecutive-probe-errors",
+        str(arguments.max_consecutive_probe_errors),
+        "--max-queue-depth",
+        str(arguments.max_queue_depth),
+        "--max-processing-lag-p95-ms",
+        str(arguments.max_processing_lag_p95_ms),
+        "--max-trade-lag-p95-ms",
+        str(arguments.max_trade_lag_p95_ms),
+        "--max-event-loop-lag-ms",
+        str(arguments.max_event_loop_lag_ms),
+        "--max-event-stall-seconds",
+        str(arguments.max_event_stall_seconds),
+        "--max-memory-growth-mb",
+        str(arguments.max_memory_growth_mb),
+        "--max-market-persistence-buffer",
+        str(arguments.max_market_persistence_buffer),
+        "--max-persistence-flush-last-ms",
+        str(arguments.max_persistence_flush_last_ms),
+        "--max-wal-checkpoint-last-ms",
+        str(arguments.max_wal_checkpoint_last_ms),
+        "--output",
+        relative_output,
+    ]
+    status = measurement.get("status")
+    exit_code = 0 if status == "PASS" else 130 if status == "ABORTED_OPERATOR" else 1
+    wrapper = dict(measurement) | {
+        "command": command,
+        "exit_code": exit_code,
+        "artifact_count": 1,
+        "artifacts": [
+            {
+                "kind": "artifact",
+                "path": relative_artifact,
+                "sha256": hashlib.sha256(measurement_bytes).hexdigest(),
+                "byte_count": len(measurement_bytes),
+                "format": "running_service_soak_json",
+            }
+        ],
+    }
+    arguments.output.write_text(
+        json.dumps(wrapper, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return wrapper
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -278,11 +424,7 @@ def parse_arguments() -> argparse.Namespace:
 def main() -> None:
     arguments = parse_arguments()
     result = observe_running_service(arguments)
-    arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    arguments.output.write_text(
-        json.dumps(result, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    _write_evidence_bundle(arguments, result)
     print(
         json.dumps(
             {key: value for key, value in result.items() if key != "samples"},

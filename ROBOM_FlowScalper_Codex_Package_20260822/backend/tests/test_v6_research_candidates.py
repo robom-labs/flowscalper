@@ -31,9 +31,9 @@ def _valid_comparison_row() -> dict[str, object]:
         "stress_expectancy_delta": 0.01,
         "drawdown_delta": 0.0,
         "cost_burden_delta": -0.01,
-        "oos_lower_bound": 0.01,
-        "dsr": 0.95,
-        "pbo": 0.20,
+        "oos_lower_bound": 0.10,
+        "dsr": 1.0,
+        "pbo": 0.0,
         "operational_regression": False,
     }
 
@@ -43,6 +43,109 @@ def _write_json(path: Path, payload: object) -> str:
     return compare_v2_v3._sha256(path)
 
 
+def _raw_result_rows(
+    *,
+    strategy_id: str,
+    measurement_id: str,
+    run_id: str,
+    replay_id: str,
+    base_expectancy: float,
+    stress_expectancy: float,
+    base_cost: float,
+    stress_cost: float,
+    base_cost_coverage: float,
+    stress_cost_coverage: float,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for profile, expectancy, cost, coverage in (
+        ("BASE", base_expectancy, base_cost, base_cost_coverage),
+        ("STRESS", stress_expectancy, stress_cost, stress_cost_coverage),
+    ):
+        for index in range(100):
+            risk = 10.0
+            net = round(expectancy * risk, 8)
+            per_cost = round(cost / len(compare_v2_v3.RAW_COST_FIELDS), 8)
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "replay_id": replay_id,
+                    "measurement_id": measurement_id,
+                    "strategy_id": strategy_id,
+                    "strategy_version": "fixture-v1",
+                    "profile": profile,
+                    "evaluation_scope": "OOS",
+                    "opportunity_id": f"opportunity-{index}",
+                    "symbol": "BTCUSDT",
+                    "side": "LONG" if index % 2 == 0 else "SHORT",
+                    "entry_ts_ms": 1_000 + index,
+                    "exit_ts_ms": 1_000 + index,
+                    "period_id": f"period-{index % 4}",
+                    "dataset_record_id": f"candle-{index}",
+                    "event_id": f"trade-{index}",
+                    "gross_pnl_usdt": round(net + cost, 8),
+                    "fee_usdt": per_cost,
+                    "spread_cost_usdt": per_cost,
+                    "slippage_usdt": per_cost,
+                    "latency_penalty_usdt": per_cost,
+                    "funding_usdt": per_cost,
+                    "net_pnl_usdt": net,
+                    "initial_risk_usdt": risk,
+                    "return_r": expectancy,
+                    "gross_mfe_usdt": round(coverage * cost, 8),
+                }
+            )
+    return rows
+
+
+def _raw_measurement_payload(
+    *,
+    generated_ts: str,
+    role: str,
+    measurement_id: str,
+    strategy_ids: list[str],
+    binding: dict[str, object],
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "schema": compare_v2_v3.RAW_MEASUREMENT_SCHEMA,
+        "kind": "V6_RAW_MEASUREMENT_RESULTS",
+        "generated_ts_utc": generated_ts,
+        "source_worktree_clean_at_measurement": True,
+        "role": role,
+        "measurement_id": measurement_id,
+        "strategy_ids": strategy_ids,
+        "result_count": len(rows),
+        "results": rows,
+        "cscv_splits": [
+            {
+                "split_id": "split-0",
+                "in_sample_period_ids": ["period-0", "period-1"],
+                "out_of_sample_period_ids": ["period-2", "period-3"],
+            },
+            {
+                "split_id": "split-1",
+                "in_sample_period_ids": ["period-0", "period-2"],
+                "out_of_sample_period_ids": ["period-1", "period-3"],
+            },
+            {
+                "split_id": "split-2",
+                "in_sample_period_ids": ["period-0", "period-3"],
+                "out_of_sample_period_ids": ["period-1", "period-2"],
+            },
+            {
+                "split_id": "split-3",
+                "in_sample_period_ids": ["period-1", "period-2"],
+                "out_of_sample_period_ids": ["period-0", "period-3"],
+            },
+        ],
+        "operational_checks": {
+            check_id: True for check_id in compare_v2_v3.OPERATIONAL_CHECK_IDS
+        },
+        **binding,
+    }
+
+
 def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
     generated_ts = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
     source_commit = "a" * 40
@@ -50,12 +153,42 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
     replay_id = "replay-v6-fixed-input"
     cost_model_version = "v6-base-stress-1"
     window = {"start_ts_ms": 1_000, "end_ts_ms": 2_000}
-    records = [{"ts_ms": 1_000 + index, "value": index} for index in range(100)]
+    dataset_records = [
+        {
+            "source_type": "PUBLIC_MARKET",
+            "source": "BINANCE_PUBLIC",
+            "symbol": "BTCUSDT",
+            "record_id": f"candle-{index}",
+            "open_ts_ms": 1_000 + index,
+            "interval": "1m",
+            "open": 100.0 + index,
+            "high": 101.0 + index,
+            "low": 99.0 + index,
+            "close": 100.5 + index,
+            "volume": 10.0 + index,
+        }
+        for index in range(100)
+    ]
+    event_records = [
+        {
+            "source_type": "PUBLIC_MARKET",
+            "source": "BINANCE_PUBLIC",
+            "symbol": "BTCUSDT",
+            "event_id": f"trade-{index}",
+            "event_ts_ms": 1_000 + index,
+            "event_type": "TRADE",
+            "sequence": index,
+            "price": 100.5 + index,
+            "quantity": 1.0 + index / 100,
+            "aggressor_side": "BUY" if index % 2 == 0 else "SELL",
+        }
+        for index in range(100)
+    ]
 
     dataset_path = tmp_path / "dataset.json"
     event_path = tmp_path / "events.json"
-    dataset_artifact_sha = _write_json(dataset_path, records)
-    event_artifact_sha = _write_json(event_path, records)
+    dataset_artifact_sha = _write_json(dataset_path, dataset_records)
+    event_artifact_sha = _write_json(event_path, event_records)
     observed_window = {"start_ts_ms": 1_000, "end_ts_ms": 1_099}
     manifest_common = {
         "schema_version": 1,
@@ -64,6 +197,10 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
         "replay_id": replay_id,
         "window": window,
         "observed_window": observed_window,
+        "symbols": ["BTCUSDT"],
+        "public_sources": {
+            "BINANCE_PUBLIC": "https://api.binance.com/api/v3/klines"
+        },
     }
     dataset_manifest_path = tmp_path / "dataset-manifest.json"
     dataset_manifest_sha = _write_json(
@@ -72,13 +209,14 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
         | {
             "kind": "DATASET",
             "record_count": 100,
+            "intervals": ["1m"],
             "artifacts": [
                 {
                     "path": dataset_path.name,
                     "sha256": dataset_artifact_sha,
                     "format": "JSON",
                     "record_count": 100,
-                    "timestamp_field": "ts_ms",
+                    "timestamp_field": "open_ts_ms",
                     **observed_window,
                 }
             ],
@@ -91,13 +229,14 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
         | {
             "kind": "EVENT_SET",
             "event_count": 100,
+            "event_types": ["TRADE"],
             "artifacts": [
                 {
                     "path": event_path.name,
                     "sha256": event_artifact_sha,
                     "format": "JSON",
                     "event_count": 100,
-                    "timestamp_field": "ts_ms",
+                    "timestamp_field": "event_ts_ms",
                     **observed_window,
                 }
             ],
@@ -122,6 +261,8 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
     for index, variant in enumerate(v6_preregistered_variants()):
         baseline_id = f"baseline-{index}"
         candidate_id = f"candidate-{index}"
+        baseline_strategy_ids = list(variant.baseline_strategy_ids)
+        candidate_strategy_ids = [variant.strategy_id]
         measurement_common = {
             "schema_version": 1,
             "schema": compare_v2_v3.MEASUREMENT_SCHEMA,
@@ -130,6 +271,29 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
             "source_worktree_clean_at_measurement": True,
             **binding,
         }
+        baseline_raw_path = tmp_path / f"baseline-{index}-raw.json"
+        baseline_raw_sha = _write_json(
+            baseline_raw_path,
+            _raw_measurement_payload(
+                generated_ts=generated_ts,
+                role="BASELINE",
+                measurement_id=baseline_id,
+                strategy_ids=baseline_strategy_ids,
+                binding=binding,
+                rows=_raw_result_rows(
+                    strategy_id=baseline_strategy_ids[0],
+                    measurement_id=baseline_id,
+                    run_id=run_id,
+                    replay_id=replay_id,
+                    base_expectancy=0.18,
+                    stress_expectancy=0.09,
+                    base_cost=0.5,
+                    stress_cost=0.6,
+                    base_cost_coverage=2.0,
+                    stress_cost_coverage=1.5,
+                ),
+            ),
+        )
         baseline_path = tmp_path / f"baseline-{index}.json"
         baseline_sha = _write_json(
             baseline_path,
@@ -137,14 +301,39 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
             | {
                 "role": "BASELINE",
                 "measurement_id": baseline_id,
-                "strategy_ids": list(variant.baseline_strategy_ids),
+                "strategy_ids": baseline_strategy_ids,
+                "raw_results_path": baseline_raw_path.name,
+                "raw_results_sha256": baseline_raw_sha,
                 "metrics": {
                     "base_expectancy": 0.18,
                     "stress_expectancy": 0.09,
-                    "drawdown": 0.20,
-                    "cost_burden": 0.05,
+                    "drawdown": 0.0,
+                    "cost_burden": 0.06,
                 },
             },
+        )
+        candidate_raw_path = tmp_path / f"candidate-{index}-raw.json"
+        candidate_raw_sha = _write_json(
+            candidate_raw_path,
+            _raw_measurement_payload(
+                generated_ts=generated_ts,
+                role="CANDIDATE",
+                measurement_id=candidate_id,
+                strategy_ids=candidate_strategy_ids,
+                binding=binding,
+                rows=_raw_result_rows(
+                    strategy_id=variant.strategy_id,
+                    measurement_id=candidate_id,
+                    run_id=run_id,
+                    replay_id=replay_id,
+                    base_expectancy=0.20,
+                    stress_expectancy=0.10,
+                    base_cost=0.4,
+                    stress_cost=0.5,
+                    base_cost_coverage=2.5,
+                    stress_cost_coverage=1.5,
+                ),
+            ),
         )
         candidate_path = tmp_path / f"candidate-{index}.json"
         candidate_sha = _write_json(
@@ -153,7 +342,9 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
             | {
                 "role": "CANDIDATE",
                 "measurement_id": candidate_id,
-                "strategy_ids": [variant.strategy_id],
+                "strategy_ids": candidate_strategy_ids,
+                "raw_results_path": candidate_raw_path.name,
+                "raw_results_sha256": candidate_raw_sha,
                 "metrics": {
                     "base_sample_size": 100,
                     "stress_sample_size": 100,
@@ -161,11 +352,11 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
                     "stress_expectancy": 0.10,
                     "base_cost_coverage": 2.5,
                     "stress_cost_coverage": 1.5,
-                    "drawdown": 0.20,
-                    "cost_burden": 0.04,
-                    "oos_lower_bound": 0.01,
-                    "dsr": 0.95,
-                    "pbo": 0.20,
+                    "drawdown": 0.0,
+                    "cost_burden": 0.05,
+                    "oos_lower_bound": 0.10,
+                    "dsr": 1.0,
+                    "pbo": 0.0,
                     "operational_regression": False,
                 },
             },
@@ -181,7 +372,7 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
                 "generated_ts_utc": generated_ts,
                 "source_worktree_clean_at_measurement": True,
                 "strategy_id": variant.strategy_id,
-                "baseline_strategy_ids": list(variant.baseline_strategy_ids),
+                "baseline_strategy_ids": baseline_strategy_ids,
                 "baseline_measurement_id": baseline_id,
                 "candidate_measurement_id": candidate_id,
                 "baseline_measurement_path": baseline_path.name,
@@ -195,7 +386,7 @@ def _fixed_input_payload_with_real_artifacts(tmp_path: Path) -> Path:
         comparison_rows.append(
             {
                 "strategy_id": variant.strategy_id,
-                "baseline_strategy_ids": list(variant.baseline_strategy_ids),
+                "baseline_strategy_ids": baseline_strategy_ids,
                 "baseline_measurement_id": baseline_id,
                 "candidate_measurement_id": candidate_id,
                 "sample_lineage_sha256": binding["sample_lineage_sha256"],
@@ -521,7 +712,7 @@ def test_v3_comparison_rejects_missing_absolute_fields_and_duplicate_ids(
     assert report["promotion_performed"] is False
 
 
-def test_v3_comparison_recomputes_rows_from_bound_artifacts(
+def test_v3_comparison_stays_not_proven_without_replay_recomputed_outcomes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -536,15 +727,56 @@ def test_v3_comparison_recomputes_rows_from_bound_artifacts(
 
     report = compare_v2_v3.build_report(input_path)
 
-    assert report["status"] == "EVIDENCE_GATE_PASS_NO_PROMOTION"
+    assert report["status"] == "NOT_PROVEN"
     assert report["input_status"] == "FIXED_INPUT_RESULT_PROVIDED"
     assert report["input_binding_errors"] == []
-    assert report["all_candidates_promotion_eligible"] is True
+    assert report["all_candidates_promotion_eligible"] is False
     assert all(
-        row["comparison_status"] == "EVIDENCE_GATE_PASS"
+        row["comparison_status"] == "NOT_PROVEN"
+        and "ROW_REPLAY_OUTCOMES_NOT_INDEPENDENTLY_RECOMPUTED"
+        in row["lineage_errors"]
         for row in report["comparisons"]
     )
     assert report["promotion_performed"] is False
+
+
+def test_v3_fixed_input_rejects_timestamp_value_rows_as_public_market_data(
+    tmp_path: Path,
+) -> None:
+    artifact_path = tmp_path / "not-market-data.json"
+    artifact_sha = _write_json(
+        artifact_path,
+        [{"ts_ms": 1_000 + index, "value": index} for index in range(2)],
+    )
+    manifest_path = tmp_path / "not-market-data-manifest.json"
+    manifest = {
+        "record_count": 2,
+        "observed_window": {"start_ts_ms": None, "end_ts_ms": None},
+        "symbols": [],
+        "public_sources": {},
+        "intervals": [],
+        "artifacts": [
+            {
+                "path": artifact_path.name,
+                "sha256": artifact_sha,
+                "format": "JSON",
+                "record_count": 2,
+                "timestamp_field": "open_ts_ms",
+            }
+        ],
+    }
+
+    errors, _ = compare_v2_v3._validate_data_manifest_artifacts(
+        manifest,
+        manifest_path=manifest_path,
+        kind="DATASET",
+        count_field="record_count",
+        expected_window={"start_ts_ms": 1_000, "end_ts_ms": 2_000},
+    )
+
+    assert "DATASET_ARTIFACT_0_ROW_0_SOURCE_TYPE_NOT_PUBLIC_MARKET" in errors
+    assert "DATASET_ARTIFACT_0_ROW_0_IDENTITY_MISSING" in errors
+    assert "DATASET_ARTIFACT_0_TIMESTAMP_INVALID" in errors
 
 
 def test_v3_comparison_rejects_self_attested_manifests_without_data_artifacts(

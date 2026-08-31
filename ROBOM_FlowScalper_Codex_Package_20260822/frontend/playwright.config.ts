@@ -6,13 +6,15 @@ const port = Number(process.env.ROBOM_E2E_PORT ?? '8876')
 const baseURL = `http://127.0.0.1:${port}`
 const database = process.env.ROBOM_E2E_DB ?? path.resolve('..', 'data', 'e2e', `robom-flowscalper-${process.pid}.sqlite3`)
 const externalServer = process.env.ROBOM_E2E_EXTERNAL_SERVER === '1'
+const jsonReport = process.env.ROBOM_E2E_JSON_REPORT
 
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: 'audit-8870.spec.ts',
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [['list']],
+  reporter: jsonReport ? [['list'], ['json', { outputFile: jsonReport }]] : [['list']],
   use: {
     baseURL,
     trace: 'retain-on-failure',

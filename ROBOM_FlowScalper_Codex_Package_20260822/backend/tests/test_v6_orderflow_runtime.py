@@ -253,6 +253,76 @@ def test_restore_rejects_negative_revision_and_timestamp(
         runtime.restore_state(payload)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {
+            "enabled": True,
+            "revision": "1",
+            "updated_ts_ms": 10,
+            "change_reason": "PAPER_FILTER_RESEARCH",
+        },
+        {
+            "enabled": False,
+            "revision": 2,
+            "updated_ts_ms": "20",
+            "change_reason": "FUTURE_STRING_TIMESTAMP",
+        },
+        {
+            "enabled": False,
+            "revision": 0,
+            "updated_ts_ms": 0,
+            "change_reason": "",
+        },
+        {
+            "enabled": False,
+            "revision": 2,
+            "updated_ts_ms": 20,
+            "change_reason": 123,
+        },
+    ),
+)
+def test_restore_rejects_noncanonical_state_before_revision_handling(
+    payload: dict[str, object],
+) -> None:
+    runtime = OrderflowConfirmationRuntime()
+    runtime.configure(
+        enabled=True,
+        expected_revision=0,
+        updated_ts_ms=10,
+        reason="PAPER_FILTER_RESEARCH",
+    )
+    before = runtime.recovery_state()
+
+    with pytest.raises(ValueError):
+        runtime.restore_state(payload)
+
+    assert runtime.recovery_state() == before
+
+
+def test_restore_rejects_future_revision_with_regressed_timestamp() -> None:
+    runtime = OrderflowConfirmationRuntime()
+    runtime.configure(
+        enabled=True,
+        expected_revision=0,
+        updated_ts_ms=10,
+        reason="PAPER_FILTER_RESEARCH",
+    )
+    before = runtime.recovery_state()
+
+    with pytest.raises(ValueError, match="시각.*이전"):
+        runtime.restore_state(
+            {
+                "enabled": False,
+                "revision": 2,
+                "updated_ts_ms": 9,
+                "change_reason": "REGRESSED_TIMESTAMP",
+            }
+        )
+
+    assert runtime.recovery_state() == before
+
+
 def test_configure_rejects_negative_revision_and_timestamp() -> None:
     runtime = OrderflowConfirmationRuntime()
 

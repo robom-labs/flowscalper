@@ -152,11 +152,13 @@ class GovernanceEvidence:
             recent_profit_factor=_decimal(testing.get("recent_profit_factor")),
             recent_stress_expectancy_usdt=_decimal(testing.get("recent_stress_expectancy_usdt")),
             recent_stress_profit_factor=_decimal(testing.get("recent_stress_profit_factor")),
-            parameter_robustness_passed=bool(testing.get("parameter_robustness_passed", False)),
-            risk_contract_passed=bool(testing.get("risk_contract_passed", False)),
+            parameter_robustness_passed=(
+                testing.get("parameter_robustness_passed") is True
+            ),
+            risk_contract_passed=testing.get("risk_contract_passed") is True,
             independent_period_count=int(str(testing.get("independent_period_count", 0))),
             live_public_sample_size=int(str(testing.get("live_public_sample_size", 0))),
-            cooldown_elapsed=bool(testing.get("cooldown_elapsed", False)),
+            cooldown_elapsed=testing.get("cooldown_elapsed") is True,
             strategy_correlation_abs=(
                 float(str(testing["strategy_correlation_abs"]))
                 if testing.get("strategy_correlation_abs") is not None

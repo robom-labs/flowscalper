@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -68,6 +69,7 @@ from backend.app.storage.parquet import (
     warm_market_event_worker_process,
 )
 from backend.app.storage.sqlite import (
+    LedgerInvariantError,
     RecoveryState,
     SQLiteLedger,
     persist_archives_and_candles_in_process,
@@ -123,6 +125,38 @@ def _strict_recovery_bool(row: Mapping[str, object], field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"복구 Governor 증거의 {field_name}가 bool이 아닙니다.")
     return value
+
+
+def _strict_recovery_setting_bool(row: Mapping[str, object], field_name: str) -> bool:
+    value = row.get(field_name)
+    if not isinstance(value, bool):
+        raise ValueError(f"복구 전략 설정의 {field_name}가 bool이 아닙니다.")
+    return value
+
+
+def _strict_recovery_setting_int(row: Mapping[str, object], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(f"복구 전략 설정의 {field_name}가 음수가 아닌 정수가 아닙니다.")
+    return value
+
+
+def _strict_recovery_setting_text(row: Mapping[str, object], field_name: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"복구 전략 설정의 {field_name}가 빈 문자열입니다.")
+    return value
+
+
+def _recovery_row_token(row: Mapping[str, object]) -> str:
+    canonical = json.dumps(
+        row,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _recovery_decimal(
@@ -262,6 +296,24 @@ class PaperEntryIntentConflict(RuntimeError):
         self.error_code = error_code
         self.expected_revision = expected_revision
         self.current_revision = current_revision
+
+
+@dataclass(frozen=True, slots=True)
+class _RecoveredStrategySetting:
+    """복구 원장 행을 live registry에 적용하기 전에 완전히 파싱한다."""
+
+    source: Mapping[str, object]
+    strategy_id: str
+    mode: StrategyMode
+    lifecycle: StrategyLifecycle
+    long_enabled: bool
+    short_enabled: bool
+    revision: int
+    manual_lock: bool
+    changed_by: StrategyChangeSource
+    change_reason: str
+    updated_ts_ms: int
+    recovery_row_token: str
 
 
 _WAL_CHECKPOINT_FLUSH_INTERVAL = 4
@@ -866,105 +918,159 @@ class PaperRuntime:
         if self.ledger is None:
             self._lock_recovery("RECOVERY_LEDGER_MISSING")
             return False
-        self._persisted_main_order_ids = {
-            str(order["order_id"]) for order in self.ledger.list_orders(self.run_id)
-        }
-        self._persisted_main_trade_ids = {
-            str(trade["trade_id"]) for trade in self.ledger.list_trades(self.run_id)
-        }
-        self._persisted_shadow_trade_ids = {
-            str(trade["shadow_trade_id"]) for trade in self.ledger.list_shadow_trades(self.run_id)
-        }
         try:
+            staged_persisted_main_order_ids = {
+                str(order["order_id"])
+                for order in self.ledger.list_orders(self.run_id)
+            }
+            staged_persisted_main_trade_ids = {
+                str(trade["trade_id"])
+                for trade in self.ledger.list_trades(self.run_id)
+            }
+            staged_persisted_shadow_trade_ids = {
+                str(trade["shadow_trade_id"])
+                for trade in self.ledger.list_shadow_trades(self.run_id)
+            }
             recovery_validation_ts_ms = self.clock.utc_ms()
-            validated_active_revisions: dict[str, set[int]] = {}
-            for setting_row in self.ledger.list_strategy_settings(self.run_id):
-                if self._validated_governor_active_recovery_revision(
-                    setting_row,
-                    recovery_ts_ms=recovery_validation_ts_ms,
-                ):
-                    strategy_id = str(setting_row["strategy_id"])
-                    validated_active_revisions.setdefault(strategy_id, set()).add(
-                        int(str(setting_row["settings_revision"]))
+            staged_strategy_registry = StrategyRegistry()
+            staged_shadow_ledger = ShadowLedger(staged_strategy_registry.strategy_ids)
+            staged_paper_portfolio = PaperPortfolioEngine(
+                run_id=self.run_id,
+                strategy_ids=staged_strategy_registry.strategy_ids,
+                shadow_ledger=staged_shadow_ledger,
+                venue=self.venue,
+                enforce_v6_family_conflicts=True,
+            )
+            staged_orderflow_runtime = OrderflowConfirmationRuntime()
+            staged_orderflow_runtime.restore_state(
+                self.orderflow_confirmation_runtime.recovery_state()
+            )
+            staged_manual_pause_requested = self._manual_pause_requested
+            staged_intent_revision = self._paper_entry_intent_revision
+            staged_intent_actor = self._paper_entry_intent_actor
+            staged_intent_reason = self._paper_entry_intent_reason
+            staged_intent_updated_ts_ms = self._paper_entry_intent_updated_ts_ms
+            staged_intent_idempotency = dict(self._paper_entry_intent_idempotency)
+            validated_active_tokens: dict[str, dict[int, str]] = {}
+            setting_rows = self.ledger.list_strategy_settings(self.run_id)
+            parsed_settings: list[_RecoveredStrategySetting] = []
+            seen_recovery_tokens: dict[tuple[str, int], str] = {}
+            for setting_row in setting_rows:
+                if setting_row.get("run_id") != self.run_id:
+                    raise ValueError("복구 전략 설정의 Run이 현재 Run과 다릅니다.")
+                strategy_id = _strict_recovery_setting_text(setting_row, "strategy_id")
+                staged_strategy_registry.descriptor(strategy_id)
+                mode = StrategyMode(_strict_recovery_setting_text(setting_row, "mode"))
+                lifecycle = (
+                    StrategyLifecycle(
+                        _strict_recovery_setting_text(setting_row, "lifecycle")
                     )
-                self.strategy_registry.restore_setting(
-                    str(setting_row["strategy_id"]),
-                    mode=StrategyMode(str(setting_row["mode"])),
-                    long_enabled=bool(setting_row["long_enabled"]),
-                    short_enabled=bool(setting_row["short_enabled"]),
-                    revision=int(str(setting_row.get("settings_revision", 0))),
-                    manual_lock=bool(setting_row.get("manual_lock", False)),
-                    changed_by=StrategyChangeSource(
-                        str(setting_row.get("changed_by", "MIGRATION"))
-                    ),
-                    change_reason=str(setting_row.get("change_reason", "RECOVERY")),
-                    updated_ts_ms=int(str(setting_row.get("settings_updated_ts_ms", 0))),
-                    lifecycle=(
-                        StrategyLifecycle(str(setting_row["lifecycle"]))
-                        if setting_row.get("lifecycle") is not None
-                        else None
-                    ),
+                    if setting_row.get("lifecycle") is not None
+                    else staged_strategy_registry.lifecycle_for_mode(mode)
                 )
-            retirement_migrations = self.strategy_registry.enforce_policy_retirements(
-                updated_ts_ms=self.clock.utc_ms()
+                if staged_strategy_registry.mode_for_lifecycle(lifecycle) is not mode:
+                    raise ValueError("복구 전략 설정의 mode와 lifecycle이 서로 다릅니다.")
+                revision = _strict_recovery_setting_int(
+                    setting_row, "settings_revision"
+                )
+                _strict_recovery_setting_int(setting_row, "ts_ms")
+                updated_ts_ms = _strict_recovery_setting_int(
+                    setting_row, "settings_updated_ts_ms"
+                )
+                changed_by = StrategyChangeSource(
+                    _strict_recovery_setting_text(setting_row, "changed_by")
+                )
+                change_reason = _strict_recovery_setting_text(
+                    setting_row, "change_reason"
+                )
+                long_enabled = _strict_recovery_setting_bool(
+                    setting_row, "long_enabled"
+                )
+                short_enabled = _strict_recovery_setting_bool(
+                    setting_row, "short_enabled"
+                )
+                manual_lock = _strict_recovery_setting_bool(
+                    setting_row, "manual_lock"
+                )
+                revision_key = (strategy_id, revision)
+                recovery_row_token = _recovery_row_token(setting_row)
+                previous_token = seen_recovery_tokens.get(revision_key)
+                if previous_token is not None and previous_token != recovery_row_token:
+                    raise ValueError(
+                        "동일 strategy settings revision의 복구 원장 행이 다릅니다."
+                    )
+                seen_recovery_tokens[revision_key] = recovery_row_token
+                parsed_settings.append(
+                    _RecoveredStrategySetting(
+                        source=setting_row,
+                        strategy_id=strategy_id,
+                        mode=mode,
+                        lifecycle=lifecycle,
+                        long_enabled=long_enabled,
+                        short_enabled=short_enabled,
+                        revision=revision,
+                        manual_lock=manual_lock,
+                        changed_by=changed_by,
+                        change_reason=change_reason,
+                        updated_ts_ms=updated_ts_ms,
+                        recovery_row_token=recovery_row_token,
+                    )
+                )
+            for parsed_setting in parsed_settings:
+                valid_governor_active = (
+                    self._validated_governor_active_recovery_revision(
+                        parsed_setting.source,
+                        recovery_ts_ms=recovery_validation_ts_ms,
+                    )
+                )
+                staged_strategy_registry.restore_setting(
+                    parsed_setting.strategy_id,
+                    mode=parsed_setting.mode,
+                    long_enabled=parsed_setting.long_enabled,
+                    short_enabled=parsed_setting.short_enabled,
+                    revision=parsed_setting.revision,
+                    manual_lock=parsed_setting.manual_lock,
+                    changed_by=parsed_setting.changed_by,
+                    change_reason=parsed_setting.change_reason,
+                    updated_ts_ms=parsed_setting.updated_ts_ms,
+                    lifecycle=parsed_setting.lifecycle,
+                    recovery_row_token=parsed_setting.recovery_row_token,
+                )
+                if valid_governor_active:
+                    strategy_tokens = validated_active_tokens.setdefault(
+                        parsed_setting.strategy_id, {}
+                    )
+                    existing_token = strategy_tokens.get(parsed_setting.revision)
+                    if (
+                        existing_token is not None
+                        and existing_token != parsed_setting.recovery_row_token
+                    ):
+                        raise ValueError(
+                            "동일 ACTIVE settings revision의 검증 원장 행이 다릅니다."
+                        )
+                    strategy_tokens[parsed_setting.revision] = (
+                        parsed_setting.recovery_row_token
+                    )
+            retirement_migrations = (
+                staged_strategy_registry.enforce_policy_retirements(
+                    updated_ts_ms=self.clock.utc_ms()
+                )
             )
-            for migrated in retirement_migrations:
-                transition = self._persist_strategy_setting(
-                    migrated,
-                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
-                    evidence={
-                        "policy": "COST_ADJUSTED_RESEARCH_RETIREMENT",
-                        "legacy_setting_reactivation_blocked": True,
-                    },
+            family_migrations = (
+                staged_strategy_registry.enforce_v6_family_runtime_policy(
+                    updated_ts_ms=self.clock.utc_ms()
                 )
-                self._record_strategy_incident(
-                    category="STRATEGY_POLICY_MIGRATION",
-                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
-                    payload=transition,
-                )
-            family_migrations = self.strategy_registry.enforce_v6_family_runtime_policy(
-                updated_ts_ms=self.clock.utc_ms()
             )
-            for migrated in family_migrations:
-                transition = self._persist_strategy_setting(
-                    migrated,
-                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
-                    evidence={
-                        "policy": "V6_FAMILY_LEGACY_COMPONENT_HISTORY_ONLY",
-                        "history_preserved": True,
-                        "new_independent_entry_blocked": True,
-                    },
+            shadow_migrations = (
+                staged_strategy_registry.enforce_unproven_active_defaults(
+                    updated_ts_ms=self.clock.utc_ms(),
+                    validated_governor_active_tokens=validated_active_tokens,
                 )
-                self._record_strategy_incident(
-                    category="V6_FAMILY_RUNTIME_POLICY_MIGRATION",
-                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
-                    payload=transition,
-                )
-            shadow_migrations = self.strategy_registry.enforce_unproven_active_defaults(
-                updated_ts_ms=self.clock.utc_ms(),
-                validated_governor_active_revisions={
-                    strategy_id: frozenset(revisions)
-                    for strategy_id, revisions in validated_active_revisions.items()
-                },
             )
-            for migrated in shadow_migrations:
-                transition = self._persist_strategy_setting(
-                    migrated,
-                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
-                    evidence={
-                        "policy": "NO_ACTIVE_STRATEGY_WITHOUT_COST_ADJUSTED_PROOF",
-                        "promotion_requires_governor_gates": True,
-                    },
-                )
-                self._record_strategy_incident(
-                    category="STRATEGY_POLICY_MIGRATION",
-                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
-                    payload=transition,
-                )
             portfolio_payload = recovered.payload.get("portfolio")
             if isinstance(portfolio_payload, Mapping):
-                self.paper_portfolio.restore_state(portfolio_payload)
-                self.paper_portfolio.reconcile_persisted_main_trades(
+                staged_paper_portfolio.restore_state(portfolio_payload)
+                staged_paper_portfolio.reconcile_persisted_main_trades(
                     self.ledger.list_trades(self.run_id),
                     as_of_ts_ms=self.clock.utc_ms(),
                 )
@@ -972,79 +1078,187 @@ class PaperRuntime:
                 raise ValueError("열린 lifecycle snapshot에 복구 가능한 portfolio가 없습니다.")
             user_intent = self.ledger.get_app_setting("paper_entry_user_intent")
             if user_intent is not None and user_intent.get("run_id") == self.run_id:
-                self._manual_pause_requested = bool(
-                    user_intent.get("manual_pause_requested", False)
-                )
-                self._paper_entry_intent_revision = int(user_intent.get("revision", 0))
-                self._paper_entry_intent_actor = str(user_intent.get("actor", "RECOVERY"))
-                self._paper_entry_intent_reason = str(
-                    user_intent.get("reason", "RECOVERED_USER_INTENT")
-                )
-                self._paper_entry_intent_updated_ts_ms = int(
-                    user_intent.get("updated_ts_ms", self.clock.utc_ms())
-                )
+                manual_pause = user_intent.get("manual_pause_requested")
+                intent_revision = user_intent.get("revision")
+                actor = user_intent.get("actor")
+                reason = user_intent.get("reason")
+                intent_updated_value = user_intent.get("updated_ts_ms")
+                if not isinstance(manual_pause, bool):
+                    raise ValueError("복구 PAPER 진입 의도의 pause 값이 bool이 아닙니다.")
+                if (
+                    isinstance(intent_revision, bool)
+                    or not isinstance(intent_revision, int)
+                    or intent_revision < 0
+                ):
+                    raise ValueError("복구 PAPER 진입 의도의 revision이 잘못됐습니다.")
+                if not isinstance(actor, str) or not actor.strip():
+                    raise ValueError("복구 PAPER 진입 의도의 actor가 잘못됐습니다.")
+                if not isinstance(reason, str) or not reason.strip():
+                    raise ValueError("복구 PAPER 진입 의도의 reason이 잘못됐습니다.")
+                if (
+                    isinstance(intent_updated_value, bool)
+                    or not isinstance(intent_updated_value, int)
+                    or intent_updated_value < 0
+                ):
+                    raise ValueError("복구 PAPER 진입 의도의 시각이 잘못됐습니다.")
                 records = user_intent.get("idempotency_records", [])
-                if isinstance(records, Sequence) and not isinstance(records, str | bytes):
-                    self._paper_entry_intent_idempotency = {
-                        str(record["key"]): bool(record["paused"])
-                        for record in records
-                        if isinstance(record, Mapping)
-                        and record.get("key") is not None
-                        and "paused" in record
-                    }
+                if not isinstance(records, Sequence) or isinstance(records, str | bytes):
+                    raise ValueError("복구 PAPER 진입 의도의 idempotency 목록이 잘못됐습니다.")
+                idempotency: dict[str, bool] = {}
+                for record in records:
+                    if not isinstance(record, Mapping):
+                        raise ValueError("복구 PAPER 진입 의도의 idempotency 행이 잘못됐습니다.")
+                    key = record.get("key")
+                    paused = record.get("paused")
+                    if not isinstance(key, str) or not key.strip() or key in idempotency:
+                        raise ValueError("복구 PAPER 진입 의도의 idempotency key가 잘못됐습니다.")
+                    if not isinstance(paused, bool):
+                        raise ValueError("복구 PAPER 진입 의도의 idempotency 값이 bool이 아닙니다.")
+                    idempotency[key] = paused
+                staged_manual_pause_requested = manual_pause
+                staged_intent_revision = intent_revision
+                staged_intent_actor = actor
+                staged_intent_reason = reason
+                staged_intent_updated_ts_ms = intent_updated_value
+                staged_intent_idempotency = idempotency
             orderflow_filter = self.ledger.get_app_setting(
                 "orderflow_confirmation_filter_v2"
             )
             if orderflow_filter is not None and orderflow_filter.get("run_id") == self.run_id:
-                self.orderflow_confirmation_runtime.restore_state(orderflow_filter)
-        except (KeyError, TypeError, ValueError) as error:
+                staged_orderflow_runtime.restore_state(orderflow_filter)
+
+            migration_rows = (
+                (
+                    retirement_migrations,
+                    {
+                        "policy": "COST_ADJUSTED_RESEARCH_RETIREMENT",
+                        "legacy_setting_reactivation_blocked": True,
+                    },
+                    "STRATEGY_POLICY_MIGRATION",
+                ),
+                (
+                    family_migrations,
+                    {
+                        "policy": "V6_FAMILY_LEGACY_COMPONENT_HISTORY_ONLY",
+                        "history_preserved": True,
+                        "new_independent_entry_blocked": True,
+                    },
+                    "V6_FAMILY_RUNTIME_POLICY_MIGRATION",
+                ),
+                (
+                    shadow_migrations,
+                    {
+                        "policy": "NO_ACTIVE_STRATEGY_WITHOUT_COST_ADJUSTED_PROOF",
+                        "promotion_requires_governor_gates": True,
+                    },
+                    "STRATEGY_POLICY_MIGRATION",
+                ),
+            )
+            migration_records: list[tuple[dict[str, object], str]] = []
+            for rows, evidence, category in migration_rows:
+                for migrated in rows:
+                    migration_ts_ms = int(str(migrated["settings_updated_ts_ms"]))
+                    transition = self._strategy_transition_payload(
+                        migrated,
+                        strategy_registry=staged_strategy_registry,
+                    )
+                    migration_records.append(
+                        (
+                            {
+                                "run_id": self.run_id,
+                                "ts_ms": migration_ts_ms,
+                                **transition,
+                                "change_evidence": dict(evidence),
+                            },
+                            category,
+                        )
+                    )
+
+            staged_position_visible = staged_paper_portfolio.main.position is not None
+            staged_recovery_plan = (
+                staged_paper_portfolio.main.position.plan
+                if staged_paper_portfolio.main.position is not None
+                else staged_paper_portfolio.main.pending_entry.plan
+                if staged_paper_portfolio.main.pending_entry is not None
+                else None
+            )
+            staged_recovery_symbols = {
+                *(
+                    pending.plan.symbol
+                    for account in staged_paper_portfolio.accounts
+                    for pending in account.pending_entries.values()
+                ),
+                *(
+                    position.plan.symbol
+                    for account in staged_paper_portfolio.accounts
+                    for position in account.positions.values()
+                ),
+            }
+            if any(
+                not isinstance(symbol, str) or not symbol.strip()
+                for symbol in staged_recovery_symbols
+            ):
+                raise ValueError("복구 PAPER exposure의 symbol이 잘못됐습니다.")
+            staged_selected_symbol = self.selected_symbol
+            if staged_recovery_plan is not None:
+                staged_selected_symbol = staged_recovery_plan.symbol
+            elif staged_recovery_symbols:
+                staged_selected_symbol = sorted(staged_recovery_symbols)[0]
+            snapshot_ts_value = recovered.payload.get(
+                "snapshot_ts_ms",
+                (
+                    staged_recovery_plan.signal_time_ms
+                    if staged_recovery_plan is not None
+                    else 0
+                ),
+            )
+            if (
+                isinstance(snapshot_ts_value, bool)
+                or not isinstance(snapshot_ts_value, int)
+                or snapshot_ts_value < 0
+            ):
+                raise ValueError("복구 snapshot_ts_ms가 음수가 아닌 정수가 아닙니다.")
+            staged_data_gap_since_ms = dict(self.data_gap_since_ms)
+            for symbol in staged_recovery_symbols:
+                staged_data_gap_since_ms[symbol] = snapshot_ts_value
+            staged_runtime_health_flags = [
+                "PAPER_STATE_RECOVERED",
+                "ENTRY_LOCK_RECOVERY_REVALIDATION",
+            ]
+            staged_recovery_log = {
+                "ts_ms": self.clock.utc_ms(),
+                "category": "RECOVERY",
+                "level": "INFO",
+                "message": (
+                    f"{recovered.lifecycle_state} PAPER 상태 복구 · "
+                    "fresh 공개호가 전 신규진입 잠금"
+                ),
+            }
+            self.ledger.record_strategy_migration_batch(migration_records)
+
+            self.strategy_registry = staged_strategy_registry
+            self.shadow_ledger = staged_shadow_ledger
+            self.paper_portfolio = staged_paper_portfolio
+            self.orderflow_confirmation_runtime = staged_orderflow_runtime
+            self._manual_pause_requested = staged_manual_pause_requested
+            self._paper_entry_intent_revision = staged_intent_revision
+            self._paper_entry_intent_actor = staged_intent_actor
+            self._paper_entry_intent_reason = staged_intent_reason
+            self._paper_entry_intent_updated_ts_ms = staged_intent_updated_ts_ms
+            self._paper_entry_intent_idempotency = staged_intent_idempotency
+            self._persisted_main_order_ids = staged_persisted_main_order_ids
+            self._persisted_main_trade_ids = staged_persisted_main_trade_ids
+            self._persisted_shadow_trade_ids = staged_persisted_shadow_trade_ids
+            self.position_visible = staged_position_visible
+            self.selected_symbol = staged_selected_symbol
+            self._recovery_revalidation_symbols = staged_recovery_symbols
+            self.data_gap_since_ms = staged_data_gap_since_ms
+            self.paused = True
+            self.runtime_health_flags = staged_runtime_health_flags
+            self.control_logs.append(staged_recovery_log)
+        except (KeyError, TypeError, ValueError, LedgerInvariantError) as error:
             self._lock_recovery(f"RECOVERY_STATE_REJECTED:{type(error).__name__}")
             return False
-        self.position_visible = self.paper_portfolio.main.position is not None
-        recovery_plan = (
-            self.paper_portfolio.main.position.plan
-            if self.paper_portfolio.main.position is not None
-            else self.paper_portfolio.main.pending_entry.plan
-            if self.paper_portfolio.main.pending_entry is not None
-            else None
-        )
-        recovery_symbols = {
-            *(
-                pending.plan.symbol
-                for account in self.paper_portfolio.accounts
-                for pending in account.pending_entries.values()
-            ),
-            *(
-                position.plan.symbol
-                for account in self.paper_portfolio.accounts
-                for position in account.positions.values()
-            ),
-        }
-        if recovery_plan is not None:
-            plan = recovery_plan
-            self.selected_symbol = plan.symbol
-        elif recovery_symbols:
-            self.selected_symbol = sorted(recovery_symbols)[0]
-        snapshot_ts = int(
-            str(
-                recovered.payload.get(
-                    "snapshot_ts_ms",
-                    recovery_plan.signal_time_ms if recovery_plan is not None else 0,
-                )
-            )
-        )
-        self._recovery_revalidation_symbols = recovery_symbols
-        for symbol in recovery_symbols:
-            self.data_gap_since_ms[symbol] = snapshot_ts
-        self.paused = True
-        self.runtime_health_flags = [
-            "PAPER_STATE_RECOVERED",
-            "ENTRY_LOCK_RECOVERY_REVALIDATION",
-        ]
-        self._log(
-            "RECOVERY",
-            f"{recovered.lifecycle_state} PAPER 상태 복구 · fresh 공개호가 전 신규진입 잠금",
-        )
         return True
 
     def _lock_recovery(self, reason: str) -> None:
@@ -2807,16 +3021,18 @@ class PaperRuntime:
         row: Mapping[str, object],
         *,
         previous: Mapping[str, object] | None = None,
+        strategy_registry: StrategyRegistry | None = None,
     ) -> dict[str, object]:
         """전략 설정 revision을 UI·API·원장이 공유하는 상태 전환 계약으로 만든다."""
 
+        registry = strategy_registry or self.strategy_registry
         strategy_id = str(row["strategy_id"])
         response_revision = int(str(row.get("settings_revision", 0)))
         if previous is None and response_revision > 0:
             previous = next(
                 (
                     item
-                    for item in self.strategy_registry.revision_history(strategy_id)
+                    for item in registry.revision_history(strategy_id)
                     if int(str(item.get("settings_revision", 0))) == response_revision - 1
                 ),
                 None,
@@ -2825,7 +3041,7 @@ class PaperRuntime:
         actor = "RECOVERY" if changed_by == "MIGRATION" else changed_by
         lifecycle = str(row.get("lifecycle", "UNKNOWN"))
         mode = str(row.get("mode", "UNKNOWN"))
-        descriptor = self.strategy_registry.descriptor(strategy_id)
+        descriptor = registry.descriptor(strategy_id)
         transition_id = f"strategy-setting-{self.run_id}-{strategy_id}-rev-{response_revision}"
         return {
             **dict(row),
@@ -2851,7 +3067,7 @@ class PaperRuntime:
                 else 0
             ),
             "response_revision": response_revision,
-            "reversible": not self.strategy_registry.is_policy_retired(strategy_id),
+            "reversible": not registry.is_policy_retired(strategy_id),
         }
 
     def _strategy_transition_history(
@@ -2873,8 +3089,12 @@ class PaperRuntime:
         *,
         timestamp: int,
         evidence: Mapping[str, object] | None = None,
+        strategy_registry: StrategyRegistry | None = None,
     ) -> dict[str, object]:
-        transition = self._strategy_transition_payload(row)
+        transition = self._strategy_transition_payload(
+            row,
+            strategy_registry=strategy_registry,
+        )
         if self.ledger is None or self.mode is RuntimeMode.READY:
             return transition
         payload = {
@@ -3462,12 +3682,20 @@ class PaperRuntime:
             if trade.get("signal_event_id") is not None
             else ""
         )
+        explicit_opportunity_id = (
+            str(trade["opportunity_id"]).strip()
+            if trade.get("opportunity_id") is not None
+            else ""
+        )
         if candidate_id.upper() == "UNKNOWN":
             candidate_id = ""
         if signal_event_id.upper() == "UNKNOWN":
             signal_event_id = ""
+        if explicit_opportunity_id.upper() == "UNKNOWN":
+            explicit_opportunity_id = ""
         opportunity_id = (
-            candidate_id
+            explicit_opportunity_id
+            or candidate_id
             or signal_event_id
             or "|".join(
                 (
@@ -4669,22 +4897,58 @@ class PaperRuntime:
 
     @staticmethod
     def _recovery_payload_has_exposure(payload: Mapping[str, object]) -> bool:
-        if payload.get("open_position") is not None:
+        if any(payload.get(key) is not None for key in ("open_position", "pending_entry")):
             return True
         portfolio = payload.get("portfolio")
+        if portfolio is None:
+            return False
         if not isinstance(portfolio, Mapping):
-            return False
+            return True
+        exposure_keys = (
+            ("positions", "position"),
+            ("pending_entries", "pending_entry"),
+        )
+        for plural_key, singular_key in exposure_keys:
+            if plural_key in portfolio:
+                plural = portfolio.get(plural_key)
+                if isinstance(plural, Mapping | Sequence) and not isinstance(
+                    plural,
+                    str | bytes,
+                ):
+                    if plural:
+                        return True
+                elif plural is not None:
+                    return True
+            if singular_key in portfolio and portfolio.get(singular_key) is not None:
+                return True
         accounts = portfolio.get("accounts")
+        if accounts is None:
+            return not any(
+                key in portfolio
+                for key in ("positions", "position", "pending_entries", "pending_entry")
+            )
         if not isinstance(accounts, Sequence) or isinstance(accounts, str | bytes):
-            return False
+            return True
+        if not accounts:
+            return True
         for account in accounts:
             if not isinstance(account, Mapping):
-                continue
-            positions = account.get("positions")
-            pending_entries = account.get("pending_entries")
-            if isinstance(positions, Mapping) and positions:
                 return True
-            if isinstance(pending_entries, Mapping) and pending_entries:
+            recognized_exposure_state = False
+            for plural_key, singular_key in exposure_keys:
+                recognized_exposure_state = recognized_exposure_state or (
+                    plural_key in account or singular_key in account
+                )
+                plural = account.get(plural_key)
+                singular = account.get(singular_key)
+                if isinstance(plural, Mapping):
+                    if plural:
+                        return True
+                elif plural is not None:
+                    return True
+                if singular is not None:
+                    return True
+            if not recognized_exposure_state:
                 return True
         return False
 
@@ -5797,6 +6061,9 @@ class PaperRuntime:
         if self.ledger is None or self.ledger.list_trades(self.run_id):
             return
         timestamp = self.clock.utc_ms()
+        fixture_opportunity_id = f"{self.run_id}-fixture-opportunity-001"
+        fixture_candidate_id = f"{self.run_id}-fixture-candidate-001"
+        fixture_signal_event_id = f"{self.run_id}-fixture-signal-001"
         fixture_path = (
             ("OBSERVING", "FIXTURE_BOOK_VALID", 185_000),
             ("ARMED", "LSA_CONFIRMED", 184_500),
@@ -5949,6 +6216,9 @@ class PaperRuntime:
                 "venue": Venue.FIXTURE.value,
                 "symbol": "BTCUSDT",
                 "strategy_id": "LSA_REVERSAL_V1",
+                "candidate_id": fixture_candidate_id,
+                "signal_event_id": fixture_signal_event_id,
+                "opportunity_id": fixture_opportunity_id,
                 "side": "LONG",
                 "entry_ts_ms": timestamp - 184_000,
                 "exit_ts_ms": timestamp,

@@ -9,6 +9,7 @@ import { dashboardFixture } from './fixtures'
 class FakeWebSocket extends EventTarget {
   static instances: FakeWebSocket[] = []
   closed = false
+  sequence = 0
 
   constructor(url: string) {
     super()
@@ -27,7 +28,13 @@ class FakeWebSocket extends EventTarget {
   }
 
   dashboard(data: DashboardData) {
-    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'dashboard', data }) }))
+    this.sequence += 1
+    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({
+      schema_version: 1,
+      sequence: this.sequence,
+      type: 'snapshot',
+      data,
+    }) }))
   }
 
   malformed() {
@@ -58,6 +65,27 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
   headers: { 'Content-Type': 'application/json' },
 })
 
+const flatPaperSafety = {
+  paper_only: true,
+  real_orders_enabled: false,
+  auth_required: false,
+  private_api_enabled: false,
+  api_key_enabled: false,
+  wallet_enabled: false,
+  runtime_ai_order_decision_enabled: false,
+  funding_readiness: 'NOT_READY',
+} as const
+
+const strategySummary = (data: DashboardData) => ({
+  schema_version: 1,
+  analysis_scope: 'CURRENT_STRATEGY_VERSION',
+  strategies: data.strategies,
+  league_accounts: data.league_accounts,
+  strategy_count: data.strategies.length,
+  league_account_count: data.league_accounts.length,
+  ...flatPaperSafety,
+})
+
 beforeEach(() => {
   FakeWebSocket.instances = []
   vi.stubGlobal('WebSocket', FakeWebSocket)
@@ -77,6 +105,7 @@ test('posts start-live once, renders 202 operation updates and cancels it', asyn
   const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
     const url = String(path)
     if (url === '/api/ui/summary') return response(data)
+    if (url === '/api/strategies/summary') return response(strategySummary(data))
     if (url === '/api/control/start-live') {
       if (!init) throw new Error('start-live request options are required')
       return response(requested, 202)
@@ -87,6 +116,8 @@ test('posts start-live once, renders 202 operation updates and cancels it', asyn
   vi.stubGlobal('fetch', fetchMock)
   render(<App />)
   const start = await screen.findByRole('button', { name: '자동 관찰 시작' })
+  act(() => FakeWebSocket.instances[0].open())
+  await waitFor(() => expect(start).toBeEnabled())
   fireEvent.click(start)
   fireEvent.click(start)
   await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => String(path) === '/api/control/start-live')).toHaveLength(1))
@@ -110,11 +141,14 @@ test('retries FAILED_RETRYABLE with a new start-live request', async () => {
   const fetchMock = vi.fn(async (path: RequestInfo | URL) => (
     String(path) === '/api/ui/summary'
       ? response(data)
+      : String(path) === '/api/strategies/summary'
+        ? response(strategySummary(data))
       : response(operation('REQUESTED', 'control-retry'), 202)
   ))
   vi.stubGlobal('fetch', fetchMock)
   render(<App />)
   const retry = await screen.findByRole('button', { name: '다시 연결' })
+  act(() => FakeWebSocket.instances[0].open())
   expect(screen.queryByRole('button', { name: '자동 관찰 시작' })).not.toBeInTheDocument()
   fireEvent.click(retry)
   await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/control/start-live')).toBe(true))
@@ -125,10 +159,15 @@ test('recovers the button and shows Korean detail after HTTP 500', async () => {
   vi.stubGlobal('fetch', vi.fn(async (path: RequestInfo | URL) => (
     String(path) === '/api/ui/summary'
       ? response(data)
+      : String(path) === '/api/strategies/summary'
+        ? response(strategySummary(data))
       : response({ detail: { error_code: 'CONTROL_FAILED', error_message_ko: '서버가 실행 작업을 완료하지 못했습니다.', retryable: true } }, 500)
   )))
   render(<App />)
-  fireEvent.click(await screen.findByRole('button', { name: '자동 관찰 시작' }))
+  const start = await screen.findByRole('button', { name: '자동 관찰 시작' })
+  act(() => FakeWebSocket.instances[0].open())
+  await waitFor(() => expect(start).toBeEnabled())
+  fireEvent.click(start)
   expect(await screen.findByRole('alert')).toHaveTextContent('서버가 실행 작업을 완료하지 못했습니다.')
   expect(screen.getByRole('button', { name: '자동 관찰 시작' })).toBeEnabled()
 })
@@ -138,6 +177,7 @@ test('aborts a stalled control after 15 seconds and restores the button', async 
   const data = dashboardFixture()
   vi.stubGlobal('fetch', vi.fn((path: RequestInfo | URL, init?: RequestInit) => {
     if (String(path) === '/api/ui/summary') return Promise.resolve(response(data))
+    if (String(path) === '/api/strategies/summary') return Promise.resolve(response(strategySummary(data)))
     return new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
     })
@@ -145,6 +185,8 @@ test('aborts a stalled control after 15 seconds and restores the button', async 
   render(<App />)
   await act(async () => Promise.resolve())
   const start = screen.getByRole('button', { name: '자동 관찰 시작' })
+  act(() => FakeWebSocket.instances[0].open())
+  expect(start).toBeEnabled()
   fireEvent.click(start)
   expect(start).toBeDisabled()
   await act(async () => { await vi.advanceTimersByTimeAsync(15_001) })
@@ -164,9 +206,7 @@ test('marks malformed WebSocket data as reconnecting and recovers on a valid soc
           league_accounts: data.league_accounts,
           strategy_count: data.strategies.length,
           league_account_count: data.league_accounts.length,
-          paper_only: true,
-          real_orders_enabled: false,
-          auth_required: false,
+          ...flatPaperSafety,
         }
       : data,
   )))
@@ -207,7 +247,11 @@ test('shows automatic safety waiting without a misleading manual resume button',
       lag_p95_ms: 2_140,
     },
   }
-  vi.stubGlobal('fetch', vi.fn(async () => response(safetyWaiting)))
+  vi.stubGlobal('fetch', vi.fn(async (path: RequestInfo | URL) => response(
+    String(path) === '/api/strategies/summary'
+      ? strategySummary(safetyWaiting)
+      : safetyWaiting,
+  )))
 
   render(<App />)
 
@@ -279,12 +323,18 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
     if (String(path) === '/api/control/resume') {
       return await new Promise<Response>((resolve) => { finishResume = resolve })
     }
+    if (String(path) === '/api/strategies/summary') {
+      return response(strategySummary(manuallyPaused))
+    }
     return response(manuallyPaused)
   })
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
-  fireEvent.click(await screen.findByRole('button', { name: '새 진입 다시 시작' }))
+  const resume = await screen.findByRole('button', { name: '새 진입 다시 시작' })
+  act(() => FakeWebSocket.instances[0].open())
+  await waitFor(() => expect(resume).toBeEnabled())
+  fireEvent.click(resume)
 
   expect(screen.getByRole('button', { name: '다시 시작하는 중…' })).toBeDisabled()
   await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/control/resume')).toBe(true))

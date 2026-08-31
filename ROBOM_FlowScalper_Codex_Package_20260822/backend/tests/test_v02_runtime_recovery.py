@@ -9,6 +9,8 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import (
     DataQuality,
@@ -432,6 +434,59 @@ def test_paper_entry_intent_revision_survives_process_restart(tmp_path: Path) ->
         idempotency_key="recovery-pause",
     )
     assert repeated["revision"] == 1
+    reopened.close()
+
+
+@pytest.mark.parametrize(
+    ("manual_pause_requested", "record_paused"),
+    [("false", False), (False, "false")],
+)
+def test_paper_entry_intent_recovery_rejects_string_booleans(
+    tmp_path: Path,
+    manual_pause_requested: object,
+    record_paused: object,
+) -> None:
+    database = tmp_path / "paper-entry-intent-strict-bool.sqlite3"
+    run_id = "run-paper-entry-intent-strict-bool"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime._persist_execution_state(1_250)
+    ledger.set_app_setting(
+        "paper_entry_user_intent",
+        {
+            "run_id": run_id,
+            "manual_pause_requested": manual_pause_requested,
+            "revision": 1,
+            "actor": "RECOVERY_TEST",
+            "reason": "STRICT_BOOL_TEST",
+            "idempotency_records": [
+                {"key": "strict-bool", "paused": record_paused}
+            ],
+        },
+        updated_ts_ms=1_250,
+    )
+    ledger.close()
+
+    reopened = SQLiteLedger(database)
+    recovered = reopened.recover_latest(recovered_ts_ms=10_000)
+    assert recovered is not None
+    recovered_runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=reopened,
+        venue=Venue.BINANCE_USDM,
+    )
+
+    assert recovered_runtime.restore_recovery_state(recovered) is False
+    assert "RECOVERY_STATE_REJECTED:ValueError" in recovered_runtime.runtime_health_flags
+    assert recovered_runtime.paused is True
     reopened.close()
 
 

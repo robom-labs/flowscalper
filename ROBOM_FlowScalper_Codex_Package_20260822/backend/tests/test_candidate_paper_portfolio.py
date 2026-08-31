@@ -1032,3 +1032,48 @@ def test_recovery_rejects_malformed_adaptive_trailing_state() -> None:
             strategy_ids=(plan.strategy_id,),
             shadow_ledger=ShadowLedger((plan.strategy_id,)),
         ).restore_state(payload)
+
+
+@pytest.mark.parametrize("field", ["paused", "faulted"])
+def test_recovery_rejects_string_risk_state_booleans(field: str) -> None:
+    plan = candidate_plan()
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    payload = json.loads(json.dumps(engine.recovery_state()))
+    main_payload = next(
+        row for row in payload["accounts"] if row["account_id"] == engine.main.account_id
+    )
+    main_payload["risk_state"][field] = "false"
+
+    with pytest.raises(ValueError, match="boolean"):
+        PaperPortfolioEngine(
+            run_id=plan.run_id,
+            strategy_ids=(plan.strategy_id,),
+            shadow_ledger=ShadowLedger((plan.strategy_id,)),
+        ).restore_state(payload)
+
+
+@pytest.mark.parametrize("field", ["main_eligible", "shadow_eligible"])
+def test_recovery_rejects_string_candidate_plan_booleans(field: str) -> None:
+    plan = candidate_plan()
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    engine.offer((plan,), entries_paused=False)
+    payload = json.loads(json.dumps(engine.recovery_state()))
+    main_payload = next(
+        row for row in payload["accounts"] if row["account_id"] == engine.main.account_id
+    )
+    main_payload["pending_entries"][plan.symbol][field] = "false"
+
+    with pytest.raises(ValueError, match="boolean"):
+        PaperPortfolioEngine(
+            run_id=plan.run_id,
+            strategy_ids=(plan.strategy_id,),
+            shadow_ledger=ShadowLedger((plan.strategy_id,)),
+        ).restore_state(payload)

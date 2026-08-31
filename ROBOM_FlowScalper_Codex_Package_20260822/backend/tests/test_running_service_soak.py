@@ -3,13 +3,21 @@
 
 from __future__ import annotations
 
+import argparse
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta, tzinfo
+from pathlib import Path
+from typing import Self, cast
+
+import pytest
 
 from backend.app.ops.service_soak import (
     RunningServiceSample,
     parse_running_service_sample,
     summarize_running_service_soak,
 )
+from scripts import audit_v6_system_truth as audit
+from scripts import observe_running_service as observer
 
 
 def _strategy(strategy_id: str, *, revision: int = 1) -> dict[str, object]:
@@ -177,6 +185,117 @@ def _advanced_payload() -> dict[str, object]:
         }
     )
     return payload
+
+
+def _producer_payload(index: int) -> dict[str, object]:
+    payload = deepcopy(_payload())
+    system = payload["system"]
+    accounts = payload["league_accounts"]
+    assert isinstance(system, dict)
+    assert isinstance(accounts, list)
+    system.update(
+        {
+            "release_commit": "a" * 40,
+            "release_isolated": True,
+            "event_count": 100 + index * 100,
+            "strategy_evaluation_count": 1_000 + index * 250,
+            "consumer_delivery_count": 100 + index * 100,
+            "persistence_flush_count": 10 + index,
+            "wal_checkpoint_count": 2 + index,
+            "wal_checkpoint_log_frames": 10 + index,
+            "wal_checkpointed_frames": 10 + index,
+            "process_uptime_seconds": 100.0 + index * 900.0,
+        }
+    )
+    for account in accounts:
+        assert isinstance(account, dict)
+        account["account_id"] = f"{account['strategy_id']}:{account['profile']}"
+    payload.update(
+        {
+            "main_pending_entry_count": 0,
+            "league_pending_entry_count": 0,
+            "total_pending_entry_count": 0,
+            "total_open_position_count": 0,
+            "paper_portfolio_flat": True,
+        }
+    )
+    return payload
+
+
+def test_observer_produces_validator_backed_soak_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commit = "a" * 40
+    base_time = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
+    observed_times = iter(
+        (
+            base_time,
+            base_time,
+            base_time + timedelta(minutes=15),
+            base_time + timedelta(minutes=30),
+            base_time + timedelta(minutes=30),
+        )
+    )
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> Self:
+            del tz
+            return cast(Self, next(observed_times))
+
+    payloads = iter(_producer_payload(index) for index in range(3))
+    monotonic_values = iter((0.0, 900.0, 1_800.0))
+    monkeypatch.setattr(observer, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(observer, "datetime", FixedDatetime)
+    monkeypatch.setattr(observer, "_source_revision", lambda: (commit, True))
+    monkeypatch.setattr(observer.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(observer.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        observer,
+        "fetch_dashboard_payload",
+        lambda _url, *, timeout_seconds: next(payloads),
+    )
+    output = tmp_path / audit.EVIDENCE_PATHS["thirty_minute_soak"]
+    arguments = argparse.Namespace(
+        duration_seconds=1_800.0,
+        sample_seconds=900.0,
+        runtime_url="http://127.0.0.1:8870",
+        request_timeout_seconds=2.0,
+        max_consecutive_probe_errors=3,
+        max_queue_depth=64,
+        max_processing_lag_p95_ms=500.0,
+        max_trade_lag_p95_ms=1_000.0,
+        max_event_loop_lag_ms=500.0,
+        max_event_stall_seconds=1_000.0,
+        max_memory_growth_mb=256.0,
+        max_market_persistence_buffer=10_000,
+        max_persistence_flush_last_ms=20_000.0,
+        max_wal_checkpoint_last_ms=30_000.0,
+        output=output,
+    )
+
+    measurement = observer.observe_running_service(arguments)
+    wrapper = observer._write_evidence_bundle(arguments, measurement)
+
+    assert measurement["status"] == "PASS"
+    assert wrapper["exit_code"] == 0
+    assert wrapper["artifact_count"] == 1
+    samples = measurement["samples"]
+    assert isinstance(samples, list)
+    assert [sample["elapsed_seconds"] for sample in samples] == [0.0, 900.0, 1800.0]
+    assert all(sample["paper_portfolio_flat"] is True for sample in samples)
+
+    monkeypatch.setattr(audit, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(audit, "_commits_have_equivalent_source", lambda _a, _b: True)
+    evidence = audit._thirty_minute_soak_evidence(
+        expected_strategy_ids=["A", "B"],
+        expected_account_ids=["A:BASE", "A:STRESS", "B:BASE", "B:STRESS"],
+        expected_mode_counts={"ACTIVE": 0, "SHADOW": 2, "OFF": 0},
+        expected_source_commit=commit,
+        source_working_tree_changes=[],
+    )
+    assert evidence["status"] == "PASS"
 
 
 def test_running_service_soak_passes_only_with_exact_progress_and_dynamic_accounts() -> None:

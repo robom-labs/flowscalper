@@ -83,18 +83,35 @@ function formatCompact(value: number) {
   return new Intl.NumberFormat('ko-KR', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
 
-function MarketRail({ rows, selected, onSelect, onClose }: { rows: MarketCatalogRow[]; selected: string; onSelect: (row: MarketCatalogRow) => void; onClose?: () => void }) {
+const defaultMarketRowLimit = 10
+
+function MarketRail({ rows, preferredSymbols, selected, onSelect, onClose }: { rows: MarketCatalogRow[]; preferredSymbols: string[]; selected: string; onSelect: (row: MarketCatalogRow) => void; onClose?: () => void }) {
   const [query, setQuery] = useState('')
   const [venue, setVenue] = useState<'BINANCE_USDM' | 'UPBIT_KRW'>('BINANCE_USDM')
   const [scrollTop, setScrollTop] = useState(0)
-  const filtered = rows.filter((row) => row.venue === venue && `${row.symbol} ${row.display_symbol} ${row.korean_name ?? ''} ${row.english_name ?? ''}`.toLowerCase().includes(query.toLowerCase()))
+  const [showAll, setShowAll] = useState(false)
+  const venueRows = rows.filter((row) => row.venue === venue)
+  const preferredRows: MarketCatalogRow[] = []
+  const preferredKeys = new Set<string>()
+  for (const symbol of preferredSymbols) {
+    const row = venueRows.find((candidate) => candidate.symbol === symbol)
+    if (!row || preferredKeys.has(row.symbol)) continue
+    preferredRows.push(row)
+    preferredKeys.add(row.symbol)
+  }
+  const defaultRows = [...preferredRows, ...venueRows.filter((row) => !preferredKeys.has(row.symbol))].slice(0, defaultMarketRowLimit)
+  const normalizedQuery = query.trim().toLowerCase()
+  const searchedRows = normalizedQuery
+    ? venueRows.filter((row) => `${row.symbol} ${row.display_symbol} ${row.korean_name ?? ''} ${row.english_name ?? ''}`.toLowerCase().includes(normalizedQuery))
+    : venueRows
+  const filtered = normalizedQuery || showAll ? searchedRows : defaultRows
   const start = Math.max(0, Math.floor(scrollTop / 52) - 5)
   const visible = filtered.slice(start, start + 40)
   return <aside className="market-rail" aria-label="전체 종목 탐색">
-    <div className="market-rail-head"><strong>종목</strong><span>{filtered.length}개</span>{onClose ? <button type="button" className="market-rail-close" onClick={onClose}>닫기</button> : null}</div>
+    <div className="market-rail-head"><strong>종목</strong><span>{normalizedQuery || showAll ? `${filtered.length}개` : `${filtered.length}/${venueRows.length}개`}</span>{!normalizedQuery && venueRows.length > defaultRows.length ? <button type="button" className="market-rail-close" aria-expanded={showAll} onClick={() => { setShowAll((current) => !current); setScrollTop(0) }}>{showAll ? '상위 10개' : '전체보기'}</button> : null}{onClose ? <button type="button" className="market-rail-close" onClick={onClose}>닫기</button> : null}</div>
     <div className="venue-tabs" role="group" aria-label="시장 선택">
-      <button type="button" aria-pressed={venue === 'BINANCE_USDM'} onClick={() => { setVenue('BINANCE_USDM'); setScrollTop(0) }}>USDT 선물</button>
-      <button type="button" aria-pressed={venue === 'UPBIT_KRW'} onClick={() => { setVenue('UPBIT_KRW'); setScrollTop(0) }}>원화 참고</button>
+      <button type="button" aria-pressed={venue === 'BINANCE_USDM'} onClick={() => { setVenue('BINANCE_USDM'); setShowAll(false); setScrollTop(0) }}>USDT 선물</button>
+      <button type="button" aria-pressed={venue === 'UPBIT_KRW'} onClick={() => { setVenue('UPBIT_KRW'); setShowAll(false); setScrollTop(0) }}>원화 참고</button>
     </div>
     <input className="market-search" aria-label="종목 검색" placeholder="BTC, 비트코인 검색" value={query} onChange={(event) => { setQuery(event.target.value); setScrollTop(0) }} />
     <div className="market-list" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
@@ -270,8 +287,8 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, busy
     {operationNeedsDetail ? <OperationStatusPanel data={data} busy={busy} operation={operation} onStartLive={onStartLive} onStartDemo={onStartDemo} onCancel={onCancel} onRetry={onRetry} /> : <p className="operation-compact" role="status" aria-label="프로그램 작동 상태"><strong>{data.operation_status.title_ko}</strong><span>{data.operation_status.detail_ko}</span></p>}
     {!data.focus_positions.length ? <details className="market-no-trade"><summary>왜 거래가 없나요?</summary><p>{noTradeReason}</p></details> : null}
     {data.focus_positions.length ? <section className="open-position-strip" aria-label="현재 PAPER 진입 목록"><strong>진행 중 {data.focus_positions.length}건</strong><div>{data.focus_positions.map((position) => <button type="button" className={position.side === 'LONG' ? 'long' : 'short'} aria-pressed={focusKey === position.focus_key} key={position.focus_key} onClick={() => openPosition(position)}><b>{position.symbol} · {position.side === 'LONG' ? '상승' : '하락'}</b><span>{position.strategy_display_name_ko} · {costProfileLabel(position.profile)} · {paperAccountLabel(position.account_id)} · {position.stage_ko}</span><small>{formatUsdt(position.net_pnl_usdt, { signed: true })}</small></button>)}</div></section> : null}
-    {displayedFocus && overlay ? <PositionFocusWorkspace mode={focus ? 'LIVE' : 'CLOSED_REVIEW'} position={displayedFocus} chart={chart} overlay={overlay} history={data.history.filter((row) => row.run_id === data.status.run_id)} /> : <div className="market-grid"><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={selectMarket} /><PriceChart chart={chart} overlay={marketOverlay} activePositionCount={selectedSymbolPositions.length} history={selectedMarket.source === 'BINANCE_USDM' && data.status.market_data_state === 'LIVE' ? data.history.filter((row) => row.run_id === data.status.run_id) : []} compact /></div>}
-    {marketDrawer ? <div className="market-drawer-layer" role="dialog" aria-label="종목 목록"><button type="button" className="drawer-backdrop" aria-label="종목 목록 바깥 닫기" onClick={() => setMarketDrawer(false)} /><MarketRail rows={activeRows} selected={selectedMarket.symbol} onSelect={(row) => { selectMarket(row); setMarketDrawer(false) }} onClose={() => setMarketDrawer(false)} /></div> : null}
+    {displayedFocus && overlay ? <PositionFocusWorkspace mode={focus ? 'LIVE' : 'CLOSED_REVIEW'} position={displayedFocus} chart={chart} overlay={overlay} history={data.history.filter((row) => row.run_id === data.status.run_id)} /> : <div className="market-grid"><MarketRail rows={activeRows} preferredSymbols={data.scanner.filter((row) => row.depth === 'DEEP').map((row) => row.symbol)} selected={selectedMarket.symbol} onSelect={selectMarket} /><PriceChart chart={chart} overlay={marketOverlay} activePositionCount={selectedSymbolPositions.length} history={selectedMarket.source === 'BINANCE_USDM' && data.status.market_data_state === 'LIVE' ? data.history.filter((row) => row.run_id === data.status.run_id) : []} compact /></div>}
+    {marketDrawer ? <div className="market-drawer-layer" role="dialog" aria-label="종목 목록"><button type="button" className="drawer-backdrop" aria-label="종목 목록 바깥 닫기" onClick={() => setMarketDrawer(false)} /><MarketRail rows={activeRows} preferredSymbols={data.scanner.filter((row) => row.depth === 'DEEP').map((row) => row.symbol)} selected={selectedMarket.symbol} onSelect={(row) => { selectMarket(row); setMarketDrawer(false) }} onClose={() => setMarketDrawer(false)} /></div> : null}
     <SideDrawer title="진행 중인 PAPER 거래" open={positionsDrawer} onClose={() => setPositionsDrawer(false)} label="진행 포지션"><PositionList positions={data.league_positions} strategies={data.strategies} compact /></SideDrawer>
   </section>
 }

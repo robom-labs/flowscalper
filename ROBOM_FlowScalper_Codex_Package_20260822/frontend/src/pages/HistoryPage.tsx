@@ -1,4 +1,4 @@
-// 종료된 PAPER 거래는 쉬운 핵심 결과를 먼저 보여주고 원장 식별자는 기술 정보로 분리한다.
+// 종료된 PAPER 거래는 쉬운 핵심 결과를 먼저 보여주고 원장 식별자는 기술 상세로 분리한다.
 import { useEffect, useMemo, useState } from 'react'
 import { fetchJson } from '../api/client'
 import { SideDrawer } from '../components/SideDrawer'
@@ -19,6 +19,10 @@ import type { HistoryRow, StrategySummaryRow, TradesResponse } from '../types'
 
 type Props = {
   rows: HistoryRow[]
+  counts?: Pick<
+    TradesResponse['counts'],
+    'raw_result_rows' | 'base_result_rows' | 'stress_result_rows'
+  >
   currentRunId: string
   openPositionCount?: number
   historyScope?: { strategy_version: string; excluded_prior_version_samples: number }
@@ -43,6 +47,63 @@ function isCurrentStrategyVersion(row: HistoryRow, currentVersion?: string) {
 
 function milestoneDuration(value: number | null | undefined, empty = '미도달') {
   return value === null || value === undefined ? empty : formatDurationMs(value)
+}
+
+function movementInR(value: string | null | undefined) {
+  return value === null || value === undefined || value === '' ? '측정 전' : `${value}R`
+}
+
+function optionalUsdt(value: string | null | undefined, signed = false) {
+  return value === null || value === undefined || value === ''
+    ? '측정 전'
+    : formatUsdt(value, { signed })
+}
+
+function fillIntentLabel(intent: string) {
+  if (intent === 'ENTRY_IOC') return '진입 체결'
+  if (intent === 'TAKE_PROFIT') return '목표가 청산'
+  if (intent === 'STOP_EXIT') return '손절 청산'
+  if (intent === 'EDGE_DECAY_EXIT') return '진입 근거 약화 청산'
+  if (intent === 'EMERGENCY_EXIT') return '안전 청산'
+  if (intent === 'MANUAL_PAPER_EXIT') return '수동 모의청산'
+  return '체결'
+}
+
+function fillSideLabel(side: string) {
+  if (side === 'BUY') return '매수'
+  if (side === 'SELL') return '매도'
+  return side
+}
+
+function fillUnavailableLabel(row: HistoryRow) {
+  if (row.fill_evidence_state === 'CURRENT_MAIN_NO_FILL') return '현재 공동 가상계좌 체결 없음 · NOT_PROVEN'
+  if (row.fill_evidence_state === 'SHADOW_UNAVAILABLE') return '전략별 가상계좌 원시 fill 미제공 · NOT_PROVEN'
+  return '과거 기록 원시 fill 미제공 · NOT_PROVEN'
+}
+
+function mergedFills(rows: HistoryRow[]) {
+  const unique = new Map<string, NonNullable<HistoryRow['fills']>[number]>()
+  for (const fill of rows.flatMap((row) => row.fills ?? [])) {
+    unique.set(`${fill.order_id}:${fill.fill_id}`, fill)
+  }
+  return [...unique.values()].sort((left, right) => (
+    left.ts_ms - right.ts_ms || left.fill_id.localeCompare(right.fill_id)
+  ))
+}
+
+function mergedFillEvidence(rows: HistoryRow[], fills: NonNullable<HistoryRow['fills']>) {
+  if (fills.length > 0 && rows.every((row) => row.fill_evidence_state === 'PRESENT')) {
+    return {
+      fill_evidence_state: 'PRESENT' as const,
+      fill_evidence_reason_ko: rows[0]?.fill_evidence_reason_ko,
+    }
+  }
+  const unavailable = ['LEGACY_UNAVAILABLE', 'SHADOW_UNAVAILABLE', 'CURRENT_MAIN_NO_FILL']
+    .flatMap((state) => rows.filter((row) => row.fill_evidence_state === state))[0]
+  return {
+    fill_evidence_state: unavailable?.fill_evidence_state,
+    fill_evidence_reason_ko: unavailable?.fill_evidence_reason_ko,
+  }
 }
 
 function accountLabel(row: HistoryRow) {
@@ -73,11 +134,7 @@ function historyOpportunityKey(row: HistoryRow): string | null {
   const explicitId = [row.opportunity_id, row.candidate_id, row.signal_event_id]
     .find((value) => value && value !== 'UNKNOWN')
   if (!explicitId) return null
-  const scope = row.account_scope ?? 'MAIN'
-  const accountGroup = scope === 'LEAGUE' ? row.strategy : row.account_id ?? 'SHARED_PAPER'
   return [
-    scope,
-    accountGroup,
     row.run_id,
     row.strategy,
     row.strategy_version ?? 'UNKNOWN',
@@ -87,10 +144,28 @@ function historyOpportunityKey(row: HistoryRow): string | null {
   ].join(':')
 }
 
+function historyAccountGroupKey(row: HistoryRow) {
+  const scope = row.account_scope ?? 'MAIN'
+  const accountGroup = scope === 'LEAGUE' ? row.strategy : row.account_id ?? 'SHARED_PAPER'
+  return `${scope}:${accountGroup}`
+}
+
+function historyResultKey(row: HistoryRow) {
+  return `${historyAccountGroupKey(row)}:${row.profile}`
+}
+
+function historyResultIdentity(row: HistoryRow) {
+  return `${historyResultKey(row)}:${row.trade_id}`
+}
+
 function profileOrder(profile: string) {
   if (profile === 'BASE') return 0
   if (profile === 'STRESS') return 1
   return 2
+}
+
+function accountOrder(row: HistoryRow) {
+  return (row.account_scope ?? 'MAIN') === 'MAIN' ? 0 : 1
 }
 
 function sumHistoryRows(
@@ -103,6 +178,8 @@ function sumHistoryRows(
 function collapsePartialExitRows(rows: HistoryRow[]) {
   const latest = [...rows].sort((left, right) => right.exit_ts_ms - left.exit_ts_ms)[0]
   const representative = rows.find((row) => row.replay_available) ?? latest
+  const fills = mergedFills(rows)
+  const fillEvidence = mergedFillEvidence(rows, fills)
   return {
     ...representative,
     entry_ts_ms: Math.min(...rows.map((row) => row.entry_ts_ms)),
@@ -116,6 +193,8 @@ function collapsePartialExitRows(rows: HistoryRow[]) {
     holding_ms: Math.max(...rows.map((row) => row.holding_ms)),
     holding_seconds: Math.max(...rows.map((row) => row.holding_seconds)),
     replay_available: rows.some((row) => row.replay_available),
+    fills,
+    ...fillEvidence,
   }
 }
 
@@ -127,12 +206,14 @@ function groupHistoryOpportunities(rows: HistoryRow[]) {
     grouped.set(key, [...(grouped.get(key) ?? []), row])
   }
   return [...grouped.entries()].map(([key, opportunityRows]): HistoryOpportunity => {
-    const profiles = new Map<string, HistoryRow[]>()
+    const resultGroups = new Map<string, HistoryRow[]>()
     for (const row of opportunityRows) {
-      profiles.set(row.profile, [...(profiles.get(row.profile) ?? []), row])
+      const resultKey = historyResultKey(row)
+      resultGroups.set(resultKey, [...(resultGroups.get(resultKey) ?? []), row])
     }
-    const orderedRows = [...profiles.values()].map(collapsePartialExitRows).sort((left, right) => (
-      profileOrder(left.profile) - profileOrder(right.profile)
+    const orderedRows = [...resultGroups.values()].map(collapsePartialExitRows).sort((left, right) => (
+      accountOrder(left) - accountOrder(right)
+      || profileOrder(left.profile) - profileOrder(right.profile)
       || right.exit_ts_ms - left.exit_ts_ms
     ))
     return { key, rows: orderedRows, primary: orderedRows[0] }
@@ -140,6 +221,41 @@ function groupHistoryOpportunities(rows: HistoryRow[]) {
     Math.max(...right.rows.map((row) => row.exit_ts_ms))
     - Math.max(...left.rows.map((row) => row.exit_ts_ms))
   ))
+}
+
+function opportunityComparison(opportunity: HistoryOpportunity) {
+  const accountGroupCount = new Set(opportunity.rows.map(historyAccountGroupKey)).size
+  const profileCount = new Set(opportunity.rows.map((row) => row.profile)).size
+  const comparesAccounts = accountGroupCount > 1
+  const comparesCosts = profileCount > 1
+  if (!comparesAccounts) {
+    return {
+      label: comparesCosts ? '비용 2개 비교' : costProfileLabel(opportunity.primary.profile),
+      button: comparesCosts ? '비용별 결과' : '자세히',
+      note: '같은 진입기회 · 비용 가정만 다름',
+      drawerNote: '같은 시점에 들어간 한 번의 진입기회를 비용 조건 2개로 나눠 계산했습니다. 중복 거래가 아닙니다.',
+      groupLabel: '비용별 거래 결과',
+      comparesAccounts,
+    }
+  }
+  return {
+    label: comparesCosts ? '계좌·비용 결과 비교' : '계좌 결과 비교',
+    button: '결과 비교',
+    note: comparesCosts
+      ? '같은 진입기회 · 가상계좌와 비용 조건별 결과'
+      : '같은 진입기회 · 가상계좌별 결과',
+    drawerNote: comparesCosts
+      ? '같은 진입기회를 공동·전략별 가상계좌와 비용 조건별로 나눠 계산했습니다. 중복 진입기회가 아닙니다.'
+      : '같은 진입기회를 공동·전략별 가상계좌로 나눠 계산했습니다. 중복 진입기회가 아닙니다.',
+    groupLabel: '진입기회별 세부 결과',
+    comparesAccounts,
+  }
+}
+
+function historyResultLabel(opportunity: HistoryOpportunity, row: HistoryRow) {
+  return opportunityComparison(opportunity).comparesAccounts
+    ? `${accountLabel(row)} · ${costProfileLabel(row.profile)}`
+    : costProfileLabel(row.profile)
 }
 
 function opportunityHoldingLabel(opportunity: HistoryOpportunity) {
@@ -153,6 +269,7 @@ function opportunityHoldingLabel(opportunity: HistoryOpportunity) {
 
 export function HistoryPage({
   rows,
+  counts,
   currentRunId,
   openPositionCount = 0,
   historyScope,
@@ -172,12 +289,17 @@ export function HistoryPage({
   const [queryGroupingStatus, setQueryGroupingStatus] = useState<'PROVEN' | 'NOT_PROVEN' | null>(null)
   const [querySourceStatus, setQuerySourceStatus] = useState<TradesResponse['source_status']>(undefined)
   const [queryUnresolvedCount, setQueryUnresolvedCount] = useState(0)
+  const [queryCounts, setQueryCounts] = useState<TradesResponse['counts'] | null>(null)
   const [lastQueryUpdateMs, setLastQueryUpdateMs] = useState<number | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
   const [selectedTrade, setSelected] = useState<HistoryRow | null>(null)
   const providedCoversFilters = providedScope === 'CURRENT_ALL'
-    ? runFilter === 'CURRENT' && versionFilter === 'CURRENT'
-    : accountFilter === 'MAIN'
+    ? runFilter === 'CURRENT'
+      && versionFilter === 'CURRENT'
+      && accountFilter === 'ALL'
+      && profileFilter === 'ALL'
+      && filter === 'ALL'
+    : accountFilter === 'MAIN' && runFilter === 'CURRENT' && versionFilter === 'CURRENT'
   const needsLedgerQuery = !providedCoversFilters
   const beginQuery = () => {
     setQueriedRows(null)
@@ -187,6 +309,7 @@ export function HistoryPage({
     setQueryGroupingStatus(null)
     setQuerySourceStatus(undefined)
     setQueryUnresolvedCount(0)
+    setQueryCounts(null)
     setLastQueryUpdateMs(null)
   }
 
@@ -216,6 +339,7 @@ export function HistoryPage({
           setQueryGroupingStatus(response.grouping_status ?? 'PROVEN')
           setQuerySourceStatus(response.source_status)
           setQueryUnresolvedCount(response.counts.unresolved_result_rows ?? 0)
+          setQueryCounts(response.counts)
           setQueryError('')
           setLastQueryUpdateMs(Date.now())
         })
@@ -264,14 +388,30 @@ export function HistoryPage({
   const unresolvedCount = needsLedgerQuery ? queryUnresolvedCount : localUnresolvedCount
   const selectedOpportunity = selectedTrade
     ? opportunities.find((opportunity) => (
-      opportunity.rows.some((row) => row.trade_id === selectedTrade.trade_id)
+      opportunity.rows.some((row) => (
+        historyResultIdentity(row) === historyResultIdentity(selectedTrade)
+      ))
     )) ?? null
     : null
   const selected = selectedOpportunity && selectedTrade
-    ? selectedOpportunity.rows.find((row) => row.trade_id === selectedTrade.trade_id) ?? null
+    ? selectedOpportunity.rows.find((row) => (
+      historyResultIdentity(row) === historyResultIdentity(selectedTrade)
+    )) ?? null
     : null
-  const mainCount = opportunities.filter((opportunity) => opportunity.primary.account_scope !== 'LEAGUE').length
-  const leagueCount = opportunities.length - mainCount
+  const mainCount = opportunities.filter((opportunity) => (
+    opportunity.rows.some((row) => (row.account_scope ?? 'MAIN') === 'MAIN')
+  )).length
+  const leagueCount = opportunities.filter((opportunity) => (
+    opportunity.rows.some((row) => row.account_scope === 'LEAGUE')
+  )).length
+  const visibleCounts = needsLedgerQuery
+    ? queryCounts
+    : counts ?? {
+      unique_opportunities: opportunities.length,
+      raw_result_rows: filtered.length,
+      base_result_rows: filtered.filter((row) => row.profile === 'BASE').length,
+      stress_result_rows: filtered.filter((row) => row.profile === 'STRESS').length,
+    }
   const visibleQueryLoading = needsLedgerQuery && queryLoading
   const visiblePriorVersionCount = (
     needsLedgerQuery && queriedRows !== null
@@ -335,7 +475,7 @@ export function HistoryPage({
         ) : <small className="history-stream-note">공동 가상계좌 기록은 실시간 화면 상태로 자동 반영됩니다.</small>}
       </div>
       <p className="history-result-summary" role="status">
-        {visibleQueryLoading ? '거래 기록을 불러오는 중입니다.' : `진입기회 ${opportunities.length}건 · 세부 원장 ${filtered.length}건 · 공동 ${mainCount}건 · 전략별 ${leagueCount}건`}
+        {visibleQueryLoading ? '거래 기록을 불러오는 중입니다.' : `진입기회 ${opportunities.length}건 · 원장 결과 ${visibleCounts?.raw_result_rows ?? 0}행 · BASE ${visibleCounts?.base_result_rows ?? 0} · STRESS ${visibleCounts?.stress_result_rows ?? 0} · 공동 ${mainCount}건 · 전략별 ${leagueCount}건`}
         {visiblePriorVersionCount ? ` · 과거 버전 ${visiblePriorVersionCount}건은 안전하게 보관 중` : ''}
       </p>
       <div className="history-layout">
@@ -344,15 +484,16 @@ export function HistoryPage({
             <thead><tr><th>거래</th><th>전략·계좌</th><th>최종 결과</th><th>종료</th><th>보유</th><th>보기</th></tr></thead>
             <tbody>{opportunities.map((opportunity) => {
               const row = opportunity.primary
+              const comparison = opportunityComparison(opportunity)
               const sameExitReason = opportunity.rows.every((item) => item.exit_reason === row.exit_reason)
               return (
               <tr key={opportunity.key}>
                 <td data-label="거래"><strong>{row.symbol}</strong><small>{sideLabel(row.side)} · {sampleTypeLabel(row.sample_type)}</small></td>
-                <td data-label="전략·계좌"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy)}</strong><small>{accountLabel(row)} · {opportunity.rows.length > 1 ? '비용 2개 비교' : costProfileLabel(row.profile)}</small></td>
-                <td data-label="최종 결과">{opportunity.rows.length > 1 ? <><div className="history-cost-results">{opportunity.rows.map((result) => <span className={Number(result.net_pnl) >= 0 ? 'positive' : 'negative'} key={result.trade_id}><b>{costProfileLabel(result.profile)}</b><strong>{formatUsdt(result.net_pnl, { signed: true })}</strong></span>)}</div><small>같은 진입기회 · 비용 가정만 다름</small></> : <><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong><small>가격 손익 {formatUsdt(row.gross_pnl, { signed: true })} · 총비용 {formatUsdt(Number(row.fees) + Number(row.slippage))}</small></>}</td>
-                <td data-label="종료"><strong>{sameExitReason ? historyExitLabel(row.exit_reason, isPriorVersion(row)) : '비용별 종료 다름'}</strong><small>{sameExitReason ? exitExplanation(row.exit_reason, isPriorVersion(row)) : '비용별 결과를 열어 각각의 종료 이유를 확인하세요.'}</small></td>
+                <td data-label="전략·계좌"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy)}</strong><small>{opportunity.rows.length > 1 ? comparison.label : `${accountLabel(row)} · ${comparison.label}`}</small></td>
+                <td data-label="최종 결과">{opportunity.rows.length > 1 ? <><div className="history-cost-results">{opportunity.rows.map((result) => <span className={Number(result.net_pnl) >= 0 ? 'positive' : 'negative'} key={historyResultIdentity(result)}><b>{historyResultLabel(opportunity, result)}</b><strong>{formatUsdt(result.net_pnl, { signed: true })}</strong></span>)}</div><small>{comparison.note}</small></> : <><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong><small>가격 손익 {formatUsdt(row.gross_pnl, { signed: true })} · 총비용 {formatUsdt(Number(row.fees) + Number(row.slippage))}</small></>}</td>
+                <td data-label="종료"><strong>{sameExitReason ? historyExitLabel(row.exit_reason, isPriorVersion(row)) : '결과별 종료 다름'}</strong><small>{sameExitReason ? exitExplanation(row.exit_reason, isPriorVersion(row)) : '세부 결과를 열어 각각의 종료 이유를 확인하세요.'}</small></td>
                 <td data-label="보유"><strong>{opportunityHoldingLabel(opportunity)}</strong><small>1차 목표 {milestoneDuration(row.time_to_tp1_ms, missingMilestone(row, '미도달'))}</small></td>
-                <td data-label="보기"><div className="table-actions"><button type="button" className="table-button" onClick={() => setSelected(row)}>{opportunity.rows.length > 1 ? '비용별 결과' : '자세히'}</button><button type="button" className="table-button" disabled={row.replay_available === false} title={row.replay_available === false ? '저장된 공개시장 데이터가 없습니다.' : undefined} onClick={() => onReplay(row)}>{row.replay_available === false ? '다시보기 없음' : '다시보기'}</button></div></td>
+                <td data-label="보기"><div className="table-actions"><button type="button" className="table-button" onClick={() => setSelected(row)}>{comparison.button}</button><button type="button" className="table-button" disabled={row.replay_available === false} title={row.replay_available === false ? '저장된 공개시장 데이터가 없습니다.' : undefined} onClick={() => onReplay(row)}>{row.replay_available === false ? '다시보기 없음' : '다시보기'}</button></div></td>
               </tr>
               )
             })}</tbody>
@@ -366,24 +507,67 @@ export function HistoryPage({
           label="거래 상세"
         >
           {selected ? <>
-            {selectedOpportunity && selectedOpportunity.rows.length > 1 ? <><p className="history-opportunity-note">같은 시점에 들어간 한 번의 진입기회를 비용 조건 2개로 나눠 계산했습니다. 중복 거래가 아닙니다.</p><div className="history-profile-tabs" role="group" aria-label="비용별 거래 결과">{selectedOpportunity.rows.map((row) => <button type="button" aria-pressed={row.trade_id === selected.trade_id} key={row.trade_id} onClick={() => setSelected(row)}><span>{costProfileLabel(row.profile)}</span><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong></button>)}</div></> : null}
+            {selectedOpportunity && selectedOpportunity.rows.length > 1 ? <><p className="history-opportunity-note">{opportunityComparison(selectedOpportunity).drawerNote}</p><div className="history-profile-tabs" role="group" aria-label={opportunityComparison(selectedOpportunity).groupLabel}>{selectedOpportunity.rows.map((row) => <button type="button" aria-pressed={historyResultIdentity(row) === historyResultIdentity(selected)} key={historyResultIdentity(row)} onClick={() => setSelected(row)}><span>{historyResultLabel(selectedOpportunity, row)}</span><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong></button>)}</div></> : null}
             <p className="trade-result-lead"><strong className={Number(selected.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(selected.net_pnl, { signed: true })}</strong><span>{historyExitLabel(selected.exit_reason, isPriorVersion(selected))} · {formatDurationMs(selected.holding_ms)} 보유</span></p>
-            <dl className="detail-list">
+            <section className="trade-detail-section" aria-labelledby="trade-summary-heading">
+              <h3 id="trade-summary-heading">거래 요약</h3>
+              <dl className="detail-list">
               <div><dt>거래 방향</dt><dd>{sideLabel(selected.side)}</dd></div>
               <div><dt>사용 전략</dt><dd>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === selected.strategy), selected.strategy)}</dd></div>
               <div><dt>진입 가격</dt><dd>{formatPrice(selected.entry)}</dd></div>
               <div><dt>손절 가격</dt><dd>{formatPrice(selected.initial_stop)}</dd></div>
               {selected.take_profit_1 || selected.take_profit_2 ? <><div><dt>1차 목표</dt><dd>{selected.take_profit_1 ? formatPrice(selected.take_profit_1) : '—'}</dd></div><div><dt>2차 목표</dt><dd>{selected.take_profit_2 ? formatPrice(selected.take_profit_2) : '—'}</dd></div></> : <div><dt>목표가(과거 기록)</dt><dd>{formatPrice(selected.take_profit)}</dd></div>}
               <div><dt>종료 가격</dt><dd>{formatPrice(selected.exit)}</dd></div>
-              <div><dt>종료 이유</dt><dd>{historyExitLabel(selected.exit_reason, isPriorVersion(selected))}<small>{exitExplanation(selected.exit_reason, isPriorVersion(selected))}</small></dd></div>
               <div><dt>가격 손익</dt><dd>{formatUsdt(selected.gross_pnl, { signed: true })}</dd></div>
-              <div><dt>수수료·가격차이 비용</dt><dd>{formatUsdt(Number(selected.fees) + Number(selected.slippage))}</dd></div>
               <div><dt>최종 순손익</dt><dd>{formatUsdt(selected.net_pnl, { signed: true })}</dd></div>
-            </dl>
+              </dl>
+            </section>
+            <section className="trade-detail-section" aria-labelledby="trade-fills-heading">
+              <h3 id="trade-fills-heading">체결 상세</h3>
+              {selected.fill_evidence_state === 'PRESENT' && selected.fills?.length ? (
+                <ol className="trade-fill-list" aria-label="확인된 PAPER 체결 원장">
+                  {selected.fills.map((fill, index) => (
+                    <li key={`${fill.order_id}:${fill.fill_id}`}>
+                      <p><strong>{index + 1}. {fillIntentLabel(fill.intent)}</strong><span>{fillSideLabel(fill.side)}</span></p>
+                      <dl>
+                        <div><dt>체결 시각</dt><dd>{formatKstTime(fill.ts_ms)} KST</dd></div>
+                        <div><dt>체결 가격</dt><dd>{formatPrice(fill.price)}</dd></div>
+                        <div><dt>체결 수량</dt><dd>{formatQuantity(fill.quantity)}</dd></div>
+                        <div><dt>수수료</dt><dd>{formatUsdt(fill.fee_usdt)}</dd></div>
+                        <div><dt>슬리피지</dt><dd>{formatUsdt(fill.slippage_usdt)}</dd></div>
+                      </dl>
+                    </li>
+                  ))}
+                </ol>
+              ) : <>
+                <p className="trade-detail-missing" role="note">{fillUnavailableLabel(selected)}</p>
+                <small>{selected.fill_evidence_reason_ko ?? '원시 체결 배열이 없어 진입·종료 요약값을 개별 fill로 추정하지 않습니다.'}</small>
+              </>}
+            </section>
+            <section className="trade-detail-section" aria-labelledby="trade-cost-heading">
+              <h3 id="trade-cost-heading">비용과 종료</h3>
+              <dl className="detail-list">
+                <div><dt>수수료</dt><dd>{formatUsdt(selected.fees)}</dd></div>
+                <div><dt>슬리피지</dt><dd>{formatUsdt(selected.slippage)}</dd></div>
+                <div><dt>종료 이유</dt><dd>{historyExitLabel(selected.exit_reason, isPriorVersion(selected))}<small>{exitExplanation(selected.exit_reason, isPriorVersion(selected))}</small></dd></div>
+              </dl>
+            </section>
+            <section className="trade-detail-section" aria-labelledby="trade-movement-heading">
+              <h3 id="trade-movement-heading">보유 중 움직임</h3>
+              <dl className="detail-list">
+                <div><dt>최대 유리 변동(MFE)</dt><dd>{movementInR(selected.mfe_r)}</dd></div>
+                <div><dt>최대 불리 변동(MAE)</dt><dd>{movementInR(selected.mae_r)}</dd></div>
+                <div><dt>고점 대비 되돌림(giveback)</dt><dd>{optionalUsdt(selected.giveback_usdt)}</dd></div>
+              </dl>
+            </section>
             <details className="advanced-details"><summary>목표 도달시간 자세히</summary><dl className="detail-list"><div><dt>1차 목표까지</dt><dd>{milestoneDuration(selected.time_to_tp1_ms, missingMilestone(selected, '미도달'))}</dd></div><div><dt>2차 목표까지</dt><dd>{milestoneDuration(selected.time_to_tp2_ms, missingMilestone(selected, '미도달'))}</dd></div><div><dt>손절까지</dt><dd>{milestoneDuration(selected.time_to_stop_ms, missingMilestone(selected, selected.exit_reason === 'STOP' ? '기록 확인 필요' : '해당 없음'))}</dd></div></dl></details>
             {selected.trailing_activation_ts_ms !== null && selected.trailing_activation_ts_ms !== undefined ? <details className="advanced-details"><summary>추적 익절 자세히</summary><dl className="detail-list"><div><dt>활성화</dt><dd>{formatDurationMs(Math.max(0, selected.trailing_activation_ts_ms - selected.entry_ts_ms))} 뒤</dd></div><div><dt>남은 수량 추적</dt><dd>{selected.runner_started_ts_ms !== null && selected.runner_started_ts_ms !== undefined ? `${formatDurationMs(Math.max(0, selected.runner_started_ts_ms - selected.entry_ts_ms))} 뒤` : '시작 안 됨'}</dd></div><div><dt>최고 미실현 손익</dt><dd>{formatUsdt(selected.peak_unrealized_usdt ?? '0', { signed: true })}</dd></div><div><dt>고점 대비 되돌림</dt><dd>{formatUsdt(selected.giveback_usdt ?? '0')}</dd></div><div><dt>남은 수량 순기여</dt><dd>{formatUsdt(selected.runner_net_pnl_usdt ?? '0', { signed: true })}</dd></div></dl></details> : null}
-            <details className="advanced-details"><summary>기술 정보</summary><dl className="detail-list"><div><dt>진입기회 ID</dt><dd>{selected.opportunity_id ?? selected.candidate_id ?? selected.signal_event_id ?? '과거 기록'}</dd></div><div><dt>거래 ID</dt><dd>{selected.trade_id}</dd></div><div><dt>실행 ID</dt><dd>{selected.run_id}</dd></div><div><dt>전략 코드</dt><dd>{selected.strategy}</dd></div><div><dt>전략 버전</dt><dd>{selected.strategy_version ?? '과거 기록'}</dd></div><div><dt>계좌 코드</dt><dd>{selected.account_id ?? accountLabel(selected)}</dd></div><div><dt>종료 코드</dt><dd>{selected.exit_reason}</dd></div><div><dt>수량</dt><dd>{formatQuantity(selected.quantity)}</dd></div></dl></details>
-            <button type="button" className="primary-button full-width" disabled={selected.replay_available === false} onClick={() => onReplay(selected)}>선택한 비용 결과 다시보기</button>
+            <details className="advanced-details"><summary>기술 정보</summary><h3 className="trade-technical-heading">기술 상세</h3><dl className="detail-list"><div><dt>진입기회 ID</dt><dd>{selected.opportunity_id ?? '없음'}</dd></div><div><dt>후보 ID</dt><dd>{selected.candidate_id ?? '없음'}</dd></div><div><dt>이벤트 ID</dt><dd>{selected.signal_event_id ?? '없음'}</dd></div><div><dt>상태 checksum</dt><dd>{selected.trailing_state_checksum ?? '없음'}</dd></div><div><dt>원본 설정 hash</dt><dd>{selected.config_hash ?? '없음'}</dd></div><div><dt>거래 ID</dt><dd>{selected.trade_id}</dd></div><div><dt>실행 ID</dt><dd>{selected.run_id}</dd></div><div><dt>전략 코드</dt><dd>{selected.strategy}</dd></div><div><dt>전략 버전</dt><dd>{selected.strategy_version ?? '과거 기록'}</dd></div><div><dt>계좌 코드</dt><dd>{selected.account_id ?? accountLabel(selected)}</dd></div><div><dt>종료 코드</dt><dd>{selected.exit_reason}</dd></div><div><dt>수량</dt><dd>{formatQuantity(selected.quantity)}</dd></div></dl></details>
+            <section className="trade-detail-section trade-replay-action" aria-labelledby="trade-replay-heading">
+              <h3 id="trade-replay-heading">다시보기</h3>
+              <p>{selected.replay_available === false ? '저장된 공개시장 이벤트가 없어 다시보기를 실행할 수 없습니다.' : '선택한 비용 조건의 저장 이벤트를 순서대로 확인합니다.'}</p>
+              <button type="button" className="primary-button full-width" disabled={selected.replay_available === false} onClick={() => onReplay(selected)}>선택한 비용 결과 다시보기</button>
+            </section>
           </> : null}
         </SideDrawer>
       </div>

@@ -26,6 +26,10 @@ _RUNTIME_SAFETY_FIELDS = (
     "wallet_enabled",
     "runtime_ai_order_decision_enabled",
 )
+_APPROVED_LEGACY_RUNTIME_COMMIT = "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6"
+_APPROVED_LEGACY_MANIFEST_SHA256 = (
+    "21bd37ece3cd9bf72317c6fb878bef2a93d3a4c15d85ebacadded2c0c235a73e"
+)
 
 
 def _run_git(source_root: Path, *arguments: str) -> str:
@@ -61,9 +65,7 @@ def _write_bytes_atomic(path: Path, payload: bytes) -> None:
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     _write_bytes_atomic(
         path,
-        (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode(
-            "utf-8"
-        ),
+        (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8"),
     )
 
 
@@ -136,10 +138,7 @@ def _frontend_manifest(dist: Path) -> dict[str, Any]:
     return {
         "file_count": len(files),
         "index_sha256": _sha256(index),
-        "files": {
-            str(path.relative_to(dist)): _sha256(path)
-            for path in files
-        },
+        "files": {str(path.relative_to(dist)): _sha256(path) for path in files},
     }
 
 
@@ -204,9 +203,18 @@ def legacy_runtime_safety_fields_missing(
             missing.append(field)
         elif system[field] is not False:
             raise RuntimeError(f"dashboard 안전 필드가 명시적 False가 아닙니다: {field}")
-    if missing and schema_version != 1:
+    approved_v1 = schema_version == 1 and manifest.get("commit") == _APPROVED_LEGACY_RUNTIME_COMMIT
+    verified_migrated_v1 = (
+        schema_version == 2
+        and manifest.get("commit") == _APPROVED_LEGACY_RUNTIME_COMMIT
+        and manifest.get("legacy_schema_version") == 1
+        and manifest.get("legacy_source_commit_verified") is True
+        and manifest.get("legacy_frontend_manifest_verified") is True
+        and manifest.get("legacy_manifest_sha256") == _APPROVED_LEGACY_MANIFEST_SHA256
+    )
+    if missing and not approved_v1 and not verified_migrated_v1:
         raise RuntimeError(
-            "schema v2 dashboard에 안전 필드가 누락됐습니다: " + ", ".join(missing)
+            "승인되지 않은 릴리스 dashboard에 안전 필드가 누락됐습니다: " + ", ".join(missing)
         )
     return tuple(missing)
 
@@ -232,20 +240,15 @@ def _verify_release_tree(
     if manifest.get("release_id") != commit:
         raise RuntimeError("릴리스 manifest release_id와 commit이 다릅니다.")
     if expected_commit is not None and commit != expected_commit:
-        raise RuntimeError(
-            f"기존 릴리스 manifest commit이 다릅니다: {release_path}"
-        )
+        raise RuntimeError(f"기존 릴리스 manifest commit이 다릅니다: {release_path}")
     if require_commit_directory and release_path.name != commit:
-        raise RuntimeError(
-            f"릴리스 디렉터리와 manifest commit이 다릅니다: {release_path}"
-        )
+        raise RuntimeError(f"릴리스 디렉터리와 manifest commit이 다릅니다: {release_path}")
     manifest_release_path = (
         release_path if require_commit_directory else release_path.parent / commit
     )
     if manifest.get("release_path") != str(manifest_release_path):
         raise RuntimeError(
-            "릴리스 manifest release_path가 예정된 불변 릴리스와 다릅니다: "
-            f"{manifest_release_path}"
+            f"릴리스 manifest release_path가 예정된 불변 릴리스와 다릅니다: {manifest_release_path}"
         )
     safety_contract = {
         "paper_only": True,
@@ -308,6 +311,123 @@ def _verify_release_tree(
     return manifest
 
 
+def _verified_legacy_release_tree(
+    *,
+    runtime_root: Path,
+    release_path: Path,
+    manifest: Mapping[str, object],
+    commit: str,
+) -> dict[str, object]:
+    """Git commit 원본과 v1 frontend hash로 legacy tree를 재서명 전 검증한다."""
+
+    source_repository = manifest.get("source_repository_path")
+    if not isinstance(source_repository, str) or not source_repository:
+        raise RuntimeError("legacy 릴리스 source repository 경로가 없습니다.")
+    try:
+        source_root = Path(source_repository).resolve(strict=True)
+    except OSError as error:
+        raise RuntimeError("legacy 릴리스 source repository를 확인할 수 없습니다.") from error
+    if not source_root.is_dir():
+        raise RuntimeError("legacy 릴리스 source repository가 디렉터리가 아닙니다.")
+    try:
+        verified_commit = _run_git(
+            source_root,
+            "rev-parse",
+            "--verify",
+            f"{commit}^{{commit}}",
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise RuntimeError(
+            f"legacy 릴리스 commit을 source repository에서 확인할 수 없습니다: {commit}"
+        ) from error
+    if verified_commit != commit:
+        raise RuntimeError("legacy 릴리스 commit 검증 결과가 manifest와 다릅니다.")
+
+    release_tree = _release_tree_manifest(release_path)
+    actual_files = release_tree["files"]
+    if not isinstance(actual_files, dict):
+        raise RuntimeError("legacy 릴리스 tree 검증 결과가 올바르지 않습니다.")
+    with tempfile.TemporaryDirectory(
+        prefix=f".legacy-verify-{commit[:12]}-",
+        dir=runtime_root / "releases",
+    ) as temporary_directory:
+        archive_root = Path(temporary_directory) / "archive"
+        archive_root.mkdir()
+        _extract_commit(source_root, commit, archive_root)
+        archive_tree = _release_tree_manifest(archive_root)
+    archive_files = archive_tree["files"]
+    if not isinstance(archive_files, dict):
+        raise RuntimeError("legacy Git archive 검증 결과가 올바르지 않습니다.")
+
+    def source_files(files: Mapping[str, object]) -> dict[str, object]:
+        return {
+            path: digest
+            for path, digest in files.items()
+            if path != _RELEASE_MANIFEST_NAME and not path.startswith("frontend/dist/")
+        }
+
+    expected_source_files = source_files(archive_files)
+    actual_source_files = source_files(actual_files)
+    if actual_source_files != expected_source_files:
+        expected_paths = set(expected_source_files)
+        actual_paths = set(actual_source_files)
+        details = {
+            "missing": sorted(expected_paths - actual_paths),
+            "added": sorted(actual_paths - expected_paths),
+            "modified": sorted(
+                path
+                for path in expected_paths & actual_paths
+                if expected_source_files[path] != actual_source_files[path]
+            ),
+        }
+        raise RuntimeError(
+            "legacy 릴리스 source tree가 Git commit과 다릅니다: "
+            + json.dumps(details, ensure_ascii=False, sort_keys=True)
+        )
+
+    legacy_frontend = manifest.get("frontend")
+    if not isinstance(legacy_frontend, dict):
+        raise RuntimeError("legacy 릴리스 frontend manifest가 없습니다.")
+    expected_frontend_files = legacy_frontend.get("files")
+    expected_frontend_count = legacy_frontend.get("file_count")
+    expected_index_sha = legacy_frontend.get("index_sha256")
+    if (
+        not isinstance(expected_frontend_files, dict)
+        or type(expected_frontend_count) is not int
+        or expected_frontend_count < 1
+        or not isinstance(expected_index_sha, str)
+        or _SHA256.fullmatch(expected_index_sha) is None
+    ):
+        raise RuntimeError("legacy 릴리스 frontend manifest 형식이 올바르지 않습니다.")
+    normalized_frontend_files: dict[str, str] = {}
+    for raw_path, raw_digest in expected_frontend_files.items():
+        if not isinstance(raw_path, str) or not raw_path:
+            raise RuntimeError("legacy frontend 파일 경로가 올바르지 않습니다.")
+        relative_path = Path(raw_path)
+        if (
+            relative_path.is_absolute()
+            or ".." in relative_path.parts
+            or relative_path.as_posix() != raw_path
+        ):
+            raise RuntimeError(f"legacy frontend 파일 경로가 안전하지 않습니다: {raw_path}")
+        if not isinstance(raw_digest, str) or _SHA256.fullmatch(raw_digest) is None:
+            raise RuntimeError(f"legacy frontend SHA-256이 올바르지 않습니다: {raw_path}")
+        normalized_frontend_files[raw_path] = raw_digest
+    if (
+        expected_frontend_count != len(normalized_frontend_files)
+        or normalized_frontend_files.get("index.html") != expected_index_sha
+    ):
+        raise RuntimeError("legacy frontend manifest 건수 또는 index hash가 다릅니다.")
+    actual_frontend = _frontend_manifest(release_path / "frontend" / "dist")
+    if actual_frontend != {
+        "file_count": expected_frontend_count,
+        "index_sha256": expected_index_sha,
+        "files": normalized_frontend_files,
+    }:
+        raise RuntimeError("legacy 릴리스 frontend 바이트가 v1 manifest와 다릅니다.")
+    return release_tree
+
+
 def migrate_legacy_release_manifest(
     runtime_root: Path,
     release_path: Path,
@@ -335,9 +455,7 @@ def migrate_legacy_release_manifest(
     if schema_version == 2:
         return _verify_release_tree(release_path)
     if type(schema_version) is not int or schema_version != 1:
-        raise RuntimeError(
-            f"legacy 릴리스 manifest schema를 승격할 수 없습니다: {schema_version}"
-        )
+        raise RuntimeError(f"legacy 릴리스 manifest schema를 승격할 수 없습니다: {schema_version}")
     commit = manifest.get("commit")
     if not isinstance(commit, str) or _COMMIT_DIRECTORY.fullmatch(commit) is None:
         raise RuntimeError(f"legacy 릴리스 commit 형식이 올바르지 않습니다: {commit}")
@@ -345,10 +463,16 @@ def migrate_legacy_release_manifest(
         raise RuntimeError(
             f"legacy 릴리스 디렉터리·release_id·commit이 일치하지 않습니다: {release_path}"
         )
-    if manifest.get("release_path") != str(release_path):
+    legacy_manifest_sha256 = hashlib.sha256(legacy_bytes).hexdigest()
+    if (
+        commit != _APPROVED_LEGACY_RUNTIME_COMMIT
+        or legacy_manifest_sha256 != _APPROVED_LEGACY_MANIFEST_SHA256
+    ):
         raise RuntimeError(
-            f"legacy 릴리스 release_path가 실제 릴리스와 다릅니다: {release_path}"
+            "legacy 릴리스 commit 또는 원본 manifest checksum이 승인 allowlist와 다릅니다."
         )
+    if manifest.get("release_path") != str(release_path):
+        raise RuntimeError(f"legacy 릴리스 release_path가 실제 릴리스와 다릅니다: {release_path}")
     safety_contract = {
         "paper_only": True,
         "real_orders_enabled": False,
@@ -358,15 +482,20 @@ def migrate_legacy_release_manifest(
     }
     for field, expected in safety_contract.items():
         if manifest.get(field) is not expected:
-            raise RuntimeError(
-                f"legacy 릴리스 PAPER 안전 불변조건이 다릅니다: {field}"
-            )
-    release_tree = _release_tree_manifest(release_path)
+            raise RuntimeError(f"legacy 릴리스 PAPER 안전 불변조건이 다릅니다: {field}")
+    release_tree = _verified_legacy_release_tree(
+        runtime_root=runtime_root,
+        release_path=release_path,
+        manifest=manifest,
+        commit=commit,
+    )
     migrated = {
         **manifest,
         "schema_version": 2,
         "legacy_schema_version": 1,
-        "legacy_manifest_sha256": hashlib.sha256(legacy_bytes).hexdigest(),
+        "legacy_manifest_sha256": legacy_manifest_sha256,
+        "legacy_source_commit_verified": True,
+        "legacy_frontend_manifest_verified": True,
         "manifest_migrated_at": datetime.now(UTC).isoformat(),
         "file_count": release_tree["file_count"],
         "files": release_tree["files"],
@@ -401,6 +530,7 @@ def activate_release(
     actor: str = "CODEX_DEPLOY",
     reason: str = "IMMUTABLE_RELEASE_ACTIVATION",
 ) -> dict[str, Any]:
+    runtime_root = runtime_root.resolve(strict=True)
     if release_path.is_symlink():
         raise RuntimeError(f"활성화할 릴리스가 symlink입니다: {release_path}")
     release_path = release_path.resolve(strict=True)
@@ -440,23 +570,135 @@ def activate_release(
 
 
 def prune_obsolete_releases(runtime_root: Path) -> dict[str, Any]:
-    """안전 확인된 현재 릴리스와 직전 롤백 릴리스만 실행 폴더에 남긴다."""
+    """현재·롤백·launcher source 릴리스를 검증하고 나머지만 정리한다."""
 
-    runtime_root = runtime_root.resolve(strict=True)
-    releases_root = (runtime_root / "releases").resolve(strict=True)
+    runtime_root_input = runtime_root
+    if runtime_root_input.is_symlink():
+        raise RuntimeError(
+            f"runtime root symlink는 정리 대상으로 허용하지 않습니다: {runtime_root}"
+        )
+    runtime_root = runtime_root_input.resolve(strict=True)
+    if runtime_root != runtime_root_input.absolute():
+        raise RuntimeError("runtime root의 canonical 경로가 다릅니다.")
+    releases_path = runtime_root / "releases"
+    if releases_path.is_symlink():
+        raise RuntimeError(
+            f"runtime releases symlink는 정리 대상으로 허용하지 않습니다: {releases_path}"
+        )
+    releases_root = releases_path.resolve(strict=True)
+    if releases_root.parent != runtime_root:
+        raise RuntimeError("runtime releases가 runtime root direct child가 아닙니다.")
+
+    def read_strict_object(path: Path, label: str) -> dict[str, object]:
+        def reject_constant(value: str) -> object:
+            raise RuntimeError(f"{label}에 비표준 숫자가 있습니다: {value}")
+
+        def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise RuntimeError(f"{label}에 중복 JSON key가 있습니다: {key}")
+                result[key] = value
+            return result
+
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+        if not isinstance(value, dict):
+            raise RuntimeError(f"{label}가 JSON object가 아닙니다.")
+        return value
+
+    def verified_retained_release(value: object, label: str) -> Path:
+        if not isinstance(value, str) or not value:
+            raise RuntimeError(f"{label} 릴리스 경로가 없습니다.")
+        candidate = Path(value)
+        if candidate.is_symlink():
+            raise RuntimeError(f"{label} 릴리스 root symlink는 허용하지 않습니다: {candidate}")
+        resolved = candidate.resolve(strict=True)
+        if (
+            resolved != candidate.absolute()
+            or resolved.parent != releases_root
+            or _COMMIT_DIRECTORY.fullmatch(resolved.name) is None
+        ):
+            raise RuntimeError(
+                f"{label} 릴리스가 releases direct commit child가 아닙니다: {resolved}"
+            )
+        _verify_release_tree(resolved, expected_commit=resolved.name)
+        return resolved
+
     active = current_release(runtime_root)
     if active is None:
         raise RuntimeError("정리할 현재 릴리스가 없습니다.")
+    active = verified_retained_release(str(active), "active")
     retained = {active}
     deployment_path = runtime_root / "current-deployment.json"
     if deployment_path.is_file():
-        deployment = json.loads(deployment_path.read_text(encoding="utf-8"))
+        deployment = read_strict_object(deployment_path, "current deployment")
         rollback_value = deployment.get("rollback_release")
         if rollback_value:
-            rollback = Path(str(rollback_value)).resolve(strict=True)
-            if not rollback.is_relative_to(releases_root):
-                raise RuntimeError(f"rollback 릴리스가 releases 밖을 가리킵니다: {rollback}")
+            rollback = verified_retained_release(rollback_value, "rollback")
             retained.add(rollback)
+
+    anchor_path = runtime_root / "support" / "current-release-integrity.json"
+    if anchor_path.exists() or anchor_path.is_symlink():
+        support_path = runtime_root / "support"
+        if (
+            support_path.is_symlink()
+            or support_path.resolve(strict=True) != support_path.absolute()
+            or anchor_path.is_symlink()
+            or not anchor_path.is_file()
+        ):
+            raise RuntimeError("release integrity anchor가 regular file이 아닙니다.")
+        anchor = read_strict_object(anchor_path, "release integrity anchor")
+        expected_anchor_fields = {
+            "schema_version",
+            "release_path",
+            "release_commit",
+            "manifest_sha256",
+            "launcher_path",
+            "launcher_sha256",
+            "launcher_source_release_path",
+            "launcher_source_commit",
+            "launcher_source_manifest_sha256",
+            "paper_only",
+            "real_orders_enabled",
+        }
+        if (
+            not isinstance(anchor, dict)
+            or set(anchor) != expected_anchor_fields
+            or type(anchor.get("schema_version")) is not int
+            or anchor.get("schema_version") != 2
+            or anchor.get("release_path") != str(active)
+            or anchor.get("release_commit") != active.name
+            or anchor.get("paper_only") is not True
+            or anchor.get("real_orders_enabled") is not False
+        ):
+            raise RuntimeError("release integrity anchor가 active release와 결합되지 않았습니다.")
+        active_manifest = active / _RELEASE_MANIFEST_NAME
+        if anchor.get("manifest_sha256") != _sha256(active_manifest):
+            raise RuntimeError("release integrity anchor의 active manifest checksum이 다릅니다.")
+        source = verified_retained_release(
+            anchor.get("launcher_source_release_path"),
+            "launcher source",
+        )
+        source_manifest = source / _RELEASE_MANIFEST_NAME
+        source_runner = source / "scripts" / "run_macos_service.sh"
+        launcher = runtime_root / "support" / "run_macos_service.sh"
+        if (
+            anchor.get("launcher_source_commit") != source.name
+            or anchor.get("launcher_source_manifest_sha256") != _sha256(source_manifest)
+            or launcher.is_symlink()
+            or not launcher.is_file()
+            or source_runner.is_symlink()
+            or not source_runner.is_file()
+            or anchor.get("launcher_path") != str(launcher.resolve(strict=True))
+            or anchor.get("launcher_sha256") != _sha256(launcher)
+            or _sha256(launcher) != _sha256(source_runner)
+        ):
+            raise RuntimeError("release integrity anchor의 launcher source 결합이 다릅니다.")
+        retained.add(source)
 
     pruned: list[str] = []
     skipped: list[str] = []
@@ -595,9 +837,7 @@ def main() -> None:
         return
     source_root = arguments.source_root.resolve(strict=True)
     runtime_root = (arguments.runtime_root or _default_runtime_root(source_root)).resolve()
-    market_archive = (
-        arguments.market_archive or source_root / "data" / "market-parquet-v6"
-    )
+    market_archive = arguments.market_archive or source_root / "data" / "market-parquet-v6"
     active_ledger_dir = arguments.active_ledger_dir or runtime_root / "active-ledger"
     manifest = stage_release(
         source_root,

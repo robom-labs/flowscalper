@@ -82,6 +82,71 @@ def test_fixture_events_are_deterministic() -> None:
     assert all(not event.quality.is_live for event in first.events)
 
 
+def test_fixture_trade_keeps_exact_opportunity_detail_and_replay_contract(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "fixture-trade-contract.sqlite3")
+    runtime = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        clock=DeterministicClock(),
+        run_id="run-fixture-trade-contract",
+        ledger=ledger,
+    )
+    runtime.boot_fixture()
+    trade_id = f"{runtime.run_id}-fixture-trade-001"
+
+    with TestClient(create_app(runtime)) as client:
+        grouped = client.get(
+            "/api/trades",
+            params={
+                "run_scope": "ALL",
+                "account_scope": "ALL",
+                "profile": "ALL",
+                "version_scope": "ALL",
+                "sample_type": "ALL",
+            },
+        )
+        replay = client.get(
+            f"/api/replay/{runtime.run_id}/focus",
+            params={"trade_id": trade_id, "profile": "BASE"},
+        )
+
+    assert grouped.status_code == 200
+    payload = grouped.json()
+    assert payload["grouping_status"] == "PROVEN"
+    assert payload["counts"] == {
+        "unique_opportunities": 1,
+        "returned_opportunities": 1,
+        "raw_result_rows": 1,
+        "base_result_rows": 1,
+        "stress_result_rows": 0,
+        "unresolved_result_rows": 0,
+        "source_raw_result_rows": 1,
+    }
+    opportunity = payload["opportunities"][0]
+    assert opportunity["key"] == {
+        "run_id": runtime.run_id,
+        "strategy_id": "LSA_REVERSAL_V1",
+        "strategy_version": "1",
+        "opportunity_id": f"{runtime.run_id}-fixture-opportunity-001",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+    }
+    assert opportunity["profiles"]["BASE"]["candidate_id"] == (
+        f"{runtime.run_id}-fixture-candidate-001"
+    )
+    assert opportunity["profiles"]["BASE"]["signal_event_id"] == (
+        f"{runtime.run_id}-fixture-signal-001"
+    )
+    assert opportunity["replay_available"] is True
+
+    assert replay.status_code == 200
+    replay_payload = replay.json()
+    assert replay_payload["trade_id"] == trade_id
+    assert replay_payload["paper_only"] is True
+    assert replay_payload["real_orders_enabled"] is False
+
+
 def test_start_demo_run_clears_live_only_telemetry() -> None:
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
@@ -856,6 +921,59 @@ async def test_ready_start_preserves_recoverable_open_paper_exposure(tmp_path: P
         await runtime.start_live_run()
     assert ledger.get_run("run-open-paper")["finalized_ts_ms"] is None
     ledger.close()
+
+
+@pytest.mark.parametrize("legacy_key", ["pending_entry", "position"])
+def test_ready_exposure_scan_detects_legacy_singular_account_state(
+    legacy_key: str,
+) -> None:
+    payload = {
+        "portfolio": {
+            "schema_version": 1,
+            "accounts": [
+                {
+                    "account_id": "MAIN:BASE",
+                    legacy_key: {"plan": {"symbol": "BTCUSDT"}},
+                }
+            ],
+        }
+    }
+
+    assert PaperRuntime._recovery_payload_has_exposure(payload) is True
+
+
+@pytest.mark.parametrize("legacy_key", ["pending_entry", "position"])
+@pytest.mark.parametrize("accounts", [[], [{"positions": {}, "pending_entries": {}}]])
+def test_ready_exposure_scan_detects_mixed_top_level_legacy_state(
+    legacy_key: str,
+    accounts: list[dict[str, object]],
+) -> None:
+    payload = {
+        "portfolio": {
+            "schema_version": 1,
+            "accounts": accounts,
+            legacy_key: {"plan": {"symbol": "BTCUSDT"}},
+        }
+    }
+
+    assert PaperRuntime._recovery_payload_has_exposure(payload) is True
+
+
+@pytest.mark.parametrize(
+    "portfolio",
+    [
+        {"schema_version": 1},
+        {"accounts": []},
+        {"accounts": "corrupt"},
+        {"accounts": ["corrupt"]},
+        {"accounts": [{"account_id": "MAIN:BASE"}]},
+        {"accounts": [{"positions": "corrupt"}]},
+    ],
+)
+def test_ready_exposure_scan_treats_malformed_portfolio_as_unknown_exposure(
+    portfolio: object,
+) -> None:
+    assert PaperRuntime._recovery_payload_has_exposure({"portfolio": portfolio}) is True
 
 
 async def test_live_status_requires_verified_event_and_failover_starts_new_run() -> None:

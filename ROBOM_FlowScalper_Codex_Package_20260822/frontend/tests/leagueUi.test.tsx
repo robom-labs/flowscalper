@@ -22,7 +22,7 @@ function openStrategySettings(strategyId: string) {
 }
 
 test('shows only current non-retired strategies with trust-first ranking evidence', () => {
-  render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} researchDetails controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-inline-modes button')).toHaveLength(0)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
@@ -38,12 +38,15 @@ test('shows only current non-retired strategies with trust-first ranking evidenc
   expect(screen.getByText(/30건 미만 승률은 참고값/)).toBeInTheDocument()
 
   openStrategySettings(strategies[1].strategy_id)
-  expect(screen.getByRole('dialog', { name: '전략 상세 정보' })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: '기본 비용 가상계좌' })).toBeInTheDocument()
-  expect(screen.getByRole('heading', { name: '보수 비용 가상계좌' })).toBeInTheDocument()
-  expect(screen.getAllByText(/현재 자산/).length).toBeGreaterThanOrEqual(2)
-  expect(screen.getAllByText(/현재 전략 버전의 공개시장 모의거래 기준/).length).toBeGreaterThanOrEqual(2)
-  expect(screen.getAllByText('과거 버전 제외')).toHaveLength(2)
+  const detailDialog = screen.getByRole('dialog', { name: '전략 상세 정보' })
+  expect(within(detailDialog).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+    '지금 상태',
+    '진입조건',
+    '청산',
+    '성과',
+    '출처',
+    '이전 버전',
+  ])
   expect(screen.getByRole('heading', { name: '자동 평가 상태' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: '한눈에 보는 전략' })).toBeInTheDocument()
   expect(screen.getByText('10초~3분')).toBeInTheDocument()
@@ -57,10 +60,22 @@ test('shows only current non-retired strategies with trust-first ranking evidenc
   expect(screen.getByText('위험예산')).toBeInTheDocument()
   expect(screen.getByText('대상 범위')).toBeInTheDocument()
   expect(screen.getByText('미래정보 방지')).toBeInTheDocument()
-  expect(screen.getByText('출처')).toBeInTheDocument()
   expect(screen.getByText('현재 상태 코드')).not.toBeVisible()
   expect(screen.getByText('아직 검증 불충분')).toBeInTheDocument()
-  expect(screen.getAllByText('고급 통계 보기')).toHaveLength(2)
+
+  fireEvent.click(within(detailDialog).getByRole('tab', { name: '성과' }))
+  expect(within(detailDialog).getByRole('heading', { name: '기본 비용 가상계좌' })).toBeInTheDocument()
+  expect(within(detailDialog).queryByRole('heading', { name: '보수 비용 가상계좌' })).not.toBeInTheDocument()
+  expect(within(detailDialog).getAllByText(/현재 자산/)).toHaveLength(1)
+  expect(within(detailDialog).getAllByText(/현재 전략 버전의 공개시장 모의거래 기준/)).toHaveLength(1)
+  expect(within(detailDialog).getAllByText('과거 버전 제외')).toHaveLength(1)
+  expect(within(detailDialog).getAllByText('고급 통계 보기')).toHaveLength(1)
+  fireEvent.click(within(detailDialog).getByRole('button', { name: '보수 비용' }))
+  expect(within(detailDialog).getByRole('heading', { name: '보수 비용 가상계좌' })).toBeInTheDocument()
+  expect(within(detailDialog).queryByRole('heading', { name: '기본 비용 가상계좌' })).not.toBeInTheDocument()
+
+  fireEvent.click(within(detailDialog).getByRole('tab', { name: '출처' }))
+  expect(within(detailDialog).getByRole('heading', { name: '출처' })).toBeInTheDocument()
 
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
   openStrategySettings(strategies[2].strategy_id)
@@ -69,6 +84,7 @@ test('shows only current non-retired strategies with trust-first ranking evidenc
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
   openStrategySettings(strategies[13].strategy_id)
   expect(screen.getByText('2시간~18시간')).toBeInTheDocument()
+  fireEvent.click(within(screen.getByRole('dialog', { name: '전략 상세 정보' })).getByRole('tab', { name: '청산' }))
   expect(screen.getByText(/TP1 1.6R·40%/)).toBeInTheDocument()
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
   openStrategySettings(strategies[11].strategy_id)
@@ -78,10 +94,10 @@ test('shows only current non-retired strategies with trust-first ranking evidenc
 
 test('sorts eligible strategies by Wilson lower bound and keeps sparse samples out of rank', () => {
   const evidence = new Map([
-    [strategies[1].strategy_id, { sampleSize: 31, wins: 24, losses: 7, winRate: '0.774194', lower: '0.6' }],
-    [strategies[2].strategy_id, { sampleSize: 32, wins: 22, losses: 10, winRate: '0.6875', lower: '0.5' }],
-    [strategies[5].strategy_id, { sampleSize: 30, wins: 18, losses: 12, winRate: '0.6', lower: '0.4' }],
-    [strategies[6].strategy_id, { sampleSize: 29, wins: 28, losses: 1, winRate: '0.965517', lower: '0.9' }],
+    [strategies[1].strategy_id, { sampleSize: 31, overallUnique: 31, profileUnique: 31, wins: 24, losses: 7, winRate: '0.774194', lower: '0.6' }],
+    [strategies[2].strategy_id, { sampleSize: 32, overallUnique: 32, profileUnique: 32, wins: 22, losses: 10, winRate: '0.6875', lower: '0.5' }],
+    [strategies[5].strategy_id, { sampleSize: 30, overallUnique: 30, profileUnique: 30, wins: 18, losses: 12, winRate: '0.6', lower: '0.4' }],
+    [strategies[6].strategy_id, { sampleSize: 29, overallUnique: 30, profileUnique: 29, wins: 28, losses: 1, winRate: '0.965517', lower: '0.9' }],
   ])
   const rows = strategies.map((strategy) => {
     const value = evidence.get(strategy.strategy_id)
@@ -89,11 +105,11 @@ test('sorts eligible strategies by Wilson lower bound and keeps sparse samples o
       ...strategy,
       performance: {
         ...strategy.performance,
-        BASE: { ...strategy.performance.BASE, sample_size: value.sampleSize, wins: value.wins, losses: value.losses, win_rate: value.winRate, win_rate_ci95: { lower: value.lower, upper: '0.99' } },
+        BASE: { ...strategy.performance.BASE, sample_size: value.sampleSize, unique_opportunity_count: value.overallUnique, profile_unique_opportunity_count: value.profileUnique, wins: value.wins, losses: value.losses, win_rate: value.winRate, win_rate_ci95: { lower: value.lower, upper: '0.99' } },
       },
     } : strategy
   })
-  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
   const visibleIds = () => [...document.querySelectorAll<HTMLTableRowElement>('.strategy-compact-table tbody tr')].map((row) => row.dataset.strategyId)
 
   expect(screen.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'descending')
@@ -170,7 +186,7 @@ test('shows lifecycle evidence and restores the prior revision without deleting 
   } : strategy)
   const onRollback = vi.fn(async () => undefined)
   vi.spyOn(window, 'confirm').mockReturnValue(true)
-  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} onRollback={onRollback} />)
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} researchDetails controlsEnabled onConfigure={vi.fn(async () => undefined)} onRollback={onRollback} />)
 
   openStrategySettings(current.strategy_id)
   const dialog = screen.getByRole('dialog', { name: '전략 상세 정보' })
@@ -201,7 +217,7 @@ test('uses the backend retirement reason without a frontend phrase map', () => {
     },
   } : strategy)
 
-  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} researchDetails controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
   openStrategySettings(strategies[1].strategy_id)
 
   expect(screen.getByText('기본 비용의 충분한 표본에서 승률 기준을 통과하지 못했습니다.')).toBeInTheDocument()
@@ -216,7 +232,13 @@ test('blocks policy-retired reactivation but keeps the ordinary user OFF family 
     lifecycle: 'SHADOW' as const,
     policy_reactivation_locked: false,
   } : strategy)
-  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage
+    strategies={rows}
+    leagueAccounts={leagueAccounts}
+    controlsEnabled
+    onConfigure={vi.fn(async () => undefined)}
+    onConfigureFamilyResearch={vi.fn(async (familyId) => ({ family_id: familyId, variants: [] }))}
+  />)
 
   expect(document.querySelector('[data-strategy-id="LSA_REVERSAL_V1"]')).not.toBeInTheDocument()
   openStrategySettings(userOffId)
@@ -241,7 +263,7 @@ test('shows backend reason text and never exposes raw governor codes', () => {
     },
   } : strategy)
 
-  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} researchDetails controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
   openStrategySettings(strategies[11].strategy_id)
 
   expect(screen.getByText(/기본 비용의 고유 진입기회가 30건보다 적어/)).toBeInTheDocument()
@@ -251,7 +273,7 @@ test('shows backend reason text and never exposes raw governor codes', () => {
 
 test('never offers direct shared-capital activation and keeps family research separate from direction settings', () => {
   const onConfigure = vi.fn(async () => undefined)
-  render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
+  render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} controlsEnabled onConfigure={onConfigure} />)
 
   openStrategySettings('CBR_CONTINUATION_V1')
   expect(screen.getByRole('button', { name: 'CBR 돌파 모의평가 켜기' })).toHaveAttribute('aria-pressed', 'true')
@@ -275,7 +297,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
   firstBase.open_positions = 1
   secondStress.faulted = true
 
-  render(<StrategiesPage strategies={rows} leagueAccounts={accounts} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={rows} leagueAccounts={accounts} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
 
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
@@ -411,7 +433,7 @@ test('hides strategy statistics while the versioned history cache is loading', (
   expect(document.querySelector('.strategy-performance-panel')?.textContent).toContain('불러오는 중')
   unmount()
 
-  render(<StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={false} onConfigure={vi.fn(async () => undefined)} />)
+  render(<StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={false} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
   expect(screen.getByRole('status')).toHaveTextContent('준비 전 숫자는 순위나 승률로 사용하지 않습니다.')
   expect(document.querySelector('.strategy-compact-table')?.textContent).toContain('불러오는 중')
 })

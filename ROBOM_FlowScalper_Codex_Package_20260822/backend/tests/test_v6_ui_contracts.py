@@ -15,7 +15,7 @@ from backend.app.domain.models import RuntimeMode
 from backend.app.main import create_app
 from backend.app.research.source_metadata import research_source_metadata
 from backend.app.runtime import PaperRuntime
-from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
 from backend.app.ui_v6 import (
     compact_mutation_summary,
     compact_selected_family_detail,
@@ -63,6 +63,14 @@ def test_v6_summary_excludes_heavy_detail_and_is_less_than_half_dashboard() -> N
     strategy_summary = strategy_page_summary(dashboard)
     assert strategy_summary["strategy_count"] == 3
     assert strategy_summary["league_account_count"] == 6
+    assert strategy_summary["paper_only"] is True
+    assert strategy_summary["real_orders_enabled"] is False
+    assert strategy_summary["auth_required"] is False
+    assert strategy_summary["private_api_enabled"] is False
+    assert strategy_summary["api_key_enabled"] is False
+    assert strategy_summary["wallet_enabled"] is False
+    assert strategy_summary["runtime_ai_order_decision_enabled"] is False
+    assert strategy_summary["funding_readiness"] == "NOT_READY"
     assert payload_size_bytes(strategy_summary) < payload_size_bytes(dashboard) * 0.35
     assert all(
         "entry_rules_ko" not in row
@@ -75,6 +83,11 @@ def test_v6_summary_excludes_heavy_detail_and_is_less_than_half_dashboard() -> N
         "windows" not in report
         and "metric_status" not in report
         and "regime_contributions" not in report
+        for row in strategy_summary["strategies"]
+        for report in row["performance"].values()
+    )
+    assert all(
+        "profile_unique_opportunity_count" in report
         for row in strategy_summary["strategies"]
         for report in row["performance"].values()
     )
@@ -174,14 +187,15 @@ def test_v6_compact_settings_and_diagnostics_preserve_unsafe_source_truth() -> N
             "funding_readiness": "READY",
         },
         "paper_entry_intent": {"state": "USER_PAUSED", "revision": 0},
-        "risk": {"active_locks": []},
+        "risk": {"paper_only": False, "active_locks": []},
     }
 
     compact = compact_ui_summary(snapshot)
+    strategies = strategy_page_summary(snapshot)
     settings = settings_summary(snapshot)
     diagnostics = diagnostics_rows(snapshot)
 
-    for payload in (compact, diagnostics):
+    for payload in (compact, strategies, diagnostics):
         assert payload["paper_only"] is False
         assert payload["real_orders_enabled"] is True
         assert payload["auth_required"] is True
@@ -207,15 +221,91 @@ def test_v6_compact_settings_and_diagnostics_preserve_unsafe_source_truth() -> N
 
 def test_v6_missing_safety_truth_is_not_reported_as_safe() -> None:
     compact = compact_ui_summary({"status": {}, "system": {}})
+    strategies = strategy_page_summary({"status": {}, "system": {}})
     settings = settings_summary({"status": {}, "system": {}})
     diagnostics = diagnostics_rows({"status": {}, "system": {}})
 
-    assert compact["paper_only"] == "NOT_PROVEN"
+    for payload in (compact, strategies, diagnostics):
+        assert payload["paper_only"] == "NOT_PROVEN"
     assert compact["real_orders_enabled"] == "NOT_PROVEN"
     assert compact["funding_readiness"] == "NOT_PROVEN"
     assert settings["safety"]["paper_only"] == "NOT_PROVEN"
     assert settings["safety"]["auth_required"] == "NOT_PROVEN"
     assert diagnostics["private_api_enabled"] == "NOT_PROVEN"
+
+
+def test_v6_missing_paper_only_is_not_inferred_from_other_safe_fields() -> None:
+    snapshot = {
+        "status": {"real_orders_enabled": False, "auth_required": False},
+        "system": {
+            "private_api_enabled": False,
+            "api_key_enabled": False,
+            "wallet_enabled": False,
+            "runtime_ai_order_decision_enabled": False,
+            "funding_readiness": "NOT_READY",
+        },
+    }
+
+    compact = compact_ui_summary(snapshot)
+    strategies = strategy_page_summary(snapshot)
+    settings = settings_summary(snapshot)
+    diagnostics = diagnostics_rows(snapshot)
+
+    for payload in (compact, strategies, diagnostics):
+        assert payload["paper_only"] == "NOT_PROVEN"
+        assert payload["real_orders_enabled"] is False
+        assert payload["private_api_enabled"] is False
+        assert payload["funding_readiness"] == "NOT_READY"
+    assert settings["safety"]["paper_only"] == "NOT_PROVEN"
+    assert settings["safety"]["real_orders_enabled"] is False
+    assert settings["safety"]["private_api_enabled"] is False
+    assert settings["funding_readiness"] == "NOT_READY"
+
+
+def test_v6_conflicting_nested_safety_truth_is_never_masked_by_safe_top_level() -> None:
+    snapshot = {
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+        "private_api_enabled": False,
+        "api_key_enabled": False,
+        "wallet_enabled": False,
+        "runtime_ai_order_decision_enabled": False,
+        "funding_readiness": "NOT_READY",
+        "status": {
+            "real_orders_enabled": False,
+            "auth_required": False,
+        },
+        "system": {
+            "private_api_enabled": True,
+            "api_key_enabled": True,
+            "wallet_enabled": True,
+            "runtime_ai_order_decision_enabled": True,
+            "funding_readiness": "READY",
+        },
+        "risk": {"paper_only": True, "active_locks": []},
+    }
+
+    compact = compact_ui_summary(snapshot)
+    strategies = strategy_page_summary(snapshot)
+    settings = settings_summary(snapshot)
+    diagnostics = diagnostics_rows(snapshot)
+
+    for payload in (compact, strategies, diagnostics):
+        assert payload["paper_only"] is True
+        assert payload["real_orders_enabled"] is False
+        assert payload["auth_required"] is False
+        assert payload["private_api_enabled"] == "NOT_PROVEN"
+        assert payload["api_key_enabled"] == "NOT_PROVEN"
+        assert payload["wallet_enabled"] == "NOT_PROVEN"
+        assert payload["runtime_ai_order_decision_enabled"] == "NOT_PROVEN"
+        assert payload["funding_readiness"] == "NOT_PROVEN"
+    assert settings["safety"]["paper_only"] is True
+    assert settings["safety"]["private_api_enabled"] == "NOT_PROVEN"
+    assert settings["safety"]["api_key_enabled"] == "NOT_PROVEN"
+    assert settings["safety"]["wallet_enabled"] == "NOT_PROVEN"
+    assert settings["safety"]["runtime_ai_order_decision_enabled"] == "NOT_PROVEN"
+    assert settings["funding_readiness"] == "NOT_PROVEN"
 
 
 def test_v6_research_source_metadata_is_structured_and_unknown_is_not_proven() -> None:
@@ -458,6 +548,14 @@ def test_v6_selected_detail_compaction_drops_heavy_runtime_fields() -> None:
             "family_id": "TREND_PULLBACK",
             "label_ko": "추세 눌림",
             "current_variant_id": "TREND_PULLBACK_RECLAIM_15M_V2",
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+            "private_api_enabled": False,
+            "api_key_enabled": False,
+            "wallet_enabled": False,
+            "runtime_ai_order_decision_enabled": False,
+            "funding_readiness": "NOT_READY",
             "conditions": [{"key": "heavy-condition"}],
             "history": [{"trade_id": "heavy-history"}],
             "variants": [
@@ -491,6 +589,28 @@ def test_v6_selected_detail_compaction_drops_heavy_runtime_fields() -> None:
 
     assert "conditions" not in compact
     assert "history" not in compact
+    assert {
+        key: compact[key]
+        for key in (
+            "paper_only",
+            "real_orders_enabled",
+            "auth_required",
+            "private_api_enabled",
+            "api_key_enabled",
+            "wallet_enabled",
+            "runtime_ai_order_decision_enabled",
+            "funding_readiness",
+        )
+    } == {
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+        "private_api_enabled": False,
+        "api_key_enabled": False,
+        "wallet_enabled": False,
+        "runtime_ai_order_decision_enabled": False,
+        "funding_readiness": "NOT_READY",
+    }
     assert compact["variants"][0]["setting"]["research_enabled"] is True
     runtime_state = compact["variants"][0]["runtime_state"]
     assert "entry_rules_ko" not in runtime_state
@@ -506,6 +626,15 @@ def test_v6_family_catalog_detail_conditions_and_cas_research_api() -> None:
 
     with TestClient(create_app(runtime)) as client:
         catalog_response = client.get("/api/strategy-families")
+        catalog_payload = catalog_response.json()
+        assert catalog_payload["paper_only"] is True
+        assert catalog_payload["real_orders_enabled"] is False
+        assert catalog_payload["auth_required"] is False
+        assert catalog_payload["private_api_enabled"] is False
+        assert catalog_payload["api_key_enabled"] is False
+        assert catalog_payload["wallet_enabled"] is False
+        assert catalog_payload["runtime_ai_order_decision_enabled"] is False
+        assert catalog_payload["funding_readiness"] == "NOT_READY"
         etag = catalog_response.headers["etag"]
         cached = client.get("/api/strategy-families", headers={"If-None-Match": etag})
         detail = client.get("/api/strategy-families/TREND_PULLBACK")
@@ -676,6 +805,8 @@ def test_v6_trades_api_groups_base_and_stress_as_one_opportunity(
     assert opportunity["profiles"]["STRESS"]["net_pnl"] == "6.66"
     assert opportunity["profiles"]["BASE"]["mae_r"] == "-0.25"
     assert opportunity["profiles"]["BASE"]["trailing_state_checksum"] == "checksum-v6"
+    assert opportunity["profiles"]["BASE"]["fill_evidence_state"] == "CURRENT_MAIN_NO_FILL"
+    assert opportunity["profiles"]["BASE"]["fills"] == []
     assert opportunity["key"] == {
         "run_id": "run-v6-trades",
         "strategy_id": "BREAKOUT_RETEST_30M_V2",
@@ -848,6 +979,124 @@ def test_v6_trades_separates_main_and_league_profile_results(
     ]
     assert set(opportunity["account_groups"][1]["profiles"]) == {"BASE", "STRESS"}
     assert opportunity["account_groups"][1]["profiles"]["BASE"]["net_pnl"] == "1.00"
+    assert (
+        opportunity["account_groups"][1]["profiles"]["BASE"]["fill_evidence_state"]
+        == "SHADOW_UNAVAILABLE"
+    )
+    assert opportunity["account_groups"][1]["profiles"]["BASE"]["fills"] == []
+
+
+def test_v6_trades_fill_reconciliation_mismatch_fails_closed(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    row = {
+        "run_id": "run-v6-fill-mismatch",
+        "trade_id": "trade-v6-fill-mismatch",
+        "opportunity_id": "opportunity-v6-fill-mismatch",
+        "strategy": "BREAKOUT_RETEST_30M_V2",
+        "strategy_version": "V2",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "entry_ts_ms": 1_000,
+        "exit_ts_ms": 2_000,
+        "profile": "BASE",
+        "account_scope": "MAIN",
+    }
+
+    def fake_history_records(self: PaperRuntime, **_: object) -> dict[str, object]:
+        return {"rows": [row], "scope": {"account_scope": "MAIN"}}
+
+    ledger = SQLiteLedger(tmp_path / "fill-mismatch.sqlite3")
+    runtime = PaperRuntime(mode=RuntimeMode.READY, ledger=ledger)
+    monkeypatch.setattr(PaperRuntime, "history_records", fake_history_records)
+
+    def fail_closed(_: object) -> dict[tuple[str, str], dict[str, object]]:
+        raise LedgerInvariantError("main 거래와 fill 비용 합계가 일치하지 않습니다.")
+
+    monkeypatch.setattr(ledger, "list_trade_fill_evidence", fail_closed)
+    with TestClient(create_app(runtime)) as client:
+        response = client.get("/api/trades")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "error_code": "TRADE_FILL_LEDGER_INVARIANT",
+        "error_message_ko": "main 거래와 fill 비용 합계가 일치하지 않습니다.",
+        "retryable": False,
+    }
+    ledger.close()
+
+
+def test_v6_trades_serializes_verified_main_fills_in_chronological_order(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    row = {
+        "run_id": "run-v6-fills",
+        "trade_id": "trade-v6-fills",
+        "opportunity_id": "opportunity-v6-fills",
+        "strategy": "BREAKOUT_RETEST_30M_V2",
+        "strategy_version": "V2",
+        "symbol": "BTCUSDT",
+        "side": "LONG",
+        "entry_ts_ms": 1_000,
+        "exit_ts_ms": 2_000,
+        "profile": "BASE",
+        "account_scope": "MAIN",
+        "account_id": "SHARED_PAPER",
+    }
+    verified_fills = [
+        {
+            "fill_id": "fill-entry",
+            "order_id": "order-entry",
+            "ts_ms": 1_200,
+            "side": "BUY",
+            "intent": "ENTRY_IOC",
+            "price": "100.10",
+            "quantity": "1",
+            "fee_usdt": "0.06",
+            "slippage_usdt": "0.08",
+        },
+        {
+            "fill_id": "fill-exit",
+            "order_id": "order-exit",
+            "ts_ms": 2_000,
+            "side": "SELL",
+            "intent": "TAKE_PROFIT",
+            "price": "101.90",
+            "quantity": "1",
+            "fee_usdt": "0.0612",
+            "slippage_usdt": "0.12",
+        },
+    ]
+
+    def fake_history_records(self: PaperRuntime, **_: object) -> dict[str, object]:
+        return {"rows": [row], "scope": {"account_scope": "MAIN"}}
+
+    ledger = SQLiteLedger(tmp_path / "verified-fills.sqlite3")
+    runtime = PaperRuntime(mode=RuntimeMode.READY, ledger=ledger)
+    monkeypatch.setattr(PaperRuntime, "history_records", fake_history_records)
+    monkeypatch.setattr(
+        ledger,
+        "list_trade_fill_evidence",
+        lambda keys: {
+            ("run-v6-fills", "trade-v6-fills"): {
+                "fill_evidence_state": "PRESENT",
+                "fill_evidence_reason_ko": "원시 PAPER 체결과 거래 비용 합계를 확인했습니다.",
+                "fills": verified_fills,
+            }
+        }
+        if keys == [("run-v6-fills", "trade-v6-fills")]
+        else {},
+    )
+    with TestClient(create_app(runtime)) as client:
+        response = client.get("/api/trades")
+
+    assert response.status_code == 200
+    base = response.json()["opportunities"][0]["profiles"]["BASE"]
+    assert base["fill_evidence_state"] == "PRESENT"
+    assert base["fills"] == verified_fills
+    ledger.close()
 
 
 def test_v6_trades_quarantines_unknown_legacy_row_instead_of_failing(

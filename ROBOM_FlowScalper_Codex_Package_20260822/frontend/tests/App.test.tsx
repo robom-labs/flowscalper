@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from '../src/App'
 import { initialDashboard } from '../src/demoData'
 import { MarketPage } from '../src/pages/MarketPage'
-import type { FocusPosition } from '../src/types'
+import type { FocusPosition, MarketCatalogRow } from '../src/types'
 
 class FakeWebSocket extends EventTarget {
   close() {}
@@ -36,6 +36,17 @@ const backendDiagnosticContract = [
   ['last_paper_transition_cause_code', '마지막 PAPER 전환 결과'],
   ['clock_sync_status', '거래소 시각 동기화'],
 ] as const
+
+const flatPaperSafety = {
+  paper_only: true,
+  real_orders_enabled: false,
+  auth_required: false,
+  private_api_enabled: false,
+  api_key_enabled: false,
+  wallet_enabled: false,
+  runtime_ai_order_decision_enabled: false,
+  funding_readiness: 'NOT_READY',
+} as const
 
 function splitDashboardFetch(dashboard: unknown) {
   const data = dashboard as typeof initialDashboard
@@ -71,18 +82,16 @@ function splitDashboardFetch(dashboard: unknown) {
           key, label_ko, value: system[key], severity: 'INFO', user_visible: false, group: 'RUNTIME',
         }] : []),
         raw: system,
-        paper_only: true,
-        real_orders_enabled: false,
-        auth_required: false,
+        ...flatPaperSafety,
       }
     } else if (path === '/api/strategies/summary') {
       body = {
         schema_version: 1, analysis_scope: 'CURRENT_STRATEGY_VERSION', strategies: data.strategies,
         league_accounts: data.league_accounts, strategy_count: data.strategies.length,
-        league_account_count: data.league_accounts.length, paper_only: true, real_orders_enabled: false, auth_required: false,
+        league_account_count: data.league_accounts.length, ...flatPaperSafety,
       }
     } else if (path === '/api/strategy-families') {
-      body = { schema_version: 1, families: [], paper_only: true, real_orders_enabled: false, auth_required: false }
+      body = { schema_version: 1, families: [], ...flatPaperSafety }
     }
     return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
   })
@@ -202,25 +211,23 @@ test('separates local event-loop delay from public-market delay in diagnostics',
   expect(screen.getByText('최근 checkpoint 판단 WAL bytes')).toBeInTheDocument()
 })
 
-test('renders permanent paper-only ready status and market controls', async () => {
+test('keeps controls locked until the backend PAPER contract is verified', async () => {
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
   vi.stubGlobal('WebSocket', FakeWebSocket)
   render(<App />)
-  expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('안전 상태 미확인 · 조작 잠금')).toBeInTheDocument()
   expect(screen.getByLabelText('시장 요약')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '자동 관찰 시작' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '샘플로 보기' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '자동 관찰 시작' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '샘플로 보기' })).toBeDisabled()
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
 })
 
 test('uses exactly four primary pages without secondary navigation', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => initialDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(initialDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
   render(<App />)
+  expect(await screen.findByText('PAPER · 실제 주문 0')).toBeInTheDocument()
   for (const [button, heading] of [
     ['전략', '전략 한눈에 보기'],
     ['거래', '거래'],
@@ -236,10 +243,7 @@ test('uses exactly four primary pages without secondary navigation', async () =>
 })
 
 test('returns to the default market through the primary navigation', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => initialDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(initialDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
   render(<App />)
 
@@ -247,6 +251,64 @@ test('returns to the default market through the primary navigation', async () =>
   expect(screen.getByRole('heading', { name: '전략 한눈에 보기' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '시장' }))
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
+})
+
+test('keeps the market rail to ten deep symbols until search or 전체보기 explicitly opens the catalog', async () => {
+  const catalogRows: MarketCatalogRow[] = Array.from({ length: 60 }, (_, index) => {
+    const asset = `ASSET${String(index).padStart(3, '0')}`
+    return {
+      venue: 'BINANCE_USDM', symbol: `${asset}USDT`, display_symbol: `${asset}/USDT`,
+      base_asset: asset, quote_asset: 'USDT', market_role: 'PAPER_EXECUTION',
+      last: 1_000 - index, bid: 999 - index, ask: 1_001 - index,
+      change_percent: 0, quote_volume_24h: 1_000_000 - index,
+      trade_count_24h: 10_000 - index, status: 'ACTIVE', strategy_eligible: true,
+    }
+  })
+  const scanner = ['ASSET025USDT', 'ASSET035USDT'].map((symbol, index) => ({
+    rank: index + 1, symbol, depth: 'DEEP' as const, regime: 'CALIBRATING', strategy: 'NONE',
+    side: 'NONE' as const, score: null, net_rr: null, expected_cost_bps: 0, spread_bps: 0,
+    data_health: 'HEALTHY', status: 'CALIBRATING', reason: '정밀 분석 중', calibration: 'CALIBRATING' as const,
+  }))
+  vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() })
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const path = String(input)
+    const body = path.startsWith('/api/markets/catalog')
+      ? {
+          source: 'ALL_PUBLIC', count: catalogRows.length, rows: catalogRows,
+          counts: { BINANCE_USDM: catalogRows.length, UPBIT_KRW: 0, total: catalogRows.length },
+          paper_execution_venue: 'BINANCE_USDM', observation_only_venues: ['UPBIT_KRW'],
+          auth_required: false, real_orders_enabled: false,
+        }
+      : { candles: [] }
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+  }))
+  const handlers = {
+    onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
+    busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+  }
+  render(<MarketPage data={{ ...initialDashboard, scanner, status: { ...initialDashboard.status, deep_symbols: scanner.length } }} {...handlers} />)
+
+  const rail = screen.getByRole('complementary', { name: '전체 종목 탐색' })
+  await within(rail).findByRole('button', { name: '전체보기' })
+  expect(rail.querySelectorAll('.market-row')).toHaveLength(10)
+  expect(rail.querySelector('.market-list-virtual')).toHaveStyle({ height: '520px' })
+  expect(within(rail).getByText('ASSET025/USDT')).toBeInTheDocument()
+  expect(within(rail).getByText('ASSET035/USDT')).toBeInTheDocument()
+  expect(within(rail).queryByText('ASSET050/USDT')).not.toBeInTheDocument()
+
+  fireEvent.click(within(rail).getByRole('button', { name: '전체보기' }))
+  expect(rail.querySelectorAll('.market-row')).toHaveLength(40)
+  expect(rail.querySelector('.market-list-virtual')).toHaveStyle({ height: '3120px' })
+  const list = rail.querySelector('.market-list')
+  expect(list).not.toBeNull()
+  fireEvent.scroll(list as Element, { target: { scrollTop: 52 * 50 } })
+  await waitFor(() => expect(within(rail).getByText('ASSET050/USDT')).toBeInTheDocument())
+
+  fireEvent.click(within(rail).getByRole('button', { name: '상위 10개' }))
+  expect(rail.querySelectorAll('.market-row')).toHaveLength(10)
+  fireEvent.change(within(rail).getByLabelText('종목 검색'), { target: { value: 'ASSET050' } })
+  expect(within(rail).getByText('ASSET050/USDT')).toBeInTheDocument()
+  expect(rail.querySelectorAll('.market-row')).toHaveLength(1)
 })
 
 test('separates current RSS from peak RSS in advanced diagnostics', async () => {
@@ -418,7 +480,7 @@ test('shows an explicit initial backend failure instead of pretending LIVE', asy
   render(<App />)
   const alerts = await screen.findAllByRole('alert')
   expect(alerts.some((alert) => alert.textContent?.includes('프로그램 서버에 연결하지 못했습니다.'))).toBe(true)
-  expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByText('안전 상태 미확인 · 조작 잠금')).toBeInTheDocument()
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
 })
 
@@ -445,16 +507,14 @@ test('keeps demo truth visible in both the permanent header and market workspace
       recommended_action: 'PAUSE' as const,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => demoDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(demoDashboard))
   class DemoWebSocket extends EventTarget {
     close() {}
     constructor() {
       super()
       queueMicrotask(() => {
-        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'dashboard', data: demoDashboard }) }))
+        this.dispatchEvent(new Event('open'))
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ schema_version: 1, sequence: 1, type: 'snapshot', data: demoDashboard }) }))
       })
     }
   }
@@ -488,16 +548,14 @@ test('renders an explicit LIVE operating state', async () => {
       lag_p95_ms: 120,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => liveDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(liveDashboard))
   class LiveWebSocket extends EventTarget {
     close() {}
     constructor() {
       super()
       queueMicrotask(() => {
-        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'dashboard', data: liveDashboard }) }))
+        this.dispatchEvent(new Event('open'))
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ schema_version: 1, sequence: 1, type: 'snapshot', data: liveDashboard }) }))
       })
     }
   }
@@ -664,7 +722,7 @@ test('shows the verified public venue clock correction in system diagnostics', a
       super()
       queueMicrotask(() => {
         this.dispatchEvent(new Event('open'))
-        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'dashboard', data: clockDashboard }) }))
+        this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ schema_version: 1, sequence: 1, type: 'snapshot', data: clockDashboard }) }))
       })
     }
   }
