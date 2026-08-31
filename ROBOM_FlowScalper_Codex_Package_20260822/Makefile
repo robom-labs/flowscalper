@@ -10,6 +10,19 @@ SIHO_ASR_MODEL_DIR ?= data/research/siho/models
 SIHO_ASR_DEVICE ?= cpu
 SIHO_ASR_THREADS ?= 4
 
+ROBOM_EXTERNAL_VOLUME ?= /Volumes/ROBOM_FLOWSCALPER
+ROBOM_EXTERNAL_CACHE_ROOT ?= $(ROBOM_EXTERNAL_VOLUME)/03_CACHES/ROBOM_FlowScalper
+
+ifneq ($(wildcard $(ROBOM_EXTERNAL_VOLUME)/),)
+export UV_CACHE_DIR := $(ROBOM_EXTERNAL_CACHE_ROOT)/uv
+export UV_PYTHON_INSTALL_DIR := $(ROBOM_EXTERNAL_CACHE_ROOT)/python
+export XDG_CACHE_HOME := $(ROBOM_EXTERNAL_CACHE_ROOT)/xdg
+export TMPDIR := $(ROBOM_EXTERNAL_CACHE_ROOT)/tmp/
+export NPM_CONFIG_CACHE := $(ROBOM_EXTERNAL_CACHE_ROOT)/npm
+export PLAYWRIGHT_BROWSERS_PATH := $(ROBOM_EXTERNAL_CACHE_ROOT)/playwright
+PNPM_INSTALL_STORE_ARG := --store-dir $(ROBOM_EXTERNAL_CACHE_ROOT)/pnpm-store
+endif
+
 .PHONY: setup dev run test lint typecheck build e2e fixture-demo network-smoke
 .PHONY: security-scan repo-hygiene regression-contracts soak-30m soak-6h soak-24h
 .PHONY: service-soak-30m service-soak-6h service-soak-24h
@@ -18,30 +31,43 @@ SIHO_ASR_THREADS ?= 4
 .PHONY: research-siho-review-assets research-100-dataset-freeze research-100-manifest
 .PHONY: research-100-instruments research-100-screening
 .PHONY: research-trailing-ablation research-walk-forward test-trailing-replay benchmark-100-candidates
+.PHONY: external-cache-prepare
 
-setup:
+external-cache-prepare:
+	@if /sbin/mount | /usr/bin/grep -Fq " on $(ROBOM_EXTERNAL_VOLUME) ("; then \
+		mkdir -p \
+			"$(ROBOM_EXTERNAL_CACHE_ROOT)/uv" \
+			"$(ROBOM_EXTERNAL_CACHE_ROOT)/python" \
+			"$(ROBOM_EXTERNAL_CACHE_ROOT)/xdg" \
+			"$(ROBOM_EXTERNAL_CACHE_ROOT)/tmp" \
+			"$(ROBOM_EXTERNAL_CACHE_ROOT)/npm" \
+			"$(ROBOM_EXTERNAL_CACHE_ROOT)/pnpm-store" \
+			"$(ROBOM_EXTERNAL_CACHE_ROOT)/playwright"; \
+	fi
+
+setup: | external-cache-prepare
 	$(UV) sync --all-groups
-	cd frontend && $(PNPM) install --frozen-lockfile
+	cd frontend && $(PNPM) install $(PNPM_INSTALL_STORE_ARG) --frozen-lockfile
 
-dev:
+dev: | external-cache-prepare
 	ROBOM_MODE=READY ROBOM_RELOAD=true $(UV) run python scripts/run_server.py
 
-run:
+run: | external-cache-prepare
 	ROBOM_MODE=$${ROBOM_MODE:-READY} $(UV) run python scripts/run_server.py
 
-test:
+test: | external-cache-prepare
 	$(UV) run pytest
 	cd frontend && $(PNPM) test
 
-lint:
+lint: | external-cache-prepare
 	$(UV) run ruff check backend
 	cd frontend && $(PNPM) lint
 
-typecheck:
+typecheck: | external-cache-prepare
 	$(UV) run mypy
 	cd frontend && $(PNPM) typecheck
 
-build:
+build: | external-cache-prepare
 	cd frontend && $(PNPM) build
 	REAL_TRADING=false $(UV) run python scripts/assert_build_safety.py
 
@@ -52,16 +78,16 @@ e2e: build
 fixture-demo: build
 	ROBOM_MODE=DEMO_FIXTURE $(UV) run python scripts/run_server.py
 
-network-smoke:
+network-smoke: | external-cache-prepare
 	$(UV) run python scripts/network_smoke.py --output evidence/PHASE03_PUBLIC_MARKET_SMOKE.json
 
-security-scan:
+security-scan: | external-cache-prepare
 	$(UV) run python scripts/security_scan.py
 
-repo-hygiene:
+repo-hygiene: | external-cache-prepare
 	$(UV) run python scripts/check_repository_hygiene.py
 
-regression-contracts:
+regression-contracts: | external-cache-prepare
 	$(UV) run python scripts/verify_regression_contracts.py
 
 research-siho-video:

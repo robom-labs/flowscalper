@@ -52,6 +52,9 @@ Record necessary design changes in an ADR rather than silently changing the cont
 ## Working discipline
 
 - Continue from planning into implementation unless an external permission boundary prevents it.
+- On macOS, use the repository Make targets or explicitly export the external cache variables from `scripts/setup_macos.sh`; FlowScalper test, build, browser and temporary outputs must not fall back to `/var/folders`, `~/.cache` or `~/Library/Caches` while `/Volumes/ROBOM_FLOWSCALPER` is mounted.
+- Do not overlap a large cache migration, recursive checksum, browser download or full-ledger scan with the LIVE persistence service on the same physical external device. Prepare those bytes while the service is flat and safely paused or stopped, then verify the existing Run after resuming.
+- Codex application session logs are application-owned conversation history, not FlowScalper source, runtime, ledger or market data. Do not move or truncate an open Codex session as part of product storage cleanup.
 - Use official exchange documentation as the primary source.
 - Prefer direct `httpx`/`websockets` adapters over unofficial trading SDKs.
 - Keep adapters isolated from strategies and paper execution.

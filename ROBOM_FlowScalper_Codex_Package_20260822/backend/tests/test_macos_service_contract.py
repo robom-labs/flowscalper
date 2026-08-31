@@ -83,6 +83,46 @@ def test_macos_service_keeps_runtime_cache_and_logs_external() -> None:
     assert "uv sync --python 3.12 --frozen --all-groups" in setup
 
 
+def test_make_targets_keep_local_validation_cache_external_when_mounted() -> None:
+    makefile = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert "ROBOM_EXTERNAL_VOLUME ?= /Volumes/ROBOM_FLOWSCALPER" in makefile
+    assert (
+        "ROBOM_EXTERNAL_CACHE_ROOT ?= $(ROBOM_EXTERNAL_VOLUME)/03_CACHES/"
+        "ROBOM_FlowScalper"
+    ) in makefile
+    for variable, relative_path in (
+        ("UV_CACHE_DIR", "uv"),
+        ("UV_PYTHON_INSTALL_DIR", "python"),
+        ("XDG_CACHE_HOME", "xdg"),
+        ("TMPDIR", "tmp/"),
+        ("NPM_CONFIG_CACHE", "npm"),
+        ("PLAYWRIGHT_BROWSERS_PATH", "playwright"),
+    ):
+        assert (
+            f"export {variable} := $(ROBOM_EXTERNAL_CACHE_ROOT)/{relative_path}" in makefile
+        )
+    assert (
+        "PNPM_INSTALL_STORE_ARG := --store-dir "
+        "$(ROBOM_EXTERNAL_CACHE_ROOT)/pnpm-store"
+    ) in makefile
+    assert "/sbin/mount | /usr/bin/grep -Fq" in makefile
+    for target in (
+        "setup",
+        "dev",
+        "run",
+        "test",
+        "lint",
+        "typecheck",
+        "build",
+        "network-smoke",
+        "security-scan",
+        "repo-hygiene",
+        "regression-contracts",
+    ):
+        assert f"{target}: | external-cache-prepare" in makefile
+
+
 def test_default_release_runtime_rejects_internal_source() -> None:
     with pytest.raises(RuntimeError, match="외장 볼륨"):
         _default_runtime_root(Path("/tmp/flowscalper"))
