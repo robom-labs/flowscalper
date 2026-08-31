@@ -15,7 +15,12 @@ import pytest
 
 from backend.app.api.dashboard import release_identity
 from backend.app.storage.integrity import RuntimeSafetyViolation
-from scripts.stage_macos_release import _default_runtime_root, activate_release, stage_release
+from scripts.stage_macos_release import (
+    _default_runtime_root,
+    activate_release,
+    prune_obsolete_releases,
+    stage_release,
+)
 from scripts.verify_macos_ledger_maintenance import (
     _require_manual_pause_contract,
     _validate_initial_runtime,
@@ -116,9 +121,10 @@ def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> Non
 
     kickstart_at = installer.index('launchctl kickstart "$SERVICE_TARGET"')
     readiness_at = installer.index("for readiness_wait in {1..180}")
+    pruning_at = installer.index("--prune-only")
     pass_at = installer.index('echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"')
-    assert kickstart_at < readiness_at < pass_at
-    readiness = installer[readiness_at:pass_at]
+    assert kickstart_at < readiness_at < pruning_at < pass_at
+    readiness = installer[readiness_at:pruning_at]
     assert "http://127.0.0.1:8870/api/dashboard" in readiness
     assert 'system["release_commit"] == expected' in readiness
     assert 'system["release_isolated"] is True' in readiness
@@ -484,3 +490,39 @@ def test_release_pointer_switch_records_rollback_and_can_restore_previous_releas
     )
     assert (runtime / "current").resolve() == first_path
     assert rollback["rollback_release"] == str(second_path)
+
+
+def test_release_retention_keeps_current_and_one_verified_rollback(tmp_path: Path) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    release_paths: list[Path] = []
+    for revision in range(1, 4):
+        if revision > 1:
+            (source / "backend.py").write_text(
+                f"RELEASE = {revision}\n",
+                encoding="utf-8",
+            )
+            _git(source, "add", ".")
+            _git(source, "commit", "-m", f"fixture release {revision}")
+        manifest = stage_release(
+            source,
+            runtime,
+            market_archive,
+            ledger,
+            build_frontend=False,
+            prebuilt_frontend_dist=source / "frontend" / "dist",
+        )
+        release_path = Path(str(manifest["release_path"]))
+        release_paths.append(release_path)
+        activate_release(runtime, release_path)
+
+    unknown = runtime / "releases" / "operator-notes"
+    unknown.mkdir()
+    result = prune_obsolete_releases(runtime)
+
+    assert result["status"] == "PASS"
+    assert not release_paths[0].exists()
+    assert release_paths[1].is_dir()
+    assert release_paths[2].is_dir()
+    assert unknown.is_dir()
+    assert result["pruned_releases"] == [str(release_paths[0])]
+    assert str(unknown) in result["skipped_paths"]

@@ -190,6 +190,13 @@ if [[ "$service_ready" != "true" ]]; then
   exit 6
 fi
 
+"$SOURCE_PROJECT_DIR/.venv/bin/python" "$SOURCE_PROJECT_DIR/scripts/stage_macos_release.py" \
+  --runtime-root "$RUNTIME_ROOT" \
+  --prune-only > "$SUPPORT_DIR/latest-release-prune.json"
+"$RUNTIME_VENV/bin/python" -c \
+  'import json,sys; payload=json.loads(open(sys.argv[1], encoding="utf-8").read()); assert payload["status"] == "PASS"' \
+  "$SUPPORT_DIR/latest-release-prune.json"
+
 echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"
 echo "주소: http://127.0.0.1:8870/"
 echo "로그: $LOG_DIR"

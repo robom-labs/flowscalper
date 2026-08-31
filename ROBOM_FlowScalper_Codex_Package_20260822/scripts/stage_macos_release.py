@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+_COMMIT_DIRECTORY = re.compile(r"^[0-9a-f]{40}$")
 
 
 def _run_git(source_root: Path, *arguments: str) -> str:
@@ -176,6 +179,57 @@ def activate_release(
     return deployment
 
 
+def prune_obsolete_releases(runtime_root: Path) -> dict[str, Any]:
+    """안전 확인된 현재 릴리스와 직전 롤백 릴리스만 실행 폴더에 남긴다."""
+
+    runtime_root = runtime_root.resolve(strict=True)
+    releases_root = (runtime_root / "releases").resolve(strict=True)
+    active = current_release(runtime_root)
+    if active is None:
+        raise RuntimeError("정리할 현재 릴리스가 없습니다.")
+    retained = {active}
+    deployment_path = runtime_root / "current-deployment.json"
+    if deployment_path.is_file():
+        deployment = json.loads(deployment_path.read_text(encoding="utf-8"))
+        rollback_value = deployment.get("rollback_release")
+        if rollback_value:
+            rollback = Path(str(rollback_value)).resolve(strict=True)
+            if not rollback.is_relative_to(releases_root):
+                raise RuntimeError(f"rollback 릴리스가 releases 밖을 가리킵니다: {rollback}")
+            retained.add(rollback)
+
+    pruned: list[str] = []
+    skipped: list[str] = []
+    for candidate in sorted(releases_root.iterdir()):
+        if candidate.is_symlink() or not candidate.is_dir():
+            skipped.append(str(candidate))
+            continue
+        resolved = candidate.resolve(strict=True)
+        if resolved in retained:
+            continue
+        if _COMMIT_DIRECTORY.fullmatch(candidate.name) is None:
+            skipped.append(str(candidate))
+            continue
+        manifest_path = candidate / "release-manifest.json"
+        if not manifest_path.is_file():
+            skipped.append(str(candidate))
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if str(manifest.get("commit")) != candidate.name:
+            skipped.append(str(candidate))
+            continue
+        shutil.rmtree(candidate)
+        pruned.append(str(candidate))
+    return {
+        "schema": "flowscalper.release_retention.v1",
+        "status": "PASS",
+        "active_release": str(active),
+        "retained_releases": sorted(str(path) for path in retained),
+        "pruned_releases": pruned,
+        "skipped_paths": skipped,
+    }
+
+
 def stage_release(
     source_root: Path,
     runtime_root: Path,
@@ -258,7 +312,24 @@ def main() -> None:
     parser.add_argument("--market-archive", type=Path)
     parser.add_argument("--active-ledger-dir", type=Path)
     parser.add_argument("--activate", action="store_true")
+    parser.add_argument("--prune-only", action="store_true")
     arguments = parser.parse_args()
+    if arguments.prune_only:
+        if arguments.activate:
+            parser.error("--prune-only와 --activate는 함께 사용할 수 없습니다.")
+        runtime_root = (
+            arguments.runtime_root
+            or _default_runtime_root(arguments.source_root.resolve(strict=True))
+        ).resolve(strict=True)
+        print(
+            json.dumps(
+                prune_obsolete_releases(runtime_root),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
     source_root = arguments.source_root.resolve(strict=True)
     runtime_root = (arguments.runtime_root or _default_runtime_root(source_root)).resolve()
     market_archive = (

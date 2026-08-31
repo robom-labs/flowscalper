@@ -10,6 +10,8 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+from anyio import BrokenWorkerProcess
+
 import backend.app.ops.resources as resources_module
 import backend.app.runtime as runtime_module
 import backend.app.storage.parquet as parquet_module
@@ -1000,6 +1002,89 @@ def test_transient_storage_pressure_recovers_and_preserves_incident_history(
     assert "StoragePressureError" in str(diagnostics["persistence_last_recovered_error"])
     assert diagnostics["persistence_last_error"] == "NONE"
     assert "ENTRY_LOCK_TRANSIENT_PERSISTENCE" not in runtime.runtime_health_flags
+    ledger.close()
+
+
+async def test_broken_worker_process_recovers_and_retries_preserved_batch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    archive = ParquetEventStore(
+        tmp_path / "recoverable-worker-archive",
+        minimum_free_bytes=0,
+        minimum_free_ratio=0,
+    )
+    ledger = SQLiteLedger(
+        tmp_path / "recoverable-worker.sqlite3",
+        market_event_archive=archive,
+    )
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-recoverable-broken-worker",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+        ledger=ledger,
+        market_event_archive=archive,
+    )
+    runtime._market_event_buffer = [
+        {
+            "event_id": "recoverable-worker-event",
+            "run_id": runtime.run_id,
+            "venue": runtime.venue.value,
+            "symbol": "BTCUSDT",
+            "event_type": "TRADE",
+            "venue_ts_ms": 1_000,
+            "receive_monotonic_ns": 1_000,
+            "data": {"price": "100", "quantity": "1"},
+        }
+    ]
+    calls = 0
+
+    async def simulated_process(function, *_arguments):
+        nonlocal calls
+        assert function is runtime_module.persist_archives_and_candles_in_process
+        calls += 1
+        if calls == 1:
+            raise BrokenWorkerProcess("simulated worker initialization failure")
+        return {
+            "gate_wait_ms": 0.0,
+            "archive_ms": 0.0,
+            "ledger_ms": 0.0,
+            "ledger_connect_ms": 0.0,
+            "ledger_begin_wait_ms": 0.0,
+            "ledger_write_ms": 0.0,
+            "ledger_commit_ms": 0.0,
+            "ledger_close_ms": 0.0,
+            "market_events": 1,
+            "candles": 0,
+            "archive_batches": 1,
+            "wal_probe_ms": 0.0,
+            "wal_log_frames": 0,
+            "wal_checkpointed_frames": 0,
+            "wal_page_size": 4_096,
+        }
+
+    monkeypatch.setattr(runtime_module.to_process, "run_sync", simulated_process)
+
+    await runtime._flush_persistence_isolated(None)
+
+    assert calls == 1
+    assert len(runtime._market_event_buffer) == 1
+    assert runtime._persistence_fault_active is True
+    assert runtime._persistence_fault_recoverable is True
+    assert runtime.paper_portfolio.main.risk_state.faulted is False
+    assert "ENTRY_LOCK_TRANSIENT_PERSISTENCE" in runtime.runtime_health_flags
+    assert "PERSISTENCE_FAULT_ENTRY_LOCK" not in runtime.runtime_health_flags
+
+    runtime._storage_entry_allowed = True
+    assert runtime._recover_transient_persistence_fault_if_safe() is True
+    await runtime._flush_persistence_isolated(None)
+
+    assert calls == 2
+    assert runtime._market_event_buffer == []
+    assert runtime._persistence_fault_active is False
+    assert runtime._persistence_recovery_count == 1
+    assert "BrokenWorkerProcess" in str(runtime._last_recovered_persistence_error)
     ledger.close()
 
 

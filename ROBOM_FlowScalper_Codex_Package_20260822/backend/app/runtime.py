@@ -15,7 +15,7 @@ from threading import RLock
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from anyio import to_process, to_thread
+from anyio import BrokenWorkerProcess, to_process, to_thread
 
 from backend.app.adapters.fixture import FixtureMarketData
 from backend.app.analytics.reports import TradeAnalytics
@@ -829,7 +829,7 @@ class PaperRuntime:
             ]
 
     def _recover_transient_persistence_fault_if_safe(self) -> bool:
-        """저장공간 압력만 해소된 경우 적체 버퍼 저장을 자동 재개한다."""
+        """저장공간 또는 격리 worker의 일시 장애가 해소되면 적체 저장을 재개한다."""
 
         if (
             not self._persistence_fault_active
@@ -1155,18 +1155,24 @@ class PaperRuntime:
         already_hard_faulted = (
             self._persistence_fault_active and not self._persistence_fault_recoverable
         ) or self.paper_portfolio.main.risk_state.faulted
-        recoverable_storage_pressure = isinstance(error, StoragePressureError) and not (
-            already_hard_faulted
-        )
+        recoverable_transient_fault = isinstance(
+            error,
+            StoragePressureError | BrokenWorkerProcess,
+        ) and not already_hard_faulted
         self._persistence_fault_active = True
         self.paused = True
-        if recoverable_storage_pressure:
+        if recoverable_transient_fault:
             self._persistence_fault_recoverable = True
             if "ENTRY_LOCK_TRANSIENT_PERSISTENCE" not in self.runtime_health_flags:
                 self.runtime_health_flags.append("ENTRY_LOCK_TRANSIENT_PERSISTENCE")
+            cause = (
+                "저장공간 압력"
+                if isinstance(error, StoragePressureError)
+                else "격리 저장 worker 일시 장애"
+            )
             self._log(
                 "STORAGE",
-                "저장공간 압력 · 신규 PAPER 진입 일시 차단 · 여유 회복 시 자동 재개",
+                f"{cause} · 신규 PAPER 진입 일시 차단 · 안전 확인 후 자동 재개",
             )
             return
         self._persistence_fault_recoverable = False
