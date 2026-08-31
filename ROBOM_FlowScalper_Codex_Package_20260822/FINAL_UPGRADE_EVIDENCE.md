@@ -4549,8 +4549,11 @@ FlowScalper 이름을 내장 사용자 폴더에서 다시 조회한 결과 외�
 
 내장 대용량의 주원인은 FlowScalper가 아니라 Codex 앱의 과거 작업 JSONL이었다. 사용자 승인에
 따라 닫힌 세션 1,775개, 논리크기 32,187,660,066bytes와 archived session·임시 plugin clone·
-재생성 cache를 제거했다. 내장 여유공간은 최종 41,912,556KiB, 표시 약 40GiB·사용률 81%로
-회복했다. 현재 Codex process가 쓰는 이 작업과 다른 열린 작업 2개의 JSONL 총
+재생성 cache를 제거했다. 사용자 폴더의 실제 할당량은 약 169GiB에서 133GiB로 감소했다.
+삭제 직후 `df`는 여유 약 40GiB를 표시했지만 이는 APFS의 순간 가용값이었다. 정산 뒤
+2026-08-31 16:12 KST의 Data volume `df` 여유는 28,507,548KiB, APFS container의 확정
+미할당 공간은 29,191,565,312bytes·29.2GB다. 시작 시 container 미할당 8.2GB보다 약
+21GB 늘었다. 현재 Codex process가 쓰는 이 작업과 다른 열린 작업 2개의 JSONL 총
 3,513,660,440bytes, 활성 상태 DB, 설정·인증·메모리·skill·plugin은 강제 삭제하지 않았다.
 열린 파일을 unlink 또는 truncate하면 실행 중 작업이 손상되므로 이는
 `BLOCKED_ACTIVE_APP_HANDLES`다.
@@ -4610,7 +4613,7 @@ drop·backlog lock·비계획 reconnect·gap·resync·event drop·critical lag i
 |---|---|---|
 | FlowScalper 제품자료 내장 잔존 | `PASS_WITH_REQUIRED_EXCEPTION` | 외장 runner만 가리키는 LaunchAgent plist 1개·1,020bytes |
 | Playwright 현재 revision 외장 이전 | `PASS` | checksum 차이 0·외장 587,692KiB·내장 현재 revision 제거 |
-| 내장 공간 회복 | `PASS` | 여유 약 7.7GiB에서 40GiB, 사용률 97%에서 81% |
+| 내장 공간 회복 | `PASS` | APFS container 미할당 8.2GB에서 29.2GB, 사용자 폴더 약 169GiB에서 133GiB |
 | 닫힌 Codex 기록·재생성 cache | `PASS_DELETED` | 세션 1,775개·32,187,660,066bytes와 cache 제거 |
 | 열린 Codex 기록 | `BLOCKED_ACTIVE_APP_HANDLES` | 열린 세션 3개·3,513,660,440bytes, 실행 손상 방지를 위해 보존 |
 | 휴지통 확인 | `BLOCKED_BY_MACOS_TCC` | `Operation not permitted`, 비우지 않음 |

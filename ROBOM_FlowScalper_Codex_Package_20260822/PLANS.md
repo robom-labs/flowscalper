@@ -648,7 +648,8 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   temp·npm·pnpm·Playwright cache를 외장으로 강제한다. macOS 정적 회귀 20건과 GitHub
   Actions backend 918·frontend 87·fixture 22·browser 3건이 PASS했다.
 - 닫힌 Codex 세션 1,775개 32,187,660,066bytes와 재생성 cache를 사용자 승인에 따라
-  제거해 내장 여유공간을 약 7.7GiB에서 40GiB로 늘렸다. Codex 대화는 제품 데이터가 아니며
+  제거했다. 삭제 직후 `df`는 약 40GiB였지만 APFS 정산 뒤 확정 container 미할당은
+  29.2GB다. 사용자 폴더는 약 169GiB에서 133GiB로 감소했다. Codex 대화는 제품 데이터가 아니며
   GitHub에 올리지 않는다. 현재 앱이 열어 쓰는 세션 3개와 상태 DB·설정·인증·메모리는
   손상 방지를 위해 남겼다.
 - 브라우저 574MiB 이전을 LIVE 저장과 같은 외장 물리장치에서 겹친 구간의 persistence

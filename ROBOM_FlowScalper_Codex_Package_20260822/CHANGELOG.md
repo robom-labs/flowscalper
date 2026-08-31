@@ -6,7 +6,7 @@
 
 ## 아직 배포하지 않음
 
-- macOS에서 Make로 실행하는 setup·test·build·브라우저 검증 cache도 외장으로 고정했다. 현재 Playwright 브라우저를 checksum 검증 뒤 외장으로 옮기고 내장 사본을 제거했으며, 닫힌 Codex 세션과 재생성 cache 정리로 내장 여유공간을 약 7.7GiB에서 40GiB로 늘렸다. Codex 대화기록과 인증정보는 GitHub 대상이 아니고, 현재 앱이 열어 쓰는 세션은 손상 방지를 위해 남긴다.
+- macOS에서 Make로 실행하는 setup·test·build·브라우저 검증 cache도 외장으로 고정했다. 현재 Playwright 브라우저를 checksum 검증 뒤 외장으로 옮기고 내장 사본을 제거했으며, 닫힌 Codex 세션과 재생성 cache 정리 뒤 APFS container 미할당 공간은 약 8.2GB에서 29.2GB로 늘었다. Codex 대화기록과 인증정보는 GitHub 대상이 아니고, 현재 앱이 열어 쓰는 세션은 손상 방지를 위해 남긴다.
 - 대형 browser cache 이전을 LIVE 원장과 같은 외장 물리장치에서 겹치면 저장 fault·buffer drop이 발생할 수 있음을 실제 실패로 보존했다. 대형 이전·checksum·download·원장 전수검사는 LIVE persistence와 겹치지 않게 하고, 후속 같은 Run 60초에서 신규 fault·drop 없이 회복을 확인했다.
 - 외장 저장 process가 초기화 중 일시적으로 종료되면 보류 batch를 버리지 않고 새 PAPER 진입만 안전 대기한 뒤 새 worker로 자동 복구하게 했다. 외장 불변 릴리스는 현재 버전과 검증된 직전 롤백 하나만 남기며, 알 수 없는 폴더는 자동 삭제하지 않는다.
 - 실제 외장 릴리스에서 거래기록의 BASE·STRESS를 한 진입기회로 묶은 화면, 비용별 상세, 저장 이벤트 다시보기, 전략 승률 정렬과 메인 이동을 데스크톱·태블릿·모바일에서 다시 확인했다. 현재 전략 표본은 아직 30건 미만이므로 수익성은 `NOT_PROVEN`이다.

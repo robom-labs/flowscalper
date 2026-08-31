@@ -1,6 +1,6 @@
 {
   "schema": "flowscalper.internal_storage_attribution_and_sync_qa.v1",
-  "captured_at_kst": "2026-08-31T16:00:32+09:00",
+  "captured_at_kst": "2026-08-31T16:12:23+09:00",
   "status": "PASS_WITH_PRESERVED_LIVE_IO_INCIDENT_AND_ACTIVE_APP_LIMITS",
   "scope": {
     "canonical_source": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822",
@@ -11,9 +11,14 @@
   },
   "internal_storage": {
     "initial_available_gib_observed": 7.7,
-    "final_available_kib": 41912556,
-    "final_available_gib_rounded": 40.0,
-    "final_capacity_percent": 81,
+    "immediate_post_delete_df_available_gib_observed": 40.0,
+    "final_df_available_kib": 28507548,
+    "final_df_available_gib_rounded": 27.2,
+    "final_apfs_container_unallocated_bytes": 29191565312,
+    "final_apfs_container_unallocated_gb_rounded": 29.2,
+    "final_capacity_percent": 87,
+    "final_user_home_allocated_gib_rounded": 133.0,
+    "apfs_note": "The immediate df value included transient APFS availability; the final container-unallocated value is the durable comparison",
     "flow_product_named_paths_in_user_home": [
       {
         "path": "/Users/runner706/Library/LaunchAgents/kr.robom.flowscalper.plist",
