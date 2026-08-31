@@ -594,7 +594,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 139 외장 전용 저장·대형 WAL 시작 복구
 
-- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_PENDING`이다.
+- 상태는 `COMPLETE_WITH_LOCAL_USER_ACTION_REQUIRED`다.
 - One Touch의 APFS sparsebundle을 256GiB 가변 이미지로 확장하고 소스·원장·시장자료·
   불변 릴리스·Python·cache·temp·로그를 외장에만 두는 설치 계약으로 교체한다.
 - 내장에 남았던 ROBOM 전용 cache 3.0GB를 외장으로 복사·전수 대조한 뒤 제거하고,
@@ -607,7 +607,32 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   checkpoint보다 먼저 만든다. 어떤 실패도 localhost 성공으로 표시하지 않는다.
 - 전체 backend 916건, frontend 87건, Ruff, mypy 112 source, ESLint, TypeScript,
   build, PAPER safety, security 148 source, 저장소 위생과 누적 회귀계약 30개는 PASS했다.
-- 커밋된 불변 릴리스 설치, 동일 Run 복구, 실제 공개시장 event 전진,
-  거래기록·다시보기·브라우저는 설치 후 별도 실행 검증한다.
+- commit `50c3e8a`의 불변 릴리스를 외장 runtime에 설치하고 동일 Run
+  `run-2b7135a972dd`, 공개시장 event 전진, PAPER, 실제 주문·인증 false와 실제
+  거래기록·다시보기·반응형 브라우저를 확인했다.
 - 실제 주문·private API·API Key·secret·wallet은 0을 유지한다. 수익성은
   `NOT_PROVEN`, 6시간·24시간은 실제 경과 전까지 `NOT_RUN`으로 유지한다.
+- 로그아웃·재부팅 후 sparsebundle 자동 연결은 macOS 사용자 승인 전까지
+  `LOCAL USER ACTION REQUIRED`다.
+
+## Wave 140 외장 저장 worker 복구·릴리스 보존 한도·실제 화면 재검증
+
+- 상태는 `COMPLETE_WITH_PRESERVED_INCIDENT_AND_LIMITS`다.
+- 같은 물리 One Touch 장치의 대형 검증 DB 전수 읽기와 LIVE 저장이 겹친 구간에서
+  `BrokenWorkerProcess`·저장 버퍼 10,000·drop 24,627건·영구 진입잠금을 실제
+  장애로 보존했다. 활성 writer나 같은 물리 장치에서 이 전수검사를 다시 실행하지 않는다.
+- `BrokenWorkerProcess`를 안전 확인 후 복구 가능한 일시 worker 장애로 분류하고, 보류
+  batch를 복원한 뒤 새 process로 재시도하는 회귀를 고정했다.
+- 외장 `releases/`는 manifest가 일치하는 현재 릴리스와 직전 롤백 하나만 남긴다.
+  알 수 없는 경로는 자동 삭제하지 않는다.
+- 실제 8870 서비스 180.014초에서 event +15,404·전략평가 +81,420, queue 최대 6,
+  처리·체결 p95 최대 65.159/91.476ms, 저장결함·drop·backlog 진입잠금·비계획
+  재연결·gap·resync 증가 0으로 `PASS`했다.
+- 별도 runtime을 만든 `soak_live.py` 180초 결과는 실제 8870 복구 근거가 아니므로
+  `FAIL_WRONG_SCOPE_PRESERVED`로 분리했다.
+- backend 918건·frontend 87건·Playwright 3건·정적·build·PAPER safety·security·저장소
+  위생·회귀계약 30개와 인증 없는 공개시장 network smoke를 모두 통과했다.
+- 실제 브라우저에서 현재 Run 진입기회 15건, BASE·STRESS 묶음, 비용별 상세,
+  13 frame 저장 재생, 실제 종료, 승률 정렬과 메인 이동을 확인했다.
+- 현재버전 BASE·STRESS 표본은 각 15건으로 30건 미만이다. 수익성은
+  `NOT_PROVEN`, 실자금은 `NOT_READY`, 6시간·24시간과 활성 원장 full check는 `NOT_RUN`이다.

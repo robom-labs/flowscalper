@@ -47,6 +47,8 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 
 서비스는 보존된 Run 상태를 안전하게 복구하며 화면의 `자동 관찰 시작`을 누르면 `연결 중`을 거쳐 `작동 중`이 표시됩니다. 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. canonical 소스·활성 SQLite 원장·공개시장 Parquet·불변 릴리스·Python base·venv·cache·temp·운영 로그는 모두 외장 APFS에 보존합니다. 내장에는 macOS가 요구하는 작은 `~/Library/LaunchAgents/kr.robom.flowscalper.plist`만 남기고 로그는 외장에서 10MiB 단위로 회전합니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 저장하고, archive와 활성 원장 파일시스템 중 하나라도 여유공간이 5GiB 미만이거나 4% 미만이면 신규 PAPER 진입을 fail-closed로 잠급니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없습니다. LaunchAgent는 마운트된 외장 APFS의 불변 릴리스를 자동 복구하지만 macOS privacy가 백그라운드 sparsebundle 직접 연결을 막으므로, 재로그인 뒤 완전 자동 연결은 사용자가 시스템 설정에서 별도로 승인할 때까지 `LOCAL USER ACTION REQUIRED`입니다.
 
+공유 가능한 최신 소스·문서·기계판독 증거는 GitHub main에 동기화하고, 실제 원장·공개시장 데이터·로그·불변 릴리스·의존성은 외장 저장장치에만 둡니다. GitHub에 올릴 수 없는 운영 데이터는 외장 원본으로만 보존합니다. 불변 릴리스는 현재 실행본과 검증된 직전 rollback 한 벌만 유지하며, 알 수 없는 디렉터리나 사용자 자료는 자동 삭제하지 않습니다. 내장의 LaunchAgent plist는 macOS 자동실행 등록에 필요한 최소 예외이며 프로그램·로그·데이터를 포함하지 않습니다.
+
 자동 시작을 해제하되 거래 원장과 외장 파일을 보존하려면 다음 명령을 실행합니다.
 
 ```bash

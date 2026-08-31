@@ -1,0 +1,250 @@
+{
+  "schema": "flowscalper.wave140.external_only_storage_recovery_qa.v1",
+  "generated_at": "2026-08-31T05:38:06Z",
+  "status": "PASS_WITH_PRESERVED_INCIDENT_AND_LIMITS",
+  "scope": {
+    "canonical_source": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822",
+    "canonical_runtime": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper",
+    "outer_external_bundle": "/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822",
+    "github_repository": "https://github.com/robom-labs/flowscalper",
+    "runtime_url": "http://127.0.0.1:8870/",
+    "source_commit": "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6",
+    "origin_main_commit": "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6",
+    "active_release_commit": "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6"
+  },
+  "storage_policy": {
+    "status": "PASS",
+    "canonical_information_locations": [
+      "GitHub main",
+      "/Volumes/ROBOM_FLOWSCALPER",
+      "/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822"
+    ],
+    "internal_required_exception": {
+      "path": "/Users/runner706/Library/LaunchAgents/kr.robom.flowscalper.plist",
+      "size_bytes": 1020,
+      "reason": "macOS user LaunchAgent registration",
+      "program_target": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/current/scripts/run_macos_service.sh",
+      "stdout": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/logs/service.log",
+      "stderr": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/logs/service-error.log"
+    },
+    "internal_product_directories_found": [],
+    "searched_internal_roots": [
+      "/Users/runner706/Library/Application Support",
+      "/Users/runner706/Library/Caches",
+      "/Users/runner706/Downloads",
+      "/Users/runner706/Documents",
+      "/Users/runner706/Desktop"
+    ],
+    "volume_free_space": {
+      "external_apfs_gib": 238,
+      "one_touch_tib": 1.6,
+      "internal_gib_observational_only": 7.7
+    }
+  },
+  "release_retention": {
+    "status": "PASS",
+    "evidence": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper/support/latest-release-prune.json",
+    "active_release": "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6",
+    "rollback_release": "f12015ca3f071c2df49aa6259767cb539d8faf7e",
+    "retained_release_count": 2,
+    "pruned_release": "a2e718afc8dc5d7ca273901a274992352b080c38",
+    "unknown_directories_deleted": false
+  },
+  "incident": {
+    "status": "FAIL_PRESERVED",
+    "run_id": "run-2b7135a972dd",
+    "trigger_scope": "a retained 4.9GB closed verification database was fully read on the same physical One Touch device while LIVE persistence was active",
+    "observed_error": "BrokenWorkerProcess: Error during worker process initialization",
+    "observed_operation_state": "SAFETY_BLOCKED",
+    "observed_entry_locks": [
+      "PERSISTENCE_FAULT_ENTRY_LOCK",
+      "PERSISTENCE_BACKLOG_ENTRY_LOCK"
+    ],
+    "observed_market_persistence_buffer": 10000,
+    "observed_candle_persistence_buffer_minimum": 4000,
+    "observed_persistence_buffer_dropped": 24627,
+    "original_defect": "BrokenWorkerProcess was classified as a permanent persistence fault, so the preserved batch could not retry with a replacement AnyIO worker process",
+    "data_deleted": false,
+    "result_used_as_pass_evidence": false
+  },
+  "repair": {
+    "status": "PASS",
+    "implementation_commit": "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6",
+    "changed_files": [
+      "backend/app/runtime.py",
+      "backend/tests/test_v02_operational_safety.py",
+      "scripts/stage_macos_release.py",
+      "scripts/install_macos_service.sh",
+      "backend/tests/test_macos_service_contract.py"
+    ],
+    "behavior": [
+      "preserve the pending persistence batch",
+      "lock only new PAPER entries while the transient fault is active",
+      "do not hard-fault the PAPER portfolio for BrokenWorkerProcess alone",
+      "recover only after storage safety is valid",
+      "retry through a replacement AnyIO process worker",
+      "retain only current and one verified rollback immutable release"
+    ],
+    "targeted_tests": {
+      "status": "PASS",
+      "count": 22
+    }
+  },
+  "running_service_observation": {
+    "status": "PASS",
+    "evidence": "evidence/WAVE140_EXTERNAL_PERSISTENCE_RECOVERY_RUNNING_SERVICE_180S.json",
+    "requested_duration_seconds": 180,
+    "observed_duration_seconds": 180.014,
+    "run_id": "run-2b7135a972dd",
+    "same_run": true,
+    "process_not_restarted": true,
+    "event_delta": 15404,
+    "strategy_evaluation_delta": 81420,
+    "qualified_signal_delta": 0,
+    "maximum_queue_depth": 6,
+    "maximum_processing_lag_p95_ms": 65.159423828125,
+    "maximum_trade_lag_p95_ms": 91.47607421875,
+    "maximum_event_loop_lag_ms": 308,
+    "memory_growth_mb": 7.25,
+    "maximum_market_persistence_buffer": 258,
+    "maximum_candle_persistence_buffer": 36,
+    "persistence_fault_delta": 0,
+    "persistence_buffer_drop_delta": 0,
+    "persistence_backlog_entry_lock_delta": 0,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "resync_delta": 0,
+    "dropped_event_delta": 0,
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
+  "excluded_wrong_scope_check": {
+    "status": "FAIL_WRONG_SCOPE_PRESERVED",
+    "evidence": "evidence/WAVE140_STANDALONE_SOAK_WRONG_SCOPE_FAIL_180S.json",
+    "run_id": "soak-e84bf85498f0",
+    "reason": "scripts/soak_live.py created a separate runtime instead of observing the active 8870 service",
+    "failed_check": "planned_rotation_observed",
+    "used_for_recovery_conclusion": false
+  },
+  "public_market_smoke": {
+    "status": "PASS",
+    "evidence": "evidence/WAVE140_PUBLIC_MARKET_SMOKE.json",
+    "binance_catalog_count": 704,
+    "paper_eligible_symbol_count": 525,
+    "upbit_observation_catalog_count": 288,
+    "binance_btcusdt_3m_candles": 200,
+    "upbit_krw_btc_3m_candles": 200,
+    "websocket_events": 16,
+    "lag_p95_ms": 23.103,
+    "credentials_sent": false,
+    "authorization_header_sent": false,
+    "real_orders_enabled": false
+  },
+  "latest_closed_opportunity": {
+    "status": "PASS_LEDGER_AND_UI_MATCH",
+    "candidate_id": "candidate-6bd0c851d2ea439f",
+    "symbol": "BTCUSDT",
+    "strategy": "AGGRESSOR_FLOW_CONTINUATION_V1",
+    "side": "LONG",
+    "entry": "77539.00",
+    "exit": "77736.00",
+    "holding_seconds": 1627,
+    "exit_reason": "EMERGENCY_STALE",
+    "tp1_reached": false,
+    "base_net_pnl_usdt": "1.4536900",
+    "stress_net_pnl_usdt": "0.106700",
+    "ui_grouping": "one opportunity with two cost assumptions",
+    "forced_or_silent_deletion": false,
+    "profitability_claim": false
+  },
+  "actual_browser": {
+    "status": "PASS",
+    "runtime_url": "http://127.0.0.1:8870/",
+    "desktop": {
+      "page_status": 200,
+      "body_nonempty": true,
+      "error_overlay_count": 0,
+      "console_error_count": 0,
+      "horizontal_overflow_px": 0,
+      "current_history_opportunity_count": 15,
+      "history_cost_profiles_grouped": true,
+      "detail_opened": true,
+      "focus_replay_opened": true,
+      "replay_frame_count": 13,
+      "entry_control_exercised": true,
+      "actual_exit_control_exercised": true,
+      "unreached_tp1_disabled": true,
+      "strategy_win_rate_sort_toggled": true,
+      "brand_home_navigation_exercised": true
+    },
+    "tablet": {
+      "history_rendered": true,
+      "console_error_count": 0,
+      "horizontal_overflow_px": 0
+    },
+    "mobile": {
+      "history_rendered": true,
+      "console_error_count": 0,
+      "horizontal_overflow_px": 0
+    },
+    "screenshots": [
+      "evidence/screenshots/wave140-live-external-desktop.png",
+      "evidence/screenshots/wave140-live-history-default-desktop.png",
+      "evidence/screenshots/wave140-live-history-detail-desktop.png",
+      "evidence/screenshots/wave140-live-history-replay-closed-desktop.png",
+      "evidence/screenshots/wave140-live-history-tablet.png",
+      "evidence/screenshots/wave140-live-history-mobile.png",
+      "evidence/screenshots/wave140-live-strategy-sorted-desktop.png"
+    ]
+  },
+  "regression_matrix": {
+    "backend_pytest": {
+      "status": "PASS",
+      "tests": 918,
+      "duration_seconds": 26.53
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 15,
+      "tests": 87
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 112
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "PASS_WITH_EXISTING_551_21_KB_CHUNK_WARNING",
+    "playwright_fixture": {
+      "status": "PASS",
+      "desktop": 1,
+      "tablet": 1,
+      "mobile": 1
+    },
+    "paper_build_safety": "PASS",
+    "security_scan": {
+      "status": "PASS",
+      "source_files": 148,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "regression_contracts": {
+      "status": "PASS",
+      "contracts": 30,
+      "anchors": 59
+    }
+  },
+  "current_research_boundary": {
+    "strategy_count": 15,
+    "independent_account_count": 30,
+    "current_version_base_samples": 15,
+    "current_version_stress_samples": 15,
+    "minimum_samples_before_ranking_per_profile": 30,
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY",
+    "six_hour_observation": "NOT_RUN",
+    "twenty_four_hour_observation": "NOT_RUN",
+    "active_ledger_full_quick_check": "NOT_RUN_PROHIBITED_WHILE_LIVE_OR_ON_SAME_PHYSICAL_DEVICE"
+  }
+}

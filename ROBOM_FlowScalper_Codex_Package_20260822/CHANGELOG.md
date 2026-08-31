@@ -6,6 +6,8 @@
 
 ## 아직 배포하지 않음
 
+- 외장 저장 process가 초기화 중 일시적으로 종료되면 보류 batch를 버리지 않고 새 PAPER 진입만 안전 대기한 뒤 새 worker로 자동 복구하게 했다. 외장 불변 릴리스는 현재 버전과 검증된 직전 롤백 하나만 남기며, 알 수 없는 폴더는 자동 삭제하지 않는다.
+- 실제 외장 릴리스에서 거래기록의 BASE·STRESS를 한 진입기회로 묶은 화면, 비용별 상세, 저장 이벤트 다시보기, 전략 승률 정렬과 메인 이동을 데스크톱·태블릿·모바일에서 다시 확인했다. 현재 전략 표본은 아직 30건 미만이므로 수익성은 `NOT_PROVEN`이다.
 - macOS LaunchAgent가 `One Touch` 일반 폴더를 `operation not permitted`로 거부하는 실제 제약을 확인했다. 내장 fallback이나 멈추는 AppleScript를 추가하지 않고, plist가 마운트된 외장 APFS의 불변 runner와 외장 로그를 직접 사용하게 했다. sparsebundle의 재로그인 자동 연결은 사용자 macOS 승인 전까지 `LOCAL USER ACTION REQUIRED`로 구분한다.
 - macOS 소스·불변 릴리스·Python·의존성·cache·temp·로그·SQLite·공개시장 자료를 외장 APFS에만 두고, 내장에는 macOS가 요구하는 작은 LaunchAgent plist만 남긴다. 256GiB sparsebundle로 확장하고, 비정상 64MiB 초과 WAL은 닫힌 원장을 APFS clone으로 보존한 뒤 0byte checkpoint가 확인될 때만 시작한다.
 - 불변 macOS 릴리스의 Git archive를 여유가 204MiB뿐인 내부 임시폴더에 만들던 설치 실패를 수정했다. archive 임시파일을 외장 runtime release staging과 같은 볼륨에 만들고 성공·실패 뒤 제거하며, 실제 서비스는 준비가 끝날 때까지 기존 릴리스를 계속 실행한다.

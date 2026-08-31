@@ -4434,3 +4434,105 @@ archive로 복사했고 그 안의 구형 원장은 `quick_check=ok`·user versi
 
 현 수용상태는
 `EXTERNAL_ONLY_SOURCE_PASS_COMMITTED_INSTALL_AND_RUNTIME_VERIFICATION_PENDING_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 101. Wave 140 외장 지속 worker 복구·릴리스 보존·실제 화면 재검증
+
+### 101.1 보존 위치와 내장 최소 예외
+
+canonical 소스는
+`/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822`,
+운영 원장·시장자료·로그·불변 릴리스는
+`/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper`, One Touch의 사용자 진입점과
+sparsebundle은
+`/Volumes/One Touch/ROBOM_AUTOTRADING/FlowScalper_v0.2_20260822`에 있다. 공유 가능한
+소스·문서·증거의 원격 사본은 `https://github.com/robom-labs/flowscalper`의 main이다.
+
+내장 사용자 폴더의 Application Support·Caches·Downloads·Documents·Desktop에서 FlowScalper
+제품 디렉터리는 발견되지 않았다. macOS가 사용자 자동실행 등록에 요구하는
+`/Users/runner706/Library/LaunchAgents/kr.robom.flowscalper.plist` 1개, 1,020bytes만 최소
+예외로 남는다. 이 plist의 실행 대상과 stdout·stderr는 모두 외장 runtime 경로다. 외장 APFS는
+238GiB, One Touch는 1.6TiB 여유를 관찰했다. 사용자 원장·시장자료는 삭제하지 않았고, 확인된
+제품 cache와 오래된 임시 항목은 복구 가능한 휴지통으로 이동했으며 다른 휴지통 내용은 지우지
+않았다.
+
+릴리스 staging은 현재 실행 commit과 검증된 직전 rollback commit만 유지한다. 실제 외장
+runtime에는 현재 `50c3e8ae7af08667546e8a1f2e4a70890e92d0f6`과 rollback
+`f12015ca3f071c2df49aa6259767cb539d8faf7e` 두 벌이 남았고, 이전
+`a2e718afc8dc5d7ca273901a274992352b080c38`은 검증된 retention 규칙으로 정리됐다. 알 수 없는
+디렉터리는 자동 삭제하지 않는다.
+
+### 101.2 실제 장애와 수정
+
+같은 Run `run-2b7135a972dd`에서 4.9GB의 보존된 닫힌 검증 DB 전수 읽기를 LIVE persistence와
+동일한 물리 One Touch에서 겹치자 AnyIO process worker 초기화가
+`BrokenWorkerProcess: Error during worker process initialization`으로 실패했다. 당시 operation은
+`SAFETY_BLOCKED`, 신규 진입은 `PERSISTENCE_FAULT_ENTRY_LOCK`과
+`PERSISTENCE_BACKLOG_ENTRY_LOCK`으로 잠겼고 market buffer 10,000, candle buffer 4,000 초과,
+buffer drop 24,627을 관찰했다. 이 결과는 `FAIL_PRESERVED`이며 PASS 근거로 사용하지 않는다.
+
+원인은 worker 초기화 실패 하나를 영구 persistence fault로 분류해 보존된 batch가 새 worker에서
+재시도되지 못하던 계약이었다. commit
+`50c3e8ae7af08667546e8a1f2e4a70890e92d0f6`에서 해당 예외만 복구 가능한 일시 오류로
+분류했다. 실패 batch를 보존하고, 저장 안전성이 회복될 때까지 신규 PAPER 진입만 잠그며,
+포트폴리오를 영구 hard-fault로 만들지 않고 교체 worker로 재시도한다. 같은 commit에서 릴리스
+보존을 현재 한 벌과 검증된 rollback 한 벌로 제한했다. 표적 회귀 22건이 PASS했다.
+
+### 101.3 실제 실행 서비스와 거래 복구
+
+수정 commit을 외장 불변 릴리스로 설치한 뒤 실제 `http://127.0.0.1:8870/`의 같은 Run을
+180.014초 관찰했다. process 재시작 없이 공개시장 event는 15,404, 전략평가는 81,420 증가했다.
+queue 최대 6, 처리 p95 최대 65.159ms, 체결경로 p95 최대 91.476ms, event-loop lag 최대
+308ms, memory 증가 7.25MB였다. market·candle persistence buffer 최대는 각각 258·36이었고
+persistence fault·buffer drop·backlog lock·비계획 reconnect·gap·resync·event drop 증가는
+모두 0이었다. 실제 주문과 인증은 false다.
+
+별도 `soak_live.py`를 실수로 실행해 만든 `soak-e84bf85498f0`은 활성 8870 관찰이 아니라 새
+독립 runtime이므로 `FAIL_WRONG_SCOPE_PRESERVED`로 남기고 복구 결론에서 제외했다. 올바른
+근거는 `scripts/observe_running_service.py`가 같은 Run을 관찰한
+`evidence/WAVE140_EXTERNAL_PERSISTENCE_RECOVERY_RUNNING_SERVICE_180S.json`이다.
+
+장애 당시 보유 중이던 BTCUSDT SHADOW PAPER 두 계좌는 사라지거나 임의 삭제되지 않았다.
+재시작 복구 재검증에서 같은 후보 `candidate-6bd0c851d2ea439f`가
+`EMERGENCY_STALE`로 종료됐다. 진입 77,539, 실제 종료 77,736, 보유 1,627초였고 BASE
+순손익은 +1.4536900 USDT, STRESS 순손익은 +0.106700 USDT였다. 이는 TP·SL 종료가 아닌
+데이터 안전종료이며 수익성 증거로 사용하지 않는다. 화면은 같은 진입의 두 비용 가정을 하나의
+기회로 묶고 상세 원장 두 행으로 구분했다.
+
+### 101.4 실제 브라우저와 회귀 검증
+
+설치된 Chromium으로 실제 서비스의 desktop·tablet·mobile 화면을 확인했다. HTTP 200,
+빈 본문·error overlay·console error·수평 overflow는 모두 0이었다. 기록 기본 화면은 현재 Run,
+모든 계좌·비용, 현재 전략버전 기준으로 15기회·30상세 원장행을 표시했다. 최신 BTC 상세를 열어
+중복이 아니라 BASE·STRESS 비용 비교임을 확인했고 정밀 다시보기 13 frame을 불러왔다. 진입과
+실제 종료로 이동했고 미도달 TP1은 비활성인 것을 확인했다. 차트에는 신호·진입·SL·TP1·TP2·실제
+종료·결과가 함께 표시됐다. 전략 화면에서는 승률 내림차순·오름차순·내림차순을 실제로 눌렀고,
+브랜드를 눌러 시장 메인으로 돌아왔다. 2표본 100%와 1표본 0% 모두 표본부족·순위제외로
+표시됐다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 외장 원본·GitHub 정책 | `PASS` | 프로그램 원본·운영 데이터 외장, 공유 가능한 변경 main 동기화 대상 |
+| 내장 최소 예외 | `PASS_WITH_REQUIRED_EXCEPTION` | 외장 runner·log만 가리키는 LaunchAgent plist 1개·1,020bytes |
+| 장애 보존 | `FAIL_PRESERVED` | worker 초기화 실패·안전잠금·drop 24,627, 성공으로 재분류하지 않음 |
+| worker 복구 회귀 | `PASS` | 표적 22건·실패 batch 보존·교체 worker 재시도 |
+| 같은 설치 서비스 180초 | `PASS` | event·평가 전진, 저장결함·drop·비계획 reconnect 0 |
+| 공개시장 smoke | `PASS` | Binance 704종목·적격 525·Upbit 288·WS 16event·인증정보 0 |
+| backend 전체 | `PASS` | 918건·26.53초 |
+| frontend 단위 | `PASS` | 15 files·87건 |
+| Ruff·mypy·ESLint·TypeScript·build | `PASS_WITH_EXISTING_WARNING` | mypy 112 source, 기존 551.21kB chunk 경고 |
+| PAPER safety·security | `PASS` | security 148 source·실제 주문 경로 false |
+| repository hygiene·누적 회귀계약 | `PASS` | 30계약·59 anchor |
+| fixture Playwright | `PASS` | desktop·tablet·mobile 3건 |
+| 실제 8870 브라우저 | `PASS` | 기록·상세·다시보기·정렬·홈 이동, console error 0 |
+| 활성 원장 full quick_check | `NOT_RUN` | LIVE writer·동일 물리 device에서는 금지 |
+| 6시간·24시간 | `NOT_RUN` | 수정 뒤 실제 시간 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 현재버전 BASE·STRESS 각 15표본으로 최소 30 미달 |
+
+기계판독 종합 근거는 `evidence/WAVE140_EXTERNAL_ONLY_STORAGE_RECOVERY_QA.json`, 설치 서비스
+관찰은 `evidence/WAVE140_EXTERNAL_PERSISTENCE_RECOVERY_RUNNING_SERVICE_180S.json`, 공개시장
+입력은 `evidence/WAVE140_PUBLIC_MARKET_SMOKE.json`, 잘못된 독립 runtime 시도는
+`evidence/WAVE140_STANDALONE_SOAK_WRONG_SCOPE_FAIL_180S.json`에 각각 분리해 보존했다. 결정
+근거는 `docs/adr/ADR-133-external-persistence-worker-recovery-and-release-retention.md`다.
+
+현 수용상태는
+`EXTERNAL_ONLY_RUNTIME_RECOVERED_UI_REGRESSION_PASS_INCIDENT_PRESERVED_LONG_RUN_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
