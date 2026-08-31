@@ -8,7 +8,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>__BOOTSTRAP_SCRIPT__</string>
+    <string>__RUNNER_SCRIPT__</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -21,8 +21,8 @@
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>
-  <string>/dev/null</string>
+  <string>__SERVICE_LOG__</string>
   <key>StandardErrorPath</key>
-  <string>/dev/null</string>
+  <string>__ERROR_LOG__</string>
 </dict>
 </plist>

@@ -45,7 +45,7 @@ Finder에서는 `ROBOM_FlowScalper.app` 또는 `ROBOM_FlowScalper.command`를 �
 ./scripts/install_macos_service.sh
 ```
 
-서비스는 보존된 Run 상태를 안전하게 복구하며 화면의 `자동 관찰 시작`을 누르면 `연결 중`을 거쳐 `작동 중`이 표시됩니다. 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. canonical 소스·활성 SQLite 원장·공개시장 Parquet·불변 릴리스·Python base·venv·cache·temp·운영 로그는 모두 외장 APFS에 보존합니다. 내장에는 macOS가 요구하는 작은 `~/Library/LaunchAgents/kr.robom.flowscalper.plist`만 남기고 로그는 외장에서 10MiB 단위로 회전합니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 저장하고, archive와 활성 원장 파일시스템 중 하나라도 여유공간이 5GiB 미만이거나 4% 미만이면 신규 PAPER 진입을 fail-closed로 잠급니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없으며, 로그인 후 One Touch가 연결되면 외장 bootstrap이 sparsebundle을 연결하고 서비스를 다시 시작합니다.
+서비스는 보존된 Run 상태를 안전하게 복구하며 화면의 `자동 관찰 시작`을 누르면 `연결 중`을 거쳐 `작동 중`이 표시됩니다. 일시적인 데이터 안전잠금에서는 시장 관찰을 유지한 채 `작동 중 · 안전 대기`로 전환했다가 조건이 정상화되면 새 PAPER 진입을 자동 복귀합니다. canonical 소스·활성 SQLite 원장·공개시장 Parquet·불변 릴리스·Python base·venv·cache·temp·운영 로그는 모두 외장 APFS에 보존합니다. 내장에는 macOS가 요구하는 작은 `~/Library/LaunchAgents/kr.robom.flowscalper.plist`만 남기고 로그는 외장에서 10MiB 단위로 회전합니다. 공개시장 원본 이벤트는 1,000건 단위 ZSTD Parquet으로 저장하고, archive와 활성 원장 파일시스템 중 하나라도 여유공간이 5GiB 미만이거나 4% 미만이면 신규 PAPER 진입을 fail-closed로 잠급니다. 컴퓨터가 꺼져 있는 동안 localhost는 열 수 없습니다. LaunchAgent는 마운트된 외장 APFS의 불변 릴리스를 자동 복구하지만 macOS privacy가 백그라운드 sparsebundle 직접 연결을 막으므로, 재로그인 뒤 완전 자동 연결은 사용자가 시스템 설정에서 별도로 승인할 때까지 `LOCAL USER ACTION REQUIRED`입니다.
 
 자동 시작을 해제하되 거래 원장과 외장 파일을 보존하려면 다음 명령을 실행합니다.
 

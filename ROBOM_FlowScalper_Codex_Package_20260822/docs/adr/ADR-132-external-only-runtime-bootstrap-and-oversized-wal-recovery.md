@@ -28,11 +28,13 @@ Apple의 launchd 문서는 사용자 Agent plist를 사용자 Library에 두고 
 1. 소스, 불변 릴리스, Python base·venv, bytecode·uv·XDG cache, temp, 서비스 로그,
    stage 결과, 원장과 시장자료는 모두 외장 APFS 작업공간에 둔다.
 2. 내장에는 macOS가 요구하는 `~/Library/LaunchAgents/kr.robom.flowscalper.plist`만 둔다.
-   plist의 표준 출력·오류는 `/dev/null`이며 프로그램 로그는 외장 경로에서 10MiB 단위로
-   제한 회전한다.
-3. plist는 sparsebundle 내부 릴리스를 직접 가리키지 않는다. One Touch 바깥의 작은
-   bootstrap을 `/bin/zsh`로 실행하고, bootstrap이 sparsebundle을 `hdiutil attach
-   -nobrowse`한 뒤 외장 `current` 불변 릴리스 runner를 `exec`한다.
+   plist의 표준 출력·오류는 외장 APFS 로그이며 10MiB 단위로 제한 회전한다.
+3. macOS LaunchAgent의 백그라운드 셸은 `One Touch` 일반 폴더 쓰기와 disk image 직접
+   attach를 privacy 제약으로 거부하지만, 이미 마운트된 외장 APFS에는 접근할 수 있음을 실제
+   최소 실행으로 확인했다. 따라서 LaunchAgent는 마운트된 외장 APFS의 `current` 불변
+   릴리스 runner를 직접 실행한다. 외장 bootstrap 스크립트와 내장 runtime fallback은 두지
+   않는다. sparsebundle의 재로그인 자동 연결은 사용자가 macOS 로그인 항목 또는 privacy
+   권한을 승인하기 전까지 별도 로컬 승인 항목으로 남긴다.
 4. 설치기는 외장 프로젝트·외장 runtime·외장 sparsebundle이 모두 확인되지 않으면
    fail-closed한다. 내장 Application Support fallback은 제거한다.
 5. 서비스 시작 전 WAL이 64MiB를 넘으면 server나 모드 선택보다 먼저 handle 0을 확인한다.
@@ -52,7 +54,7 @@ Apple의 launchd 문서는 사용자 Agent plist를 사용자 Library에 두고 
 - checkpoint 뒤 WAL은 busy 0·0byte여야 한다.
 - 실제 대형 원장은 닫힌 source를 checkpoint한 뒤 다른 물리 device에 SHA-256 일치 사본을
   만들고 그 immutable 사본에서만 `quick_check`와 외래키 검사를 실행한다.
-- 설치·runner·plist·bootstrap 정적 회귀는 Application Support와 ROBOM 내부 cache 경로가
+- 설치·runner·plist 정적 회귀는 Application Support와 ROBOM 내부 cache 경로가
   다시 생기는 것을 막는다.
 - 실제 서비스 복구 뒤 동일 Run, 공개시장 event 전진, PAPER, 실제 주문 false, 인증 false,
   queue·지연·저장·재연결 안전선을 다시 관찰한다.
@@ -65,7 +67,10 @@ Apple의 launchd 문서는 사용자 Agent plist를 사용자 Library에 두고 
 
 ## 한계
 
-- 외장 물리디스크가 분리돼 있으면 localhost는 열릴 수 없다. `KeepAlive`는 디스크가 다시
-  연결된 뒤 재시도를 제공할 뿐 컴퓨터가 꺼진 동안 사이트를 제공하지 않는다.
+- 외장 물리디스크가 분리돼 있거나 sparsebundle 연결이 완료되지 않으면
+  localhost는 열릴 수 없다. `KeepAlive`는 마운트가 완료된 뒤 재시도를 제공할 뿐 컴퓨터가
+  꺼진 동안 사이트를 제공하지 않는다.
+- 현재 세션에서는 LaunchAgent가 마운트된 APFS runner를 실제 시작하는 것까지 검증했다.
+  로그아웃·재부팅 뒤 자동 sparsebundle 연결은 macOS 사용자 승인이 없어 `NOT_RUN`이다.
 - 이 복구는 저장 무결성과 시작 정지를 다룬다. 전략 수익성, 6시간·24시간 지속성과 실자금
   준비를 증명하지 않는다.

@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- macOS LaunchAgent가 `One Touch` 일반 폴더를 `operation not permitted`로 거부하는 실제 제약을 확인했다. 내장 fallback이나 멈추는 AppleScript를 추가하지 않고, plist가 마운트된 외장 APFS의 불변 runner와 외장 로그를 직접 사용하게 했다. sparsebundle의 재로그인 자동 연결은 사용자 macOS 승인 전까지 `LOCAL USER ACTION REQUIRED`로 구분한다.
 - macOS 소스·불변 릴리스·Python·의존성·cache·temp·로그·SQLite·공개시장 자료를 외장 APFS에만 두고, 내장에는 macOS가 요구하는 작은 LaunchAgent plist만 남긴다. 256GiB sparsebundle로 확장하고, 비정상 64MiB 초과 WAL은 닫힌 원장을 APFS clone으로 보존한 뒤 0byte checkpoint가 확인될 때만 시작한다.
 - 불변 macOS 릴리스의 Git archive를 여유가 204MiB뿐인 내부 임시폴더에 만들던 설치 실패를 수정했다. archive 임시파일을 외장 runtime release staging과 같은 볼륨에 만들고 성공·실패 뒤 제거하며, 실제 서비스는 준비가 끝날 때까지 기존 릴리스를 계속 실행한다.
 - Bybit에서 적응 개발한 ADX·DMI 비대칭 추세 runner 네 개를 규칙 변경 없이 OKX 공개 USDT perpetual 12종목의 완성 4시간봉 83,232개·펀딩 41,645개에 외부복제했다. 네 후보 모두 BASE·STRESS 평균과 PF·양의 왜도·큰 승자 형태는 보였지만 bootstrap 하한·DSR·시간순 안정성을 모두 통과하지 못했다. Registry·LIVE SHADOW 변경 없이 `NOT_PROVEN`, `NOT_READY`로 보존했다.

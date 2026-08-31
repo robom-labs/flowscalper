@@ -19,7 +19,6 @@ USER_ID="$(id -u)"
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
 TARGET_PLIST="$LAUNCH_AGENT_DIR/$LABEL.plist"
 TEMPLATE_PLIST="$SOURCE_PROJECT_DIR/packaging/macos/$LABEL.plist"
-BOOTSTRAP_TEMPLATE="$SOURCE_PROJECT_DIR/packaging/macos/run_external_bootstrap.sh"
 SERVICE_TARGET="gui/$USER_ID/$LABEL"
 SOURCE_VOLUME_NAME="${SOURCE_PROJECT_DIR#/Volumes/}"
 SOURCE_VOLUME_NAME="${SOURCE_VOLUME_NAME%%/*}"
@@ -33,8 +32,8 @@ LOG_DIR="$RUNTIME_ROOT/logs"
 CACHE_DIR="$RUNTIME_ROOT/cache"
 RUNTIME_VENV="$SUPPORT_DIR/runtime-venv"
 PYTHON_BASE="$SUPPORT_DIR/python-base"
-BOOTSTRAP_DIR="$EXTERNAL_HOME/bootstrap"
-BOOTSTRAP_SCRIPT="$BOOTSTRAP_DIR/run_flowscalper_bootstrap.sh"
+SERVICE_LOG="$LOG_DIR/service.log"
+ERROR_LOG="$LOG_DIR/service-error.log"
 MARKET_ARCHIVE_PATH="${ROBOM_MARKET_ARCHIVE_PATH:-$SOURCE_PROJECT_DIR/data/market-parquet-v6}"
 
 if [[ "$SOURCE_PROJECT_DIR" != "$WORKSPACE_MOUNT"/* ]]; then
@@ -42,19 +41,19 @@ if [[ "$SOURCE_PROJECT_DIR" != "$WORKSPACE_MOUNT"/* ]]; then
   exit 1
 fi
 if [[ "$RUNTIME_ROOT" != /Volumes/*/* || "$EXTERNAL_HOME" != /Volumes/*/* ]]; then
-  echo "런타임과 bootstrap은 외장 볼륨 경로여야 합니다." >&2
+  echo "런타임과 sparsebundle은 외장 볼륨 경로여야 합니다." >&2
   exit 1
 fi
 if [[ ! -d "$SPARSEBUNDLE_PATH" ]]; then
   echo "외장 APFS sparsebundle이 없습니다: $SPARSEBUNDLE_PATH" >&2
   exit 1
 fi
-if [[ ! -f "$TEMPLATE_PLIST" || ! -f "$BOOTSTRAP_TEMPLATE" || ! -x "$SOURCE_PROJECT_DIR/.venv/bin/python" || ! -d "$SOURCE_PROJECT_DIR/frontend/node_modules" ]]; then
+if [[ ! -f "$TEMPLATE_PLIST" || ! -x "$SOURCE_PROJECT_DIR/.venv/bin/python" || ! -d "$SOURCE_PROJECT_DIR/frontend/node_modules" ]]; then
   echo "먼저 외장 저장소에서 ./scripts/setup_macos.sh를 실행해야 합니다." >&2
   exit 1
 fi
 
-mkdir -p "$LAUNCH_AGENT_DIR" "$SUPPORT_DIR" "$LOG_DIR" "$CACHE_DIR" "$BOOTSTRAP_DIR"
+mkdir -p "$LAUNCH_AGENT_DIR" "$SUPPORT_DIR" "$LOG_DIR" "$CACHE_DIR"
 SOURCE_PYTHON="$SOURCE_PROJECT_DIR/.venv/bin/python"
 SOURCE_PYTHON_BASE="$($SOURCE_PYTHON -c 'import sys; print(sys.base_prefix)')"
 PYTHON_BINARY="$($SOURCE_PYTHON -c 'import sys; print(f"python{sys.version_info.major}.{sys.version_info.minor}")')"
@@ -84,19 +83,25 @@ STAGE_RESULT="$SUPPORT_DIR/latest-release-stage.json"
   "$STAGE_RESULT"
 PROJECT_DIR="$RUNTIME_ROOT/current"
 [[ -f "$PROJECT_DIR/release-manifest.json" ]] || { echo "불변 릴리스 준비에 실패했습니다." >&2; exit 1; }
-escaped_bootstrap="${BOOTSTRAP_SCRIPT//&/\\&}"
-escaped_mount="${WORKSPACE_MOUNT//&/\\&}"
-escaped_bundle="${SPARSEBUNDLE_PATH//&/\\&}"
-escaped_runtime="${RUNTIME_ROOT//&/\\&}"
-sed \
-  -e "s|__WORKSPACE_MOUNT__|$escaped_mount|g" \
-  -e "s|__SPARSEBUNDLE_PATH__|$escaped_bundle|g" \
-  -e "s|__RUNTIME_ROOT__|$escaped_runtime|g" \
-  "$BOOTSTRAP_TEMPLATE" > "$BOOTSTRAP_SCRIPT"
-sed -e "s|__BOOTSTRAP_SCRIPT__|$escaped_bootstrap|g" "$TEMPLATE_PLIST" > "$TARGET_PLIST"
+RUNNER_SCRIPT="$PROJECT_DIR/scripts/run_macos_service.sh"
+[[ -f "$RUNNER_SCRIPT" ]] || { echo "불변 PAPER 서비스 실행기가 없습니다: $RUNNER_SCRIPT" >&2; exit 1; }
+"$SOURCE_PYTHON" - "$TEMPLATE_PLIST" "$TARGET_PLIST" "$RUNNER_SCRIPT" "$SERVICE_LOG" "$ERROR_LOG" <<'PY'
+from pathlib import Path
+from sys import argv
+from xml.sax.saxutils import escape
+
+source, target = map(Path, argv[1:3])
+payload = source.read_text(encoding="utf-8")
+for placeholder, value in zip(
+    ("__RUNNER_SCRIPT__", "__SERVICE_LOG__", "__ERROR_LOG__"),
+    argv[3:],
+    strict=True,
+):
+    payload = payload.replace(placeholder, escape(value))
+target.write_text(payload, encoding="utf-8")
+PY
 xattr -d com.apple.provenance "$TARGET_PLIST" 2>/dev/null || true
 chmod 600 "$TARGET_PLIST"
-chmod 700 "$BOOTSTRAP_SCRIPT"
 chmod 755 "$(cd "$PROJECT_DIR" && pwd -P)/scripts/run_macos_service.sh"
 plutil -lint "$TARGET_PLIST"
 

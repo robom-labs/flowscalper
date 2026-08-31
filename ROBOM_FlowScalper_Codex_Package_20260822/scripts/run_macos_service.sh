@@ -15,6 +15,7 @@ RUNTIME_ROOT="${ROBOM_RUNTIME_ROOT:-$PROJECT_MOUNT/05_RUNTIME/ROBOM_FlowScalper}
 SUPPORT_DIR="$RUNTIME_ROOT/support"
 CACHE_DIR="$RUNTIME_ROOT/cache"
 TMP_DIR="$RUNTIME_ROOT/tmp"
+LOG_DIR="$RUNTIME_ROOT/logs"
 RUNTIME_PYTHON="${ROBOM_RUNTIME_PYTHON:-$SUPPORT_DIR/runtime-venv/bin/python}"
 DEFAULT_ACTIVE_LEDGER_DIR="$RUNTIME_ROOT/active-ledger"
 ACTIVE_LEDGER_DIR="${ROBOM_ACTIVE_LEDGER_DIR:-$DEFAULT_ACTIVE_LEDGER_DIR}"
@@ -42,7 +43,18 @@ MARKET_ARCHIVE_PATH="${ROBOM_MARKET_ARCHIVE_PATH:-$MANIFEST_MARKET_ARCHIVE}"
 
 cd "$PROJECT_DIR"
 umask 077
-mkdir -p "$ACTIVE_LEDGER_DIR" "$CACHE_DIR/python" "$CACHE_DIR/xdg" "$CACHE_DIR/uv" "$TMP_DIR"
+mkdir -p "$ACTIVE_LEDGER_DIR" "$CACHE_DIR/python" "$CACHE_DIR/xdg" "$CACHE_DIR/uv" "$TMP_DIR" "$LOG_DIR"
+MAX_LOG_BYTES=10485760
+for log_file in "$LOG_DIR/service.log" "$LOG_DIR/service-error.log"; do
+  if [[ -L "$log_file" ]]; then
+    echo "서비스 로그가 심볼릭 링크여서 시작을 거부합니다: $log_file" >&2
+    exit 75
+  fi
+  if [[ -f "$log_file" ]] && (( $(/usr/bin/stat -f %z "$log_file") >= MAX_LOG_BYTES )); then
+    /bin/cp -p "$log_file" "$log_file.previous"
+    : > "$log_file"
+  fi
+done
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 export PYTHONPYCACHEPREFIX="$CACHE_DIR/python"
 export XDG_CACHE_HOME="$CACHE_DIR/xdg"

@@ -34,20 +34,16 @@ def test_launch_agent_allows_graceful_paper_persistence_shutdown() -> None:
     assert payload["KeepAlive"] is True
     assert payload["ExitTimeOut"] >= 60
     assert payload["ProcessType"] == "Background"
-    assert payload["ProgramArguments"] == ["/bin/zsh", "__BOOTSTRAP_SCRIPT__"]
-    assert payload["StandardOutPath"] == "/dev/null"
-    assert payload["StandardErrorPath"] == "/dev/null"
+    assert payload["ProgramArguments"] == ["/bin/zsh", "__RUNNER_SCRIPT__"]
+    assert payload["StandardOutPath"] == "__SERVICE_LOG__"
+    assert payload["StandardErrorPath"] == "__ERROR_LOG__"
 
 
-def test_macos_service_keeps_runtime_cache_logs_and_bootstrap_external() -> None:
+def test_macos_service_keeps_runtime_cache_and_logs_external() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
         encoding="utf-8"
     )
     runner = (PROJECT_ROOT / "scripts" / "run_macos_service.sh").read_text(encoding="utf-8")
-    bootstrap = (
-        PROJECT_ROOT / "packaging" / "macos" / "run_external_bootstrap.sh"
-    ).read_text(encoding="utf-8")
-
     for source in (installer, runner):
         assert "Library/Application Support/ROBOM FlowScalper" not in source
         assert "Library/Caches/ROBOM_FlowScalper" not in source
@@ -65,10 +61,15 @@ def test_macos_service_keeps_runtime_cache_logs_and_bootstrap_external() -> None
     assert 'export XDG_CACHE_HOME="$CACHE_DIR/xdg"' in runner
     assert 'export UV_CACHE_DIR="$CACHE_DIR/uv"' in runner
     assert 'export TMPDIR="$TMP_DIR/"' in runner
-    assert "/usr/bin/hdiutil attach -nobrowse" in bootstrap
-    assert 'RUNNER="$RUNTIME_ROOT/current/scripts/run_macos_service.sh"' in bootstrap
-    assert 'MAX_LOG_BYTES=10485760' in bootstrap
-    assert 'exec >>"$SERVICE_LOG" 2>>"$ERROR_LOG"' in bootstrap
+    assert 'RUNNER_SCRIPT="$PROJECT_DIR/scripts/run_macos_service.sh"' in installer
+    assert "/usr/bin/osascript" not in installer
+    assert '__RUNNER_SCRIPT__' in installer
+    assert '__SERVICE_LOG__' in installer
+    assert '__ERROR_LOG__' in installer
+    assert 'LOG_DIR="$RUNTIME_ROOT/logs"' in runner
+    assert 'MAX_LOG_BYTES=10485760' in runner
+    assert '/bin/cp -p "$log_file" "$log_file.previous"' in runner
+    assert ': > "$log_file"' in runner
 
     setup = (PROJECT_ROOT / "scripts" / "setup_macos.sh").read_text(encoding="utf-8")
     assert 'export UV_PYTHON_INSTALL_DIR="$CACHE_ROOT/python"' in setup
