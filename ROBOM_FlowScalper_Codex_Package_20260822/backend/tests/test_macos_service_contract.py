@@ -665,7 +665,9 @@ def test_installer_proves_exact_launchctl_absence_before_and_after_lsof() -> Non
         )
     ]
 
-    assert 'if (( status != 113 )) || [[ "$output" != "$expected" ]]' in stopped
+    assert "local launchctl_status=0" in stopped
+    assert "local status=" not in stopped
+    assert 'if (( launchctl_status != 113 )) || [[ "$output" != "$expected" ]]' in stopped
     assert 'Could not find service \\"$LABEL\\" in domain for user gui: $USER_ID' in stopped
     assert stopped.count("verify_launch_agent_absent_exact") == 3
     assert 'verify_launch_agent_absent_exact "초기"' in stopped

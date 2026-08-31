@@ -667,15 +667,15 @@ verify_service_fully_stopped() {
   verify_launch_agent_absent_exact() {
     local phase="$1"
     local output=""
-    local status=0
+    local launchctl_status=0
     local expected="Bad request.
 Could not find service \"$LABEL\" in domain for user gui: $USER_ID"
     if output="$(/bin/launchctl print "$SERVICE_TARGET" 2>&1)"; then
-      status=0
+      launchctl_status=0
     else
-      status=$?
+      launchctl_status=$?
     fi
-    if (( status != 113 )) || [[ "$output" != "$expected" ]]; then
+    if (( launchctl_status != 113 )) || [[ "$output" != "$expected" ]]; then
       echo "LaunchAgent $phase 부재 응답이 exact 계약과 다릅니다." >&2
       return 1
     fi
