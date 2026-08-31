@@ -14,8 +14,9 @@ from typing import Any
 
 import pyarrow as pa
 
+from backend.app.replay.focus import ReplayFocusSessionBuilder
 from backend.app.replay.market import StoredMarketReplay
-from backend.app.replay.timeline import build_replay_timeline
+from backend.app.replay.timeline import build_replay_preview, build_replay_timeline
 from backend.app.storage.io_priority import storage_io_priority_gate
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.parquet import (
@@ -214,6 +215,54 @@ def replay_timeline_from_paths(
             symbol=symbol.strip().upper() if symbol else None,
             limit=limit,
             cooperative_yield=cpu_budget.checkpoint,
+        )
+    finally:
+        ledger.close()
+
+
+def replay_preview_from_paths(
+    database_path: str,
+    archive_root: str | None,
+    source_run_id: str,
+    symbol: str | None,
+    candle_limit: int,
+) -> dict[str, object]:
+    """화면 미리보기도 LIVE 메인 프로세스의 Python GIL과 분리한다."""
+
+    _prepare_cpu_budget()
+    ledger = _open_ledger(database_path, archive_root)
+    try:
+        return build_replay_preview(
+            ledger,
+            source_run_id,
+            symbol=symbol.strip().upper() if symbol else None,
+            candle_limit=candle_limit,
+        )
+    finally:
+        ledger.close()
+
+
+def replay_focus_from_paths(
+    database_path: str,
+    archive_root: str | None,
+    source_run_id: str,
+    trade_id: str,
+    profile: str,
+    created_ts_ms: int,
+) -> dict[str, object]:
+    """거래 집중 재생의 조회·프레임 생성을 LIVE 메인 프로세스와 분리한다."""
+
+    cpu_budget = _prepare_cpu_budget()
+    ledger = _open_ledger(database_path, archive_root)
+    try:
+        return ReplayFocusSessionBuilder().build(
+            ledger,
+            run_id=source_run_id,
+            trade_id=trade_id,
+            profile=profile,
+            created_ts_ms=created_ts_ms,
+            cooperative_yield=cpu_budget.checkpoint,
+            persist_cache=False,
         )
     finally:
         ledger.close()

@@ -37,6 +37,8 @@ from backend.app.replay.operations import (
     ReplayOperationManager,
 )
 from backend.app.replay.process import (
+    replay_focus_from_paths,
+    replay_preview_from_paths,
     replay_stored_run_in_subprocess,
     replay_timeline_from_paths,
 )
@@ -463,6 +465,7 @@ def create_app(
     replay_process_lock = asyncio.Lock()
     replay_preview_lock = asyncio.Lock()
     replay_preview_cache: dict[tuple[str, str | None, int], tuple[float, dict[str, object]]] = {}
+    replay_focus_cache: dict[tuple[str, str, str], tuple[float, dict[str, object]]] = {}
     replay_results_cache_lock = asyncio.Lock()
     replay_results_cache: list[dict[str, object]] | None = None
 
@@ -1379,12 +1382,28 @@ def create_app(
                 cached = replay_preview_cache.get(cache_key)
                 if cached is not None and now - cached[0] <= 10.0:
                     return dict(cached[1])
-                preview = await asyncio.to_thread(
-                    active_runtime.replay_preview,
-                    run_id,
-                    symbol=normalized_symbol,
-                    candle_limit=candle_limit,
-                )
+                if (
+                    active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                    and active_runtime.ledger is not None
+                ):
+                    ensure_replay_process_available()
+                    archive = active_runtime.ledger.market_event_archive
+                    async with replay_process_lock:
+                        preview = await to_process.run_sync(
+                            replay_preview_from_paths,
+                            str(active_runtime.ledger.path),
+                            str(archive.root) if archive is not None else None,
+                            run_id,
+                            normalized_symbol,
+                            candle_limit,
+                        )
+                else:
+                    preview = await asyncio.to_thread(
+                        active_runtime.replay_preview,
+                        run_id,
+                        symbol=normalized_symbol,
+                        candle_limit=candle_limit,
+                    )
                 completed_at = time.monotonic()
                 replay_preview_cache[cache_key] = (completed_at, preview)
                 if len(replay_preview_cache) > 16:
@@ -1453,24 +1472,44 @@ def create_app(
         trade_id: str = Query(min_length=3, max_length=120),
         profile: str = Query(default="BASE", pattern=r"^(BASE|STRESS)$"),
     ) -> dict[str, object]:
+        cache_key = (run_id, trade_id, profile)
+        cached = replay_focus_cache.get(cache_key)
+        if cached is not None:
+            return dict(cached[1])
         try:
             if (
                 active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
                 and active_runtime.ledger is not None
             ):
-                return await asyncio.to_thread(
-                    active_runtime.replay_focus_session,
-                    run_id,
-                    trade_id=trade_id,
-                    profile=profile,
-                    persist_cache=False,
-                )
-            return await asyncio.to_thread(
+                ensure_replay_process_available()
+                archive = active_runtime.ledger.market_event_archive
+                async with replay_process_lock:
+                    focus = await to_process.run_sync(
+                        replay_focus_from_paths,
+                        str(active_runtime.ledger.path),
+                        str(archive.root) if archive is not None else None,
+                        run_id,
+                        trade_id,
+                        profile,
+                        active_runtime.clock.utc_ms(),
+                    )
+                completed_at = time.monotonic()
+                replay_focus_cache[cache_key] = (completed_at, focus)
+                if len(replay_focus_cache) > 16:
+                    oldest_key = min(
+                        replay_focus_cache,
+                        key=lambda key: replay_focus_cache[key][0],
+                    )
+                    replay_focus_cache.pop(oldest_key, None)
+                return dict(focus)
+            focus = await asyncio.to_thread(
                 active_runtime.replay_focus_session,
                 run_id,
                 trade_id=trade_id,
                 profile=profile,
             )
+            replay_focus_cache[cache_key] = (time.monotonic(), focus)
+            return dict(focus)
         except ValueError as error:
             raise HTTPException(
                 status_code=404,
