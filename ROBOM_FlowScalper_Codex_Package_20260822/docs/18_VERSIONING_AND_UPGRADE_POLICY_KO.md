@@ -71,6 +71,11 @@ ROBOM_FlowScalper_Codex_Package_20260822/
 - mobile·tablet·desktop에서 현재 수용기준을 다시 검증한다.
 - 과거 screenshot은 현재 화면 증거로 사용하지 않는다.
 
+V6의 5개 group에서 4개 page로의 전환은 새 화면을 옆에 추가하는 변경이 아니다. 시장·전략·거래·
+설정 네 route만 기본 navigation에 남기고 기존 Live·LeaguePositions·Performance·Replay·Risk·
+System·StrategySymbol wrapper와 전용 copy·CSS·test를 같은 변경에서 제거한다. 단, 원장,
+replay engine, 과거 strategy/version과 settings revision은 migration 대상이지 삭제 대상이 아니다.
+
 ## 데이터와 schema 업그레이드 규칙
 
 - Run은 `run_id`, app version, strategy version, config hash와 schema version을 기록한다.
@@ -89,6 +94,11 @@ ROBOM_FlowScalper_Codex_Package_20260822/
 | MAJOR | 기존 Run·API·사용 흐름과 호환되지 않는 계약 변경 | `1.0.0-paper` |
 
 0.x 개발 단계에서도 사용자가 보는 동작이나 저장 형식이 깨지면 changelog와 migration 문서에 명확히 기록한다. 실제 주문 없는 `-paper` 경계는 버전이 올라가도 자동으로 해제되지 않는다.
+
+V6는 호환 가능한 family metadata와 read API 추가만 보면 MINOR 후보지만 기존 5-page 사용자
+흐름을 대체한다. 최종 버전 결정은 `VERSION`, frontend package와 Python metadata를 한 변경에서
+동기화할 권한이 있는 릴리스 단계에서 한다. Wave 0 문서·소스 변경만으로 VERSION을 부분 변경하지
+않는다.
 
 ## 릴리스 체크리스트
 

@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any, cast
 
+from backend.app.build_identity import APP_VERSION
 from backend.app.domain.models import MarketEvent, SystemStatus
 from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
 
@@ -218,6 +219,11 @@ def build_dashboard_snapshot(
                 else "BINANCE /public + /market"
             ),
             "auth_headers": False,
+            "private_api_enabled": False,
+            "api_key_enabled": False,
+            "wallet_enabled": False,
+            "runtime_ai_order_decision_enabled": False,
+            "funding_readiness": "NOT_READY",
             "reconnects": 0,
             "sequence_gaps": 0,
             "resyncs": 0,
@@ -227,7 +233,7 @@ def build_dashboard_snapshot(
             "retention_feature_days": 90,
             "trade_windows_retained": True,
             "disk_pressure_entry_lock": True,
-            "app_version": "0.2.0-paper",
+            "app_version": APP_VERSION,
             "release_commit": release_commit,
             "release_isolated": release_isolated,
             "runtime_ready": ready_mode,

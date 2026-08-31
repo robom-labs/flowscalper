@@ -1,15 +1,9 @@
 // 대시보드 API와 React 화면 사이의 타입 계약을 정의한다.
 export type PageId =
-  | 'summary'
+  | 'market'
   | 'strategies'
-  | 'positions'
-  | 'history'
-  | 'replay'
-  | 'performance'
-  | 'strategy-symbol'
-  | 'risk'
-  | 'terminal'
-  | 'system'
+  | 'trades'
+  | 'settings'
 
 export type ControlAction = 'START_LIVE' | 'START_DEMO' | 'NEW_RUN'
 
@@ -179,10 +173,12 @@ export type HistoryRow = {
   time_to_stop_ms?: number | null
   trailing_activation_ts_ms?: number | null
   runner_started_ts_ms?: number | null
-  peak_unrealized_usdt?: string
-  giveback_usdt?: string
-  runner_net_pnl_usdt?: string
-  trail_trigger_slippage_usdt?: string
+  mae_r?: string | null
+  mfe_r?: string | null
+  peak_unrealized_usdt?: string | null
+  giveback_usdt?: string | null
+  runner_net_pnl_usdt?: string | null
+  trail_trigger_slippage_usdt?: string | null
   trailing_state_checksum?: string | null
   quantity: string
   exit_reason: string
@@ -218,8 +214,97 @@ export type HistoryResponse = {
   auth_required: false
 }
 
+export type TradeOpportunity = {
+  key: {
+    run_id: string
+    strategy_id: string
+    strategy_version: string
+    opportunity_id: string
+    symbol: string
+    side: string
+  }
+  family_id: string | null
+  family_label_ko: string | null
+  variant_label_ko: string | null
+  entry_ts_ms: number
+  exit_ts_ms: number
+  profiles: Partial<Record<'BASE' | 'STRESS', HistoryRow | HistoryRow[]>>
+  profile_account_refs?: Partial<Record<'BASE' | 'STRESS', TradeProfileAccountRef>>
+  accounts?: TradeAccountResult[]
+  account_groups?: TradeAccountGroup[]
+  rows: HistoryRow[]
+  raw_result_row_count: number
+  base_result_row_count: number
+  stress_result_row_count: number
+  partial_exit_row_count: number
+  replay_available: boolean
+}
+
+export type TradeProfileAccountRef = {
+  account_scope: 'MAIN' | 'LEAGUE'
+  account_id: string
+}
+
+export type TradeAccountResult = {
+  account_scope: 'MAIN' | 'LEAGUE'
+  account_id: string
+  profiles: Partial<Record<'BASE' | 'STRESS', HistoryRow | HistoryRow[]>>
+  rows: HistoryRow[]
+  raw_result_row_count: number
+  base_result_row_count: number
+  stress_result_row_count: number
+  partial_exit_row_count: number
+}
+
+export type TradeAccountGroup = {
+  account_scope: 'MAIN' | 'LEAGUE'
+  account_group_id: string
+  account_ids: string[]
+  profiles: Partial<Record<'BASE' | 'STRESS', HistoryRow | HistoryRow[]>>
+  profile_account_refs: Partial<Record<'BASE' | 'STRESS', TradeProfileAccountRef>>
+  rows: HistoryRow[]
+  raw_result_row_count: number
+  base_result_row_count: number
+  stress_result_row_count: number
+  partial_exit_row_count: number
+}
+
+export type TradesResponse = {
+  schema_version: 1
+  opportunities: TradeOpportunity[]
+  counts: {
+    unique_opportunities: number
+    returned_opportunities?: number
+    raw_result_rows: number
+    base_result_rows: number
+    stress_result_rows: number
+    unresolved_result_rows?: number
+    source_raw_result_rows?: number
+  }
+  grouping_status?: 'PROVEN' | 'NOT_PROVEN'
+  source_status?: 'COMPLETE' | 'NOT_PROVEN_RAW_LIMIT_BOUNDARY'
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
+}
+
 export type StrategyRow = {
   strategy_id: string
+  family_id?: string
+  family_label_ko?: string
+  role?: string
+  variant_id?: string
+  variant_label_ko?: string
+  is_current_variant?: boolean
+  supersedes_strategy_ids?: string[]
+  superseded_by_strategy_id?: string | null
+  user_visible_by_default?: boolean
+  default_research_enabled?: boolean
+  final_ranking_eligible?: boolean
+  reason_code?: string | null
+  reason_ko?: string | null
+  reason_group?: string | null
+  blocking?: boolean
   display_name_ko: string
   short_name: string
   summary_ko: string
@@ -264,6 +349,197 @@ export type StrategyRow = {
   latest_reasons: string[]
   performance: Record<'BASE' | 'STRESS', StrategyPerformance>
   governance: StrategyGovernance
+}
+
+export type StrategyPerformanceSummary = Omit<
+  StrategyPerformance,
+  'metric_status' | 'regime_contributions' | 'windows'
+>
+
+export type StrategySummaryRow = Pick<
+  StrategyRow,
+  | 'strategy_id'
+  | 'family_id'
+  | 'role'
+  | 'variant_id'
+  | 'variant_label_ko'
+  | 'is_current_variant'
+  | 'supersedes_strategy_ids'
+  | 'superseded_by_strategy_id'
+  | 'user_visible_by_default'
+  | 'default_research_enabled'
+  | 'final_ranking_eligible'
+  | 'reason_code'
+  | 'reason_ko'
+  | 'reason_group'
+  | 'blocking'
+  | 'display_name_ko'
+  | 'short_name'
+  | 'mode'
+  | 'lifecycle'
+  | 'long_enabled'
+  | 'short_enabled'
+  | 'strategy_version'
+  | 'evaluated_paths'
+  | 'qualified_paths'
+  | 'latest_status'
+  | 'latest_reasons'
+  | 'paper_only'
+> & {
+  family_label_ko?: string
+  performance: Record<'BASE' | 'STRESS', StrategyPerformanceSummary>
+}
+
+export type StrategyFamilyResearchSetting = Partial<Pick<
+  StrategyRow,
+  'mode' | 'lifecycle' | 'long_enabled' | 'short_enabled' | 'settings_revision' | 'manual_lock' | 'change_reason'
+>> & {
+  research_enabled?: boolean
+  enabled?: boolean
+  revision?: number
+}
+
+export type ResearchSourceMetadata = {
+  source_id: string
+  title: string
+  publisher: string
+  date: string
+  url: string | null
+  idea_used: string
+  our_modification: string
+  metadata_status: 'REGISTERED' | 'NOT_PROVEN'
+}
+
+export type StrategyFamilyVariantDetail = {
+  strategy_id: string
+  family_id?: string
+  role?: string
+  variant_id?: string
+  variant_label_ko?: string
+  is_current_variant?: boolean
+  supersedes_strategy_ids?: string[]
+  superseded_by_strategy_id?: string | null
+  user_visible_by_default?: boolean
+  default_research_enabled?: boolean
+  final_ranking_eligible?: boolean
+  setting?: StrategyFamilyResearchSetting
+  runtime_state?: UiStrategyStateRow
+  research_sources?: ResearchSourceMetadata[]
+}
+
+export type StrategyFamilyDetail = {
+  family_id: string
+  label_ko?: string
+  category_ko?: string
+  description_ko?: string
+  display_order?: number
+  current_variant_id?: string | null
+  variant_count?: number
+  availability_state?: string
+  availability_label_ko?: string
+  availability_reason_ko?: string
+  variants: StrategyFamilyVariantDetail[]
+  offline_challengers?: Array<Record<string, unknown>>
+  paper_only?: true
+  real_orders_enabled?: false
+  auth_required?: false
+}
+
+export type StrategyFamilyCatalogVariant = Omit<
+  StrategyFamilyVariantDetail,
+  'setting' | 'runtime_state' | 'research_sources'
+>
+
+export type StrategyFamilyCatalogRow = {
+  family_id: string
+  label_ko: string
+  category_ko: string
+  description_ko: string
+  display_order: number
+  current_variant_id: string | null
+  variant_count: number
+  availability_state: string
+  availability_label_ko: string
+  availability_reason_ko: string
+  variants: StrategyFamilyCatalogVariant[]
+}
+
+export type StrategyFamilyCatalogPayload = {
+  schema_version: 1
+  families: StrategyFamilyCatalogRow[]
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
+}
+
+export type StrategyFamilyCondition = {
+  condition_id: string
+  label_ko: string
+  threshold_ko: string
+  current_value: string | number | boolean | null
+  status: string
+  reason_ko?: string | null
+}
+
+export type OrderflowFilterLatest = {
+  symbol?: string
+  side?: string
+  score?: string | number | null
+  passed_component_count?: number
+  persistence_ms?: number
+  allowed?: boolean
+  creates_candidate_plan?: false
+  components?: Record<string, string | number | boolean | null>
+  data_health?: string
+}
+
+export type OrderflowFilterStatus = {
+  enabled?: boolean
+  research_enabled?: boolean
+  revision?: number
+  latest_score?: string | number | null
+  data_health?: string
+  affected_strategy_ids?: string[]
+  latest?: OrderflowFilterLatest[]
+  uplift_status?: string
+  creates_candidate_plan?: boolean
+  paper_only?: true
+}
+
+export type StrategyFamilyConditionsResponse = {
+  schema_version: number
+  family_id: string
+  strategy_id?: string | null
+  symbol?: string | null
+  setup_state?: string
+  passed: number | null
+  total: number
+  top_blockers: string[]
+  conditions: StrategyFamilyCondition[]
+  sides?: Record<string, unknown> | unknown[]
+  execution?: {
+    side?: string | null
+    entry?: string | number | null
+    initial_stop?: string | number | null
+    take_profit_1?: string | number | null
+    take_profit_2?: string | number | null
+    TP1?: string | number | null
+    TP2?: string | number | null
+    trailing_activation?: string | number | null
+    current_trail?: string | number | null
+    remaining_quantity?: string | number | null
+    expiry?: string | number | null
+    expiry_ts_ms?: number | null
+    expires_at?: string | number | null
+  }
+  pending_count?: number
+  open_count?: number
+  open_positions?: Array<Record<string, unknown>>
+  research_sources?: ResearchSourceMetadata[]
+  filter?: OrderflowFilterStatus | null
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
 }
 
 export type StrategyGovernance = {
@@ -314,6 +590,8 @@ export type StrategyPerformance = {
   strategy_id: string
   profile: 'BASE' | 'STRESS'
   sample_size: number
+  unique_opportunity_count?: number
+  raw_ledger_row_count?: number
   wins: number
   losses: number
   breakevens: number
@@ -624,7 +902,7 @@ export type DashboardData = {
     strategy_version: string
     excluded_prior_version_samples: number
   }
-  strategies: StrategyRow[]
+  strategies: StrategySummaryRow[]
   shadow_accounts: ShadowAccount[]
   league_accounts: LeagueAccount[]
   league_positions: LeaguePosition[]
@@ -662,7 +940,140 @@ export type DashboardData = {
     }
   }
   system: Record<string, string | number | boolean>
+  settings_summary?: SettingsSummaryPayload
+  diagnostics?: DiagnosticsPayload
+  strategy_family_catalog?: StrategyFamilyCatalogPayload
 }
+
+export type UiStrategyStateRow = Partial<Omit<StrategySummaryRow, 'strategy_id' | 'performance'>> & {
+  strategy_id: string
+  performance?: Partial<Record<'BASE' | 'STRESS', Partial<StrategyPerformanceSummary>>>
+}
+
+export type StrategyPageSummaryPayload = {
+  schema_version: 1
+  analysis_scope: 'CURRENT_STRATEGY_VERSION'
+  strategies: StrategySummaryRow[]
+  league_accounts: LeagueAccount[]
+  strategy_count: number
+  league_account_count: number
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
+}
+
+export type SettingsSummaryPayload = {
+  schema_version: 1
+  run: {
+    run_id: string
+    mode: SystemStatus['mode']
+    venue: SystemStatus['venue']
+    new_run_preserves_history: true
+  }
+  safety: {
+    paper_only: true
+    real_orders_enabled: false
+    auth_required: false
+    private_api_enabled: false
+    api_key_enabled: false
+    wallet_enabled: false
+    runtime_ai_order_decision_enabled: false
+    entry_state: DashboardData['paper_entry_intent']['state']
+    entry_revision: number
+    active_locks: string[]
+  }
+  costs: Partial<DashboardData['risk']['strategy_league']>
+  storage: {
+    label?: string
+    free_mb?: number | null
+    free_ratio?: number | null
+    entry_allowed?: boolean | null
+    lock_reason?: string | null
+  }
+  connection: { state?: string; public_market_only: true }
+  autostart: {
+    state: 'NOT_PROVEN' | 'VERIFIED_ENABLED' | 'VERIFIED_DISABLED'
+    paper_state_recovery_reported?: boolean | null
+    launch_agent_verified: boolean
+    read_only: true
+    evidence_source: string
+    evidence_ko: string
+  }
+  local_preferences: {
+    research_detail_default: boolean
+    research_detail_affects_execution: false
+  }
+  funding_readiness: 'NOT_READY'
+}
+
+export type DiagnosticsPayload = {
+  schema_version: 1
+  rows: {
+    key: string
+    label_ko: string
+    value: string | number | boolean | null
+    severity: 'OK' | 'INFO' | 'WARNING' | 'CRITICAL'
+    user_visible: boolean
+    group: string
+  }[]
+  raw: Record<string, string | number | boolean>
+  paper_only: true
+  real_orders_enabled: false
+  auth_required: false
+}
+
+export type UiSummaryPayload = Partial<Omit<DashboardData, 'strategies'>> & {
+  schema_version?: 1
+  strategy_state?: UiStrategyStateRow[]
+  paper_only?: true
+  real_orders_enabled?: false
+  auth_required?: false
+}
+
+export type UiStrategyRowDelta = {
+  rows: UiStrategyStateRow[]
+  removed_strategy_ids: string[]
+}
+
+export type UiChartDelta = {
+  symbol: string
+  interval: string
+  fixture: boolean
+  refresh_required: boolean
+  point_upserts?: ChartPoint[]
+  removed_point_ts_ms?: number[]
+  candle_upserts?: ChartData['candles']
+  removed_candle_open_ts_ms?: number[]
+  lines?: ChartData['lines']
+}
+
+export type UiSelectedFamilyDetail = StrategyFamilyDetail
+
+export type UiSelectedDetailDelta = {
+  family_id: string | null
+  detail: UiSelectedFamilyDetail | null
+}
+
+type UiWebSocketEnvelope<TType extends string, TData> = {
+  schema_version: 1
+  sequence: number
+  type: TType
+  data: TData
+}
+
+export type UiWebSocketServerMessage =
+  | UiWebSocketEnvelope<'snapshot', UiSummaryPayload>
+  | UiWebSocketEnvelope<'summary_delta', UiSummaryPayload>
+  | UiWebSocketEnvelope<'chart_delta', UiChartDelta>
+  | UiWebSocketEnvelope<'position_delta', UiSummaryPayload>
+  | UiWebSocketEnvelope<'strategy_row_delta', UiStrategyRowDelta>
+  | UiWebSocketEnvelope<'selected_detail_delta', UiSelectedDetailDelta>
+  | UiWebSocketEnvelope<'heartbeat', { server_ts_ms: number }>
+  | UiWebSocketEnvelope<'error', { error_code: string; error_message_ko: string; retryable: boolean }>
+
+export type UiWebSocketClientMessage =
+  | { type: 'select_family'; family_id: string | null }
+  | { type: 'ping' }
 
 export type OperationStatus = {
   state: 'READY' | 'RUNNING' | 'SAFETY_WAITING' | 'SAFETY_BLOCKED' | 'MANUALLY_PAUSED' | 'RECONNECTING' | 'DEMO_RUNNING' | 'DEMO_PAUSED' | 'REPLAY_RUNNING' | 'REPLAY_PAUSED'

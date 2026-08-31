@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
+from functools import wraps
+from threading import RLock
+from typing import Concatenate
 
 from backend.app.domain.models import Side
 from backend.app.regime import Regime
@@ -12,6 +16,12 @@ from backend.app.strategies.aggressor_flow import AggressorFlowStrategy
 from backend.app.strategies.book_slope_asymmetry import BookSlopeAsymmetryStrategy
 from backend.app.strategies.compression_breakout import CompressionBreakoutStrategy
 from backend.app.strategies.depth_adjusted_ofi import DepthAdjustedOfiStrategy
+from backend.app.strategies.family import (
+    StrategyFamilyId,
+    StrategyRole,
+    strategy_variant_contract,
+    validate_family_contract,
+)
 from backend.app.strategies.hourly_momentum_breakout import HourlyMomentumBreakoutStrategy
 from backend.app.strategies.intraday_trend import (
     IntradayTrendStrategy,
@@ -23,6 +33,24 @@ from backend.app.strategies.ofi_pullback import OfiPullbackStrategy
 from backend.app.strategies.ofi_return_confluence import OfiReturnConfluenceStrategy
 from backend.app.strategies.queue_microprice import QueueMicropriceStrategy
 from backend.app.strategies.vwap_exhaustion import VwapExhaustionStrategy
+
+
+def _setting_locked[**P, R](
+    method: Callable[Concatenate[StrategyRegistry, P], R],
+) -> Callable[Concatenate[StrategyRegistry, P], R]:
+    """설정 CAS 검사부터 revision 이력 기록까지 한 임계구역으로 묶는다."""
+
+    @wraps(method)
+    def wrapped(
+        self: StrategyRegistry,
+        /,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> R:
+        with self._setting_lock:
+            return method(self, *args, **kwargs)
+
+    return wrapped
 
 
 class StrategyMode(StrEnum):
@@ -98,6 +126,7 @@ class StrategyResearchContract:
     data_leakage_guards_ko: tuple[str, ...]
     research_source_ids: tuple[str, ...]
 
+
 POLICY_RETIRED_STRATEGY_IDS = frozenset(
     {
         "LSA_REVERSAL_V1",
@@ -116,6 +145,7 @@ POLICY_RETIREMENT_REASONS["HOURLY_MOMENTUM_BREAKOUT_V1"] = (
 )
 POLICY_SHADOW_DEFAULT_IDS = frozenset({"CBR_CONTINUATION_V1"})
 POLICY_SHADOW_DEFAULT_REASON = "NO_ACTIVE_STRATEGY_WITHOUT_COST_ADJUSTED_PROOF_WAVE46"
+UNPROVEN_ACTIVE_RECOVERY_REASON = "V6_UNPROVEN_ACTIVE_RECOVERY_DOWNGRADED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +172,32 @@ class StrategyDescriptor:
     edge_decay_enabled: bool = False
     cost_model_version: str = "TOP_OF_BOOK_BASE13_STRESS25_V1"
     paper_only: bool = True
+    family_id: StrategyFamilyId = field(init=False)
+    role: StrategyRole = field(init=False)
+    variant_id: str = field(init=False)
+    variant_label_ko: str = field(init=False)
+    is_current_variant: bool = field(init=False)
+    supersedes_strategy_ids: tuple[str, ...] = field(init=False)
+    superseded_by_strategy_id: str | None = field(init=False)
+    user_visible_by_default: bool = field(init=False)
+    default_research_enabled: bool = field(init=False)
+    final_ranking_eligible: bool = field(init=False)
+
+    def __post_init__(self) -> None:
+        contract = strategy_variant_contract(self.strategy_id)
+        for field_name in (
+            "family_id",
+            "role",
+            "variant_id",
+            "variant_label_ko",
+            "is_current_variant",
+            "supersedes_strategy_ids",
+            "superseded_by_strategy_id",
+            "user_visible_by_default",
+            "default_research_enabled",
+            "final_ranking_eligible",
+        ):
+            object.__setattr__(self, field_name, getattr(contract, field_name))
 
 
 _MICRO_REQUIRED_MARKET_DATA = (
@@ -593,6 +649,7 @@ class StrategyRegistry:
     """전략 메타데이터와 증거 기반 lifecycle 변경 이력을 중앙 관리한다."""
 
     def __init__(self) -> None:
+        self._setting_lock = RLock()
         descriptors = (
             StrategyDescriptor(
                 strategy_id="LSA_REVERSAL_V1",
@@ -676,9 +733,7 @@ class StrategyRegistry:
                 supported_regimes=(Regime.RANGE, Regime.TREND_UP, Regime.TREND_DOWN),
                 evaluator=MultilevelMicropriceStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
-                research_contract=_RESEARCH_CONTRACTS[
-                    "MULTILEVEL_MICROPRICE_MOMENTUM_V1"
-                ],
+                research_contract=_RESEARCH_CONTRACTS["MULTILEVEL_MICROPRICE_MOMENTUM_V1"],
             ),
             StrategyDescriptor(
                 strategy_id="DEPTH_ADJUSTED_OFI_IMPULSE_V1",
@@ -768,9 +823,7 @@ class StrategyRegistry:
                     take_profit_2_r=2.8,
                 ),
                 exit_style=ExitStyle.TREND_40_60,
-                research_contract=_RESEARCH_CONTRACTS[
-                    "TREND_PULLBACK_RECLAIM_15M_V2"
-                ],
+                research_contract=_RESEARCH_CONTRACTS["TREND_PULLBACK_RECLAIM_15M_V2"],
                 horizon_class="INTRADAY_SWING",
                 expected_holding_seconds=(1_800, 28_800),
                 signal_half_life_seconds=5,
@@ -882,9 +935,7 @@ class StrategyRegistry:
                     take_profit_2_r=3.0,
                 ),
                 exit_style=ExitStyle.TREND_40_60,
-                research_contract=_RESEARCH_CONTRACTS[
-                    "MULTISPEED_TREND_RECLAIM_30M_V2"
-                ],
+                research_contract=_RESEARCH_CONTRACTS["MULTISPEED_TREND_RECLAIM_30M_V2"],
                 horizon_class="INTRADAY_SWING",
                 expected_holding_seconds=(3_600, 57_600),
                 signal_half_life_seconds=5,
@@ -917,6 +968,7 @@ class StrategyRegistry:
                     if item.strategy_id in active_ids
                     else StrategyMode.OFF
                     if item.strategy_id in POLICY_RETIRED_STRATEGY_IDS
+                    or not item.default_research_enabled
                     else StrategyMode.SHADOW
                 ),
                 lifecycle=(
@@ -924,11 +976,15 @@ class StrategyRegistry:
                     if item.strategy_id in active_ids
                     else StrategyLifecycle.RETIRED
                     if item.strategy_id in POLICY_RETIRED_STRATEGY_IDS
+                    else StrategyLifecycle.RESEARCH
+                    if not item.default_research_enabled
                     else StrategyLifecycle.SHADOW
                 ),
                 change_reason=(
                     POLICY_RETIREMENT_REASONS[item.strategy_id]
                     if item.strategy_id in POLICY_RETIRED_STRATEGY_IDS
+                    else "V6_LEGACY_COMPONENT_HISTORY_ONLY"
+                    if not item.default_research_enabled
                     else POLICY_SHADOW_DEFAULT_REASON
                     if item.strategy_id in POLICY_SHADOW_DEFAULT_IDS
                     else "SAFE_DEFAULT"
@@ -939,6 +995,7 @@ class StrategyRegistry:
         self._revision_history = {
             strategy_id: {0: self._setting_row(strategy_id)} for strategy_id in self._settings
         }
+        validate_family_contract(self)
 
     @property
     def strategy_ids(self) -> tuple[str, ...]:
@@ -958,6 +1015,7 @@ class StrategyRegistry:
         self.descriptor(strategy_id)
         return strategy_id in POLICY_RETIRED_STRATEGY_IDS
 
+    @_setting_locked
     def enforce_policy_retirements(
         self,
         *,
@@ -987,33 +1045,139 @@ class StrategyRegistry:
             changed.append(row)
         return tuple(changed)
 
+    @_setting_locked
     def enforce_unproven_active_defaults(
         self,
         *,
         updated_ts_ms: int,
+        validated_governor_active_revisions: Mapping[str, frozenset[int]] | None = None,
     ) -> tuple[dict[str, object], ...]:
-        """과거 기본값이었던 미입증 ACTIVE만 SHADOW로 안전 이관한다."""
+        """현재 증거로 재검증된 Governor ACTIVE만 복구하고 나머지는 이관한다."""
 
         changed: list[dict[str, object]] = []
-        for strategy_id in sorted(POLICY_SHADOW_DEFAULT_IDS):
+        validated_revisions = validated_governor_active_revisions or {}
+        for strategy_id in sorted(self.strategy_ids):
             setting = self.setting(strategy_id)
-            if (
-                setting.lifecycle is not StrategyLifecycle.ACTIVE
-                or setting.changed_by is not StrategyChangeSource.MIGRATION
-                or setting.manual_lock
-            ):
+            descriptor = self.descriptor(strategy_id)
+            has_active_state = (
+                setting.mode is StrategyMode.ACTIVE
+                or setting.lifecycle is StrategyLifecycle.ACTIVE
+            )
+            valid_governor_active = (
+                setting.mode is StrategyMode.ACTIVE
+                and setting.lifecycle is StrategyLifecycle.ACTIVE
+                and descriptor.role is StrategyRole.ENTRY
+                and descriptor.is_current_variant
+                and descriptor.default_research_enabled
+                and not self.is_policy_retired(strategy_id)
+                and self._has_active_governor_lineage(
+                    strategy_id,
+                    validated_revisions=validated_revisions.get(strategy_id, frozenset()),
+                )
+            )
+            if not has_active_state or valid_governor_active:
                 continue
-            setting.mode = StrategyMode.SHADOW
-            setting.lifecycle = StrategyLifecycle.SHADOW
+            if self.is_policy_retired(strategy_id):
+                setting.mode = StrategyMode.OFF
+                setting.lifecycle = StrategyLifecycle.RETIRED
+                change_reason = POLICY_RETIREMENT_REASONS[strategy_id]
+            elif (
+                descriptor.role is not StrategyRole.ENTRY
+                or not descriptor.default_research_enabled
+            ):
+                setting.mode = StrategyMode.OFF
+                setting.lifecycle = StrategyLifecycle.RESEARCH
+                change_reason = "V6_LEGACY_COMPONENT_HISTORY_ONLY"
+            else:
+                setting.mode = StrategyMode.SHADOW
+                setting.lifecycle = StrategyLifecycle.SHADOW
+                change_reason = (
+                    POLICY_SHADOW_DEFAULT_REASON
+                    if strategy_id in POLICY_SHADOW_DEFAULT_IDS
+                    else UNPROVEN_ACTIVE_RECOVERY_REASON
+                )
             setting.revision += 1
+            setting.manual_lock = False
             setting.changed_by = StrategyChangeSource.MIGRATION
-            setting.change_reason = POLICY_SHADOW_DEFAULT_REASON
+            setting.change_reason = change_reason
             setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
             row = self._setting_row(strategy_id)
             self._revision_history[strategy_id][setting.revision] = row
             changed.append(row)
         return tuple(changed)
 
+    def _has_active_governor_lineage(
+        self,
+        strategy_id: str,
+        *,
+        validated_revisions: frozenset[int],
+    ) -> bool:
+        """현재 ACTIVE 구간에 재검증된 Governor 승격 revision이 있는지 확인한다."""
+
+        history = self._revision_history[strategy_id]
+        for revision in sorted(history, reverse=True):
+            row = history[revision]
+            if (
+                row.get("mode") != StrategyMode.ACTIVE.value
+                or row.get("lifecycle") != StrategyLifecycle.ACTIVE.value
+            ):
+                return False
+            changed_by = row.get("changed_by")
+            if changed_by == StrategyChangeSource.AUTO_GOVERNOR.value:
+                return revision in validated_revisions
+            if changed_by != StrategyChangeSource.USER_UI.value:
+                return False
+        return False
+
+    @_setting_locked
+    def enforce_v6_family_runtime_policy(
+        self,
+        *,
+        updated_ts_ms: int,
+    ) -> tuple[dict[str, object], ...]:
+        """Legacy 구성요소는 기록을 보존하되 새 독립 entry를 만들지 못하게 한다."""
+
+        changed: list[dict[str, object]] = []
+        for strategy_id in self.strategy_ids:
+            descriptor = self.descriptor(strategy_id)
+            setting = self.setting(strategy_id)
+            if (
+                descriptor.role is StrategyRole.ENTRY
+                and not descriptor.is_current_variant
+                and setting.mode is StrategyMode.ACTIVE
+            ):
+                setting.mode = StrategyMode.SHADOW
+                setting.lifecycle = StrategyLifecycle.CHALLENGER
+                setting.revision += 1
+                setting.manual_lock = False
+                setting.changed_by = StrategyChangeSource.MIGRATION
+                setting.change_reason = "V6_NON_CURRENT_VARIANT_SHADOW_ONLY"
+                setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
+                row = self._setting_row(strategy_id)
+                self._revision_history[strategy_id][setting.revision] = row
+                changed.append(row)
+                continue
+            if descriptor.default_research_enabled or self.is_policy_retired(strategy_id):
+                continue
+            if (
+                setting.mode is StrategyMode.OFF
+                and setting.lifecycle is StrategyLifecycle.RESEARCH
+                and setting.change_reason == "V6_LEGACY_COMPONENT_HISTORY_ONLY"
+            ):
+                continue
+            setting.mode = StrategyMode.OFF
+            setting.lifecycle = StrategyLifecycle.RESEARCH
+            setting.revision += 1
+            setting.manual_lock = False
+            setting.changed_by = StrategyChangeSource.MIGRATION
+            setting.change_reason = "V6_LEGACY_COMPONENT_HISTORY_ONLY"
+            setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
+            row = self._setting_row(strategy_id)
+            self._revision_history[strategy_id][setting.revision] = row
+            changed.append(row)
+        return tuple(changed)
+
+    @_setting_locked
     def configure(
         self,
         strategy_id: str,
@@ -1029,6 +1193,7 @@ class StrategyRegistry:
         updated_ts_ms: int = 0,
     ) -> StrategySetting:
         setting = self.setting(strategy_id)
+        descriptor = self.descriptor(strategy_id)
         if expected_revision is not None and expected_revision != setting.revision:
             raise StrategyRevisionConflict(self._setting_row(strategy_id))
         if source is StrategyChangeSource.AUTO_GOVERNOR and setting.manual_lock:
@@ -1036,6 +1201,22 @@ class StrategyRegistry:
         resolved_lifecycle = lifecycle or self.lifecycle_for_mode(mode)
         if mode is not self.mode_for_lifecycle(resolved_lifecycle):
             raise ValueError("전략 lifecycle과 실행 mode가 일치하지 않습니다.")
+        if (
+            mode is StrategyMode.ACTIVE
+            and setting.mode is not StrategyMode.ACTIVE
+            and source is StrategyChangeSource.USER_UI
+        ):
+            raise ValueError(
+                "Shared Capital ACTIVE는 formal OOS gate를 통과한 Governor만 적용합니다."
+            )
+        if mode is StrategyMode.ACTIVE and not descriptor.is_current_variant:
+            raise ValueError("V6 non-current variant는 독립 SHADOW로만 평가할 수 있습니다.")
+        if (
+            not descriptor.default_research_enabled
+            and mode is not StrategyMode.OFF
+            and source not in {StrategyChangeSource.MIGRATION, StrategyChangeSource.RECOVERY}
+        ):
+            raise ValueError("V6 legacy 구성요소는 독립 entry 모드로 켤 수 없습니다.")
         setting.mode = mode
         setting.lifecycle = resolved_lifecycle
         setting.long_enabled = long_enabled
@@ -1050,6 +1231,7 @@ class StrategyRegistry:
         self._revision_history[strategy_id][setting.revision] = self._setting_row(strategy_id)
         return setting
 
+    @_setting_locked
     def apply_lifecycle_transitions(
         self,
         transitions: tuple[LifecycleTransition, ...],
@@ -1067,12 +1249,32 @@ class StrategyRegistry:
 
         for transition in transitions:
             setting = self.setting(transition.strategy_id)
+            descriptor = self.descriptor(transition.strategy_id)
             if transition.expected_revision != setting.revision:
                 raise StrategyRevisionConflict(self._setting_row(transition.strategy_id))
             if source is StrategyChangeSource.AUTO_GOVERNOR and setting.manual_lock:
                 raise StrategyManualLockConflict(
                     f"사용자가 고정한 전략 설정입니다: {transition.strategy_id}"
                 )
+            if (
+                transition.lifecycle is StrategyLifecycle.ACTIVE
+                and setting.mode is not StrategyMode.ACTIVE
+                and source is StrategyChangeSource.USER_UI
+            ):
+                raise ValueError(
+                    "Shared Capital ACTIVE는 formal OOS gate를 통과한 Governor만 적용합니다."
+                )
+            if (
+                transition.lifecycle is StrategyLifecycle.ACTIVE
+                and not descriptor.is_current_variant
+            ):
+                raise ValueError("V6 non-current variant는 ACTIVE lifecycle로 바꿀 수 없습니다.")
+            if (
+                not descriptor.default_research_enabled
+                and self.mode_for_lifecycle(transition.lifecycle) is not StrategyMode.OFF
+                and source not in {StrategyChangeSource.MIGRATION, StrategyChangeSource.RECOVERY}
+            ):
+                raise ValueError("V6 legacy 구성요소는 독립 entry lifecycle로 바꿀 수 없습니다.")
 
         changed_rows: list[dict[str, object]] = []
         for transition in transitions:
@@ -1089,6 +1291,7 @@ class StrategyRegistry:
             changed_rows.append(row)
         return tuple(changed_rows)
 
+    @_setting_locked
     def restore_setting(
         self,
         strategy_id: str,
@@ -1118,6 +1321,7 @@ class StrategyRegistry:
         self._revision_history[strategy_id][setting.revision] = self._setting_row(strategy_id)
         return setting
 
+    @_setting_locked
     def rollback(
         self,
         strategy_id: str,
@@ -1138,7 +1342,24 @@ class StrategyRegistry:
         target = self._revision_history[strategy_id].get(target_revision)
         if target is None:
             raise ValueError(f"복원할 전략 revision을 찾을 수 없습니다: {target_revision}")
-        setting.mode = StrategyMode(str(target["mode"]))
+        target_mode = StrategyMode(str(target["mode"]))
+        descriptor = self.descriptor(strategy_id)
+        if not descriptor.default_research_enabled and target_mode is not StrategyMode.OFF:
+            raise ValueError("V6 legacy 구성요소의 과거 entry 설정은 복원할 수 없습니다.")
+        if (
+            target_mode is StrategyMode.ACTIVE
+            and setting.mode is not StrategyMode.ACTIVE
+            and source is StrategyChangeSource.USER_UI
+        ):
+            raise ValueError(
+                "Shared Capital ACTIVE는 formal OOS gate를 통과한 Governor만 복원합니다."
+            )
+        if (
+            target_mode is StrategyMode.ACTIVE
+            and not descriptor.is_current_variant
+        ):
+            raise ValueError("V6 non-current variant의 과거 ACTIVE 설정은 복원할 수 없습니다.")
+        setting.mode = target_mode
         setting.lifecycle = StrategyLifecycle(str(target["lifecycle"]))
         setting.long_enabled = bool(target["long_enabled"])
         setting.short_enabled = bool(target["short_enabled"])
@@ -1150,14 +1371,23 @@ class StrategyRegistry:
         self._revision_history[strategy_id][setting.revision] = self._setting_row(strategy_id)
         return setting
 
+    @_setting_locked
     def evaluation_enabled(self, strategy_id: str, side: Side) -> bool:
         setting = self.setting(strategy_id)
         return setting.mode is not StrategyMode.OFF and setting.direction_enabled(side)
 
+    @_setting_locked
     def main_enabled(self, strategy_id: str, side: Side) -> bool:
         setting = self.setting(strategy_id)
-        return setting.mode is StrategyMode.ACTIVE and setting.direction_enabled(side)
+        descriptor = self.descriptor(strategy_id)
+        return (
+            descriptor.role is StrategyRole.ENTRY
+            and descriptor.is_current_variant
+            and setting.mode is StrategyMode.ACTIVE
+            and setting.direction_enabled(side)
+        )
 
+    @_setting_locked
     def shadow_enabled(self, strategy_id: str, side: Side) -> bool:
         setting = self.setting(strategy_id)
         return setting.mode in {
@@ -1165,6 +1395,7 @@ class StrategyRegistry:
             StrategyMode.SHADOW,
         } and setting.direction_enabled(side)
 
+    @_setting_locked
     def rows(self) -> list[dict[str, object]]:
         return [
             self._setting_row(descriptor.strategy_id)
@@ -1189,37 +1420,39 @@ class StrategyRegistry:
                 "edge_decay_enabled": descriptor.edge_decay_enabled,
                 "cost_model_version": descriptor.cost_model_version,
                 "paper_only": descriptor.paper_only,
+                "family_id": descriptor.family_id.value,
+                "role": descriptor.role.value,
+                "variant_id": descriptor.variant_id,
+                "variant_label_ko": descriptor.variant_label_ko,
+                "is_current_variant": descriptor.is_current_variant,
+                "supersedes_strategy_ids": list(descriptor.supersedes_strategy_ids),
+                "superseded_by_strategy_id": descriptor.superseded_by_strategy_id,
+                "user_visible_by_default": descriptor.user_visible_by_default,
+                "default_research_enabled": descriptor.default_research_enabled,
+                "final_ranking_eligible": descriptor.final_ranking_eligible,
                 "strategy_version": descriptor.research_contract.strategy_version,
-                "required_market_data": list(
-                    descriptor.research_contract.required_market_data
-                ),
+                "required_market_data": list(descriptor.research_contract.required_market_data),
                 "minimum_warmup_ko": descriptor.research_contract.minimum_warmup_ko,
-                "entry_hypothesis_ko": (
-                    descriptor.research_contract.entry_hypothesis_ko
-                ),
+                "entry_hypothesis_ko": (descriptor.research_contract.entry_hypothesis_ko),
                 "falsification_conditions_ko": list(
                     descriptor.research_contract.falsification_conditions_ko
                 ),
-                "edge_decay_policy_ko": (
-                    descriptor.research_contract.edge_decay_policy_ko
-                ),
+                "edge_decay_policy_ko": (descriptor.research_contract.edge_decay_policy_ko),
                 "risk_budget_rule_ko": descriptor.research_contract.risk_budget_rule_ko,
                 "target_universe_ko": descriptor.research_contract.target_universe_ko,
-                "data_leakage_guards_ko": list(
-                    descriptor.research_contract.data_leakage_guards_ko
-                ),
-                "research_source_ids": list(
-                    descriptor.research_contract.research_source_ids
-                ),
+                "data_leakage_guards_ko": list(descriptor.research_contract.data_leakage_guards_ko),
+                "research_source_ids": list(descriptor.research_contract.research_source_ids),
             }
             for descriptor in self._descriptors.values()
         ]
 
+    @_setting_locked
     def setting_row(self, strategy_id: str) -> dict[str, object]:
         """현재 설정과 revision을 공개 계약으로 복사한다."""
 
         return dict(self._setting_row(strategy_id))
 
+    @_setting_locked
     def revision_history(self, strategy_id: str) -> tuple[dict[str, object], ...]:
         """복구된 과거를 포함한 전략 설정 변경 이력을 revision 순으로 복사한다."""
 

@@ -26,7 +26,11 @@ from backend.app.strategies import (
     VwapExhaustionStrategy,
 )
 from backend.app.strategies.base import CandidateStatus
-from backend.app.strategies.registry import StrategyMode, StrategyRegistry
+from backend.app.strategies.registry import (
+    StrategyChangeSource,
+    StrategyMode,
+    StrategyRegistry,
+)
 from backend.app.strategies.runtime_evaluator import (
     StrategySignalEvaluator,
     _trailing_return_bps,
@@ -67,6 +71,8 @@ def only_strategy(strategy_id: str) -> StrategyRegistry:
             mode=StrategyMode.SHADOW if current == strategy_id else StrategyMode.OFF,
             long_enabled=True,
             short_enabled=True,
+            source=StrategyChangeSource.MIGRATION,
+            reason="OFFLINE_COMPONENT_EVALUATOR_TEST",
         )
     return registry
 
@@ -135,11 +141,14 @@ def test_vwap_reentry_confirmation_requires_every_entry_condition_to_persist() -
         Regime.RANGE,
     )
 
-    assert "STRUCTURE_REENTRY_NOT_CONFIRMED" in decision_for(
-        first_full,
-        strategy_id,
-        Side.LONG,
-    ).rejection_codes
+    assert (
+        "STRUCTURE_REENTRY_NOT_CONFIRMED"
+        in decision_for(
+            first_full,
+            strategy_id,
+            Side.LONG,
+        ).rejection_codes
+    )
     assert decision_for(persisted, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED
 
 
@@ -214,12 +223,14 @@ def test_queue_confirmation_uses_event_time_and_resets_when_alignment_breaks() -
     first = evaluator.evaluate(registry, aligned_features(Side.LONG, ts_ms=1_000), Regime.RANGE)
     early = evaluator.evaluate(registry, aligned_features(Side.LONG, ts_ms=1_499), Regime.RANGE)
     ready = evaluator.evaluate(registry, aligned_features(Side.LONG, ts_ms=1_500), Regime.RANGE)
-    assert "QUEUE_ALIGNMENT_NOT_PERSISTENT" in decision_for(
-        first, strategy_id, Side.LONG
-    ).rejection_codes
-    assert "QUEUE_ALIGNMENT_NOT_PERSISTENT" in decision_for(
-        early, strategy_id, Side.LONG
-    ).rejection_codes
+    assert (
+        "QUEUE_ALIGNMENT_NOT_PERSISTENT"
+        in decision_for(first, strategy_id, Side.LONG).rejection_codes
+    )
+    assert (
+        "QUEUE_ALIGNMENT_NOT_PERSISTENT"
+        in decision_for(early, strategy_id, Side.LONG).rejection_codes
+    )
     assert decision_for(ready, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED
 
     broken = replace(aligned_features(Side.LONG, ts_ms=1_600), ofi_250ms=0.0)
@@ -229,9 +240,10 @@ def test_queue_confirmation_uses_event_time_and_resets_when_alignment_breaks() -
         aligned_features(Side.LONG, ts_ms=2_200),
         Regime.RANGE,
     )
-    assert "QUEUE_ALIGNMENT_NOT_PERSISTENT" in decision_for(
-        restarted, strategy_id, Side.LONG
-    ).rejection_codes
+    assert (
+        "QUEUE_ALIGNMENT_NOT_PERSISTENT"
+        in decision_for(restarted, strategy_id, Side.LONG).rejection_codes
+    )
 
 
 @pytest.mark.parametrize(
@@ -291,38 +303,50 @@ def test_aggressor_flow_rejects_regime_z_confirmation_and_absorption() -> None:
         "plan": plan(Side.LONG),
         "confirmation_ms": 500,
     }
-    assert "REGIME_DIRECTION_MISMATCH" in strategy.evaluate(
-        AggressorFlowContext(
-            regime=Regime.RANGE,
-            aggressive_signed_notional_robust_z=2.5,
-            **common,
-        )
-    ).rejection_codes
-    assert "AGGRESSIVE_NOTIONAL_WEAK" in strategy.evaluate(
-        AggressorFlowContext(
-            regime=Regime.TREND_UP,
-            aggressive_signed_notional_robust_z=1.79,
-            **common,
-        )
-    ).rejection_codes
-    assert "FLOW_ALIGNMENT_NOT_PERSISTENT" in strategy.evaluate(
-        AggressorFlowContext(
-            regime=Regime.TREND_UP,
-            aggressive_signed_notional_robust_z=2.5,
-            **{**common, "confirmation_ms": 499},
-        )
-    ).rejection_codes
+    assert (
+        "REGIME_DIRECTION_MISMATCH"
+        in strategy.evaluate(
+            AggressorFlowContext(
+                regime=Regime.RANGE,
+                aggressive_signed_notional_robust_z=2.5,
+                **common,
+            )
+        ).rejection_codes
+    )
+    assert (
+        "AGGRESSIVE_NOTIONAL_WEAK"
+        in strategy.evaluate(
+            AggressorFlowContext(
+                regime=Regime.TREND_UP,
+                aggressive_signed_notional_robust_z=1.79,
+                **common,
+            )
+        ).rejection_codes
+    )
+    assert (
+        "FLOW_ALIGNMENT_NOT_PERSISTENT"
+        in strategy.evaluate(
+            AggressorFlowContext(
+                regime=Regime.TREND_UP,
+                aggressive_signed_notional_robust_z=2.5,
+                **{**common, "confirmation_ms": 499},
+            )
+        ).rejection_codes
+    )
     absorption = replace(feature, signed_notional_3s=50_000, price_response_efficiency=0.20)
-    assert "PRICE_RESPONSE_INEFFICIENT" in strategy.evaluate(
-        AggressorFlowContext(
-            Side.LONG,
-            absorption,
-            Regime.TREND_UP,
-            plan(Side.LONG),
-            4.0,
-            500,
-        )
-    ).rejection_codes
+    assert (
+        "PRICE_RESPONSE_INEFFICIENT"
+        in strategy.evaluate(
+            AggressorFlowContext(
+                Side.LONG,
+                absorption,
+                Regime.TREND_UP,
+                plan(Side.LONG),
+                4.0,
+                500,
+            )
+        ).rejection_codes
+    )
 
 
 @pytest.mark.parametrize(
@@ -356,9 +380,7 @@ def test_aggressor_confirmation_uses_prefix_and_event_time(
         aligned_features(side, ts_ms=1_500, signed=1_100 * sign),
         regime,
     )
-    assert "FLOW_ALIGNMENT_NOT_PERSISTENT" in decision_for(
-        first, strategy_id, side
-    ).rejection_codes
+    assert "FLOW_ALIGNMENT_NOT_PERSISTENT" in decision_for(first, strategy_id, side).rejection_codes
     assert decision_for(ready, strategy_id, side).status is CandidateStatus.QUALIFIED
 
 
@@ -427,11 +449,14 @@ def test_multilevel_confirmation_uses_event_time_and_resets() -> None:
         aligned_features(Side.LONG, ts_ms=1_750),
         Regime.RANGE,
     )
-    assert "MULTILEVEL_ALIGNMENT_NOT_PERSISTENT" in decision_for(
-        first,
-        strategy_id,
-        Side.LONG,
-    ).rejection_codes
+    assert (
+        "MULTILEVEL_ALIGNMENT_NOT_PERSISTENT"
+        in decision_for(
+            first,
+            strategy_id,
+            Side.LONG,
+        ).rejection_codes
+    )
     assert decision_for(ready, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED
 
     broken = replace(
@@ -444,11 +469,14 @@ def test_multilevel_confirmation_uses_event_time_and_resets() -> None:
         aligned_features(Side.LONG, ts_ms=2_800),
         Regime.RANGE,
     )
-    assert "MULTILEVEL_ALIGNMENT_NOT_PERSISTENT" in decision_for(
-        restarted,
-        strategy_id,
-        Side.LONG,
-    ).rejection_codes
+    assert (
+        "MULTILEVEL_ALIGNMENT_NOT_PERSISTENT"
+        in decision_for(
+            restarted,
+            strategy_id,
+            Side.LONG,
+        ).rejection_codes
+    )
 
 
 @pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
@@ -540,11 +568,14 @@ def test_depth_adjusted_ofi_requires_robust_impulse_and_event_time() -> None:
         ),
         Regime.RANGE,
     )
-    assert "DEPTH_ADJUSTED_OFI_NOT_PERSISTENT" in decision_for(
-        first,
-        strategy_id,
-        Side.LONG,
-    ).rejection_codes
+    assert (
+        "DEPTH_ADJUSTED_OFI_NOT_PERSISTENT"
+        in decision_for(
+            first,
+            strategy_id,
+            Side.LONG,
+        ).rejection_codes
+    )
     assert decision_for(ready, strategy_id, Side.LONG).status is CandidateStatus.QUALIFIED
 
 
@@ -609,18 +640,24 @@ def test_ofi_return_confluence_requires_history_z_return_persistence_and_cost() 
         3.0,
         1_000,
     )
-    assert "RETURN_HISTORY_MISSING" in strategy.evaluate(
-        replace(base, trailing_return_3s_bps=None)
-    ).rejection_codes
-    assert "TRAILING_RETURN_NOT_ALIGNED" in strategy.evaluate(
-        replace(base, trailing_return_3s_bps=1.99)
-    ).rejection_codes
-    assert "DEPTH_ADJUSTED_OFI_IMPULSE_WEAK" in strategy.evaluate(
-        replace(base, directional_depth_adjusted_ofi_robust_z=1.49)
-    ).rejection_codes
-    assert "OFI_RETURN_CONFLUENCE_NOT_PERSISTENT" in strategy.evaluate(
-        replace(base, confirmation_ms=999)
-    ).rejection_codes
+    assert (
+        "RETURN_HISTORY_MISSING"
+        in strategy.evaluate(replace(base, trailing_return_3s_bps=None)).rejection_codes
+    )
+    assert (
+        "TRAILING_RETURN_NOT_ALIGNED"
+        in strategy.evaluate(replace(base, trailing_return_3s_bps=1.99)).rejection_codes
+    )
+    assert (
+        "DEPTH_ADJUSTED_OFI_IMPULSE_WEAK"
+        in strategy.evaluate(
+            replace(base, directional_depth_adjusted_ofi_robust_z=1.49)
+        ).rejection_codes
+    )
+    assert (
+        "OFI_RETURN_CONFLUENCE_NOT_PERSISTENT"
+        in strategy.evaluate(replace(base, confirmation_ms=999)).rejection_codes
+    )
     for regime, reason in (
         (Regime.WARMUP, "REGIME_WARMUP"),
         (Regime.DEGRADED, "REGIME_DEGRADED"),
@@ -631,9 +668,10 @@ def test_ofi_return_confluence_requires_history_z_return_persistence_and_cost() 
         plan(Side.LONG),
         target=plan(Side.LONG).entry + Decimal("0.40"),
     )
-    assert "COST_FRACTION_TOO_HIGH" in strategy.evaluate(
-        replace(base, plan=expensive_plan)
-    ).rejection_codes
+    assert (
+        "COST_FRACTION_TOO_HIGH"
+        in strategy.evaluate(replace(base, plan=expensive_plan)).rejection_codes
+    )
 
 
 def test_trailing_return_uses_nearest_prefix_anchor_and_ignores_future() -> None:
@@ -685,11 +723,14 @@ def test_ofi_return_confluence_runtime_uses_prefix_and_event_time(side: Side) ->
         current(5_000, 100.06 if side is Side.LONG else 99.94),
         Regime.RANGE,
     )
-    assert "OFI_RETURN_CONFLUENCE_NOT_PERSISTENT" in decision_for(
-        first,
-        strategy_id,
-        side,
-    ).rejection_codes
+    assert (
+        "OFI_RETURN_CONFLUENCE_NOT_PERSISTENT"
+        in decision_for(
+            first,
+            strategy_id,
+            side,
+        ).rejection_codes
+    )
     assert decision_for(ready, strategy_id, side).status is CandidateStatus.QUALIFIED
 
 
@@ -725,35 +766,43 @@ def test_book_slope_asymmetry_rejects_short_history_weak_structure_and_cost() ->
         confirmation_ms=1_000,
     )
     strategy = BookSlopeAsymmetryStrategy()
-    assert "BOOK_SLOPE_HISTORY_SHORT" in strategy.evaluate(
-        replace(base, history_sample_count=31)
-    ).rejection_codes
-    assert "OPPOSING_BOOK_NOT_THIN" in strategy.evaluate(
-        replace(base, ask_slope_percentile=0.16)
-    ).rejection_codes
-    assert "SUPPORTING_BOOK_NOT_FIRM" in strategy.evaluate(
-        replace(base, bid_slope_percentile=0.49)
-    ).rejection_codes
-    assert "BOOK_SLOPE_ASYMMETRY_WEAK" in strategy.evaluate(
-        replace(
-            base,
-            features=replace(
-                aligned_features(Side.LONG),
-                bid_book_slope_10=70.0,
-                ask_book_slope_10=50.0,
-            ),
-        )
-    ).rejection_codes
-    assert "BOOK_SLOPE_ASYMMETRY_NOT_PERSISTENT" in strategy.evaluate(
-        replace(base, confirmation_ms=999)
-    ).rejection_codes
+    assert (
+        "BOOK_SLOPE_HISTORY_SHORT"
+        in strategy.evaluate(replace(base, history_sample_count=31)).rejection_codes
+    )
+    assert (
+        "OPPOSING_BOOK_NOT_THIN"
+        in strategy.evaluate(replace(base, ask_slope_percentile=0.16)).rejection_codes
+    )
+    assert (
+        "SUPPORTING_BOOK_NOT_FIRM"
+        in strategy.evaluate(replace(base, bid_slope_percentile=0.49)).rejection_codes
+    )
+    assert (
+        "BOOK_SLOPE_ASYMMETRY_WEAK"
+        in strategy.evaluate(
+            replace(
+                base,
+                features=replace(
+                    aligned_features(Side.LONG),
+                    bid_book_slope_10=70.0,
+                    ask_book_slope_10=50.0,
+                ),
+            )
+        ).rejection_codes
+    )
+    assert (
+        "BOOK_SLOPE_ASYMMETRY_NOT_PERSISTENT"
+        in strategy.evaluate(replace(base, confirmation_ms=999)).rejection_codes
+    )
     expensive_plan = replace(
         plan(Side.LONG),
         target=plan(Side.LONG).entry + Decimal("0.40"),
     )
-    assert "COST_FRACTION_TOO_HIGH" in strategy.evaluate(
-        replace(base, plan=expensive_plan)
-    ).rejection_codes
+    assert (
+        "COST_FRACTION_TOO_HIGH"
+        in strategy.evaluate(replace(base, plan=expensive_plan)).rejection_codes
+    )
 
 
 @pytest.mark.parametrize("side", [Side.LONG, Side.SHORT])
@@ -781,9 +830,12 @@ def test_book_slope_runtime_uses_prefix_percentiles_and_event_time(side: Side) -
         aligned_features(side, ts_ms=5_000),
         Regime.RANGE,
     )
-    assert "BOOK_SLOPE_ASYMMETRY_NOT_PERSISTENT" in decision_for(
-        first,
-        strategy_id,
-        side,
-    ).rejection_codes
+    assert (
+        "BOOK_SLOPE_ASYMMETRY_NOT_PERSISTENT"
+        in decision_for(
+            first,
+            strategy_id,
+            side,
+        ).rejection_codes
+    )
     assert decision_for(ready, strategy_id, side).status is CandidateStatus.QUALIFIED

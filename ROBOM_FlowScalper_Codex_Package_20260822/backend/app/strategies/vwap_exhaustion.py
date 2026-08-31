@@ -30,6 +30,8 @@ class VwapExhaustionContext:
     microprice_reversed: bool
     structure_reentered: bool
     confirmation_ms: int
+    vwap_deviation_bps: float | None = None
+    price_progress_percentile: float | None = None
 
 
 class VwapExhaustionStrategy:
@@ -82,4 +84,3 @@ class VwapExhaustionStrategy:
             expected_cost_bps=context.plan.expected_total_cost_bps,
             net_reward_risk=plan.net_reward_risk if plan else None,
         )
-

@@ -339,6 +339,16 @@ def compare_all_strategy_gate_trials(
         for strategy_id, row in strategy_comparisons.items()
         if row.get("historical_candidate_for_forward_shadow") is True
     ]
+    family_promotion_ready = [
+        strategy_id
+        for strategy_id, row in strategy_comparisons.items()
+        if row.get("candidate_family_promotion_gate_passed") is True
+    ]
+    family_promotion_pending = [
+        strategy_id
+        for strategy_id, row in strategy_comparisons.items()
+        if row.get("candidate_family_promotion_gate_passed") is False
+    ]
     status = "FAIL_INTEGRITY" if unique_violations else "PASS_COMPARISON_COMPLETE"
     return {
         "schema_version": 1,
@@ -357,6 +367,10 @@ def compare_all_strategy_gate_trials(
         "strategy_comparisons": strategy_comparisons,
         "strategy_decision_counts": dict(sorted(decision_counts.items())),
         "historical_candidate_forward_shadow_ids": historical_candidates,
+        "family_promotion_ready_strategy_ids": family_promotion_ready,
+        "family_promotion_pending_strategy_ids": family_promotion_pending,
+        "family_promotion_contract": "StrategyGovernor.family_gate_failures",
+        "universal_win_rate_gate_required": False,
         "survivor_watchlist_selection_required": True,
         "ranking_eligible_strategy_ids": [],
         "promotion_allowed": False,

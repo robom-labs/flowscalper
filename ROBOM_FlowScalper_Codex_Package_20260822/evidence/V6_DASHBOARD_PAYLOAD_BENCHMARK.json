@@ -1,0 +1,343 @@
+{
+  "schema_version": 2,
+  "generated_ts_utc": "2026-08-31T15:11:16.229509Z",
+  "source_commit": "ac5634a53da623721dc3bb6113427a32d4a677db",
+  "source_worktree_clean_at_measurement": false,
+  "status": "PASS",
+  "scope": "DEMO_FIXTURE_PAYLOAD_TRANSFORM_AND_SINGLE_PROCESS_SAMPLE",
+  "fixture_events": 100,
+  "payload": {
+    "baseline_endpoint": "/api/dashboard",
+    "summary_endpoint": "/api/ui/summary",
+    "strategy_list_endpoint": "/api/strategies/summary",
+    "selected_detail_transport": "/ws/ui select_family",
+    "dashboard_payload_bytes": 197409,
+    "summary_payload_bytes": 12879,
+    "strategy_summary_payload_bytes": 20251,
+    "selected_family_detail_payload_bytes": 5316,
+    "summary_to_dashboard_ratio": 0.06524,
+    "strategy_summary_to_dashboard_ratio": 0.102584,
+    "target_summary_ratio_strictly_less_than": 0.5,
+    "target_strategy_ratio_strictly_less_than": 0.35,
+    "summary_reduction_percent": 93.476
+  },
+  "transform_latency": {
+    "ui_summary": {
+      "iterations": 50,
+      "minimum_ms": 0.012083,
+      "median_ms": 0.012208,
+      "p95_ms": 0.013333,
+      "maximum_ms": 0.018167,
+      "measurement_boundary": "IN_PROCESS_PURE_TRANSFORM_NOT_HTTP_OR_BROWSER_RENDER"
+    },
+    "strategy_list": {
+      "iterations": 50,
+      "minimum_ms": 0.030167,
+      "median_ms": 0.031125,
+      "p95_ms": 0.054667,
+      "maximum_ms": 0.128584,
+      "measurement_boundary": "IN_PROCESS_PURE_TRANSFORM_NOT_HTTP_OR_BROWSER_RENDER"
+    },
+    "selected_family_detail": {
+      "iterations": 50,
+      "minimum_ms": 0.057,
+      "median_ms": 0.057958,
+      "p95_ms": 0.065958,
+      "maximum_ms": 0.107542,
+      "measurement_boundary": "IN_PROCESS_PURE_TRANSFORM_NOT_HTTP_OR_BROWSER_RENDER"
+    },
+    "single_tick_delta": {
+      "iterations": 50,
+      "minimum_ms": 0.017208,
+      "median_ms": 0.017417,
+      "p95_ms": 0.023125,
+      "maximum_ms": 0.042042,
+      "measurement_boundary": "IN_PROCESS_PURE_TRANSFORM_NOT_HTTP_OR_BROWSER_RENDER"
+    }
+  },
+  "websocket_chart_delta": {
+    "scope": "SYNTHETIC_SINGLE_TICK_FROM_DEMO_FIXTURE_CHART",
+    "message_type": "chart_delta",
+    "refresh_required": false,
+    "point_upserts": 1,
+    "point_removals": 0,
+    "candle_upserts": 1,
+    "candle_removals": 0,
+    "delta_envelope_bytes": 557,
+    "full_chart_bytes": 1714,
+    "delta_to_full_chart_ratio": 0.324971,
+    "full_chart_repeated_for_measured_tick": false
+  },
+  "single_process_resources": {
+    "status": "MEASURED_NOT_SOAK",
+    "scope": "ONE_DEMO_FIXTURE_DASHBOARD_SNAPSHOT",
+    "process_cpu_percent": 99.986,
+    "process_memory_mb": 81.062,
+    "queue_depth": 0,
+    "queue_capacity": 0,
+    "interpretation": "단일 fixture 프로세스 순간값이며 장기 서비스 한도 판정이 아닙니다."
+  },
+  "browser_e2e": {
+    "status": "PASS",
+    "scope": "LOCAL_DEMO_FIXTURE_PLAYWRIGHT",
+    "measured_ts_utc": "2026-08-31T14:47:05.239Z",
+    "measurement_boundary": "브라우저 화면 준비와 DOM 접근성 검증이며 실제 공개시장 서비스 성능은 아닙니다.",
+    "projects": {
+      "desktop": {
+        "status": "PASS",
+        "viewport_css_px": {
+          "width": 1408,
+          "height": 900
+        },
+        "performance": {
+          "first_meaningful_ready_view_ms": 535.3,
+          "strategy_list_ready_after_keyboard_navigation_ms": 42.9,
+          "selected_strategy_detail_ready_on_demand_ms": 105.7,
+          "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
+        },
+        "accessibility": {
+          "keyboard_tab_and_enter_navigation": true,
+          "escape_closes_strategy_drawer": true,
+          "drawer_focus_restored": true,
+          "screen_reader_names_and_modal_state": true,
+          "status_meaning_available_as_text_without_color": true,
+          "interactive_target_selectors": "button,input,select,summary,a[href]",
+          "hidden_disabled_and_aria_disabled_excluded": true,
+          "minimum_measured_interactive_height_px": 48,
+          "interactive_target_48px_pass": true,
+          "interactive_target_audits": [
+            {
+              "stage": "market_and_symbol_drawer",
+              "measured_count": 53,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "strategy_overview",
+              "measured_count": 28,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "strategy_detail_drawer",
+              "measured_count": 41,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "trade_detail_drawer",
+              "measured_count": 21,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "trade_replay",
+              "measured_count": 38,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "settings_and_diagnostics",
+              "measured_count": 11,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "desktop_200_percent_reflow_equivalent",
+              "measured_count": 11,
+              "minimum_height_px": 48,
+              "violations": []
+            }
+          ],
+          "interactive_target_violations": [],
+          "horizontal_overflow": false
+        },
+        "zoom_200_percent": {
+          "status": "PASS",
+          "method": "HALF_CSS_VIEWPORT_REFLOW_EQUIVALENT",
+          "reference_viewport_css_px": {
+            "width": 1408,
+            "height": 900
+          },
+          "measured_viewport_css_px": {
+            "width": 704,
+            "height": 450
+          },
+          "horizontal_overflow": false,
+          "boundary": "브라우저 자체 zoom 제어가 아니라 200% 확대와 같은 CSS 가용폭으로 reflow를 검증했습니다."
+        },
+        "console_error_count": 0,
+        "reversible_fixture_controls": {
+          "status": "PASS",
+          "scope": "ISOLATED_DEMO_FIXTURE_UI_ACTIONS",
+          "pause_then_resume": true,
+          "strategy_shadow_to_off_then_rollback": true,
+          "open_position_protection": "UI_COPY_VERIFIED_NOT_RUNTIME_POSITION_TEST",
+          "external_service_mutation": false,
+          "actual_order_count": 0
+        }
+      },
+      "tablet": {
+        "status": "PASS",
+        "viewport_css_px": {
+          "width": 820,
+          "height": 1180
+        },
+        "performance": {
+          "first_meaningful_ready_view_ms": 128.2,
+          "strategy_list_ready_after_keyboard_navigation_ms": 34.1,
+          "selected_strategy_detail_ready_on_demand_ms": 59.7,
+          "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
+        },
+        "accessibility": {
+          "keyboard_tab_and_enter_navigation": true,
+          "escape_closes_strategy_drawer": true,
+          "drawer_focus_restored": true,
+          "screen_reader_names_and_modal_state": true,
+          "status_meaning_available_as_text_without_color": true,
+          "interactive_target_selectors": "button,input,select,summary,a[href]",
+          "hidden_disabled_and_aria_disabled_excluded": true,
+          "minimum_measured_interactive_height_px": 48,
+          "interactive_target_48px_pass": true,
+          "interactive_target_audits": [
+            {
+              "stage": "market_and_symbol_drawer",
+              "measured_count": 55,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "strategy_overview",
+              "measured_count": 27,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "strategy_detail_drawer",
+              "measured_count": 41,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "trade_detail_drawer",
+              "measured_count": 21,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "trade_replay",
+              "measured_count": 39,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "settings_and_diagnostics",
+              "measured_count": 11,
+              "minimum_height_px": 48,
+              "violations": []
+            }
+          ],
+          "interactive_target_violations": [],
+          "horizontal_overflow": false
+        },
+        "zoom_200_percent": {
+          "status": "NOT_RUN",
+          "reason": "desktop 프로젝트에서만 측정합니다."
+        },
+        "console_error_count": 0
+      },
+      "mobile": {
+        "status": "PASS",
+        "viewport_css_px": {
+          "width": 390,
+          "height": 844
+        },
+        "performance": {
+          "first_meaningful_ready_view_ms": 108.5,
+          "strategy_list_ready_after_keyboard_navigation_ms": 28.5,
+          "selected_strategy_detail_ready_on_demand_ms": 32.9,
+          "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
+        },
+        "accessibility": {
+          "keyboard_tab_and_enter_navigation": true,
+          "escape_closes_strategy_drawer": true,
+          "drawer_focus_restored": true,
+          "screen_reader_names_and_modal_state": true,
+          "status_meaning_available_as_text_without_color": true,
+          "interactive_target_selectors": "button,input,select,summary,a[href]",
+          "hidden_disabled_and_aria_disabled_excluded": true,
+          "minimum_measured_interactive_height_px": 48,
+          "interactive_target_48px_pass": true,
+          "interactive_target_audits": [
+            {
+              "stage": "market_and_symbol_drawer",
+              "measured_count": 55,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "strategy_overview",
+              "measured_count": 27,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "strategy_detail_drawer",
+              "measured_count": 41,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "trade_detail_drawer",
+              "measured_count": 21,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "trade_replay",
+              "measured_count": 39,
+              "minimum_height_px": 48,
+              "violations": []
+            },
+            {
+              "stage": "settings_and_diagnostics",
+              "measured_count": 11,
+              "minimum_height_px": 48,
+              "violations": []
+            }
+          ],
+          "interactive_target_violations": [],
+          "horizontal_overflow": false
+        },
+        "zoom_200_percent": {
+          "status": "NOT_RUN",
+          "reason": "desktop 프로젝트에서만 측정합니다."
+        },
+        "console_error_count": 0
+      }
+    }
+  },
+  "not_run": {
+    "http_network_latency": "NOT_RUN_BY_THIS_SCRIPT",
+    "running_service_cpu_memory_queue_soak": "NOT_RUN_BY_THIS_SCRIPT",
+    "real_public_market_browser_performance": "NOT_RUN_BY_THIS_SCRIPT"
+  },
+  "checks": {
+    "summary_is_less_than_half_dashboard": true,
+    "strategy_summary_is_less_than_35_percent_dashboard": true,
+    "summary_omits_history": true,
+    "summary_omits_strategy_detail": true,
+    "summary_omits_account_detail": true,
+    "single_tick_uses_incremental_chart_delta": true,
+    "single_tick_upserts_one_point": true,
+    "single_tick_upserts_at_most_one_candle": true,
+    "chart_delta_is_smaller_than_full_chart": true,
+    "paper_only": true,
+    "real_orders_disabled": true,
+    "auth_not_required": true
+  },
+  "profitability": "NOT_PROVEN",
+  "funding_readiness": "NOT_READY",
+  "paper_only": true,
+  "real_orders_enabled": false
+}

@@ -33,12 +33,13 @@ Use unmistakable badges:
 
 Required pages:
 
-1. 라이브
-2. 거래내역
-3. 리플레이
-4. 성과분석
-5. 위험관리
-6. 시스템
+1. 시장
+2. 전략
+3. 거래
+4. 설정
+
+성과는 전략에, 진행 포지션·완료 기록·replay는 거래에, 위험·시스템은 설정에 합친다. Raw
+diagnostics와 연구 상세는 사용자가 펼칠 때만 불러온다.
 
 ## 9.4 Live page layout
 
@@ -238,17 +239,17 @@ Charts and metrics:
 - no critical controls hidden behind hover only;
 - confirmation for destructive paper reset/close actions.
 
-## 9.12 Phase 02 current screen contract
+## 9.12 Phase 02 historical screen contract
 
-The current beginner navigation is `시장`, `전략`, `진행 거래`, `거래 기록`, `과거 재생`,
+V6 이전 beginner navigation은 `시장`, `전략`, `진행 거래`, `거래 기록`, `과거 재생`,
 `성과`, `안전 설정`, `고급진단`, `시스템`. The home separates the Registry-derived BASE
 account total from the 1,000 USDT Shared Capital Benchmark and always explains that the
 larger League total is a comparison of independent accounts, not shared or real money.
 
 The Strategy League derives every row and BASE/STRESS account total from the backend
 Registry payload. `ACTIVE` is `공동·독립 모의 중`, `SHADOW` is `독립 모의 중`, and
-`OFF` is `꺼짐`. The current safe default is B ACTIVE, C/F/G/I/J SHADOW and A/D/E/H
-RETIRED/OFF, with LONG/SHORT controls preserved for all registered strategies. The drawer
+`OFF` is `꺼짐`. 이 과거 화면의 B ACTIVE 표현은 현재 계약이 아니다. 현재 기준선은 ACTIVE 0,
+10 SHADOW, 5 RETIRED/OFF이며 LONG/SHORT controls는 모든 등록 전략에서 보존한다. The drawer
 shows horizon, expected holding, signal half-life, required input intervals, exit model,
 cost version, lifecycle evidence and revision history before BASE/STRESS analytics. League
 positions default to BASE and contain no manual real buy or sell action.
@@ -268,9 +269,9 @@ real time, crosshair KST tooltip and fullscreen/CSS fallback are required.
 All visible buttons and selects are at least 48px high. Desktop 1408×900, tablet 820×1180
 and mobile 390×844 must have no document-level horizontal overflow.
 
-## 9.13 Phase 03 compact market and focus contract
+## 9.13 V6 compact market and focus contract
 
-- User navigation is `시장`, `전략`, `기록`, `분석`, `설정`; market is the default. Old user-facing League and advanced-terminal wording is removed.
+- User navigation is exactly `시장`, `전략`, `거래`, `설정`; market is the default. Performance is merged into strategy, open/history/replay into trades, and risk/system into settings. Old user-facing League, five-group and advanced-terminal routes are removed.
 - At 1408×900 the market rail is 260px and the chart uses the remaining width without root scroll. Tablet and mobile use an overlay market sheet.
 - The default chart is 3-minute, 200 historical candles, MA10/MA20 and volume overlay. RSI and MACD panes are created only while enabled and the popover never resizes the chart.
 - An actual new PAPER `trade_id` fill may open focus mode. Candidate, qualified signal and pending entry never do. The user can lock the current trade or select another BASE/STRESS position.
@@ -291,7 +292,7 @@ and mobile 390×844 must have no document-level horizontal overflow.
 
 - 시장 화면은 열린 모든 PAPER 포지션을 종목·방향·전략·BASE/STRESS·단계·순손익으로 표시하고 선택하면 해당 종목 차트로 이동한다.
 - 선택 종목에 열린 포지션이 있으면 차트 안에서 방향, 전략, 비용 프로필, entry, TP1, SL과 같은 종목의 추가 진행 건수를 보여준다. 포지션 종료 뒤 오래된 banner를 남기지 않는다.
-- 모든 등록 전략은 각각 `꺼짐`, `확인 필요`, `안전 대기`, `PAPER 진입 중`, `진입 조건 감지`, `준비 중`, `정상 감시 중` 중 한 상태를 표시한다. 현재 10개 SHADOW 감시와 5개 퇴역 기록을 구분하고, 퇴역 전략은 비용후 검증 실패와 재활성화 잠금을 함께 표시한다.
+- 모든 등록 전략은 각각 `꺼짐`, `확인 필요`, `안전 대기`, `PAPER 진입 중`, `진입 조건 감지`, `준비 중`, `정상 감시 중` 중 한 상태를 표시한다. V6 기본값은 current entry variant 6개 `SHADOW`, 비용후 실패 5개 `RETIRED·OFF`, 독립 entry가 아닌 legacy 4개 `RESEARCH·OFF`다. 퇴역·legacy 기록을 current 모의평가와 구분하고, 재활성화 잠금을 함께 표시한다.
 - 정상 감시 중인 전략은 최근 조건 대기 이유와 평가경로 수를 함께 표시한다. 거래가 없다는 사실만으로 전략 오류나 미실행으로 표현하지 않는다.
 - 시스템 기본 화면은 실행호가·체결 p95를 함께 표시하고 wide scanner p95는 고급진단에서 `진입판정 아님`이라고 구분한다.
 
@@ -300,14 +301,37 @@ and mobile 390×844 must have no document-level horizontal overflow.
 - 전략 표는 `연구 중`, `독립 검증 중`, `도전자`, `현재 대표`, `안전 격리`, `퇴역·보존`을 쉬운 한국어로 표시한다.
 - 상세 drawer는 마지막 평가 시각, 현재 대표, 비용후 근거 부족 이유, 다음 평가까지 필요한 자연표본·기간과 `NOT_PROVEN` 상태를 표시한다.
 - 승률 하나만으로 꺼졌다고 설명하지 않는다. OOS 하한, BASE/STRESS, 강건성, DSR/PBO, cooldown 또는 두 평가 주기 악화 같은 실제 reason code를 한국어로 해석한다.
-- 70% 운영 후보 정책은 `기본 비용 승률`, `보수 비용 승률`, `30건까지 남은 표본`을 쉬운 한국어로 설명한다. 원시 reason code는 고급 진단 안에만 두며, 30건 미만의 100% 표본을 검증 완료처럼 표시하지 않는다.
+- 공통 70% 운영 후보 정책은 사용하지 않는다. 비용후 기대값·PF·OOS·강건성과 family별 승률·payoff gate를 쉬운 한국어로 설명한다. 원시 reason code는 고급 진단 안에만 두며, 작은 표본의 100%를 검증 완료처럼 표시하지 않는다.
 - 사용자 고정과 자동 변경 가능 상태를 구분한다. 변경 이력은 revision, 생명주기, 주체, 이유와 시각을 보존한다.
 - `직전 설정으로 복원`은 확인 후 과거 설정을 새 revision으로 복원하며 기존 이력을 삭제하지 않는다.
 
 ## 9.17 전략 결과표 정렬과 홈 이동
 
-- 전략 기본 화면은 전략명, 현재 상태, 승률, 거래 수, 비용 후 순손익, 보유 건수만 먼저 보여준다. 사용 방식과 LONG·SHORT 설정, 원시 전략 코드와 Governor 진단은 `자세히·설정`에서만 보여준다.
+- 전략 기본 화면은 family, current variant, 현재 상태, Wilson 95% 하한, 고유 거래 수, 기대값, PF, 비용 후 순손익, 보유 건수만 먼저 보여준다. 사용 방식과 LONG·SHORT 설정, 원시 전략 코드와 Governor 진단은 `자세히·설정`에서만 보여준다.
 - 데스크톱에서는 표 머리글, 태블릿·모바일에서는 48px 이상 정렬 버튼을 누르면 오름차순·내림차순이 바뀐다. 현재 기준과 방향을 화살표와 `aria-sort`로 동시에 표시한다.
 - 승률이 없는 표본은 오름차순·내림차순 모두에서 아래로 보낸다. 30건 미만은 `표본 부족 · 순위 제외`와 남은 거래 수를 함께 표시한다.
-- `기본 비용`과 `보수 비용`을 즉시 바꿔 같은 전략의 승률·표본·순손익을 대조한다. 승률만으로 수익성을 결론내지 않는다.
+- `기본 비용`과 `보수 비용`을 즉시 바꿔 같은 고유기회의 승률·표본·순손익을 대조한다. BASE·STRESS를 두 거래로 세지 않고 승률만으로 수익성을 결론내지 않는다.
 - 왼쪽 위 `FlowScalper` 이름은 모든 화면에서 클릭 가능하며 클릭하면 기본 시장 화면으로 돌아간다.
+
+## 9.18 V6 split API, WebSocket과 조건 실측
+
+- 첫 화면의 작은 동적 상태는 `/api/ui/summary`, 실행설정은 `/api/settings/summary`, 고급 진단은
+  `/api/diagnostics`에서 분리해 읽는다. Family catalog, family detail, conditions와 거래는 각각
+  `/api/strategy-families`, `/api/strategy-families/{family_id}`,
+  `/api/strategy-families/{family_id}/conditions`, `/api/trades`에서 on-demand로 읽는다.
+- `/ws/ui`는 연결마다 최초 `snapshot` 한 번을 보낸 뒤 `summary_delta`, `position_delta`,
+  `strategy_row_delta`, `selected_detail_delta`만 보낸다. 바뀐 값이 없으면 `heartbeat`다. 사용자가
+  family를 선택하면 클라이언트가 `select_family`를 보내고 서버가 선택 상세 delta를 갱신한다.
+- WebSocket 선택 상세에는 history, 전체 conditions, entry rule과 원시 diagnostics를 넣지 않는다.
+  조건표를 열 때만 REST로 불러오며 닫힌 상세가 실시간 payload를 키우지 않아야 한다.
+- 전략 상세의 `진입 조건 실측`은 조건, 기준, 현재값, 상태와 상위 대기 이유를 표시한다. 실제 evaluator
+  측정값이 없으면 `WAITING_DATA` 또는 측정 대기로 표시하고 설명문을 현재 측정값처럼 꾸미지 않는다.
+- 필터 영역의 사용자 current는 가상 `ORDERFLOW_CONFIRMATION_FILTER_V2`다. 기본 OFF이고 현재 score,
+  9개 구성요소, 500ms 지속, 영향받는 두 entry 전략, data health와 uplift `NOT_PROVEN`을 표시한다.
+  ON/OFF는 expected revision CAS로 갱신하며 stale 충돌은 최신 revision을 다시 보여 준다. 이 필터는
+  `CandidatePlan`, Registry row, 계좌나 거래를 만들지 않는다.
+- 거래의 고유기회 한 행은 정확한 6-key를 사용하고 부분 exit를 합친다. 같은 기회 안에서도 MAIN과
+  LEAGUE는 `account_groups`로 분리하며 BASE/STRESS 결과가 다른 계정 결과를 덮어쓰지 않는다.
+
+이 절은 구현 계약이다. 최신 conditions/CAS 변경 뒤 backend·frontend·desktop·tablet·mobile 재실행이
+완료되기 전에는 화면 완료 상태를 `PASS`로 기록하지 않는다.

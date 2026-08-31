@@ -209,7 +209,9 @@ export const leagueAccounts: LeagueAccount[] = strategies.flatMap((strategy, str
   }))
 ))
 
-export function dashboardFixture(): DashboardData {
+export type DashboardFixture = Omit<DashboardData, 'strategies'> & { strategies: StrategyRow[] }
+
+export function dashboardFixture(): DashboardFixture {
   return {
     ...initialDashboard,
     status: { ...initialDashboard.status },

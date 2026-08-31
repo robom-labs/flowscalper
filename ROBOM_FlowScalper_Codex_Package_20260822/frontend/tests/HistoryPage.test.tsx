@@ -14,6 +14,7 @@ afterEach(() => {
 const trade: HistoryRow = {
   run_id: 'run-history',
   trade_id: 'paper-history-1',
+  opportunity_id: 'opportunity-history-1',
   symbol: 'BTCUSDT',
   strategy: 'CBR_CONTINUATION_V1',
   side: 'LONG',
@@ -45,16 +46,79 @@ const trade: HistoryRow = {
   holding_seconds: 1,
   profile: 'BASE',
   sample_type: 'LIVE_PUBLIC',
+  strategy_version: 'current-v2',
 }
 
 function historyResponse(rows: HistoryRow[]) {
+  const opportunities = new Map<string, HistoryRow[]>()
+  for (const row of rows) {
+    const opportunityId = row.opportunity_id ?? row.candidate_id ?? row.signal_event_id
+    if (!opportunityId) continue
+    const key = [row.run_id, row.strategy, row.strategy_version, opportunityId, row.symbol, row.side].join(':')
+    opportunities.set(key, [...(opportunities.get(key) ?? []), row])
+  }
+  const grouped = [...opportunities.values()].map((opportunityRows) => {
+    const first = opportunityRows[0]
+    const accountGroups = new Map<string, HistoryRow[]>()
+    for (const row of opportunityRows) {
+      const scope = row.account_scope ?? 'MAIN'
+      const accountGroupId = scope === 'LEAGUE' ? row.strategy : row.account_id ?? 'SHARED_PAPER'
+      const key = `${scope}:${accountGroupId}`
+      accountGroups.set(key, [...(accountGroups.get(key) ?? []), row])
+    }
+    const mappedGroups = [...accountGroups.values()].map((accountRows) => {
+      const accountFirst = accountRows[0]
+      const accountScope = accountFirst.account_scope ?? 'MAIN'
+      const accountGroupId = accountScope === 'LEAGUE' ? accountFirst.strategy : accountFirst.account_id ?? 'SHARED_PAPER'
+      const profiles = Object.fromEntries(['BASE', 'STRESS'].flatMap((profile) => {
+        const profileRows = accountRows.filter((row) => row.profile === profile)
+        return profileRows.length ? [[profile, profileRows]] : []
+      }))
+      return {
+        account_scope: accountScope,
+        account_group_id: accountGroupId,
+        account_ids: [...new Set(accountRows.map((row) => row.account_id ?? accountGroupId))],
+        profiles,
+        profile_account_refs: Object.fromEntries(accountRows.map((row) => [row.profile, {
+          account_scope: row.account_scope ?? 'MAIN', account_id: row.account_id ?? accountGroupId,
+        }])),
+        rows: accountRows,
+        raw_result_row_count: accountRows.length,
+        base_result_row_count: accountRows.filter((row) => row.profile === 'BASE').length,
+        stress_result_row_count: accountRows.filter((row) => row.profile === 'STRESS').length,
+        partial_exit_row_count: Math.max(0, accountRows.length - new Set(accountRows.map((row) => row.profile)).size),
+      }
+    })
+    return {
+      key: {
+        run_id: first.run_id, strategy_id: first.strategy,
+        strategy_version: first.strategy_version ?? 'UNKNOWN',
+        opportunity_id: first.opportunity_id ?? first.candidate_id ?? first.signal_event_id,
+        symbol: first.symbol, side: first.side,
+      },
+      family_id: null, family_label_ko: null, variant_label_ko: null,
+      entry_ts_ms: Math.min(...opportunityRows.map((row) => row.entry_ts_ms)),
+      exit_ts_ms: Math.max(...opportunityRows.map((row) => row.exit_ts_ms)),
+      profiles: {}, account_groups: mappedGroups, rows: opportunityRows,
+      raw_result_row_count: opportunityRows.length,
+      base_result_row_count: opportunityRows.filter((row) => row.profile === 'BASE').length,
+      stress_result_row_count: opportunityRows.filter((row) => row.profile === 'STRESS').length,
+      partial_exit_row_count: Math.max(0, opportunityRows.length - new Set(opportunityRows.map((row) => row.profile)).size),
+      replay_available: opportunityRows.some((row) => row.replay_available),
+    }
+  })
   return new Response(JSON.stringify({
-    rows,
-    scope: {
-      run_scope: 'CURRENT', account_scope: 'ALL', profile: 'ALL',
-      version_scope: 'ALL', sample_type: 'ALL', strategy_version: 'current-v2',
-      returned_count: rows.length, limit: 1000,
+    schema_version: 1,
+    opportunities: grouped,
+    counts: {
+      unique_opportunities: grouped.length,
+      raw_result_rows: rows.length,
+      base_result_rows: rows.filter((row) => row.profile === 'BASE').length,
+      stress_result_rows: rows.filter((row) => row.profile === 'STRESS').length,
+      unresolved_result_rows: rows.length - grouped.reduce((total, opportunity) => total + opportunity.rows.length, 0),
     },
+    grouping_status: 'PROVEN',
+    source_status: 'COMPLETE',
     paper_only: true, real_orders_enabled: false, auth_required: false,
   }), { status: 200, headers: { 'content-type': 'application/json' } })
 }
@@ -69,8 +133,11 @@ test('clears stale trade detail when the current history no longer contains it',
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
   expect(screen.getByText('1.7초')).toBeInTheDocument()
   expect(screen.getByText('2차 익절')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '자세히' }))
-  expect(screen.getByRole('complementary', { name: 'BTCUSDT 거래 결과' })).toBeInTheDocument()
+  const openButton = screen.getByRole('button', { name: '자세히' })
+  openButton.focus()
+  fireEvent.click(openButton)
+  expect(screen.getByRole('dialog', { name: '거래 상세' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '거래 상세 닫기' })).toHaveFocus()
   expect(screen.getByText('1차 목표까지')).toBeInTheDocument()
   expect(screen.getByText('2차 목표까지')).toBeInTheDocument()
   expect(screen.getByText('1차 목표')).toBeInTheDocument()
@@ -85,11 +152,15 @@ test('clears stale trade detail when the current history no longer contains it',
   expect(screen.getByText('최고 미실현 손익')).toBeInTheDocument()
   expect(screen.getByText('고점 대비 되돌림')).toBeInTheDocument()
   expect(screen.getByText('남은 수량 순기여')).toBeInTheDocument()
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(screen.queryByRole('dialog', { name: '거래 상세' })).not.toBeInTheDocument()
+  expect(openButton).toHaveFocus()
+  fireEvent.click(openButton)
 
   view.rerender(<HistoryPage rows={[]} currentRunId="run-history" onReplay={vi.fn()} />)
 
   await waitFor(() => {
-    expect(screen.queryByRole('complementary', { name: 'BTCUSDT 거래 결과' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: '거래 상세' })).not.toBeInTheDocument()
   })
 })
 
@@ -146,15 +217,7 @@ test('loads independent strategy accounts and marks rows without replay events',
     strategy_version: 'current-v2',
     replay_available: false,
   }
-  const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-    rows: [leagueTrade],
-    scope: {
-      run_scope: 'CURRENT', account_scope: 'LEAGUE', profile: 'ALL',
-      version_scope: 'CURRENT', sample_type: 'ALL', strategy_version: 'current-v2',
-      returned_count: 1, limit: 1000,
-    },
-    paper_only: true, real_orders_enabled: false, auth_required: false,
-  }), { status: 200, headers: { 'content-type': 'application/json' } }))
+  const fetchMock = vi.fn(async () => historyResponse([leagueTrade]))
   vi.stubGlobal('fetch', fetchMock)
   render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
 
@@ -168,6 +231,10 @@ test('loads independent strategy accounts and marks rows without replay events',
   )
   expect(fetchMock).toHaveBeenCalledWith(
     expect.stringContaining('version_scope=CURRENT'),
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
+  expect(fetchMock).toHaveBeenCalledWith(
+    expect.stringContaining('/api/trades?'),
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
 })
@@ -241,7 +308,7 @@ test('groups BASE and STRESS ledger rows from the same opportunity without delet
   expect(replay).toHaveBeenCalledWith(stressTrade)
 })
 
-test('keeps a same-profile collision visible instead of hiding a possible ledger duplicate', async () => {
+test('collapses same-profile partial exits inside one exact opportunity', async () => {
   const baseTrade: HistoryRow = {
     ...trade,
     trade_id: 'shadow-opportunity-base',
@@ -270,8 +337,9 @@ test('keeps a same-profile collision visible instead of hiding a possible ledger
 
   render(<HistoryPage rows={[]} currentRunId="run-history" onReplay={vi.fn()} />)
 
-  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(2))
-  expect(screen.getByRole('status')).toHaveTextContent('진입기회 2건 · 세부 원장 3건')
+  await waitFor(() => expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1))
+  expect(screen.getByRole('status')).toHaveTextContent('진입기회 1건 · 세부 원장 2건')
+  expect(screen.getByText('+1.7 USDT')).toBeInTheDocument()
 })
 
 test('shows an open PAPER position and moves the completed trade into refreshed history', async () => {
@@ -368,6 +436,7 @@ test('does not describe prior EDGE_DECAY records as if they used the current cos
     />,
   )
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
+  fireEvent.change(screen.getByLabelText('전략 버전'), { target: { value: 'ALL' } })
 
   expect(document.querySelector('.history-table')).toHaveTextContent('진입 근거 약화(과거 기준)')
   expect(document.querySelector('.history-table')).toHaveTextContent('현재 버전은 비용 이상의 가격 악화도 함께 확인합니다.')

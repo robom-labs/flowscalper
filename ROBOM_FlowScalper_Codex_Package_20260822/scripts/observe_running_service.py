@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,24 @@ from backend.app.storage.integrity import (
     RuntimeSafetyViolation,
     fetch_dashboard_payload,
 )
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _source_revision() -> tuple[str, bool]:
+    commit = subprocess.run(
+        ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "-C", str(PROJECT_ROOT), "status", "--porcelain", "--", "."],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return commit, not status
 
 
 def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
@@ -37,7 +56,13 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
     )
     started_at = datetime.now(UTC)
     started_monotonic = time.monotonic()
+    source_commit, source_worktree_clean_at_start = _source_revision()
     samples: list[RunningServiceSample] = []
+    observed_release_commits: set[str] = set()
+    observed_release_isolation: set[bool] = set()
+    observed_strategy_id_sets: set[tuple[str, ...]] = set()
+    observed_account_id_sets: set[tuple[str, ...]] = set()
+    observed_mode_counts: set[tuple[int, int, int]] = set()
     probe_error_count = 0
     consecutive_probe_errors = 0
     maximum_consecutive_probe_errors = 0
@@ -53,11 +78,44 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
                     dashboard_url,
                     timeout_seconds=arguments.request_timeout_seconds,
                 )
+                system = payload.get("system")
+                if not isinstance(system, dict):
+                    raise ValueError("system payload가 object가 아닙니다.")
+                release_commit = system.get("release_commit")
+                release_isolated = system.get("release_isolated")
+                if not isinstance(release_commit, str) or not release_commit:
+                    raise ValueError("system.release_commit이 없습니다.")
+                if not isinstance(release_isolated, bool):
+                    raise ValueError("system.release_isolated가 boolean이 아닙니다.")
+                observed_release_commits.add(release_commit)
+                observed_release_isolation.add(release_isolated)
                 sample = parse_running_service_sample(
                     payload,
                     elapsed_seconds=elapsed,
                     observed_at=datetime.now(UTC).isoformat(),
                 )
+                strategy_ids = tuple(
+                    sorted(state.strategy_id for state in sample.strategy_states)
+                )
+                league_accounts = payload.get("league_accounts")
+                if not isinstance(league_accounts, list):
+                    raise ValueError("league_accounts payload가 배열이 아닙니다.")
+                account_ids = tuple(
+                    sorted(
+                        str(row["account_id"])
+                        for row in league_accounts
+                        if isinstance(row, dict) and row.get("account_id") is not None
+                    )
+                )
+                if len(account_ids) != len(league_accounts):
+                    raise ValueError("league account_id 범위를 완전하게 읽지 못했습니다.")
+                mode_counts = tuple(
+                    sum(state.mode == mode for state in sample.strategy_states)
+                    for mode in ("ACTIVE", "SHADOW", "OFF")
+                )
+                observed_strategy_id_sets.add(strategy_ids)
+                observed_account_id_sets.add(account_ids)
+                observed_mode_counts.add(mode_counts)
             except (OSError, ValueError, RuntimeSafetyViolation) as error:
                 probe_error_count += 1
                 consecutive_probe_errors += 1
@@ -102,8 +160,71 @@ def observe_running_service(arguments: argparse.Namespace) -> dict[str, object]:
         if isinstance(failures, list) and "PROBE_FAILED_CONSECUTIVELY" not in failures:
             failures.append("PROBE_FAILED_CONSECUTIVELY")
     completed_at = datetime.now(UTC)
+    source_commit_at_end, source_worktree_clean_at_end = _source_revision()
+    release_commit = (
+        next(iter(observed_release_commits))
+        if len(observed_release_commits) == 1
+        else None
+    )
+    provenance_checks = {
+        "source_worktree_clean_at_start": source_worktree_clean_at_start,
+        "source_worktree_clean_at_end": source_worktree_clean_at_end,
+        "source_commit_stable": source_commit_at_end == source_commit,
+        "release_commit_stable": len(observed_release_commits) == 1,
+        "release_isolated_throughout": observed_release_isolation == {True},
+        "source_release_commit_match": release_commit == source_commit,
+        "strategy_ids_stable_and_observed": len(observed_strategy_id_sets) == 1,
+        "league_account_ids_stable_and_observed": len(observed_account_id_sets) == 1,
+        "strategy_mode_counts_stable_and_observed": len(observed_mode_counts) == 1,
+    }
+    checks = result.setdefault("checks", {})
+    if isinstance(checks, dict):
+        checks.update(provenance_checks)
+    failed_provenance = [name for name, passed in provenance_checks.items() if not passed]
+    if failed_provenance and result.get("status") == "PASS":
+        result["status"] = "FAIL"
+        failures = result.setdefault("failures", [])
+        if isinstance(failures, list):
+            failures.extend(
+                name for name in failed_provenance if name not in failures
+            )
     result.update(
         {
+            "schema_version": 1,
+            "generated_ts_utc": completed_at.isoformat().replace("+00:00", "Z"),
+            "source_commit": source_commit,
+            "source_commit_at_end": source_commit_at_end,
+            "source_worktree_clean_at_start": source_worktree_clean_at_start,
+            "source_worktree_clean_at_end": source_worktree_clean_at_end,
+            "source_worktree_clean_at_measurement": (
+                source_worktree_clean_at_start
+                and source_worktree_clean_at_end
+                and source_commit_at_end == source_commit
+            ),
+            "release_commit": release_commit,
+            "release_commits_observed": sorted(observed_release_commits),
+            "release_isolated_throughout": observed_release_isolation == {True},
+            "strategy_ids": (
+                list(next(iter(observed_strategy_id_sets)))
+                if len(observed_strategy_id_sets) == 1
+                else []
+            ),
+            "league_account_ids": (
+                list(next(iter(observed_account_id_sets)))
+                if len(observed_account_id_sets) == 1
+                else []
+            ),
+            "strategy_mode_counts": (
+                dict(
+                    zip(
+                        ("ACTIVE", "SHADOW", "OFF"),
+                        next(iter(observed_mode_counts)),
+                        strict=True,
+                    )
+                )
+                if len(observed_mode_counts) == 1
+                else {}
+            ),
             "started_at": started_at.isoformat(),
             "completed_at": completed_at.isoformat(),
             "wall_duration_seconds": round(

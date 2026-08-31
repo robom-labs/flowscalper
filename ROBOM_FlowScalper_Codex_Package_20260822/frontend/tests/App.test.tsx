@@ -1,6 +1,6 @@
 // 대시보드가 PAPER 안전 문구를 영구 표시하는지 검증한다.
 import '@testing-library/jest-dom/vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from '../src/App'
 import { initialDashboard } from '../src/demoData'
@@ -9,6 +9,83 @@ import type { FocusPosition } from '../src/types'
 
 class FakeWebSocket extends EventTarget {
   close() {}
+}
+
+const backendDiagnosticContract = [
+  ['release_commit', '실행 릴리스'],
+  ['release_isolated', '개발 폴더와 실행본 분리'],
+  ['event_loop_lag_last_ms', '로컬 처리루프 최근 지연 ms'],
+  ['event_loop_lag_max_ms', '로컬 처리루프 최대 지연 ms'],
+  ['event_loop_lag_over_100ms_count', '로컬 처리루프 100ms 초과 횟수'],
+  ['event_loop_lag_last_over_100ms_ts_ms', '최근 로컬 처리루프 지연시각 ms'],
+  ['event_loop_lag_over_500ms_count', '로컬 처리루프 500ms 초과 횟수'],
+  ['event_loop_lag_last_over_500ms_ts_ms', '최근 로컬 처리루프 500ms 초과시각 ms'],
+  ['event_loop_lag_last_over_500ms_ms', '최근 로컬 처리루프 500ms 초과값 ms'],
+  ['persistence_backlog_peak', '시장 저장 대기 최대 건수'],
+  ['persistence_backlog_entry_lock_count', '저장 적체 안전대기 횟수'],
+  ['wal_checkpoint_deferred_count', '저장 적체 중 checkpoint 연기 횟수'],
+  ['wal_checkpoint_last_wal_bytes', '최근 checkpoint 판단 WAL bytes'],
+  ['process_memory_mb', '현재 프로세스 메모리 RSS MB'],
+  ['process_memory_peak_mb', '프로세스 최고 메모리 RSS MB'],
+  ['startup_recovery_state', '시작 복구 결과'],
+  ['startup_recovery_cause_code', '시작 복구 원인 코드'],
+  ['consumer_running', '시장 처리 작업 실행'],
+  ['consumer_fault_active', '시장 처리 오류'],
+  ['queue_overload_drop_count', 'queue 과부하 누락'],
+  ['supervisor_running', '시장 관찰 작업 실행'],
+  ['last_paper_transition_cause_code', '마지막 PAPER 전환 결과'],
+  ['clock_sync_status', '거래소 시각 동기화'],
+] as const
+
+function splitDashboardFetch(dashboard: unknown) {
+  const data = dashboard as typeof initialDashboard
+  const system = data.system as Record<string, string | number | boolean | null>
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const path = String(input)
+    let body: unknown = data
+    if (path === '/api/settings/summary') {
+      body = {
+        schema_version: 1,
+        run: { run_id: data.status.run_id, mode: data.status.mode, venue: data.status.venue, new_run_preserves_history: true },
+        safety: {
+          paper_only: true, real_orders_enabled: false, auth_required: false, private_api_enabled: false,
+          api_key_enabled: false, wallet_enabled: false, runtime_ai_order_decision_enabled: false,
+          entry_state: data.paper_entry_intent.state, entry_revision: data.paper_entry_intent.revision,
+          active_locks: data.risk.active_locks,
+        },
+        costs: data.risk.strategy_league,
+        storage: {},
+        connection: { public_market_only: true },
+        autostart: {
+          state: 'NOT_PROVEN', paper_state_recovery_reported: null, launch_agent_verified: false, read_only: true,
+          evidence_source: 'LAUNCH_AGENT_NOT_INSPECTED',
+          evidence_ko: 'PAPER 상태 자동 복구는 macOS 자동 시작의 증거가 아닙니다.',
+        },
+        local_preferences: { research_detail_default: false, research_detail_affects_execution: false },
+        funding_readiness: 'NOT_READY',
+      }
+    } else if (path === '/api/diagnostics') {
+      body = {
+        schema_version: 1,
+        rows: backendDiagnosticContract.flatMap(([key, label_ko]) => key in system ? [{
+          key, label_ko, value: system[key], severity: 'INFO', user_visible: false, group: 'RUNTIME',
+        }] : []),
+        raw: system,
+        paper_only: true,
+        real_orders_enabled: false,
+        auth_required: false,
+      }
+    } else if (path === '/api/strategies/summary') {
+      body = {
+        schema_version: 1, analysis_scope: 'CURRENT_STRATEGY_VERSION', strategies: data.strategies,
+        league_accounts: data.league_accounts, strategy_count: data.strategies.length,
+        league_account_count: data.league_accounts.length, paper_only: true, real_orders_enabled: false, auth_required: false,
+      }
+    } else if (path === '/api/strategy-families') {
+      body = { schema_version: 1, families: [], paper_only: true, real_orders_enabled: false, auth_required: false }
+    }
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
+  })
 }
 
 beforeEach(() => {
@@ -75,10 +152,7 @@ test('shows a compact matching immutable release in advanced diagnostics', async
       release_isolated: true,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => releaseDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(releaseDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
 
   render(<App />)
@@ -108,17 +182,14 @@ test('separates local event-loop delay from public-market delay in diagnostics',
       wal_checkpoint_last_wal_bytes: 8_388_608,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => diagnosticDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(diagnosticDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
 
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: '설정' }))
   fireEvent.click(screen.getByText('고급 진단 보기'))
 
-  expect(screen.getByText('로컬 처리루프 최근 지연 ms')).toBeInTheDocument()
+  expect(await screen.findByText('로컬 처리루프 최근 지연 ms')).toBeInTheDocument()
   expect(screen.getByText('로컬 처리루프 최대 지연 ms')).toBeInTheDocument()
   expect(screen.getByText('로컬 처리루프 100ms 초과 횟수')).toBeInTheDocument()
   expect(screen.getByText('최근 로컬 처리루프 지연시각 ms')).toBeInTheDocument()
@@ -136,14 +207,14 @@ test('renders permanent paper-only ready status and market controls', async () =
   vi.stubGlobal('WebSocket', FakeWebSocket)
   render(<App />)
   expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getByText(/시작 준비 완료/)).toBeInTheDocument()
+  expect(screen.getByLabelText('시장 요약')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '자동 관찰 시작' })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '샘플로 보기' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
 })
 
-test('navigates five main groups and contextual subpages', async () => {
+test('uses exactly four primary pages without secondary navigation', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(() => Promise.resolve({ ok: true, json: async () => initialDashboard })),
@@ -152,18 +223,19 @@ test('navigates five main groups and contextual subpages', async () => {
   render(<App />)
   for (const [button, heading] of [
     ['전략', '전략 한눈에 보기'],
-    ['기록', '거래 기록'],
-    ['분석', '성과'],
-    ['설정', '시스템 상태'],
+    ['거래', '거래'],
+    ['설정', '설정'],
     ['시장', 'BTCUSDT 시장'],
   ]) {
     fireEvent.click(screen.getByRole('button', { name: button }))
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
     expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
   }
+  expect(within(screen.getByRole('navigation', { name: '주요 화면' })).getAllByRole('button')).toHaveLength(4)
+  expect(screen.queryByRole('navigation', { name: '하위 화면' })).not.toBeInTheDocument()
 })
 
-test('returns to the main market when the FlowScalper name is clicked', async () => {
+test('returns to the default market through the primary navigation', async () => {
   vi.stubGlobal(
     'fetch',
     vi.fn(() => Promise.resolve({ ok: true, json: async () => initialDashboard })),
@@ -173,7 +245,7 @@ test('returns to the main market when the FlowScalper name is clicked', async ()
 
   fireEvent.click(await screen.findByRole('button', { name: '전략' }))
   expect(screen.getByRole('heading', { name: '전략 한눈에 보기' })).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'FlowScalper 메인 시장으로 이동' }))
+  fireEvent.click(screen.getByRole('button', { name: '시장' }))
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
 })
 
@@ -188,10 +260,7 @@ test('separates current RSS from peak RSS in advanced diagnostics', async () => 
       process_memory_peak_source: 'PEAK_MAX_RSS',
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => resourceDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(resourceDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
 
   render(<App />)
@@ -219,10 +288,7 @@ test('shows the last startup recovery result in beginner and advanced views', as
       startup_recovery_reversible: true,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => recoveredDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(recoveredDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
 
   render(<App />)
@@ -264,10 +330,7 @@ test('shows a stopped market consumer as a processing failure with Korean diagno
       queue_overload_drop_count: 88,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => stoppedConsumerDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(stoppedConsumerDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
 
   render(<App />)
@@ -307,10 +370,7 @@ test('shows a stopped public supervisor even when the consumer flag is stale', a
       queue_overload_active: false,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => stoppedSupervisorDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(stoppedSupervisorDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
 
   render(<App />)
@@ -337,10 +397,7 @@ test('shows the latest paper lifecycle transition without calling a fill a real 
       last_paper_transition_reversible: false,
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => transitionedDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(transitionedDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)
 
   render(<App />)
@@ -405,9 +462,9 @@ test('keeps demo truth visible in both the permanent header and market workspace
 
   render(<App />)
 
-  expect(await screen.findByText('샘플 PAPER 데이터 · LIVE 아님 · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getByText('샘플 PAPER · LIVE 아님 · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '샘플 멈춤' })).toBeInTheDocument()
+  expect(await screen.findByText('샘플 PAPER 데이터 · LIVE 아님')).toBeInTheDocument()
+  expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '새 진입 잠시 멈추기' })).toBeInTheDocument()
 })
 
 test('renders an explicit LIVE operating state', async () => {
@@ -448,9 +505,9 @@ test('renders an explicit LIVE operating state', async () => {
 
   render(<App />)
 
-  expect(await screen.findByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중')
-  expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('시장 관찰계속 작동')
-  expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('새 PAPER 진입작동')
+  await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중'))
+  expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('공개시장을 계속 관찰')
+  expect(screen.getByRole('button', { name: '새 진입 잠시 멈추기' })).toBeInTheDocument()
 })
 
 test('clears a previous run PAPER entry notice when the run changes', async () => {
@@ -470,7 +527,7 @@ test('clears a previous run PAPER entry notice when the run changes', async () =
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   const { rerender } = render(<MarketPage data={initialDashboard} {...handlers} />)
   const liveDashboard = {
@@ -508,7 +565,7 @@ test('distinguishes shared and independent BASE positions in the live list', () 
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   render(<MarketPage data={{
     ...initialDashboard,
@@ -537,7 +594,7 @@ test('clears a PAPER entry notice when READY reuses the same run id', async () =
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   const liveSameRun = {
     ...initialDashboard,
@@ -571,7 +628,7 @@ test('relabels a PAPER entry notice when the position closes in the same live ru
   } as unknown as FocusPosition
   const handlers = {
     onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
-    onPauseToggle: vi.fn(), busy: false, immediateAction: null, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+    busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
   }
   const liveDashboard = {
     ...initialDashboard,
@@ -600,10 +657,7 @@ test('shows the verified public venue clock correction in system diagnostics', a
       clock_sync_status: 'SYNCED',
     },
   }
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(() => Promise.resolve({ ok: true, json: async () => clockDashboard })),
-  )
+  vi.stubGlobal('fetch', splitDashboardFetch(clockDashboard))
   class ClockWebSocket extends EventTarget {
     close() {}
     constructor() {

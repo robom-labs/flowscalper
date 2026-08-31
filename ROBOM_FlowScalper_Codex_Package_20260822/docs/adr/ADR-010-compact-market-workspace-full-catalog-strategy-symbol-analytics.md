@@ -2,6 +2,7 @@
 
 - 상태는 Accepted다.
 - 날짜는 2026-08-23이다.
+- V6 변경. 첫 화면의 5개 주 메뉴 결정은 `ADR-V6-strategy-family-and-four-page-user-interface.md`의 시장·전략·거래·설정 4페이지 결정으로 대체한다. Chart·catalog·PAPER 안전 결정은 유지한다.
 
 ## 결정
 

@@ -11,9 +11,11 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
+from backend.app.analytics.opportunities import wilson_lower_bound
+from scripts.research_runtime_strategy_replay import family_promotion_assessment
+
 BASELINE_SIGNAL_GATE = "NONE"
 MINIMUM_OPPORTUNITIES = 30
-MINIMUM_WIN_RATE = 0.70
 MINIMUM_DSR_PROBABILITY = 0.95
 _RANDOM_ID_FIELDS = {"candidate_id", "trade_id", "trailing_state_checksum"}
 
@@ -129,13 +131,29 @@ def _candidate_profile_absolute_gates(
     )
     losses = int(str(profile.get("losses", 0)))
     wins = int(str(profile.get("wins", 0)))
+    sample_size = int(str(profile.get("sample_size", 0)))
     profit_factor = _optional_float(profile.get("profit_factor"))
+    interval = profile.get("win_rate_ci95")
+    reported_wilson_lower = (
+        interval.get("lower") if isinstance(interval, Mapping) else None
+    )
+    wilson_lower = (
+        Decimal(str(reported_wilson_lower))
+        if reported_wilson_lower is not None
+        else wilson_lower_bound(wins, sample_size)
+    )
+    current_embedded_gates = {
+        str(name): value
+        for name, value in gates.items()
+        if not (
+            str(name).startswith("win_rate_at_least_")
+            and str(name).endswith("_percent")
+        )
+    }
     return {
-        "sample_at_least_30": int(str(profile.get("sample_size", 0)))
-        >= MINIMUM_OPPORTUNITIES,
-        "win_rate_at_least_70_percent": (
-            (win_rate := _optional_float(profile.get("win_rate"))) is not None
-            and win_rate >= MINIMUM_WIN_RATE
+        "sample_at_least_30": sample_size >= MINIMUM_OPPORTUNITIES,
+        "wilson_lower_positive": (
+            wilson_lower is not None and wilson_lower.is_finite() and wilson_lower > 0
         ),
         "expectancy_bps_positive": (
             (expectancy := _optional_float(profile.get("expectancy_bps"))) is not None
@@ -160,10 +178,14 @@ def _candidate_profile_absolute_gates(
             profile.get("maximum_drawdown_usdt", "Infinity"),
             profile.get("maximum_drawdown_limit_usdt", "-Infinity"),
         ),
-        "embedded_profile_gates_all_passed": bool(gates)
-        and all(value is True for value in gates.values())
-        and profile.get("gate_passed") is True,
+        "embedded_nonlegacy_profile_gates_all_passed": bool(current_embedded_gates)
+        and all(value is True for value in current_embedded_gates.values()),
     }
+
+
+def _legacy_universal_win_rate_marker(value: object) -> bool:
+    normalized = str(value).upper()
+    return "WIN_RATE" in normalized and "70" in normalized
 
 
 def compare_strategy_gate_trials(
@@ -393,6 +415,7 @@ def compare_strategy_gate_trials(
     profile_comparisons: dict[str, dict[str, object]] = {}
     comparative_gates: dict[str, bool] = {}
     absolute_profile_gates: dict[str, dict[str, bool]] = {}
+    candidate_profiles: dict[str, Mapping[str, object]] = {}
     for profile in ("BASE", "STRESS"):
         baseline_profile = _profile_metrics(
             baseline,
@@ -404,12 +427,10 @@ def compare_strategy_gate_trials(
             target_strategy_id=target_strategy_id,
             profile=profile,
         )
+        candidate_profiles[profile] = candidate_profile
         absolute_gates = _candidate_profile_absolute_gates(candidate_profile)
         absolute_profile_gates[profile] = absolute_gates
         gates = {
-            "win_rate_not_lower": _not_lower(
-                candidate_profile.get("win_rate"), baseline_profile.get("win_rate")
-            ),
             "expectancy_bps_not_lower": _not_lower(
                 candidate_profile.get("expectancy_bps"),
                 baseline_profile.get("expectancy_bps"),
@@ -440,6 +461,15 @@ def compare_strategy_gate_trials(
         candidate_robustness.get("concentration"),
         "candidate concentration",
     )
+    family_promotion = family_promotion_assessment(
+        target_strategy_id,
+        unique_opportunities=candidate_opportunities,
+        profiles=candidate_profiles,
+        pbo_by_profile={
+            profile: {"pbo": 0 if candidate_pbo_gates.get(profile) is True else None}
+            for profile in ("BASE", "STRESS")
+        },
+    )
     historical_gate_components = {
         "minimum_unique_opportunities": candidate_opportunities
         >= MINIMUM_OPPORTUNITIES,
@@ -455,16 +485,12 @@ def compare_strategy_gate_trials(
         "stress_pbo_gate": candidate_pbo_gates.get("STRESS") is True,
         "concentration_gate": candidate_concentration.get("gate_passed") is True,
     }
-    historical_gates_passed = bool(
-        candidate_robustness.get(
-            "historical_cost_oos_statistical_and_concentration_gates_passed",
-            False,
-        )
-    ) and all(historical_gate_components.values())
+    historical_gates_passed = all(historical_gate_components.values())
     blockers = list(
         dict.fromkeys(
             str(value)
             for value in _rows_as_values(candidate_robustness.get("ranking_blockers", []))
+            if not _legacy_universal_win_rate_marker(value)
         )
     )
     if integrity_violations:
@@ -497,7 +523,8 @@ def compare_strategy_gate_trials(
         "same_input_and_non_target_invariance_passed": not integrity_violations,
         "candidate_final_oos_unique_market_opportunities": candidate_opportunities,
         "minimum_opportunities": MINIMUM_OPPORTUNITIES,
-        "minimum_win_rate_per_profile": MINIMUM_WIN_RATE,
+        "universal_minimum_win_rate_per_profile": None,
+        "positive_wilson_lower_required": True,
         "candidate_historical_cost_oos_statistical_and_concentration_gates_passed": (
             historical_gates_passed
         ),
@@ -506,6 +533,9 @@ def compare_strategy_gate_trials(
         "comparative_gates": comparative_gates,
         "profile_comparisons": profile_comparisons,
         "candidate_ranking_blockers": blockers,
+        "candidate_family_promotion": family_promotion,
+        "candidate_family_promotion_gate_passed": family_promotion["gate_passed"],
+        "family_promotion_required_before_promotion": True,
         "historical_candidate_for_forward_shadow": (
             decision == "HISTORICAL_CANDIDATE_FORWARD_SHADOW_PENDING"
         ),

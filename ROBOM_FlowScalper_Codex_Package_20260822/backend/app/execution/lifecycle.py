@@ -195,6 +195,7 @@ class PaperTradeService:
             mfe_r=Decimal(0),
             flags=flags,
             profile=self.profile,
+            strategy_version="LEGACY_V01",
         )
         self.risk_manager.record_close(
             self.risk_state,

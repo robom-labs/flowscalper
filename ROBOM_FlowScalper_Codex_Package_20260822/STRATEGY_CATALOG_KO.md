@@ -1,8 +1,8 @@
-# ROBOM FlowScalper v0.2 전략 카탈로그
+# ROBOM FlowScalper v0.3 전략 카탈로그
 
 ## 공통 원칙
 
-열한 전략은 모두 공개시장 데이터와 내부 PAPER 체결에만 사용된다. 전략은 주문 권한이 없고 거래소 계정이나 private API를 호출하지 않는다. 같은 symbol snapshot과 과거 이력만 사용하며 현재값 이후 정보를 참조하지 않는다.
+15개 Registry 전략은 모두 공개시장 데이터와 내부 PAPER 체결에만 사용된다. 전략은 주문 권한이 없고 거래소 계정이나 private API를 호출하지 않는다. 같은 symbol snapshot과 과거 이력만 사용하며 현재값 이후 정보를 참조하지 않는다. V6 화면은 ID를 삭제하지 않고 8개 family의 current·comparison·legacy variant로 묶는다.
 
 | 구분 | Strategy ID | 화면 이름 | 안정성 | 주 레짐 | 핵심 확인 |
 |---|---|---|---|---|---|
@@ -17,6 +17,10 @@
 | I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | 깊이보정 OFI와 prefix 3초 수익률 동행 |
 | J | `BOOK_SLOPE_ASYMMETRY_V1` | 호가 기울기 비대칭 | EXPERIMENTAL | RANGE, TREND_UP, TREND_DOWN | top10 가격거리 대비 깊이의 방향 비대칭 |
 | K | `HOURLY_MOMENTUM_BREAKOUT_V1` | 시간봉 추세 돌파 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 완성 1시간봉 EMA 정렬, 24시간 모멘텀, Donchian 돌파, ADX, 상대거래량 |
+| L | `TREND_PULLBACK_RECLAIM_15M_V2` | 15분 추세 눌림 재상승 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 상위 추세, 구조 눌림, 완료봉 reclaim |
+| M | `BREAKOUT_RETEST_15M_V2` | 15분 돌파 후 재확인 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 완료봉 돌파, retest, 구조 재확인 |
+| N | `BREAKOUT_RETEST_30M_V2` | 30분 돌파 후 재확인 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 30분 돌파, retest, 구조손절·runner |
+| O | `MULTISPEED_TREND_RECLAIM_30M_V2` | 30분·1시간 추세 재합류 | EXPERIMENTAL | TREND_UP, TREND_DOWN | 다중 시간축 추세, 조정, 재합류 |
 
 ## 전략 A. 유동성 쓸기 반전
 
@@ -52,11 +56,11 @@ top5·top10 호가 불균형, 250ms·3초 OFI, 1초 체결과 microprice 변위�
 
 ## 전략 I. OFI·단기수익률 동행
 
-깊이보정 OFI와 직전 3초 가격수익률이 같은 방향으로 이어지는지를 별도로 검증한다. 기준가격은 현재보다 3초 이전의 가장 가까운 과거 표본만 사용하고 미래값을 보지 않는다. 1,000ms 지속과 공통 비용 gate를 통과해야 하며 기본값은 독립 SHADOW PAPER다.
+깊이보정 OFI와 직전 3초 가격수익률이 같은 방향으로 이어지는지를 별도로 검증했다. 기준가격은 현재보다 3초 이전의 가장 가까운 과거 표본만 사용하고 미래값을 보지 않는다. V6에서는 이 V1 가설을 주문흐름 확인 필터의 legacy 구성요소로 보존하며 기본값은 `RESEARCH·OFF`다.
 
 ## 전략 J. 호가 기울기 비대칭
 
-top10 각 호가의 중간가격 거리와 누적 명목깊이로 매수·매도 기울기를 계산한다. LONG은 매도호가 기울기가 동일 종목 과거창의 하위 15%이고 매수호가 기울기가 중앙값 이상이며 양쪽 비율이 1.5배 이상일 때만 구조 조건을 통과한다. SHORT는 이를 대칭 적용한다. 32개 이상의 과거표본, OFI·공격체결·microprice·가격반응과 1,000ms 지속이 모두 필요하며 기본값은 독립 SHADOW PAPER다. 공식 연구는 연구가설의 근거일 뿐 수익성 증거가 아니다.
+top10 각 호가의 중간가격 거리와 누적 명목깊이로 매수·매도 기울기를 계산한다. LONG은 매도호가 기울기가 동일 종목 과거창의 하위 15%이고 매수호가 기울기가 중앙값 이상이며 양쪽 비율이 1.5배 이상일 때만 구조 조건을 통과한다. SHORT는 이를 대칭 적용한다. 32개 이상의 과거표본, OFI·공격체결·microprice·가격반응과 1,000ms 지속이 모두 필요하다. V6에서는 legacy 구성요소로 보존하며 기본값은 `RESEARCH·OFF`다. 공식 연구는 연구가설의 근거일 뿐 수익성 증거가 아니다.
 
 ## 전략 K. 시간봉 추세 돌파
 
@@ -64,15 +68,15 @@ top10 각 호가의 중간가격 거리와 누적 명목깊이로 매수·매도
 
 ## 모드와 방향 제어
 
-현재 안전 기본값은 공동계좌 `ACTIVE` 0개, B/C/F/G/I/J `SHADOW` 6개, A/D/E/H/K `RETIRED·OFF` 5개다. 이 상태는 과거 거래를 지우지 않으며 퇴역 전략의 BASE·STRESS 계좌와 명시적인 새 연구 경로도 보존한다. 퇴역 전략은 별도 사전등록 연구와 코드 변경 없이 화면에서 다시 켤 수 없다.
+현재 V6 소스 안전 기본값은 공동계좌 `ACTIVE` 0개, B/C/L/M/N/O entry variant `SHADOW` 6개, A/D/E/H/K `RETIRED·OFF` 5개, F/G/I/J legacy 구성요소 `RESEARCH·OFF` 4개다. 15개 Strategy ID와 30개 BASE·STRESS 계좌 및 과거 거래는 삭제하지 않는다. Legacy 구성요소와 퇴역 전략은 rollback을 포함한 사용자 설정으로 독립 entry를 되살릴 수 없으며, 새 사전등록 연구·코드 변경·동일 gate 검증이 필요하다.
 
-| 화면 선택 | main PAPER 후보 | 독립 BASE·STRESS shadow | 평가 |
+| 제어 주체·화면 선택 | main PAPER 후보 | 독립 BASE·STRESS shadow | 평가 |
 |---|---:|---:|---:|
-| 실전 PAPER, `ACTIVE` | 포함 | 포함 | 실행 |
-| 가상 관찰, `SHADOW` | 제외 | 포함 | 실행 |
-| 끄기, `OFF` | 제외 | 제외 | 중지 |
+| Governor 검증 전용, `ACTIVE` | 포함 | 포함 | 실행 |
+| 사용자 가상 관찰, `SHADOW` | 제외 | 포함 | 실행 |
+| 사용자 끄기, `OFF` | 제외 | 제외 | 중지 |
 
-LONG과 SHORT는 각 전략에서 별도로 허용하거나 차단한다. 설정 변경은 revision, actor, 이유와 함께 원장에 기록된다. Strategy Governor는 짧은 승률로 설정을 뒤집지 않고, 최소표본·OOS·STRESS·PBO·DSR·강건성 gate와 사용자 manual lock을 모두 확인한다. runtime은 source code나 임계값을 자동 수정하지 않는다.
+사용자 화면은 `SHADOW`와 `OFF`만 선택할 수 있다. `ACTIVE`는 동일 family gate와 승격 계약을 통과한 Strategy Governor만 설정한다. LONG과 SHORT는 각 전략에서 별도로 허용하거나 차단한다. 설정 변경은 revision, actor, 이유와 함께 원장에 기록된다. Strategy Governor는 짧은 승률로 설정을 뒤집지 않고, 최소표본·OOS·STRESS·PBO·DSR·강건성 gate와 사용자 manual lock을 모두 확인한다. runtime은 source code나 임계값을 자동 수정하지 않는다.
 
 A~J 런타임 descriptor는 `MICRO_SCALP`, 예상 보유 10~180초, 신호 반감기 30초, 250ms~120초 공개시장 피처와 900초 안전상한을 공개한다. K는 `INTRADAY_SWING`, 예상 보유 1~36시간, 5초 신호 반감기, 완성 1시간봉과 36시간 안전상한을 공개한다. 각 descriptor는 strategy version, 필요한 공개시장 데이터, 최소 warmup, 진입 가설·반증 조건, 비용모델, 공동·독립 PAPER 위험예산, 대상 종목·레짐, 미래정보 방지 규칙, 1차 연구 Source ID와 현재 lifecycle·변경 이유를 API와 상세 화면에 함께 제공한다. 예상 운용범위는 건강한 포지션을 그 시간에 고정 종료한다는 뜻이 아니다.
 
@@ -127,3 +131,34 @@ main 계좌는 동시에 최대 한 포지션만 허용하고 여러 적격 후�
 - 300건 이상도 시장·레짐 분산을 별도로 확인해야 한다.
 
 표본이 없거나 부족하면 수치를 꾸미지 않고 `CALIBRATING`, 표본 없음, 판단 보류로 표시한다. PAPER 결과는 실제 수익이나 향후 성과를 보장하지 않는다.
+
+## V6 family·variant 보기
+
+| Family | Current variant | 비교·이전 variant | 기본 사용자 역할 |
+|---|---|---|---|
+| `TREND_PULLBACK` | `TREND_PULLBACK_RECLAIM_15M_V2` | `MULTISPEED_TREND_RECLAIM_30M_V2`, offline V3 | ENTRY |
+| `BREAKOUT_RUNNER` | `BREAKOUT_RETEST_30M_V2` | CBR, 15분 retest, hourly legacy, offline V3 | ENTRY |
+| `ORDERFLOW_CONFIRMATION` | `ORDERFLOW_CONFIRMATION_FILTER_V2` 가상 current | OFI·queue·microprice·aggressor·book slope | FILTER |
+| `EXHAUSTION_REVERSION` | `VWAP_EXHAUSTION_REVERSION_V1` | LSA legacy, offline `EXHAUSTION_VWAP_REENTRY_V2` | ENTRY |
+| `POSITIONING_LIQUIDATION` | 없음 | OI·funding·basis·liquidation research | FILTER |
+| `MARKET_REGIME_FILTERS` | 없음 | trend·range·deleveraging research | ROUTER |
+| `SESSION_PROFILE` | 없음 | POC·VAH·VAL research | FILTER |
+| `MARKET_NEUTRAL` | 없음 | unvalidated multi-leg research | MARKET_NEUTRAL_MULTI_LEG |
+
+Family별 current variant는 최대 하나다. Legacy·superseded·filter·router·미검증 multi-leg는 기본
+entry 순위와 거래 수에서 제외하지만 소스·계좌·원장·replay는 삭제하지 않는다. V3 후보는 같은
+동결입력 V2 비교 전까지 Registry와 LIVE SHADOW에 등록하지 않으며 `NOT_PROVEN`, promotion
+false다.
+
+`ORDERFLOW_CONFIRMATION_FILTER_V2`는 15개 Registry 전략에 더해지는 16번째 entry가 아니다.
+Registry family 계약의 current는 계속 없음이고, family API와 사용자 화면에서만 current로 합성되는
+가상 `FILTER`다. 기본 `OFF`, 최종 entry 순위 제외, LONG·SHORT 진입 권한 없음이며
+`TREND_PULLBACK_RECLAIM_15M_V2`와 `BREAKOUT_RETEST_30M_V2`의 실행확인에만 영향을 준다.
+필터는 9개 구성요소 score, 통과 수, 500ms 지속, data health와 uplift `NOT_PROVEN` 상태를 내보내지만
+`CandidatePlan`, Registry 전략, BASE·STRESS 계좌와 거래를 각각 0개만큼 늘린다. ON/OFF는 family
+CAS revision으로 기록하고 기본 OFF에서 자동 승격하지 않는다.
+
+공통 70% 관측승률 gate는 사용하지 않는다. 비용후 기대값·PF·OOS·DSR·PBO·강건성과
+family별 Wilson·payoff 형태를 결과 전에 고정한다. BASE와 STRESS는 한 고유기회의 두 비용결과다.
+전략 기본 정렬은 표본 적격 후보의 Wilson 95% 하한이며 수익성은 `NOT_PROVEN`,
+`FUNDING_READINESS`는 `NOT_READY`다.

@@ -11,6 +11,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.build_identity import APP_VERSION
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketDataState, MarketEvent, RuntimeMode, Venue
 from backend.app.live_public import LiveBootstrapResult, PublicDataUnavailable
@@ -73,12 +74,8 @@ def test_fixture_boot_is_honestly_labeled() -> None:
 
 
 def test_fixture_events_are_deterministic() -> None:
-    first = PaperRuntime(
-        mode=RuntimeMode.DEMO_FIXTURE, clock=DeterministicClock(), run_id="run-a"
-    )
-    second = PaperRuntime(
-        mode=RuntimeMode.DEMO_FIXTURE, clock=DeterministicClock(), run_id="run-a"
-    )
+    first = PaperRuntime(mode=RuntimeMode.DEMO_FIXTURE, clock=DeterministicClock(), run_id="run-a")
+    second = PaperRuntime(mode=RuntimeMode.DEMO_FIXTURE, clock=DeterministicClock(), run_id="run-a")
     first.boot_fixture(20)
     second.boot_fixture(20)
     assert first.events == second.events
@@ -126,10 +123,12 @@ def test_dashboard_controls_preserve_run_history() -> None:
         assert dashboard["chart"]["interval"] == "3m"
         assert len(dashboard["chart"]["candles"]) >= 3
 
-        interval_chart = client.post(
+        chart_ack = client.post(
             "/api/control/chart",
             json={"symbol": "BTCUSDT", "interval_seconds": 15},
-        ).json()["chart"]
+        ).json()
+        assert "chart" not in chart_ack
+        interval_chart = client.get("/api/ui/summary").json()["chart"]
         assert interval_chart["interval"] == "15s"
         assert len(interval_chart["candles"]) >= 14
         assert all(float(row["close"]) > 0 for row in interval_chart["candles"])
@@ -242,10 +241,7 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     assert dashboard["operation_status"]["recommended_action"] == "START"
     initial_by_id = {item["strategy_id"]: item for item in dashboard["strategies"]}
     assert initial_by_id["LSA_REVERSAL_V1"]["policy_reactivation_locked"] is True
-    assert (
-        initial_by_id["VWAP_EXHAUSTION_REVERSION_V1"]["policy_reactivation_locked"]
-        is False
-    )
+    assert initial_by_id["VWAP_EXHAUSTION_REVERSION_V1"]["policy_reactivation_locked"] is False
 
     changed = client.post(
         "/api/strategies/VWAP_EXHAUSTION_REVERSION_V1",
@@ -257,15 +253,25 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
         },
     )
     assert changed.status_code == 200
-    row = next(
+    changed_row = next(
         item
-        for item in changed.json()["strategies"]
+        for item in changed.json()["strategy_state"]
         if item["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
     )
-    assert (row["mode"], row["long_enabled"], row["short_enabled"]) == (
+    assert (changed_row["mode"], changed_row["long_enabled"], changed_row["short_enabled"]) == (
         "SHADOW",
         True,
         False,
+    )
+    assert changed_row["settings_revision"] == 1
+    assert changed_row["manual_lock"] is True
+    assert "governance" not in changed_row
+    assert "entry_rules_ko" not in changed_row
+    detail = client.get("/api/strategy-families/EXHAUSTION_REVERSION").json()
+    row = next(
+        variant["runtime_state"]
+        for variant in detail["variants"]
+        if variant["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
     )
     assert row["settings_revision"] == 1
     assert row["manual_lock"] is True
@@ -310,10 +316,18 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
         },
     )
     assert rollback.status_code == 200
-    restored = next(
+    restored_ack = next(
         item
-        for item in rollback.json()["strategies"]
+        for item in rollback.json()["strategy_state"]
         if item["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
+    )
+    assert restored_ack["settings_revision"] == 2
+    assert restored_ack["short_enabled"] is True
+    detail = client.get("/api/strategy-families/EXHAUSTION_REVERSION").json()
+    restored = next(
+        variant["runtime_state"]
+        for variant in detail["variants"]
+        if variant["strategy_id"] == "VWAP_EXHAUSTION_REVERSION_V1"
     )
     assert restored["settings_revision"] == 2
     assert restored["short_enabled"] is True
@@ -332,9 +346,7 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
     assert history[1]["actor"] == "USER_UI"
     assert history[1]["cause_code"] == "USER_CONFIGURATION"
     assert history[1]["reversible"] is True
-    assert history[1]["transition_id"].endswith(
-        "VWAP_EXHAUSTION_REVERSION_V1-rev-1"
-    )
+    assert history[1]["transition_id"].endswith("VWAP_EXHAUSTION_REVERSION_V1-rev-1")
     assert (
         client.post(
             "/api/strategies/UNKNOWN",
@@ -347,6 +359,35 @@ def test_strategy_configuration_api_is_explicit_and_validated() -> None:
         ).status_code
         == 404
     )
+    legacy_configuration = client.post(
+        "/api/strategies/AGGRESSOR_FLOW_CONTINUATION_V1",
+        json={
+            "mode": "SHADOW",
+            "lifecycle": "SHADOW",
+            "long_enabled": True,
+            "short_enabled": True,
+            "expected_revision": 0,
+        },
+    )
+    assert legacy_configuration.status_code == 422
+    assert (
+        legacy_configuration.json()["detail"]["error_code"]
+        == "STRATEGY_CONFIGURATION_INVALID"
+    )
+    assert "legacy" in legacy_configuration.json()["detail"]["error_message_ko"]
+    direct_active = client.post(
+        "/api/strategies/TREND_PULLBACK_RECLAIM_15M_V2",
+        json={
+            "mode": "ACTIVE",
+            "lifecycle": "ACTIVE",
+            "long_enabled": True,
+            "short_enabled": True,
+            "expected_revision": 0,
+        },
+    )
+    assert direct_active.status_code == 422
+    assert direct_active.json()["detail"]["error_code"] == "STRATEGY_CONFIGURATION_INVALID"
+    assert "Governor" in direct_active.json()["detail"]["error_message_ko"]
 
 
 def test_policy_retirement_cannot_be_bypassed_by_rollback_api() -> None:
@@ -384,6 +425,39 @@ def test_policy_retirement_cannot_be_bypassed_by_rollback_api() -> None:
     assert current["mode"] == "OFF"
     assert current["lifecycle"] == "RETIRED"
     assert current["settings_revision"] == 2
+
+
+def test_v6_legacy_history_only_cannot_be_bypassed_by_rollback_api() -> None:
+    runtime = PaperRuntime(mode=RuntimeMode.READY, clock=DeterministicClock())
+    strategy_id = "AGGRESSOR_FLOW_CONTINUATION_V1"
+    runtime.strategy_registry.restore_setting(
+        strategy_id,
+        mode=StrategyMode.SHADOW,
+        lifecycle=StrategyLifecycle.SHADOW,
+        long_enabled=True,
+        short_enabled=True,
+        revision=7,
+        manual_lock=False,
+        changed_by=StrategyChangeSource.RECOVERY,
+        change_reason="V5_RECOVERY",
+        updated_ts_ms=1_000,
+    )
+    runtime.strategy_registry.enforce_v6_family_runtime_policy(updated_ts_ms=2_000)
+    client = TestClient(create_app(runtime))
+
+    response = client.post(
+        f"/api/strategies/{strategy_id}/rollback",
+        json={
+            "target_revision": 7,
+            "expected_revision": 8,
+            "reason": "USER_ROLLBACK_LEGACY_BYPASS_TEST",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["error_code"] == "STRATEGY_ROLLBACK_INVALID"
+    assert "legacy" in response.json()["detail"]["error_message_ko"]
+    assert runtime.strategy_registry.setting_row(strategy_id)["settings_revision"] == 8
 
 
 def test_live_strategy_analytics_api_uses_nonblocking_runtime_cache(monkeypatch) -> None:
@@ -582,12 +656,16 @@ async def test_dashboard_mutation_forces_immediate_cache_refresh(monkeypatch) ->
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         before = await client.get("/api/dashboard")
         after = await client.post("/api/control/pause")
+        refreshed = await client.get("/api/dashboard")
 
     assert before.status_code == 200
     assert after.status_code == 200
     assert after.json()["paused"] is True
+    assert "chart" not in after.json()
+    assert "history" not in after.json()
+    assert len(after.content) < len(before.content) * 0.2
     assert build_count == 2
-    system = after.json()["system"]
+    system = refreshed.json()["system"]
     assert system["dashboard_build_last_completed_ts_ms"] == runtime.clock.utc_ms()
     assert system["dashboard_build_max_ts_ms"] == runtime.clock.utc_ms()
     assert system["dashboard_serialize_last_completed_ts_ms"] == runtime.clock.utc_ms()
@@ -611,7 +689,7 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
         _wait_control(client, submitted.json()["operation_id"])
         after = client.get("/api/dashboard").json()
         assert before["history"][0]["trade_id"] == "run-persisted-fixture-trade-001"
-        assert run_config["app_version"] == "0.2.0-paper"
+        assert run_config["app_version"] == APP_VERSION
         assert "LSA_REVERSAL_V1" in run_config["strategy_version"]
         assert run_config["sample_type"] == "DEMO_FIXTURE"
         assert run_config["git_commit"]
@@ -635,9 +713,7 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
             ("100.00", "100.10"),
             ("102.00", "101.90"),
         ]
-        assert sum(Decimal(fill["fee_usdt"]) for fill in fills) == Decimal(
-            trade["fees_usdt"]
-        )
+        assert sum(Decimal(fill["fee_usdt"]) for fill in fills) == Decimal(trade["fees_usdt"])
         assert sum(Decimal(fill["slippage_usdt"]) for fill in fills) == Decimal(
             trade["slippage_usdt"]
         )
@@ -667,16 +743,11 @@ def test_persistent_run_reset_finalizes_old_run_without_deleting_history(tmp_pat
         assert fixture_transitions[-1]["payload"]["new_state"] == "CLOSED"
         assert fixture_transitions[-1]["payload"]["reversible"] is False
         assert all(
-            row["payload"]["transition_id"].startswith(
-                "fixture-transition-run-persisted-rev-"
-            )
+            row["payload"]["transition_id"].startswith("fixture-transition-run-persisted-rev-")
             for row in fixture_transitions
         )
         assert all(row["payload"]["actor"] == "AUTO_SAFETY" for row in fixture_transitions)
-        assert all(
-            row["payload"]["account_id"] == "MAIN:BASE"
-            for row in fixture_transitions
-        )
+        assert all(row["payload"]["account_id"] == "MAIN:BASE" for row in fixture_transitions)
 
 
 async def test_fresh_live_run_starts_zero_and_excludes_demo_performance(tmp_path: Path) -> None:

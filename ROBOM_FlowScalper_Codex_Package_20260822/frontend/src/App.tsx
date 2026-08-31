@@ -1,24 +1,24 @@
-// 시장을 기본으로 다섯 개 주 메뉴와 PAPER 제어 상태를 조합하는 애플리케이션 루트다.
+// 시장을 기본으로 V6 네 화면과 PAPER 제어 상태를 조합하는 애플리케이션 루트다.
 import { useState } from 'react'
 import { Navigation } from './components/Navigation'
 import { SafetyHeader } from './components/SafetyHeader'
 import { useDashboard } from './hooks/useDashboard'
 import { MarketPage } from './pages/MarketPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { LeaguePositionsPage } from './pages/LeaguePositionsPage'
-import { LivePage } from './pages/LivePage'
-import { PerformancePage } from './pages/PerformancePage'
-import { ReplayPage } from './pages/ReplayPage'
-import { RiskPage } from './pages/RiskPage'
 import { StrategiesPage } from './pages/StrategiesPage'
-import { StrategySymbolPage } from './pages/StrategySymbolPage'
-import { SystemPage } from './pages/SystemPage'
+import { TradesPage } from './pages/TradesPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { compareReleaseCommits, readFrontendReleaseCommit } from './releaseCompatibility'
-import type { HistoryRow, PageId } from './types'
+import type { PageId } from './types'
+
+const researchPreferenceKey = 'robom.flowscalper.research-details'
+
+function initialResearchDetails() {
+  try { return globalThis.localStorage?.getItem(researchPreferenceKey) === '1' } catch { return false }
+}
 
 export default function App() {
-  const [page, setPage] = useState<PageId>('terminal')
-  const [replayTrade, setReplayTrade] = useState<HistoryRow | undefined>()
+  const [page, setPage] = useState<PageId>('market')
+  const [researchDetails, setResearchDetails] = useState(initialResearchDetails)
   const {
     data,
     connected,
@@ -36,8 +36,10 @@ export default function App() {
     selectChart,
     configureStrategy,
     rollbackStrategy,
+    selectedFamilyDetail,
+    selectStrategyFamily,
     clearError,
-  } = useDashboard()
+  } = useDashboard(page)
   const releaseCompatibility = compareReleaseCommits(
     readFrontendReleaseCommit(),
     data.system.release_commit,
@@ -112,34 +114,26 @@ export default function App() {
     try { await retryControl() } catch { /* useDashboard가 오류를 표시한다. */ }
   }
   const changePage = (nextPage: PageId) => {
-    if (nextPage === 'replay') setReplayTrade(undefined)
+    if (nextPage !== 'strategies') selectStrategyFamily(null)
     setPage(nextPage)
     window.scrollTo(0, 0)
   }
-  const openReplay = (trade: HistoryRow) => {
-    setReplayTrade(trade)
-    setPage('replay')
-    window.scrollTo(0, 0)
+  const changeResearchDetails = (enabled: boolean) => {
+    setResearchDetails(enabled)
+    try { globalThis.localStorage?.setItem(researchPreferenceKey, enabled ? '1' : '0') } catch { /* 로컬 저장 실패는 PAPER 실행 설정에 영향이 없다. */ }
   }
+  const globalError = requestError || connectionError || (bootstrapState === 'ERROR' ? '프로그램 서버에 연결하지 못했습니다. 실행 상태를 확인하세요.' : '')
 
   return (
     <main className="app-shell">
-      <SafetyHeader data={data} connected={connected} connectionState={connectionState} lastUpdateMs={lastUpdateMs} onHome={() => changePage('terminal')} onSummary={() => changePage('summary')} />
+      <SafetyHeader data={data} connected={connected} connectionState={connectionState} onPauseToggle={pauseToggle} immediateAction={immediateBusyAction} />
       <Navigation page={page} onChange={changePage} />
-      {connectionError ? <p className="connection-error" role="alert">{connectionError}</p> : null}
+      {globalError ? <p className="connection-error" role="alert">{globalError}</p> : null}
       {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}
-      {bootstrapState === 'ERROR' ? <p className="connection-error" role="alert">프로그램 서버에 연결하지 못했습니다. 실행 상태를 확인하세요.</p> : null}
-      {requestError ? <p className="control-error" role="alert">{requestError}</p> : null}
-      {page === 'summary' ? <LivePage data={data} onNavigate={changePage} /> : null}
-      {page === 'strategies' ? <StrategiesPage strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} onConfigure={changeStrategy} onRollback={undoStrategy} /> : null}
-      {page === 'positions' ? <LeaguePositionsPage positions={data.league_positions} strategies={data.strategies} /> : null}
-      {page === 'history' ? <HistoryPage rows={data.history} currentRunId={data.status.run_id} openPositionCount={data.focus_positions.length} historyScope={data.history_scope} onReplay={openReplay} /> : null}
-      {page === 'replay' ? <ReplayPage trade={replayTrade} /> : null}
-      {page === 'performance' ? <PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={data.history} /> : null}
-      {page === 'strategy-symbol' ? <StrategySymbolPage strategies={data.strategies} /> : null}
-      {page === 'risk' ? <RiskPage data={data} onPauseToggle={pauseToggle} onNewRun={newRun} immediateAction={immediateBusyAction} /> : null}
-      {page === 'terminal' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} onPauseToggle={pauseToggle} busy={busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} immediateAction={immediateBusyAction} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
-      {page === 'system' ? <SystemPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} /> : null}
+      {page === 'market' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} busy={busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
+      {page === 'strategies' ? <StrategiesPage data={data} history={data.history} strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} researchDetails={researchDetails} selectedFamilyDetail={selectedFamilyDetail} onSelectFamily={selectStrategyFamily} onConfigure={changeStrategy} onRollback={undoStrategy} /> : null}
+      {page === 'trades' ? <TradesPage data={data} /> : null}
+      {page === 'settings' ? <SettingsPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} researchDetails={researchDetails} onResearchDetailsChange={changeResearchDetails} onNewRun={newRun} /> : null}
     </main>
   )
 }

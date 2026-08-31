@@ -6,6 +6,15 @@
 
 ## 아직 배포하지 않음
 
+## 0.3.0-paper — 2026-08-31
+
+- 사용자 화면을 `시장`, `전략`, `거래`, `설정`의 네 페이지로 단순화하고, 전략 상세·거래 replay·고급진단은 해당 흐름 안에서 필요할 때만 불러오게 했다.
+- 기존 15개 전략 ID와 원장 이력을 보존한 채 8개 strategy family, entry·filter·router·legacy 역할, current variant와 승계 계약을 추가했다.
+- 공통 승률 70% gate를 제거하고 family별 비용후 기대값·payoff·Wilson 하한·표본·OOS·강건성 gate로 교체했다. 30개 미만 고유기회는 순위에서 제외한다.
+- 같은 기회의 BASE·STRESS 결과와 부분청산을 하나의 거래기회로 묶고, 서로 반대 방향인 Shared Capital 신호는 명확한 router 근거가 없으면 진입하지 않는다.
+- V3 후보 네 개는 고정입력 비교 전 `PREREGISTERED_NOT_EXECUTED`로 유지한다. 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`, 실제 주문·인증·wallet은 계속 0이다.
+- 최신 V6 공유 코드 기준 backend 1,004개·frontend 92개 test와 lint·typecheck·build·security·repository hygiene·desktop/tablet/mobile fixture E2E를 통과했다. 설치기는 전환 전에 직전 불변 릴리스 tree를 manifest로 다시 검증하며, 시작 복구와 마지막 PAPER 전환 결과는 초보자용 한국어 진단에도 표시한다. 설치된 8870 runtime·30분·6시간·24시간·remote push는 별도 증거 전까지 `NOT_RUN`이다.
+
 - macOS에서 Make로 실행하는 setup·test·build·브라우저 검증 cache도 외장으로 고정했다. 현재 Playwright 브라우저를 checksum 검증 뒤 외장으로 옮기고 내장 사본을 제거했으며, 닫힌 Codex 세션과 재생성 cache 정리 뒤 APFS container 미할당 공간은 약 8.2GB에서 29.2GB로 늘었다. Codex 대화기록과 인증정보는 GitHub 대상이 아니고, 현재 앱이 열어 쓰는 세션은 손상 방지를 위해 남긴다.
 - 대형 browser cache 이전을 LIVE 원장과 같은 외장 물리장치에서 겹치면 저장 fault·buffer drop이 발생할 수 있음을 실제 실패로 보존했다. 대형 이전·checksum·download·원장 전수검사는 LIVE persistence와 겹치지 않게 하고, 후속 같은 Run 60초에서 신규 fault·drop 없이 회복을 확인했다.
 - 외장 저장 process가 초기화 중 일시적으로 종료되면 보류 batch를 버리지 않고 새 PAPER 진입만 안전 대기한 뒤 새 worker로 자동 복구하게 했다. 외장 불변 릴리스는 현재 버전과 검증된 직전 롤백 하나만 남기며, 알 수 없는 폴더는 자동 삭제하지 않는다.

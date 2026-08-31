@@ -2,7 +2,7 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { ReplayPage } from '../src/pages/ReplayPage'
+import { ReplayViewer } from '../src/components/ReplayViewer'
 import type { HistoryRow } from '../src/types'
 
 vi.mock('../src/components/PriceChart', () => ({
@@ -61,7 +61,7 @@ test('loads recent candles first and defers the expensive event timeline until r
     throw new Error(`unexpected request: ${url}`)
   }))
 
-  render(<ReplayPage />)
+  render(<ReplayViewer />)
 
   expect(await screen.findByText(/빠른 미리보기 · BTCUSDT 최근 캔들 1개/)).toBeInTheDocument()
   expect(requests.some((url) => url.includes('/timeline?'))).toBe(false)
@@ -103,7 +103,7 @@ test('shows the run selector while the first candle preview is still loading', a
     throw new Error(`unexpected request: ${url}`)
   }))
 
-  render(<ReplayPage />)
+  render(<ReplayViewer />)
 
   const runSelector = await screen.findByRole('combobox', { name: '저장 기록' })
   await waitFor(() => expect(runSelector).toHaveValue('run-slow-preview'))
@@ -155,7 +155,7 @@ test('aborts an obsolete preview when the user selects another saved run', async
     throw new Error(`unexpected request: ${url}`)
   }))
 
-  render(<ReplayPage />)
+  render(<ReplayViewer />)
 
   const runSelector = await screen.findByRole('combobox', { name: '저장 기록' })
   await waitFor(() => expect(firstPreviewSignal).toBeDefined())
@@ -192,7 +192,7 @@ test('offers one clear retry action when the saved-run preview fails', async () 
     throw new Error(`unexpected request: ${url}`)
   }))
 
-  render(<ReplayPage />)
+  render(<ReplayViewer />)
 
   expect(await screen.findByRole('alert')).toHaveTextContent('저장 화면 준비가 지연됐습니다.')
   fireEvent.click(screen.getByRole('button', { name: '미리보기 다시 시도' }))
@@ -231,11 +231,11 @@ test('restores an active strategy verification and exposes a real cancel control
     throw new Error(`unexpected request: ${url}`)
   }))
 
-  render(<ReplayPage />)
+  render(<ReplayViewer />)
 
   expect(await screen.findByText('같은 전략 조건으로 검증하고 있습니다')).toBeInTheDocument()
   expect(screen.getByText(/고정 입력 12,345건/)).toBeInTheDocument()
-  expect(screen.getByText(/실제 주문과 인증 경로는 0/)).toBeInTheDocument()
+  expect(screen.getByText('공개시장 PAPER 관찰은 계속됩니다.')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '전략 검증 취소' }))
   expect(await screen.findByRole('button', { name: '취소 중' })).toBeDisabled()
 })
@@ -263,7 +263,7 @@ test('shows a visible retry action when a focused trade chart request fails', as
     symbol: 'XRPUSDT',
   } as unknown as HistoryRow
 
-  render(<ReplayPage trade={trade} />)
+  render(<ReplayViewer trade={trade} />)
 
   expect(await screen.findByRole('heading', { name: 'XRPUSDT 거래 차트를 열지 못했습니다' })).toBeInTheDocument()
   expect(screen.getByRole('alert')).toHaveTextContent('원장 캐시가 사용 중입니다.')
@@ -320,7 +320,7 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
     net_pnl: '0.4', holding_ms: 1_000, holding_seconds: 1, sample_type: 'LIVE_PUBLIC',
   } as unknown as HistoryRow
 
-  render(<ReplayPage trade={trade} />)
+  render(<ReplayViewer trade={trade} />)
   expect(await screen.findByRole('heading', { name: 'BTCUSDT 거래 집중 재생' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '진입' }))
   await waitFor(() => {
@@ -375,7 +375,7 @@ test('shows a replay result only for the selected run and symbol scope', async (
     throw new Error(`unexpected request: ${url}`)
   }))
 
-  render(<ReplayPage />)
+  render(<ReplayViewer />)
 
   expect(await screen.findByText('검증 완료 · BTCUSDT')).toBeInTheDocument()
   expect(screen.getByText(checksum)).not.toBeVisible()

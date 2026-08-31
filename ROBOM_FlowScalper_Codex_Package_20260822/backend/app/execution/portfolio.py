@@ -7,7 +7,11 @@ from dataclasses import dataclass, field, replace
 from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
-from backend.app.candidates import CandidatePlan, TakeProfitTarget
+from backend.app.candidates import (
+    CandidatePlan,
+    SharedCapitalArbitrationEvidence,
+    TakeProfitTarget,
+)
 from backend.app.costing import CostModel, CostProfile
 from backend.app.domain.models import Side, Venue
 from backend.app.execution.models import (
@@ -197,6 +201,7 @@ class PaperPortfolioEngine:
         risk_manager: RiskManager | None = None,
         cost_model: CostModel | None = None,
         position_manager: PositionManager | None = None,
+        enforce_v6_family_conflicts: bool = False,
     ) -> None:
         self.run_id = run_id
         self.venue = venue
@@ -206,6 +211,7 @@ class PaperPortfolioEngine:
         self.league_risk_manager = RiskManager(STRATEGY_LEAGUE_RISK_LIMITS)
         self.cost_model = cost_model or self.execution_engine.cost_model
         self.position_manager = position_manager or PositionManager()
+        self.enforce_v6_family_conflicts = enforce_v6_family_conflicts
         self.main = ExecutionAccount(
             self.MAIN_ACCOUNT_ID,
             CostProfile.BASE,
@@ -252,9 +258,66 @@ class PaperPortfolioEngine:
             return
         if self._account_available(self.main):
             selected: CandidatePlan | None = None
+            main_candidates = tuple(plan for plan in valid if plan.main_eligible)
+            main_sort_key = (
+                CandidatePlan.shared_capital_arbitration_key
+                if self.enforce_v6_family_conflicts
+                else CandidatePlan.arbitration_key
+            )
+            if self.enforce_v6_family_conflicts:
+                directions_by_symbol: dict[str, set[Side]] = {}
+                for plan in main_candidates:
+                    directions_by_symbol.setdefault(plan.symbol, set()).add(plan.direction)
+                conflicted_symbols = {
+                    symbol
+                    for symbol, directions in directions_by_symbol.items()
+                    if len(directions) > 1
+                }
+                for symbol in sorted(conflicted_symbols):
+                    conflicts = sorted(
+                        (plan for plan in main_candidates if plan.symbol == symbol),
+                        key=main_sort_key,
+                    )
+                    self._audit(
+                        "MAIN_OPPOSITE_SIDE_CONFLICT_NO_TRADE",
+                        conflicts[0],
+                        competing_candidate_ids=[plan.candidate_id for plan in conflicts[1:]],
+                    )
+                main_candidates = tuple(
+                    plan for plan in main_candidates if plan.symbol not in conflicted_symbols
+                )
+                same_side_groups: dict[tuple[str, Side], list[CandidatePlan]] = {}
+                for plan in main_candidates:
+                    same_side_groups.setdefault((plan.symbol, plan.direction), []).append(plan)
+                incomplete_evidence_keys = {
+                    key
+                    for key, candidates in same_side_groups.items()
+                    if len(candidates) > 1
+                    and any(
+                        candidate.shared_capital_evidence.stress_cost_adjusted_expectancy_usdt
+                        is None
+                        or candidate.shared_capital_evidence.cost_coverage is None
+                        for candidate in candidates
+                    )
+                }
+                for key in sorted(
+                    incomplete_evidence_keys,
+                    key=lambda value: (value[0], value[1].value),
+                ):
+                    conflicts = sorted(same_side_groups[key], key=main_sort_key)
+                    self._audit(
+                        "MAIN_SAME_SIDE_EVIDENCE_INCOMPLETE_NO_TRADE",
+                        conflicts[0],
+                        competing_candidate_ids=[plan.candidate_id for plan in conflicts[1:]],
+                    )
+                main_candidates = tuple(
+                    plan
+                    for plan in main_candidates
+                    if (plan.symbol, plan.direction) not in incomplete_evidence_keys
+                )
             eligible = sorted(
-                (plan for plan in valid if plan.main_eligible),
-                key=CandidatePlan.arbitration_key,
+                main_candidates,
+                key=main_sort_key,
             )
             if eligible:
                 selected = self._plan_for_account(eligible[0], self.main)
@@ -494,9 +557,7 @@ class PaperPortfolioEngine:
                 data_stale=not snapshot.data_healthy,
                 recovered_gap_duration_ms=recovered_gap_duration_ms,
                 maximum_holding_ms=plan.maximum_holding_ms,
-                edge_decay_enabled=(
-                    "EXIT_ON_PERSISTENT_EDGE_DECAY" in plan.management_policy
-                ),
+                edge_decay_enabled=("EXIT_ON_PERSISTENT_EDGE_DECAY" in plan.management_policy),
             )
             if decision.proposed_stop is not None:
                 managed.protected = self.position_manager.tighten_stop(
@@ -1343,9 +1404,7 @@ class PaperPortfolioEngine:
             profile=account.profile,
         ) + self.cost_model.fee_bps(entry=False, profile=account.profile)
         breakeven_cost_bps = roundtrip_fee_bps + policy.breakeven_buffer_bps
-        adjustment = (
-            position.entry_fill.average_price * breakeven_cost_bps / Decimal(10_000)
-        )
+        adjustment = position.entry_fill.average_price * breakeven_cost_bps / Decimal(10_000)
         fee_adjusted_breakeven = (
             position.entry_fill.average_price + adjustment
             if plan.direction is Side.LONG
@@ -1911,6 +1970,7 @@ class PaperPortfolioEngine:
             mfe_r=managed.mfe_r,
             flags=tuple(leg.label for leg in managed.exit_legs),
             profile=managed.protected.profile,
+            strategy_version=managed.plan.strategy_version,
             candidate_id=managed.plan.candidate_id,
             signal_event_id=managed.plan.signal_event_id,
             take_profit_1=managed.plan.take_profit_targets[0].price,
@@ -2651,6 +2711,20 @@ def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
         "management_policy": list(plan.management_policy),
         "main_eligible": plan.main_eligible,
         "shadow_eligible": plan.shadow_eligible,
+        "shared_capital_evidence": {
+            "evidence_tier": plan.shared_capital_evidence.evidence_tier,
+            "stress_cost_adjusted_expectancy_usdt": (
+                str(plan.shared_capital_evidence.stress_cost_adjusted_expectancy_usdt)
+                if plan.shared_capital_evidence.stress_cost_adjusted_expectancy_usdt is not None
+                else None
+            ),
+            "cost_coverage": (
+                str(plan.shared_capital_evidence.cost_coverage)
+                if plan.shared_capital_evidence.cost_coverage is not None
+                else None
+            ),
+            "diversification_score": str(plan.shared_capital_evidence.diversification_score),
+        },
         "trailing_policy": _trailing_policy_payload(plan.trailing_policy)
         if plan.trailing_policy is not None
         else None,
@@ -2679,6 +2753,8 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
     if len(targets) != len(target_rows):
         raise ValueError("복구 계획의 TP 행 형식이 잘못됐습니다.")
     maximum_holding_value = payload.get("maximum_holding_ms", 900_000)
+    raw_shared_evidence = payload.get("shared_capital_evidence")
+    shared_evidence = raw_shared_evidence if isinstance(raw_shared_evidence, Mapping) else {}
     return CandidatePlan(
         candidate_id=str(payload["candidate_id"]),
         signal_event_id=str(payload["signal_event_id"]),
@@ -2702,9 +2778,7 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         signal_time_ms=int(str(payload["signal_time_ms"])),
         expires_at_ms=int(str(payload["expires_at_ms"])),
         maximum_holding_ms=(
-            None
-            if maximum_holding_value is None
-            else int(str(maximum_holding_value))
+            None if maximum_holding_value is None else int(str(maximum_holding_value))
         ),
         regime=Regime(str(payload["regime"])),
         planned_entry=Decimal(str(payload["planned_entry"])),
@@ -2735,6 +2809,20 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         management_policy=_strings(payload, "management_policy"),
         main_eligible=bool(payload["main_eligible"]),
         shadow_eligible=bool(payload["shadow_eligible"]),
+        shared_capital_evidence=SharedCapitalArbitrationEvidence(
+            evidence_tier=int(str(shared_evidence.get("evidence_tier", 0))),
+            stress_cost_adjusted_expectancy_usdt=(
+                Decimal(str(shared_evidence["stress_cost_adjusted_expectancy_usdt"]))
+                if shared_evidence.get("stress_cost_adjusted_expectancy_usdt") is not None
+                else None
+            ),
+            cost_coverage=(
+                Decimal(str(shared_evidence["cost_coverage"]))
+                if shared_evidence.get("cost_coverage") is not None
+                else None
+            ),
+            diversification_score=Decimal(str(shared_evidence.get("diversification_score", 0))),
+        ),
         trailing_policy=_trailing_policy_from_payload(payload.get("trailing_policy")),
         trailing_atr=Decimal(str(payload["trailing_atr"]))
         if payload.get("trailing_atr") is not None
@@ -2976,6 +3064,7 @@ def _paper_trade_payload(trade: PaperTrade) -> dict[str, object]:
         "venue": trade.venue.value,
         "symbol": trade.symbol,
         "strategy_id": trade.strategy_id,
+        "strategy_version": trade.strategy_version,
         "side": trade.side.value,
         "entry_price": str(trade.entry_price),
         "exit_price": str(trade.exit_price),
@@ -3025,6 +3114,7 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
         venue=Venue(str(payload["venue"])),
         symbol=str(payload["symbol"]),
         strategy_id=str(payload["strategy_id"]),
+        strategy_version=str(payload.get("strategy_version", "LEGACY_UNVERSIONED")),
         side=Side(str(payload["side"])),
         entry_price=Decimal(str(payload["entry_price"])),
         exit_price=Decimal(str(payload["exit_price"])),

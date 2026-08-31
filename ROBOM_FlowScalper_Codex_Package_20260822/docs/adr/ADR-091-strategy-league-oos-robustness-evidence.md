@@ -4,6 +4,8 @@
 
 Accepted for research execution only.
 
+V6 변경. 이 ADR의 공통 70% 관측승률 조항은 family별 gate로 대체한다. 시간순 OOS, bootstrap, DSR, PBO, drawdown, 고유기회와 미계산값 `NOT_PROVEN` 계약은 유지한다.
+
 ## 문제
 
 전 전략 단일 패스 리플레이는 전략별 완료 거래와 BASE·STRESS 성과를 만들었지만 시간순 최종 OOS, bootstrap 기대값 하한, DSR, PBO와 drawdown을 계산하지 않았다. 따라서 70% 관측승률이나 양수 손익이 나와도 강건성 blocker를 실제 계산 결과로 바꿀 수 없었다. 반대로 계산하지 않은 항목을 실패값 0으로 대체하면 표본 부족과 실제 실패를 구분할 수 없다.

@@ -1,6 +1,7 @@
 // 종료된 PAPER 거래는 쉬운 핵심 결과를 먼저 보여주고 원장 식별자는 기술 정보로 분리한다.
 import { useEffect, useMemo, useState } from 'react'
 import { fetchJson } from '../api/client'
+import { SideDrawer } from '../components/SideDrawer'
 import {
   costProfileLabel,
   exitReasonLabel,
@@ -13,13 +14,16 @@ import {
 } from '../format'
 import { strategyLabel } from '../strategyPresentation'
 import { formatKstTime } from '../time'
-import type { HistoryResponse, HistoryRow } from '../types'
+import { collapseTradeOpportunities } from '../tradeOpportunities'
+import type { HistoryRow, StrategySummaryRow, TradesResponse } from '../types'
 
 type Props = {
   rows: HistoryRow[]
   currentRunId: string
   openPositionCount?: number
   historyScope?: { strategy_version: string; excluded_prior_version_samples: number }
+  strategies?: StrategySummaryRow[]
+  providedScope?: 'DASHBOARD_MAIN' | 'CURRENT_ALL'
   onReplay: (trade: HistoryRow) => void
 }
 type Filter = 'ALL' | 'LIVE_PUBLIC' | 'OFFLINE_FIXTURE'
@@ -31,6 +35,10 @@ type HistoryOpportunity = {
   key: string
   rows: HistoryRow[]
   primary: HistoryRow
+}
+
+function isCurrentStrategyVersion(row: HistoryRow, currentVersion?: string) {
+  return !currentVersion || row.strategy_version === currentVersion
 }
 
 function milestoneDuration(value: number | null | undefined, empty = '미도달') {
@@ -61,13 +69,22 @@ function exitExplanation(reason: string, priorVersion = false) {
   return '저장된 PAPER 종료 규칙에 따라 종료했습니다.'
 }
 
-function historyOpportunityKey(row: HistoryRow) {
-  const scope = row.account_scope ?? 'MAIN'
-  if (scope !== 'LEAGUE') return `${scope}:${row.run_id}:${row.trade_id}`
+function historyOpportunityKey(row: HistoryRow): string | null {
   const explicitId = [row.opportunity_id, row.candidate_id, row.signal_event_id]
     .find((value) => value && value !== 'UNKNOWN')
-  const fallbackId = [row.strategy, row.symbol, row.side, row.entry_ts_ms].join(':')
-  return `${scope}:${row.run_id}:${row.strategy_version ?? 'UNKNOWN'}:${row.strategy}:${explicitId ?? fallbackId}`
+  if (!explicitId) return null
+  const scope = row.account_scope ?? 'MAIN'
+  const accountGroup = scope === 'LEAGUE' ? row.strategy : row.account_id ?? 'SHARED_PAPER'
+  return [
+    scope,
+    accountGroup,
+    row.run_id,
+    row.strategy,
+    row.strategy_version ?? 'UNKNOWN',
+    explicitId,
+    row.symbol,
+    row.side,
+  ].join(':')
 }
 
 function profileOrder(profile: string) {
@@ -76,18 +93,45 @@ function profileOrder(profile: string) {
   return 2
 }
 
+function sumHistoryRows(
+  rows: HistoryRow[],
+  key: 'quantity' | 'gross_pnl' | 'fees' | 'slippage' | 'net_pnl',
+) {
+  return String(rows.reduce((total, row) => total + Number(row[key] || 0), 0))
+}
+
+function collapsePartialExitRows(rows: HistoryRow[]) {
+  const latest = [...rows].sort((left, right) => right.exit_ts_ms - left.exit_ts_ms)[0]
+  const representative = rows.find((row) => row.replay_available) ?? latest
+  return {
+    ...representative,
+    entry_ts_ms: Math.min(...rows.map((row) => row.entry_ts_ms)),
+    exit_ts_ms: Math.max(...rows.map((row) => row.exit_ts_ms)),
+    exit: latest.exit,
+    quantity: sumHistoryRows(rows, 'quantity'),
+    gross_pnl: sumHistoryRows(rows, 'gross_pnl'),
+    fees: sumHistoryRows(rows, 'fees'),
+    slippage: sumHistoryRows(rows, 'slippage'),
+    net_pnl: sumHistoryRows(rows, 'net_pnl'),
+    holding_ms: Math.max(...rows.map((row) => row.holding_ms)),
+    holding_seconds: Math.max(...rows.map((row) => row.holding_seconds)),
+    replay_available: rows.some((row) => row.replay_available),
+  }
+}
+
 function groupHistoryOpportunities(rows: HistoryRow[]) {
   const grouped = new Map<string, HistoryRow[]>()
   for (const row of [...rows].sort((left, right) => right.exit_ts_ms - left.exit_ts_ms)) {
-    const baseKey = historyOpportunityKey(row)
-    const existing = grouped.get(baseKey)
-    const key = existing?.some((item) => item.profile === row.profile)
-      ? `${baseKey}:TRADE:${row.trade_id}`
-      : baseKey
+    const key = historyOpportunityKey(row)
+    if (!key) continue
     grouped.set(key, [...(grouped.get(key) ?? []), row])
   }
   return [...grouped.entries()].map(([key, opportunityRows]): HistoryOpportunity => {
-    const orderedRows = [...opportunityRows].sort((left, right) => (
+    const profiles = new Map<string, HistoryRow[]>()
+    for (const row of opportunityRows) {
+      profiles.set(row.profile, [...(profiles.get(row.profile) ?? []), row])
+    }
+    const orderedRows = [...profiles.values()].map(collapsePartialExitRows).sort((left, right) => (
       profileOrder(left.profile) - profileOrder(right.profile)
       || right.exit_ts_ms - left.exit_ts_ms
     ))
@@ -112,6 +156,8 @@ export function HistoryPage({
   currentRunId,
   openPositionCount = 0,
   historyScope,
+  strategies = [],
+  providedScope = 'DASHBOARD_MAIN',
   onReplay,
 }: Props) {
   const [filter, setFilter] = useState<Filter>('ALL')
@@ -123,15 +169,24 @@ export function HistoryPage({
   const [queryLoading, setQueryLoading] = useState(true)
   const [queryRefreshing, setQueryRefreshing] = useState(false)
   const [queryError, setQueryError] = useState('')
+  const [queryGroupingStatus, setQueryGroupingStatus] = useState<'PROVEN' | 'NOT_PROVEN' | null>(null)
+  const [querySourceStatus, setQuerySourceStatus] = useState<TradesResponse['source_status']>(undefined)
+  const [queryUnresolvedCount, setQueryUnresolvedCount] = useState(0)
   const [lastQueryUpdateMs, setLastQueryUpdateMs] = useState<number | null>(null)
   const [refreshRevision, setRefreshRevision] = useState(0)
   const [selectedTrade, setSelected] = useState<HistoryRow | null>(null)
-  const needsLedgerQuery = accountFilter !== 'MAIN' || versionFilter !== 'CURRENT'
+  const providedCoversFilters = providedScope === 'CURRENT_ALL'
+    ? runFilter === 'CURRENT' && versionFilter === 'CURRENT'
+    : accountFilter === 'MAIN'
+  const needsLedgerQuery = !providedCoversFilters
   const beginQuery = () => {
     setQueriedRows(null)
     setQueryLoading(true)
     setQueryRefreshing(false)
     setQueryError('')
+    setQueryGroupingStatus(null)
+    setQuerySourceStatus(undefined)
+    setQueryUnresolvedCount(0)
     setLastQueryUpdateMs(null)
   }
 
@@ -153,10 +208,14 @@ export function HistoryPage({
       inFlight = true
       controller = new AbortController()
       setQueryRefreshing(true)
-      void fetchJson<HistoryResponse>(`/api/history?${query}`, { signal: controller.signal }, 12_000)
+      void fetchJson<TradesResponse>(`/api/trades?${query}`, { signal: controller.signal }, 12_000)
         .then((response) => {
           if (disposed) return
-          setQueriedRows(response.rows)
+          if (!Array.isArray(response.opportunities)) throw new Error('invalid grouped trades response')
+          setQueriedRows(collapseTradeOpportunities(response))
+          setQueryGroupingStatus(response.grouping_status ?? 'PROVEN')
+          setQuerySourceStatus(response.source_status)
+          setQueryUnresolvedCount(response.counts.unresolved_result_rows ?? 0)
           setQueryError('')
           setLastQueryUpdateMs(Date.now())
         })
@@ -186,18 +245,23 @@ export function HistoryPage({
     () => needsLedgerQuery ? queriedRows ?? [] : rows,
     [needsLedgerQuery, queriedRows, rows],
   )
-  const isCurrentVersion = (row: HistoryRow) => (
-    !historyScope?.strategy_version || row.strategy_version === historyScope.strategy_version
-  )
+  const currentStrategyVersion = historyScope?.strategy_version
   const filtered = useMemo(
     () => sourceRows.filter((row) => (
       (runFilter === 'ALL' || row.run_id === currentRunId)
       && (filter === 'ALL' || row.sample_type === filter)
+      && (accountFilter === 'ALL' || (row.account_scope ?? 'MAIN') === accountFilter)
       && (profileFilter === 'ALL' || row.profile === profileFilter)
+      && (versionFilter === 'ALL' || isCurrentStrategyVersion(row, currentStrategyVersion))
     )),
-    [currentRunId, filter, profileFilter, runFilter, sourceRows],
+    [accountFilter, currentRunId, currentStrategyVersion, filter, profileFilter, runFilter, sourceRows, versionFilter],
   )
   const opportunities = useMemo(() => groupHistoryOpportunities(filtered), [filtered])
+  const localUnresolvedCount = useMemo(
+    () => filtered.filter((row) => historyOpportunityKey(row) === null).length,
+    [filtered],
+  )
+  const unresolvedCount = needsLedgerQuery ? queryUnresolvedCount : localUnresolvedCount
   const selectedOpportunity = selectedTrade
     ? opportunities.find((opportunity) => (
       opportunity.rows.some((row) => row.trade_id === selectedTrade.trade_id)
@@ -211,13 +275,13 @@ export function HistoryPage({
   const visibleQueryLoading = needsLedgerQuery && queryLoading
   const visiblePriorVersionCount = (
     needsLedgerQuery && queriedRows !== null
-      ? filtered.filter((row) => row.strategy_version && !isCurrentVersion(row)).length
+      ? filtered.filter((row) => row.strategy_version && !isCurrentStrategyVersion(row, currentStrategyVersion)).length
       : historyScope?.excluded_prior_version_samples ?? 0
   )
   const missingMilestone = (row: HistoryRow, currentVersionText: string) => (
-    isCurrentVersion(row) ? currentVersionText : '과거 기록 없음'
+    isCurrentStrategyVersion(row, currentStrategyVersion) ? currentVersionText : '과거 기록 없음'
   )
-  const isPriorVersion = (row: HistoryRow) => Boolean(row.strategy_version && !isCurrentVersion(row))
+  const isPriorVersion = (row: HistoryRow) => Boolean(row.strategy_version && !isCurrentStrategyVersion(row, currentStrategyVersion))
 
   return (
     <section aria-labelledby="history-heading">
@@ -225,7 +289,7 @@ export function HistoryPage({
         <div>
           <p className="section-kicker">모의거래 결과</p>
           <h2 id="history-heading">거래 기록</h2>
-          <p className="heading-help">종료된 모의거래의 결과와 이유를 쉽게 확인합니다. 실제 주문은 없습니다.</p>
+          <p className="heading-help">종료된 모의거래의 결과와 이유를 쉽게 확인합니다.</p>
         </div>
         <span className="page-note">현재 전략 버전 · 이번 실행 우선</span>
       </div>
@@ -240,6 +304,13 @@ export function HistoryPage({
         </div>
       </details>
       {queryError ? <p className="error-banner" role="alert">{queryError}</p> : null}
+      {(queryGroupingStatus === 'NOT_PROVEN' || unresolvedCount > 0) ? (
+        <p className="league-warning" role="status">
+          {querySourceStatus === 'NOT_PROVEN_RAW_LIMIT_BOUNDARY'
+            ? '조회 상한에 닿아 가장 오래된 진입기회의 완전성을 확인할 수 없습니다. 표시된 결과를 전체 원장으로 간주하지 마세요.'
+            : `정확한 6키 연결 근거가 없는 원장 ${unresolvedCount}행은 진입기회 수에서 제외했습니다.`}
+        </p>
+      ) : null}
       <div className={openPositionCount > 0 ? 'history-live-status active' : 'history-live-status'} aria-live="polite">
         <div className="history-live-copy">
           <strong>현재 진행 중인 모의 포지션 {openPositionCount}건</strong>
@@ -267,7 +338,7 @@ export function HistoryPage({
         {visibleQueryLoading ? '거래 기록을 불러오는 중입니다.' : `진입기회 ${opportunities.length}건 · 세부 원장 ${filtered.length}건 · 공동 ${mainCount}건 · 전략별 ${leagueCount}건`}
         {visiblePriorVersionCount ? ` · 과거 버전 ${visiblePriorVersionCount}건은 안전하게 보관 중` : ''}
       </p>
-      <div className={selected ? 'history-layout drawer-open' : 'history-layout'}>
+      <div className="history-layout">
         <section className="panel wide-panel table-scroll">
           <table className="history-table">
             <thead><tr><th>거래</th><th>전략·계좌</th><th>최종 결과</th><th>종료</th><th>보유</th><th>보기</th></tr></thead>
@@ -277,7 +348,7 @@ export function HistoryPage({
               return (
               <tr key={opportunity.key}>
                 <td data-label="거래"><strong>{row.symbol}</strong><small>{sideLabel(row.side)} · {sampleTypeLabel(row.sample_type)}</small></td>
-                <td data-label="전략·계좌"><strong>{strategyLabel(undefined, row.strategy)}</strong><small>{accountLabel(row)} · {opportunity.rows.length > 1 ? '비용 2개 비교' : costProfileLabel(row.profile)}</small></td>
+                <td data-label="전략·계좌"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy)}</strong><small>{accountLabel(row)} · {opportunity.rows.length > 1 ? '비용 2개 비교' : costProfileLabel(row.profile)}</small></td>
                 <td data-label="최종 결과">{opportunity.rows.length > 1 ? <><div className="history-cost-results">{opportunity.rows.map((result) => <span className={Number(result.net_pnl) >= 0 ? 'positive' : 'negative'} key={result.trade_id}><b>{costProfileLabel(result.profile)}</b><strong>{formatUsdt(result.net_pnl, { signed: true })}</strong></span>)}</div><small>같은 진입기회 · 비용 가정만 다름</small></> : <><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong><small>가격 손익 {formatUsdt(row.gross_pnl, { signed: true })} · 총비용 {formatUsdt(Number(row.fees) + Number(row.slippage))}</small></>}</td>
                 <td data-label="종료"><strong>{sameExitReason ? historyExitLabel(row.exit_reason, isPriorVersion(row)) : '비용별 종료 다름'}</strong><small>{sameExitReason ? exitExplanation(row.exit_reason, isPriorVersion(row)) : '비용별 결과를 열어 각각의 종료 이유를 확인하세요.'}</small></td>
                 <td data-label="보유"><strong>{opportunityHoldingLabel(opportunity)}</strong><small>1차 목표 {milestoneDuration(row.time_to_tp1_ms, missingMilestone(row, '미도달'))}</small></td>
@@ -288,14 +359,18 @@ export function HistoryPage({
           </table>
           {!visibleQueryLoading && !queryError && opportunities.length === 0 ? <p className="empty-copy">현재 조건에는 끝난 모의거래가 없습니다. 위의 ‘기록 범위 바꾸기’에서 과거 기록도 확인할 수 있습니다.</p> : null}
         </section>
-        {selected ? (
-          <aside className="panel trade-drawer" aria-labelledby="trade-detail-title">
-            <div className="panel-title"><h3 id="trade-detail-title">{selected.symbol} 거래 결과</h3><button type="button" className="close-button" aria-label="거래 상세 닫기" onClick={() => setSelected(null)}>닫기</button></div>
+        <SideDrawer
+          title={selected ? `${selected.symbol} 거래 결과` : '거래 결과'}
+          open={selected !== null}
+          onClose={() => setSelected(null)}
+          label="거래 상세"
+        >
+          {selected ? <>
             {selectedOpportunity && selectedOpportunity.rows.length > 1 ? <><p className="history-opportunity-note">같은 시점에 들어간 한 번의 진입기회를 비용 조건 2개로 나눠 계산했습니다. 중복 거래가 아닙니다.</p><div className="history-profile-tabs" role="group" aria-label="비용별 거래 결과">{selectedOpportunity.rows.map((row) => <button type="button" aria-pressed={row.trade_id === selected.trade_id} key={row.trade_id} onClick={() => setSelected(row)}><span>{costProfileLabel(row.profile)}</span><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong></button>)}</div></> : null}
             <p className="trade-result-lead"><strong className={Number(selected.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(selected.net_pnl, { signed: true })}</strong><span>{historyExitLabel(selected.exit_reason, isPriorVersion(selected))} · {formatDurationMs(selected.holding_ms)} 보유</span></p>
             <dl className="detail-list">
               <div><dt>거래 방향</dt><dd>{sideLabel(selected.side)}</dd></div>
-              <div><dt>사용 전략</dt><dd>{strategyLabel(undefined, selected.strategy)}</dd></div>
+              <div><dt>사용 전략</dt><dd>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === selected.strategy), selected.strategy)}</dd></div>
               <div><dt>진입 가격</dt><dd>{formatPrice(selected.entry)}</dd></div>
               <div><dt>손절 가격</dt><dd>{formatPrice(selected.initial_stop)}</dd></div>
               {selected.take_profit_1 || selected.take_profit_2 ? <><div><dt>1차 목표</dt><dd>{selected.take_profit_1 ? formatPrice(selected.take_profit_1) : '—'}</dd></div><div><dt>2차 목표</dt><dd>{selected.take_profit_2 ? formatPrice(selected.take_profit_2) : '—'}</dd></div></> : <div><dt>목표가(과거 기록)</dt><dd>{formatPrice(selected.take_profit)}</dd></div>}
@@ -309,8 +384,8 @@ export function HistoryPage({
             {selected.trailing_activation_ts_ms !== null && selected.trailing_activation_ts_ms !== undefined ? <details className="advanced-details"><summary>추적 익절 자세히</summary><dl className="detail-list"><div><dt>활성화</dt><dd>{formatDurationMs(Math.max(0, selected.trailing_activation_ts_ms - selected.entry_ts_ms))} 뒤</dd></div><div><dt>남은 수량 추적</dt><dd>{selected.runner_started_ts_ms !== null && selected.runner_started_ts_ms !== undefined ? `${formatDurationMs(Math.max(0, selected.runner_started_ts_ms - selected.entry_ts_ms))} 뒤` : '시작 안 됨'}</dd></div><div><dt>최고 미실현 손익</dt><dd>{formatUsdt(selected.peak_unrealized_usdt ?? '0', { signed: true })}</dd></div><div><dt>고점 대비 되돌림</dt><dd>{formatUsdt(selected.giveback_usdt ?? '0')}</dd></div><div><dt>남은 수량 순기여</dt><dd>{formatUsdt(selected.runner_net_pnl_usdt ?? '0', { signed: true })}</dd></div></dl></details> : null}
             <details className="advanced-details"><summary>기술 정보</summary><dl className="detail-list"><div><dt>진입기회 ID</dt><dd>{selected.opportunity_id ?? selected.candidate_id ?? selected.signal_event_id ?? '과거 기록'}</dd></div><div><dt>거래 ID</dt><dd>{selected.trade_id}</dd></div><div><dt>실행 ID</dt><dd>{selected.run_id}</dd></div><div><dt>전략 코드</dt><dd>{selected.strategy}</dd></div><div><dt>전략 버전</dt><dd>{selected.strategy_version ?? '과거 기록'}</dd></div><div><dt>계좌 코드</dt><dd>{selected.account_id ?? accountLabel(selected)}</dd></div><div><dt>종료 코드</dt><dd>{selected.exit_reason}</dd></div><div><dt>수량</dt><dd>{formatQuantity(selected.quantity)}</dd></div></dl></details>
             <button type="button" className="primary-button full-width" disabled={selected.replay_available === false} onClick={() => onReplay(selected)}>선택한 비용 결과 다시보기</button>
-          </aside>
-        ) : null}
+          </> : null}
+        </SideDrawer>
       </div>
     </section>
   )

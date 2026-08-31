@@ -12,6 +12,8 @@ from typing import Any
 import duckdb
 import pyarrow as pa
 
+from backend.app.analytics.opportunities import group_trade_opportunities
+
 
 class TradeAnalytics:
     """표본 수와 가정을 숨기지 않는 PAPER 성과 리포트를 만든다."""
@@ -37,7 +39,10 @@ class TradeAnalytics:
                 "mfe_r_mean": None,
                 "contributions": [],
             }
-        normalized = [_normalize_trade(trade) for trade in trades]
+        normalized = [
+            _normalize_trade(trade, default_account_scope="LEAGUE") for trade in trades
+        ]
+        _require_league_strategy_analytics(normalized)
         table = pa.Table.from_pylist(normalized)
         connection = duckdb.connect(":memory:")
         try:
@@ -157,34 +162,47 @@ class TradeAnalytics:
     ) -> list[dict[str, object]]:
         """전략·비용프로필별 승률·기대값·PF·비용·낙폭·표본상태를 같이 보여준다."""
 
-        normalized = [_normalize_trade(trade) for trade in trades]
+        normalized = [
+            _normalize_trade(trade, default_account_scope="LEAGUE") for trade in trades
+        ]
+        _require_league_strategy_analytics(normalized)
         report_strategy_ids = sorted(
             {
                 *(str(trade["strategy_id"]) for trade in normalized),
                 *(str(strategy_id) for strategy_id in strategy_ids),
             }
         )
-        stress_counts = {
-            strategy_id: sum(
-                trade["strategy_id"] == strategy_id and trade["profile"] == "STRESS"
-                for trade in normalized
-            )
-            for strategy_id in report_strategy_ids
-        }
         reports: list[dict[str, object]] = []
         for strategy_id in report_strategy_ids:
+            strategy_rows = [trade for trade in normalized if trade["strategy_id"] == strategy_id]
+            opportunity_grouping = group_trade_opportunities(strategy_rows)
             for profile in ("BASE", "STRESS"):
-                group = [
+                raw_group = [
                     trade
                     for trade in normalized
                     if trade["strategy_id"] == strategy_id and trade["profile"] == profile
+                ]
+                profile_grouping = group_trade_opportunities(raw_group)
+                group = [
+                    _aggregate_opportunity_rows(opportunity.rows)
+                    for opportunity in profile_grouping.groups
                 ]
                 reports.append(
                     _strategy_report(
                         strategy_id,
                         profile,
                         group,
-                        stress_verified=stress_counts[strategy_id] > 0,
+                        stress_verified=opportunity_grouping.stress_result_row_count > 0,
+                        unique_opportunity_count=opportunity_grouping.unique_opportunity_count,
+                        raw_ledger_row_count=len(strategy_rows),
+                        resolved_ledger_row_count=opportunity_grouping.raw_result_row_count,
+                        profile_raw_ledger_row_count=len(raw_group),
+                        unresolved_ledger_row_count=(
+                            opportunity_grouping.unresolved_result_row_count
+                        ),
+                        profile_unresolved_ledger_row_count=(
+                            profile_grouping.unresolved_result_row_count
+                        ),
                     )
                 )
         return reports
@@ -195,7 +213,7 @@ class TradeAnalytics:
         *,
         minimum_research_sample: int = 30,
     ) -> list[dict[str, object]]:
-        """전략·비용프로필·종목 조합을 표본상태와 함께 보수적으로 순위화한다."""
+        """전략·비용프로필·종목을 고유 시장기회로 묶어 보수적으로 순위화한다."""
 
         normalized = [_normalize_trade(trade) for trade in trades]
         keys = sorted(
@@ -206,12 +224,17 @@ class TradeAnalytics:
         )
         rows: list[dict[str, object]] = []
         for strategy_id, profile, symbol in keys:
-            group = [
+            raw_group = [
                 trade
                 for trade in normalized
                 if trade["strategy_id"] == strategy_id
                 and trade["profile"] == profile
                 and trade["symbol"] == symbol
+            ]
+            opportunity_grouping = group_trade_opportunities(raw_group)
+            group = [
+                _aggregate_opportunity_rows(opportunity.rows)
+                for opportunity in opportunity_grouping.groups
             ]
             metrics = _window_metrics(
                 sorted(group, key=lambda trade: (trade["exit_ts_ms"], trade["trade_id"]))
@@ -231,6 +254,17 @@ class TradeAnalytics:
                     "profile": profile,
                     "symbol": symbol,
                     "sample_size": sample_size,
+                    "unique_opportunity_count": opportunity_grouping.unique_opportunity_count,
+                    "raw_ledger_row_count": len(raw_group),
+                    "resolved_ledger_row_count": opportunity_grouping.raw_result_row_count,
+                    "unresolved_ledger_row_count": (
+                        opportunity_grouping.unresolved_result_row_count
+                    ),
+                    "opportunity_grouping_status": (
+                        "NOT_PROVEN"
+                        if opportunity_grouping.unresolved_result_row_count
+                        else "PROVEN"
+                    ),
                     "sample_status": "RESEARCH_SAMPLE" if eligible else "CALIBRATING",
                     "ranking_eligible": eligible,
                     "rank_score": round(score, 8) if score is not None else None,
@@ -269,15 +303,42 @@ class TradeAnalytics:
         )
 
 
-def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
+def _normalize_trade(
+    trade: Mapping[str, object],
+    *,
+    default_account_scope: str = "MAIN",
+) -> dict[str, object]:
+    trade_id = str(trade["trade_id"])
+    strategy_id = str(trade["strategy_id"])
+    profile = str(trade.get("profile", "BASE")).strip().upper()
+    account_scope = str(trade.get("account_scope", default_account_scope)).strip().upper()
+    account_id = trade.get("account_id")
+    if account_id is None:
+        account_id = (
+            "SHARED_PAPER"
+            if account_scope == "MAIN"
+            else f"{strategy_id}:{profile}"
+            if account_scope == "LEAGUE"
+            else None
+        )
+    opportunity_id = trade.get("opportunity_id")
+    candidate_id = trade.get("candidate_id")
+    signal_event_id = trade.get("signal_event_id")
     return {
-        "trade_id": str(trade["trade_id"]),
-        "strategy_id": str(trade["strategy_id"]),
-        "symbol": str(trade.get("symbol", "UNKNOWN")),
-        "side": str(trade.get("side", "UNKNOWN")),
+        "trade_id": trade_id,
+        "run_id": _optional_text(trade.get("run_id")),
+        "strategy_id": strategy_id,
+        "strategy_version": _optional_text(trade.get("strategy_version")),
+        "opportunity_id": str(opportunity_id) if opportunity_id is not None else None,
+        "candidate_id": str(candidate_id) if candidate_id is not None else None,
+        "signal_event_id": str(signal_event_id) if signal_event_id is not None else None,
+        "symbol": _optional_text(trade.get("symbol")),
+        "side": _optional_text(trade.get("side")),
+        "account_scope": account_scope,
+        "account_id": _optional_text(account_id),
         "venue": str(trade["venue"]),
         "regime": str(trade.get("regime", "UNKNOWN")),
-        "profile": str(trade.get("profile", "BASE")),
+        "profile": profile,
         "exit_ts_ms": int(str(trade["exit_ts_ms"])),
         "entry_ts_ms": int(
             str(
@@ -302,6 +363,16 @@ def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
         "giveback_usdt": str(trade.get("giveback_usdt", "0")),
         "runner_net_pnl_usdt": str(trade.get("runner_net_pnl_usdt", "0")),
         "trail_trigger_slippage_usdt": str(trade.get("trail_trigger_slippage_usdt", "0")),
+        "expected_gross_mfe_usdt": (
+            str(trade["expected_gross_mfe_usdt"])
+            if trade.get("expected_gross_mfe_usdt") is not None
+            else None
+        ),
+        "expected_total_cost_usdt": (
+            str(trade["expected_total_cost_usdt"])
+            if trade.get("expected_total_cost_usdt") is not None
+            else None
+        ),
         "gross_pnl_usdt": str(trade["gross_pnl_usdt"]),
         "fees_usdt": str(trade["fees_usdt"]),
         "slippage_usdt": str(trade["slippage_usdt"]),
@@ -311,12 +382,37 @@ def _normalize_trade(trade: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _optional_text(value: object | None) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _require_league_strategy_analytics(trades: Sequence[Mapping[str, object]]) -> None:
+    invalid_scopes = sorted(
+        {
+            str(trade.get("account_scope", "UNKNOWN"))
+            for trade in trades
+            if trade.get("account_scope") != "LEAGUE"
+        }
+    )
+    if invalid_scopes:
+        raise ValueError(
+            "전략 성과 분석은 독립 LEAGUE PAPER 계좌만 허용합니다: "
+            + ", ".join(invalid_scopes)
+        )
+
+
 def _strategy_report(
     strategy_id: str,
     profile: str,
     trades: list[dict[str, object]],
     *,
     stress_verified: bool,
+    unique_opportunity_count: int,
+    raw_ledger_row_count: int,
+    resolved_ledger_row_count: int,
+    profile_raw_ledger_row_count: int,
+    unresolved_ledger_row_count: int,
+    profile_unresolved_ledger_row_count: int,
 ) -> dict[str, object]:
     ordered = sorted(trades, key=lambda trade: (trade["exit_ts_ms"], trade["trade_id"]))
     all_metrics = _window_metrics(ordered)
@@ -363,6 +459,26 @@ def _strategy_report(
         "strategy_id": strategy_id,
         "profile": profile,
         **all_metrics,
+        "unique_opportunity_count": unique_opportunity_count,
+        "profile_unique_opportunity_count": len(
+            {
+                (
+                    str(trade["run_id"]),
+                    str(trade["strategy_id"]),
+                    str(trade["strategy_version"]),
+                    str(trade["opportunity_id"]),
+                    str(trade["symbol"]),
+                    str(trade["side"]),
+                )
+                for trade in ordered
+            }
+        ),
+        "raw_ledger_row_count": raw_ledger_row_count,
+        "resolved_ledger_row_count": resolved_ledger_row_count,
+        "profile_raw_ledger_row_count": profile_raw_ledger_row_count,
+        "unresolved_ledger_row_count": unresolved_ledger_row_count,
+        "profile_unresolved_ledger_row_count": profile_unresolved_ledger_row_count,
+        "opportunity_grouping_status": ("NOT_PROVEN" if unresolved_ledger_row_count else "PROVEN"),
         "sample_status": sample_status,
         "sample_span_days": round(span_days, 4),
         "regime_count": len(regimes),
@@ -374,6 +490,72 @@ def _strategy_report(
         "recommendation_is_advisory": True,
         "windows": windows,
     }
+
+
+def _aggregate_opportunity_rows(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    ordered = sorted(
+        (dict(row) for row in rows),
+        key=lambda row: (int(str(row["exit_ts_ms"])), str(row["trade_id"])),
+    )
+    if len(ordered) == 1:
+        return ordered[0]
+    first = ordered[0]
+    last = ordered[-1]
+    aggregate = dict(first)
+    aggregate.update(
+        {
+            "trade_id": f"{first['opportunity_id']}:{first['profile']}:AGGREGATED",
+            "entry_ts_ms": min(int(str(row["entry_ts_ms"])) for row in ordered),
+            "exit_ts_ms": max(int(str(row["exit_ts_ms"])) for row in ordered),
+            "exit_price": last["exit_price"],
+            "exit_reason": last["exit_reason"],
+            "holding_ms": max(int(str(row["holding_ms"])) for row in ordered),
+        }
+    )
+    for field_name in (
+        "quantity",
+        "gross_pnl_usdt",
+        "fees_usdt",
+        "slippage_usdt",
+        "net_pnl_usdt",
+        "runner_net_pnl_usdt",
+        "trail_trigger_slippage_usdt",
+    ):
+        aggregate[field_name] = str(
+            sum((Decimal(str(row.get(field_name, "0"))) for row in ordered), Decimal(0))
+        )
+    for field_name in ("mae_r", "mfe_r"):
+        decimal_values = [
+            Decimal(str(row[field_name])) for row in ordered if row.get(field_name) is not None
+        ]
+        aggregate[field_name] = (
+            str(min(decimal_values) if field_name == "mae_r" else max(decimal_values))
+            if decimal_values
+            else None
+        )
+    for field_name in ("peak_unrealized_usdt", "giveback_usdt"):
+        aggregate[field_name] = str(max(Decimal(str(row.get(field_name, "0"))) for row in ordered))
+    for field_name in ("expected_gross_mfe_usdt", "expected_total_cost_usdt"):
+        values = [row.get(field_name) for row in ordered]
+        aggregate[field_name] = (
+            str(values[0])
+            if values and all(value is not None and value == values[0] for value in values)
+            else None
+        )
+    for field_name in (
+        "time_to_tp1_ms",
+        "time_to_tp2_ms",
+        "time_to_stop_ms",
+        "trailing_activation_ts_ms",
+        "runner_started_ts_ms",
+    ):
+        timing_values = [
+            int(str(row[field_name])) for row in ordered if row.get(field_name) is not None
+        ]
+        aggregate[field_name] = min(timing_values) if timing_values else None
+    return aggregate
 
 
 def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]:
@@ -392,6 +574,10 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
             "expectancy_r": None,
             "expectancy_bps": None,
             "profit_factor": None,
+            "return_skew": None,
+            "largest_trade_contribution": None,
+            "cost_coverage": None,
+            "cost_coverage_status": "NOT_PROVEN_MISSING_EXPECTED_COST_MODEL",
             "omega_ratio": None,
             "sortino_ratio_per_trade": None,
             "calmar_ratio_nonannualized": None,
@@ -454,6 +640,41 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
     )
     gross_losses = abs(sum(losses, Decimal(0)))
     profit_factor = sum(wins, Decimal(0)) / gross_losses if gross_losses else None
+    mean_pnl = net / len(pnl)
+    variance = sum(((value - mean_pnl) ** 2 for value in pnl), Decimal(0)) / len(pnl)
+    return_skew = None
+    if len(pnl) >= 3 and variance > 0:
+        standard_deviation = variance.sqrt()
+        return_skew = sum(
+            (((value - mean_pnl) / standard_deviation) ** 3 for value in pnl),
+            Decimal(0),
+        ) / len(pnl)
+    absolute_pnl = sum((abs(value) for value in pnl), Decimal(0))
+    largest_trade_contribution = (
+        max(abs(value) for value in pnl) / absolute_pnl if absolute_pnl > 0 else None
+    )
+    expected_gross_mfe_values = [trade.get("expected_gross_mfe_usdt") for trade in trades]
+    expected_total_cost_values = [trade.get("expected_total_cost_usdt") for trade in trades]
+    cost_coverage_inputs_complete = all(
+        value is not None for value in (*expected_gross_mfe_values, *expected_total_cost_values)
+    )
+    expected_gross_mfe = (
+        sum((Decimal(str(value)) for value in expected_gross_mfe_values), Decimal(0))
+        if cost_coverage_inputs_complete
+        else None
+    )
+    expected_total_cost = (
+        sum((Decimal(str(value)) for value in expected_total_cost_values), Decimal(0))
+        if cost_coverage_inputs_complete
+        else None
+    )
+    cost_coverage = (
+        expected_gross_mfe / expected_total_cost
+        if expected_gross_mfe is not None
+        and expected_total_cost is not None
+        and expected_total_cost > 0
+        else None
+    )
     risk_values: list[Decimal] = []
     bps_values: list[Decimal] = []
     for trade, value in zip(trades, pnl, strict=True):
@@ -561,6 +782,16 @@ def _window_metrics(trades: Sequence[Mapping[str, object]]) -> dict[str, object]
         if bps_values
         else None,
         "profit_factor": str(profit_factor) if profit_factor is not None else None,
+        "return_skew": str(return_skew) if return_skew is not None else None,
+        "largest_trade_contribution": (
+            str(largest_trade_contribution) if largest_trade_contribution is not None else None
+        ),
+        "cost_coverage": str(cost_coverage) if cost_coverage is not None else None,
+        "cost_coverage_status": (
+            "PROVEN_EXPECTED_MFE_OVER_TOTAL_COST"
+            if cost_coverage is not None
+            else "NOT_PROVEN_MISSING_EXPECTED_COST_MODEL"
+        ),
         "omega_ratio": str(profit_factor) if profit_factor is not None else None,
         "sortino_ratio_per_trade": (str(sortino_ratio) if sortino_ratio is not None else None),
         "calmar_ratio_nonannualized": (str(calmar_ratio) if calmar_ratio is not None else None),

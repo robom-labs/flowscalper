@@ -27,15 +27,15 @@
 | O | `MULTISPEED_TREND_RECLAIM_30M_V2` | 30분·1시간 추세 재합류 | SHADOW | TREND_40_60 |
 
 - 모든 전략은 LONG·SHORT를 독립적으로 허용하거나 끌 수 있다.
-- OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다.
-- 모든 전략은 LONG·SHORT 제어를 유지한다. 검증되지 않은 B/C/F/G/I/J는 SHADOW다. 비용후 시간순 검증에 실패한 A/D/E/H와 고정된 독립 과거구간 147일·166거래에서 재현에 실패한 K는 RETIRED·OFF다. RETIRED 전략은 과거 원장과 계좌를 보존하지만 별도 사전등록 연구와 코드 변경 없이는 다시 켤 수 없다.
-- 공동계좌 ACTIVE 대표 전략은 기본값으로 두지 않는다. Strategy Governor의 비용후 OOS·강건성·표본 gate와 BASE·STRESS 양쪽의 관측 승률 70% gate를 모두 통과한 전략만 ACTIVE 후보가 된다. 현재 전략 버전의 자연 `LIVE_PUBLIC` 기회가 각 비용 프로필 30건보다 적으면 100%로 보이는 작은 표본도 자동 승격하지 않는다.
-- SHADOW·CHALLENGER는 현재 버전 자연표본 각 30건·7일·2개 레짐이 쌓인 뒤 BASE 또는 STRESS 승률이 70% 미만이면 거래와 근거를 보존한 채 RETIRED·OFF로 전환한다. ACTIVE는 전체와 최근 비용 프로필 승률이 새 표본이 생긴 두 평가 주기 연속 70% 미만일 때 QUARANTINED·OFF로 안전 격리한다.
+- OFF는 평가하지 않고, ACTIVE는 main과 League, SHADOW는 League에만 후보를 제공한다. 사용자는 current entry variant를 `SHADOW` 또는 `OFF`로만 제어하고, `ACTIVE`는 사전등록 gate를 통과한 Governor만 설정한다.
+- 모든 전략은 LONG·SHORT 제어를 유지한다. V6 current entry variant B/C/L/M/N/O는 SHADOW다. 비용후 시간순 검증에 실패한 A/D/E/H와 고정된 독립 과거구간 147일·166거래에서 재현에 실패한 K는 RETIRED·OFF다. 독립 entry가 아닌 legacy F/G/I/J는 RESEARCH·OFF다. RETIRED·legacy 전략은 과거 원장과 계좌를 보존하지만 별도 사전등록 연구와 코드 변경 없이는 다시 켤 수 없다.
+- 공동계좌 ACTIVE 대표 전략은 기본값으로 두지 않는다. Strategy Governor는 비용후 기대값·PF, OOS 하한, DSR, PBO, 강건성, 독립기간, 위험과 운영건강의 공통 gate에 더해 사전등록된 family별 승률·payoff gate를 적용한다. 작은 표본의 100%도 자동 승격하지 않는다.
+- 모든 전략에 70% 관측승률을 요구하거나 70% 미만이라는 이유만으로 RETIRED·QUARANTINED로 보내는 공통 규칙은 제거한다. 성능 격리와 승격은 family 형태, 비용후 기대값과 충분한 고유기회 증거를 함께 요구하며 거래와 근거를 보존한다.
 
 ## 3. 독립 계좌
 
 - 15개 등록 전략마다 BASE·STRESS를 두어 총 30개 계좌를 생성한다.
-- 비용후 재현에 실패한 5개 RETIRED 전략의 계좌·거래는 보존하고, 현재 10개 SHADOW 전략만 같은 공개시장 입력에서 동시에 신규 후보를 평가한다.
+- 비용후 재현에 실패한 5개 RETIRED와 legacy RESEARCH 4개의 계좌·거래는 보존하고, current entry variant 6개만 `SHADOW`에서 같은 공개시장 입력으로 신규 후보를 평가한다.
 - account ID는 `STRATEGY_ID:PROFILE`이다.
 - 각 계좌는 1,000 USDT로 시작한다.
 - 자산, 손익, 수수료, 슬리피지, 위험, cooldown, fault를 섞지 않는다.
@@ -148,8 +148,18 @@ uv run pytest backend/tests -q
 ## 11. 3차 사용자 표현과 종목별 성과
 
 - 사용자 메뉴와 화면에서는 `전략`으로 줄여 표시하고, 내부 Registry·DB·개발문서의 Strategy League 식별자는 호환을 위해 유지한다.
-- 전략 설정은 15개 compact 행과 쉬운 ACTIVE·SHADOW·OFF 의미를 사용한다. 현재 10개 SHADOW와 기록 보존용 5개 RETIRED를 구분하고, RETIRED 행의 mode·방향 버튼은 비활성화한다.
+- 전략 설정은 current entry variant를 family 중심 compact 행으로 표시한다. 사용자는 `SHADOW`와 `OFF`만 선택하고 `ACTIVE`는 Governor 전용임을 설명한다. current SHADOW 6개, 기록 보존용 RETIRED 5개, legacy RESEARCH·OFF 4개를 구분하며, RETIRED·legacy 행의 재활성화 제어는 비활성화한다.
 - `전략별 종목 성과`는 BASE/STRESS를 분리하고 실제 완료 PAPER 거래만 집계한다. 30건 미만 조합은 관찰 표본이며 순위에서 제외한다.
 - 전략 통계는 독립 Strategy League 거래만 집계하고 공동계좌 거래를 같은 전략 표본에 중복 합산하지 않는다.
 - 상세 화면은 승·패·보합, 승률 95% 범위, 기대값, Profit Factor, 비용, 낙폭, 보유시간과 진입→TP1·TP2·손절 중앙시간 및 각 표본 수를 표시한다.
 - 포지션 집중 selector는 BASE를 먼저 정렬하지만 모든 계좌는 독립 회계와 최대 5배 위험 상한을 그대로 유지한다.
+
+## 12. V6 family와 고유기회 계약
+
+- 15개 strategy ID는 원장 호환을 위해 유지하고 8개 family의 variant로 묶는다. Family별 current variant는 최대 하나다.
+- Entry가 아닌 order-flow FILTER, ROUTER, LEGACY와 미검증 MARKET_NEUTRAL_MULTI_LEG는 기본 entry 순위와 거래 수에서 제외한다.
+- BASE와 STRESS는 독립 회계를 유지하지만 한 `opportunity_id`의 두 비용결과다. 기본 표본은 `(run_id, strategy_id, strategy_version, opportunity_id, symbol, side)`의 고유 수다.
+- 부분 TP·runner fill은 같은 고유기회 안에 남긴다. 기본 거래표는 opportunity 한 행 안에 BASE·STRESS를 나란히 표시하고 원시 원장은 상세에서 보존한다.
+- 기본 전략 순위는 적격 표본의 Wilson 95% 하한 내림차순이다. Raw win rate만으로 순위·퇴역·승격하지 않는다.
+- V3 후보는 기존 V2를 덮어쓰지 않고 offline 사전등록으로 남긴다. 같은 동결입력 비교가 없으면 `NOT_PROVEN`, promotion false다.
+- 실제 주문·private API·API Key·wallet은 0이며 수익성 `NOT_PROVEN`, `FUNDING_READINESS=NOT_READY`다.

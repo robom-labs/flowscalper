@@ -174,6 +174,7 @@ class PaperTrade:
     mfe_r: Decimal
     flags: tuple[str, ...]
     profile: CostProfile
+    strategy_version: str = "LEGACY_UNVERSIONED"
     candidate_id: str | None = None
     signal_event_id: str | None = None
     take_profit_1: Decimal | None = None
@@ -192,6 +193,8 @@ class PaperTrade:
     trailing_state_checksum: str | None = None
 
     def __post_init__(self) -> None:
+        if not self.strategy_version.strip():
+            raise ValueError("PAPER 거래의 전략 버전은 비어 있을 수 없습니다.")
         if self.closed_ts_ms < self.opened_ts_ms:
             raise ValueError("PAPER 거래 종료 시각은 진입 이전일 수 없습니다.")
         milestones = (

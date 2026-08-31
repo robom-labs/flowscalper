@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from backend.app.build_identity import STRATEGY_VERSION
 from backend.app.candidates import CandidatePlan, CandidatePlanner, TakeProfitTarget
 from backend.app.costing import CostProfile
 from backend.app.domain.market import Instrument
@@ -125,6 +126,7 @@ def candidate_plan(
         main_eligible=True,
         shadow_eligible=True,
         edge_decay_enabled=edge_decay_enabled,
+        strategy_version=STRATEGY_VERSION,
     )
     assert result.rejection_codes == ()
     assert result.plan is not None
@@ -270,9 +272,7 @@ def test_intraday_plan_replaces_nine_hundred_second_edge_exit_with_structure_pol
         risk_state=RiskState(),
         main_eligible=True,
         shadow_eligible=True,
-        exit_style=StrategyRegistry()
-        .descriptor("TREND_PULLBACK_RECLAIM_15M_V2")
-        .exit_style,
+        exit_style=StrategyRegistry().descriptor("TREND_PULLBACK_RECLAIM_15M_V2").exit_style,
         trend_take_profit_1_r=Decimal("1.4"),
         trend_take_profit_2_r=Decimal("2.8"),
         maximum_holding_ms=None,
@@ -395,6 +395,52 @@ def test_latency_executable_depth_tp1_tp2_and_live_pnl_are_end_to_end() -> None:
     assert shadows.account(plan.strategy_id, CostProfile.STRESS).current_equity_usdt != Decimal(
         "1000"
     )
+
+
+def test_old_strategy_version_survives_recovery_and_position_close() -> None:
+    plan = replace(candidate_plan(), strategy_version="OLD-STRATEGY-VERSION")
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    engine.offer((plan,), entries_paused=False)
+    engine.on_book(book(1_250))
+
+    payload = json.loads(json.dumps(engine.recovery_state()))
+    restored = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    restored.restore_state(payload)
+    assert restored.main.position is not None
+    assert restored.main.position.plan.strategy_version == "OLD-STRATEGY-VERSION"
+
+    tp1, tp2 = plan.take_profit_targets
+    restored.on_book(
+        book(2_000, bids=((str(tp1.price + Decimal("0.1")), "100"),), asks=(("107", "100"),))
+    )
+    restored.on_book(
+        book(2_250, bids=((str(tp1.price + Decimal("0.05")), "100"),), asks=(("107", "100"),))
+    )
+    restored.on_book(
+        book(3_000, bids=((str(tp2.price + Decimal("0.1")), "100"),), asks=(("107", "100"),))
+    )
+    restored.on_book(
+        book(3_250, bids=((str(tp2.price + Decimal("0.05")), "100"),), asks=(("107", "100"),))
+    )
+
+    trade = restored.main.completed_trades[-1]
+    assert trade.strategy_version == "OLD-STRATEGY-VERSION"
+    closed_payload = json.loads(json.dumps(restored.recovery_state()))
+    closed_restored = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    closed_restored.restore_state(closed_payload)
+    assert closed_restored.main.completed_trades[-1].strategy_version == ("OLD-STRATEGY-VERSION")
 
 
 def test_tp1_trailing_that_is_not_fee_safe_after_fill_rejects_entry_atomically() -> None:

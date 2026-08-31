@@ -10,9 +10,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
+from backend.app.strategies.family import StrategyFamilyId
+from backend.app.strategies.governor import GovernanceEvidence, StrategyGovernor
+
 MAX_SURVIVOR_WATCHLIST_SIZE = 10
 MINIMUM_UNIQUE_OPPORTUNITIES = 30
-MINIMUM_WIN_RATE = Decimal("0.70")
 MINIMUM_BASE_PROFIT_FACTOR = Decimal("1.05")
 MINIMUM_STRESS_PROFIT_FACTOR = Decimal("1.00")
 MINIMUM_DSR_PROBABILITY = Decimal("0.95")
@@ -64,6 +66,15 @@ class SurvivorCandidateEvidence:
     no_lookahead_passed: bool
     paper_only: bool = True
     real_orders_enabled: bool = False
+    family_id: StrategyFamilyId | None = None
+    base_payoff_ratio: Decimal | None = None
+    stress_payoff_ratio: Decimal | None = None
+    base_return_skew: Decimal | None = None
+    stress_return_skew: Decimal | None = None
+    base_largest_trade_contribution: Decimal | None = None
+    stress_largest_trade_contribution: Decimal | None = None
+    base_cost_coverage: Decimal | None = None
+    stress_cost_coverage: Decimal | None = None
 
     @property
     def evidence_key(self) -> tuple[str, str]:
@@ -113,17 +124,21 @@ class SurvivorCandidateEvidence:
             blockers.append("BASE_SAMPLE_BELOW_30")
         if self.stress_sample_size < MINIMUM_UNIQUE_OPPORTUNITIES:
             blockers.append("STRESS_SAMPLE_BELOW_30")
-        _minimum_decimal(
+        for value, reason in (
+            (self.base_win_rate, "BASE_RAW_WIN_RATE_MISSING_OR_INVALID"),
+            (self.stress_win_rate, "STRESS_RAW_WIN_RATE_MISSING_OR_INVALID"),
+        ):
+            if value is None or not value.is_finite() or not Decimal(0) <= value <= Decimal(1):
+                blockers.append(reason)
+        _positive_decimal(
             blockers,
-            self.base_win_rate,
-            MINIMUM_WIN_RATE,
-            "BASE_WIN_RATE_BELOW_70_OR_MISSING",
+            self.base_win_rate_ci95_lower,
+            "BASE_WILSON_LOWER_NOT_POSITIVE_OR_MISSING",
         )
-        _minimum_decimal(
+        _positive_decimal(
             blockers,
-            self.stress_win_rate,
-            MINIMUM_WIN_RATE,
-            "STRESS_WIN_RATE_BELOW_70_OR_MISSING",
+            self.stress_win_rate_ci95_lower,
+            "STRESS_WILSON_LOWER_NOT_POSITIVE_OR_MISSING",
         )
         _positive_decimal(
             blockers,
@@ -192,19 +207,69 @@ class SurvivorCandidateEvidence:
         ):
             if not passed:
                 blockers.append(reason)
-        required_values = (
-            self.base_win_rate_ci95_lower,
-            self.stress_win_rate_ci95_lower,
-        )
-        if any(value is None or not value.is_finite() for value in required_values):
-            blockers.append("WIN_RATE_CI95_LOWER_MISSING")
+        if self.family_id is None:
+            blockers.append("FAMILY_ID_MISSING")
+        else:
+            blockers.extend(
+                StrategyGovernor.family_gate_failures(
+                    self.family_id,
+                    self._governance_evidence(),
+                )
+            )
         return tuple(dict.fromkeys(blockers))
+
+    def _governance_evidence(self) -> GovernanceEvidence:
+        return GovernanceEvidence(
+            base_sample_size=self.base_sample_size,
+            stress_sample_size=self.stress_sample_size,
+            base_expectancy_usdt=_finite(self.base_expectancy_bps),
+            stress_expectancy_usdt=_finite(self.stress_expectancy_bps),
+            base_profit_factor=_finite(self.base_profit_factor),
+            stress_profit_factor=_finite(self.stress_profit_factor),
+            sample_span_days=0,
+            regime_count=0,
+            dsr_probability=_minimum_float(
+                self.base_dsr_probability,
+                self.stress_dsr_probability,
+            ),
+            pbo=_maximum_float(self.base_pbo, self.stress_pbo),
+            oos_expectancy_lower_bound_usdt=_finite_minimum(
+                self.base_bootstrap_lower_bps,
+                self.stress_bootstrap_lower_bps,
+            ),
+            parameter_robustness_passed=self.parameter_robustness_passed,
+            risk_contract_passed=(
+                self.concentration_passed
+                and self.drawdown_passed
+                and self.cost_model_passed
+                and self.no_lookahead_passed
+            ),
+            independent_period_count=2 if self.chronological_oos_passed else 0,
+            base_win_rate=_finite(self.base_win_rate),
+            stress_win_rate=_finite(self.stress_win_rate),
+            unique_opportunity_count=self.unique_opportunities,
+            base_win_rate_ci95_lower=_finite(self.base_win_rate_ci95_lower),
+            stress_win_rate_ci95_lower=_finite(self.stress_win_rate_ci95_lower),
+            base_payoff_ratio=_finite(self.base_payoff_ratio),
+            stress_payoff_ratio=_finite(self.stress_payoff_ratio),
+            base_return_skew=_finite(self.base_return_skew),
+            stress_return_skew=_finite(self.stress_return_skew),
+            base_largest_trade_contribution=_finite(
+                self.base_largest_trade_contribution
+            ),
+            stress_largest_trade_contribution=_finite(
+                self.stress_largest_trade_contribution
+            ),
+            base_cost_coverage=_finite(self.base_cost_coverage),
+            stress_cost_coverage=_finite(self.stress_cost_coverage),
+        )
 
     def as_watchlist_row(self, *, position: int) -> dict[str, object]:
         return {
             "position": position,
             "candidate_id": self.candidate_id,
             "hypothesis_id": self.hypothesis_id,
+            "family_id": self.family_id.value if self.family_id is not None else None,
             "parameter_fingerprint": self.parameter_fingerprint,
             "unique_opportunities": self.unique_opportunities,
             "worst_profile_win_rate": str(self.worst_win_rate),
@@ -338,13 +403,17 @@ def _candidate_rank_key(candidate: SurvivorCandidateEvidence) -> tuple[object, .
     blockers = candidate.eligibility_blockers()
     return (
         bool(blockers),
-        -_optional(candidate.base_win_rate, Decimal("-Infinity")),
-        -_optional(candidate.stress_win_rate, Decimal("-Infinity")),
-        -_optional(candidate.base_win_rate_ci95_lower, Decimal("-Infinity")),
-        -_optional(candidate.stress_win_rate_ci95_lower, Decimal("-Infinity")),
-        -_optional(candidate.base_expectancy_bps, Decimal("-Infinity")),
-        -_optional(candidate.stress_expectancy_bps, Decimal("-Infinity")),
+        -_optional_worst(
+            candidate.base_win_rate_ci95_lower,
+            candidate.stress_win_rate_ci95_lower,
+        ),
         -candidate.unique_opportunities,
+        -_optional_worst(candidate.base_expectancy_bps, candidate.stress_expectancy_bps),
+        -_optional_worst(candidate.base_profit_factor, candidate.stress_profit_factor),
+        -_optional_worst(
+            candidate.base_bootstrap_lower_bps,
+            candidate.stress_bootstrap_lower_bps,
+        ),
         candidate.candidate_id,
     )
 
@@ -355,18 +424,70 @@ def _strict_evidence_dominance(
 ) -> bool:
     """작은 표시승률 흔들림이 아니라 하한·기대값까지 개선될 때만 교체한다."""
 
-    return (
-        challenger.worst_win_rate > incumbent.worst_win_rate
-        and challenger.worst_ci95_lower >= incumbent.worst_ci95_lower
-        and challenger.worst_expectancy_bps >= incumbent.worst_expectancy_bps
-        and challenger.worst_profit_factor >= incumbent.worst_profit_factor
-        and challenger.worst_bootstrap_lower_bps
-        >= incumbent.worst_bootstrap_lower_bps
+    challenger_metrics = (
+        challenger.worst_ci95_lower,
+        Decimal(challenger.unique_opportunities),
+        challenger.worst_expectancy_bps,
+        challenger.worst_profit_factor,
+        challenger.worst_bootstrap_lower_bps,
+    )
+    incumbent_metrics = (
+        incumbent.worst_ci95_lower,
+        Decimal(incumbent.unique_opportunities),
+        incumbent.worst_expectancy_bps,
+        incumbent.worst_profit_factor,
+        incumbent.worst_bootstrap_lower_bps,
+    )
+    return all(
+        challenger_value >= incumbent_value
+        for challenger_value, incumbent_value in zip(
+            challenger_metrics,
+            incumbent_metrics,
+            strict=True,
+        )
+    ) and any(
+        challenger_value > incumbent_value
+        for challenger_value, incumbent_value in zip(
+            challenger_metrics,
+            incumbent_metrics,
+            strict=True,
+        )
     )
 
 
 def _optional(value: Decimal | None, fallback: Decimal) -> Decimal:
     return value if value is not None and value.is_finite() else fallback
+
+
+def _optional_worst(first: Decimal | None, second: Decimal | None) -> Decimal:
+    fallback = Decimal("-Infinity")
+    return min(_optional(first, fallback), _optional(second, fallback))
+
+
+def _minimum_float(first: Decimal | None, second: Decimal | None) -> float | None:
+    minimum = _finite_minimum(first, second)
+    if minimum is None:
+        return None
+    return float(minimum)
+
+
+def _maximum_float(first: Decimal | None, second: Decimal | None) -> float | None:
+    if _finite(first) is None or _finite(second) is None:
+        return None
+    assert first is not None and second is not None
+    return float(max(first, second))
+
+
+def _finite(value: Decimal | None) -> Decimal | None:
+    return value if value is not None and value.is_finite() else None
+
+
+def _finite_minimum(first: Decimal | None, second: Decimal | None) -> Decimal | None:
+    finite_first = _finite(first)
+    finite_second = _finite(second)
+    if finite_first is None or finite_second is None:
+        return None
+    return min(finite_first, finite_second)
 
 
 def _required(value: Decimal | None) -> Decimal:

@@ -76,7 +76,7 @@ test('posts start-live once, renders 202 operation updates and cancels it', asyn
   const cancelled = { ...requested, state: 'CANCELLED' as const, stage_ko: '연결 작업을 취소했습니다', finished_ts_ms: 3 }
   const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
     const url = String(path)
-    if (url === '/api/dashboard') return response(data)
+    if (url === '/api/ui/summary') return response(data)
     if (url === '/api/control/start-live') {
       if (!init) throw new Error('start-live request options are required')
       return response(requested, 202)
@@ -108,7 +108,7 @@ test('retries FAILED_RETRYABLE with a new start-live request', async () => {
   const failed = operation('FAILED_RETRYABLE', 'control-failed')
   const data = { ...dashboardFixture(), control_operation: failed }
   const fetchMock = vi.fn(async (path: RequestInfo | URL) => (
-    String(path) === '/api/dashboard'
+    String(path) === '/api/ui/summary'
       ? response(data)
       : response(operation('REQUESTED', 'control-retry'), 202)
   ))
@@ -123,7 +123,7 @@ test('retries FAILED_RETRYABLE with a new start-live request', async () => {
 test('recovers the button and shows Korean detail after HTTP 500', async () => {
   const data = dashboardFixture()
   vi.stubGlobal('fetch', vi.fn(async (path: RequestInfo | URL) => (
-    String(path) === '/api/dashboard'
+    String(path) === '/api/ui/summary'
       ? response(data)
       : response({ detail: { error_code: 'CONTROL_FAILED', error_message_ko: '서버가 실행 작업을 완료하지 못했습니다.', retryable: true } }, 500)
   )))
@@ -137,7 +137,7 @@ test('aborts a stalled control after 15 seconds and restores the button', async 
   vi.useFakeTimers()
   const data = dashboardFixture()
   vi.stubGlobal('fetch', vi.fn((path: RequestInfo | URL, init?: RequestInit) => {
-    if (String(path) === '/api/dashboard') return Promise.resolve(response(data))
+    if (String(path) === '/api/ui/summary') return Promise.resolve(response(data))
     return new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
     })
@@ -155,7 +155,21 @@ test('aborts a stalled control after 15 seconds and restores the button', async 
 test('marks malformed WebSocket data as reconnecting and recovers on a valid socket', async () => {
   vi.useFakeTimers()
   const data = dashboardFixture()
-  vi.stubGlobal('fetch', vi.fn(async () => response(data)))
+  vi.stubGlobal('fetch', vi.fn(async (path: RequestInfo | URL) => response(
+    String(path) === '/api/strategies/summary'
+      ? {
+          schema_version: 1,
+          analysis_scope: 'CURRENT_STRATEGY_VERSION',
+          strategies: data.strategies,
+          league_accounts: data.league_accounts,
+          strategy_count: data.strategies.length,
+          league_account_count: data.league_accounts.length,
+          paper_only: true,
+          real_orders_enabled: false,
+          auth_required: false,
+        }
+      : data,
+  )))
   render(<App />)
   await act(async () => Promise.resolve())
   expect(FakeWebSocket.instances).toHaveLength(1)
@@ -203,8 +217,7 @@ test('shows automatic safety waiting without a misleading manual resume button',
   expect(panel).toHaveTextContent('정상화되면 자동으로 다시 시작합니다.')
   expect(screen.queryByRole('button', { name: '새 진입 다시 시작' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '설정' }))
-  fireEvent.click(screen.getByRole('button', { name: '안전' }))
-  expect(screen.getByRole('button', { name: '자동 안전대기 중' })).toBeDisabled()
+  expect(screen.getByLabelText('자동 진입 제어 상태')).toHaveTextContent('작동 중 · 안전 대기')
   expect(screen.queryByRole('button', { name: '자동 관찰 계속하기' })).not.toBeInTheDocument()
 })
 

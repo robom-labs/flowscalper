@@ -12,6 +12,7 @@ from backend.app.research.survivor_watchlist import (
     parameter_fingerprint,
     select_survivor_watchlist,
 )
+from backend.app.strategies.family import StrategyFamilyId
 
 
 def _candidate(
@@ -27,9 +28,9 @@ def _candidate(
         candidate_id=f"CANDIDATE-{index:02d}",
         hypothesis_id=f"HYP-{index:02d}",
         parameter_fingerprint=f"PARAM-{index:02d}",
-        unique_opportunities=40 + index,
-        base_sample_size=40 + index,
-        stress_sample_size=40 + index,
+        unique_opportunities=150 + index,
+        base_sample_size=150 + index,
+        stress_sample_size=150 + index,
         base_win_rate=Decimal(win_rate),
         stress_win_rate=Decimal(win_rate),
         base_win_rate_ci95_lower=Decimal(ci_lower),
@@ -50,6 +51,13 @@ def _candidate(
         drawdown_passed=True,
         cost_model_passed=True,
         no_lookahead_passed=True,
+        family_id=StrategyFamilyId.BREAKOUT_RUNNER,
+        base_payoff_ratio=Decimal("2.10"),
+        stress_payoff_ratio=Decimal("2.10"),
+        base_return_skew=Decimal("0.20"),
+        stress_return_skew=Decimal("0.20"),
+        base_largest_trade_contribution=Decimal("0.05"),
+        stress_largest_trade_contribution=Decimal("0.05"),
     )
 
 
@@ -77,8 +85,25 @@ def test_watchlist_never_fills_capacity_with_small_or_weak_samples() -> None:
         for row in result["excluded_ineligible_candidates"]
     }
     assert "UNIQUE_OPPORTUNITIES_BELOW_30" in reasons[small.candidate_id]
-    assert "BASE_WIN_RATE_BELOW_70_OR_MISSING" in reasons[weak.candidate_id]
     assert "STRESS_EXPECTANCY_NOT_POSITIVE" in reasons[weak.candidate_id]
+    assert not any("BELOW_70" in reason for reason in reasons[weak.candidate_id])
+
+
+def test_positive_low_win_runner_is_not_rejected_by_a_universal_70_percent_gate() -> None:
+    candidate = _candidate(
+        1,
+        win_rate="0.45",
+        ci_lower="0.36",
+        expectancy_bps="5.0",
+        profit_factor="1.40",
+        bootstrap_lower_bps="0.7",
+    )
+
+    result = select_survivor_watchlist((candidate,))
+
+    assert result["watchlist_candidate_ids"] == [candidate.candidate_id]
+    assert result["excluded_ineligible_candidates"] == []
+    assert not any("BELOW_70" in reason for reason in candidate.eligibility_blockers())
 
 
 def test_watchlist_keeps_at_most_ten_and_deduplicates_identical_parameters() -> None:

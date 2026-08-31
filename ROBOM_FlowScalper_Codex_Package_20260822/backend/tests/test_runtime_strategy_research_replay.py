@@ -547,7 +547,11 @@ def test_runtime_strategy_replay_builds_not_proven_empty_summary(tmp_path: Path)
 
     assert result["real_orders_enabled"] is False
     assert result["overall"]["trade_row_count"] == 0
-    assert result["overall"]["observed_70_percent_gate_passed"] is False
+    assert result["overall"]["universal_win_rate_gate_required"] is False
+    assert result["overall"]["observed_raw_win_rate_by_profile"] == {
+        "BASE": None,
+        "STRESS": None,
+    }
     assert result["overall"]["ranking_eligible"] is False
     assert "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30" in result["overall"][
         "ranking_blockers"
@@ -567,6 +571,7 @@ def test_replay_summary_never_promotes_on_win_rate_without_robustness_gates() ->
             "wins": 24,
             "losses": 6,
             "win_rate": "0.8",
+            "win_rate_ci95": {"lower": "0.63"},
             "expectancy_usdt": "0.1",
             "net_pnl": "3",
             "profit_factor": "2",
@@ -598,7 +603,11 @@ def test_replay_summary_never_promotes_on_win_rate_without_robustness_gates() ->
         )
 
     assert summary["unique_market_opportunity_count"] == 30
-    assert summary["observed_70_percent_gate_passed"] is True
+    assert summary["observed_raw_win_rate_by_profile"] == {
+        "BASE": "0.8",
+        "STRESS": "0.8",
+    }
+    assert summary["universal_win_rate_gate_required"] is False
     assert summary["cost_performance_gate_passed"] is True
     assert summary["robustness_gate_passed"] is False
     assert summary["ranking_eligible"] is False
@@ -614,6 +623,7 @@ def test_replay_summary_deduplicates_profiles_before_the_30_opportunity_gate() -
             "wins": 30,
             "losses": 0,
             "win_rate": "1",
+            "win_rate_ci95": {"lower": "0.88"},
             "expectancy_usdt": "1",
             "net_pnl": "30",
             "profit_factor": None,
@@ -645,7 +655,7 @@ def test_replay_summary_deduplicates_profiles_before_the_30_opportunity_gate() -
         )
 
     assert summary["unique_market_opportunity_count"] == 1
-    assert summary["observed_70_percent_gate_passed"] is False
+    assert summary["universal_win_rate_gate_required"] is False
     assert summary["cost_performance_gate_passed"] is True
     assert summary["ranking_eligible"] is False
     assert "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30" in summary["ranking_blockers"]

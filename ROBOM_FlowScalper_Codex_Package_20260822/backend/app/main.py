@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from backend.app.analytics.opportunities import OpportunityAccountGroup, group_trade_opportunities
 from backend.app.clocks import SystemClock
 from backend.app.control import (
     ControlAction,
@@ -43,13 +44,33 @@ from backend.app.replay.process import (
     replay_timeline_from_paths,
 )
 from backend.app.replay.safety import ReplayLiveSafetyViolation, run_with_live_safety
+from backend.app.research.source_metadata import research_source_metadata_rows
 from backend.app.runtime import PaperEntryIntentConflict, PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, RecoveryState, SQLiteLedger
+from backend.app.strategies.family import (
+    StrategyFamilyId,
+    family_detail,
+    strategy_family_catalog,
+)
+from backend.app.strategies.orderflow_confirmation import (
+    ORDERFLOW_CONFIRMATION_FILTER_ID,
+    OrderflowFilterRevisionConflict,
+)
 from backend.app.strategies.registry import (
     StrategyLifecycle,
     StrategyMode,
     StrategyRevisionConflict,
+)
+from backend.app.ui_v6 import (
+    compact_mutation_summary,
+    compact_selected_family_detail,
+    compact_ui_summary,
+    diagnostics_rows,
+    settings_summary,
+    stable_etag,
+    strategy_page_summary,
+    ui_delta_messages,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -63,6 +84,40 @@ _TERMINAL_OPERATION_STATES = {
 }
 
 _DASHBOARD_REFRESH_SECONDS = 1.0
+
+_ORDERFLOW_RESEARCH_SOURCE_IDS = (
+    "SRC-OFI-2010",
+    "SRC-QI-2015",
+    "SRC-MLOFI-2019",
+    "SRC-MICROPRICE-2017",
+    "SRC-BINANCE-DEPTH",
+    "SRC-BINANCE-AGGTRADE",
+)
+
+_FAMILY_AVAILABILITY = {
+    StrategyFamilyId.POSITIONING_LIQUIDATION.value: {
+        "availability_state": "RESEARCH_PREPARATION",
+        "availability_label_ko": "연구 준비",
+        "availability_reason_ko": "공개 OI·funding·basis 입력의 시간 정렬 검증이 필요합니다.",
+    },
+    StrategyFamilyId.MARKET_REGIME_FILTERS.value: {
+        "availability_state": "ROUTER_ONLY",
+        "availability_label_ko": "라우터 전용",
+        "availability_reason_ko": "독립 수익전략이 아니라 current entry의 시장상태 라우팅용입니다.",
+    },
+    StrategyFamilyId.SESSION_PROFILE.value: {
+        "availability_state": "RESEARCH_PREPARATION",
+        "availability_label_ko": "연구 준비",
+        "availability_reason_ko": "세션·Volume Profile 실측 계약을 준비하고 있습니다.",
+    },
+    StrategyFamilyId.MARKET_NEUTRAL.value: {
+        "availability_state": "ENGINE_VALIDATION_REQUIRED",
+        "availability_label_ko": "엔진 검증 필요",
+        "availability_reason_ko": (
+            "다중 leg PAPER 체결·복구 엔진이 검증되기 전에는 실행하지 않습니다."
+        ),
+    },
+}
 
 
 def _operation_transition_audit(
@@ -247,6 +302,14 @@ class StrategyRollbackRequest(BaseModel):
     target_revision: int = Field(ge=0)
     expected_revision: int = Field(ge=0)
     reason: str = Field(default="USER_ROLLBACK", min_length=3, max_length=120)
+
+
+class FamilyResearchEnabledRequest(BaseModel):
+    """Family current variant의 신규 PAPER 평가 의도를 CAS로 변경한다."""
+
+    research_enabled: bool
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(default="USER_FAMILY_RESEARCH_CONFIGURATION", min_length=3, max_length=120)
 
 
 class ControlMutationRequest(BaseModel):
@@ -673,6 +736,444 @@ def create_app(
             media_type="application/json",
         )
 
+    async def compact_mutation_response(*, force: bool = False) -> Response:
+        """화면 변경 응답은 전체 dashboard 대신 작은 상태 확인값만 직렬화한다."""
+
+        snapshot, _ = await cached_dashboard(force=force)
+        payload = compact_mutation_summary(snapshot)
+        serialized = await asyncio.to_thread(
+            json.dumps,
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return Response(content=serialized, media_type="application/json")
+
+    def orderflow_virtual_variant() -> dict[str, object]:
+        filter_status = active_runtime.orderflow_confirmation_filter_status(
+            symbol=active_runtime.selected_symbol
+        )
+        enabled = bool(filter_status["enabled"])
+        return {
+            "strategy_id": ORDERFLOW_CONFIRMATION_FILTER_ID,
+            "family_id": StrategyFamilyId.ORDERFLOW_CONFIRMATION.value,
+            "role": "FILTER",
+            "variant_id": ORDERFLOW_CONFIRMATION_FILTER_ID,
+            "variant_label_ko": "주문흐름 확인 필터 V2",
+            "is_current_variant": True,
+            "supersedes_strategy_ids": [
+                "OFI_CONTINUATION_PULLBACK_V1",
+                "QUEUE_MICROPRICE_MOMENTUM_V1",
+                "AGGRESSOR_FLOW_CONTINUATION_V1",
+                "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+                "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+                "OFI_RETURN_CONFLUENCE_V1",
+                "BOOK_SLOPE_ASYMMETRY_V1",
+            ],
+            "superseded_by_strategy_id": None,
+            "user_visible_by_default": True,
+            "default_research_enabled": False,
+            "final_ranking_eligible": False,
+            "setting": {
+                "research_enabled": enabled,
+                "enabled": enabled,
+                "mode": "SHADOW" if enabled else "OFF",
+                "lifecycle": "RESEARCH",
+                "long_enabled": False,
+                "short_enabled": False,
+                "settings_revision": filter_status["revision"],
+                "revision": filter_status["revision"],
+                "manual_lock": True,
+                "change_reason": filter_status["change_reason"],
+                "settings_updated_ts_ms": filter_status["updated_ts_ms"],
+            },
+            "performance": None,
+            "governance": {
+                "evidence_status": filter_status["uplift_status"],
+                "final_ranking_eligible": False,
+            },
+            "runtime_state": filter_status,
+            "research_sources": research_source_metadata_rows(
+                _ORDERFLOW_RESEARCH_SOURCE_IDS
+            ),
+        }
+
+    def family_payload(
+        snapshot: Mapping[str, object],
+        family_id: StrategyFamilyId | str,
+    ) -> dict[str, object]:
+        strategy_rows = snapshot.get("strategies")
+        rows = (
+            [row for row in strategy_rows if isinstance(row, Mapping)]
+            if isinstance(strategy_rows, list)
+            else []
+        )
+        performance = {
+            str(row["strategy_id"]): row.get("performance")
+            for row in rows
+            if row.get("strategy_id") is not None
+        }
+        governance = {
+            str(row["strategy_id"]): row.get("governance")
+            for row in rows
+            if row.get("strategy_id") is not None
+        }
+        detail = family_detail(
+            active_runtime.strategy_registry,
+            family_id,
+            performance,
+            governance,
+        )
+        source_by_id = {
+            str(row["strategy_id"]): row for row in rows if row.get("strategy_id") is not None
+        }
+        variants = detail.get("variants")
+        if isinstance(variants, list):
+            enriched_variants: list[dict[str, object]] = []
+            for variant in variants:
+                if not isinstance(variant, Mapping):
+                    continue
+                strategy_id = str(variant.get("strategy_id"))
+                runtime_state = source_by_id.get(strategy_id, {})
+                raw_source_ids = runtime_state.get("research_source_ids")
+                if isinstance(raw_source_ids, list):
+                    source_ids = [str(source_id) for source_id in raw_source_ids]
+                else:
+                    source_ids = list(
+                        active_runtime.strategy_registry.descriptor(
+                            strategy_id
+                        ).research_contract.research_source_ids
+                    )
+                enriched_variants.append(
+                    dict(variant)
+                    | {
+                        "runtime_state": runtime_state,
+                        "research_sources": research_source_metadata_rows(source_ids),
+                    }
+                )
+            detail["variants"] = enriched_variants
+        from backend.app.research.v6_candidates import v6_preregistered_variants
+
+        resolved_family_id = StrategyFamilyId(str(family_id)).value
+        detail.update(
+            _FAMILY_AVAILABILITY.get(
+                resolved_family_id,
+                {
+                    "availability_state": "RUNTIME_CURRENT",
+                    "availability_label_ko": "모의평가 가능",
+                    "availability_reason_ko": (
+                        "현재 runtime variant의 독립 PAPER 결과를 표시합니다."
+                    ),
+                },
+            )
+        )
+        if resolved_family_id == StrategyFamilyId.ORDERFLOW_CONFIRMATION.value:
+            virtual_variant = orderflow_virtual_variant()
+            raw_variants = detail.get("variants")
+            variants = (
+                [dict(row) for row in raw_variants if isinstance(row, Mapping)]
+                if isinstance(raw_variants, list)
+                else []
+            )
+            detail["current_variant_id"] = ORDERFLOW_CONFIRMATION_FILTER_ID
+            detail["variants"] = [virtual_variant, *variants]
+            detail["variant_count"] = len(variants) + 1
+        detail["offline_challengers"] = [
+            {
+                "strategy_id": variant.strategy_id,
+                "family_id": variant.family_id,
+                "baseline_strategy_ids": list(variant.baseline_strategy_ids),
+                "state": "PREREGISTERED_NOT_EXECUTED",
+                "current_variant": variant.current_variant,
+                "runtime_registered": variant.runtime_registered,
+                "live_shadow_enabled": variant.live_shadow_enabled,
+                "paper_only": variant.paper_only,
+            }
+            for variant in v6_preregistered_variants()
+            if variant.family_id == resolved_family_id
+        ]
+        detail["paper_only"] = True
+        detail["real_orders_enabled"] = False
+        detail["auth_required"] = False
+        return detail
+
+    def static_family_catalog() -> list[dict[str, object]]:
+        rows = strategy_family_catalog(active_runtime.strategy_registry)
+        catalog: list[dict[str, object]] = []
+        for row in rows:
+            raw_variants = row.get("variants")
+            variants = raw_variants if isinstance(raw_variants, list) else []
+            if row.get("family_id") == StrategyFamilyId.ORDERFLOW_CONFIRMATION.value:
+                row = dict(row) | {
+                    "current_variant_id": ORDERFLOW_CONFIRMATION_FILTER_ID,
+                    "variant_count": len(variants) + 1,
+                }
+                variants = [orderflow_virtual_variant(), *variants]
+            family_id = str(row.get("family_id"))
+            availability = _FAMILY_AVAILABILITY.get(
+                family_id,
+                {
+                    "availability_state": "RUNTIME_CURRENT",
+                    "availability_label_ko": "모의평가 가능",
+                    "availability_reason_ko": (
+                        "현재 runtime variant의 독립 PAPER 결과를 표시합니다."
+                    ),
+                },
+            )
+            catalog.append(
+                {key: value for key, value in row.items() if key != "variants"}
+                | availability
+                | {
+                    "variants": [
+                        {
+                            key: value
+                            for key, value in variant.items()
+                            if key
+                            not in {
+                                "setting",
+                                "performance",
+                                "governance",
+                                "runtime_state",
+                            }
+                        }
+                        for variant in variants
+                        if isinstance(variant, Mapping)
+                    ]
+                }
+            )
+        return catalog
+
+    def grouped_trade_payload(
+        history: Mapping[str, object],
+        *,
+        limit: int,
+    ) -> dict[str, object]:
+        """거래 원장을 실제 시장 기회와 BASE·STRESS 결과로 분리한다."""
+
+        raw_rows = history.get("rows")
+        rows = (
+            [dict(row) for row in raw_rows if isinstance(row, Mapping)]
+            if isinstance(raw_rows, list)
+            else []
+        )
+        normalized_rows = [
+            dict(row) | {"strategy_id": row.get("strategy_id", row.get("strategy"))}
+            for row in rows
+        ]
+        grouping = group_trade_opportunities(normalized_rows)
+        family_labels = {
+            str(row["family_id"]): str(row["label_ko"])
+            for row in strategy_family_catalog(active_runtime.strategy_registry)
+        }
+        all_opportunities: list[dict[str, object]] = []
+        for group in grouping.groups:
+            ordered_rows = sorted(
+                (dict(row) for row in group.rows),
+                key=lambda row: (
+                    0 if str(row.get("account_scope", "MAIN")).upper() == "MAIN" else 1,
+                    str(row.get("account_id", "SHARED_PAPER")),
+                    0 if str(row.get("profile", "BASE")).upper() == "BASE" else 1,
+                    -int(str(row.get("exit_ts_ms", 0))),
+                    str(row.get("trade_id", "")),
+                ),
+            )
+            descriptor = (
+                active_runtime.strategy_registry.descriptor(group.key.strategy_id)
+                if group.key.strategy_id in active_runtime.strategy_registry.strategy_ids
+                else None
+            )
+            account_payloads: list[dict[str, object]] = []
+            for account in group.accounts:
+                account_rows = sorted(
+                    (dict(row) for row in account.rows),
+                    key=lambda row: (
+                        0 if str(row.get("profile", "BASE")).upper() == "BASE" else 1,
+                        -int(str(row.get("exit_ts_ms", 0))),
+                        str(row.get("trade_id", "")),
+                    ),
+                )
+                account_profiles: dict[str, object] = {}
+                for profile in ("BASE", "STRESS"):
+                    results = [
+                        row
+                        for row in account_rows
+                        if str(row.get("profile", "BASE")).upper() == profile
+                    ]
+                    if not results:
+                        continue
+                    shaped_results: object = results[0] if len(results) == 1 else results
+                    account_profiles[profile] = shaped_results
+                account_payloads.append(
+                    {
+                        "account_scope": account.account_scope,
+                        "account_id": account.account_id,
+                        "profiles": account_profiles,
+                        "rows": account_rows,
+                        "raw_result_row_count": account.raw_result_row_count,
+                        "base_result_row_count": account.base_result_row_count,
+                        "stress_result_row_count": account.stress_result_row_count,
+                        "partial_exit_row_count": account.partial_exit_row_count,
+                    }
+                )
+            account_sets: list[
+                tuple[str, str, tuple[OpportunityAccountGroup, ...]]
+            ] = []
+            for account in group.accounts:
+                if account.account_scope == "MAIN":
+                    account_sets.append(("MAIN", account.account_id, (account,)))
+            league_accounts = tuple(
+                account for account in group.accounts if account.account_scope == "LEAGUE"
+            )
+            if league_accounts:
+                account_sets.append(("LEAGUE", group.key.strategy_id, league_accounts))
+            account_group_payloads: list[dict[str, object]] = []
+            display_profiles: dict[str, object] = {}
+            profile_account_refs: dict[str, dict[str, str]] = {}
+            for account_scope, account_group_id, accounts in account_sets:
+                account_group_rows = sorted(
+                    (dict(row) for account in accounts for row in account.rows),
+                    key=lambda row: (
+                        0 if str(row.get("profile", "BASE")).upper() == "BASE" else 1,
+                        -int(str(row.get("exit_ts_ms", 0))),
+                        str(row.get("trade_id", "")),
+                    ),
+                )
+                account_group_profiles: dict[str, object] = {}
+                account_group_refs: dict[str, dict[str, str]] = {}
+                for profile in ("BASE", "STRESS"):
+                    profile_accounts = tuple(
+                        account for account in accounts if profile in account.profiles
+                    )
+                    if not profile_accounts:
+                        continue
+                    source_account = profile_accounts[0]
+                    results = [
+                        dict(row)
+                        for row in source_account.rows
+                        if str(row.get("profile", "BASE")).upper() == profile
+                    ]
+                    account_group_profiles[profile] = (
+                        results[0] if len(results) == 1 else results
+                    )
+                    account_group_refs[profile] = {
+                        "account_scope": source_account.account_scope,
+                        "account_id": source_account.account_id,
+                    }
+                if not account_group_payloads:
+                    display_profiles = dict(account_group_profiles)
+                    profile_account_refs = dict(account_group_refs)
+                account_group_payloads.append(
+                    {
+                        "account_scope": account_scope,
+                        "account_group_id": account_group_id,
+                        "account_ids": [account.account_id for account in accounts],
+                        "profiles": account_group_profiles,
+                        "profile_account_refs": account_group_refs,
+                        "rows": account_group_rows,
+                        "raw_result_row_count": sum(
+                            account.raw_result_row_count for account in accounts
+                        ),
+                        "base_result_row_count": sum(
+                            account.base_result_row_count for account in accounts
+                        ),
+                        "stress_result_row_count": sum(
+                            account.stress_result_row_count for account in accounts
+                        ),
+                        "partial_exit_row_count": sum(
+                            account.partial_exit_row_count for account in accounts
+                        ),
+                    }
+                )
+            all_opportunities.append(
+                {
+                    "key": {
+                        "run_id": group.key.run_id,
+                        "strategy_id": group.key.strategy_id,
+                        "strategy_version": group.key.strategy_version,
+                        "opportunity_id": group.key.opportunity_id,
+                        "symbol": group.key.symbol,
+                        "side": group.key.side,
+                    },
+                    "family_id": descriptor.family_id.value if descriptor is not None else None,
+                    "family_label_ko": (
+                        family_labels.get(descriptor.family_id.value)
+                        if descriptor is not None
+                        else None
+                    ),
+                    "variant_label_ko": (
+                        descriptor.variant_label_ko if descriptor is not None else None
+                    ),
+                    "entry_ts_ms": min(int(str(row.get("entry_ts_ms", 0))) for row in ordered_rows),
+                    "exit_ts_ms": max(int(str(row.get("exit_ts_ms", 0))) for row in ordered_rows),
+                    "profiles": display_profiles,
+                    "profile_account_refs": profile_account_refs,
+                    "accounts": account_payloads,
+                    "account_groups": account_group_payloads,
+                    "rows": ordered_rows,
+                    "raw_result_row_count": group.raw_result_row_count,
+                    "base_result_row_count": group.base_result_row_count,
+                    "stress_result_row_count": group.stress_result_row_count,
+                    "partial_exit_row_count": group.partial_exit_row_count,
+                    "replay_available": any(
+                        bool(row.get("replay_available")) for row in ordered_rows
+                    ),
+                }
+            )
+        all_opportunities.sort(
+            key=lambda row: (int(str(row["exit_ts_ms"])), str(row["key"])),
+            reverse=True,
+        )
+        opportunities = all_opportunities[:limit]
+        raw_scope = history.get("scope")
+        scope = dict(raw_scope) if isinstance(raw_scope, Mapping) else {}
+        source_raw_limit = int(str(scope.get("limit") or 0))
+        source_returned_count = int(str(scope.get("returned_count") or len(rows)))
+        source_limit_boundary = (
+            source_raw_limit > 0 and source_returned_count >= source_raw_limit
+        )
+        scope.update(
+            {
+                "limit": limit,
+                "returned_count": len(opportunities),
+                "source_raw_limit": source_raw_limit or None,
+                "source_grouping_complete": not source_limit_boundary,
+            }
+        )
+        return {
+            "schema_version": 1,
+            "opportunities": opportunities,
+            "unresolved": [
+                {
+                    "status": unresolved.status,
+                    "reason_code": unresolved.reason_code,
+                    "reason_ko": unresolved.reason_ko,
+                    "row": dict(unresolved.row),
+                }
+                for unresolved in grouping.unresolved_rows
+            ],
+            "grouping_status": (
+                "NOT_PROVEN"
+                if grouping.unresolved_result_row_count or source_limit_boundary
+                else "PROVEN"
+            ),
+            "source_status": (
+                "NOT_PROVEN_RAW_LIMIT_BOUNDARY" if source_limit_boundary else "COMPLETE"
+            ),
+            "counts": {
+                "unique_opportunities": grouping.unique_opportunity_count,
+                "returned_opportunities": len(opportunities),
+                "raw_result_rows": grouping.raw_result_row_count,
+                "base_result_rows": grouping.base_result_row_count,
+                "stress_result_rows": grouping.stress_result_row_count,
+                "unresolved_result_rows": grouping.unresolved_result_row_count,
+                "source_raw_result_rows": len(rows),
+            },
+            "scope": scope,
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+
     async def broadcast_dashboard() -> None:
         """연결 수와 무관하게 snapshot을 한 번만 생성·직렬화한다."""
 
@@ -828,7 +1329,7 @@ def create_app(
             if active_runtime.ledger is not None:
                 active_runtime.ledger.close()
 
-    app = FastAPI(title="ROBOM FlowScalper", version="0.2.0-paper", lifespan=lifespan)
+    app = FastAPI(title="ROBOM FlowScalper", version="0.3.0-paper", lifespan=lifespan)
     app.state.runtime = active_runtime
     app.state.control_operation_manager = operation_manager
     app.state.replay_operation_manager = replay_operation_manager
@@ -841,8 +1342,8 @@ def create_app(
         ],
         allow_origin_regex=r"https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?",
         allow_credentials=False,
-        allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Content-Type", "Idempotency-Key"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["Content-Type", "Idempotency-Key", "If-None-Match"],
     )
 
     @app.get("/api/status")
@@ -856,6 +1357,196 @@ def create_app(
     @app.get("/api/dashboard")
     async def dashboard() -> Response:
         return await dashboard_response()
+
+    @app.get("/api/ui/summary")
+    async def ui_summary() -> dict[str, object]:
+        snapshot, _ = await cached_dashboard()
+        return compact_ui_summary(snapshot)
+
+    @app.get("/api/strategies/summary")
+    async def strategies_summary(
+        if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+    ) -> Response:
+        snapshot, _ = await cached_dashboard()
+        payload = strategy_page_summary(snapshot)
+        etag = stable_etag(payload)
+        headers = {"ETag": etag, "Cache-Control": "private, max-age=2"}
+        if if_none_match == etag:
+            return Response(status_code=304, headers=headers)
+        serialized = await asyncio.to_thread(
+            json.dumps,
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        return Response(
+            content=serialized,
+            media_type="application/json",
+            headers=headers,
+        )
+
+    @app.get("/api/settings/summary")
+    async def user_settings_summary() -> dict[str, object]:
+        snapshot, _ = await cached_dashboard()
+        return settings_summary(snapshot)
+
+    @app.get("/api/diagnostics")
+    async def advanced_diagnostics() -> dict[str, object]:
+        snapshot, _ = await cached_dashboard()
+        return diagnostics_rows(snapshot)
+
+    @app.get("/api/strategy-families")
+    async def strategy_families(
+        if_none_match: str | None = Header(default=None, alias="If-None-Match"),
+    ) -> Response:
+        catalog = static_family_catalog()
+        payload = {
+            "schema_version": 1,
+            "families": catalog,
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+        etag = stable_etag(payload)
+        if if_none_match == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        return Response(
+            content=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            media_type="application/json",
+            headers={"ETag": etag, "Cache-Control": "private, max-age=60"},
+        )
+
+    @app.get("/api/strategy-families/{family_id}")
+    async def strategy_family_detail(family_id: StrategyFamilyId) -> dict[str, object]:
+        snapshot, _ = await cached_dashboard()
+        return family_payload(snapshot, family_id)
+
+    @app.get("/api/strategy-families/{family_id}/conditions")
+    async def strategy_family_conditions(family_id: StrategyFamilyId) -> dict[str, object]:
+        if family_id is StrategyFamilyId.ORDERFLOW_CONFIRMATION:
+            return {
+                "family_id": family_id.value,
+                **active_runtime.orderflow_confirmation_condition_detail(),
+                "research_sources": research_source_metadata_rows(
+                    _ORDERFLOW_RESEARCH_SOURCE_IDS
+                ),
+            }
+        catalog_row = next(
+            row
+            for row in strategy_family_catalog(active_runtime.strategy_registry)
+            if row["family_id"] == family_id.value
+        )
+        current_id = catalog_row.get("current_variant_id")
+        if current_id is None:
+            return {
+                "schema_version": 1,
+                "family_id": family_id.value,
+                "strategy_id": None,
+                "symbol": active_runtime.selected_symbol,
+                "setup_state": "RESEARCH_NOT_IMPLEMENTED",
+                "passed": 0,
+                "total": 0,
+                "top_blockers": ["현재 실행 가능한 current variant가 없습니다."],
+                "conditions": [],
+                "sides": [],
+                "execution": {},
+                "research_sources": [],
+                "paper_only": True,
+                "real_orders_enabled": False,
+                "auth_required": False,
+            }
+        condition_detail = active_runtime.strategy_condition_detail(str(current_id))
+        raw_source_ids = condition_detail.get("research_source_ids")
+        source_ids = (
+            [str(source_id) for source_id in raw_source_ids]
+            if isinstance(raw_source_ids, list)
+            else []
+        )
+        return {
+            "family_id": family_id.value,
+            **condition_detail,
+            "research_sources": research_source_metadata_rows(source_ids),
+        }
+
+    @app.patch("/api/strategy-families/{family_id}/research-enabled")
+    async def configure_family_research(
+        family_id: StrategyFamilyId,
+        request: FamilyResearchEnabledRequest,
+    ) -> dict[str, object]:
+        if family_id is StrategyFamilyId.ORDERFLOW_CONFIRMATION:
+            try:
+                await asyncio.to_thread(
+                    active_runtime.configure_orderflow_confirmation_filter,
+                    enabled=request.research_enabled,
+                    expected_revision=request.expected_revision,
+                    reason=request.reason,
+                )
+            except OrderflowFilterRevisionConflict as error:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error_code": "ORDERFLOW_FILTER_REVISION_CONFLICT",
+                        "error_message_ko": "다른 화면에서 주문흐름 필터 설정이 바뀌었습니다.",
+                        "retryable": True,
+                        "current_filter": error.current,
+                    },
+                ) from error
+            snapshot, _ = await cached_dashboard(force=True)
+            return family_payload(snapshot, family_id)
+        catalog_row = next(
+            row
+            for row in strategy_family_catalog(active_runtime.strategy_registry)
+            if row["family_id"] == family_id.value
+        )
+        current_id = catalog_row.get("current_variant_id")
+        if current_id is None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "FAMILY_RUNTIME_ENTRY_NOT_IMPLEMENTED",
+                    "error_message_ko": "이 family에는 검증된 runtime current variant가 없습니다.",
+                    "retryable": False,
+                },
+            )
+        current_setting = active_runtime.strategy_registry.setting(str(current_id))
+        try:
+            await asyncio.to_thread(
+                active_runtime.configure_strategy,
+                str(current_id),
+                mode=(StrategyMode.SHADOW if request.research_enabled else StrategyMode.OFF),
+                lifecycle=(
+                    StrategyLifecycle.SHADOW
+                    if request.research_enabled
+                    else StrategyLifecycle.RESEARCH
+                ),
+                long_enabled=current_setting.long_enabled,
+                short_enabled=current_setting.short_enabled,
+                expected_revision=request.expected_revision,
+                manual_lock=True,
+                source="USER_UI",
+                reason=request.reason,
+            )
+        except StrategyRevisionConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "STRATEGY_SETTINGS_REVISION_CONFLICT",
+                    "error_message_ko": "다른 화면에서 family 설정이 바뀌었습니다.",
+                    "retryable": True,
+                    "current_strategy": error.current_setting,
+                },
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "FAMILY_RESEARCH_CONFIGURATION_INVALID",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        snapshot, _ = await cached_dashboard(force=True)
+        return family_payload(snapshot, family_id)
 
     @app.get("/api/markets/catalog")
     async def market_catalog(
@@ -970,7 +1661,7 @@ def create_app(
                     "current_intent": active_runtime.paper_entry_intent(),
                 },
             ) from error
-        return await dashboard_response(force=True)
+        return await compact_mutation_response(force=True)
 
     @app.post("/api/control/pause")
     async def pause_entries(
@@ -997,7 +1688,7 @@ def create_app(
     @app.post("/api/control/emergency-close")
     async def emergency_paper_close() -> Response:
         active_runtime.emergency_paper_close()
-        return await dashboard_response(force=True)
+        return await compact_mutation_response(force=True)
 
     async def start_live_runner(progress: ProgressCallback) -> None:
         if active_runtime.live_observation_running():
@@ -1163,13 +1854,24 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return await dashboard_response(force=True)
+        return await compact_mutation_response(force=True)
 
     @app.post("/api/strategies/{strategy_id}")
     async def configure_strategy(
         strategy_id: str,
         request: StrategyConfigurationRequest,
     ) -> Response:
+        try:
+            active_runtime.strategy_registry.descriptor(strategy_id)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error_code": "STRATEGY_NOT_FOUND",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
         try:
             await asyncio.to_thread(
                 active_runtime.configure_strategy,
@@ -1197,6 +1899,24 @@ def create_app(
             ) from error
         except ValueError as error:
             raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "STRATEGY_CONFIGURATION_INVALID",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        return await compact_mutation_response(force=True)
+
+    @app.post("/api/strategies/{strategy_id}/rollback")
+    async def rollback_strategy(
+        strategy_id: str,
+        request: StrategyRollbackRequest,
+    ) -> Response:
+        try:
+            active_runtime.strategy_registry.descriptor(strategy_id)
+        except ValueError as error:
+            raise HTTPException(
                 status_code=404,
                 detail={
                     "error_code": "STRATEGY_NOT_FOUND",
@@ -1204,13 +1924,6 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return await dashboard_response(force=True)
-
-    @app.post("/api/strategies/{strategy_id}/rollback")
-    async def rollback_strategy(
-        strategy_id: str,
-        request: StrategyRollbackRequest,
-    ) -> Response:
         try:
             await asyncio.to_thread(
                 active_runtime.rollback_strategy,
@@ -1240,7 +1953,7 @@ def create_app(
                     "retryable": False,
                 },
             ) from error
-        return await dashboard_response(force=True)
+        return await compact_mutation_response(force=True)
 
     @app.get("/api/governance")
     async def strategy_governance() -> dict[str, object]:
@@ -1281,6 +1994,29 @@ def create_app(
             "auth_required": False,
             **scope,
         }
+
+    @app.get("/api/trades")
+    async def grouped_trades(
+        run_scope: str = Query(default="CURRENT", pattern=r"^(CURRENT|ALL)$"),
+        account_scope: str = Query(default="ALL", pattern=r"^(MAIN|LEAGUE|ALL)$"),
+        profile: str = Query(default="ALL", pattern=r"^(BASE|STRESS|ALL)$"),
+        version_scope: str = Query(default="CURRENT", pattern=r"^(CURRENT|ALL)$"),
+        sample_type: str = Query(
+            default="ALL",
+            pattern=r"^(LIVE_PUBLIC|OFFLINE_FIXTURE|ALL)$",
+        ),
+        limit: int = Query(default=1_000, ge=1, le=2_000),
+    ) -> dict[str, object]:
+        history = await asyncio.to_thread(
+            active_runtime.history_records,
+            run_scope=run_scope,
+            account_scope=account_scope,
+            profile=profile,
+            version_scope=version_scope,
+            sample_type=sample_type,
+            limit=2_000,
+        )
+        return grouped_trade_payload(history, limit=limit)
 
     @app.get("/api/history")
     async def history_records(
@@ -1592,10 +2328,7 @@ def create_app(
                     "저장 원장과 공개시장 이벤트를 안전하게 준비하고 있습니다",
                 )
                 ledger = active_runtime.ledger
-                if (
-                    active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER
-                    and ledger is not None
-                ):
+                if active_runtime.mode is RuntimeMode.LIVE_SHADOW_PAPER and ledger is not None:
                     archive = ledger.market_event_archive
                     await progress(
                         "PROCESSING",
@@ -1605,6 +2338,7 @@ def create_app(
                         ),
                     )
                     async with replay_process_lock:
+
                         async def start_process_replay() -> dict[str, object]:
                             return await replay_stored_run_in_subprocess(
                                 str(ledger.path),
@@ -1723,6 +2457,149 @@ def create_app(
             await websocket.send_json({"type": "catalog_snapshot", "data": catalog})
             while True:
                 await websocket.receive_text()
+        except WebSocketDisconnect:
+            return
+
+    @app.websocket("/ws/ui")
+    async def ui_websocket(websocket: WebSocket) -> None:
+        """클라이언트별 snapshot 뒤 작은 V6 delta와 heartbeat만 보낸다."""
+
+        if not _local_browser_origin(websocket.headers.get("origin")):
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        sequence = 0
+        selected_family_id: StrategyFamilyId | None = None
+        selected_detail: dict[str, object] | None = None
+
+        async def send_ui_message(message_type: str, data: object) -> None:
+            nonlocal sequence
+            sequence += 1
+            await websocket.send_json(
+                {
+                    "schema_version": 1,
+                    "sequence": sequence,
+                    "type": message_type,
+                    "data": data,
+                }
+            )
+
+        async def selected_family_snapshot(
+            family_id: StrategyFamilyId,
+        ) -> dict[str, object]:
+            dashboard, _ = await cached_dashboard()
+            return compact_selected_family_detail(family_payload(dashboard, family_id))
+
+        try:
+            dashboard, _ = await cached_dashboard()
+            previous_summary = compact_ui_summary(dashboard)
+            await send_ui_message("snapshot", previous_summary)
+            while True:
+                try:
+                    raw_message = await asyncio.wait_for(
+                        websocket.receive_text(),
+                        timeout=_DASHBOARD_REFRESH_SECONDS,
+                    )
+                except TimeoutError:
+                    dashboard, _ = await cached_dashboard()
+                    current_summary = compact_ui_summary(dashboard)
+                    messages = ui_delta_messages(previous_summary, current_summary)
+                    previous_summary = current_summary
+                    if selected_family_id is not None:
+                        current_detail = compact_selected_family_detail(
+                            family_payload(dashboard, selected_family_id)
+                        )
+                        if current_detail != selected_detail:
+                            selected_detail = current_detail
+                            messages.append(
+                                {
+                                    "type": "selected_detail_delta",
+                                    "data": {
+                                        "family_id": selected_family_id.value,
+                                        "detail": current_detail,
+                                    },
+                                }
+                            )
+                    if messages:
+                        for message in messages:
+                            await send_ui_message(str(message["type"]), message["data"])
+                    else:
+                        await send_ui_message(
+                            "heartbeat",
+                            {"server_ts_ms": active_runtime.clock.utc_ms()},
+                        )
+                    continue
+
+                try:
+                    request = json.loads(raw_message)
+                except json.JSONDecodeError:
+                    await send_ui_message(
+                        "error",
+                        {
+                            "error_code": "INVALID_UI_WEBSOCKET_MESSAGE",
+                            "error_message_ko": "화면 선택 요청이 올바른 JSON이 아닙니다.",
+                            "retryable": False,
+                        },
+                    )
+                    continue
+                if not isinstance(request, Mapping):
+                    await send_ui_message(
+                        "error",
+                        {
+                            "error_code": "INVALID_UI_WEBSOCKET_MESSAGE",
+                            "error_message_ko": "화면 선택 요청은 객체여야 합니다.",
+                            "retryable": False,
+                        },
+                    )
+                    continue
+                request_type = str(request.get("type", ""))
+                if request_type == "ping":
+                    await send_ui_message(
+                        "heartbeat",
+                        {"server_ts_ms": active_runtime.clock.utc_ms()},
+                    )
+                    continue
+                if request_type != "select_family":
+                    await send_ui_message(
+                        "error",
+                        {
+                            "error_code": "UNSUPPORTED_UI_WEBSOCKET_MESSAGE",
+                            "error_message_ko": "지원하지 않는 화면 실시간 요청입니다.",
+                            "retryable": False,
+                        },
+                    )
+                    continue
+                requested_family_id = request.get("family_id")
+                if requested_family_id is None:
+                    selected_family_id = None
+                    selected_detail = None
+                    await send_ui_message(
+                        "selected_detail_delta",
+                        {"family_id": None, "detail": None},
+                    )
+                    continue
+                try:
+                    selected_family_id = StrategyFamilyId(str(requested_family_id))
+                    selected_detail = await selected_family_snapshot(selected_family_id)
+                except ValueError:
+                    selected_family_id = None
+                    selected_detail = None
+                    await send_ui_message(
+                        "error",
+                        {
+                            "error_code": "STRATEGY_FAMILY_NOT_FOUND",
+                            "error_message_ko": "요청한 전략 family를 찾지 못했습니다.",
+                            "retryable": False,
+                        },
+                    )
+                    continue
+                await send_ui_message(
+                    "selected_detail_delta",
+                    {
+                        "family_id": selected_family_id.value,
+                        "detail": selected_detail,
+                    },
+                )
         except WebSocketDisconnect:
             return
 

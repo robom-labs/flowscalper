@@ -285,6 +285,7 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
         candidate_plan(),
         run_id=run_id,
         venue=Venue.BINANCE_USDM,
+        strategy_version="OLD-STRATEGY-VERSION",
     )
     runtime.paper_portfolio.offer((plan,), entries_paused=False)
     runtime.paper_portfolio.on_book(_live_book(1_250))
@@ -297,6 +298,9 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     assert recovered_runtime.paper_portfolio.lifecycle_state() == "PROTECTED"
     assert recovered_runtime.paper_portfolio.main.position is not None
     assert recovered_runtime.paper_portfolio.main.position.protected.trade_id == trade_id
+    assert recovered_runtime.paper_portfolio.main.position.plan.strategy_version == (
+        "OLD-STRATEGY-VERSION"
+    )
     assert recovered_runtime.position_visible is True
     assert recovered_runtime.paused is True
     assert recovered_runtime._manual_pause_requested is True
@@ -337,6 +341,18 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     assert exit_pending_runtime.paper_portfolio.main.position is None
     assert len(reopened_again.list_trades(run_id)) == 1
     assert reopened_again.list_trades(run_id)[0]["trade_id"] == trade_id
+    assert reopened_again.list_trades(run_id)[0]["strategy_version"] == ("OLD-STRATEGY-VERSION")
+    shadow_rows = reopened_again.list_shadow_trades(run_id)
+    assert shadow_rows
+    assert {row["strategy_version"] for row in shadow_rows} == {"OLD-STRATEGY-VERSION"}
+    performance = exit_pending_runtime.strategy_performance(include_persisted=True)
+    base = next(
+        row
+        for row in performance
+        if row["strategy_id"] == plan.strategy_id and row["profile"] == "BASE"
+    )
+    assert base["sample_size"] == 0
+    assert base["excluded_prior_version_samples"] >= 1
     reopened_again.close()
 
     finalized_runtime, final_ledger = _reopen_runtime(database, run_id)

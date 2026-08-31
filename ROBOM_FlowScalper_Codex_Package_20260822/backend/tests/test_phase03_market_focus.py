@@ -200,6 +200,7 @@ def test_unicode_public_symbol_can_load_candles_and_be_selected() -> None:
         "/api/control/chart",
         json={"symbol": "龙虾USDT", "interval_seconds": 14_400},
     )
+    refreshed_chart = client.get("/api/ui/summary")
 
     assert history.status_code == 200
     assert history.json()["candles"][0]["close"] == 0.06355
@@ -207,7 +208,9 @@ def test_unicode_public_symbol_can_load_candles_and_be_selected() -> None:
     assert selected.status_code == 200
     assert selected.json()["symbol"] == "龙虾USDT"
     assert chart.status_code == 200
-    assert chart.json()["chart"]["symbol"] == "龙虾USDT"
+    assert "chart" not in chart.json()
+    assert refreshed_chart.json()["chart"]["symbol"] == "龙虾USDT"
+    assert refreshed_chart.json()["chart"]["interval"] == "4h"
     assert client.get("/api/markets/candles?symbol=BTC%2FUSDT").status_code == 422
 
 
@@ -258,7 +261,10 @@ def test_strategy_symbol_report_requires_thirty_samples() -> None:
         rows.append(
             {
                 "trade_id": f"trade-{index}",
+                "run_id": "run-strategy-symbol-ranking",
                 "strategy_id": "LSA_REVERSAL_V1",
+                "strategy_version": "V2",
+                "opportunity_id": f"opportunity-{index}",
                 "profile": "BASE",
                 "venue": "BINANCE_USDM",
                 "symbol": "BTCUSDT",

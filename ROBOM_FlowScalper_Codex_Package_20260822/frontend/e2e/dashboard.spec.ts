@@ -1,9 +1,59 @@
-// 3차 시장 중심 UI, compact 전략표와 관찰전용 Upbit를 실제 브라우저로 검증한다.
+// V6 네 화면, compact 전략표와 관찰전용 Upbit를 실제 브라우저로 검증한다.
 import { expect, test, type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { recordBrowserEvidence } from './evidence'
 
 const screenshots = path.resolve('..', 'evidence', 'screenshots')
+
+function roundedMs(value: number) {
+  return Math.round(value * 1_000) / 1_000
+}
+
+type InteractiveTargetAudit = {
+  stage: string
+  measured_count: number
+  minimum_height_px: number | null
+  violations: Array<{ tag: string; name: string; class_name: string; height_px: number }>
+}
+
+async function auditVisibleInteractiveTargets(page: Page, stage: string): Promise<InteractiveTargetAudit> {
+  const measurement = await page.locator('button,input,select,summary,a[href]').evaluateAll((elements) => {
+    const rows = elements
+      .filter((element) => {
+        if (element instanceof HTMLInputElement && element.type === 'hidden') return false
+        if ('disabled' in element && element.disabled === true) return false
+        if (element.getAttribute('aria-disabled') === 'true') return false
+        const rect = element.getBoundingClientRect()
+        const style = window.getComputedStyle(element)
+        return rect.width > 0
+          && rect.height > 0
+          && style.visibility !== 'hidden'
+          && style.display !== 'none'
+          && Number(style.opacity) !== 0
+      })
+      .map((element) => {
+        const rect = element.getBoundingClientRect()
+        return {
+          tag: element.tagName.toLowerCase(),
+          name: element.getAttribute('aria-label')
+            || element.getAttribute('title')
+            || element.textContent?.trim().replace(/\s+/g, ' ').slice(0, 80)
+            || element.getAttribute('name')
+            || element.id
+            || '이름 없음',
+          class_name: element.className || '',
+          height_px: Math.round(rect.height * 1_000) / 1_000,
+        }
+      })
+    return {
+      measured_count: rows.length,
+      minimum_height_px: rows.length ? Math.min(...rows.map((row) => row.height_px)) : null,
+      violations: rows.filter((row) => row.height_px < 48),
+    }
+  })
+  return { stage, ...measurement }
+}
 
 function candles(symbol: string) {
   const base = symbol.startsWith('KRW-') ? 80_000_000 : 60_000
@@ -63,7 +113,7 @@ async function installMarketFixtures(page: Page) {
       keyframes: [{ frame_index: 0, ts_ms: 1_721_000_000_000 }, { frame_index: 5, ts_ms: 1_721_001_080_000 }],
       trade: {}, fills: [], profile_comparison: [],
       reconciliation: { applicable: false, sample_type: 'DEMO_FIXTURE', matched: null, reason: 'OFFLINE_FIXTURE_UI_ONLY', replay_checksum: 'e2e-replay-checksum', replay_final_state: 'CLOSED' },
-      checksum: '86d0b3c10f20e2e5phase03positionfocus',
+      checksum: '86d0b3c10f20e2e5v6positionfocus',
       paper_only: true, real_orders_enabled: false, auth_required: false,
     }),
   }))
@@ -72,32 +122,32 @@ async function installMarketFixtures(page: Page) {
 async function capture(page: Page, project: string, name: string) {
   if (process.env.ROBOM_E2E_CAPTURE === '0') return
   mkdirSync(screenshots, { recursive: true })
-  await page.screenshot({ path: path.join(screenshots, `phase03-${name}-${project}.png`), fullPage: false })
-}
-
-async function capturePhase09(page: Page, project: string, name: string) {
-  if (process.env.ROBOM_E2E_CAPTURE === '0') return
-  mkdirSync(screenshots, { recursive: true })
-  await page.screenshot({ path: path.join(screenshots, `phase09-${name}-${project}.png`), fullPage: false })
+  await page.screenshot({ path: path.join(screenshots, `v6-${name}-${project}.png`), fullPage: false })
 }
 
 test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안정적이다', async ({ page }, testInfo) => {
+  test.setTimeout(120_000)
   const errors: string[] = []
+  const initialViewport = page.viewportSize()
+  const interactiveTargetAudits: InteractiveTargetAudit[] = []
+  let zoom200Reflow: Record<string, unknown> = { status: 'NOT_RUN', reason: 'desktop 프로젝트에서만 측정합니다.' }
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   page.on('pageerror', (error) => errors.push(error.message))
   await installMarketFixtures(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeVisible()
-  await expect(page.getByText('샘플 PAPER · LIVE 아님 · 실제 주문 0')).toBeVisible()
+  const firstMeaningfulReadyViewMs = await page.evaluate(() => performance.now())
+  await expect(page.getByText('샘플 PAPER 데이터 · LIVE 아님')).toBeVisible()
+  await expect(page.getByText('PAPER · 실제 주문 0')).toBeVisible()
   await expect(page.getByLabel('프로그램 작동 상태')).toContainText('샘플 작동 중')
   await expect(page.getByLabel('프로그램 작동 상태')).toContainText('시장 관찰계속 작동')
-  await expect(page.getByRole('navigation', { name: '주요 화면' }).getByRole('button')).toHaveCount(5)
+  const mainNavigation = page.getByRole('navigation', { name: '주요 화면' })
+  await expect(mainNavigation.getByRole('button')).toHaveCount(4)
+  await expect(mainNavigation.getByRole('button', { name: '시장', exact: true })).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: '하위 화면' })).toHaveCount(0)
   await expect(page.getByText('전략 리그')).toHaveCount(0)
   await expect(page.getByText('고급 터미널')).toHaveCount(0)
   if (testInfo.project.name !== 'desktop') {
-    const summaryButton = await page.getByRole('button', { name: '요약' }).boundingBox()
-    expect(summaryButton?.width).toBeGreaterThanOrEqual(48)
-    expect(summaryButton?.height).toBeGreaterThanOrEqual(48)
     for (const button of await page.getByRole('navigation', { name: '주요 화면' }).getByRole('button').all()) {
       const box = await button.boundingBox()
       expect(box?.height).toBeGreaterThanOrEqual(48)
@@ -110,8 +160,10 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
     await expect(page.getByRole('dialog', { name: '종목 목록' }).locator('.market-rail')).toBeVisible()
   }
   await expect(page.locator('.chart-wrap canvas').first()).toBeVisible()
+  await expect(page.getByRole('img', { name: /BTCUSDT 실제 캔들·거래량·전문 보조지표 PAPER 차트/ })).toBeVisible()
   await expect(page.getByLabel('차트 시간')).toHaveValue('180')
   await expect(page.locator('.market-row:visible')).toHaveCount(40)
+  interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'market_and_symbol_drawer'))
   if (testInfo.project.name !== 'desktop') await page.getByRole('dialog', { name: '종목 목록' }).getByRole('button', { name: '닫기', exact: true }).click()
   await expect(page.locator('.indicator-popover')).not.toHaveAttribute('open', '')
 
@@ -149,8 +201,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
     const header = await page.locator('.topbar').boundingBox()
     expect(header?.height).toBeLessThanOrEqual(52)
     expect(chartBefore?.width).toBeGreaterThanOrEqual(1050)
-    expect(chartBefore?.height).toBeGreaterThanOrEqual(680)
-    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true)
+    expect(chartBefore?.height).toBeGreaterThanOrEqual(560)
   }
   const stable = await page.locator('.chart-panel').boundingBox()
   await page.waitForTimeout(1_200)
@@ -167,39 +218,50 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
     await expect(page.getByText(/관찰 전용 · KRW 현물 공개시세/)).toBeVisible()
   }
 
-  await page.getByRole('button', { name: '전략', exact: true }).click()
+  const marketNavigationButton = mainNavigation.getByRole('button', { name: '시장', exact: true })
+  const strategyNavigationButton = mainNavigation.getByRole('button', { name: '전략', exact: true })
+  await marketNavigationButton.focus()
+  await page.keyboard.press('Tab')
+  await expect(strategyNavigationButton).toBeFocused()
+  const strategyListStartedMs = await page.evaluate(() => performance.now())
+  await page.keyboard.press('Enter')
   await expect(page.getByRole('heading', { name: '전략 한눈에 보기' })).toBeVisible()
-  if (testInfo.project.name !== 'desktop') {
-    for (const button of await page.getByRole('navigation', { name: '하위 화면' }).getByRole('button').all()) {
-      const box = await button.boundingBox()
-      expect(box?.width).toBeGreaterThanOrEqual(48)
-      expect(box?.height).toBeGreaterThanOrEqual(48)
-    }
-  }
-  await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(15)
-  await expect(page.getByText('10개 동시 검증 · 30건 달성 0개 · 보존 5개 · 문제 0개 · 실제 주문 0')).toBeVisible()
-  await expect(page.getByText('준비 중')).toHaveCount(10)
-  await expect(page.locator('.strategy-monitor.off')).toHaveCount(5)
+  await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(3)
+  const strategyListReadyMs = await page.evaluate((started) => performance.now() - started, strategyListStartedMs)
+  const colorIndependentStatusText = (await page.locator('.strategy-monitor').allTextContents())
+    .every((value) => value.trim().length > 0)
+  expect(colorIndependentStatusText).toBe(true)
+  await expect(strategyNavigationButton).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('navigation', { name: '하위 화면' })).toHaveCount(0)
+  await expect(page.locator('.page-heading .page-note')).toContainText('현재 variant 3개')
+  await expect(page.getByLabel('전략 모의평가 요약')).toContainText('모의평가 ON')
+  await expect(page.locator('[data-strategy-id="LSA_REVERSAL_V1"]')).toHaveCount(0)
   await expect(page.locator('.strategy-inline-modes button')).toHaveCount(0)
+  interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'strategy_overview'))
   await expect(page.getByText(/30건 미만 승률은 참고값/)).toBeVisible()
   await expect(page.getByRole('button', { name: '기본 비용', exact: true })).toHaveAttribute('aria-pressed', 'true')
   await page.getByRole('button', { name: '보수 비용', exact: true }).click()
   await expect(page.getByRole('button', { name: '보수 비용', exact: true })).toHaveAttribute('aria-pressed', 'true')
   if (testInfo.project.name === 'desktop') {
-    await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
-    await page.getByRole('button', { name: /승률 정렬/ }).click()
-    await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'ascending')
-    await page.getByRole('button', { name: /승률 정렬/ }).click()
-    await expect(page.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
+    await expect(page.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'descending')
+    await page.getByRole('button', { name: /신뢰승률 정렬/ }).click()
+    await expect(page.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'ascending')
+    await page.getByRole('button', { name: /신뢰승률 정렬/ }).click()
+    await expect(page.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'descending')
   } else {
-    await page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: '승률' }).click()
-    await expect(page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: /승률/ })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: /신뢰승률/ }).click()
+    await expect(page.getByRole('group', { name: '전략표 정렬' }).getByRole('button', { name: /신뢰승률/ })).toHaveAttribute('aria-pressed', 'true')
   }
-  await capturePhase09(page, testInfo.project.name, 'strategy-sort')
-  await page.locator('[data-strategy-id="LSA_REVERSAL_V1"]').getByRole('button', { name: '자세히·설정' }).click()
+  await capture(page, testInfo.project.name, 'strategy-sort')
+  const detailTrigger = page.locator('.strategy-compact-table tbody tr').first().getByRole('button', { name: '자세히·설정' })
+  await detailTrigger.focus()
+  const strategyDetailStartedMs = await page.evaluate(() => performance.now())
+  await page.keyboard.press('Enter')
   const strategyDialog = page.getByRole('dialog', { name: '전략 상세 정보' })
-  await expect(strategyDialog.getByText('새 진입 없음 · 거래기록과 가상계좌 보존')).toBeVisible()
+  await expect(strategyDialog).toHaveAttribute('aria-modal', 'true')
+  await expect(strategyDialog.getByRole('button', { name: '전략 상세 정보 닫기' })).toBeFocused()
   await expect(strategyDialog.getByText('최소 준비', { exact: true })).toBeVisible()
+  const strategyDetailReadyMs = await page.evaluate((started) => performance.now() - started, strategyDetailStartedMs)
   await expect(strategyDialog.getByText('무엇을 노리나요?', { exact: true })).toBeVisible()
   await expect(strategyDialog.getByText('종료 원칙', { exact: true })).toBeVisible()
   await expect(strategyDialog.getByText('필요 데이터', { exact: true })).toBeHidden()
@@ -209,42 +271,40 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(strategyDialog.getByText('위험예산', { exact: true })).toBeVisible()
   await expect(strategyDialog.getByText('대상 범위', { exact: true })).toBeVisible()
   await expect(strategyDialog.getByText('미래정보 방지', { exact: true })).toBeVisible()
-  await expect(strategyDialog.getByText('연구 근거', { exact: true })).toBeVisible()
   await expect(strategyDialog.getByText('현재 상태 코드', { exact: true })).toBeVisible()
-  await expect(strategyDialog).toContainText('SRC-BINANCE-DEPTH')
+  await expect(strategyDialog.getByRole('heading', { name: '출처', exact: true })).toBeVisible()
+  await expect(strategyDialog.getByText('사용한 아이디어', { exact: true }).first()).toBeVisible()
+  await expect(strategyDialog.getByText('우리 수정', { exact: true }).first()).toBeVisible()
   await expect(strategyDialog).toContainText('공동 PAPER 0.10%·독립 PAPER 0.50%')
   await expect(page.getByText(/자산·순손익은 이번 실행, 완료 표본은 현재 전략 버전의 공개시장 모의거래 기준/).first()).toBeVisible()
   await expect(page.getByText('과거 버전 제외', { exact: true }).first()).toBeHidden()
   await page.getByText('고급 통계 보기', { exact: true }).first().click()
   await expect(page.getByText('과거 버전 제외', { exact: true }).first()).toBeVisible()
   await expect(strategyDialog.getByText('완료 거래', { exact: true }).first()).toBeVisible()
-  await expect(page.getByText(/과거 변경 기록은 보존되지만 새 연구 승인 전에는 복원할 수 없습니다/)).toBeVisible()
-  await page.getByText('변경 이력', { exact: true }).click()
-  await expect(page.getByText(/급락·급등 쓸기 반전 전략 설정을 RETIRED·OFF 상태로 변경/)).toBeVisible()
-  await expect(page.getByText(/NONE.*RECOVERY.*COST_ADJUSTED_RESEARCH_RETIREMENT/)).toBeVisible()
-  await page.getByRole('button', { name: '전략 상세 정보 닫기' }).click()
-  await page.locator('[data-strategy-id="CBR_CONTINUATION_V1"]').getByRole('button', { name: '자세히·설정' }).click()
-  await expect(strategyDialog.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(strategyDialog.getByRole('button', { name: '상승 켜짐' })).toHaveAttribute('aria-pressed', 'true')
-  await page.getByRole('button', { name: '전략 상세 정보 닫기' }).click()
-  await page.getByRole('button', { name: 'FlowScalper 메인 시장으로 이동' }).click()
+  await expect(strategyDialog.getByRole('button', { name: /모의평가 (켜기|끄기)$/ }).first()).toBeVisible()
+  interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'strategy_detail_drawer'))
+  await page.keyboard.press('Escape')
+  await expect(strategyDialog).toBeHidden()
+  await expect(detailTrigger).toBeFocused()
+  const drawerFocusRestored = true
+  await page.getByRole('button', { name: '시장', exact: true }).click()
   await expect(page.getByRole('heading', { name: /시장$/ })).toBeVisible()
   await page.getByRole('button', { name: '전략', exact: true }).click()
-  await page.getByRole('button', { name: '분석', exact: true }).click()
+  await page.getByRole('tab', { name: '성과', exact: true }).click()
   await expect(page.getByText(/자산은 이번 실행, 승률과 통계는 현재 전략 버전/)).toBeVisible()
-  await capturePhase09(page, testInfo.project.name, 'current-version-performance')
-  await page.getByRole('button', { name: '전략별 종목' }).click()
+  await capture(page, testInfo.project.name, 'current-version-performance')
+  await page.getByRole('tab', { name: '종목별', exact: true }).click()
   await expect(page.getByRole('heading', { name: '어떤 전략이 어떤 종목에 맞았나요?' })).toBeVisible()
   await expect(page.getByText(/과거 버전 154건 보관/)).toBeVisible()
   await expect(page.getByText('비교 기준 충족')).toBeVisible()
   if (testInfo.project.name === 'desktop') await expect(page.getByRole('columnheader', { name: '최종 순손익' })).toBeVisible()
   await expect(page.locator('.strategy-performance-panel tbody tr').first()).toContainText('+6 USDT')
   await expect(page.getByText('Profit Factor', { exact: false })).toHaveCount(0)
-  await capturePhase09(page, testInfo.project.name, 'current-version-strategy-symbol')
-  await page.getByRole('button', { name: '요약' }).click()
-  await expect(page.getByRole('heading', { name: '프로그램 요약' })).toBeVisible()
+  await capture(page, testInfo.project.name, 'current-version-strategy-symbol')
 
-  await page.getByRole('button', { name: '기록', exact: true }).click()
+  await page.getByRole('button', { name: '거래', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '거래', exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '완료', exact: true }).click()
   await expect(page.getByRole('heading', { name: '거래 기록' })).toBeVisible()
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('columnheader', { name: '최종 결과' })).toBeVisible()
@@ -253,8 +313,9 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await page.getByText('기록 범위 바꾸기', { exact: true }).click()
   await expect(page.getByLabel('Run 범위')).toHaveValue('CURRENT')
   await page.getByLabel('Run 범위').selectOption('ALL')
+  await page.getByLabel('전략 버전').selectOption('ALL')
   const firstHistoryRow = page.locator('.history-table tbody tr').first()
-  await firstHistoryRow.getByRole('button', { name: '자세히' }).click()
+  await firstHistoryRow.getByRole('button', { name: /자세히|비용별 결과/ }).click()
   const tradeDetail = page.locator('.trade-drawer')
   await expect(tradeDetail.getByText('진입 가격', { exact: true })).toBeVisible()
   await expect(tradeDetail.getByText('손절 가격', { exact: true })).toBeVisible()
@@ -263,6 +324,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(tradeDetail.getByText('거래 ID', { exact: true })).toBeHidden()
   await tradeDetail.getByText('기술 정보', { exact: true }).click()
   await expect(tradeDetail.getByText('거래 ID', { exact: true })).toBeVisible()
+  interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'trade_detail_drawer'))
   await tradeDetail.getByRole('button', { name: '거래 상세 닫기' }).click()
   await page.locator('.history-table tbody tr').first().getByRole('button', { name: '다시보기' }).click()
   await expect(page.getByRole('heading', { name: /거래 집중 재생/ })).toBeVisible()
@@ -290,8 +352,13 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
     await page.getByRole('dialog', { name: '진입 계획 상세' }).getByRole('button', { name: '닫기', exact: true }).click()
     await capture(page, testInfo.project.name, 'position-focus')
   }
+  interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'trade_replay'))
+
+  await page.getByRole('dialog', { name: /거래 다시보기/ }).getByRole('button', { name: '닫기', exact: true }).click()
 
   await page.getByRole('button', { name: '설정', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible()
+  await page.getByText('전문가 진단', { exact: true }).click()
   await expect(page.getByRole('heading', { name: '시스템 상태' })).toBeVisible()
   const recoveryCard = page.locator('.system-summary-grid article').filter({ hasText: '마지막 시작 복구' })
   await expect(recoveryCard).toBeVisible()
@@ -303,7 +370,104 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(page.getByText('시작 복구 결과')).toBeVisible()
   await expect(page.getByText(/^(NO_RECOVERY_NEEDED|FIXTURE_STATE_RECOVERED|RECOVERY_REVALIDATION_LOCKED|RECOVERY_DEFERRED|RECOVERY_FAIL_CLOSED)$/)).toBeVisible()
   await expect(page.getByText('마지막 PAPER 전환 결과')).toBeVisible()
+  interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'settings_and_diagnostics'))
+
+  if (testInfo.project.name === 'desktop') {
+    await page.setViewportSize({ width: 704, height: 450 })
+    await expect(mainNavigation).toBeVisible()
+    await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible()
+    const horizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)
+    expect(horizontalOverflow).toBe(false)
+    zoom200Reflow = {
+      status: 'PASS',
+      method: 'HALF_CSS_VIEWPORT_REFLOW_EQUIVALENT',
+      reference_viewport_css_px: { width: 1408, height: 900 },
+      measured_viewport_css_px: { width: 704, height: 450 },
+      horizontal_overflow: horizontalOverflow,
+      boundary: '브라우저 자체 zoom 제어가 아니라 200% 확대와 같은 CSS 가용폭으로 reflow를 검증했습니다.',
+    }
+    interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'desktop_200_percent_reflow_equivalent'))
+  }
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   expect(errors).toEqual([])
+  const interactiveViolations = interactiveTargetAudits.flatMap((audit) => (
+    audit.violations.map((violation) => ({ stage: audit.stage, ...violation }))
+  ))
+  const minimumInteractiveHeight = Math.min(
+    ...interactiveTargetAudits.flatMap((audit) => audit.minimum_height_px === null ? [] : [audit.minimum_height_px]),
+  )
+  recordBrowserEvidence(testInfo.project.name, {
+    status: interactiveViolations.length === 0 ? 'PASS' : 'FAIL',
+    viewport_css_px: initialViewport,
+    performance: {
+      first_meaningful_ready_view_ms: roundedMs(firstMeaningfulReadyViewMs),
+      strategy_list_ready_after_keyboard_navigation_ms: roundedMs(strategyListReadyMs),
+      selected_strategy_detail_ready_on_demand_ms: roundedMs(strategyDetailReadyMs),
+      boundary: '로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다.',
+    },
+    accessibility: {
+      keyboard_tab_and_enter_navigation: true,
+      escape_closes_strategy_drawer: true,
+      drawer_focus_restored: drawerFocusRestored,
+      screen_reader_names_and_modal_state: true,
+      status_meaning_available_as_text_without_color: colorIndependentStatusText,
+      interactive_target_selectors: 'button,input,select,summary,a[href]',
+      hidden_disabled_and_aria_disabled_excluded: true,
+      minimum_measured_interactive_height_px: Number.isFinite(minimumInteractiveHeight) ? minimumInteractiveHeight : null,
+      interactive_target_48px_pass: interactiveViolations.length === 0,
+      interactive_target_audits: interactiveTargetAudits,
+      interactive_target_violations: interactiveViolations,
+      horizontal_overflow: await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+    },
+    zoom_200_percent: zoom200Reflow,
+    console_error_count: errors.length,
+  })
+  expect(interactiveViolations, 'visible interactive target은 모두 최소 48px이어야 합니다.').toEqual([])
+})
+
+test('격리 fixture에서 PAPER 일시정지·재개와 전략 OFF·복원을 되돌릴 수 있다', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', '상태변경 검증은 한 개의 격리 fixture 프로젝트에서만 실행합니다.')
+  test.setTimeout(120_000)
+  await installMarketFixtures(page)
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeVisible()
+
+  const pause = page.getByRole('button', { name: '새 진입 잠시 멈추기' })
+  await pause.click()
+  const resume = page.getByRole('button', { name: '새 진입 다시 시작' })
+  await expect(resume).toBeEnabled()
+  await expect(page.getByLabel('프로그램 작동 상태')).toContainText('샘플 멈춤')
+  await resume.click()
+  await expect(page.getByRole('button', { name: '새 진입 잠시 멈추기' })).toBeEnabled()
+  await expect(page.getByLabel('프로그램 작동 상태')).toContainText('샘플 작동 중')
+
+  await page.getByRole('navigation', { name: '주요 화면' }).getByRole('button', { name: '전략', exact: true }).click()
+  await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(3)
+  await page.locator('.strategy-compact-table tbody tr').first().getByRole('button', { name: '자세히·설정' }).click()
+  const strategyDialog = page.getByRole('dialog', { name: '전략 상세 정보' })
+  await expect(strategyDialog.getByText('설정을 바꿔도 진행 중인 PAPER 포지션은 기존 진입 계획대로 관리됩니다.')).toBeVisible()
+  const off = strategyDialog.getByRole('button', { name: /모의평가 끄기$/ }).first()
+  await expect(off).toHaveAttribute('aria-pressed', 'false')
+  page.once('dialog', (dialog) => void dialog.accept())
+  await off.click()
+  await expect(off).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 })
+  await expect(strategyDialog.getByRole('status')).toContainText('모의평가를 껐습니다')
+  const undo = strategyDialog.getByRole('button', { name: '실행 취소' })
+  await expect(undo).toBeVisible({ timeout: 30_000 })
+  await undo.click()
+  await expect(strategyDialog.getByRole('button', { name: /모의평가 켜기$/ }).first()).toHaveAttribute('aria-pressed', 'true', { timeout: 30_000 })
+  await expect(strategyDialog.getByRole('status')).toContainText('직전 모의평가 설정으로 되돌렸습니다')
+
+  recordBrowserEvidence('desktop', {
+    reversible_fixture_controls: {
+      status: 'PASS',
+      scope: 'ISOLATED_DEMO_FIXTURE_UI_ACTIONS',
+      pause_then_resume: true,
+      strategy_shadow_to_off_then_rollback: true,
+      open_position_protection: 'UI_COPY_VERIFIED_NOT_RUNTIME_POSITION_TEST',
+      external_service_mutation: false,
+      actual_order_count: 0,
+    },
+  })
 })

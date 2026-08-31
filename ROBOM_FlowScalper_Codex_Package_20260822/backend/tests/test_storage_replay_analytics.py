@@ -457,6 +457,7 @@ def _sample_trade(
 ) -> dict[str, object]:
     return {
         "trade_id": trade_id,
+        "opportunity_id": trade_id,
         "run_id": "run-001",
         "venue": "FIXTURE",
         "symbol": "BTCUSDT",

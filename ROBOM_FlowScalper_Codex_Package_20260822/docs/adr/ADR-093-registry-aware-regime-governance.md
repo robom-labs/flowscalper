@@ -4,6 +4,8 @@
 
 수용됨. 2026-08-29.
 
+V6 변경. 이 ADR의 70% 유지 조항은 family별 win/payoff gate로 대체한다. Registry 지원 레짐만 요구하는 결정과 나머지 공통 OOS·강건성 gate는 유지한다.
+
 ## 문제
 
 Governor는 모든 SHADOW 전략에 2개 레짐, 모든 CHALLENGER의 ACTIVE 승격에 3개 레짐을 고정 요구했다. 그러나 Registry의 `VWAP_EXHAUSTION_REVERSION_V1`은 RANGE 하나만 지원하고 CBR·Aggressor 같은 추세 전략은 상승·하락 두 레짐만 지원한다. 따라서 충분한 자연표본과 비용후 증거가 있어도 설계상 존재하지 않는 레짐을 요구해 승격이 불가능했다. RANGE 전용 전략은 30건 이후 승률 70% 미달 퇴역 판정도 받지 못해 낮은 전략을 자동으로 중지한다는 정책과 충돌했다.

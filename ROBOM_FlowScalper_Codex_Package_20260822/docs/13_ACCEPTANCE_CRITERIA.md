@@ -102,9 +102,9 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Start LIVE, demo and new Run submit immediately as `202 ControlOperation`.
 - [ ] Duplicate, conflict, ordered stage, cancel, retryable and blocked outcomes are tested.
 - [ ] Cancellation leaves no unregistered supervisor and never lies about LIVE state.
-- [ ] Ten Strategy rows and twenty independent BASE/STRESS accounts are connected.
+- [ ] All 15 Registry strategies and thirty independent BASE/STRESS accounts are connected.
 - [ ] ACTIVE, SHADOW and OFF use beginner-readable meanings without `기록만 하기`.
-- [ ] Home separates ten BASE-account totals from the Shared Capital Benchmark.
+- [ ] Home separates Registry-derived BASE-account totals from the Shared Capital Benchmark.
 - [ ] League positions default to BASE and expose no real buy/sell action.
 - [ ] Scanner order, row size and chart dimensions remain stable while data and drawers change.
 - [ ] MA, EMA, VWAP, Bollinger, RSI and MACD are selectable without changing strategy rules.
@@ -115,7 +115,7 @@ Codex must produce an acceptance matrix and evidence for every item.
 
 ## L. Phase 03 market, position focus and trade replay
 
-- [ ] Five compact navigation groups with market as default and no old user-facing League/advanced-terminal copy.
+- [ ] Exactly four primary pages, `시장`, `전략`, `거래`, `설정`, with market as default and no obsolete secondary route.
 - [ ] Binance active USDT perpetual full catalog and Upbit KRW observation-only full catalog work without authentication.
 - [ ] Default 3-minute candles count 200 with MA10, MA20 and volume; RSI/MACD add and remove real panes without resizing the chart.
 - [ ] Wide 50+ and deep 12 remain bounded; rotation protects pin/open/pending symbols and appends snapshots.
@@ -125,6 +125,26 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Trade replay uses stored public events, hides future markers, bounds frames and preserves ordered 0.5x–80x playback.
 - [ ] Desktop focus chart is at least 960px wide and root scroll is zero; tablet/mobile sheets do not change chart width.
 - [ ] Actual order, private API, API Key, secret, wallet and manual buy/sell controls remain zero.
+
+## L.1 V6 family, opportunity and evidence acceptance
+
+- [x] Eight family rows exist and every Registry descriptor maps exactly once.
+- [x] Each Registry family has at most one current variant; legacy and superseded variants are hidden from default entry ranking and cannot default ON.
+- [x] `ORDERFLOW_CONFIRMATION_FILTER_V2` is the sole virtual API/UI current for its family, default OFF, role FILTER and final-ranking ineligible; it adds zero Registry strategies, accounts, candidate plans and trades.
+- [x] Order-flow confirmation exposes score, nine components, persistence, affected strategies, data health and uplift status; ON/OFF uses expected-revision CAS and stale revision fails explicitly.
+- [x] Universal 70% promotion, retirement and quarantine rules are absent; common cost/OOS/robustness and preregistered family gates remain.
+- [x] A low-win/high-payoff breakout can pass its family gate, while high-win negative expectancy fails the common gate.
+- [x] Completed trades use exactly `(run_id, strategy_id, strategy_version, opportunity_id, symbol, side)` and show one row per unique opportunity; BASE/STRESS and partial exits do not increase unique count.
+- [x] MAIN and LEAGUE results sharing that six-key stay separate in `account_groups`; no profile overwrites another account and unverifiable legacy linkage remains preserved `NOT_PROVEN`.
+- [x] Strategy default sorting uses eligible Wilson 95% lower bounds, not raw observed win rate.
+- [x] Strategy condition, exit, source, previous version and raw diagnostics load on demand; condition rows use evaluator-backed threshold, current value, status and reason rather than static prose.
+- [x] `/ws/ui` sends one snapshot followed by small summary, position, strategy-row and selected-detail deltas or heartbeat; `select_family` refreshes detail and heavy history/conditions/entry rules never enter the stream.
+- [x] Fixture `/api/ui/summary` is less than 50% of `/api/dashboard` serialized bytes.
+- [x] Missing V2/V3 fixed-input data is `NOT_PROVEN`, promotion false and Registry unchanged.
+- [x] Latest backend/frontend conditions telemetry and CAS tests, desktop/tablet/mobile E2E, full suite, lint, typecheck and build are rerun after the final shared-code change; earlier results are not reused as current PASS.
+- [ ] Thirty-minute, six-hour and 24-hour V6 soaks are `NOT_RUN` until each full duration actually completes.
+- [ ] Release packaging, installation and remote push remain `NOT_RUN` until separately performed and evidenced.
+- [ ] Profitability is `NOT_PROVEN`; `FUNDING_READINESS` is `NOT_READY`.
 
 ## M. Phase 03 latency and mobile truth hardening
 
@@ -197,7 +217,7 @@ Wave 47의 활성 writer 동시검사는 queue 4,096·drop 9,736을 만든 `FAIL
 ## S. Strategy survival, outcome timing and history truth
 
 - [x] No strategy is default ACTIVE unless formal cost-adjusted evidence passes every promotion gate; an empty shared-account champion is a valid safe state.
-- [x] B/C/F/G/I/J remain independent SHADOW accounts and A/D/E/H/K remain immutable-history RETIRED accounts after restart.
+- [x] V6 source defaults keep B/C/L/M/N/O as six entry SHADOW variants, A/D/E/H/K as five immutable-history RETIRED/OFF variants and F/G/I/J as four legacy RESEARCH/OFF components; all 15 IDs and 30 account histories remain preserved.
 - [x] The automatic Governor evaluates on a fixed interval, counts only new natural samples and cannot promote without formal OOS evidence.
 - [x] New PAPER trades persist TP1, TP2 and actual STOP timestamps and elapsed durations through recovery, API, analytics and UI.
 - [x] Past rows with no milestone fields show `과거 기록 없음`, not zero seconds or an inferred loss event.

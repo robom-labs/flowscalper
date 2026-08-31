@@ -4,6 +4,7 @@ from backend.app.candidates.plans import (
     CandidatePlan,
     CandidatePlanner,
     PlanBuildResult,
+    SharedCapitalArbitrationEvidence,
     TakeProfitTarget,
 )
 from backend.app.candidates.ranker import CandidateRanker, CandidateSeed, RankedCandidate
@@ -15,5 +16,6 @@ __all__ = [
     "CandidateSeed",
     "PlanBuildResult",
     "RankedCandidate",
+    "SharedCapitalArbitrationEvidence",
     "TakeProfitTarget",
 ]

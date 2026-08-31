@@ -6,6 +6,7 @@ from bisect import bisect_left, insort
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import TypedDict
 
 from backend.app.domain.models import Side
 from backend.app.features import FeatureSnapshot
@@ -82,6 +83,11 @@ class EvaluatedSignal:
     decision: CandidateDecision
     main_eligible: bool
     shadow_eligible: bool
+
+
+class _ConditionObservation(TypedDict):
+    observed_ts_ms: int
+    side: Side
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +187,19 @@ class StrategySignalEvaluator:
         self._intraday_state_cache: dict[
             tuple[str, str], tuple[int | None, IntradayTrendState]
         ] = {}
+        self._latest_conditions: dict[
+            tuple[str, str, Side], tuple[dict[str, object], ...]
+        ] = {}
+
+    def condition_rows(
+        self,
+        symbol: str,
+        strategy_id: str,
+        side: Side,
+    ) -> tuple[dict[str, object], ...]:
+        """가장 최근 실제 evaluator 입력으로 만든 조건별 실측값을 반환한다."""
+
+        return self._latest_conditions.get((symbol, strategy_id, side), ())
 
     def evaluate(
         self,
@@ -392,8 +411,14 @@ class StrategySignalEvaluator:
                         microprice_alignment=microprice_alignment,
                     ),
                 ),
+                vwap_deviation_bps=deviation_bps,
+                price_progress_percentile=(history_statistics.price_response_percentile),
             )
-            return evaluator.evaluate(vwap_context)
+            decision = evaluator.evaluate(vwap_context)
+            self._latest_conditions[(snapshot.symbol, evaluator.strategy_id, side)] = (
+                _vwap_condition_rows(vwap_context, decision)
+            )
+            return decision
         if isinstance(evaluator, OfiPullbackStrategy):
             pullback = _pullback_metrics(
                 history,
@@ -654,22 +679,23 @@ class StrategySignalEvaluator:
                 aligned=aligned,
             )
             signal_ts_ms = intraday_state.signal_ts_ms
-            return evaluator.evaluate(
-                IntradayTrendContext(
-                    side=side,
-                    features=snapshot,
-                    regime=regime,
-                    plan=intraday_plan,
-                    state=intraday_state,
-                    signal_age_ms=(
-                        snapshot.ts_ms - signal_ts_ms
-                        if signal_ts_ms is not None
-                        else None
-                    ),
-                    confirmation_ms=confirmation_ms,
-                    risk_atr=risk_atr,
-                )
+            intraday_context = IntradayTrendContext(
+                side=side,
+                features=snapshot,
+                regime=regime,
+                plan=intraday_plan,
+                state=intraday_state,
+                signal_age_ms=(
+                    snapshot.ts_ms - signal_ts_ms if signal_ts_ms is not None else None
+                ),
+                confirmation_ms=confirmation_ms,
+                risk_atr=risk_atr,
             )
+            decision = evaluator.evaluate(intraday_context)
+            self._latest_conditions[(snapshot.symbol, evaluator.strategy_id, side)] = (
+                _intraday_condition_rows(evaluator, intraday_context, decision)
+            )
+            return decision
         if isinstance(evaluator, HourlyMomentumBreakoutStrategy):
             latest_open_ts_ms = hourly_candles[-1].open_ts_ms if hourly_candles else None
             hourly_cached = self._hourly_state_cache.get(snapshot.symbol)
@@ -800,6 +826,342 @@ class StrategySignalEvaluator:
 
         del data_healthy, regime, structure_reentered, microprice_alignment
         return full_confluence_ready
+
+
+def _condition_row(
+    *,
+    condition_id: str,
+    label_ko: str,
+    threshold_ko: str,
+    current_value: object | None,
+    passed: bool,
+    observed_ts_ms: int,
+    side: Side,
+) -> dict[str, object]:
+    waiting = current_value is None
+    return {
+        "condition_id": condition_id,
+        "label_ko": label_ko,
+        "threshold_ko": threshold_ko,
+        "current_value": current_value,
+        "status": "WAITING_DATA" if waiting else "PASSED" if passed else "BLOCKED",
+        "reason_ko": (
+            "실측값을 기다리고 있습니다."
+            if waiting
+            else "현재 기준을 통과했습니다."
+            if passed
+            else "현재값이 기준을 충족하지 못했습니다."
+        ),
+        "observed_ts_ms": observed_ts_ms,
+        "side": side.value,
+    }
+
+
+def _intraday_condition_rows(
+    evaluator: IntradayTrendStrategy,
+    context: IntradayTrendContext,
+    decision: CandidateDecision,
+) -> tuple[dict[str, object], ...]:
+    state = context.state
+    variant = evaluator.variant.value
+    if variant == "PULLBACK_RECLAIM_15M":
+        momentum_threshold = 0.01
+        adx_threshold = 18.0
+        volume_threshold = 0.80
+        volume_value = state.relative_volume
+        setup_label = "EMA20 눌림 뒤 이전 고저 회복"
+    elif variant in {"BREAKOUT_RETEST_15M", "BREAKOUT_RETEST_30M"}:
+        momentum_threshold = 0.015
+        adx_threshold = 20.0
+        volume_threshold = 1.10 if state.interval_seconds == 900 else 1.0
+        volume_value = state.breakout_relative_volume
+        setup_label = "돌파 다음 완성봉의 구조 재확인"
+    else:
+        momentum_threshold = 0.012
+        adx_threshold = 18.0
+        volume_threshold = 0.90
+        volume_value = state.relative_volume
+        setup_label = "30분 조정 뒤 1시간 방향 재합류"
+    direction_multiplier = 1 if context.side is Side.LONG else -1
+    directional_momentum = (
+        state.momentum_24h * direction_multiplier
+        if state.momentum_24h is not None
+        else None
+    )
+    opposite_regime = Regime.TREND_DOWN if context.side is Side.LONG else Regime.TREND_UP
+    flow_passed = intraday_flow_confirmation_ready(
+        context.side,
+        context.features,
+        context.regime,
+    )
+    flow_value = (
+        f"OFI1 {context.features.ofi_1s * direction_multiplier:.4f}, "
+        f"OFI3 {context.features.ofi_3s * direction_multiplier:.4f}, "
+        f"체결 {context.features.trade_imbalance_3s * direction_multiplier:.4f}, "
+        f"micro {context.features.microprice_minus_mid_bps * direction_multiplier:.4f}bp"
+    )
+    net_rr = float(decision.net_reward_risk) if decision.net_reward_risk is not None else None
+    common: _ConditionObservation = {
+        "observed_ts_ms": context.features.ts_ms,
+        "side": context.side,
+    }
+    return (
+        _condition_row(
+            condition_id="DATA_HEALTH",
+            label_ko="공개시장 데이터 상태",
+            threshold_ko="정상 sequence·stale 아님",
+            current_value="HEALTHY" if context.features.data_healthy else "UNHEALTHY",
+            passed=context.features.data_healthy,
+            **common,
+        ),
+        _condition_row(
+            condition_id="COMPLETED_INTRADAY_HISTORY",
+            label_ko="완성 시간봉 표본",
+            threshold_ko=f"{state.interval_seconds // 60}분봉 100개 이상",
+            current_value=state.history_count,
+            passed=state.history_count >= 100,
+            **common,
+        ),
+        _condition_row(
+            condition_id="COMPLETED_HOURLY_HISTORY",
+            label_ko="완성 1시간봉 표본",
+            threshold_ko="1시간봉 50개 이상",
+            current_value=state.hourly_history_count,
+            passed=state.hourly_history_count >= 50,
+            **common,
+        ),
+        _condition_row(
+            condition_id="TREND_DIRECTION",
+            label_ko="시간축 추세 방향",
+            threshold_ko=f"15·30분과 1시간이 {context.side.value} 정렬",
+            current_value=state.direction.value if state.direction is not None else None,
+            passed=state.direction is context.side,
+            **common,
+        ),
+        _condition_row(
+            condition_id="MOMENTUM_24H",
+            label_ko="방향성 24시간 모멘텀",
+            threshold_ko=f"{momentum_threshold * 100:.1f}% 이상",
+            current_value=directional_momentum,
+            passed=(
+                directional_momentum is not None
+                and directional_momentum >= momentum_threshold
+            ),
+            **common,
+        ),
+        _condition_row(
+            condition_id="ADX",
+            label_ko="완성봉 ADX",
+            threshold_ko=f"{adx_threshold:.0f} 이상",
+            current_value=state.adx,
+            passed=state.adx is not None and state.adx >= adx_threshold,
+            **common,
+        ),
+        _condition_row(
+            condition_id="RELATIVE_VOLUME",
+            label_ko="완성봉 상대거래량",
+            threshold_ko=f"{volume_threshold:.2f}배 이상",
+            current_value=volume_value,
+            passed=volume_value is not None and volume_value >= volume_threshold,
+            **common,
+        ),
+        _condition_row(
+            condition_id="SETUP_STRUCTURE",
+            label_ko=setup_label,
+            threshold_ko="완성봉 구조 확인",
+            current_value="CONFIRMED" if state.setup_confirmed else "NOT_CONFIRMED",
+            passed=state.setup_confirmed,
+            **common,
+        ),
+        _condition_row(
+            condition_id="SIGNAL_FRESHNESS",
+            label_ko="완성봉 신호 유효시간",
+            threshold_ko=f"0~{evaluator.maximum_signal_age_ms}ms",
+            current_value=context.signal_age_ms,
+            passed=(
+                context.signal_age_ms is not None
+                and 0 <= context.signal_age_ms <= evaluator.maximum_signal_age_ms
+            ),
+            **common,
+        ),
+        _condition_row(
+            condition_id="MICRO_REGIME",
+            label_ko="현재 미세 레짐",
+            threshold_ko="충격·저하·워밍업·반대 추세 아님",
+            current_value=context.regime.value,
+            passed=(
+                context.regime
+                not in {Regime.SHOCK, Regime.DEGRADED, Regime.WARMUP, opposite_regime}
+            ),
+            **common,
+        ),
+        _condition_row(
+            condition_id="SPREAD",
+            label_ko="현재 스프레드",
+            threshold_ko="12bp 이하",
+            current_value=context.features.spread_bps,
+            passed=context.features.spread_bps <= 12,
+            **common,
+        ),
+        _condition_row(
+            condition_id="PUBLIC_FLOW_CONFIRMATION",
+            label_ko="bid·ask·OFI·체결 흐름",
+            threshold_ko=f"동일 방향 {evaluator.confirmation_required_ms}ms 지속",
+            current_value=f"{flow_value}, 지속 {context.confirmation_ms}ms",
+            passed=(
+                flow_passed and context.confirmation_ms >= evaluator.confirmation_required_ms
+            ),
+            **common,
+        ),
+        _condition_row(
+            condition_id="STRUCTURAL_STOP_DISTANCE",
+            label_ko="구조 손절 거리",
+            threshold_ko="0.65~3.00 ATR",
+            current_value=context.risk_atr,
+            passed=(
+                context.risk_atr is not None and 0.65 <= context.risk_atr <= 3.0
+            ),
+            **common,
+        ),
+        _condition_row(
+            condition_id="COSTED_NET_RR",
+            label_ko="비용후 순 손익비",
+            threshold_ko="1.20 이상",
+            current_value=net_rr,
+            passed=net_rr is not None and net_rr >= 1.20,
+            **common,
+        ),
+    )
+
+
+def _vwap_condition_rows(
+    context: VwapExhaustionContext,
+    decision: CandidateDecision,
+) -> tuple[dict[str, object], ...]:
+    structure_limit = max(8.0, context.features.spread_bps * 8)
+    absolute_deviation = (
+        abs(context.vwap_deviation_bps)
+        if context.vwap_deviation_bps is not None
+        else None
+    )
+    net_rr = float(decision.net_reward_risk) if decision.net_reward_risk is not None else None
+    common: _ConditionObservation = {
+        "observed_ts_ms": context.features.ts_ms,
+        "side": context.side,
+    }
+    return (
+        _condition_row(
+            condition_id="DATA_HEALTH",
+            label_ko="공개시장 데이터 상태",
+            threshold_ko="정상 sequence·stale 아님",
+            current_value="HEALTHY" if context.features.data_healthy else "UNHEALTHY",
+            passed=context.features.data_healthy,
+            **common,
+        ),
+        _condition_row(
+            condition_id="RANGE_REGIME",
+            label_ko="평균복귀 레짐",
+            threshold_ko="RANGE",
+            current_value=context.regime.value,
+            passed=context.regime is Regime.RANGE,
+            **common,
+        ),
+        _condition_row(
+            condition_id="SPREAD",
+            label_ko="현재 스프레드",
+            threshold_ko="12bp 이하",
+            current_value=context.features.spread_bps,
+            passed=context.features.spread_bps <= 12,
+            **common,
+        ),
+        _condition_row(
+            condition_id="VWAP_DEVIATION_Z",
+            label_ko="VWAP 이탈 robust z",
+            threshold_ko="2.0 이상",
+            current_value=context.vwap_deviation_robust_z,
+            passed=context.vwap_deviation_robust_z >= 2.0,
+            **common,
+        ),
+        _condition_row(
+            condition_id="EXCURSION_DIRECTION",
+            label_ko="이탈 방향",
+            threshold_ko=f"{context.side.value} 평균복귀 반대쪽 이탈",
+            current_value=(
+                context.vwap_deviation_bps
+                if context.vwap_deviation_bps is not None
+                else None
+            ),
+            passed=context.excursion_direction_valid,
+            **common,
+        ),
+        _condition_row(
+            condition_id="AGGRESSIVE_FLOW_Z",
+            label_ko="공격 흐름 robust z",
+            threshold_ko="1.5 이상",
+            current_value=context.aggressive_flow_robust_z,
+            passed=context.aggressive_flow_robust_z >= 1.5,
+            **common,
+        ),
+        _condition_row(
+            condition_id="PRICE_PROGRESS",
+            label_ko="가격 진전 둔화",
+            threshold_ko="가격반응 percentile 0.30 이하",
+            current_value=context.price_progress_percentile,
+            passed=context.price_progress_stalled,
+            **common,
+        ),
+        _condition_row(
+            condition_id="OPPOSITE_DEPTH_REFILL",
+            label_ko="반대호가 refill",
+            threshold_ko="0.55 이상",
+            current_value=context.features.refill_ratio,
+            passed=context.opposite_depth_refilled,
+            **common,
+        ),
+        _condition_row(
+            condition_id="OFI_REVERSAL",
+            label_ko="OFI 반전",
+            threshold_ko="단기 OFI는 진입방향·3초 OFI는 이탈방향",
+            current_value=(
+                f"OFI250 {context.features.ofi_250ms:.4f}, "
+                f"OFI3 {context.features.ofi_3s:.4f}"
+            ),
+            passed=context.ofi_reversed,
+            **common,
+        ),
+        _condition_row(
+            condition_id="MICROPRICE_REVERSAL",
+            label_ko="microprice 반전",
+            threshold_ko=f"mid 대비 {context.side.value} 방향",
+            current_value=context.features.microprice_minus_mid_bps,
+            passed=context.microprice_reversed,
+            **common,
+        ),
+        _condition_row(
+            condition_id="STRUCTURE_REENTRY",
+            label_ko="VWAP 구조 재진입",
+            threshold_ko=f"절대 이탈 {structure_limit:.4f}bp 이하",
+            current_value=absolute_deviation,
+            passed=context.structure_reentered,
+            **common,
+        ),
+        _condition_row(
+            condition_id="REENTRY_PERSISTENCE",
+            label_ko="전체 재진입 확인 지속",
+            threshold_ko="300ms 이상",
+            current_value=context.confirmation_ms,
+            passed=context.confirmation_ms >= 300,
+            **common,
+        ),
+        _condition_row(
+            condition_id="COSTED_NET_RR",
+            label_ko="비용후 순 손익비",
+            threshold_ko="1.20 이상",
+            current_value=net_rr,
+            passed=net_rr is not None and net_rr >= 1.20,
+            **common,
+        ),
+    )
 
 
 def _pullback_metrics(

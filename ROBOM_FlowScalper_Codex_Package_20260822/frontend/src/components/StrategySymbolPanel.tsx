@@ -3,16 +3,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchJson } from '../api/client'
 import { costProfileLabel, formatPercentFraction, formatRatio, formatUsdt } from '../format'
 import { strategyLabel } from '../strategyPresentation'
-import type { StrategyRow, StrategySymbolPerformance, StrategySymbolResponse } from '../types'
+import type { StrategySummaryRow, StrategySymbolPerformance, StrategySymbolResponse } from '../types'
 
-type Props = { strategies: StrategyRow[] }
+type Props = { strategies: StrategySummaryRow[] }
 
 function evidenceLabel(row: StrategySymbolPerformance) {
   if (row.sample_size < 30) return `자료 모으는 중 · ${row.sample_size}/30건`
   return row.ranking_eligible ? '비교 기준 충족' : '추가 검증 필요'
 }
 
-export function StrategySymbolPage({ strategies }: Props) {
+export function StrategySymbolPanel({ strategies }: Props) {
   const [rows, setRows] = useState<StrategySymbolPerformance[]>([])
   const [excludedPriorVersionSamples, setExcludedPriorVersionSamples] = useState(0)
   const [profile, setProfile] = useState<'BASE' | 'STRESS'>('BASE')

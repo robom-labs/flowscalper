@@ -8,9 +8,9 @@ from pathlib import Path
 
 from backend.app.strategies.registry import StrategyRegistry
 
-APP_VERSION = "0.2.0-paper"
+APP_VERSION = "0.3.0-paper"
 STRATEGY_IDS = StrategyRegistry().strategy_ids
-STRATEGY_IMPLEMENTATION_REVISION = "2026-08-30-wave116k"
+STRATEGY_IMPLEMENTATION_REVISION = "2026-08-31-v6-family-ui"
 STRATEGY_VERSION = f"{'+'.join(STRATEGY_IDS)}@{STRATEGY_IMPLEMENTATION_REVISION}"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

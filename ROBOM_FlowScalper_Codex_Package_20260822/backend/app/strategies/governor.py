@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
+from backend.app.strategies.family import StrategyFamilyId, StrategyRole
 from backend.app.strategies.registry import (
     LifecycleTransition,
     StrategyChangeSource,
@@ -15,11 +16,46 @@ from backend.app.strategies.registry import (
     StrategyRevisionConflict,
 )
 
+GOVERNANCE_EVIDENCE_MAX_AGE_MS = 60_000
+
 
 def _decimal(value: object | None) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+def _mapping_decimal(
+    row: Mapping[str, object],
+    field_name: str,
+    nested_field_name: str | None = None,
+) -> Decimal | None:
+    value = row.get(field_name)
+    if nested_field_name is not None:
+        value = value.get(nested_field_name) if isinstance(value, Mapping) else None
+    return _decimal(value)
+
+
+def _first_decimal(*values: object | None) -> Decimal | None:
+    return next((_decimal(value) for value in values if value is not None), None)
+
+
+def _fresh_evidence_timestamp(
+    evidence_ts_ms: object,
+    *,
+    assessment_ts_ms: object,
+) -> bool:
+    if (
+        not isinstance(evidence_ts_ms, int)
+        or isinstance(evidence_ts_ms, bool)
+        or not isinstance(assessment_ts_ms, int)
+        or isinstance(assessment_ts_ms, bool)
+        or evidence_ts_ms <= 0
+        or assessment_ts_ms <= 0
+    ):
+        return False
+    age_ms = assessment_ts_ms - evidence_ts_ms
+    return 0 <= age_ms <= GOVERNANCE_EVIDENCE_MAX_AGE_MS
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +74,8 @@ class GovernanceEvidence:
     oos_expectancy_lower_bound_usdt: Decimal | None = None
     recent_expectancy_usdt: Decimal | None = None
     recent_profit_factor: Decimal | None = None
+    recent_stress_expectancy_usdt: Decimal | None = None
+    recent_stress_profit_factor: Decimal | None = None
     parameter_robustness_passed: bool = False
     risk_contract_passed: bool = False
     independent_period_count: int = 0
@@ -51,15 +89,24 @@ class GovernanceEvidence:
     abnormal_order_loop: bool = False
     evaluation_period: str = "UNKNOWN"
     evaluated_ts_ms: int = 0
+    operational_health_passed: bool | None = None
+    operational_health_evaluated_ts_ms: int | None = None
     data_fault: bool = False
     operational_fault: bool = False
     drawdown_breach: bool = False
     base_win_rate: Decimal | None = None
     stress_win_rate: Decimal | None = None
-    recent_base_win_rate: Decimal | None = None
-    recent_stress_win_rate: Decimal | None = None
-    full_win_rate_degraded_evaluations: int = 0
-    recent_win_rate_degraded_evaluations: int = 0
+    unique_opportunity_count: int = 0
+    base_win_rate_ci95_lower: Decimal | None = None
+    stress_win_rate_ci95_lower: Decimal | None = None
+    base_payoff_ratio: Decimal | None = None
+    stress_payoff_ratio: Decimal | None = None
+    base_return_skew: Decimal | None = None
+    stress_return_skew: Decimal | None = None
+    base_largest_trade_contribution: Decimal | None = None
+    stress_largest_trade_contribution: Decimal | None = None
+    base_cost_coverage: Decimal | None = None
+    stress_cost_coverage: Decimal | None = None
 
     def as_dict(self) -> dict[str, object]:
         """원장과 증거 파일에 그대로 저장할 JSON 계약을 만든다."""
@@ -103,9 +150,9 @@ class GovernanceEvidence:
             ),
             recent_expectancy_usdt=_decimal(testing.get("recent_expectancy_usdt")),
             recent_profit_factor=_decimal(testing.get("recent_profit_factor")),
-            parameter_robustness_passed=bool(
-                testing.get("parameter_robustness_passed", False)
-            ),
+            recent_stress_expectancy_usdt=_decimal(testing.get("recent_stress_expectancy_usdt")),
+            recent_stress_profit_factor=_decimal(testing.get("recent_stress_profit_factor")),
+            parameter_robustness_passed=bool(testing.get("parameter_robustness_passed", False)),
             risk_contract_passed=bool(testing.get("risk_contract_passed", False)),
             independent_period_count=int(str(testing.get("independent_period_count", 0))),
             live_public_sample_size=int(str(testing.get("live_public_sample_size", 0))),
@@ -115,29 +162,91 @@ class GovernanceEvidence:
                 if testing.get("strategy_correlation_abs") is not None
                 else None
             ),
-            full_oos_degraded_evaluations=int(
-                str(testing.get("full_oos_degraded_evaluations", 0))
-            ),
+            full_oos_degraded_evaluations=int(str(testing.get("full_oos_degraded_evaluations", 0))),
             recent_oos_degraded_evaluations=int(
                 str(testing.get("recent_oos_degraded_evaluations", 0))
             ),
             data_leakage=bool(health.get("data_leakage", False)),
             ledger_contamination=bool(health.get("ledger_contamination", False)),
             abnormal_order_loop=bool(health.get("abnormal_order_loop", False)),
-            evaluation_period=str(testing.get("evaluation_period", "UNKNOWN")),
-            evaluated_ts_ms=int(str(testing.get("evaluated_ts_ms", 0))),
+            evaluation_period=str(
+                health.get(
+                    "evaluation_period",
+                    testing.get("evaluation_period", "UNKNOWN"),
+                )
+            ),
+            evaluated_ts_ms=int(
+                str(
+                    health.get(
+                        "evaluated_ts_ms",
+                        testing.get("evaluated_ts_ms", 0),
+                    )
+                )
+            ),
+            operational_health_passed=(
+                True
+                if health.get("operational_health_passed") is True
+                else False
+                if health.get("operational_health_passed") is False
+                else None
+            ),
+            operational_health_evaluated_ts_ms=(
+                int(str(health["operational_health_evaluated_ts_ms"]))
+                if health.get("operational_health_evaluated_ts_ms") is not None
+                else None
+            ),
             data_fault=bool(health.get("data_fault", False)),
             operational_fault=bool(health.get("operational_fault", False)),
             drawdown_breach=bool(health.get("drawdown_breach", False)),
             base_win_rate=_decimal(base.get("win_rate")),
             stress_win_rate=_decimal(stress.get("win_rate")),
-            recent_base_win_rate=_decimal(testing.get("recent_base_win_rate")),
-            recent_stress_win_rate=_decimal(testing.get("recent_stress_win_rate")),
-            full_win_rate_degraded_evaluations=int(
-                str(testing.get("full_win_rate_degraded_evaluations", 0))
+            unique_opportunity_count=int(
+                str(
+                    testing.get(
+                        "unique_opportunity_count",
+                        testing.get(
+                            "unique_market_opportunity_count",
+                            min(
+                                int(str(base.get("unique_opportunity_count", 0))),
+                                int(str(stress.get("unique_opportunity_count", 0))),
+                            ),
+                        ),
+                    )
+                )
             ),
-            recent_win_rate_degraded_evaluations=int(
-                str(testing.get("recent_win_rate_degraded_evaluations", 0))
+            base_win_rate_ci95_lower=_first_decimal(
+                testing.get("base_win_rate_ci95_lower"),
+                _mapping_decimal(base, "win_rate_ci95", "lower"),
+            ),
+            stress_win_rate_ci95_lower=_first_decimal(
+                testing.get("stress_win_rate_ci95_lower"),
+                _mapping_decimal(stress, "win_rate_ci95", "lower"),
+            ),
+            base_payoff_ratio=_first_decimal(
+                testing.get("base_payoff_ratio"), base.get("payoff_ratio")
+            ),
+            stress_payoff_ratio=_first_decimal(
+                testing.get("stress_payoff_ratio"), stress.get("payoff_ratio")
+            ),
+            base_return_skew=_first_decimal(
+                testing.get("base_return_skew"), base.get("return_skew")
+            ),
+            stress_return_skew=_first_decimal(
+                testing.get("stress_return_skew"), stress.get("return_skew")
+            ),
+            base_largest_trade_contribution=_first_decimal(
+                testing.get("base_largest_trade_contribution"),
+                base.get("largest_trade_contribution"),
+            ),
+            stress_largest_trade_contribution=_first_decimal(
+                testing.get("stress_largest_trade_contribution"),
+                stress.get("largest_trade_contribution"),
+            ),
+            base_cost_coverage=_first_decimal(
+                testing.get("base_cost_coverage"), base.get("cost_coverage")
+            ),
+            stress_cost_coverage=_first_decimal(
+                testing.get("stress_cost_coverage"), stress.get("cost_coverage")
             ),
         )
 
@@ -175,12 +284,13 @@ class StrategyGovernor:
         registry: StrategyRegistry,
         strategy_id: str,
         evidence: GovernanceEvidence,
+        *,
+        assessment_ts_ms: int | None = None,
     ) -> GovernanceAssessment:
         setting = registry.setting(strategy_id)
+        descriptor = registry.descriptor(strategy_id)
         current = setting.lifecycle
-        supported_regime_count = len(
-            registry.descriptor(strategy_id).supported_regimes
-        )
+        supported_regime_count = len(descriptor.supported_regimes)
         shadow_required_regime_count = min(2, supported_regime_count)
         active_required_regime_count = min(3, supported_regime_count)
         champion_id = next(
@@ -189,6 +299,7 @@ class StrategyGovernor:
                 for row_id in registry.strategy_ids
                 if registry.setting(row_id).lifecycle is StrategyLifecycle.ACTIVE
                 and row_id != strategy_id
+                and registry.descriptor(row_id).family_id is descriptor.family_id
             ),
             None,
         )
@@ -249,73 +360,71 @@ class StrategyGovernor:
                 False,
                 champion_id,
             )
-        if current in {StrategyLifecycle.SHADOW, StrategyLifecycle.CHALLENGER}:
-            retirement_reasons = self._minimum_evidence_win_rate_failures(
-                evidence,
-                required_regime_count=shadow_required_regime_count,
+        if descriptor.role is not StrategyRole.ENTRY:
+            return GovernanceAssessment(
+                strategy_id,
+                current,
+                current,
+                (f"ROLE_{descriptor.role.value}_NOT_ENTRY_RANKED",),
+                False,
+                champion_id,
             )
-            if retirement_reasons:
+        if not descriptor.is_current_variant:
+            if current is StrategyLifecycle.ACTIVE:
                 return GovernanceAssessment(
                     strategy_id,
                     current,
-                    StrategyLifecycle.RETIRED,
-                    retirement_reasons,
+                    StrategyLifecycle.CHALLENGER,
+                    ("NON_CURRENT_VARIANT_SHADOW_ONLY",),
                     True,
                     champion_id,
                 )
+            if current is StrategyLifecycle.CHALLENGER:
+                return GovernanceAssessment(
+                    strategy_id,
+                    current,
+                    current,
+                    ("NON_CURRENT_VARIANT_NOT_ACTIVE_ELIGIBLE",),
+                    False,
+                    champion_id,
+                )
         if current is StrategyLifecycle.ACTIVE:
-            full_cost_degraded = (
+            full_base_degraded = (
                 evidence.base_sample_size >= 30
                 and evidence.base_expectancy_usdt is not None
                 and evidence.base_expectancy_usdt < 0
                 and evidence.base_profit_factor is not None
                 and evidence.base_profit_factor < Decimal("0.90")
             )
-            recent_cost_degraded = (
+            full_stress_degraded = (
+                evidence.stress_sample_size >= 30
+                and evidence.stress_expectancy_usdt is not None
+                and evidence.stress_expectancy_usdt < 0
+                and evidence.stress_profit_factor is not None
+                and evidence.stress_profit_factor < Decimal("0.90")
+            )
+            recent_base_degraded = (
                 evidence.recent_expectancy_usdt is not None
                 and evidence.recent_expectancy_usdt < 0
                 and evidence.recent_profit_factor is not None
                 and evidence.recent_profit_factor < Decimal("0.90")
             )
+            recent_stress_degraded = (
+                evidence.recent_stress_expectancy_usdt is not None
+                and evidence.recent_stress_expectancy_usdt < 0
+                and evidence.recent_stress_profit_factor is not None
+                and evidence.recent_stress_profit_factor < Decimal("0.90")
+            )
             cost_degraded = (
-                full_cost_degraded
-                and recent_cost_degraded
+                (
+                    (full_base_degraded and recent_base_degraded)
+                    or (full_stress_degraded and recent_stress_degraded)
+                )
                 and evidence.full_oos_degraded_evaluations >= 2
                 and evidence.recent_oos_degraded_evaluations >= 2
             )
-            full_win_rate_degraded = (
-                evidence.base_sample_size >= 30
-                and evidence.stress_sample_size >= 30
-                and (
-                    evidence.base_win_rate is None
-                    or evidence.base_win_rate < Decimal("0.70")
-                    or evidence.stress_win_rate is None
-                    or evidence.stress_win_rate < Decimal("0.70")
-                )
-            )
-            recent_win_rate_degraded = (
-                evidence.recent_base_win_rate is not None
-                and evidence.recent_stress_win_rate is not None
-                and (
-                    evidence.recent_base_win_rate < Decimal("0.70")
-                    or evidence.recent_stress_win_rate < Decimal("0.70")
-                )
-            )
-            win_rate_degraded = (
-                full_win_rate_degraded
-                and recent_win_rate_degraded
-                and evidence.full_win_rate_degraded_evaluations >= 2
-                and evidence.recent_win_rate_degraded_evaluations >= 2
-            )
-            degraded = cost_degraded or win_rate_degraded
-            reason_codes = tuple(
-                reason
-                for active, reason in (
-                    (cost_degraded, "COST_AFTER_DEGRADATION"),
-                    (win_rate_degraded, "WIN_RATE_BELOW_70_REPEATED"),
-                )
-                if active
-            )
+            degraded = cost_degraded
+            reason_codes = ("COST_AFTER_DEGRADATION",) if cost_degraded else ()
             return GovernanceAssessment(
                 strategy_id,
                 current,
@@ -324,13 +433,26 @@ class StrategyGovernor:
                 degraded,
                 champion_id,
             )
-        common_missing = self._common_gate_failures(evidence)
+        common_missing = self._common_gate_failures(
+            evidence,
+            assessment_ts_ms=assessment_ts_ms,
+        )
         if common_missing:
             return GovernanceAssessment(
                 strategy_id,
                 current,
                 current,
                 common_missing,
+                False,
+                champion_id,
+            )
+        family_missing = self.family_gate_failures(descriptor.family_id, evidence)
+        if family_missing:
+            return GovernanceAssessment(
+                strategy_id,
+                current,
+                current,
+                family_missing,
                 False,
                 champion_id,
             )
@@ -439,46 +561,40 @@ class StrategyGovernor:
         )
 
     @staticmethod
-    def _common_gate_failures(evidence: GovernanceEvidence) -> tuple[str, ...]:
+    def _common_gate_failures(
+        evidence: GovernanceEvidence,
+        *,
+        assessment_ts_ms: int | None = None,
+    ) -> tuple[str, ...]:
         gates = (
-            (evidence.base_sample_size >= 30, "BASE_SAMPLE_LT_30"),
-            (evidence.stress_sample_size >= 30, "STRESS_SAMPLE_LT_30"),
             (
-                evidence.base_expectancy_usdt is not None
-                and evidence.base_expectancy_usdt > 0,
+                evidence.operational_health_passed is True
+                and _fresh_evidence_timestamp(
+                    evidence.operational_health_evaluated_ts_ms,
+                    assessment_ts_ms=assessment_ts_ms,
+                )
+                and _fresh_evidence_timestamp(
+                    evidence.evaluated_ts_ms,
+                    assessment_ts_ms=assessment_ts_ms,
+                )
+                and isinstance(evidence.evaluation_period, str)
+                and bool(evidence.evaluation_period.strip())
+                and evidence.evaluation_period.strip().upper() != "UNKNOWN",
+                "OPERATIONAL_HEALTH_NOT_PROVEN",
+            ),
+            (
+                evidence.base_expectancy_usdt is not None and evidence.base_expectancy_usdt > 0,
                 "BASE_EXPECTANCY_NOT_POSITIVE",
             ),
             (
-                evidence.stress_expectancy_usdt is not None
-                and evidence.stress_expectancy_usdt > 0,
+                evidence.stress_expectancy_usdt is not None and evidence.stress_expectancy_usdt > 0,
                 "STRESS_EXPECTANCY_NOT_POSITIVE",
             ),
             (
-                evidence.base_profit_factor is not None
-                and evidence.base_profit_factor >= Decimal("1.05"),
-                "BASE_PF_LT_1_05",
+                evidence.dsr_probability is not None and evidence.dsr_probability >= 0.95,
+                "DSR_LT_0_95_OR_MISSING",
             ),
-            (
-                evidence.stress_profit_factor is not None
-                and evidence.stress_profit_factor >= Decimal("1.00"),
-                "STRESS_PF_LT_1",
-            ),
-            (
-                evidence.base_win_rate is not None
-                and evidence.base_win_rate >= Decimal("0.70"),
-                "BASE_WIN_RATE_LT_0_70_OR_MISSING",
-            ),
-            (
-                evidence.stress_win_rate is not None
-                and evidence.stress_win_rate >= Decimal("0.70"),
-                "STRESS_WIN_RATE_LT_0_70_OR_MISSING",
-            ),
-            (
-                evidence.dsr_probability is not None
-                and evidence.dsr_probability >= 0.80,
-                "DSR_LT_0_80_OR_MISSING",
-            ),
-            (evidence.pbo is not None and evidence.pbo <= 0.50, "PBO_GT_0_50_OR_MISSING"),
+            (evidence.pbo is not None and evidence.pbo <= 0.20, "PBO_GT_0_20_OR_MISSING"),
             (
                 evidence.oos_expectancy_lower_bound_usdt is not None
                 and evidence.oos_expectancy_lower_bound_usdt > 0,
@@ -491,37 +607,160 @@ class StrategyGovernor:
         return tuple(reason for passed, reason in gates if not passed)
 
     @staticmethod
-    def _minimum_evidence_win_rate_failures(
+    def family_gate_failures(
+        family_id: StrategyFamilyId,
         evidence: GovernanceEvidence,
-        *,
-        required_regime_count: int,
     ) -> tuple[str, ...]:
-        """충분한 자연표본에서 70% 미만인 SHADOW·CHALLENGER만 퇴역시킨다."""
+        """사전등록된 family별 표본·payoff·PF 계약만 적용한다."""
 
-        minimum_evidence_ready = all(
-            (
-                evidence.base_sample_size >= 30,
-                evidence.stress_sample_size >= 30,
-                evidence.live_public_sample_size >= 30,
-                evidence.sample_span_days >= 7,
-                evidence.regime_count >= required_regime_count,
+        gates: tuple[tuple[bool, str], ...]
+        if family_id is StrategyFamilyId.TREND_PULLBACK:
+            gates = (
+                (evidence.unique_opportunity_count >= 150, "UNIQUE_OPPORTUNITIES_LT_150"),
+                (
+                    evidence.base_win_rate is not None
+                    and evidence.base_win_rate >= Decimal("0.40"),
+                    "BASE_WIN_RATE_LT_0_40_OR_MISSING",
+                ),
+                (
+                    evidence.stress_win_rate is not None
+                    and evidence.stress_win_rate >= Decimal("0.40"),
+                    "STRESS_WIN_RATE_LT_0_40_OR_MISSING",
+                ),
+                (
+                    evidence.base_win_rate_ci95_lower is not None
+                    and evidence.base_win_rate_ci95_lower >= Decimal("0.32"),
+                    "BASE_WILSON_LOWER_LT_0_32_OR_MISSING",
+                ),
+                (
+                    evidence.stress_win_rate_ci95_lower is not None
+                    and evidence.stress_win_rate_ci95_lower >= Decimal("0.32"),
+                    "STRESS_WILSON_LOWER_LT_0_32_OR_MISSING",
+                ),
+                (
+                    evidence.base_payoff_ratio is not None
+                    and evidence.base_payoff_ratio >= Decimal("1.50"),
+                    "BASE_PAYOFF_LT_1_50_OR_MISSING",
+                ),
+                (
+                    evidence.stress_payoff_ratio is not None
+                    and evidence.stress_payoff_ratio >= Decimal("1.50"),
+                    "STRESS_PAYOFF_LT_1_50_OR_MISSING",
+                ),
+                (
+                    evidence.base_profit_factor is not None
+                    and evidence.base_profit_factor >= Decimal("1.20"),
+                    "BASE_PF_LT_1_20_OR_MISSING",
+                ),
+                (
+                    evidence.stress_profit_factor is not None
+                    and evidence.stress_profit_factor >= Decimal("1.20"),
+                    "STRESS_PF_LT_1_20_OR_MISSING",
+                ),
             )
-        )
-        if not minimum_evidence_ready:
-            return ()
-        failures = (
-            (
-                evidence.base_win_rate is not None
-                and evidence.base_win_rate >= Decimal("0.70"),
-                "BASE_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE",
-            ),
-            (
-                evidence.stress_win_rate is not None
-                and evidence.stress_win_rate >= Decimal("0.70"),
-                "STRESS_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE",
-            ),
-        )
-        return tuple(reason for passed, reason in failures if not passed)
+        elif family_id is StrategyFamilyId.BREAKOUT_RUNNER:
+            gates = (
+                (evidence.unique_opportunity_count >= 150, "UNIQUE_OPPORTUNITIES_LT_150"),
+                (
+                    evidence.base_payoff_ratio is not None
+                    and evidence.base_payoff_ratio >= Decimal("2.00"),
+                    "BASE_PAYOFF_LT_2_OR_MISSING",
+                ),
+                (
+                    evidence.stress_payoff_ratio is not None
+                    and evidence.stress_payoff_ratio >= Decimal("2.00"),
+                    "STRESS_PAYOFF_LT_2_OR_MISSING",
+                ),
+                (
+                    evidence.base_profit_factor is not None
+                    and evidence.base_profit_factor >= Decimal("1.25"),
+                    "BASE_PF_LT_1_25_OR_MISSING",
+                ),
+                (
+                    evidence.stress_profit_factor is not None
+                    and evidence.stress_profit_factor >= Decimal("1.25"),
+                    "STRESS_PF_LT_1_25_OR_MISSING",
+                ),
+                (
+                    evidence.base_return_skew is not None and evidence.base_return_skew > 0,
+                    "BASE_RETURN_SKEW_NOT_POSITIVE",
+                ),
+                (
+                    evidence.stress_return_skew is not None and evidence.stress_return_skew > 0,
+                    "STRESS_RETURN_SKEW_NOT_POSITIVE",
+                ),
+                (
+                    evidence.base_largest_trade_contribution is not None
+                    and evidence.base_largest_trade_contribution < Decimal("0.10"),
+                    "BASE_LARGEST_TRADE_CONTRIBUTION_NOT_LT_0_10",
+                ),
+                (
+                    evidence.stress_largest_trade_contribution is not None
+                    and evidence.stress_largest_trade_contribution < Decimal("0.10"),
+                    "STRESS_LARGEST_TRADE_CONTRIBUTION_NOT_LT_0_10",
+                ),
+            )
+        elif family_id is StrategyFamilyId.EXHAUSTION_REVERSION:
+            gates = (
+                (evidence.unique_opportunity_count >= 150, "UNIQUE_OPPORTUNITIES_LT_150"),
+                (
+                    evidence.base_win_rate_ci95_lower is not None
+                    and evidence.base_win_rate_ci95_lower >= Decimal("0.38"),
+                    "BASE_WILSON_LOWER_LT_0_38_OR_MISSING",
+                ),
+                (
+                    evidence.stress_win_rate_ci95_lower is not None
+                    and evidence.stress_win_rate_ci95_lower >= Decimal("0.38"),
+                    "STRESS_WILSON_LOWER_LT_0_38_OR_MISSING",
+                ),
+                (
+                    evidence.base_payoff_ratio is not None
+                    and evidence.base_payoff_ratio >= Decimal("1.30"),
+                    "BASE_PAYOFF_LT_1_30_OR_MISSING",
+                ),
+                (
+                    evidence.stress_payoff_ratio is not None
+                    and evidence.stress_payoff_ratio >= Decimal("1.30"),
+                    "STRESS_PAYOFF_LT_1_30_OR_MISSING",
+                ),
+                (
+                    evidence.base_profit_factor is not None
+                    and evidence.base_profit_factor >= Decimal("1.15"),
+                    "BASE_PF_LT_1_15_OR_MISSING",
+                ),
+                (
+                    evidence.stress_profit_factor is not None
+                    and evidence.stress_profit_factor >= Decimal("1.15"),
+                    "STRESS_PF_LT_1_15_OR_MISSING",
+                ),
+            )
+        elif family_id is StrategyFamilyId.ORDERFLOW_CONFIRMATION:
+            gates = (
+                (evidence.unique_opportunity_count >= 1_000, "UNIQUE_OPPORTUNITIES_LT_1000"),
+                (
+                    evidence.base_cost_coverage is not None
+                    and evidence.base_cost_coverage >= Decimal("4.0"),
+                    "BASE_COST_COVERAGE_LT_4_OR_MISSING",
+                ),
+                (
+                    evidence.stress_cost_coverage is not None
+                    and evidence.stress_cost_coverage >= Decimal("4.0"),
+                    "STRESS_COST_COVERAGE_LT_4_OR_MISSING",
+                ),
+                (
+                    evidence.base_profit_factor is not None
+                    and evidence.base_profit_factor >= Decimal("1.15"),
+                    "BASE_PF_LT_1_15_OR_MISSING",
+                ),
+                (
+                    evidence.stress_profit_factor is not None
+                    and evidence.stress_profit_factor >= Decimal("1.15"),
+                    "STRESS_PF_LT_1_15_OR_MISSING",
+                ),
+            )
+        else:
+            return ("FAMILY_GATE_NOT_PREREGISTERED",)
+        return tuple(reason for passed, reason in gates if not passed)
 
     @staticmethod
     def _shadow_gate_failures(
@@ -561,8 +800,7 @@ class StrategyGovernor:
                 "BASE_PF_LT_1_10",
             ),
             (
-                evidence.dsr_probability is not None
-                and evidence.dsr_probability >= 0.95,
+                evidence.dsr_probability is not None and evidence.dsr_probability >= 0.95,
                 "DSR_LT_0_95",
             ),
             (evidence.pbo is not None and evidence.pbo <= 0.40, "PBO_GT_0_40"),
@@ -575,8 +813,7 @@ class StrategyGovernor:
                 evidence.champion_expectancy_usdt is None
                 or (
                     evidence.base_expectancy_usdt is not None
-                    and evidence.base_expectancy_usdt
-                    > evidence.champion_expectancy_usdt
+                    and evidence.base_expectancy_usdt > evidence.champion_expectancy_usdt
                 ),
                 "DOES_NOT_BEAT_CHAMPION",
             ),

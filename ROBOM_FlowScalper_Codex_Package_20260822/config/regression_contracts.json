@@ -76,7 +76,7 @@
       "fixed_by": "Wave 110 deterministic replay seek and Wave 114 passive clock initialization race removal",
       "test_anchors": [
         {
-          "path": "frontend/tests/ReplayPage.test.tsx",
+          "path": "frontend/tests/ReplayViewer.test.tsx",
           "contains": [
             "shows allocated entry and exit fees at the matching replay stage",
             "fireEvent.click(screen.getByRole('button', { name: '진입' }))",
@@ -526,7 +526,7 @@
             "test_completed_30m_breakout_retest_qualifies_both_sides_after_live_flow_confirmation",
             "test_pullback_and_multispeed_reclaim_are_symmetric_completed_bar_setups",
             "test_intraday_state_fails_closed_on_warmup_and_recent_gap",
-            "test_intraday_registry_keeps_ten_simultaneous_shadow_hypotheses"
+            "test_intraday_registry_keeps_six_entry_shadows_and_four_legacy_components_off"
           ]
         },
         {

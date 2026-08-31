@@ -4,6 +4,8 @@
 
 승인·로컬 검증 완료, 배포 전. 2026-08-29.
 
+V6 변경. 공통 70% 승격·퇴역·격리 조항은 `ADR-V6-strategy-family-and-four-page-user-interface.md`의 공통 비용·강건성 및 family별 win/payoff gate로 대체한다. 고유기회, BASE·STRESS 분리, 작은 표본 금지와 증거 보존 결정은 유지한다.
+
 ## 배경
 
 사용자 목표는 비용 후에도 승률 70% 이상을 유지하는 PAPER 전략만 운영 후보로 남기고,

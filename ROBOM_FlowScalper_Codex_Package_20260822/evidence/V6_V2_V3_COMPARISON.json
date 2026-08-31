@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "generated_ts_utc": "2026-08-31T15:11:15.864238Z",
+  "status": "NOT_PROVEN",
+  "input_status": "NOT_RUN_NO_FIXED_INPUT_RESULT",
+  "input_path": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822/evidence/V6_V2_V3_FIXED_INPUT_RESULTS.json",
+  "source_commit": "ac5634a53da623721dc3bb6113427a32d4a677db",
+  "preregistration": {
+    "schema_version": 1,
+    "status": "PREREGISTERED_NOT_EXECUTED",
+    "source_commit": "ac5634a53da623721dc3bb6113427a32d4a677db",
+    "variant_count": 4,
+    "current_variant_changes": 0,
+    "runtime_registered_count": 0,
+    "live_shadow_count": 0,
+    "selection_or_promotion_performed": false,
+    "comparison_required": [
+      "same frozen input V2 vs V3 entry",
+      "same entry fixed vs runner exit",
+      "orderflow filter OFF vs ON",
+      "bar approximation vs event replay"
+    ],
+    "promotion_gates": {
+      "base_expectancy_positive": true,
+      "stress_expectancy_positive": true,
+      "v3_expectancy_better_than_v2": true,
+      "drawdown_not_worse": true,
+      "cost_burden_improved": true,
+      "oos_lower_bound_positive": true,
+      "dsr_minimum": 0.95,
+      "pbo_maximum": 0.2,
+      "operational_regression": false
+    },
+    "variants": [
+      {
+        "strategy_id": "TREND_PULLBACK_RECLAIM_15M_V3",
+        "family_id": "TREND_PULLBACK",
+        "baseline_strategy_ids": [
+          "TREND_PULLBACK_RECLAIM_15M_V2"
+        ],
+        "setup_timeframe_seconds": 900,
+        "trigger_timeframe_seconds": 300,
+        "validity_minutes": 45,
+        "maximum_completed_trigger_bars": 9,
+        "entry_rules_ko": [
+          "완료 4시간 close > EMA20 > EMA50와 EMA20 기울기/ATR >= 0.10",
+          "완료 1시간 close > EMA20 > EMA50, ADX14 >= 22, DMI 차이 >= 5, ER20 >= 0.35",
+          "완료 5분 trigger의 body·CLV·RVOL·taker imbalance와 주문흐름 3개 중 2개",
+          "직전 impulse >= 1.5ATR, 되돌림 0.25..0.65, EMA20 주변 눌림"
+        ],
+        "invalidation_rules_ko": [
+          "상위 시간구간 추세 해제",
+          "구조 origin 또는 EMA50 허용범위 이탈",
+          "공개시장 데이터 degraded",
+          "사전등록 유효시간 만료"
+        ],
+        "exit_ablation_ids": [
+          "V2_FIXED_TP",
+          "V3_PARTIAL_RUNNER_2_8_ATR"
+        ],
+        "base_cost_coverage_minimum": 2.5,
+        "stress_cost_coverage_minimum": 1.5,
+        "current_variant": false,
+        "runtime_registered": false,
+        "live_shadow_enabled": false,
+        "paper_only": true
+      },
+      {
+        "strategy_id": "MULTISPEED_TREND_RECLAIM_30M_V3",
+        "family_id": "TREND_PULLBACK",
+        "baseline_strategy_ids": [
+          "MULTISPEED_TREND_RECLAIM_30M_V2"
+        ],
+        "setup_timeframe_seconds": 1800,
+        "trigger_timeframe_seconds": 900,
+        "validity_minutes": 90,
+        "maximum_completed_trigger_bars": 6,
+        "entry_rules_ko": [
+          "완료 4시간 close > EMA20 > EMA50와 EMA20 기울기/ATR >= 0.10",
+          "완료 1시간 close > EMA20 > EMA50, ADX14 >= 22, DMI 차이 >= 5, ER20 >= 0.35",
+          "완료 5분 trigger의 body·CLV·RVOL·taker imbalance와 주문흐름 3개 중 2개",
+          "완료 30분 조정 뒤 1시간 추세 방향 재합류"
+        ],
+        "invalidation_rules_ko": [
+          "상위 시간구간 추세 해제",
+          "구조 origin 또는 EMA50 허용범위 이탈",
+          "공개시장 데이터 degraded",
+          "사전등록 유효시간 만료"
+        ],
+        "exit_ablation_ids": [
+          "V2_FIXED_TP",
+          "V3_PARTIAL_RUNNER_2_8_ATR"
+        ],
+        "base_cost_coverage_minimum": 2.5,
+        "stress_cost_coverage_minimum": 1.5,
+        "current_variant": false,
+        "runtime_registered": false,
+        "live_shadow_enabled": false,
+        "paper_only": true
+      },
+      {
+        "strategy_id": "BREAKOUT_RETEST_30M_V3",
+        "family_id": "BREAKOUT_RUNNER",
+        "baseline_strategy_ids": [
+          "BREAKOUT_RETEST_30M_V2"
+        ],
+        "setup_timeframe_seconds": 1800,
+        "trigger_timeframe_seconds": 300,
+        "validity_minutes": 90,
+        "maximum_completed_trigger_bars": 3,
+        "entry_rules_ko": [
+          "완료 1시간 추세, ADX14 >= 22, ER20 >= 0.35",
+          "완료 30분 Donchian20 + 0.10ATR 돌파와 body/CLV/RVOL/extension 제한",
+          "다음 3개 완료 30분봉 안 retest와 완료 5분 재돌파 trigger"
+        ],
+        "invalidation_rules_ko": [
+          "retest가 돌파수준 허용범위를 이탈",
+          "1시간 추세 해제",
+          "공개시장 데이터 degraded",
+          "3개 완료 30분봉 만료"
+        ],
+        "exit_ablation_ids": [
+          "V2_FIXED_TP",
+          "V3_PARTIAL_RUNNER_3_5_ATR_DONCHIAN10"
+        ],
+        "base_cost_coverage_minimum": 2.5,
+        "stress_cost_coverage_minimum": 1.5,
+        "current_variant": false,
+        "runtime_registered": false,
+        "live_shadow_enabled": false,
+        "paper_only": true
+      },
+      {
+        "strategy_id": "EXHAUSTION_VWAP_REENTRY_V2",
+        "family_id": "EXHAUSTION_REVERSION",
+        "baseline_strategy_ids": [
+          "VWAP_EXHAUSTION_REVERSION_V1",
+          "LSA_REVERSAL_V1"
+        ],
+        "setup_timeframe_seconds": 900,
+        "trigger_timeframe_seconds": 300,
+        "validity_minutes": 45,
+        "maximum_completed_trigger_bars": 9,
+        "entry_rules_ko": [
+          "완료 1시간 ADX14 < 18, ER20 < 0.25인 비추세 regime",
+          "VWAP robust z 또는 1시간 return z 과잉이탈",
+          "청산·OI·가격진전·refill·microprice·CVD 소진 조건 3개 이상",
+          "완료 15분 VWAP 재진입과 완료 5분 구조 재진입"
+        ],
+        "invalidation_rules_ko": [
+          "TREND regime 전환",
+          "flush 구조 이탈",
+          "공개시장 데이터 degraded",
+          "사전등록 유효시간 만료"
+        ],
+        "exit_ablation_ids": [
+          "V1_REVERSION_FIXED",
+          "V2_POC_EMA50_1_5R_CONSERVATIVE"
+        ],
+        "base_cost_coverage_minimum": 2.5,
+        "stress_cost_coverage_minimum": 1.5,
+        "current_variant": false,
+        "runtime_registered": false,
+        "live_shadow_enabled": false,
+        "paper_only": true
+      }
+    ],
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "funding_readiness": "NOT_READY",
+    "manifest_sha256": "0daa93ba63496a2eebb6627ac02d148313542e71b2199e9a4c3511d86f0e0d8d"
+  },
+  "comparisons": [
+    {
+      "strategy_id": "TREND_PULLBACK_RECLAIM_15M_V3",
+      "family_id": "TREND_PULLBACK",
+      "baseline_strategy_ids": [
+        "TREND_PULLBACK_RECLAIM_15M_V2"
+      ],
+      "comparison_status": "NOT_PROVEN",
+      "data_status": "NOT_RUN_NO_FIXED_INPUT_RESULT",
+      "base_expectancy_delta": null,
+      "stress_expectancy_delta": null,
+      "drawdown_delta": null,
+      "cost_burden_delta": null,
+      "oos_lower_bound": null,
+      "dsr": null,
+      "pbo": null,
+      "promotion_eligible": false,
+      "promotion_performed": false
+    },
+    {
+      "strategy_id": "MULTISPEED_TREND_RECLAIM_30M_V3",
+      "family_id": "TREND_PULLBACK",
+      "baseline_strategy_ids": [
+        "MULTISPEED_TREND_RECLAIM_30M_V2"
+      ],
+      "comparison_status": "NOT_PROVEN",
+      "data_status": "NOT_RUN_NO_FIXED_INPUT_RESULT",
+      "base_expectancy_delta": null,
+      "stress_expectancy_delta": null,
+      "drawdown_delta": null,
+      "cost_burden_delta": null,
+      "oos_lower_bound": null,
+      "dsr": null,
+      "pbo": null,
+      "promotion_eligible": false,
+      "promotion_performed": false
+    },
+    {
+      "strategy_id": "BREAKOUT_RETEST_30M_V3",
+      "family_id": "BREAKOUT_RUNNER",
+      "baseline_strategy_ids": [
+        "BREAKOUT_RETEST_30M_V2"
+      ],
+      "comparison_status": "NOT_PROVEN",
+      "data_status": "NOT_RUN_NO_FIXED_INPUT_RESULT",
+      "base_expectancy_delta": null,
+      "stress_expectancy_delta": null,
+      "drawdown_delta": null,
+      "cost_burden_delta": null,
+      "oos_lower_bound": null,
+      "dsr": null,
+      "pbo": null,
+      "promotion_eligible": false,
+      "promotion_performed": false
+    },
+    {
+      "strategy_id": "EXHAUSTION_VWAP_REENTRY_V2",
+      "family_id": "EXHAUSTION_REVERSION",
+      "baseline_strategy_ids": [
+        "VWAP_EXHAUSTION_REVERSION_V1",
+        "LSA_REVERSAL_V1"
+      ],
+      "comparison_status": "NOT_PROVEN",
+      "data_status": "NOT_RUN_NO_FIXED_INPUT_RESULT",
+      "base_expectancy_delta": null,
+      "stress_expectancy_delta": null,
+      "drawdown_delta": null,
+      "cost_burden_delta": null,
+      "oos_lower_bound": null,
+      "dsr": null,
+      "pbo": null,
+      "promotion_eligible": false,
+      "promotion_performed": false
+    }
+  ],
+  "all_candidates_promotion_eligible": false,
+  "promotion_performed": false,
+  "registry_changed": false,
+  "live_shadow_changed": false,
+  "paper_only": true,
+  "real_orders_enabled": false,
+  "auth_required": false,
+  "wallet_enabled": false,
+  "profitability": "NOT_PROVEN",
+  "funding_readiness": "NOT_READY"
+}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from collections import deque
@@ -21,7 +22,11 @@ from backend.app.adapters.fixture import FixtureMarketData
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.api.dashboard import build_dashboard_snapshot
 from backend.app.build_identity import APP_VERSION, STRATEGY_VERSION, git_commit
-from backend.app.candidates import CandidatePlan, CandidatePlanner
+from backend.app.candidates import (
+    CandidatePlan,
+    CandidatePlanner,
+    SharedCapitalArbitrationEvidence,
+)
 from backend.app.clocks import Clock, SystemClock
 from backend.app.control.operations import ProgressCallback
 from backend.app.costing import CostProfile
@@ -30,6 +35,7 @@ from backend.app.domain.models import (
     MarketDataState,
     MarketEvent,
     RuntimeMode,
+    Side,
     SystemStatus,
     Venue,
 )
@@ -68,9 +74,19 @@ from backend.app.storage.sqlite import (
     run_passive_wal_checkpoint_in_process,
 )
 from backend.app.strategies.base import CandidateDecision
-from backend.app.strategies.governor import GovernanceEvidence, StrategyGovernor
+from backend.app.strategies.family import StrategyRole
+from backend.app.strategies.governor import (
+    GOVERNANCE_EVIDENCE_MAX_AGE_MS,
+    GovernanceEvidence,
+    StrategyGovernor,
+)
+from backend.app.strategies.orderflow_confirmation import (
+    ORDERFLOW_AFFECTED_STRATEGY_IDS,
+    OrderflowConfirmationRuntime,
+)
 from backend.app.strategies.registry import (
     StrategyChangeSource,
+    StrategyDescriptor,
     StrategyLifecycle,
     StrategyMode,
     StrategyRegistry,
@@ -93,6 +109,136 @@ def _dashboard_performance_report(report: Mapping[str, object]) -> dict[str, obj
                 "sample_size": window.get("sample_size", 0) if isinstance(window, Mapping) else 0
             }
     return dict(report) | {"windows": compact_windows}
+
+
+def _strict_recovery_int(row: Mapping[str, object], field_name: str) -> int:
+    value = row.get(field_name)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"복구 Governor 증거의 {field_name}가 정수가 아닙니다.")
+    return value
+
+
+def _strict_recovery_bool(row: Mapping[str, object], field_name: str) -> bool:
+    value = row.get(field_name)
+    if not isinstance(value, bool):
+        raise ValueError(f"복구 Governor 증거의 {field_name}가 bool이 아닙니다.")
+    return value
+
+
+def _recovery_decimal(
+    row: Mapping[str, object],
+    field_name: str,
+    *,
+    required: bool = False,
+) -> Decimal | None:
+    value = row.get(field_name)
+    if value is None:
+        if required:
+            raise ValueError(f"복구 Governor 증거에 {field_name}가 없습니다.")
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"복구 Governor 증거의 {field_name}가 숫자가 아닙니다.")
+    normalized = Decimal(str(value))
+    if not normalized.is_finite():
+        raise ValueError(f"복구 Governor 증거의 {field_name}가 유한수가 아닙니다.")
+    return normalized
+
+
+def _recovery_float(
+    row: Mapping[str, object],
+    field_name: str,
+    *,
+    required: bool = False,
+) -> float | None:
+    value = _recovery_decimal(row, field_name, required=required)
+    return float(value) if value is not None else None
+
+
+def _governance_evidence_from_recovery(
+    row: Mapping[str, object],
+) -> GovernanceEvidence:
+    evaluation_period = row.get("evaluation_period")
+    if not isinstance(evaluation_period, str) or not evaluation_period.strip():
+        raise ValueError("복구 Governor 증거의 evaluation_period가 없습니다.")
+    return GovernanceEvidence(
+        base_sample_size=_strict_recovery_int(row, "base_sample_size"),
+        stress_sample_size=_strict_recovery_int(row, "stress_sample_size"),
+        base_expectancy_usdt=_recovery_decimal(
+            row, "base_expectancy_usdt", required=True
+        ),
+        stress_expectancy_usdt=_recovery_decimal(
+            row, "stress_expectancy_usdt", required=True
+        ),
+        base_profit_factor=_recovery_decimal(row, "base_profit_factor", required=True),
+        stress_profit_factor=_recovery_decimal(
+            row, "stress_profit_factor", required=True
+        ),
+        sample_span_days=_recovery_float(row, "sample_span_days", required=True) or 0.0,
+        regime_count=_strict_recovery_int(row, "regime_count"),
+        dsr_probability=_recovery_float(row, "dsr_probability", required=True),
+        pbo=_recovery_float(row, "pbo", required=True),
+        champion_expectancy_usdt=_recovery_decimal(row, "champion_expectancy_usdt"),
+        oos_expectancy_lower_bound_usdt=_recovery_decimal(
+            row, "oos_expectancy_lower_bound_usdt", required=True
+        ),
+        recent_expectancy_usdt=_recovery_decimal(row, "recent_expectancy_usdt"),
+        recent_profit_factor=_recovery_decimal(row, "recent_profit_factor"),
+        recent_stress_expectancy_usdt=_recovery_decimal(
+            row, "recent_stress_expectancy_usdt"
+        ),
+        recent_stress_profit_factor=_recovery_decimal(
+            row, "recent_stress_profit_factor"
+        ),
+        parameter_robustness_passed=_strict_recovery_bool(
+            row, "parameter_robustness_passed"
+        ),
+        risk_contract_passed=_strict_recovery_bool(row, "risk_contract_passed"),
+        independent_period_count=_strict_recovery_int(row, "independent_period_count"),
+        live_public_sample_size=_strict_recovery_int(row, "live_public_sample_size"),
+        cooldown_elapsed=_strict_recovery_bool(row, "cooldown_elapsed"),
+        strategy_correlation_abs=_recovery_float(
+            row, "strategy_correlation_abs", required=True
+        ),
+        full_oos_degraded_evaluations=_strict_recovery_int(
+            row, "full_oos_degraded_evaluations"
+        ),
+        recent_oos_degraded_evaluations=_strict_recovery_int(
+            row, "recent_oos_degraded_evaluations"
+        ),
+        data_leakage=_strict_recovery_bool(row, "data_leakage"),
+        ledger_contamination=_strict_recovery_bool(row, "ledger_contamination"),
+        abnormal_order_loop=_strict_recovery_bool(row, "abnormal_order_loop"),
+        evaluation_period=evaluation_period,
+        evaluated_ts_ms=_strict_recovery_int(row, "evaluated_ts_ms"),
+        operational_health_passed=_strict_recovery_bool(
+            row, "operational_health_passed"
+        ),
+        operational_health_evaluated_ts_ms=_strict_recovery_int(
+            row, "operational_health_evaluated_ts_ms"
+        ),
+        data_fault=_strict_recovery_bool(row, "data_fault"),
+        operational_fault=_strict_recovery_bool(row, "operational_fault"),
+        drawdown_breach=_strict_recovery_bool(row, "drawdown_breach"),
+        base_win_rate=_recovery_decimal(row, "base_win_rate"),
+        stress_win_rate=_recovery_decimal(row, "stress_win_rate"),
+        unique_opportunity_count=_strict_recovery_int(row, "unique_opportunity_count"),
+        base_win_rate_ci95_lower=_recovery_decimal(row, "base_win_rate_ci95_lower"),
+        stress_win_rate_ci95_lower=_recovery_decimal(
+            row, "stress_win_rate_ci95_lower"
+        ),
+        base_payoff_ratio=_recovery_decimal(row, "base_payoff_ratio"),
+        stress_payoff_ratio=_recovery_decimal(row, "stress_payoff_ratio"),
+        base_return_skew=_recovery_decimal(row, "base_return_skew"),
+        stress_return_skew=_recovery_decimal(row, "stress_return_skew"),
+        base_largest_trade_contribution=_recovery_decimal(
+            row, "base_largest_trade_contribution"
+        ),
+        stress_largest_trade_contribution=_recovery_decimal(
+            row, "stress_largest_trade_contribution"
+        ),
+        base_cost_coverage=_recovery_decimal(row, "base_cost_coverage"),
+        stress_cost_coverage=_recovery_decimal(row, "stress_cost_coverage"),
+    )
 
 
 _MARKET_PERSISTENCE_FLUSH_THRESHOLD = 250
@@ -194,13 +340,11 @@ class PaperRuntime:
         default_factory=dict,
         repr=False,
     )
-    _governance_full_low_win_cycles: dict[str, int] = field(default_factory=dict, repr=False)
-    _governance_recent_low_win_cycles: dict[str, int] = field(
-        default_factory=dict,
-        repr=False,
-    )
     _governance_last_cycle_ts_ms: int | None = None
     strategy_evaluator: StrategySignalEvaluator = field(default_factory=StrategySignalEvaluator)
+    orderflow_confirmation_runtime: OrderflowConfirmationRuntime = field(
+        default_factory=OrderflowConfirmationRuntime,
+    )
     regime_classifier: RegimeClassifier = field(default_factory=RegimeClassifier)
     feature_engines: dict[str, FeatureEngine] = field(default_factory=dict)
     latest_features: dict[str, FeatureSnapshot] = field(default_factory=dict)
@@ -335,6 +479,10 @@ class PaperRuntime:
     _dashboard_strategy_performance_cache: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
     )
+    _strategy_arbitration_evidence_cache: dict[str, SharedCapitalArbitrationEvidence] = field(
+        default_factory=dict, repr=False
+    )
+    _strategy_arbitration_evidence_ready: bool = False
     dashboard_trade_cache_ready: bool = False
     dashboard_trade_cache_loading: bool = False
     dashboard_trade_cache_last_ms: float = 0.0
@@ -385,6 +533,7 @@ class PaperRuntime:
             run_id=self.run_id,
             strategy_ids=self.strategy_registry.strategy_ids,
             shadow_ledger=self.shadow_ledger,
+            enforce_v6_family_conflicts=True,
         )
         self.startup_portfolio_init_ms = (time.monotonic() - portfolio_started) * 1_000
         if self.mode is RuntimeMode.READY:
@@ -585,6 +734,129 @@ class PaperRuntime:
             last_error=telemetry.last_error if telemetry is not None else None,
         )
 
+    def _validated_governor_active_recovery_revision(
+        self,
+        setting_row: Mapping[str, object],
+        *,
+        recovery_ts_ms: int,
+    ) -> bool:
+        """현재 release·Run·gate·60초 계약을 모두 만족한 ACTIVE revision만 인정한다."""
+
+        try:
+            strategy_id = str(setting_row["strategy_id"])
+            descriptor = self.strategy_registry.descriptor(strategy_id)
+            if (
+                setting_row.get("mode") != StrategyMode.ACTIVE.value
+                or setting_row.get("lifecycle") != StrategyLifecycle.ACTIVE.value
+                or setting_row.get("changed_by")
+                != StrategyChangeSource.AUTO_GOVERNOR.value
+                or setting_row.get("manual_lock") is not False
+                or setting_row.get("change_reason") != "CHALLENGER_BEATS_CHAMPION"
+                or setting_row.get("run_id") != self.run_id
+                or descriptor.role is not StrategyRole.ENTRY
+                or not descriptor.is_current_variant
+                or not descriptor.default_research_enabled
+                or self.strategy_registry.is_policy_retired(strategy_id)
+            ):
+                return False
+            revision = _strict_recovery_int(setting_row, "settings_revision")
+            setting_ts_ms = _strict_recovery_int(setting_row, "settings_updated_ts_ms")
+            persisted_ts_ms = _strict_recovery_int(setting_row, "ts_ms")
+            change_evidence = setting_row.get("change_evidence")
+            if not isinstance(change_evidence, Mapping):
+                return False
+            assessment = change_evidence.get("assessment")
+            evidence_row = change_evidence.get("evidence")
+            lineage = change_evidence.get("lineage")
+            if (
+                not isinstance(assessment, Mapping)
+                or not isinstance(evidence_row, Mapping)
+                or not isinstance(lineage, Mapping)
+            ):
+                return False
+            assessment_ts_ms = _strict_recovery_int(lineage, "assessment_ts_ms")
+            release_commit = git_commit()
+            persisted_run = self.ledger.get_run(self.run_id) if self.ledger is not None else None
+            if persisted_run is None or not isinstance(
+                persisted_run.get("config_json"), str
+            ):
+                return False
+            run_config = json.loads(str(persisted_run["config_json"]))
+            if not isinstance(run_config, Mapping):
+                return False
+            if (
+                lineage.get("schema_version") != 1
+                or lineage.get("run_id") != self.run_id
+                or lineage.get("strategy_id") != strategy_id
+                or lineage.get("strategy_version") != STRATEGY_VERSION
+                or lineage.get("descriptor_strategy_version")
+                != descriptor.research_contract.strategy_version
+                or lineage.get("app_version") != APP_VERSION
+                or release_commit == "UNAVAILABLE"
+                or lineage.get("release_commit") != release_commit
+                or persisted_run.get("run_id") != self.run_id
+                or persisted_run.get("mode") != RuntimeMode.LIVE_SHADOW_PAPER.value
+                or persisted_run.get("venue") != Venue.BINANCE_USDM.value
+                or run_config.get("execution") != "PAPER"
+                or run_config.get("sample_type") != "LIVE_PUBLIC"
+                or run_config.get("app_version") != APP_VERSION
+                or run_config.get("strategy_version") != STRATEGY_VERSION
+                or run_config.get("git_commit") != release_commit
+                or _strict_recovery_int(lineage, "settings_revision") != revision
+                or assessment_ts_ms != setting_ts_ms
+                or assessment_ts_ms != persisted_ts_ms
+                or not 0 <= recovery_ts_ms - assessment_ts_ms <= GOVERNANCE_EVIDENCE_MAX_AGE_MS
+            ):
+                return False
+            if (
+                assessment.get("strategy_id") != strategy_id
+                or assessment.get("current_lifecycle")
+                != StrategyLifecycle.CHALLENGER.value
+                or assessment.get("recommended_lifecycle")
+                != StrategyLifecycle.ACTIVE.value
+                or assessment.get("reason_codes") != ["CHALLENGER_BEATS_CHAMPION"]
+                or assessment.get("automatic_action_allowed") is not True
+                or assessment.get("transition_required") is not True
+            ):
+                return False
+            evidence = _governance_evidence_from_recovery(evidence_row)
+            if any(
+                (
+                    evidence.data_fault,
+                    evidence.operational_fault,
+                    evidence.drawdown_breach,
+                    evidence.data_leakage,
+                    evidence.ledger_contamination,
+                    evidence.abnormal_order_loop,
+                )
+            ):
+                return False
+            supported_regime_count = len(descriptor.supported_regimes)
+            common_failures = self.strategy_governor._common_gate_failures(
+                evidence,
+                assessment_ts_ms=recovery_ts_ms,
+            )
+            family_failures = self.strategy_governor.family_gate_failures(
+                descriptor.family_id,
+                evidence,
+            )
+            shadow_failures = self.strategy_governor._shadow_gate_failures(
+                evidence,
+                required_regime_count=min(2, supported_regime_count),
+            )
+            active_failures = self.strategy_governor._active_gate_failures(
+                evidence,
+                required_regime_count=min(3, supported_regime_count),
+            )
+            return not (
+                common_failures
+                or family_failures
+                or shadow_failures
+                or active_failures
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+
     def restore_recovery_state(self, recovered: RecoveryState) -> bool:
         """checksum 검증된 최신 Run의 전략 설정·계좌·포지션·거래를 복구한다."""
 
@@ -604,7 +876,17 @@ class PaperRuntime:
             str(trade["shadow_trade_id"]) for trade in self.ledger.list_shadow_trades(self.run_id)
         }
         try:
+            recovery_validation_ts_ms = self.clock.utc_ms()
+            validated_active_revisions: dict[str, set[int]] = {}
             for setting_row in self.ledger.list_strategy_settings(self.run_id):
+                if self._validated_governor_active_recovery_revision(
+                    setting_row,
+                    recovery_ts_ms=recovery_validation_ts_ms,
+                ):
+                    strategy_id = str(setting_row["strategy_id"])
+                    validated_active_revisions.setdefault(strategy_id, set()).add(
+                        int(str(setting_row["settings_revision"]))
+                    )
                 self.strategy_registry.restore_setting(
                     str(setting_row["strategy_id"]),
                     mode=StrategyMode(str(setting_row["mode"])),
@@ -640,8 +922,30 @@ class PaperRuntime:
                     timestamp=int(str(migrated["settings_updated_ts_ms"])),
                     payload=transition,
                 )
-            shadow_migrations = self.strategy_registry.enforce_unproven_active_defaults(
+            family_migrations = self.strategy_registry.enforce_v6_family_runtime_policy(
                 updated_ts_ms=self.clock.utc_ms()
+            )
+            for migrated in family_migrations:
+                transition = self._persist_strategy_setting(
+                    migrated,
+                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
+                    evidence={
+                        "policy": "V6_FAMILY_LEGACY_COMPONENT_HISTORY_ONLY",
+                        "history_preserved": True,
+                        "new_independent_entry_blocked": True,
+                    },
+                )
+                self._record_strategy_incident(
+                    category="V6_FAMILY_RUNTIME_POLICY_MIGRATION",
+                    timestamp=int(str(migrated["settings_updated_ts_ms"])),
+                    payload=transition,
+                )
+            shadow_migrations = self.strategy_registry.enforce_unproven_active_defaults(
+                updated_ts_ms=self.clock.utc_ms(),
+                validated_governor_active_revisions={
+                    strategy_id: frozenset(revisions)
+                    for strategy_id, revisions in validated_active_revisions.items()
+                },
             )
             for migrated in shadow_migrations:
                 transition = self._persist_strategy_setting(
@@ -688,6 +992,11 @@ class PaperRuntime:
                         and record.get("key") is not None
                         and "paused" in record
                     }
+            orderflow_filter = self.ledger.get_app_setting(
+                "orderflow_confirmation_filter_v2"
+            )
+            if orderflow_filter is not None and orderflow_filter.get("run_id") == self.run_id:
+                self.orderflow_confirmation_runtime.restore_state(orderflow_filter)
         except (KeyError, TypeError, ValueError) as error:
             self._lock_recovery(f"RECOVERY_STATE_REJECTED:{type(error).__name__}")
             return False
@@ -844,9 +1153,7 @@ class PaperRuntime:
         self._last_recovered_persistence_error = self._last_persistence_error
         self._last_persistence_error = None
         self.runtime_health_flags = [
-            flag
-            for flag in self.runtime_health_flags
-            if flag != "ENTRY_LOCK_TRANSIENT_PERSISTENCE"
+            flag for flag in self.runtime_health_flags if flag != "ENTRY_LOCK_TRANSIENT_PERSISTENCE"
         ]
         self._log(
             "STORAGE",
@@ -947,9 +1254,7 @@ class PaperRuntime:
             "persistence_fault_recoverable": self._persistence_fault_recoverable,
             "persistence_recovery_count": self._persistence_recovery_count,
             "persistence_last_recovered_ts_ms": self._persistence_last_recovered_ts_ms,
-            "persistence_last_recovered_error": (
-                self._last_recovered_persistence_error or "NONE"
-            ),
+            "persistence_last_recovered_error": (self._last_recovered_persistence_error or "NONE"),
             "persistence_buffer_dropped": self._persistence_buffer_dropped,
             "persistence_backlog_peak": self._persistence_backlog_peak,
             "persistence_backlog_entry_lock_count": (self._persistence_backlog_entry_lock_count),
@@ -1155,10 +1460,13 @@ class PaperRuntime:
         already_hard_faulted = (
             self._persistence_fault_active and not self._persistence_fault_recoverable
         ) or self.paper_portfolio.main.risk_state.faulted
-        recoverable_transient_fault = isinstance(
-            error,
-            StoragePressureError | BrokenWorkerProcess,
-        ) and not already_hard_faulted
+        recoverable_transient_fault = (
+            isinstance(
+                error,
+                StoragePressureError | BrokenWorkerProcess,
+            )
+            and not already_hard_faulted
+        )
         self._persistence_fault_active = True
         self.paused = True
         if recoverable_transient_fault:
@@ -1772,6 +2080,8 @@ class PaperRuntime:
         self._refresh_feature_input_entry_safety(event.symbol)
         self.latest_features[event.symbol] = snapshot
         self.latest_regimes[event.symbol] = regime
+        for side in (Side.LONG, Side.SHORT):
+            self.orderflow_confirmation_runtime.evaluate(snapshot, side)
         gap_started = self.data_gap_since_ms.pop(event.symbol, None)
         self.paper_portfolio.evaluate_health(
             snapshot,
@@ -1856,6 +2166,38 @@ class PaperRuntime:
             )
         plans: list[CandidatePlan] = []
         for signal in signals:
+            if (
+                signal.decision.status.value == "QUALIFIED"
+                and signal.decision.strategy_id in ORDERFLOW_AFFECTED_STRATEGY_IDS
+                and not self.orderflow_confirmation_runtime.allows_strategy(
+                    signal.decision.strategy_id,
+                    signal.decision.side,
+                    event.symbol,
+                )
+            ):
+                filter_decision = self.orderflow_confirmation_runtime.decision_for(
+                    event.symbol,
+                    signal.decision.side,
+                )
+                self.plan_rejections.append(
+                    {
+                        "event_id": event.event_id,
+                        "symbol": event.symbol,
+                        "strategy_id": signal.decision.strategy_id,
+                        "side": signal.decision.side.value,
+                        "reason_codes": [
+                            "ORDERFLOW_CONFIRMATION_FILTER_BLOCKED",
+                            *(
+                                filter_decision.reason_codes
+                                if filter_decision is not None
+                                else ("ORDERFLOW_CONFIRMATION_MISSING",)
+                            ),
+                        ],
+                        "filter_id": "ORDERFLOW_CONFIRMATION_FILTER_V2",
+                        "creates_candidate_plan": False,
+                    }
+                )
+                continue
             descriptor = self.strategy_registry.descriptor(signal.decision.strategy_id)
             result = self.candidate_planner.build(
                 signal_event_id=event.event_id,
@@ -1880,6 +2222,9 @@ class PaperRuntime:
                 ),
                 edge_decay_enabled=descriptor.edge_decay_enabled,
                 strategy_version=STRATEGY_VERSION,
+                shared_capital_evidence=self._shared_capital_arbitration_evidence(
+                    signal.decision.strategy_id
+                ),
             )
             if result.plan is not None:
                 plans.append(result.plan)
@@ -1899,6 +2244,71 @@ class PaperRuntime:
                     }
                 )
         return tuple(plans)
+
+    def _shared_capital_arbitration_evidence(
+        self,
+        strategy_id: str,
+    ) -> SharedCapitalArbitrationEvidence:
+        """무거운 원장 조회 없이 마지막 검증 cache만 Shared Capital 중재에 사용한다."""
+
+        lifecycle_tiers = {
+            StrategyLifecycle.RESEARCH: 1,
+            StrategyLifecycle.SHADOW: 2,
+            StrategyLifecycle.CHALLENGER: 3,
+            StrategyLifecycle.ACTIVE: 4,
+        }
+        tier = lifecycle_tiers.get(
+            self.strategy_registry.setting(strategy_id).lifecycle,
+            0,
+        )
+        cached = (
+            self._strategy_arbitration_evidence_cache.get(strategy_id)
+            if self._strategy_arbitration_evidence_ready
+            else None
+        )
+        return SharedCapitalArbitrationEvidence(
+            evidence_tier=tier,
+            stress_cost_adjusted_expectancy_usdt=(
+                cached.stress_cost_adjusted_expectancy_usdt if cached is not None else None
+            ),
+            cost_coverage=cached.cost_coverage if cached is not None else None,
+            diversification_score=(
+                cached.diversification_score if cached is not None else Decimal(0)
+            ),
+        )
+
+    def _hydrate_strategy_arbitration_evidence(
+        self,
+        reports: Sequence[Mapping[str, object]],
+    ) -> None:
+        """UI 접근과 무관한 current-version STRESS evidence cache를 교체한다."""
+
+        cache: dict[str, SharedCapitalArbitrationEvidence] = {}
+        for report in reports:
+            if str(report.get("profile", "")) != "STRESS":
+                continue
+            strategy_id = str(report.get("strategy_id", ""))
+            if not strategy_id:
+                continue
+            expectancy_value = report.get("expectancy_usdt")
+            coverage_value = report.get("cost_coverage")
+            diversification_value = report.get("diversification_score")
+            diversification = (
+                Decimal(str(diversification_value))
+                if diversification_value is not None
+                else Decimal(0)
+            )
+            cache[strategy_id] = SharedCapitalArbitrationEvidence(
+                stress_cost_adjusted_expectancy_usdt=(
+                    Decimal(str(expectancy_value)) if expectancy_value is not None else None
+                ),
+                cost_coverage=(
+                    Decimal(str(coverage_value)) if coverage_value is not None else None
+                ),
+                diversification_score=max(Decimal(0), min(Decimal(1), diversification)),
+            )
+        self._strategy_arbitration_evidence_cache = cache
+        self._strategy_arbitration_evidence_ready = True
 
     def configure_strategy(
         self,
@@ -1989,15 +2399,19 @@ class PaperRuntime:
         evidence: GovernanceEvidence,
         *,
         expected_revision: int,
+        assessment_ts_ms: int | None = None,
     ) -> tuple[dict[str, object], ...]:
         """검증된 증거로만 governor 전환을 적용하고 이유와 기간을 저장한다."""
 
+        timestamp = (
+            self.clock.utc_ms() if assessment_ts_ms is None else assessment_ts_ms
+        )
         assessment = self.strategy_governor.assess(
             self.strategy_registry,
             strategy_id,
             evidence,
+            assessment_ts_ms=timestamp,
         )
-        timestamp = self.clock.utc_ms()
         changed = self.strategy_governor.apply(
             self.strategy_registry,
             assessment,
@@ -2008,18 +2422,147 @@ class PaperRuntime:
             "assessment": assessment.as_dict(),
             "evidence": evidence.as_dict(),
         }
+        release_commit = git_commit()
         for row in changed:
+            row_strategy_id = str(row["strategy_id"])
+            row_metadata = metadata | {
+                "lineage": {
+                    "schema_version": 1,
+                    "run_id": self.run_id,
+                    "strategy_id": row_strategy_id,
+                    "strategy_version": STRATEGY_VERSION,
+                    "descriptor_strategy_version": self.strategy_registry.descriptor(
+                        row_strategy_id
+                    ).research_contract.strategy_version,
+                    "app_version": APP_VERSION,
+                    "release_commit": release_commit,
+                    "assessment_ts_ms": timestamp,
+                    "settings_revision": int(str(row["settings_revision"])),
+                }
+            }
             transition = self._persist_strategy_setting(
                 row,
                 timestamp=timestamp,
-                evidence=metadata,
+                evidence=row_metadata,
             )
             self._record_strategy_incident(
                 category="AUTO_GOVERNOR_TRANSITION",
                 timestamp=timestamp,
-                payload=transition | metadata,
+                payload=transition | row_metadata,
             )
         return changed
+
+    def _strategy_governance_operational_evidence(
+        self,
+        strategy_id: str,
+        accounts: Sequence[Mapping[str, object]],
+        *,
+        evaluated_ts_ms: int,
+    ) -> dict[str, object]:
+        """두 격리 계좌와 runtime fault를 같은 cycle 시각에 fail-closed 평가한다."""
+
+        strategy_accounts = [
+            account
+            for account in accounts
+            if account.get("strategy_id") == strategy_id
+        ]
+        expected_profiles = {CostProfile.BASE.value, CostProfile.STRESS.value}
+        expected_account_ids = {
+            f"{strategy_id}:{profile}" for profile in expected_profiles
+        }
+        accounts_proven_healthy = (
+            len(strategy_accounts) == 2
+            and {account.get("profile") for account in strategy_accounts}
+            == expected_profiles
+            and {account.get("account_id") for account in strategy_accounts}
+            == expected_account_ids
+            and all(account.get("faulted") is False for account in strategy_accounts)
+        )
+        account_fault = any(
+            account.get("faulted") is True for account in strategy_accounts
+        )
+        main_risk_fault = self.paper_portfolio.main.risk_state.faulted is True
+        persistence_fault = self._persistence_fault_active is True
+        supervisor = self._supervisor
+        telemetry = getattr(supervisor, "telemetry", None)
+        try:
+            supervisor_running = supervisor is not None and supervisor.running() is True
+        except Exception:
+            supervisor_running = False
+        consumer_running = getattr(telemetry, "consumer_running", None) is True
+        consumer_fault = getattr(telemetry, "consumer_fault_active", None) is True
+        queue_fault = getattr(telemetry, "queue_overload_active", None) is True
+        supervisor_proven_healthy = (
+            supervisor_running
+            and consumer_running
+            and getattr(telemetry, "consumer_fault_active", None) is False
+            and getattr(telemetry, "queue_overload_active", None) is False
+            and getattr(telemetry, "entry_locked", None) is False
+            and getattr(telemetry, "critical_lag_active", None) is False
+        )
+        runtime_scope_proven_healthy = (
+            self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            and self.market_data_state is MarketDataState.LIVE
+            and self._manual_pause_requested is False
+            and self.paused is False
+            and self._storage_entry_allowed is True
+        )
+        data_health_proven = (
+            not self.data_gap_since_ms
+            and not self._stale_trade_symbols
+            and not self._feature_input_fault_symbols
+            and not self._recovery_revalidation_symbols
+        )
+        health_flags_proven = all(
+            isinstance(flag, str)
+            and "ENTRY_LOCK" not in flag
+            and "RECOVERY" not in flag
+            for flag in self.runtime_health_flags
+        )
+        operational_health_passed = (
+            accounts_proven_healthy
+            and not main_risk_fault
+            and not persistence_fault
+            and supervisor_proven_healthy
+            and runtime_scope_proven_healthy
+            and data_health_proven
+            and health_flags_proven
+        )
+        return {
+            "operational_fault": (
+                account_fault
+                or main_risk_fault
+                or persistence_fault
+                or consumer_fault
+                or queue_fault
+            ),
+            "operational_health_passed": operational_health_passed,
+            "operational_health_evaluated_ts_ms": (
+                evaluated_ts_ms if operational_health_passed else None
+            ),
+        }
+
+    def _active_champion_expectancy_by_family(
+        self,
+        reports_by_key: Mapping[tuple[str, str], Mapping[str, object]],
+    ) -> dict[str, object | None]:
+        """같은 family의 ACTIVE만 challenger 비교 기준으로 사용한다."""
+
+        champion_by_family: dict[str, object | None] = {}
+        for strategy_id in self.strategy_registry.strategy_ids:
+            if (
+                self.strategy_registry.setting(strategy_id).lifecycle
+                is not StrategyLifecycle.ACTIVE
+            ):
+                continue
+            family_id = self.strategy_registry.descriptor(strategy_id).family_id.value
+            if family_id in champion_by_family:
+                continue
+            report = reports_by_key.get((strategy_id, "BASE"))
+            champion_by_family[family_id] = (
+                report.get("expectancy_usdt") if report is not None else None
+            )
+        return champion_by_family
 
     def run_strategy_governance_cycle(self) -> dict[str, object]:
         """새 자연표본 또는 운영 결함이 있을 때만 보수적 자동 전환을 적용한다."""
@@ -2028,20 +2571,7 @@ class PaperRuntime:
         reports_by_key = {
             (str(report["strategy_id"]), str(report["profile"])): report for report in reports
         }
-        champion_id = next(
-            (
-                strategy_id
-                for strategy_id in self.strategy_registry.strategy_ids
-                if self.strategy_registry.setting(strategy_id).lifecycle is StrategyLifecycle.ACTIVE
-            ),
-            None,
-        )
-        champion_base = (
-            reports_by_key.get((champion_id, "BASE")) if champion_id is not None else None
-        )
-        champion_expectancy = (
-            champion_base.get("expectancy_usdt") if champion_base is not None else None
-        )
+        champion_expectancy_by_family = self._active_champion_expectancy_by_family(reports_by_key)
         accounts = self.paper_portfolio.league_account_rows(self.latest_books)
         evaluated_ts_ms = self.clock.utc_ms()
         assessments: list[dict[str, object]] = []
@@ -2052,7 +2582,7 @@ class PaperRuntime:
             windows = base.get("windows")
             recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
             stress_windows = stress.get("windows")
-            stress_recent = (
+            recent_stress = (
                 stress_windows.get("recent_50", {}) if isinstance(stress_windows, Mapping) else {}
             )
             sample_size = min(
@@ -2062,32 +2592,21 @@ class PaperRuntime:
             previous_sample_size = self._governance_last_sample_size.get(strategy_id, -1)
             if sample_size > previous_sample_size:
                 full_degraded = (
-                    sample_size >= 30
-                    and base.get("expectancy_usdt") is not None
-                    and Decimal(str(base["expectancy_usdt"])) < 0
-                    and base.get("profit_factor") is not None
-                    and Decimal(str(base["profit_factor"])) < Decimal("0.90")
-                )
-                recent_degraded = (
-                    recent.get("expectancy_usdt") is not None
-                    and Decimal(str(recent["expectancy_usdt"])) < 0
-                    and recent.get("profit_factor") is not None
-                    and Decimal(str(recent["profit_factor"])) < Decimal("0.90")
-                )
-                full_low_win = sample_size >= 30 and (
-                    base.get("win_rate") is None
-                    or Decimal(str(base["win_rate"])) < Decimal("0.70")
-                    or stress.get("win_rate") is None
-                    or Decimal(str(stress["win_rate"])) < Decimal("0.70")
-                )
-                recent_low_win = (
-                    sample_size >= 30
-                    and recent.get("win_rate") is not None
-                    and stress_recent.get("win_rate") is not None
-                    and (
-                        Decimal(str(recent["win_rate"])) < Decimal("0.70")
-                        or Decimal(str(stress_recent["win_rate"])) < Decimal("0.70")
+                    any(
+                        report.get("expectancy_usdt") is not None
+                        and Decimal(str(report["expectancy_usdt"])) < 0
+                        and report.get("profit_factor") is not None
+                        and Decimal(str(report["profit_factor"])) < Decimal("0.90")
+                        for report in (base, stress)
                     )
+                    and sample_size >= 30
+                )
+                recent_degraded = any(
+                    report.get("expectancy_usdt") is not None
+                    and Decimal(str(report["expectancy_usdt"])) < 0
+                    and report.get("profit_factor") is not None
+                    and Decimal(str(report["profit_factor"])) < Decimal("0.90")
+                    for report in (recent, recent_stress)
                 )
                 self._governance_full_degraded_cycles[strategy_id] = (
                     self._governance_full_degraded_cycles.get(strategy_id, 0) + 1
@@ -2099,53 +2618,40 @@ class PaperRuntime:
                     if recent_degraded
                     else 0
                 )
-                self._governance_full_low_win_cycles[strategy_id] = (
-                    self._governance_full_low_win_cycles.get(strategy_id, 0) + 1
-                    if full_low_win
-                    else 0
-                )
-                self._governance_recent_low_win_cycles[strategy_id] = (
-                    self._governance_recent_low_win_cycles.get(strategy_id, 0) + 1
-                    if recent_low_win
-                    else 0
-                )
                 self._governance_last_sample_size[strategy_id] = sample_size
-            faulted = any(
-                bool(account["faulted"])
-                for account in accounts
-                if account["strategy_id"] == strategy_id
-            )
             evidence = GovernanceEvidence.from_reports(
                 base,
                 stress,
                 multiple_testing={
                     "recent_expectancy_usdt": recent.get("expectancy_usdt"),
                     "recent_profit_factor": recent.get("profit_factor"),
-                    "recent_base_win_rate": recent.get("win_rate"),
-                    "recent_stress_win_rate": stress_recent.get("win_rate"),
+                    "recent_stress_expectancy_usdt": recent_stress.get("expectancy_usdt"),
+                    "recent_stress_profit_factor": recent_stress.get("profit_factor"),
                     "live_public_sample_size": sample_size,
+                    "unique_opportunity_count": base.get("unique_opportunity_count", 0),
                     "full_oos_degraded_evaluations": (
                         self._governance_full_degraded_cycles.get(strategy_id, 0)
                     ),
                     "recent_oos_degraded_evaluations": (
                         self._governance_recent_degraded_cycles.get(strategy_id, 0)
                     ),
-                    "full_win_rate_degraded_evaluations": (
-                        self._governance_full_low_win_cycles.get(strategy_id, 0)
-                    ),
-                    "recent_win_rate_degraded_evaluations": (
-                        self._governance_recent_low_win_cycles.get(strategy_id, 0)
-                    ),
                     "evaluation_period": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
                     "evaluated_ts_ms": evaluated_ts_ms,
                 },
-                champion_expectancy_usdt=champion_expectancy,
-                operational={"operational_fault": faulted},
+                champion_expectancy_usdt=champion_expectancy_by_family.get(
+                    self.strategy_registry.descriptor(strategy_id).family_id.value
+                ),
+                operational=self._strategy_governance_operational_evidence(
+                    strategy_id,
+                    accounts,
+                    evaluated_ts_ms=evaluated_ts_ms,
+                ),
             )
             assessment = self.strategy_governor.assess(
                 self.strategy_registry,
                 strategy_id,
                 evidence,
+                assessment_ts_ms=evaluated_ts_ms,
             )
             assessments.append(assessment.as_dict())
             if assessment.transition_required and assessment.automatic_action_allowed:
@@ -2154,6 +2660,7 @@ class PaperRuntime:
                     strategy_id,
                     evidence,
                     expected_revision=setting.revision,
+                    assessment_ts_ms=evaluated_ts_ms,
                 )
                 changes.extend(changed)
         self._governance_last_cycle_ts_ms = evaluated_ts_ms
@@ -2180,20 +2687,7 @@ class PaperRuntime:
         reports_by_key = {
             (str(report["strategy_id"]), str(report["profile"])): report for report in reports
         }
-        champion_id = next(
-            (
-                strategy_id
-                for strategy_id in self.strategy_registry.strategy_ids
-                if self.strategy_registry.setting(strategy_id).lifecycle is StrategyLifecycle.ACTIVE
-            ),
-            None,
-        )
-        champion_base = (
-            reports_by_key.get((champion_id, "BASE")) if champion_id is not None else None
-        )
-        champion_expectancy = (
-            champion_base.get("expectancy_usdt") if champion_base is not None else None
-        )
+        champion_expectancy_by_family = self._active_champion_expectancy_by_family(reports_by_key)
         accounts = self.paper_portfolio.league_account_rows(self.latest_books)
         rows: list[dict[str, object]] = []
         evaluated_ts_ms = self.clock.utc_ms()
@@ -2203,13 +2697,8 @@ class PaperRuntime:
             windows = base.get("windows")
             recent = windows.get("recent_50", {}) if isinstance(windows, Mapping) else {}
             stress_windows = stress.get("windows")
-            stress_recent = (
+            recent_stress = (
                 stress_windows.get("recent_50", {}) if isinstance(stress_windows, Mapping) else {}
-            )
-            faulted = any(
-                bool(account["faulted"])
-                for account in accounts
-                if account["strategy_id"] == strategy_id
             )
             evidence = GovernanceEvidence.from_reports(
                 base,
@@ -2217,22 +2706,30 @@ class PaperRuntime:
                 multiple_testing={
                     "recent_expectancy_usdt": recent.get("expectancy_usdt"),
                     "recent_profit_factor": recent.get("profit_factor"),
-                    "recent_base_win_rate": recent.get("win_rate"),
-                    "recent_stress_win_rate": stress_recent.get("win_rate"),
+                    "recent_stress_expectancy_usdt": recent_stress.get("expectancy_usdt"),
+                    "recent_stress_profit_factor": recent_stress.get("profit_factor"),
                     "live_public_sample_size": min(
                         int(str(base["sample_size"])),
                         int(str(stress["sample_size"])),
                     ),
+                    "unique_opportunity_count": base.get("unique_opportunity_count", 0),
                     "evaluation_period": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
                     "evaluated_ts_ms": evaluated_ts_ms,
                 },
-                champion_expectancy_usdt=champion_expectancy,
-                operational={"operational_fault": faulted},
+                champion_expectancy_usdt=champion_expectancy_by_family.get(
+                    self.strategy_registry.descriptor(strategy_id).family_id.value
+                ),
+                operational=self._strategy_governance_operational_evidence(
+                    strategy_id,
+                    accounts,
+                    evaluated_ts_ms=evaluated_ts_ms,
+                ),
             )
             assessment = self.strategy_governor.assess(
                 self.strategy_registry,
                 strategy_id,
                 evidence,
+                assessment_ts_ms=evaluated_ts_ms,
             )
             setting = self.strategy_registry.setting(strategy_id)
             required_samples = (
@@ -2272,10 +2769,17 @@ class PaperRuntime:
             if include_history
             else {}
         )
+        champion_ids_by_family = {
+            self.strategy_registry.descriptor(strategy_id).family_id.value: strategy_id
+            for strategy_id in self.strategy_registry.strategy_ids
+            if self.strategy_registry.setting(strategy_id).lifecycle is StrategyLifecycle.ACTIVE
+        }
+        champion_id = next(iter(champion_ids_by_family.values()), None)
         return {
             "rows": rows,
             "history": history,
             "champion_id": champion_id,
+            "champion_ids_by_family": champion_ids_by_family,
             "strategy_version": STRATEGY_VERSION,
             "analysis_scope": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
             "last_automatic_cycle_ts_ms": self._governance_last_cycle_ts_ms,
@@ -2465,6 +2969,8 @@ class PaperRuntime:
                 (str(report["strategy_id"]), str(report["profile"])),
                 0,
             )
+        if data_state == "READY":
+            self._hydrate_strategy_arbitration_evidence(reports)
         if not include_persisted and self.mode is RuntimeMode.LIVE_SHADOW_PAPER:
             self._dashboard_strategy_performance_cache_key = cache_key
             self._dashboard_strategy_performance_cache = tuple(reports)
@@ -2949,9 +3455,7 @@ class PaperRuntime:
         run_id = str(trade["run_id"])
         trade_id = str(trade.get("trade_id", trade.get("shadow_trade_id", "UNKNOWN")))
         candidate_id = (
-            str(trade["candidate_id"]).strip()
-            if trade.get("candidate_id") is not None
-            else ""
+            str(trade["candidate_id"]).strip() if trade.get("candidate_id") is not None else ""
         )
         signal_event_id = (
             str(trade["signal_event_id"]).strip()
@@ -2962,13 +3466,17 @@ class PaperRuntime:
             candidate_id = ""
         if signal_event_id.upper() == "UNKNOWN":
             signal_event_id = ""
-        opportunity_id = candidate_id or signal_event_id or "|".join(
-            (
-                run_id,
-                strategy_id,
-                str(trade["symbol"]),
-                str(trade["side"]),
-                str(trade["entry_ts_ms"]),
+        opportunity_id = (
+            candidate_id
+            or signal_event_id
+            or "|".join(
+                (
+                    run_id,
+                    strategy_id,
+                    str(trade["symbol"]),
+                    str(trade["side"]),
+                    str(trade["entry_ts_ms"]),
+                )
             )
         )
         return {
@@ -3001,6 +3509,31 @@ class PaperRuntime:
             "time_to_tp1_ms": _optional_int(trade.get("time_to_tp1_ms")),
             "time_to_tp2_ms": _optional_int(trade.get("time_to_tp2_ms")),
             "time_to_stop_ms": _optional_int(trade.get("time_to_stop_ms")),
+            "trailing_activation_ts_ms": _optional_int(trade.get("trailing_activation_ts_ms")),
+            "runner_started_ts_ms": _optional_int(trade.get("runner_started_ts_ms")),
+            "peak_unrealized_usdt": (
+                str(trade["peak_unrealized_usdt"])
+                if trade.get("peak_unrealized_usdt") is not None
+                else None
+            ),
+            "giveback_usdt": (
+                str(trade["giveback_usdt"]) if trade.get("giveback_usdt") is not None else None
+            ),
+            "runner_net_pnl_usdt": (
+                str(trade["runner_net_pnl_usdt"])
+                if trade.get("runner_net_pnl_usdt") is not None
+                else None
+            ),
+            "trail_trigger_slippage_usdt": (
+                str(trade["trail_trigger_slippage_usdt"])
+                if trade.get("trail_trigger_slippage_usdt") is not None
+                else None
+            ),
+            "trailing_state_checksum": (
+                str(trade["trailing_state_checksum"])
+                if trade.get("trailing_state_checksum") is not None
+                else None
+            ),
             "quantity": str(trade.get("quantity", "—")),
             "exit_reason": str(trade["exit_reason"]),
             "gross_pnl": str(trade["gross_pnl_usdt"]),
@@ -3009,6 +3542,8 @@ class PaperRuntime:
             "net_pnl": str(trade["net_pnl_usdt"]),
             "holding_ms": int(str(trade["holding_ms"])),
             "holding_seconds": int(str(trade["holding_ms"])) // 1_000,
+            "mae_r": str(trade["mae_r"]) if trade.get("mae_r") is not None else None,
+            "mfe_r": str(trade["mfe_r"]) if trade.get("mfe_r") is not None else None,
             "profile": profile,
             "sample_type": normalized_sample,
             "strategy_version": str(trade.get("strategy_version", "UNKNOWN")),
@@ -3467,7 +4002,28 @@ class PaperRuntime:
             ),
         )
         snapshot["focus_positions"] = self.focus_positions()
+        main_pending_entry_count = len(self.paper_portfolio.main.pending_entries)
+        league_pending_entry_count = sum(
+            len(account.pending_entries)
+            for account in self.paper_portfolio.shadows.values()
+        )
+        total_open_position_count = len(self.paper_portfolio.main.positions) + sum(
+            len(account.positions) for account in self.paper_portfolio.shadows.values()
+        )
+        total_pending_entry_count = (
+            main_pending_entry_count + league_pending_entry_count
+        )
+        snapshot["main_pending_entry_count"] = main_pending_entry_count
+        snapshot["league_pending_entry_count"] = league_pending_entry_count
+        snapshot["total_pending_entry_count"] = total_pending_entry_count
+        snapshot["total_open_position_count"] = total_open_position_count
+        snapshot["paper_portfolio_flat"] = (
+            total_open_position_count == 0 and total_pending_entry_count == 0
+        )
         snapshot["paper_entry_intent"] = self.paper_entry_intent()
+        snapshot["orderflow_confirmation_filter"] = (
+            self.orderflow_confirmation_filter_status(symbol=self.selected_symbol)
+        )
         snapshot["history_scope"] = {
             "analysis_scope": "CURRENT_STRATEGY_VERSION",
             "strategy_version": STRATEGY_VERSION,
@@ -3505,6 +4061,384 @@ class PaperRuntime:
                 ],
             },
             updated_ts_ms=updated_ts_ms,
+        )
+
+    def orderflow_confirmation_filter_status(
+        self,
+        *,
+        symbol: str | None = None,
+    ) -> dict[str, object]:
+        return self.orderflow_confirmation_runtime.status(symbol=symbol)
+
+    def strategy_condition_detail(
+        self,
+        strategy_id: str,
+        *,
+        symbol: str | None = None,
+    ) -> dict[str, object]:
+        """현재 evaluator가 실제 사용한 방향별 조건과 실행계획 값을 반환한다."""
+
+        resolved_symbol = (symbol or self.selected_symbol).strip().upper()
+        descriptor = self.strategy_registry.descriptor(strategy_id)
+        side_payloads: list[dict[str, object]] = []
+        for side in Side:
+            condition_rows = list(
+                self.strategy_evaluator.condition_rows(
+                    resolved_symbol,
+                    strategy_id,
+                    side,
+                )
+            )
+            signal = self.strategy_signals.get(
+                (resolved_symbol, strategy_id, side.value)
+            )
+            if not condition_rows and signal is None:
+                continue
+            passed_count = sum(row.get("status") == "PASSED" for row in condition_rows)
+            blocked_rows = [
+                row
+                for row in condition_rows
+                if row.get("status") in {"BLOCKED", "WAITING_DATA"}
+            ]
+            decision = signal.decision if signal is not None else None
+            side_payloads.append(
+                {
+                    "side": side.value,
+                    "setup_state": (
+                        decision.status.value if decision is not None else "WAITING_DATA"
+                    ),
+                    "passed": passed_count,
+                    "total": len(condition_rows),
+                    "top_blockers": [
+                        str(row.get("label_ko", "조건 실측 대기"))
+                        for row in blocked_rows[:3]
+                    ],
+                    "conditions": condition_rows,
+                    "execution": self._decision_execution_detail(
+                        descriptor,
+                        decision,
+                    ),
+                }
+            )
+        side_payloads.sort(
+            key=lambda row: (
+                str(row["setup_state"]) != "QUALIFIED",
+                -int(str(row["passed"])),
+                str(row["side"]) != Side.LONG.value,
+            )
+        )
+        selected = side_payloads[0] if side_payloads else None
+        open_positions = [
+            row
+            for row in self.focus_positions()
+            if row.get("strategy_id") == strategy_id
+            and row.get("symbol") == resolved_symbol
+        ]
+        pending_count = sum(
+            pending.plan.strategy_id == strategy_id
+            and pending.plan.symbol == resolved_symbol
+            for account in self.paper_portfolio.accounts
+            for pending in account.pending_entries.values()
+        )
+        setting = self.strategy_registry.setting(strategy_id)
+        setup_state = (
+            "OPEN"
+            if open_positions
+            else "PENDING"
+            if pending_count
+            else "RESEARCH_OFF"
+            if setting.mode is StrategyMode.OFF
+            else str(selected["setup_state"])
+            if selected is not None
+            else "WAITING_DATA"
+        )
+        waiting_conditions = [
+            {
+                "condition_id": f"ENTRY_{index}",
+                "label_ko": rule,
+                "threshold_ko": rule,
+                "current_value": None,
+                "status": "WAITING_DATA",
+                "reason_ko": "현재 종목의 첫 evaluator 실측을 기다리고 있습니다.",
+            }
+            for index, rule in enumerate(descriptor.entry_rules_ko, start=1)
+        ]
+        execution = (
+            dict(selected["execution"])
+            if selected is not None and isinstance(selected["execution"], Mapping)
+            else {}
+        )
+        if open_positions:
+            position = open_positions[0]
+            execution.update(
+                {
+                    "entry": position.get("actual_entry", position.get("planned_entry")),
+                    "initial_stop": position.get("initial_stop"),
+                    "take_profit_1": position.get("TP1", position.get("take_profit_1")),
+                    "take_profit_2": position.get("TP2", position.get("take_profit_2")),
+                    "current_trail": position.get("current_stop"),
+                    "remaining_quantity": position.get("remaining_quantity"),
+                }
+            )
+        return {
+            "schema_version": 1,
+            "strategy_id": strategy_id,
+            "symbol": resolved_symbol,
+            "setup_state": setup_state,
+            "passed": selected["passed"] if selected is not None else 0,
+            "total": (
+                selected["total"] if selected is not None else len(waiting_conditions)
+            ),
+            "top_blockers": selected["top_blockers"] if selected is not None else [
+                "현재 종목의 첫 evaluator 실측을 기다리고 있습니다."
+            ],
+            "conditions": (
+                selected["conditions"] if selected is not None else waiting_conditions
+            ),
+            "sides": side_payloads,
+            "execution": execution,
+            "pending_count": pending_count,
+            "open_count": len(open_positions),
+            "open_positions": open_positions,
+            "research_source_ids": list(descriptor.research_contract.research_source_ids),
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+
+    @staticmethod
+    def _decision_execution_detail(
+        descriptor: StrategyDescriptor,
+        decision: CandidateDecision | None,
+    ) -> dict[str, object]:
+        if decision is None:
+            return {}
+        entry = decision.planned_entry
+        stop = decision.initial_stop
+        direction = Decimal(1) if decision.side is Side.LONG else Decimal(-1)
+        risk = abs(entry - stop) if entry is not None and stop is not None else None
+        take_profit_1_r = descriptor.take_profit_1_r
+        take_profit_2_r = descriptor.take_profit_2_r
+        return {
+            "side": decision.side.value,
+            "entry": str(entry) if entry is not None else None,
+            "initial_stop": str(stop) if stop is not None else None,
+            "take_profit_1": (
+                str(entry + direction * risk * take_profit_1_r)
+                if entry is not None and risk is not None
+                else None
+            ),
+            "take_profit_2": (
+                str(entry + direction * risk * take_profit_2_r)
+                if entry is not None and risk is not None
+                else str(decision.take_profit) if decision.take_profit is not None else None
+            ),
+            "trailing_activation": "TP1 이후 비용 보전 방향으로만 조정",
+            "current_trail": None,
+            "remaining_quantity": None,
+            "expected_cost_bps": str(decision.expected_cost_bps),
+            "net_reward_risk": (
+                str(decision.net_reward_risk)
+                if decision.net_reward_risk is not None
+                else None
+            ),
+        }
+
+    def orderflow_confirmation_condition_detail(
+        self,
+        *,
+        symbol: str | None = None,
+    ) -> dict[str, object]:
+        """주문흐름 필터의 구성요소·점수·지속시간을 방향별로 공개한다."""
+
+        resolved_symbol = (symbol or self.selected_symbol).strip().upper()
+        status = self.orderflow_confirmation_filter_status(symbol=resolved_symbol)
+        latest_rows = status.get("latest")
+        latest = (
+            [row for row in latest_rows if isinstance(row, Mapping)]
+            if isinstance(latest_rows, list)
+            else []
+        )
+        side_payloads: list[dict[str, object]] = []
+        component_labels = {
+            "normalized_ofi": "정규화 OFI",
+            "aggressor_imbalance": "공격 체결 불균형",
+            "microprice_displacement": "microprice 변위",
+            "multilevel_fair_price_displacement": "top10 공정가격 변위",
+            "queue_imbalance": "큐 불균형",
+            "book_slope": "호가 기울기",
+            "depth_adjusted_price_response": "깊이보정 가격반응",
+            "spread_health": "스프레드 건전성",
+            "book_resilience": "호가 복원력",
+        }
+        for row in latest:
+            side = str(row.get("side", "UNKNOWN"))
+            components = row.get("components")
+            component_rows = (
+                [
+                    {
+                        "condition_id": f"COMPONENT_{name.upper()}",
+                        "label_ko": component_labels.get(str(name), str(name)),
+                        "threshold_ko": (
+                            f"{status['component_pass_threshold']} 이상"
+                        ),
+                        "current_value": value,
+                        "status": (
+                            "PASSED"
+                            if Decimal(str(value))
+                            >= Decimal(str(status["component_pass_threshold"]))
+                            else "BLOCKED"
+                        ),
+                        "reason_ko": "필터 구성요소의 방향별 정규화 값입니다.",
+                        "side": side,
+                    }
+                    for name, value in components.items()
+                ]
+                if isinstance(components, Mapping)
+                else []
+            )
+            condition_rows = [
+                {
+                    "condition_id": "DATA_HEALTH",
+                    "label_ko": "공개시장 데이터 상태",
+                    "threshold_ko": "HEALTHY",
+                    "current_value": row.get("data_health"),
+                    "status": (
+                        "PASSED" if row.get("data_health") == "HEALTHY" else "BLOCKED"
+                    ),
+                    "reason_ko": "sequence·stale 상태를 함께 반영합니다.",
+                    "side": side,
+                },
+                *component_rows,
+                {
+                    "condition_id": "WEIGHTED_SCORE",
+                    "label_ko": "가중 confirmation score",
+                    "threshold_ko": f"{status['threshold']} 이상",
+                    "current_value": row.get("score"),
+                    "status": (
+                        "PASSED"
+                        if Decimal(str(row.get("score", 0)))
+                        >= Decimal(str(status["threshold"]))
+                        else "BLOCKED"
+                    ),
+                    "reason_ko": "사전등록된 9개 가중치를 사용합니다.",
+                    "side": side,
+                },
+                {
+                    "condition_id": "INDEPENDENT_COMPONENTS",
+                    "label_ko": "독립 구성요소 통과 수",
+                    "threshold_ko": f"{status['minimum_passed_components']}개 이상",
+                    "current_value": row.get("passed_component_count"),
+                    "status": (
+                        "PASSED"
+                        if int(str(row.get("passed_component_count", 0)))
+                        >= int(str(status["minimum_passed_components"]))
+                        else "BLOCKED"
+                    ),
+                    "reason_ko": "한 요소만 강한 경우를 차단합니다.",
+                    "side": side,
+                },
+                {
+                    "condition_id": "PERSISTENCE",
+                    "label_ko": "confirmation 지속시간",
+                    "threshold_ko": f"{status['minimum_persistence_ms']}ms 이상",
+                    "current_value": row.get("persistence_ms"),
+                    "status": (
+                        "PASSED"
+                        if int(str(row.get("persistence_ms", 0)))
+                        >= int(str(status["minimum_persistence_ms"]))
+                        else "BLOCKED"
+                    ),
+                    "reason_ko": "짧은 호가 잡음을 그대로 진입에 쓰지 않습니다.",
+                    "side": side,
+                },
+            ]
+            passed_count = sum(item["status"] == "PASSED" for item in condition_rows)
+            side_payloads.append(
+                {
+                    "side": side,
+                    "setup_state": "PASSED" if bool(row.get("allowed")) else "BLOCKED",
+                    "passed": passed_count,
+                    "total": len(condition_rows),
+                    "top_blockers": [
+                        str(item["label_ko"])
+                        for item in condition_rows
+                        if item["status"] != "PASSED"
+                    ][:3],
+                    "conditions": condition_rows,
+                }
+            )
+        side_payloads.sort(
+            key=lambda row: (
+                row["setup_state"] != "PASSED",
+                -int(str(row["passed"])),
+                row["side"] != Side.LONG.value,
+            )
+        )
+        selected = side_payloads[0] if side_payloads else None
+        return {
+            "schema_version": 1,
+            "strategy_id": str(status["filter_id"]),
+            "symbol": resolved_symbol,
+            "setup_state": (
+                "FILTER_OFF"
+                if not bool(status["enabled"])
+                else str(selected["setup_state"])
+                if selected is not None
+                else "WAITING_DATA"
+            ),
+            "passed": selected["passed"] if selected is not None else 0,
+            "total": selected["total"] if selected is not None else 13,
+            "top_blockers": selected["top_blockers"] if selected is not None else [
+                "현재 종목의 주문흐름 실측을 기다리고 있습니다."
+            ],
+            "conditions": selected["conditions"] if selected is not None else [],
+            "sides": side_payloads,
+            "execution": {},
+            "filter": status,
+            "creates_candidate_plan": False,
+            "pending_count": 0,
+            "open_count": 0,
+            "paper_only": True,
+            "real_orders_enabled": False,
+            "auth_required": False,
+        }
+
+    def configure_orderflow_confirmation_filter(
+        self,
+        *,
+        enabled: bool,
+        expected_revision: int,
+        reason: str,
+    ) -> dict[str, object]:
+        updated_ts_ms = self.clock.utc_ms()
+        status = self.orderflow_confirmation_runtime.configure(
+            enabled=enabled,
+            expected_revision=expected_revision,
+            updated_ts_ms=updated_ts_ms,
+            reason=reason,
+        )
+        self._persist_orderflow_confirmation_filter()
+        self._log(
+            "STRATEGY_FILTER",
+            (
+                f"ORDERFLOW confirmation filter "
+                f"{'ON' if enabled else 'OFF'} · rev {status['revision']}"
+            ),
+        )
+        return status
+
+    def _persist_orderflow_confirmation_filter(self) -> None:
+        if self.ledger is None or self.mode is RuntimeMode.READY:
+            return
+        recovery_state = self.orderflow_confirmation_runtime.recovery_state()
+        self.ledger.set_app_setting(
+            "orderflow_confirmation_filter_v2",
+            {
+                "run_id": self.run_id,
+                **recovery_state,
+            },
+            updated_ts_ms=int(str(recovery_state["updated_ts_ms"])),
         )
 
     def _reset_paper_entry_intent(
@@ -3892,12 +4826,14 @@ class PaperRuntime:
         self.latest_regimes.clear()
         self.strategy_signals.clear()
         self.strategy_evaluator = StrategySignalEvaluator()
+        self.orderflow_confirmation_runtime.reset_configuration()
         self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
         self.paper_portfolio = PaperPortfolioEngine(
             run_id=self.run_id,
             strategy_ids=self.strategy_registry.strategy_ids,
             shadow_ledger=self.shadow_ledger,
             venue=self.venue,
+            enforce_v6_family_conflicts=True,
         )
         self.latest_books.clear()
         self.plan_rejections.clear()
@@ -3916,6 +4852,8 @@ class PaperRuntime:
         self._persisted_audit_count = 0
         self._dashboard_strategy_performance_cache_key = None
         self._dashboard_strategy_performance_cache = ()
+        self._strategy_arbitration_evidence_cache = {}
+        self._strategy_arbitration_evidence_ready = False
         self.strategy_evaluation_count = 0
         self.qualified_signal_count = 0
 
@@ -3981,7 +4919,7 @@ class PaperRuntime:
             "flags": list(trade.flags),
             "profile": trade.profile.value,
             "sample_type": sample_type,
-            "strategy_version": STRATEGY_VERSION,
+            "strategy_version": trade.strategy_version,
         }
 
     @staticmethod
@@ -4033,6 +4971,20 @@ class PaperRuntime:
             "management_policy": list(plan.management_policy),
             "main_eligible": plan.main_eligible,
             "shadow_eligible": plan.shadow_eligible,
+            "shared_capital_evidence": {
+                "evidence_tier": plan.shared_capital_evidence.evidence_tier,
+                "stress_cost_adjusted_expectancy_usdt": (
+                    str(plan.shared_capital_evidence.stress_cost_adjusted_expectancy_usdt)
+                    if plan.shared_capital_evidence.stress_cost_adjusted_expectancy_usdt is not None
+                    else None
+                ),
+                "cost_coverage": (
+                    str(plan.shared_capital_evidence.cost_coverage)
+                    if plan.shared_capital_evidence.cost_coverage is not None
+                    else None
+                ),
+                "diversification_score": str(plan.shared_capital_evidence.diversification_score),
+            },
             "status": "ARMED",
         }
 
@@ -4168,7 +5120,6 @@ class PaperRuntime:
             row = self._paper_trade_row(trade)
             assert run is not None
             row["config_hash"] = str(run["config_hash"])
-            row["strategy_version"] = STRATEGY_VERSION
             main_trade_rows.append(row)
         shadow_trade_rows: list[dict[str, object]] = []
         for trade in new_shadow_trades:
@@ -4747,6 +5698,7 @@ class PaperRuntime:
                 ),
             },
         )
+        self._persist_orderflow_confirmation_filter()
         if not self.dashboard_trade_cache_loading:
             self._refresh_dashboard_trade_cache()
 
@@ -4788,6 +5740,11 @@ class PaperRuntime:
                 self._historical_prior_version_shadow_trades = tuple(prior_version_shadow_trades)
                 self._dashboard_strategy_performance_cache_key = None
                 self._dashboard_strategy_performance_cache = ()
+                arbitration_reports = TradeAnalytics().strategy_reports(
+                    current_shadow_trades,
+                    strategy_ids=self.strategy_registry.strategy_ids,
+                )
+                self._hydrate_strategy_arbitration_evidence(arbitration_reports)
                 succeeded = True
             finally:
                 self.dashboard_trade_cache_last_ms = (time.monotonic() - started) * 1_000

@@ -1,6 +1,6 @@
-# ROBOM FlowScalper 0.2.0-paper 최종 업그레이드 증거
+# ROBOM FlowScalper 누적 최종 업그레이드 증거
 
-작성일은 2026-08-23이며, 기준 소스는 기존 `0.1.0-paper`, 구현 기준은 `IMPLEMENT.md`와 `UPGRADE_EXEC_PLAN.md`, 진행 기준은 `PLANS.md`다. 문서에 없는 수익성·안전성·실기기 호환성은 주장하지 않는다.
+최초 작성일은 2026-08-23이며, 이 문서는 `0.2.0-paper` 기준선부터 현재 `0.3.0-paper` Wave까지 검증 이력을 누적한다. 초기 기준 소스는 기존 `0.1.0-paper`, 구현 기준은 `IMPLEMENT.md`와 `UPGRADE_EXEC_PLAN.md`, 진행 기준은 `PLANS.md`다. 문서에 없는 수익성·안전성·실기기 호환성은 주장하지 않는다.
 
 ## 1. 제품 경계와 최종 상태
 
@@ -4629,3 +4629,66 @@ drop·backlog lock·비계획 reconnect·gap·resync·event drop·critical lag i
 기계판독 종합 근거는
 `evidence/WAVE141_INTERNAL_STORAGE_ATTRIBUTION_AND_SYNC_QA.json`이다. 현 수용상태는
 `EXTERNAL_CACHE_AND_GITHUB_SYNC_PASS_INTERNAL_SPACE_RECOVERED_LIVE_IO_INCIDENT_PRESERVED_ACTIVE_APP_AND_TRASH_BLOCKED_LONG_RUN_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 103. Wave 142 V6 family·네 페이지·고유기회 계약
+
+### 103.1 기준선과 변경 경계
+
+V6 Wave 0 기준선은 Git `ac5634a53da623721dc3bb6113427a32d4a677db`, 설치 릴리스
+`50c3e8ae7af08667546e8a1f2e4a70890e92d0f6`, 마지막 Run `run-2b7135a972dd`다.
+마지막 read-only 관찰은 15전략·30 BASE/STRESS 계좌, ACTIVE 0·SHADOW 10·
+RETIRED/OFF 5, 열린 포지션 0, 현재버전 32 raw 비용결과·16 고유기회였다. 실제 주문과 인증은
+false, settings revision은 25, 이유는 `V6_MAINTENANCE_PAUSE`였다.
+
+그 뒤 8870 listener와 LaunchAgent는 없는 안전 중지 상태였고 감사·문서 작업이 서비스를 시작하지
+않았다. 따라서 Run·포지션·cache·diagnostics의 마지막 관찰값은 현재 실행값으로 재분류하지 않는다.
+설치 symlink는 50c3e8a를 계속 가리키며 V6 source는 아직 설치 runtime 증거가 아니다.
+
+### 103.2 구현 계약
+
+- 15개 ID와 30계좌·원장·replay를 보존하면서 8개 family와 variant·role metadata를 추가했다.
+- Family별 current variant는 최대 하나고 legacy·filter·router·미검증 multi-leg는 기본 entry
+  순위에 들어가지 않는다.
+- 공통 70% 관측승률 gate를 제거하고 비용후 기대값·PF·OOS·DSR·PBO·강건성 공통 gate와 결과
+  전에 고정한 family별 win/payoff gate를 사용한다.
+- 사용자 기본 navigation은 시장·전략·거래·설정 네 페이지다. 기존 중복 wrapper는 제거하고
+  원장·replay engine·과거전략과 이전 version은 보존한다.
+- BASE·STRESS와 부분 exit는 같은 opportunity다. 정확한 key는 `(run_id, strategy_id,
+  strategy_version, opportunity_id, symbol, side)` 여섯 필드다. 같은 여섯 key 안의 MAIN과
+  LEAGUE 결과는 `(account_scope, account_id)`별 `account_groups`로 분리해 서로 덮어쓰지 않는다.
+  기본 전략 정렬은 raw 승률이 아니라 적격 Wilson 95% 하한이다.
+- `ORDERFLOW_CONFIRMATION_FILTER_V2`는 15개 Registry 전략에 추가되는 entry가 아니라 family
+  API/UI의 가상 current `FILTER`다. 기본 OFF이며 조건 score·구성요소·지속시간·data health를
+  제공하지만 `CandidatePlan`, 신규 Registry ID, 계좌와 거래를 각각 0개만큼 늘린다.
+- REST는 `/api/ui/summary`, settings, diagnostics, family catalog/detail/conditions와
+  `/api/trades`로 분리했다. `/ws/ui`는 최초 `snapshot` 뒤 `summary_delta`, `position_delta`,
+  `strategy_row_delta`, `selected_detail_delta` 또는 변경 없을 때 `heartbeat`만 보낸다. 클라이언트의
+  `select_family`는 선택 상세를 갱신하며 history·conditions·entry rule 같은 무거운 자료는 WS에
+  섞지 않고 on-demand REST로 읽는다.
+- V3 네 후보는 offline 사전등록만 했다. 같은 동결입력 V2 비교 자료가 없으므로 `NOT_PROVEN`,
+  promotion false, Registry·LIVE SHADOW 변경은 0이다.
+
+기계판독 기준선은 `evidence/V6_CURRENT_SYSTEM_TRUTH.json`, 중복·역할 판정은
+`evidence/V6_STRATEGY_CONFLICT_MATRIX.json`, 사용자·성과 격차는
+`docs/research/V6_GAP_ANALYSIS_KO.md`, 결정·migration·rollback은
+`docs/adr/ADR-V6-strategy-family-and-four-page-user-interface.md`에 있다.
+
+### 103.3 검증 행렬
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| V6 source truth 감사 | `NOT_RUN_STOPPED_OR_UNREACHABLE_RUNTIME` | source에서는 15전략·8 family·4 page를 확인했지만 중지된 8870 runtime과 30계좌 동적 상태는 확인하지 않음 |
+| 8 family·역할·current·충돌 제약 | `PASS` | family·충돌·filter 집중 backend 9개 test PASS |
+| family Governor·공통 70 제거 | `PASS` | family gate·공통 gate·음수 기대값 거부 backend 3개 test PASS |
+| 4페이지·split API/WS | `PASS_FIXTURE_ONLY` | backend split summary/settings 3개와 frontend 대상 27개 test PASS. 설치된 8870 runtime은 NOT_RUN |
+| 정확한 6-key·부분 exit·계정 그룹 | `PASS` | opportunity grouping 3개와 trades grouping API 1개 test PASS |
+| 조건 telemetry/API/UI·ORDERFLOW CAS | `PASS_FIXTURE_ONLY` | family 상세·조건 1개, V6 research/UI 17개, 최신 진단 label 회귀를 포함한 fixture 검증 PASS |
+| dashboard payload 50% 미만 | `PASS_FIXTURE_ONLY` | 최신 source fixture 197,409bytes 대비 12,879bytes, 6.524%. chart delta 557bytes. 실제 서비스·장시간 성능 증거는 아님 |
+| V2/V3 고정입력 비교 | `NOT_RUN / NOT_PROVEN` | 입력 자료 없음, promotion false |
+| 실제 사용자 E2E | `PASS_FIXTURE_ONLY` | desktop·tablet·mobile 핵심 흐름과 desktop 가역 제어 4 passed, tablet·mobile 제어 2 skipped by design. console·page error 0 |
+| 최신 전체 suite·lint·typecheck·build | `PASS` | backend 1,004 passed·frontend 92 passed·Ruff·ESLint·mypy 118 source·TypeScript·production build PASS |
+| V6 뒤 30분 | `NOT_RUN` | 실제 wall-clock 실행 전 |
+| V6 뒤 6시간·24시간 | `NOT_RUN` | 실제 wall-clock 실행 전 |
+| V6 release·설치·설치된 8870 browser·remote push | `NOT_RUN` | 자동화 fixture 검증은 설치·실서비스·외부 동기화를 대신하지 않음 |
+| 실제 주문·private API·인증·wallet | `PASS_SOURCE_CONTRACT` | 모두 0, stopped runtime은 시작하지 않음 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 코드·fixture·문서 통과는 수익성 증거가 아님 |

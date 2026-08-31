@@ -153,7 +153,38 @@ Apply symmetric logic below support.
 
 Both strategies are PAPER-only, evaluate LONG and SHORT symmetrically, use independent BASE/STRESS accounts and cannot enter shared capital unless a user explicitly changes the mode after adequate evidence. The starting thresholds are research controls, not profitability claims. G remains SHADOW. H's old trades and manual controls remain available even though new entry is OFF by default. See ADR-016 and ADR-032.
 
-`QUEUE_MICROPRICE_MOMENTUM_V1` strategy E is also `OFF` by default under ADR-032 because its chronological train and later holdout expectancy remained negative after actual bid·ask and conservative costs. Strategy A is `OFF` under ADR-034 after the same no-lookahead runtime evaluator produced 25 train and 10 later holdout signals with negative BASE expectancy and Profit Factor below one. Strategy B is the only default ACTIVE shared-main candidate. These are reversible PAPER controls, not deleted strategies or profitability claims.
+`QUEUE_MICROPRICE_MOMENTUM_V1` strategy E is also `OFF` by default under ADR-032 because its chronological train and later holdout expectancy remained negative after actual bid·ask and conservative costs. Strategy A is `OFF` under ADR-034 after the same no-lookahead runtime evaluator produced 25 train and 10 later holdout signals with negative BASE expectancy and Profit Factor below one. The current shared-main default has no ACTIVE strategy; ten non-retired strategies remain independent SHADOW and five policy-retired strategies remain OFF. These are reversible PAPER controls, not deleted strategies or profitability claims.
+
+## 5.6.1 V6 family and variant contract
+
+Every descriptor adds `family_id`, `role`, `variant_id`, current/supersession metadata and default
+visibility, research and ranking eligibility. The eight families are `TREND_PULLBACK`,
+`BREAKOUT_RUNNER`, `ORDERFLOW_CONFIRMATION`, `EXHAUSTION_REVERSION`,
+`POSITIONING_LIQUIDATION`, `MARKET_REGIME_FILTERS`, `SESSION_PROFILE` and
+`MARKET_NEUTRAL`. A family has at most one current variant.
+
+Order-flow components that do not clear independent cost gates are FILTER evidence.
+`ORDERFLOW_CONFIRMATION_FILTER_V2` is the virtual current variant exposed by the family API/UI, not
+a sixteenth Registry strategy. It is `FILTER`, default OFF, final-ranking ineligible and affects only
+`TREND_PULLBACK_RECLAIM_15M_V2` and `BREAKOUT_RETEST_30M_V2`. It emits the nine-component score,
+allow/veto, persistence, data-health and reason telemetry but never creates a `CandidatePlan`, Registry
+entry, BASE/STRESS account or trade. ON/OFF uses the family CAS revision and does not imply proven
+uplift. LEGACY, ROUTER and unvalidated multi-leg variants are not default entry-ranking candidates.
+
+The Governor keeps cost-adjusted expectancy, PF, OOS lower bound, DSR, PBO, robustness, risk and
+operational-health gates. It does not apply a universal 70% observed-win-rate gate. Family-specific
+win/payoff thresholds are preregistered in ADR-V6. V3 meanings use new IDs, remain offline and are
+`NOT_PROVEN` with promotion false until same-input V2/V3 evidence exists.
+
+### 5.6.2 V6 opportunity and account grouping contract
+
+The unique opportunity key is exactly `(run_id, strategy_id, strategy_version, opportunity_id,
+symbol, side)`. BASE, STRESS and partial-exit ledger rows with the same key remain one opportunity.
+Account identity is deliberately not added to that six-field key. Instead, MAIN and LEAGUE results
+inside the opportunity are separated by `(account_scope, account_id)` in `account_groups`, and each
+group preserves its own BASE/STRESS profiles and partial-row counts. The default display may prefer
+MAIN when it exists, but it must not overwrite LEAGUE results. A legacy row without verifiable
+opportunity linkage is kept as unresolved `NOT_PROVEN`; it is never silently merged or discarded.
 
 ## 5.7 Strategy I — OFI and trailing-return confluence
 

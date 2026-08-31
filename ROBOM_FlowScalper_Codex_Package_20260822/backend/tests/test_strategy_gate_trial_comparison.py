@@ -22,9 +22,14 @@ def _profile(*, sample: int, win_rate: float, expectancy: float, drawdown: str) 
         "wins": round(sample * win_rate),
         "losses": sample - round(sample * win_rate),
         "win_rate": win_rate,
+        "win_rate_ci95": {"lower": 0.35},
+        "payoff_ratio": "2.2",
         "expectancy_bps": expectancy,
         "net_pnl_usdt": "10",
         "profit_factor": "2",
+        "return_skew": "0.2",
+        "largest_trade_contribution": "0.05",
+        "cost_coverage": "5",
         "maximum_drawdown_usdt": drawdown,
         "maximum_drawdown_limit_usdt": "80",
         "expectancy_bootstrap_95": {"lower": 0.5, "upper": 3.0},
@@ -161,7 +166,10 @@ def _result(
                     "historical_cost_oos_statistical_and_concentration_gates_passed": (
                         historical_gates_passed
                     ),
-                    "pbo_gate_by_profile": {"BASE": True, "STRESS": True},
+                    "pbo_gate_by_profile": {
+                        "BASE": historical_gates_passed,
+                        "STRESS": historical_gates_passed,
+                    },
                     "concentration": {"gate_passed": True},
                     "profiles": {
                         "BASE": deepcopy(target_profile),
@@ -288,20 +296,33 @@ def test_comparison_rejects_failed_historical_gates_after_enough_samples() -> No
     assert result["promotion_allowed"] is False
 
 
-def test_comparison_recomputes_absolute_profile_gate_instead_of_trusting_summary() -> None:
+def test_comparison_does_not_reject_positive_low_win_candidate_by_legacy_70_gate() -> None:
     candidate = _result(signal_gate=SIGNAL_GATE_TP1_FEASIBILITY)
     for profile in ("BASE", "STRESS"):
-        candidate["robustness_evaluation"]["strategies"][TARGET]["profiles"][profile][
-            "win_rate"
-        ] = 0.69
+        profile_result = candidate["robustness_evaluation"]["strategies"][TARGET][
+            "profiles"
+        ][profile]
+        profile_result["win_rate"] = 0.55
+        profile_result["wins"] = 16
+        profile_result["losses"] = 14
+        profile_result["win_rate_ci95"] = {"lower": 0.38}
+        profile_result["gates"]["win_rate_at_least_70_percent"] = False
+        profile_result["gate_passed"] = False
 
     result = compare_strategy_gate_trials(_result(signal_gate="NONE"), candidate)
 
     assert result["status"] == "PASS_COMPARISON_COMPLETE"
-    assert result["decision"] == "REJECTED_HISTORICAL_GATES"
+    assert result["decision"] == "HISTORICAL_CANDIDATE_FORWARD_SHADOW_PENDING"
     assert result["candidate_absolute_profile_gates"]["BASE"][
-        "win_rate_at_least_70_percent"
-    ] is False
+        "wilson_lower_positive"
+    ] is True
+    assert result["candidate_absolute_profile_gates"]["STRESS"][
+        "expectancy_bps_positive"
+    ] is True
+    assert result["candidate_absolute_profile_gates"]["STRESS"][
+        "profit_factor_above_one"
+    ] is True
+    assert not any("BELOW_70" in reason for reason in result["candidate_ranking_blockers"])
 
 
 def test_comparison_invalidates_non_target_strategy_changes() -> None:
@@ -354,6 +375,8 @@ def test_all_strategy_comparison_reuses_one_batch_without_promoting() -> None:
     )
     assert result["promotion_allowed"] is False
     assert result["ranking_eligible_strategy_ids"] == []
+    assert result["universal_win_rate_gate_required"] is False
+    assert set(result["family_promotion_pending_strategy_ids"]) == {TARGET, OTHER}
     assert result["profitability_status"] == "NOT_PROVEN"
     assert result["real_orders_enabled"] is False
     assert result["auth_required"] is False

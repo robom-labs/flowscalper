@@ -15,6 +15,7 @@ from itertools import chain
 from pathlib import Path
 from typing import cast
 
+from backend.app.analytics.opportunities import wilson_lower_bound
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.build_identity import STRATEGY_VERSION, git_commit
 from backend.app.domain.models import MarketDataState, MarketEvent, RuntimeMode, Side, Venue
@@ -31,6 +32,11 @@ from backend.app.risk.manager import STRATEGY_LEAGUE_RISK_LIMITS
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.io_priority import storage_io_priority_gate
 from backend.app.strategies.base import CandidateStatus
+from backend.app.strategies.family import (
+    STRATEGY_VARIANT_CONTRACTS,
+    strategy_variant_contract,
+)
+from backend.app.strategies.governor import GovernanceEvidence, StrategyGovernor
 from backend.app.strategies.registry import (
     StrategyChangeSource,
     StrategyMode,
@@ -56,7 +62,6 @@ TP1_FEASIBILITY_LOOKBACK_MS = 120_000
 DEFAULT_DATASET_MANIFEST = Path("evidence/STRATEGY_100_DATASET_MANIFEST.json")
 ROBUSTNESS_BOOTSTRAP_SEED = 105_070
 MINIMUM_RANKING_OPPORTUNITIES = 30
-MINIMUM_RANKING_WIN_RATE = 0.70
 MINIMUM_DSR_PROBABILITY = 0.95
 MAXIMUM_PBO = 0.20
 MINIMUM_CONCENTRATION_SYMBOLS = 3
@@ -871,6 +876,15 @@ def replay_strategy_league_archive_run(
     )
 
 
+def _report_wilson_lower(report: Mapping[str, object]) -> Decimal | None:
+    interval = report.get("win_rate_ci95")
+    value = interval.get("lower") if isinstance(interval, Mapping) else None
+    if value is None:
+        return None
+    lower = Decimal(str(value))
+    return lower if lower.is_finite() else None
+
+
 def _summary(
     runs: Sequence[Mapping[str, object]],
     *,
@@ -922,16 +936,7 @@ def _summary(
     }
     base = report_by_profile["BASE"]
     stress = report_by_profile["STRESS"]
-    minimum_opportunities = 30
-    observed_70_gate = (
-        len(opportunities) >= minimum_opportunities
-        and int(str(base["sample_size"])) >= minimum_opportunities
-        and int(str(stress["sample_size"])) >= minimum_opportunities
-        and base.get("win_rate") is not None
-        and float(str(base["win_rate"])) >= 0.70
-        and stress.get("win_rate") is not None
-        and float(str(stress["win_rate"])) >= 0.70
-    )
+    minimum_opportunities = MINIMUM_RANKING_OPPORTUNITIES
     cost_performance_gate = all(
         Decimal(str(report.get("expectancy_usdt", "0") or "0")) > 0
         and Decimal(str(report.get("net_pnl", "0") or "0")) > 0
@@ -953,8 +958,9 @@ def _summary(
     for profile, report in (("BASE", base), ("STRESS", stress)):
         if int(str(report["sample_size"])) < minimum_opportunities:
             ranking_blockers.append(f"{profile}_SAMPLE_BELOW_30")
-        if report.get("win_rate") is None or float(str(report["win_rate"])) < 0.70:
-            ranking_blockers.append(f"{profile}_WIN_RATE_BELOW_70_PERCENT")
+        wilson_lower = _report_wilson_lower(report)
+        if wilson_lower is None or wilson_lower <= 0:
+            ranking_blockers.append(f"{profile}_WILSON_LOWER_NOT_POSITIVE_OR_MISSING")
         if Decimal(str(report.get("expectancy_usdt", "0") or "0")) <= 0:
             ranking_blockers.append(f"{profile}_EXPECTANCY_NOT_POSITIVE")
         if Decimal(str(report.get("net_pnl", "0") or "0")) <= 0:
@@ -1048,7 +1054,11 @@ def _summary(
             "rejection_counts": dict(sorted(gate_rejection_counts.items())),
             "can_create_signals": False,
         },
-        "observed_70_percent_gate_passed": observed_70_gate,
+        "observed_raw_win_rate_by_profile": {
+            "BASE": base.get("win_rate"),
+            "STRESS": stress.get("win_rate"),
+        },
+        "universal_win_rate_gate_required": False,
         "cost_performance_gate_passed": cost_performance_gate,
         "robustness_gate_passed": False,
         "ranking_eligible": False,
@@ -1056,7 +1066,8 @@ def _summary(
         "ranking_contract": {
             "minimum_unique_market_opportunities": minimum_opportunities,
             "minimum_samples_per_profile": minimum_opportunities,
-            "minimum_win_rate_per_profile": 0.70,
+            "positive_wilson_lower_required": True,
+            "family_promotion_gates_required": True,
             "positive_expectancy_required": True,
             "profit_factor_above_one_required": True,
             "time_ordered_oos_required": True,
@@ -1129,6 +1140,53 @@ def _profile_oos_robustness(
     profit_factor = (
         sum(wins, Decimal(0)) / abs(sum(losses, Decimal(0))) if losses else None
     )
+    average_win = sum(wins, Decimal(0)) / len(wins) if wins else None
+    average_loss = sum(losses, Decimal(0)) / len(losses) if losses else None
+    payoff_ratio = (
+        average_win / abs(average_loss)
+        if average_win is not None and average_loss is not None
+        else None
+    )
+    mean_pnl = net_pnl / len(pnl) if pnl else None
+    variance = (
+        sum(((value - mean_pnl) ** 2 for value in pnl), Decimal(0)) / len(pnl)
+        if mean_pnl is not None
+        else None
+    )
+    return_skew = None
+    if variance is not None and len(pnl) >= 3 and variance > 0:
+        standard_deviation = variance.sqrt()
+        return_skew = sum(
+            (((value - mean_pnl) / standard_deviation) ** 3 for value in pnl),
+            Decimal(0),
+        ) / len(pnl)
+    absolute_pnl = sum((abs(value) for value in pnl), Decimal(0))
+    largest_trade_contribution = (
+        max(abs(value) for value in pnl) / absolute_pnl if absolute_pnl > 0 else None
+    )
+    expected_gross_mfe_values = [row.get("expected_gross_mfe_usdt") for row in ordered]
+    expected_total_cost_values = [row.get("expected_total_cost_usdt") for row in ordered]
+    cost_coverage_inputs_complete = bool(ordered) and all(
+        value is not None
+        for value in (*expected_gross_mfe_values, *expected_total_cost_values)
+    )
+    expected_gross_mfe = (
+        sum((Decimal(str(value)) for value in expected_gross_mfe_values), Decimal(0))
+        if cost_coverage_inputs_complete
+        else None
+    )
+    expected_total_cost = (
+        sum((Decimal(str(value)) for value in expected_total_cost_values), Decimal(0))
+        if cost_coverage_inputs_complete
+        else None
+    )
+    cost_coverage = (
+        expected_gross_mfe / expected_total_cost
+        if expected_gross_mfe is not None
+        and expected_total_cost is not None
+        and expected_total_cost > 0
+        else None
+    )
     equity = PAPER_STARTING_EQUITY_USDT
     peak = equity
     maximum_drawdown = Decimal(0)
@@ -1143,11 +1201,12 @@ def _profile_oos_robustness(
     bootstrap = bootstrap_mean_interval(returns_bps, seed=seed)
     dsr = deflated_sharpe_ratio(returns_bps, trials=trials)
     win_rate = len(wins) / len(pnl) if pnl else None
+    win_rate_ci95_lower = wilson_lower_bound(len(wins), len(pnl))
     no_loss_positive_sample = not losses and bool(wins)
     gates = {
         "sample_at_least_30": len(pnl) >= MINIMUM_RANKING_OPPORTUNITIES,
-        "win_rate_at_least_70_percent": (
-            win_rate is not None and win_rate >= MINIMUM_RANKING_WIN_RATE
+        "wilson_lower_positive": (
+            win_rate_ci95_lower is not None and win_rate_ci95_lower > 0
         ),
         "expectancy_bps_positive": (
             expectancy_bps is not None and expectancy_bps > 0
@@ -1174,9 +1233,23 @@ def _profile_oos_robustness(
         "wins": len(wins),
         "losses": len(losses),
         "win_rate": win_rate,
+        "win_rate_ci95": {
+            "lower": str(win_rate_ci95_lower),
+            "method": "WILSON_SCORE_95",
+        }
+        if win_rate_ci95_lower is not None
+        else None,
+        "payoff_ratio": str(payoff_ratio) if payoff_ratio is not None else None,
         "expectancy_bps": expectancy_bps,
         "net_pnl_usdt": str(net_pnl),
         "profit_factor": str(profit_factor) if profit_factor is not None else None,
+        "return_skew": str(return_skew) if return_skew is not None else None,
+        "largest_trade_contribution": (
+            str(largest_trade_contribution)
+            if largest_trade_contribution is not None
+            else None
+        ),
+        "cost_coverage": str(cost_coverage) if cost_coverage is not None else None,
         "maximum_drawdown_usdt": str(maximum_drawdown),
         "maximum_drawdown_limit_usdt": str(drawdown_limit),
         "expectancy_bootstrap_95": bootstrap,
@@ -1298,6 +1371,104 @@ def _strategy_oos_concentration(
     }
 
 
+def _nested_decimal(
+    row: Mapping[str, object],
+    field_name: str,
+    nested_field_name: str | None = None,
+) -> Decimal | None:
+    value = row.get(field_name)
+    if nested_field_name is not None:
+        value = value.get(nested_field_name) if isinstance(value, Mapping) else None
+    if value is None:
+        return None
+    result = Decimal(str(value))
+    return result if result.is_finite() else None
+
+
+def family_promotion_assessment(
+    strategy_id: str,
+    *,
+    unique_opportunities: int,
+    profiles: Mapping[str, Mapping[str, object]],
+    pbo_by_profile: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    if strategy_id not in STRATEGY_VARIANT_CONTRACTS:
+        return {
+            "status": "NOT_EVALUATED_UNREGISTERED_STRATEGY",
+            "family_id": None,
+            "gate_passed": None,
+            "blockers": [],
+            "contract_source": "StrategyGovernor.family_gate_failures",
+        }
+    base = profiles["BASE"]
+    stress = profiles["STRESS"]
+    base_dsr = _nested_decimal(base, "deflated_sharpe_ratio", "dsr_probability")
+    stress_dsr = _nested_decimal(stress, "deflated_sharpe_ratio", "dsr_probability")
+    base_pbo = _nested_decimal(pbo_by_profile["BASE"], "pbo")
+    stress_pbo = _nested_decimal(pbo_by_profile["STRESS"], "pbo")
+    base_bootstrap = _nested_decimal(base, "expectancy_bootstrap_95", "lower")
+    stress_bootstrap = _nested_decimal(stress, "expectancy_bootstrap_95", "lower")
+    contract = strategy_variant_contract(strategy_id)
+    evidence = GovernanceEvidence(
+        base_sample_size=int(str(base.get("sample_size", 0))),
+        stress_sample_size=int(str(stress.get("sample_size", 0))),
+        base_expectancy_usdt=_nested_decimal(base, "expectancy_bps"),
+        stress_expectancy_usdt=_nested_decimal(stress, "expectancy_bps"),
+        base_profit_factor=_nested_decimal(base, "profit_factor"),
+        stress_profit_factor=_nested_decimal(stress, "profit_factor"),
+        sample_span_days=0,
+        regime_count=0,
+        dsr_probability=(
+            float(min(base_dsr, stress_dsr))
+            if base_dsr is not None and stress_dsr is not None
+            else None
+        ),
+        pbo=(
+            float(max(base_pbo, stress_pbo))
+            if base_pbo is not None and stress_pbo is not None
+            else None
+        ),
+        oos_expectancy_lower_bound_usdt=(
+            min(base_bootstrap, stress_bootstrap)
+            if base_bootstrap is not None and stress_bootstrap is not None
+            else None
+        ),
+        parameter_robustness_passed=False,
+        risk_contract_passed=False,
+        independent_period_count=0,
+        base_win_rate=_nested_decimal(base, "win_rate"),
+        stress_win_rate=_nested_decimal(stress, "win_rate"),
+        unique_opportunity_count=unique_opportunities,
+        base_win_rate_ci95_lower=_nested_decimal(base, "win_rate_ci95", "lower"),
+        stress_win_rate_ci95_lower=_nested_decimal(stress, "win_rate_ci95", "lower"),
+        base_payoff_ratio=_nested_decimal(base, "payoff_ratio"),
+        stress_payoff_ratio=_nested_decimal(stress, "payoff_ratio"),
+        base_return_skew=_nested_decimal(base, "return_skew"),
+        stress_return_skew=_nested_decimal(stress, "return_skew"),
+        base_largest_trade_contribution=_nested_decimal(
+            base,
+            "largest_trade_contribution",
+        ),
+        stress_largest_trade_contribution=_nested_decimal(
+            stress,
+            "largest_trade_contribution",
+        ),
+        base_cost_coverage=_nested_decimal(base, "cost_coverage"),
+        stress_cost_coverage=_nested_decimal(stress, "cost_coverage"),
+    )
+    blockers = list(StrategyGovernor.family_gate_failures(contract.family_id, evidence))
+    if not contract.final_ranking_eligible:
+        blockers.append("VARIANT_NOT_FINAL_RANKING_ELIGIBLE")
+    return {
+        "status": "PASS" if not blockers else "NOT_PASSED",
+        "family_id": contract.family_id.value,
+        "gate_passed": not blockers,
+        "blockers": blockers,
+        "contract_source": "StrategyGovernor.family_gate_failures",
+        "variant_final_ranking_eligible": contract.final_ranking_eligible,
+    }
+
+
 def strategy_league_robustness(
     runs: Sequence[Mapping[str, object]],
     *,
@@ -1394,6 +1565,12 @@ def strategy_league_robustness(
             )
             for profile in ("BASE", "STRESS")
         }
+        family_promotion = family_promotion_assessment(
+            strategy_id,
+            unique_opportunities=len(opportunities),
+            profiles=profile_results,
+            pbo_by_profile=pbo_by_profile,
+        )
         concentration = _strategy_oos_concentration(
             trades,
             supported_regimes=supported_regime_map.get(strategy_id, ()),
@@ -1416,6 +1593,11 @@ def strategy_league_robustness(
                     blockers.append(f"{profile}_OOS_{gate.upper()}")
             if not pbo_gates[profile]:
                 blockers.append(f"{profile}_PBO_ABOVE_0_20_OR_UNAVAILABLE")
+        if family_promotion["gate_passed"] is False:
+            blockers.extend(
+                f"FAMILY_PROMOTION_{reason}"
+                for reason in cast(Sequence[str], family_promotion["blockers"])
+            )
         if censored_count:
             blockers.append("FINAL_OOS_CENSORED_POSITIONS_OR_PENDING_ENTRIES")
         concentration_gates = cast(Mapping[str, object], concentration["gates"])
@@ -1440,6 +1622,7 @@ def strategy_league_robustness(
             "final_oos_unique_market_opportunity_count": len(opportunities),
             "final_oos_censored_count": censored_count,
             "profiles": profile_results,
+            "family_promotion": family_promotion,
             "concentration": concentration,
             "pbo_gate_by_profile": pbo_gates,
             "historical_cost_oos_statistical_gates_passed": historical_gates_passed,
@@ -1477,7 +1660,9 @@ def strategy_league_robustness(
         "thresholds": {
             "minimum_unique_market_opportunities": MINIMUM_RANKING_OPPORTUNITIES,
             "minimum_samples_per_profile": MINIMUM_RANKING_OPPORTUNITIES,
-            "minimum_win_rate_per_profile": MINIMUM_RANKING_WIN_RATE,
+            "universal_minimum_win_rate_per_profile": None,
+            "positive_wilson_lower_required": True,
+            "family_promotion_contract": "StrategyGovernor.family_gate_failures",
             "minimum_dsr_probability": MINIMUM_DSR_PROBABILITY,
             "maximum_pbo": MAXIMUM_PBO,
             "minimum_distinct_symbols": MINIMUM_CONCENTRATION_SYMBOLS,

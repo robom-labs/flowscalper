@@ -86,3 +86,18 @@ Monitor:
 - symbol-universe changes.
 
 Drift can disable the model gate and return to rule-only Paper mode automatically.
+
+## 16.9 V6 win-rate uncertainty and family gates
+
+The default strategy table sorts only ranking-eligible samples by the Wilson 95% lower bound.
+Observed win rate remains visible as a descriptive value, never as a calibrated probability.
+Zero samples produce no Wilson value, and small samples remain excluded from ranking.
+
+There is no universal 70% win-rate gate. Trend pullback, breakout runner, exhaustion reversion and
+independent micro hypotheses use preregistered family-specific minimum samples, win/payoff shape and
+PF, while every ENTRY still needs positive BASE/STRESS expectancy, OOS lower bound, DSR, PBO,
+robustness and independent periods. A low-win/high-payoff breakout may be valid; a high-win,
+negative-expectancy strategy is invalid.
+
+V2/V3 metrics may be compared only on the same frozen input, costs and no-lookahead rules. Missing
+comparison data is `NOT_PROVEN` and never creates a model artifact, Registry change or promotion.

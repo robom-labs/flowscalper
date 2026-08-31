@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "venue": "BINANCE_USDM",
+  "eligible_symbol_count": 525,
+  "binance_catalog_count": 704,
+  "upbit_krw_catalog_count": 288,
+  "binance_btcusdt_3m_candle_count": 200,
+  "binance_catalog_tail_symbol": "GSUSDT",
+  "binance_catalog_tail_3m_candle_count": 200,
+  "upbit_krw_btc_3m_candle_count": 200,
+  "websocket_events": 16,
+  "lag_p50_ms": 18.617,
+  "lag_p95_ms": 19.347,
+  "elapsed_ms": 8370.72,
+  "credentials_sent": false,
+  "authorization_header_sent": false,
+  "auth_required": false,
+  "real_orders_enabled": false
+}

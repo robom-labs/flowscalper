@@ -18,9 +18,10 @@ import type {
   ReplayResult,
   ReplayRun,
   ReplayTimeline,
+  StrategySummaryRow,
 } from '../types'
 
-type Props = { trade?: HistoryRow }
+type Props = { trade?: HistoryRow; strategies?: StrategySummaryRow[] }
 
 const ACTIVE_REPLAY_STATES = new Set<ReplayOperation['state']>([
   'REQUESTED', 'PREPARING', 'PROCESSING', 'CANCELLING',
@@ -93,7 +94,7 @@ function quote(event: ReplayMarketEvent | undefined) {
   return bid !== null && ask !== null ? { bid, ask } : null
 }
 
-export function ReplayPage({ trade }: Props) {
+export function ReplayViewer({ trade, strategies = [] }: Props) {
   const [runs, setRuns] = useState<ReplayRun[]>([])
   const [results, setResults] = useState<ReplayResult[]>([])
   const [selectedRun, setSelectedRun] = useState(trade?.run_id ?? '')
@@ -479,7 +480,7 @@ export function ReplayPage({ trade }: Props) {
     const net = gross - fees - slippage
     return {
       focus_key: `replay:${trade.trade_id}`, trade_id: trade.trade_id, candidate_id: '', run_id: trade.run_id, account_id: 'REPLAY', profile: focusSession.profile,
-      venue: 'BINANCE_USDM', symbol: focusSession.symbol, side: focusSession.side, strategy: focusSession.strategy_id, strategy_id: focusSession.strategy_id, strategy_display_name_ko: strategyLabel(undefined, focusSession.strategy_id), exit_style: '저장 거래', signal_time: focusSession.entry_ts_ms, signal_ts_ms: focusSession.entry_ts_ms,
+      venue: 'BINANCE_USDM', symbol: focusSession.symbol, side: focusSession.side, strategy: focusSession.strategy_id, strategy_id: focusSession.strategy_id, strategy_display_name_ko: strategyLabel(strategies.find((strategy) => strategy.strategy_id === focusSession.strategy_id), focusSession.strategy_id), exit_style: '저장 거래', signal_time: focusSession.entry_ts_ms, signal_ts_ms: focusSession.entry_ts_ms,
       planned_entry: levels.entry, actual_entry: entered ? levels.entry : '아직 체결 전', current_mark: String(current), initial_stop: levels.initial_stop, current_stop: levels.initial_stop,
       take_profit: levels.take_profit_1, take_profit_1: levels.take_profit_1, take_profit_2: levels.take_profit_2, quantity: trade.quantity, original_quantity: trade.quantity, remaining_quantity: stage === 'CLOSED' ? '0' : trade.quantity, notional: String(notional), notional_usdt: String(notional),
       margin_usdt: String(notional), margin_used_usdt: String(notional), risk_budget: String(maximumLoss), risk_budget_usdt: String(maximumLoss), maximum_planned_loss: String(maximumLoss), maximum_planned_loss_usdt: String(maximumLoss), remaining_planned_loss_usdt: stage === 'CLOSED' ? '0' : String(maximumLoss), effective_leverage: '1',
@@ -488,7 +489,7 @@ export function ReplayPage({ trade }: Props) {
       management_reason_ko: focusFrame?.phase === 'PRE_ENTRY' ? '진입 전 공개시장 흐름 확인' : focusFrame?.phase === 'OPEN' ? '저장된 PAPER 포지션 진행 중' : `종료 이유 · ${exitReasonLabel(trade.exit_reason)}`,
       stage, stage_ko: stageKo, data_health: '저장 이벤트 정상', recovered: false, auto_focus_eligible: false, paper_only: true, real_orders_enabled: false, auth_required: false,
     }
-  }, [focusFrame, focusSession, trade])
+  }, [focusFrame, focusSession, strategies, trade])
   const focusChart = useMemo<ChartData | null>(() => {
     if (!focusSession || !focusFrame) return null
     const visibleFrames = focusSession.frames.slice(0, cursor + 1)
@@ -510,16 +511,16 @@ export function ReplayPage({ trade }: Props) {
   }, [cursor, focusFrame, focusSession])
 
   if (trade && focusLoading && !focusSession) {
-    return <section aria-labelledby="replay-focus-loading"><div className="page-heading"><div><p className="section-kicker">거래 다시보기</p><h2 id="replay-focus-loading">{trade.symbol} 거래 차트 준비 중</h2><p className="heading-help">선택한 거래 앞뒤의 저장 이벤트만 읽고 있습니다. 공개시장 관찰과 PAPER 관리는 계속 작동합니다.</p></div><span className="page-note">실제 주문 없음</span></div><div className="panel empty-state" role="status"><b>진입·익절·손절·실제 종료 위치를 구성하고 있습니다</b><p>전체 전략 검증은 이 화면과 분리된 백그라운드 작업에서 실행합니다.</p></div></section>
+    return <section aria-labelledby="replay-focus-loading"><div className="page-heading"><div><p className="section-kicker">거래 다시보기</p><h2 id="replay-focus-loading">{trade.symbol} 거래 차트 준비 중</h2><p className="heading-help">선택한 거래 앞뒤의 저장 이벤트만 읽고 있습니다. 공개시장 관찰과 PAPER 관리는 계속 작동합니다.</p></div><span className="page-note">저장 이벤트 기준</span></div><div className="panel empty-state" role="status"><b>진입·익절·손절·실제 종료 위치를 구성하고 있습니다</b><p>전체 전략 검증은 이 화면과 분리된 백그라운드 작업에서 실행합니다.</p></div></section>
   }
 
   if (trade && !focusSession && error) {
-    return <section aria-labelledby="replay-focus-error"><div className="page-heading"><div><p className="section-kicker">거래 다시보기</p><h2 id="replay-focus-error">{trade.symbol} 거래 차트를 열지 못했습니다</h2><p className="heading-help">거래 기록은 원장에 남아 있으며 다시보기 화면만 준비하지 못했습니다.</p></div><span className="page-note">실제 주문 없음</span></div><div className="panel empty-state" role="alert"><b>{error}</b><p>공개시장 관찰과 PAPER 관리는 계속 작동합니다.</p><button type="button" className="primary-button" onClick={() => { setFocusLoading(true); setFocusSession(null); setError(''); setFocusAttempt((value) => value + 1) }}>거래 차트 다시 시도</button></div></section>
+    return <section aria-labelledby="replay-focus-error"><div className="page-heading"><div><p className="section-kicker">거래 다시보기</p><h2 id="replay-focus-error">{trade.symbol} 거래 차트를 열지 못했습니다</h2><p className="heading-help">거래 기록은 원장에 남아 있으며 다시보기 화면만 준비하지 못했습니다.</p></div><span className="page-note">원장 기록 보존</span></div><div className="panel empty-state" role="alert"><b>{error}</b><p>공개시장 관찰과 PAPER 관리는 계속 작동합니다.</p><button type="button" className="primary-button" onClick={() => { setFocusLoading(true); setFocusSession(null); setError(''); setFocusAttempt((value) => value + 1) }}>거래 차트 다시 시도</button></div></section>
   }
 
   if (focusSession && focusPosition && focusChart) {
     const currentFocusFrame = focusFrame as ReplayFocusFrame
-    const focusOverlay: ChartOverlay | null = currentFocusFrame.phase !== 'PRE_ENTRY' ? { key: `replay:${focusSession.trade_id}`, label: `${strategyLabel(undefined, focusSession.strategy_id)} · ${costProfileLabel(focusSession.profile)}`, symbol: focusSession.symbol, side: focusSession.side, signalTime: focusSession.levels.signal_ts_ms, entry: Number(focusSession.levels.entry), tp1: Number(focusSession.levels.take_profit_1), tp2: numeric(focusSession.levels.take_profit_2), stop: Number(focusSession.levels.initial_stop), initialStop: Number(focusSession.levels.initial_stop), currentStop: Number(focusSession.levels.initial_stop), status: currentFocusFrame.phase === 'CLOSED' ? 'CLOSED' : 'OPEN' } : null
+    const focusOverlay: ChartOverlay | null = currentFocusFrame.phase !== 'PRE_ENTRY' ? { key: `replay:${focusSession.trade_id}`, label: `${strategyLabel(strategies.find((strategy) => strategy.strategy_id === focusSession.strategy_id), focusSession.strategy_id)} · ${costProfileLabel(focusSession.profile)}`, symbol: focusSession.symbol, side: focusSession.side, signalTime: focusSession.levels.signal_ts_ms, entry: Number(focusSession.levels.entry), tp1: Number(focusSession.levels.take_profit_1), tp2: numeric(focusSession.levels.take_profit_2), stop: Number(focusSession.levels.initial_stop), initialStop: Number(focusSession.levels.initial_stop), currentStop: Number(focusSession.levels.initial_stop), status: currentFocusFrame.phase === 'CLOSED' ? 'CLOSED' : 'OPEN' } : null
     const keyIndices = [...new Set(focusSession.keyframes.map((item) => item.frame_index))].sort((left, right) => left - right)
     const previousKey = [...keyIndices].reverse().find((index) => index < cursor) ?? 0
     const nextKey = keyIndices.find((index) => index > cursor) ?? focusSession.frames.length - 1
@@ -561,7 +562,7 @@ export function ReplayPage({ trade }: Props) {
         <button type="button" className="primary-button" disabled={!selectedRun || !selectedSymbol || timelineLoading || running} onClick={() => void loadSelectedTimeline()}>{timelineLoading ? '정밀 이벤트 불러오는 중' : timeline?.preview_only ? '정밀 이벤트 불러오기' : '정밀 이벤트 다시 불러오기'}</button>
         <button type="button" className="secondary-button" disabled={!selectedRun || !timeline || timeline.preview_only || running || timelineLoading} onClick={() => void runReplay()}>{running ? '전략 검증 중' : '같은 조건으로 전략 검증'}</button>
       </section>
-      {operation && replayOperationActive(operation) ? <section className="panel replay-operation" role="status" aria-live="polite"><div><span className="operation-dot" aria-hidden="true" /><b>{operation.stage_ko}</b><p>{operation.symbol ?? '전체 종목'} · {operation.total_events === null ? '이벤트 수 확인 중' : `고정 입력 ${operation.total_events.toLocaleString()}건`} · 경과 {elapsedLabel(operation.started_ts_ms, operationNow)}</p><small>공개시장 PAPER 관찰은 계속되며 실제 주문과 인증 경로는 0입니다.</small></div><button type="button" className="operation-secondary" disabled={operation.state === 'CANCELLING'} onClick={() => void cancelReplay()}>{operation.state === 'CANCELLING' ? '취소 중' : '전략 검증 취소'}</button></section> : null}
+      {operation && replayOperationActive(operation) ? <section className="panel replay-operation" role="status" aria-live="polite"><div><span className="operation-dot" aria-hidden="true" /><b>{operation.stage_ko}</b><p>{operation.symbol ?? '전체 종목'} · {operation.total_events === null ? '이벤트 수 확인 중' : `고정 입력 ${operation.total_events.toLocaleString()}건`} · 경과 {elapsedLabel(operation.started_ts_ms, operationNow)}</p><small>공개시장 PAPER 관찰은 계속됩니다.</small></div><button type="button" className="operation-secondary" disabled={operation.state === 'CANCELLING'} onClick={() => void cancelReplay()}>{operation.state === 'CANCELLING' ? '취소 중' : '전략 검증 취소'}</button></section> : null}
       {loading ? <div className="panel empty-state"><b>저장 기록 목록을 확인하는 중입니다</b></div> : null}
       {!loading && previewLoading ? <div className="panel replay-load-status" role="status"><b>저장된 최근 캔들을 불러오는 중입니다.</b><span>공개시장 관찰과 PAPER 관리는 계속 작동합니다.</span></div> : null}
       {!loading && timelineLoading ? <div className="panel replay-load-status" role="status"><b>최근 검증 이벤트를 불러오는 중입니다.</b><span>화면에는 선택 종목의 최근 100건만 표시하며, 전략 검증은 저장 범위 전체를 그대로 사용합니다.</span></div> : null}
@@ -574,7 +575,7 @@ export function ReplayPage({ trade }: Props) {
           <aside className="panel replay-controls"><h3>재생 제어</h3><div className="control-row"><button type="button" className="primary-button" onClick={() => setPlaying((value) => !value)} disabled={timeline.events.length === 0}>{playing ? '일시정지' : '재생'}</button><button type="button" className="secondary-button" onClick={() => setCursor((value) => Math.min(value + 1, timeline.events.length - 1))} disabled={cursor >= timeline.events.length - 1}>다음 이벤트</button></div><label>속도<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{[0.5, 1, 2, 5, 10, 20, 40, 80].map((value) => <option value={value} key={value}>{value}×</option>)}</select></label><label>이벤트 위치<input type="range" min="0" max={Math.max(0, timeline.events.length - 1)} value={cursor} onChange={(event) => { setCursor(Number(event.target.value)); setPlaying(false) }} /></label><dl><div><dt>현재 위치</dt><dd>{timeline.events.length === 0 ? '없음' : `${cursor + 1} / ${timeline.events.length}`}</dd></div><div><dt>저장된 자료</dt><dd>{timeline.total_events === null ? '전체 건수 집계 중' : `${timeline.total_events.toLocaleString()}건`}{timeline.truncated ? ` · 화면 ${timeline.events.length.toLocaleString()}건 우선` : ''}</dd></div><div><dt>전략 평가</dt><dd>{result ? `${result.strategy_evaluation_count}회` : '실행 전'}</dd></div></dl><details className="advanced-details"><summary>호가·이벤트 기술 정보</summary><dl><div><dt>이벤트 종류·시각</dt><dd>{currentEvent?.event_type ?? '대기'}<br />{currentEvent ? `${formatKstTime(currentEvent.venue_ts_ms)} 한국시간` : '—'}</dd></div><div><dt>매수·매도 호가</dt><dd>{currentQuote ? `${currentQuote.bid} / ${currentQuote.ask}` : '호가 자료 대기'}</dd></div><div><dt>호가 차이</dt><dd>{spreadBps === null ? '—' : `${spreadBps.toFixed(3)} bp`}</dd></div></dl></details></aside>
         </div>
         <section className="replay-proof-grid">
-          <article className="panel"><span>전략 검증 결과</span><b>{result ? `후보 ${result.candidate_plan_count} · 공동계좌 ${result.main_trade_count} · 전략별 ${result.shadow_trade_count}` : '전략 검증 전'}</b><small>{result ? `실제 주문 ${result.real_orders_enabled ? '위험' : '0'} · 인증 경로 ${result.auth_required ? '위험' : '0'}` : timeline.preview_only ? '빠른 캔들 미리보기만 표시 중' : '정밀 이벤트를 불러왔으며 전략 검증은 아직 실행하지 않음'}</small></article>
+          <article className="panel"><span>전략 검증 결과</span><b>{result ? `후보 ${result.candidate_plan_count} · 공동계좌 ${result.main_trade_count} · 전략별 ${result.shadow_trade_count}` : '전략 검증 전'}</b><small>{result ? '저장 이벤트 재처리 완료' : timeline.preview_only ? '빠른 캔들 미리보기만 표시 중' : '정밀 이벤트를 불러왔으며 전략 검증은 아직 실행하지 않음'}</small></article>
         </section>
         {result ? <details className="panel advanced-details replay-diagnostics"><summary>고급 검증 정보 보기</summary><div className="diagnostic-columns"><div><h3>결정 경로</h3><ol>{result.decision_path.slice(-20).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ol></div><div><h3>최종 상태</h3><p>{result.final_state}</p><h3>입력 검증값</h3><p className="checksum">{result.input_checksum ?? '과거 결과 · 입력 전용 검증값 없음'}</p><h3>종단간 검증값</h3><p className="checksum">{result.checksum}</p></div></div></details> : null}
       </> : null}

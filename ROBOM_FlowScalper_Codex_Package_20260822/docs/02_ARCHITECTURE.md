@@ -191,7 +191,7 @@ No real order, credential, transfer or withdrawal endpoint may exist.
 - `PersistentPublicSupervisor` keeps wide and deep streams; market catalog browsing never subscribes every symbol to depth.
 - `PaperRuntime.focus_positions()` is the typed dashboard source for main and BASE/STRESS positions after actual fills.
 - `ReplayFocusSessionBuilder` reads stored public events and bounded candles, then exposes timestamp-ordered frames. It does not create a second execution database.
-- The React shell has five navigation groups. `MarketPage`, `PositionFocusWorkspace` and `ReplayPage` share `PriceChart` and indicator functions.
+- The React shell has exactly four primary pages, `market`, `strategies`, `trades`, `settings`. `MarketPage`, `PositionFocusWorkspace` and the trade replay viewer share `PriceChart` and indicator functions.
 
 ## 2.12 Strategy Governor boundary
 
@@ -200,6 +200,14 @@ No real order, credential, transfer or withdrawal endpoint may exist.
 - Multi-strategy champion replacement validates every target before mutation. `ACTIVE` is unique in the normal default, while `SHADOW` and `CHALLENGER` keep their independent BASE/STRESS PAPER accounts.
 - SQLite `strategy_settings` rows and `AUTO_GOVERNOR_TRANSITION` incidents retain actor, reason, evidence period and metrics. Rollback creates a new revision.
 - Missing OOS, robustness, multiple-testing or natural-sample evidence is fail-closed as `NOT_PROVEN`; a successful unit test is not substituted for that evidence.
+
+## 2.12.1 V6 family, aggregation and UI read models
+
+- `StrategyRegistry` retains all 15 IDs while `strategies/family.py` maps them to eight families, explicit roles and at most one current variant per family.
+- `StrategyGovernor` applies common cost/OOS/robustness gates and preregistered family-specific win/payoff gates. It has no universal 70% promotion, retirement or quarantine gate.
+- `analytics/opportunities.py` groups BASE, STRESS and partial exits by `(run_id, strategy_id, strategy_version, opportunity_id, symbol, side)` without rewriting ledger rows.
+- `/api/ui/summary` is the bounded real-time read model. Strategy family, conditions, trades and diagnostics are separate on-demand reads; raw diagnostics are not part of the default summary stream.
+- V3 candidates live in `research/v6_candidates.py` as offline preregistration only. They cannot mutate Registry or LIVE SHADOW settings without fixed-input evidence and a later explicit decision.
 
 ## 2.13 Canonical candle and intraday research boundary
 

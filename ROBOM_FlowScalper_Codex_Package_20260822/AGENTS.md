@@ -18,7 +18,8 @@ Build a production-quality **real-market-data / paper-execution-only** crypto sc
 10. Never claim profitability or safety guarantees.
 11. Keep the Shared Capital Benchmark at one position and each Strategy League account at three different symbols maximum.
 12. Strategy League accounts are `strategy_id:BASE` and `strategy_id:STRESS`; capital, risk, fees, cooldowns, orders and PnL must never cross accounts.
-13. No strategy defaults to `ACTIVE` without cost-adjusted out-of-sample proof. B/C/F/G/I/J default to `SHADOW`; policy-retired A/D/E/H/K default to `OFF`. Every strategy and profile remains PAPER-only.
+13. No strategy defaults to `ACTIVE` without cost-adjusted out-of-sample proof. The V6 baseline is 6 entry variants in `SHADOW`, 5 policy-retired variants in `OFF`, 4 legacy components in `RESEARCH/OFF`, and 0 `ACTIVE`; family metadata must not silently change those PAPER settings or old history.
+14. Strategy promotion uses common cost, OOS and robustness evidence plus preregistered family-specific win/payoff gates. A universal 70% observed-win-rate promotion, retirement or quarantine rule is forbidden.
 
 ## Source of truth
 
@@ -115,12 +116,23 @@ must not resize during snapshots or drawer use. A normal update to the same char
 must use incremental series updates instead of rebuilding the chart or repeating full
 `setData` calls.
 
-Phase 03 uses five user-facing navigation groups with `시장` as the default. Binance
+V6 uses exactly four user-facing navigation pages, `시장`, `전략`, `거래`, `설정`, with
+`시장` as the default. Performance belongs to strategy, open/history/replay belong to trades,
+and risk/system belong to settings. Obsolete routes, state, copy, styles and tests must be
+removed in the same replacement. Binance
 USD-M full catalog is PAPER eligible, while Upbit KRW is observation-only and must never
 feed a PAPER position. The chart defaults to 3-minute, 200 historical candles, MA10/MA20
 and volume overlay. Actual fills, not candidates or pending entries, are the only automatic
 trigger for `PositionFocusWorkspace`. Replay markers must never reveal future events, and
 0.5x through 80x must preserve the same ordered keyframes and final checksum.
+
+Every registered strategy must map to one of eight V6 families with explicit role and variant
+metadata. A family has at most one current variant. BASE and STRESS are independent PAPER
+cost results for one market opportunity and must not inflate the unique trade count. Legacy,
+filter, router and unvalidated multi-leg records remain available for audit but are excluded
+from the default entry ranking. The default ranking uses eligible Wilson 95% lower bounds,
+not raw win rate. V2/V3 comparisons without fixed-input evidence remain `NOT_PROVEN` with no
+promotion, and `FUNDING_READINESS` remains `NOT_READY`.
 
 ## Completion rule
 

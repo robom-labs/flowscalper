@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "generated_ts_utc": "2026-08-31T15:11:15.677988Z",
+  "status": "NOT_RUN_STOPPED_OR_UNREACHABLE_RUNTIME",
+  "baseline_commit_expected": "ac5634a53da623721dc3bb6113427a32d4a677db",
+  "latest_git_commit": "ac5634a53da623721dc3bb6113427a32d4a677db",
+  "git_commit_matches_requested_baseline": true,
+  "installed_release_commit": "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6",
+  "installed_release_state": "PASS",
+  "report_provenance": {
+    "head_scope": "TRACKED_HEAD_REFERENCE_AT_GENERATION_TIME",
+    "working_tree_clean_excluding_this_report": false,
+    "working_tree_change_count_excluding_this_report": 152,
+    "generated_output_included_in_latest_commit": "NOT_CLAIMED",
+    "self_referential_commit_match_claim": false
+  },
+  "app_version": "0.3.0-paper",
+  "strategy_implementation_revision": "LSA_REVERSAL_V1+CBR_CONTINUATION_V1+VWAP_EXHAUSTION_REVERSION_V1+OFI_CONTINUATION_PULLBACK_V1+QUEUE_MICROPRICE_MOMENTUM_V1+AGGRESSOR_FLOW_CONTINUATION_V1+MULTILEVEL_MICROPRICE_MOMENTUM_V1+DEPTH_ADJUSTED_OFI_IMPULSE_V1+OFI_RETURN_CONFLUENCE_V1+BOOK_SLOPE_ASYMMETRY_V1+HOURLY_MOMENTUM_BREAKOUT_V1+TREND_PULLBACK_RECLAIM_15M_V2+BREAKOUT_RETEST_15M_V2+BREAKOUT_RETEST_30M_V2+MULTISPEED_TREND_RECLAIM_30M_V2@2026-08-31-v6-family-ui",
+  "source_strategy_ids": [
+    "LSA_REVERSAL_V1",
+    "CBR_CONTINUATION_V1",
+    "VWAP_EXHAUSTION_REVERSION_V1",
+    "OFI_CONTINUATION_PULLBACK_V1",
+    "QUEUE_MICROPRICE_MOMENTUM_V1",
+    "AGGRESSOR_FLOW_CONTINUATION_V1",
+    "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+    "OFI_RETURN_CONFLUENCE_V1",
+    "BOOK_SLOPE_ASYMMETRY_V1",
+    "HOURLY_MOMENTUM_BREAKOUT_V1",
+    "TREND_PULLBACK_RECLAIM_15M_V2",
+    "BREAKOUT_RETEST_15M_V2",
+    "BREAKOUT_RETEST_30M_V2",
+    "MULTISPEED_TREND_RECLAIM_30M_V2"
+  ],
+  "runtime_strategy_ids": [
+    "LSA_REVERSAL_V1",
+    "CBR_CONTINUATION_V1",
+    "VWAP_EXHAUSTION_REVERSION_V1",
+    "OFI_CONTINUATION_PULLBACK_V1",
+    "QUEUE_MICROPRICE_MOMENTUM_V1",
+    "AGGRESSOR_FLOW_CONTINUATION_V1",
+    "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+    "OFI_RETURN_CONFLUENCE_V1",
+    "BOOK_SLOPE_ASYMMETRY_V1",
+    "HOURLY_MOMENTUM_BREAKOUT_V1",
+    "TREND_PULLBACK_RECLAIM_15M_V2",
+    "BREAKOUT_RETEST_15M_V2",
+    "BREAKOUT_RETEST_30M_V2",
+    "MULTISPEED_TREND_RECLAIM_30M_V2"
+  ],
+  "runtime_strategy_ids_evidence": "SOURCE_CONTRACT_RUNTIME_NOT_RUN",
+  "catalog_strategy_ids": [
+    "LSA_REVERSAL_V1",
+    "CBR_CONTINUATION_V1",
+    "VWAP_EXHAUSTION_REVERSION_V1",
+    "OFI_CONTINUATION_PULLBACK_V1",
+    "QUEUE_MICROPRICE_MOMENTUM_V1",
+    "AGGRESSOR_FLOW_CONTINUATION_V1",
+    "MULTILEVEL_MICROPRICE_MOMENTUM_V1",
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1",
+    "OFI_RETURN_CONFLUENCE_V1",
+    "BOOK_SLOPE_ASYMMETRY_V1",
+    "HOURLY_MOMENTUM_BREAKOUT_V1",
+    "TREND_PULLBACK_RECLAIM_15M_V2",
+    "BREAKOUT_RETEST_15M_V2",
+    "BREAKOUT_RETEST_30M_V2",
+    "MULTISPEED_TREND_RECLAIM_30M_V2"
+  ],
+  "frontend_fallback_strategy_ids": [],
+  "source_strategy_count": 15,
+  "runtime_strategy_count": 15,
+  "visible_strategy_count": 3,
+  "account_count": 30,
+  "account_ids": [
+    "LSA_REVERSAL_V1:BASE",
+    "LSA_REVERSAL_V1:STRESS",
+    "CBR_CONTINUATION_V1:BASE",
+    "CBR_CONTINUATION_V1:STRESS",
+    "VWAP_EXHAUSTION_REVERSION_V1:BASE",
+    "VWAP_EXHAUSTION_REVERSION_V1:STRESS",
+    "OFI_CONTINUATION_PULLBACK_V1:BASE",
+    "OFI_CONTINUATION_PULLBACK_V1:STRESS",
+    "QUEUE_MICROPRICE_MOMENTUM_V1:BASE",
+    "QUEUE_MICROPRICE_MOMENTUM_V1:STRESS",
+    "AGGRESSOR_FLOW_CONTINUATION_V1:BASE",
+    "AGGRESSOR_FLOW_CONTINUATION_V1:STRESS",
+    "MULTILEVEL_MICROPRICE_MOMENTUM_V1:BASE",
+    "MULTILEVEL_MICROPRICE_MOMENTUM_V1:STRESS",
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1:BASE",
+    "DEPTH_ADJUSTED_OFI_IMPULSE_V1:STRESS",
+    "OFI_RETURN_CONFLUENCE_V1:BASE",
+    "OFI_RETURN_CONFLUENCE_V1:STRESS",
+    "BOOK_SLOPE_ASYMMETRY_V1:BASE",
+    "BOOK_SLOPE_ASYMMETRY_V1:STRESS",
+    "HOURLY_MOMENTUM_BREAKOUT_V1:BASE",
+    "HOURLY_MOMENTUM_BREAKOUT_V1:STRESS",
+    "TREND_PULLBACK_RECLAIM_15M_V2:BASE",
+    "TREND_PULLBACK_RECLAIM_15M_V2:STRESS",
+    "BREAKOUT_RETEST_15M_V2:BASE",
+    "BREAKOUT_RETEST_15M_V2:STRESS",
+    "BREAKOUT_RETEST_30M_V2:BASE",
+    "BREAKOUT_RETEST_30M_V2:STRESS",
+    "MULTISPEED_TREND_RECLAIM_30M_V2:BASE",
+    "MULTISPEED_TREND_RECLAIM_30M_V2:STRESS"
+  ],
+  "current_active_count": 0,
+  "current_shadow_count": 6,
+  "current_off_count": 9,
+  "retired_count": 5,
+  "research_off_count": 4,
+  "last_observed_runtime_mode_counts_before_safe_stop": {
+    "ACTIVE": 0,
+    "SHADOW": 10,
+    "OFF": 5
+  },
+  "current_runtime_mode_counts": null,
+  "open_position_count": 0,
+  "open_position_count_evidence": "LAST_OBSERVED_BEFORE_SAFE_STOP",
+  "page_ids": [
+    "market",
+    "strategies",
+    "trades",
+    "settings"
+  ],
+  "navigation_groups": [
+    "시장",
+    "전략",
+    "거래",
+    "설정"
+  ],
+  "duplicate_ui_metrics": {
+    "obsolete_path_count": 0,
+    "obsolete_paths": [],
+    "status": "RESOLVED"
+  },
+  "duplicate_strategy_hypotheses": {
+    "status": "MAPPED_TO_EIGHT_FAMILIES",
+    "family_count": 8,
+    "variant_count": 15,
+    "promotion_claim": "NOT_PROVEN"
+  },
+  "family_api_virtual_current_by_family": {
+    "ORDERFLOW_CONFIRMATION": "ORDERFLOW_CONFIRMATION_FILTER_V2"
+  },
+  "orderflow_confirmation_filter": {
+    "filter_id": "ORDERFLOW_CONFIRMATION_FILTER_V2",
+    "family_id": "ORDERFLOW_CONFIRMATION",
+    "role": "FILTER",
+    "registry_strategy": false,
+    "family_api_virtual_current": true,
+    "default_research_enabled": false,
+    "affected_strategy_ids": [
+      "TREND_PULLBACK_RECLAIM_15M_V2",
+      "BREAKOUT_RETEST_30M_V2"
+    ],
+    "creates_candidate_plan": false,
+    "registry_strategy_count_delta": 0,
+    "account_count_delta": 0,
+    "trade_count_delta": 0,
+    "uplift_status": "NOT_PROVEN_NO_PAIRED_FILTER_SAMPLE"
+  },
+  "universal_win_rate_gate_present": false,
+  "universal_win_rate_gate_source_hits": [],
+  "raw_win_rate_default_sort": false,
+  "default_strategy_sort": "WILSON_95_LOWER_DESC",
+  "base_stress_double_count_risk": {
+    "status": "MITIGATED_IN_V6_GROUPED_API",
+    "last_observed_raw_rows": 32,
+    "last_observed_unique_opportunities": 16,
+    "rule": "BASE_STRESS_ARE_COST_RESULTS_OF_ONE_OPPORTUNITY"
+  },
+  "opportunity_aggregation_contract": {
+    "key_fields": [
+      "run_id",
+      "strategy_id",
+      "strategy_version",
+      "opportunity_id",
+      "symbol",
+      "side"
+    ],
+    "partial_exits_create_new_opportunity": false,
+    "account_group_fields": [
+      "account_scope",
+      "account_id"
+    ],
+    "account_scopes": [
+      "MAIN",
+      "LEAGUE"
+    ],
+    "profiles": [
+      "BASE",
+      "STRESS"
+    ],
+    "unknown_legacy_linkage_status": "NOT_PROVEN"
+  },
+  "api_transport_contract": {
+    "rest_paths": [
+      "/api/ui/summary",
+      "/api/settings/summary",
+      "/api/diagnostics",
+      "/api/strategy-families",
+      "/api/strategy-families/{family_id}",
+      "/api/strategy-families/{family_id}/conditions",
+      "/api/trades"
+    ],
+    "rest_paths_present": true,
+    "websocket_path": "/ws/ui",
+    "websocket_path_present": true,
+    "websocket_message_types": [
+      "snapshot",
+      "summary_delta",
+      "chart_delta",
+      "position_delta",
+      "strategy_row_delta",
+      "selected_detail_delta",
+      "heartbeat"
+    ],
+    "websocket_message_types_present": true,
+    "client_selection_message": "select_family",
+    "client_selection_message_present": true,
+    "selected_detail_omits": [
+      "conditions",
+      "history",
+      "entry_rules_ko"
+    ],
+    "safety": {
+      "status": "PASS",
+      "checks": {
+        "summary_paper_only": true,
+        "summary_real_orders_enabled": true,
+        "summary_auth_required": true,
+        "summary_private_api_enabled": true,
+        "summary_api_key_enabled": true,
+        "summary_wallet_enabled": true,
+        "summary_runtime_ai_order_decision_enabled": true,
+        "diagnostics_paper_only": true,
+        "diagnostics_real_orders_enabled": true,
+        "diagnostics_auth_required": true,
+        "diagnostics_private_api_enabled": true,
+        "diagnostics_api_key_enabled": true,
+        "diagnostics_wallet_enabled": true,
+        "diagnostics_runtime_ai_order_decision_enabled": true,
+        "settings_paper_only": true,
+        "settings_real_orders_enabled": true,
+        "settings_auth_required": true,
+        "settings_private_api_enabled": true,
+        "settings_api_key_enabled": true,
+        "settings_wallet_enabled": true,
+        "settings_runtime_ai_order_decision_enabled": true,
+        "summary_funding_not_ready": true,
+        "diagnostics_funding_not_ready": true,
+        "settings_funding_not_ready": true
+      }
+    },
+    "status": "PASS"
+  },
+  "source_contract": {
+    "status": "PASS",
+    "checks": {
+      "exact_four_navigation_pages": true,
+      "legacy_ui_paths_zero": true,
+      "universal_70_percent_gate_hits_zero": true,
+      "raw_win_rate_default_sort_disabled": true,
+      "family_count_eight": true,
+      "strategy_id_count_fifteen": true,
+      "account_count_thirty": true,
+      "opportunity_key_exact_six_fields": true,
+      "orderflow_affected_ids_exactly_two": true,
+      "orderflow_filter_default_off": true,
+      "orderflow_filter_creates_no_candidate_plan": true,
+      "rest_paths_present": true,
+      "websocket_path_present": true,
+      "websocket_message_types_present": true,
+      "websocket_client_selection_present": true,
+      "api_paper_safety_contract": true
+    },
+    "failures": []
+  },
+  "actual_orders_enabled": false,
+  "auth_required": false,
+  "wallet_enabled": false,
+  "wallet_runtime_evidence": "SOURCE_CONTRACT_ONLY_RUNTIME_UNAVAILABLE",
+  "paper_only": true,
+  "private_api_enabled": false,
+  "runtime_ai_order_decision_enabled": false,
+  "funding_readiness": "NOT_READY",
+  "profitability": "NOT_PROVEN",
+  "service_state": "STOPPED_OR_UNREACHABLE_NOT_RUN",
+  "current_runtime": {
+    "available": false,
+    "observation_status": "NOT_RUN",
+    "service_state": "STOPPED_OR_UNREACHABLE_NOT_RUN",
+    "error_type": "URLError"
+  },
+  "last_observed_runtime": {
+    "run_id": "run-2b7135a972dd",
+    "operation_revision": 25,
+    "operation_reason": "V6_MAINTENANCE_PAUSE",
+    "history_raw_rows": 32,
+    "unique_opportunities": 16,
+    "analytics_cache_ready": true,
+    "open_positions": 0
+  },
+  "family_contract": {
+    "family_count": 8,
+    "strategy_count": 15,
+    "current_by_family": {
+      "TREND_PULLBACK": "TREND_PULLBACK_RECLAIM_15M_V2",
+      "BREAKOUT_RUNNER": "BREAKOUT_RETEST_30M_V2",
+      "ORDERFLOW_CONFIRMATION": null,
+      "EXHAUSTION_REVERSION": "VWAP_EXHAUSTION_REVERSION_V1",
+      "POSITIONING_LIQUIDATION": null,
+      "MARKET_REGIME_FILTERS": null,
+      "SESSION_PROFILE": null,
+      "MARKET_NEUTRAL": null
+    }
+  },
+  "unresolved_conflicts": [
+    {
+      "id": "SOURCE_INSTALL_COMMIT_MISMATCH",
+      "status": "NOT_PROVEN",
+      "detail": {
+        "status": "NOT_PROVEN",
+        "reason": "INSTALLED_RELEASE_MANIFEST_NOT_V2_OR_COMMIT_MISMATCH"
+      }
+    },
+    {
+      "id": "V3_FIXED_INPUT_COMPARISON",
+      "status": "NOT_PROVEN",
+      "detail": {
+        "status": "NOT_PROVEN",
+        "path": "evidence/V6_V2_V3_COMPARISON.json",
+        "raw_status": "NOT_PROVEN",
+        "reason": "DECLARED_STATUS_OR_REQUIRED_CHECKS_NOT_PASS"
+      }
+    },
+    {
+      "id": "CURRENT_RUNTIME_DYNAMIC_STATE",
+      "status": "NOT_RUN",
+      "detail": "서비스가 중지됐거나 도달할 수 없어 동적 상태를 실행 검증하지 않았습니다."
+    }
+  ],
+  "evidence_classification": {
+    "v2_v3_comparison": "NOT_PROVEN",
+    "v3_profitability": "NOT_PROVEN",
+    "conditions_telemetry_api_ui": "NOT_RUN",
+    "dashboard_payload_benchmark": "NOT_PROVEN",
+    "browser_e2e_after_latest_change": "NOT_RUN",
+    "full_suite_after_latest_change": "NOT_RUN",
+    "thirty_minute_soak": "NOT_RUN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "release_package": "NOT_PROVEN",
+    "installed_release": "NOT_PROVEN",
+    "remote_push": "NOT_PROVEN",
+    "runtime": "NOT_RUN"
+  },
+  "evidence_details": {
+    "v2_v3_comparison": {
+      "status": "NOT_PROVEN",
+      "path": "evidence/V6_V2_V3_COMPARISON.json",
+      "raw_status": "NOT_PROVEN",
+      "reason": "DECLARED_STATUS_OR_REQUIRED_CHECKS_NOT_PASS"
+    },
+    "dashboard_payload_benchmark": {
+      "status": "NOT_PROVEN",
+      "path": "evidence/V6_DASHBOARD_PAYLOAD_BENCHMARK.json",
+      "raw_status": "PASS",
+      "reason": "UNCOMMITTED_SOURCE_DIFFERS_FROM_EVIDENCE"
+    },
+    "browser_e2e_after_latest_change": {
+      "status": "NOT_RUN",
+      "path": "evidence/V6_ACTUAL_8870_BROWSER.json",
+      "raw_status": null,
+      "reason": "EVIDENCE_FILE_NOT_FOUND"
+    },
+    "full_suite_after_latest_change": {
+      "status": "NOT_RUN",
+      "path": "evidence/V6_FINAL_VALIDATION.json",
+      "raw_status": null,
+      "reason": "EVIDENCE_FILE_NOT_FOUND"
+    },
+    "thirty_minute_soak": {
+      "status": "NOT_RUN",
+      "path": "evidence/WAVE142_V6_RUNNING_SERVICE_SOAK_30M.json",
+      "raw_status": null,
+      "reason": "EVIDENCE_FILE_NOT_FOUND"
+    },
+    "release_package": {
+      "status": "NOT_PROVEN",
+      "path": "releases/50c3e8ae7af08667546e8a1f2e4a70890e92d0f6/release-manifest.json",
+      "reason": "RELEASE_MANIFEST_NOT_V2_OR_COMMIT_MISMATCH"
+    },
+    "installed_release": {
+      "status": "NOT_PROVEN",
+      "reason": "INSTALLED_RELEASE_MANIFEST_NOT_V2_OR_COMMIT_MISMATCH"
+    },
+    "remote_push": {
+      "status": "NOT_PROVEN",
+      "reason": "UNCOMMITTED_SOURCE_NOT_PRESENT_ON_ORIGIN_MAIN",
+      "origin_main_commit": "ac5634a53da623721dc3bb6113427a32d4a677db"
+    },
+    "runtime": {
+      "status": "NOT_RUN",
+      "reason": "STOPPED_OR_UNREACHABLE_NOT_RUN",
+      "checks": {}
+    }
+  }
+}

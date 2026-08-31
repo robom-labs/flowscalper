@@ -183,10 +183,10 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
 
 - Backend tests cover immediate `202`, same-action deduplication, different-action conflict,
   bounded history, ordered stages, retryable/blocked failures, cancellation cleanup, current
-  and missing operations, dashboard/WebSocket output, the 18 League accounts, extended
+  and missing operations, dashboard/WebSocket output, the historical League account contract, extended
   positions, split risk contracts and PAPER/auth invariants.
 - Frontend tests cover bootstrap failure, HTTP timeout and typed error bodies, duplicate
-  protection, cancel/retry, malformed WebSocket recovery, ten strategies and 20 account
+  protection, cancel/retry, malformed WebSocket recovery, Registry-derived strategies and BASE/STRESS account
   pairing, beginner copy, scanner stability, indicators without input mutation and chart
   instance/series update behavior.
 - Deterministic Playwright covers the 45 accepted interactions across desktop, tablet and
@@ -197,6 +197,35 @@ The public-event lag threshold remains 1,500ms. Because an exchange or network c
   positions, terminal indicators, fullscreen and responsive checks against port 8870.
 - Public network smoke, 30-minute, 6-hour and 24-hour soaks and a Release ZIP remain separate
   and must be `NOT_RUN` unless executed during the same evidence pass.
+
+## 12.14.1 V6 family, four-page and aggregation validation
+
+- `make audit-v6-system-truth` verifies source, install, 15 strategies, 30 account IDs, eight families, four page IDs and PAPER safety without starting a stopped service.
+- `make test-strategy-family` verifies every descriptor mapping, at most one Registry current variant,
+  legacy visibility and history preservation. It also verifies the virtual
+  `ORDERFLOW_CONFIRMATION_FILTER_V2` is default OFF, role FILTER, excluded from final ranking and adds
+  zero Registry strategies, accounts, candidate plans and trades.
+- `make test-v6-governor` verifies common evidence gates, family thresholds, low-win/high-payoff breakout acceptance and high-win/negative-EV rejection without a universal 70% rule.
+- `make test-trade-opportunity-grouping` verifies the exact `(run_id, strategy_id, strategy_version,
+  opportunity_id, symbol, side)` key, BASE/STRESS and partial exits as one opportunity, MAIN/LEAGUE
+  isolation in `account_groups`, and unresolved legacy linkage as preserved `NOT_PROVEN`.
+- `make test-ui-four-pages` verifies four primary pages and the split REST/WS contract. The socket must
+  send one initial `snapshot`, then only `summary_delta`, `position_delta`, `strategy_row_delta`,
+  `selected_detail_delta` or unchanged `heartbeat`; `select_family` must refresh selected detail and
+  history, conditions, entry rules and diagnostics must remain outside the delta payload.
+- `make test-strategy-detail-on-demand` verifies evaluator-backed condition threshold/current/status,
+  order-flow component telemetry, default-OFF and stale-revision CAS behavior, frontend loading/error/
+  retry states and collapsed diagnostics.
+- `make benchmark-dashboard-payload` requires DEMO fixture `/api/ui/summary` serialized bytes to be strictly less than 50% of `/api/dashboard`.
+- `make compare-v2-v3` consumes only preregistered V6 candidates and fixed-input results. Missing input is `NOT_PROVEN`, promotion false and a zero exit status because absence is an honest research result.
+- `make e2e-simple-user-flow` must cover the integrated backend V6 contract and current desktop·tablet·mobile browser scenario. A result from before the latest conditions/CAS UI change cannot be reused.
+
+These targeted tests do not imply V3 superiority, profitability or runtime longevity. V2/V3 comparison,
+30-minute, six-hour and 24-hour evidence remain `NOT_RUN` unless each exact command and duration
+completes after the V6 change. Until the latest shared-code rerun finishes, conditions telemetry/API/UI,
+browser E2E, the full suite, lint, typecheck and build are `NOT_RUN_AFTER_LATEST_CHANGE`. Release packaging,
+installation and remote push remain separate `NOT_RUN` work. Profitability remains `NOT_PROVEN` and
+funding readiness `NOT_READY`.
 
 ## 12.15 Phase 03 validation
 

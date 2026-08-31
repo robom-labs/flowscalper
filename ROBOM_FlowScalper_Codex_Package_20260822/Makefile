@@ -32,6 +32,10 @@ endif
 .PHONY: research-100-instruments research-100-screening
 .PHONY: research-trailing-ablation research-walk-forward test-trailing-replay benchmark-100-candidates
 .PHONY: external-cache-prepare
+.PHONY: audit-v6-system-truth test-strategy-family test-v6-governor compare-v2-v3
+.PHONY: build-v6-conflict-matrix
+.PHONY: test-ui-four-pages test-trade-opportunity-grouping test-strategy-detail-on-demand
+.PHONY: benchmark-dashboard-payload e2e-simple-user-flow
 
 external-cache-prepare:
 	@if /sbin/mount | /usr/bin/grep -Fq " on $(ROBOM_EXTERNAL_VOLUME) ("; then \
@@ -79,7 +83,7 @@ fixture-demo: build
 	ROBOM_MODE=DEMO_FIXTURE $(UV) run python scripts/run_server.py
 
 network-smoke: | external-cache-prepare
-	$(UV) run python scripts/network_smoke.py --output evidence/PHASE03_PUBLIC_MARKET_SMOKE.json
+	$(UV) run python scripts/network_smoke.py --output evidence/WAVE142_V6_PUBLIC_MARKET_SMOKE.json
 
 security-scan: | external-cache-prepare
 	$(UV) run python scripts/security_scan.py
@@ -140,6 +144,46 @@ test-trailing-replay:
 benchmark-100-candidates:
 	$(UV) run python scripts/benchmark_strategy_100_candidates.py
 
+audit-v6-system-truth: | external-cache-prepare
+	$(UV) run python scripts/audit_v6_system_truth.py
+
+build-v6-conflict-matrix: | external-cache-prepare
+	$(UV) run python scripts/build_v6_conflict_matrix.py
+
+test-strategy-family: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v6_family_governor_opportunities.py \
+		-k 'family_contract or family_catalog or orderflow_filter or conflict'
+
+test-v6-governor: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v6_family_governor_opportunities.py \
+		-k 'family_gate or universal_gate or negative_expectancy'
+
+compare-v2-v3: | external-cache-prepare
+	$(UV) run python scripts/compare_v2_v3.py
+
+test-ui-four-pages: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v6_ui_contracts.py \
+		-k 'summary or settings or split_summary'
+	cd frontend && $(PNPM) exec vitest run tests/App.test.tsx tests/controlUi.test.tsx \
+		--environment jsdom
+
+test-trade-opportunity-grouping: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v6_family_governor_opportunities.py \
+		-k opportunity_grouping
+	$(UV) run pytest backend/tests/test_v6_ui_contracts.py \
+		-k trades_api_groups
+
+test-strategy-detail-on-demand: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v6_ui_contracts.py \
+		-k family_catalog_detail_conditions
+
+benchmark-dashboard-payload: | external-cache-prepare
+	$(UV) run python scripts/benchmark_dashboard_payload.py
+
+e2e-simple-user-flow: build
+	$(UV) run pytest backend/tests/test_v6_ui_contracts.py
+	cd frontend && $(PNPM) exec playwright test e2e/dashboard.spec.ts
+
 soak-30m:
 	$(UV) run python scripts/soak_live.py --duration-seconds 1800 --sample-seconds 10 --output evidence/PHASE03_SOAK_30M.json
 
@@ -152,17 +196,17 @@ soak-24h:
 service-soak-30m:
 	$(UV) run python scripts/observe_running_service.py \
 		--duration-seconds 1800 --sample-seconds 10 \
-		--output evidence/WAVE49_RUNNING_SERVICE_SOAK_30M.json
+		--output evidence/WAVE142_V6_RUNNING_SERVICE_SOAK_30M.json
 
 service-soak-6h:
 	$(UV) run python scripts/observe_running_service.py \
 		--duration-seconds 21600 --sample-seconds 30 \
-		--output evidence/WAVE49_RUNNING_SERVICE_SOAK_6H.json
+		--output evidence/WAVE142_V6_RUNNING_SERVICE_SOAK_6H.json
 
 service-soak-24h:
 	$(UV) run python scripts/observe_running_service.py \
 		--duration-seconds 86400 --sample-seconds 60 \
-		--output evidence/WAVE49_RUNNING_SERVICE_SOAK_24H.json
+		--output evidence/WAVE142_V6_RUNNING_SERVICE_SOAK_24H.json
 
 ledger-verify-snapshot:
 	@test -n "$${ROBOM_DB_PATH}" || (echo "ROBOM_DB_PATH가 필요합니다." >&2; exit 2)

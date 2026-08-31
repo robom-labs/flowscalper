@@ -124,6 +124,7 @@ def test_completed_30m_breakout_retest_qualifies_both_sides_after_live_flow_conf
     )
     assert state.direction is side
     assert state.reason_codes == ()
+    assert state.setup_confirmed is True
     assert state.signal_ts_ms is not None
 
     registry = StrategyRegistry()
@@ -266,14 +267,17 @@ def test_runtime_public_warmup_excludes_incomplete_bar_and_keeps_interval_isolat
     assert runtime.hourly_completed_candles("BTCUSDT") == ()
 
 
-def test_intraday_registry_keeps_ten_simultaneous_shadow_hypotheses() -> None:
+def test_intraday_registry_keeps_six_entry_shadows_and_four_legacy_components_off() -> None:
     registry = StrategyRegistry()
     rows = registry.rows()
     shadow = [row for row in rows if row["mode"] == "SHADOW"]
-    retired = [row for row in rows if row["mode"] == "OFF"]
+    retired = [row for row in rows if row["lifecycle"] == "RETIRED"]
+    research_off = [row for row in rows if row["mode"] == "OFF" and row["lifecycle"] == "RESEARCH"]
 
-    assert len(shadow) == 10
+    assert len(shadow) == 6
     assert len(retired) == 5
+    assert len(research_off) == 4
     assert all(row["long_enabled"] and row["short_enabled"] for row in shadow)
     assert all(row["lifecycle"] == "RETIRED" for row in retired)
+    assert all(row["role"] == "LEGACY" for row in research_off)
     assert all(row["paper_only"] for row in rows)

@@ -120,6 +120,6 @@ export const initialDashboard: DashboardData = {
     api_host: '127.0.0.1:8765',
     auth_headers: false,
     storage: 'loading',
-    app_version: '0.2.0-paper',
+    app_version: '0.3.0-paper',
   },
 }

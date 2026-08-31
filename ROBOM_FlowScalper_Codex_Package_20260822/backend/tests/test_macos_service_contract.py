@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import plistlib
@@ -18,6 +19,9 @@ from backend.app.storage.integrity import RuntimeSafetyViolation
 from scripts.stage_macos_release import (
     _default_runtime_root,
     activate_release,
+    current_release,
+    legacy_runtime_safety_fields_missing,
+    migrate_legacy_release_manifest,
     prune_obsolete_releases,
     stage_release,
 )
@@ -159,29 +163,33 @@ def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> N
 def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
 
-    kickstart_at = installer.index('launchctl kickstart "$SERVICE_TARGET"')
+    main_install_at = installer.index("\nif ! stop_loaded_service; then")
+    kickstart_at = installer.index('launchctl kickstart "$SERVICE_TARGET"', main_install_at)
     readiness_at = installer.index("for readiness_wait in {1..180}")
     pruning_at = installer.index("--prune-only")
     pass_at = installer.index('echo "PASS: 자동 실행 서비스 설치 및 안전한 LIVE 준비 완료"')
     assert kickstart_at < readiness_at < pruning_at < pass_at
-    readiness = installer[readiness_at:pruning_at]
+    readiness = installer[main_install_at:pruning_at]
+    contract_at = installer.index("dashboard_matches_install_contract()")
+    rollback_at = installer.index("rollback_previous_release()")
+    contract = installer[contract_at:rollback_at]
     assert "http://127.0.0.1:8870/api/dashboard" in readiness
-    assert 'system["release_commit"] == expected' in readiness
-    assert 'system["release_isolated"] is True' in readiness
-    assert 'status["market_data_state"] == "LIVE"' in readiness
-    assert 'status["execution_state"] == "PAPER"' in readiness
-    assert 'status["real_orders_enabled"] is False' in readiness
-    assert 'status["auth_required"] is False' in readiness
-    assert 'operation["market_observation_active"] is True' in readiness
-    assert 'operation["automatic_recovery"] is True' in readiness
-    assert 'float(system["lag_p95_ms"]) <= 500.0' in readiness
-    assert 'float(system["trade_lag_p95_ms"]) <= 1000.0' in readiness
-    assert 'system["persistence_worker_warmed"] is True' in readiness
-    assert 'int(system["persistence_flush_count"]) >= 4' in readiness
-    assert 'float(system["persistence_flush_last_ms"]) <= 20000.0' in readiness
-    assert 'int(system["persistence_fault_count"]) == 0' in readiness
-    assert 'int(system["persistence_buffer_dropped"]) == 0' in readiness
-    assert 'system["storage_entry_allowed"] is True' in readiness
+    assert 'system["release_commit"] == expected_commit' in contract
+    assert 'system["release_isolated"] is True' in contract
+    assert 'status["market_data_state"] == "LIVE"' in contract
+    assert 'status["execution_state"] == "PAPER"' in contract
+    assert 'status["real_orders_enabled"] is False' in contract
+    assert 'status["auth_required"] is False' in contract
+    assert 'operation["market_observation_active"] is True' in contract
+    assert 'float(system["lag_p95_ms"]) <= 500.0' in contract
+    assert 'float(system["trade_lag_p95_ms"]) <= 1000.0' in contract
+    assert 'system["persistence_worker_warmed"] is True' in contract
+    assert 'int(system["persistence_flush_count"]) >= 4' in contract
+    assert 'float(system["persistence_flush_last_ms"]) <= 20000.0' in contract
+    assert 'int(system["persistence_fault_count"]) == 0' in contract
+    assert 'int(system["persistence_buffer_dropped"]) == 0' in contract
+    assert 'system["storage_entry_allowed"] is True' in contract
+    assert 'rollback_previous_release "READINESS_FAILED"' in readiness
     assert "exit 6" in readiness
 
 
@@ -193,6 +201,167 @@ def test_installer_can_prepare_release_without_restarting_loaded_service() -> No
     bootout_at = installer.index('launchctl bootout "$SERVICE_TARGET"')
     assert prepare_only_at < bootout_at
     assert "exit 0" in installer[prepare_only_at:bootout_at]
+
+
+def test_installer_shell_syntax_is_valid() -> None:
+    subprocess.run(
+        ["zsh", "-n", str(PROJECT_ROOT / "scripts" / "install_macos_service.sh")],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+
+def test_installer_preflight_is_saved_before_activation_and_first_install_is_exact() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
+
+    preflight_at = installer.index('> "$PREFLIGHT_DASHBOARD"')
+    activate_at = installer.index('--activate > "$STAGE_RESULT"')
+    assert preflight_at < activate_at
+    assert '[[ "$HAD_CURRENT" == "false" && "$HAD_JOB" == "false" ]]' in installer
+    assert '[[ "$HAD_CURRENT" != "true" || "$HAD_JOB" != "true" ]]' in installer
+    preflight = installer[preflight_at:activate_at]
+    assert 'status["market_data_state"] == "LIVE"' in preflight
+    assert 'status["execution_state"] == "PAPER"' in preflight
+    assert 'status["real_orders_enabled"] is False' in preflight
+    assert 'status["auth_required"] is False' in preflight
+    assert 'operation["state"] == "MANUALLY_PAUSED"' in preflight
+    assert 'operation["paper_entry_active"] is False' in preflight
+    assert 'intent["manual_pause_requested"] is True' in preflight
+    assert 'payload.get("position") is None' in preflight
+    assert 'payload.get("focus_positions") == []' in preflight
+    assert 'payload.get("league_positions") == []' in preflight
+    assert "migrate_legacy_release_manifest(runtime_root, previous_release)" in preflight
+    assert 'manifest["schema_version"] == 2' in preflight
+    assert 'system["release_commit"] == manifest["commit"]' in preflight
+    assert "legacy_runtime_safety_fields_missing(original_manifest, system)" in preflight
+    identity_check_at = preflight.index(
+        'assert system["release_commit"] == original_manifest.get("commit")'
+    )
+    migrate_at = preflight.index(
+        "migrate_legacy_release_manifest(runtime_root, previous_release)"
+    )
+    assert identity_check_at < migrate_at
+    assert preflight.index('assert system["release_isolated"] is True') < migrate_at
+    assert '"legacy_runtime_safety_fields_missing": bool(legacy_missing_fields)' in preflight
+    assert '"legacy_runtime_safety_missing_fields": list(legacy_missing_fields)' in preflight
+
+
+def test_installer_preserves_run_pause_revision_and_flat_state_after_restart() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
+    contract = installer[
+        installer.index("dashboard_matches_install_contract()") : installer.index(
+            "rollback_previous_release()"
+        )
+    ]
+
+    assert 'status["run_id"] == expected_run' in contract
+    assert 'intent["state"] == expected_pause_state' in contract
+    assert 'intent["revision"] == int(expected_revision)' in contract
+    assert 'payload["paused"] is True' in contract
+    assert 'operation["state"] == "MANUALLY_PAUSED"' in contract
+    assert 'operation["automatic_recovery"] is False' in contract
+    assert 'payload.get("position") is None' in contract
+    assert 'payload.get("focus_positions") == []' in contract
+    assert 'payload.get("league_positions") == []' in contract
+    assert 'system["auth_headers"] is False' in contract
+    assert 'if field not in system:' in contract
+    assert 'assert allow_legacy_missing == "true"' in contract
+    assert 'assert system[field] is False' in contract
+    assert 'dashboard_matches_install_contract "$EXPECTED_RELEASE_COMMIT"' in installer
+    assert '"$PRESERVE_EXISTING_IDENTITY" "false"' in installer
+
+
+def test_installer_rollback_uses_stage_target_and_revalidates_previous_dashboard() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
+    rollback = installer[
+        installer.index("rollback_previous_release()") : installer.index(
+            "\nif ! stop_loaded_service; then"
+        )
+    ]
+
+    assert '["deployment"].get("rollback_release")' in installer
+    assert '[[ "$ROLLBACK_RELEASE" != "$PREVIOUS_RELEASE" ]]' in installer
+    assert "from scripts.stage_macos_release import activate_release" in rollback
+    assert 'actor="CODEX_DEPLOY_ROLLBACK"' in rollback
+    assert 'dashboard_matches_install_contract "$PREVIOUS_RELEASE_COMMIT" "true"' in rollback
+    assert '"$LEGACY_RUNTIME_SAFETY_FIELDS_MISSING"' in rollback
+    assert "for rollback_readiness_wait in {1..180}" in rollback
+    assert 'rollback_previous_release "BOOTSTRAP_FAILED"' in installer
+    assert 'rollback_previous_release "KICKSTART_FAILED"' in installer
+    assert 'rollback_previous_release "READINESS_FAILED"' in installer
+
+
+def test_shutdown_failure_restores_pointer_without_retrying_bootout_or_bootstrap() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(
+        encoding="utf-8"
+    )
+    shutdown_failure = installer[
+        installer.index("\nif ! stop_loaded_service; then") : installer.index(
+            "\nif ! bootstrap_launch_agent; then"
+        )
+    ]
+
+    assert 'restore_previous_release_before_restart "SHUTDOWN_FAILED"' in shutdown_failure
+    assert 'rollback_previous_release "SHUTDOWN_FAILED"' not in shutdown_failure
+
+
+def test_prepare_only_restores_loaded_v2_release_pointer_without_restart() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
+    prepare = installer[
+        installer.index('if [[ "$PREPARE_ONLY" == "true" ]]') : installer.index(
+            "stop_loaded_service()"
+        )
+    ]
+
+    assert (
+        'restore_previous_release_before_restart "PREPARE_ONLY_KEEP_LOADED_RELEASE_CURRENT"'
+        in prepare
+    )
+    assert 'latest-install-prestart-rollback.json' in installer
+    assert 'launchctl bootout "$SERVICE_TARGET"' not in prepare
+
+
+def test_every_post_activation_prestart_failure_restores_previous_service() -> None:
+    installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
+    activation_at = installer.index('--activate > "$STAGE_RESULT"')
+    service_stop_at = installer.index("stop_loaded_service()")
+    activated_prestart = installer[activation_at:service_stop_at]
+
+    assert installer.index("restore_previous_release_before_restart()") < activation_at
+    assert installer.index("abort_activated_install()") < activation_at
+    for failure_reason in (
+        "STAGE_ACTIVATION_FAILED",
+        "STAGE_RESULT_INVALID",
+        "ROLLBACK_RELEASE_PARSE_FAILED",
+        "UNEXPECTED_FIRST_INSTALL_ROLLBACK",
+        "ROLLBACK_RELEASE_MISMATCH",
+        "RELEASE_MANIFEST_MISSING",
+        "RUNNER_MISSING",
+        "PLIST_WRITE_FAILED",
+        "INSTALL_PERMISSION_FAILED",
+        "PLIST_VALIDATION_FAILED",
+        "RELEASE_COMMIT_PARSE_FAILED",
+        "ACTIVATION_PATH_RESOLVE_FAILED",
+    ):
+        assert f'abort_activated_install "{failure_reason}"' in activated_prestart
+    restore = installer[
+        installer.index("restore_previous_release_before_restart()") : installer.index(
+            "abort_activated_install()"
+        )
+    ]
+    assert "from scripts.stage_macos_release import activate_release, current_release" in restore
+    assert (
+        "assert current_release(runtime_root) == previous_release.resolve(strict=True)"
+        in restore
+    )
+    assert 'launchctl print "$SERVICE_TARGET"' in restore
+    assert 'status["run_id"] == expected_run' in restore
+    assert 'intent["revision"] == int(expected_revision)' in restore
+    assert 'payload.get("position") is None' in restore
+    assert 'payload.get("focus_positions") == []' in restore
+    assert 'payload.get("league_positions") == []' in restore
 
 
 def test_maintenance_recovery_override_allows_only_existing_fail_closed_state() -> None:
@@ -421,6 +590,390 @@ def _release_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
     _git(source, "add", ".")
     _git(source, "commit", "-m", "fixture release one")
     return source, runtime, market_archive, ledger
+
+
+def _legacy_release_fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    manifest = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+    release = Path(str(manifest["release_path"]))
+    legacy = {
+        key: value
+        for key, value in manifest.items()
+        if key not in {"file_count", "files"}
+    }
+    legacy["schema_version"] = 1
+    legacy_bytes = (
+        json.dumps(legacy, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    (release / "release-manifest.json").write_bytes(legacy_bytes)
+    return runtime, release, legacy_bytes
+
+
+def _legacy_safety_manifest() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "paper_only": True,
+        "real_orders_enabled": False,
+        "auth_required": False,
+        "private_api_enabled": False,
+        "wallet_paths_enabled": False,
+    }
+
+
+def test_legacy_v1_old_dashboard_allows_only_missing_runtime_safety_evidence() -> None:
+    old_system = {"auth_headers": False}
+
+    missing = legacy_runtime_safety_fields_missing(
+        _legacy_safety_manifest(),
+        old_system,
+    )
+
+    assert missing == (
+        "private_api_enabled",
+        "api_key_enabled",
+        "wallet_enabled",
+        "runtime_ai_order_decision_enabled",
+    )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "private_api_enabled",
+        "api_key_enabled",
+        "wallet_enabled",
+        "runtime_ai_order_decision_enabled",
+    ],
+)
+def test_legacy_v1_old_dashboard_rejects_any_true_runtime_safety_field(field: str) -> None:
+    old_system: dict[str, object] = {"auth_headers": False, field: True}
+
+    with pytest.raises(RuntimeError, match="명시적 False"):
+        legacy_runtime_safety_fields_missing(_legacy_safety_manifest(), old_system)
+
+
+def test_v2_dashboard_requires_all_runtime_safety_fields_explicitly_false() -> None:
+    manifest = {**_legacy_safety_manifest(), "schema_version": 2}
+    with pytest.raises(RuntimeError, match="schema v2 dashboard"):
+        legacy_runtime_safety_fields_missing(manifest, {"auth_headers": False})
+
+    system = {
+        "auth_headers": False,
+        "private_api_enabled": False,
+        "api_key_enabled": False,
+        "wallet_enabled": False,
+        "runtime_ai_order_decision_enabled": False,
+    }
+    assert legacy_runtime_safety_fields_missing(manifest, system) == ()
+
+
+def test_legacy_v1_release_manifest_migrates_metadata_without_touching_tree(
+    tmp_path: Path,
+) -> None:
+    runtime, release, legacy_bytes = _legacy_release_fixture(tmp_path)
+    tree_before = {
+        path.relative_to(release).as_posix(): (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in release.rglob("*")
+        if path.is_file() and path.name != "release-manifest.json"
+    }
+
+    migrated = migrate_legacy_release_manifest(runtime, release)
+
+    tree_after = {
+        path.relative_to(release).as_posix(): (path.read_bytes(), path.stat().st_mtime_ns)
+        for path in release.rglob("*")
+        if path.is_file() and path.name != "release-manifest.json"
+    }
+    assert migrated["schema_version"] == 2
+    assert migrated["legacy_schema_version"] == 1
+    assert migrated["legacy_manifest_sha256"] == hashlib.sha256(legacy_bytes).hexdigest()
+    assert migrated["file_count"] == len(tree_before)
+    assert set(migrated["files"]) == set(tree_before)
+    assert tree_after == tree_before
+
+
+def test_legacy_manifest_migration_is_idempotent_for_verified_v2(tmp_path: Path) -> None:
+    runtime, release, _ = _legacy_release_fixture(tmp_path)
+    first = migrate_legacy_release_manifest(runtime, release)
+    manifest_path = release / "release-manifest.json"
+    bytes_before = manifest_path.read_bytes()
+    mtime_before = manifest_path.stat().st_mtime_ns
+
+    second = migrate_legacy_release_manifest(runtime, release)
+
+    assert second == first
+    assert manifest_path.read_bytes() == bytes_before
+    assert manifest_path.stat().st_mtime_ns == mtime_before
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe_value"),
+    [
+        ("paper_only", False),
+        ("real_orders_enabled", True),
+        ("auth_required", True),
+        ("private_api_enabled", True),
+        ("wallet_paths_enabled", True),
+    ],
+)
+def test_legacy_manifest_migration_rejects_unsafe_release_flags(
+    tmp_path: Path,
+    field: str,
+    unsafe_value: bool,
+) -> None:
+    runtime, release, _ = _legacy_release_fixture(tmp_path)
+    manifest_path = release / "release-manifest.json"
+    legacy = json.loads(manifest_path.read_text(encoding="utf-8"))
+    legacy[field] = unsafe_value
+    manifest_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="PAPER 안전 불변조건"):
+        migrate_legacy_release_manifest(runtime, release)
+
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["schema_version"] == 1
+
+
+def test_legacy_manifest_migration_rejects_commit_directory_mismatch(tmp_path: Path) -> None:
+    runtime, release, _ = _legacy_release_fixture(tmp_path)
+    manifest_path = release / "release-manifest.json"
+    legacy = json.loads(manifest_path.read_text(encoding="utf-8"))
+    other_commit = "f" * 40
+    legacy["commit"] = other_commit
+    legacy["release_id"] = other_commit
+    manifest_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="디렉터리·release_id·commit"):
+        migrate_legacy_release_manifest(runtime, release)
+
+
+def test_legacy_manifest_migration_rejects_release_path_mismatch(tmp_path: Path) -> None:
+    runtime, release, _ = _legacy_release_fixture(tmp_path)
+    manifest_path = release / "release-manifest.json"
+    legacy = json.loads(manifest_path.read_text(encoding="utf-8"))
+    legacy["release_path"] = "/tmp/not-the-legacy-release"
+    manifest_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="release_path"):
+        migrate_legacy_release_manifest(runtime, release)
+
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["schema_version"] == 1
+
+
+def test_legacy_manifest_migration_rejects_symlink_in_release_tree(tmp_path: Path) -> None:
+    runtime, release, _ = _legacy_release_fixture(tmp_path)
+    (release / "linked.py").symlink_to(release / "backend.py")
+
+    with pytest.raises(RuntimeError, match="tree link"):
+        migrate_legacy_release_manifest(runtime, release)
+
+
+def test_legacy_manifest_migration_requires_direct_runtime_release_child(
+    tmp_path: Path,
+) -> None:
+    runtime, release, _ = _legacy_release_fixture(tmp_path)
+    nested_root = runtime / "releases" / "nested"
+    nested_root.mkdir()
+    nested_release = nested_root / release.name
+    release.rename(nested_release)
+
+    with pytest.raises(RuntimeError, match="releases 바로 아래"):
+        migrate_legacy_release_manifest(runtime, nested_release)
+
+
+def test_legacy_manifest_migration_rejects_symlinked_releases_root(tmp_path: Path) -> None:
+    runtime, release, _ = _legacy_release_fixture(tmp_path)
+    alias_runtime = tmp_path / "alias-runtime"
+    alias_runtime.mkdir()
+    (alias_runtime / "releases").symlink_to(runtime / "releases", target_is_directory=True)
+
+    with pytest.raises(RuntimeError, match="releases symlink"):
+        migrate_legacy_release_manifest(alias_runtime, release)
+
+
+def test_legacy_manifest_migration_restores_original_manifest_if_verify_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime, release, legacy_bytes = _legacy_release_fixture(tmp_path)
+
+    def fail_verification(_: Path) -> dict[str, object]:
+        raise RuntimeError("forced post-migration verification failure")
+
+    monkeypatch.setattr(
+        "scripts.stage_macos_release._verify_release_tree",
+        fail_verification,
+    )
+
+    with pytest.raises(RuntimeError, match="forced post-migration"):
+        migrate_legacy_release_manifest(runtime, release)
+
+    assert (release / "release-manifest.json").read_bytes() == legacy_bytes
+
+
+def test_staged_release_rejects_untracked_source_files(tmp_path: Path) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    (source / "untracked-v6-module.py").write_text("V6 = True\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="미추적"):
+        stage_release(
+            source,
+            runtime,
+            market_archive,
+            ledger,
+            build_frontend=False,
+            prebuilt_frontend_dist=source / "frontend" / "dist",
+        )
+
+
+def test_staged_release_manifest_hashes_every_file_except_itself(tmp_path: Path) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+
+    manifest = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+    release = Path(str(manifest["release_path"]))
+    actual_files = {
+        path.relative_to(release).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in release.rglob("*")
+        if path.is_file() and path != release / "release-manifest.json"
+    }
+
+    assert manifest["schema_version"] == 2
+    assert manifest["file_count"] == len(actual_files)
+    assert manifest["files"] == dict(sorted(actual_files.items()))
+    assert "release-manifest.json" not in manifest["files"]
+    assert "backend.py" in manifest["files"]
+    assert "frontend/dist/index.html" in manifest["files"]
+
+
+def test_same_commit_release_reuse_rejects_modified_tree(tmp_path: Path) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    manifest = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+    reused = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+    assert reused == manifest
+
+    release = Path(str(manifest["release_path"]))
+    (release / "backend.py").write_text("RELEASE = 999\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="무결성.*modified"):
+        stage_release(
+            source,
+            runtime,
+            market_archive,
+            ledger,
+            build_frontend=False,
+            prebuilt_frontend_dist=source / "frontend" / "dist",
+        )
+
+
+@pytest.mark.parametrize("mutation", ["modified", "missing", "added"])
+def test_activate_release_rejects_any_tree_difference_before_pointer_switch(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    manifest = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+    release = Path(str(manifest["release_path"]))
+    target = release / "backend.py"
+    if mutation == "modified":
+        target.write_text("RELEASE = 999\n", encoding="utf-8")
+    elif mutation == "missing":
+        target.unlink()
+    else:
+        (release / "unexpected.py").write_text("UNEXPECTED = True\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=f"무결성.*{mutation}"):
+        activate_release(runtime, release)
+
+    assert not (runtime / "current").exists()
+    assert not (runtime / "current-deployment.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe_value", "message"),
+    [
+        ("schema_version", 1, "schema"),
+        ("release_id", "f" * 40, "release_id"),
+        ("release_path", "/tmp/not-the-staged-release", "release_path"),
+        ("paper_only", False, "PAPER 안전"),
+        ("real_orders_enabled", True, "PAPER 안전"),
+        ("auth_required", True, "PAPER 안전"),
+        ("private_api_enabled", True, "PAPER 안전"),
+        ("wallet_paths_enabled", True, "PAPER 안전"),
+    ],
+)
+def test_activate_release_rejects_untrusted_manifest_metadata_before_pointer_switch(
+    tmp_path: Path,
+    field: str,
+    unsafe_value: object,
+    message: str,
+) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    manifest = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+    release = Path(str(manifest["release_path"]))
+    manifest_path = release / "release-manifest.json"
+    tampered = json.loads(manifest_path.read_text(encoding="utf-8"))
+    tampered[field] = unsafe_value
+    manifest_path.write_text(json.dumps(tampered), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=message):
+        activate_release(runtime, release)
+
+    assert not (runtime / "current").exists()
+    assert not (runtime / "current-deployment.json").exists()
+
+
+def test_current_pointer_requires_direct_release_child(tmp_path: Path) -> None:
+    runtime = tmp_path / "runtime"
+    nested_release = runtime / "releases" / "nested" / ("a" * 40)
+    nested_release.mkdir(parents=True)
+    (runtime / "current").symlink_to(
+        nested_release.relative_to(runtime),
+        target_is_directory=True,
+    )
+
+    with pytest.raises(RuntimeError, match="releases 바로 아래"):
+        current_release(runtime)
 
 
 def test_staged_release_is_unchanged_when_worktree_assets_and_source_change(

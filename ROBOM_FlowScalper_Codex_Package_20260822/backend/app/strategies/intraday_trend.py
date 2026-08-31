@@ -38,6 +38,10 @@ class IntradayTrendState:
     adx: float | None
     relative_volume: float | None
     reason_codes: tuple[str, ...]
+    history_count: int = 0
+    hourly_history_count: int = 0
+    setup_confirmed: bool = False
+    breakout_relative_volume: float | None = None
 
     @property
     def signal_ts_ms(self) -> int | None:
@@ -160,6 +164,8 @@ def intraday_trend_state(
             latest_open_ts_ms,
             interval_seconds,
             "INTRADAY_HISTORY_WARMUP",
+            history_count=len(ordered),
+            hourly_history_count=len(hourly_candles),
         )
     if any(
         current.open_ts_ms - previous.open_ts_ms != interval_seconds * 1_000
@@ -169,6 +175,8 @@ def intraday_trend_state(
             latest_open_ts_ms,
             interval_seconds,
             "INTRADAY_CANDLE_GAP",
+            history_count=len(ordered),
+            hourly_history_count=len(hourly_candles),
         )
 
     latest = ordered[-1]
@@ -201,6 +209,8 @@ def intraday_trend_state(
         reasons.append("INTRADAY_ATR_INVALID")
 
     structural_stop: float | None = None
+    setup_ready = False
+    breakout_volume: float | None = None
     if direction is not None and math.isfinite(atr) and atr > 0:
         directional_momentum = momentum_24h * (1 if direction is Side.LONG else -1)
         if variant is IntradayTrendVariant.PULLBACK_RECLAIM_15M:
@@ -242,14 +252,15 @@ def intraday_trend_state(
                 else min(float(row.low) for row in breakout_rows)
             )
             buffer_atr = 0.35 if interval_seconds == 900 else 0.40
-            if not _breakout_retest_ready(
+            setup_ready = _breakout_retest_ready(
                 direction,
                 previous,
                 latest,
                 breakout_level,
                 atr,
                 buffer_atr,
-            ):
+            )
+            if not setup_ready:
                 reasons.append("BREAKOUT_RETEST_NOT_CONFIRMED")
             structural_stop = _retest_stop(
                 direction,
@@ -286,6 +297,10 @@ def intraday_trend_state(
         adx=adx,
         relative_volume=relative_volume,
         reason_codes=tuple(reasons),
+        history_count=len(ordered),
+        hourly_history_count=len(hourly_candles),
+        setup_confirmed=setup_ready,
+        breakout_relative_volume=breakout_volume,
     )
 
 
@@ -293,6 +308,9 @@ def _empty_state(
     latest_open_ts_ms: int | None,
     interval_seconds: int,
     reason: str,
+    *,
+    history_count: int = 0,
+    hourly_history_count: int = 0,
 ) -> IntradayTrendState:
     return IntradayTrendState(
         latest_open_ts_ms=latest_open_ts_ms,
@@ -304,6 +322,8 @@ def _empty_state(
         adx=None,
         relative_volume=None,
         reason_codes=(reason,),
+        history_count=history_count,
+        hourly_history_count=hourly_history_count,
     )
 
 

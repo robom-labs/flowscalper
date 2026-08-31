@@ -111,6 +111,16 @@ No fixed 120-second forced exit. The position may remain open while the entry th
 
 The dashboard must show real market data, paper state, entry/TP/SL, risk, fees, slippage, current rationale, rejection rationale, system health and replay.
 
+V6 exposes exactly four primary pages, `시장`, `전략`, `거래`, `설정`, with market as the
+default. Strategy includes family performance, trades includes open/history/replay, and settings
+includes risk/system. Research detail and raw diagnostics load on demand instead of occupying a
+primary route. Existing ledgers, replay data and previous strategy versions remain available.
+
+Every registered strategy maps to one of eight families with an explicit ENTRY, FILTER, ROUTER,
+MARKET_NEUTRAL_MULTI_LEG or LEGACY role and at most one current variant per family. BASE and
+STRESS are separate cost results for one unique opportunity, not two strategy samples. Default
+ranking uses an eligible Wilson 95% lower bound rather than raw win rate.
+
 ### FR-010 Local persistence and replay
 
 Every closed trade must be replayable from preserved market and decision events to the extent allowed by the configured retention policy.
@@ -127,6 +137,9 @@ Every closed trade must be replayable from preserved market and decision events 
 - Backpressure and disk-pressure controls.
 - Explainable reason codes.
 - Korean-first UI, English technical logs optional.
+
+V2/V3 fixed-input comparison, six-hour soak and 24-hour soak are `NOT_RUN` until actually
+executed. Missing strategy evidence is `NOT_PROVEN`; `FUNDING_READINESS` remains `NOT_READY`.
 
 ## 1.7 Explicit exclusions
 

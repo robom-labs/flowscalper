@@ -2,10 +2,10 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-import { LeaguePositionsPage } from '../src/pages/LeaguePositionsPage'
-import { PerformancePage } from '../src/pages/PerformancePage'
+import { PositionList } from '../src/components/PositionList'
+import { StrategyPerformancePanel } from '../src/components/StrategyPerformancePanel'
 import { StrategiesPage } from '../src/pages/StrategiesPage'
-import { StrategySymbolPage } from '../src/pages/StrategySymbolPage'
+import { StrategySymbolPanel } from '../src/components/StrategySymbolPanel'
 import type { LeaguePosition } from '../src/types'
 import { dashboardFixture, leagueAccounts, strategies } from './fixtures'
 
@@ -21,21 +21,23 @@ function openStrategySettings(strategyId: string) {
   fireEvent.click(within(row).getByRole('button', { name: '자세히·설정' }))
 }
 
-test('shows fifteen compact strategy rows with ten simultaneous paper hypotheses', () => {
+test('shows only current non-retired strategies with trust-first ranking evidence', () => {
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
-  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(15)
+  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-inline-modes button')).toHaveLength(0)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByText('10개 동시 검증 · 30건 달성 0개 · 보존 5개 · 문제 0개 · 실제 주문 0')).toBeInTheDocument()
+  expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent(/모의평가 ON10/)
   expect(screen.getAllByText('준비 중')).toHaveLength(10)
-  expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(5)
-  expect(screen.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
-  expect(screen.getByRole('columnheader', { name: '거래 수' })).toBeInTheDocument()
+  expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(0)
+  expect(document.querySelector('[data-strategy-id="LSA_REVERSAL_V1"]')).not.toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'descending')
+  expect(screen.getByRole('columnheader', { name: '고유 거래' })).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: '기대값' })).toBeInTheDocument()
   expect(screen.getByRole('columnheader', { name: '순손익' })).toBeInTheDocument()
   expect(screen.getByRole('group', { name: '성과 비용 기준' })).toBeInTheDocument()
   expect(screen.getByText(/30건 미만 승률은 참고값/)).toBeInTheDocument()
 
-  openStrategySettings(strategies[0].strategy_id)
+  openStrategySettings(strategies[1].strategy_id)
   expect(screen.getByRole('dialog', { name: '전략 상세 정보' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: '기본 비용 가상계좌' })).toBeInTheDocument()
   expect(screen.getByRole('heading', { name: '보수 비용 가상계좌' })).toBeInTheDocument()
@@ -55,30 +57,31 @@ test('shows fifteen compact strategy rows with ten simultaneous paper hypotheses
   expect(screen.getByText('위험예산')).toBeInTheDocument()
   expect(screen.getByText('대상 범위')).toBeInTheDocument()
   expect(screen.getByText('미래정보 방지')).toBeInTheDocument()
-  expect(screen.getByText('연구 근거')).toBeInTheDocument()
+  expect(screen.getByText('출처')).toBeInTheDocument()
   expect(screen.getByText('현재 상태 코드')).not.toBeVisible()
   expect(screen.getByText('아직 검증 불충분')).toBeInTheDocument()
   expect(screen.getAllByText('고급 통계 보기')).toHaveLength(2)
 
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
-  openStrategySettings(strategies[1].strategy_id)
-  expect(screen.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
+  openStrategySettings(strategies[2].strategy_id)
+  expect(screen.getByRole('button', { name: 'VWAP 소진 모의평가 켜기' })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByRole('button', { name: '상승 켜짐' })).toHaveAttribute('aria-pressed', 'true')
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
-  openStrategySettings(strategies[10].strategy_id)
-  expect(screen.getByText('1시간~36시간')).toBeInTheDocument()
-  expect(screen.getByText(/TP1 2.2R·40%/)).toBeInTheDocument()
+  openStrategySettings(strategies[13].strategy_id)
+  expect(screen.getByText('2시간~18시간')).toBeInTheDocument()
+  expect(screen.getByText(/TP1 1.6R·40%/)).toBeInTheDocument()
   fireEvent.click(screen.getAllByRole('button', { name: '전략 상세 정보 닫기' })[0])
   openStrategySettings(strategies[11].strategy_id)
   expect(screen.getByText('30분~8시간')).toBeInTheDocument()
   expect(screen.getByText(/시간청산 없이 TP1·TP2·구조 손절로 결판/)).toBeInTheDocument()
 })
 
-test('sorts strategy results both ways and keeps missing win rates at the bottom', () => {
+test('sorts eligible strategies by Wilson lower bound and keeps sparse samples out of rank', () => {
   const evidence = new Map([
-    [strategies[0].strategy_id, { sampleSize: 12, wins: 6, losses: 6, winRate: '0.5' }],
-    [strategies[1].strategy_id, { sampleSize: 6, wins: 5, losses: 1, winRate: '0.833333' }],
-    [strategies[2].strategy_id, { sampleSize: 30, wins: 21, losses: 9, winRate: '0.7' }],
+    [strategies[1].strategy_id, { sampleSize: 31, wins: 24, losses: 7, winRate: '0.774194', lower: '0.6' }],
+    [strategies[2].strategy_id, { sampleSize: 32, wins: 22, losses: 10, winRate: '0.6875', lower: '0.5' }],
+    [strategies[5].strategy_id, { sampleSize: 30, wins: 18, losses: 12, winRate: '0.6', lower: '0.4' }],
+    [strategies[6].strategy_id, { sampleSize: 29, wins: 28, losses: 1, winRate: '0.965517', lower: '0.9' }],
   ])
   const rows = strategies.map((strategy) => {
     const value = evidence.get(strategy.strategy_id)
@@ -86,21 +89,22 @@ test('sorts strategy results both ways and keeps missing win rates at the bottom
       ...strategy,
       performance: {
         ...strategy.performance,
-        BASE: { ...strategy.performance.BASE, sample_size: value.sampleSize, wins: value.wins, losses: value.losses, win_rate: value.winRate },
+        BASE: { ...strategy.performance.BASE, sample_size: value.sampleSize, wins: value.wins, losses: value.losses, win_rate: value.winRate, win_rate_ci95: { lower: value.lower, upper: '0.99' } },
       },
     } : strategy
   })
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
   const visibleIds = () => [...document.querySelectorAll<HTMLTableRowElement>('.strategy-compact-table tbody tr')].map((row) => row.dataset.strategyId)
 
-  expect(screen.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
-  expect(visibleIds().slice(0, 3)).toEqual([strategies[1].strategy_id, strategies[2].strategy_id, strategies[0].strategy_id])
-  fireEvent.click(screen.getByRole('button', { name: /승률 정렬/ }))
-  expect(screen.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'ascending')
-  expect(visibleIds().slice(0, 3)).toEqual([strategies[0].strategy_id, strategies[2].strategy_id, strategies[1].strategy_id])
-  fireEvent.click(screen.getByRole('button', { name: /승률 정렬/ }))
-  expect(screen.getByRole('columnheader', { name: '승률' })).toHaveAttribute('aria-sort', 'descending')
-  expect(visibleIds().slice(0, 3)).toEqual([strategies[1].strategy_id, strategies[2].strategy_id, strategies[0].strategy_id])
+  expect(screen.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'descending')
+  expect(visibleIds().slice(0, 3)).toEqual([strategies[1].strategy_id, strategies[2].strategy_id, strategies[5].strategy_id])
+  expect(visibleIds().indexOf(strategies[6].strategy_id)).toBeGreaterThan(2)
+  fireEvent.click(screen.getByRole('button', { name: /신뢰승률 정렬/ }))
+  expect(screen.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'ascending')
+  expect(visibleIds().slice(0, 3)).toEqual([strategies[5].strategy_id, strategies[2].strategy_id, strategies[1].strategy_id])
+  fireEvent.click(screen.getByRole('button', { name: /신뢰승률 정렬/ }))
+  expect(screen.getByRole('columnheader', { name: '신뢰승률' })).toHaveAttribute('aria-sort', 'descending')
+  expect(visibleIds().slice(0, 3)).toEqual([strategies[1].strategy_id, strategies[2].strategy_id, strategies[5].strategy_id])
   expect(visibleIds().at(-1)).toBe(strategies.at(-1)?.strategy_id)
 })
 
@@ -185,9 +189,11 @@ test('shows lifecycle evidence and restores the prior revision without deleting 
   ))
 })
 
-test('explains the 70 percent retirement gate in beginner Korean', () => {
+test('uses the backend retirement reason without a frontend phrase map', () => {
   const rows = strategies.map((strategy, index) => index === 1 ? {
     ...strategy,
+    reason_code: 'BASE_WIN_RATE_LT_0_70_AFTER_MINIMUM_EVIDENCE',
+    reason_ko: '기본 비용의 충분한 표본에서 승률 기준을 통과하지 못했습니다.',
     governance: {
       ...strategy.governance,
       recommended_lifecycle: 'RETIRED' as const,
@@ -198,40 +204,32 @@ test('explains the 70 percent retirement gate in beginner Korean', () => {
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
   openStrategySettings(strategies[1].strategy_id)
 
-  expect(screen.getByText('충분한 기본 비용 표본에서 승률 70%에 못 미쳐 검증을 종료했습니다.')).toBeInTheDocument()
+  expect(screen.getByText('기본 비용의 충분한 표본에서 승률 기준을 통과하지 못했습니다.')).toBeInTheDocument()
 })
 
-test('blocks policy-retired reactivation but keeps ordinary user OFF reversible', async () => {
+test('blocks policy-retired reactivation but keeps the ordinary user OFF family control reversible', () => {
   const userOffId = 'VWAP_EXHAUSTION_REVERSION_V1'
   const rows = strategies.map((strategy) => strategy.strategy_id === userOffId ? {
     ...strategy,
+    family_id: 'EXHAUSTION_REVERSION',
     mode: 'OFF' as const,
-    lifecycle: 'RETIRED' as const,
+    lifecycle: 'SHADOW' as const,
     policy_reactivation_locked: false,
   } : strategy)
-  const onConfigure = vi.fn(async () => undefined)
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
-  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
+  render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
 
-  openStrategySettings(strategies[0].strategy_id)
-  expect(screen.queryByRole('button', { name: 'LSA 반전 공동·독립 모의 중' })).not.toBeInTheDocument()
-  expect(screen.getByText('새 진입 없음 · 거래기록과 가상계좌 보존')).toBeInTheDocument()
-  expect(screen.getByText('과거 상승·하락 설정만 보존합니다.')).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '전략 상세 정보 닫기' }))
+  expect(document.querySelector('[data-strategy-id="LSA_REVERSAL_V1"]')).not.toBeInTheDocument()
   openStrategySettings(userOffId)
-  const reversible = screen.getByRole('button', { name: 'VWAP 소진 독립 모의 중' })
+  const reversible = screen.getByRole('button', { name: 'VWAP 소진 모의평가 켜기' })
   expect(reversible).toBeEnabled()
-  fireEvent.click(reversible)
-
-  await waitFor(() => expect(onConfigure).toHaveBeenCalledWith(
-    userOffId,
-    expect.objectContaining({ mode: 'SHADOW', expected_revision: 0 }),
-  ))
+  expect(reversible).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('translates governor reason codes into beginner Korean', () => {
+test('shows backend reason text and never exposes raw governor codes', () => {
   const rows = strategies.map((strategy, index) => index === 11 ? {
     ...strategy,
+    reason_code: 'BASE_SAMPLE_LT_30',
+    reason_ko: '기본 비용의 고유 진입기회가 30건보다 적어 더 모으고 있습니다.',
     governance: {
       ...strategy.governance,
       reason_codes: [
@@ -246,26 +244,21 @@ test('translates governor reason codes into beginner Korean', () => {
   render(<StrategiesPage strategies={rows} leagueAccounts={leagueAccounts} onConfigure={vi.fn(async () => undefined)} />)
   openStrategySettings(strategies[11].strategy_id)
 
-  expect(screen.getByText(/기본 비용 가상계좌 표본 30건이 필요합니다/)).toBeInTheDocument()
-  expect(screen.getByText(/보수 비용을 뺀 거래당 기대수익이 아직 양수/)).toBeInTheDocument()
+  expect(screen.getByText(/기본 비용의 고유 진입기회가 30건보다 적어/)).toBeInTheDocument()
+  expect(screen.getByText(/추가 검증 조건을 확인하고 있습니다/)).toBeInTheDocument()
   expect(screen.queryByText(/BASE_SAMPLE_LT_30/)).not.toBeInTheDocument()
 })
 
-test('confirms mode changes and sends the visible settings revision', async () => {
+test('never offers direct shared-capital activation and keeps family research separate from direction settings', () => {
   const onConfigure = vi.fn(async () => undefined)
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
   render(<StrategiesPage strategies={strategies} leagueAccounts={leagueAccounts} onConfigure={onConfigure} />)
 
   openStrategySettings('CBR_CONTINUATION_V1')
-  expect(screen.getByRole('button', { name: 'CBR 돌파 독립 모의 중' })).toHaveAttribute('aria-pressed', 'true')
-  expect(screen.getByRole('button', { name: 'CBR 돌파 검증 중지' })).toHaveAttribute('aria-pressed', 'false')
-  fireEvent.click(screen.getByRole('button', { name: 'CBR 돌파 공동·독립 모의 중' }))
-
-  await waitFor(() => expect(onConfigure).toHaveBeenCalledWith(
-    'CBR_CONTINUATION_V1',
-    expect.objectContaining({ mode: 'ACTIVE', expected_revision: 0 }),
-  ))
-  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('진행 중 PAPER는 기존 계획대로 관리'))
+  expect(screen.getByRole('button', { name: 'CBR 돌파 모의평가 켜기' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: 'CBR 돌파 모의평가 끄기' })).toHaveAttribute('aria-pressed', 'false')
+  expect(screen.queryByRole('button', { name: /CBR 돌파.*공동/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '상승 켜짐' })).toBeEnabled()
+  expect(onConfigure).not.toHaveBeenCalled()
 })
 
 test('distinguishes healthy condition waiting, open PAPER management and faults', () => {
@@ -287,7 +280,9 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
   expect(screen.getByText('PAPER 진입 중')).toBeInTheDocument()
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
   expect(screen.getByText('조건 미충족')).toBeInTheDocument()
-  expect(screen.getByText('9개 동시 검증 · 30건 달성 0개 · 보존 5개 · 문제 1개 · 실제 주문 0')).toBeInTheDocument()
+  const summary = screen.getByRole('region', { name: '전략 모의평가 요약' })
+  expect(summary).toHaveTextContent(/모의평가 ON10/)
+  expect(summary).toHaveTextContent(/진행 포지션1/)
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })
 
@@ -322,7 +317,7 @@ const basePosition: LeaguePosition = {
 
 test('uses the basic-cost account as the default open-trade filter and can reveal conservative costs', () => {
   const stressPosition = { ...basePosition, trade_id: 'trade-stress', candidate_id: 'candidate-stress', account_id: `${strategies[0].strategy_id}:STRESS`, profile: 'STRESS' as const, symbol: 'ETHUSDT' }
-  render(<LeaguePositionsPage positions={[basePosition, stressPosition]} strategies={strategies} />)
+  render(<PositionList positions={[basePosition, stressPosition]} strategies={strategies} />)
   expect(screen.getByRole('button', { name: '기본 비용' })).toHaveAttribute('aria-pressed', 'true')
   expect(document.querySelector('tbody')?.textContent).toContain('BTCUSDT')
   expect(document.querySelector('tbody')?.textContent).not.toContain('ETHUSDT')
@@ -350,7 +345,7 @@ test('shows the active runner trail in beginner Korean without hiding the stop',
     },
   }
 
-  render(<LeaguePositionsPage positions={[trailingPosition]} strategies={strategies} />)
+  render(<PositionList positions={[trailingPosition]} strategies={strategies} />)
 
   expect(screen.getByText(/남은 수량 추적 중.*보호선 100.8.*추세 약화 지속 확인/)).toBeInTheDocument()
 })
@@ -385,12 +380,12 @@ test('uses current-version report costs and drawdown in stored performance stati
   firstAccount.slippage_usdt = '92.22'
   firstAccount.maximum_drawdown_usdt = '93.33'
 
-  render(<PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
+  render(<StrategyPerformancePanel data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
 
   expect(screen.getByText(/자산은 이번 실행/)).toBeInTheDocument()
   expect(screen.getByRole('columnheader', { name: '이번 실행' })).toBeInTheDocument()
   expect(screen.getByRole('columnheader', { name: '완료·승률' })).toBeInTheDocument()
-  expect(screen.getByText('이번 실행 완료 거래')).toBeInTheDocument()
+  expect(screen.queryByText('계좌 자산 합계')).not.toBeInTheDocument()
   const storedStatistics = document.querySelector('.strategy-performance-panel')?.textContent ?? ''
   expect(storedStatistics).toContain('12.34 USDT')
   expect(storedStatistics).toContain('23.45 USDT')
@@ -411,7 +406,7 @@ test('hides strategy statistics while the versioned history cache is loading', (
   const data = dashboardFixture()
   data.system.dashboard_trade_cache_ready = false
 
-  const { unmount } = render(<PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
+  const { unmount } = render(<StrategyPerformancePanel data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
   expect(screen.getByRole('status')).toHaveTextContent('준비가 끝나기 전에는 승률·기대값·순위를 표시하지 않습니다.')
   expect(document.querySelector('.strategy-performance-panel')?.textContent).toContain('불러오는 중')
   unmount()
@@ -445,9 +440,9 @@ test('derives strategy and account totals from the backend registry payload', ()
   data.strategies = [...data.strategies, extraStrategy]
   data.league_accounts = [...data.league_accounts, ...extraAccounts]
 
-  render(<PerformancePage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
+  render(<StrategyPerformancePanel data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} history={[]} />)
 
-  expect(screen.getByText(`${data.strategies.length}개 전략을 같은 공개시장 데이터와 비용 기준으로 비교합니다.`)).toBeInTheDocument()
+  expect(screen.queryByText(/개 전략을 같은 공개시장 데이터와 비용 기준으로 비교합니다/)).not.toBeInTheDocument()
   expect(screen.getByText(`총 ${data.league_accounts.length}계좌`)).toBeInTheDocument()
   expect(screen.getAllByText('확장 확인')).toHaveLength(2)
 })
@@ -464,7 +459,7 @@ test('shows current strategy version scope and excluded prior samples for symbol
     auth_required: false,
   }), { status: 200, headers: { 'content-type': 'application/json' } })))
 
-  render(<StrategySymbolPage strategies={strategies} />)
+  render(<StrategySymbolPanel strategies={strategies} />)
 
   await waitFor(() => expect(screen.getByText(/과거 버전 19건 보관/)).toBeInTheDocument())
   expect(screen.getByText(/현재 전략 버전의 독립 공개시장 모의거래만/)).toBeInTheDocument()

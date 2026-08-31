@@ -662,3 +662,30 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   `50c3e8ae7af08667546e8a1f2e4a70890e92d0f6` 그대로이며 재배포는 `NOT_RUN`이다.
 - 휴지통 내용은 macOS TCC가 `Operation not permitted`로 차단해 `BLOCKED`다. 수익성은
   `NOT_PROVEN`, 실자금은 `NOT_READY`, 6시간·24시간은 `NOT_RUN`이다.
+
+## Wave 142 V6 전략 family·네 페이지·증거 기준선
+
+- 상태는 `IMPLEMENTED_AUTOMATED_VALIDATION_PASS_RUNTIME_INSTALL_BLOCKED`다.
+- 기준선은 source `ac5634a53da623721dc3bb6113427a32d4a677db`, 설치 release
+  `50c3e8ae7af08667546e8a1f2e4a70890e92d0f6`, Run `run-2b7135a972dd`, 15전략·
+  30계좌·ACTIVE 0·SHADOW 10·RETIRED/OFF 5다. 마지막 현재버전 32 raw 결과는 16 고유기회다.
+- 서비스는 revision 25 `V6_MAINTENANCE_PAUSE` 뒤 안전 중지됐고 V6 문서·fixture 검증을 위해
+  다시 시작하지 않는다. 현재 동적 runtime 상태를 마지막 관찰값과 섞지 않는다.
+- 15개 ID와 원장·replay를 보존하면서 8개 family와 ENTRY·FILTER·ROUTER·LEGACY·
+  MARKET_NEUTRAL_MULTI_LEG 역할을 추가한다. Family별 current variant는 최대 하나다.
+- 사용자 기본 navigation은 시장·전략·거래·설정 네 페이지다. 성과는 전략에, 진행·완료·replay는
+  거래에, 위험·시스템은 설정에 합치고 old wrapper·route·copy·CSS·test는 같은 변경에서 제거한다.
+- BASE·STRESS와 부분 exit는 한 고유 opportunity로 집계한다. 전략 기본 정렬은 raw 승률이 아니라
+  적격 Wilson 95% 하한이다.
+- 공통 70% 승격·퇴역·격리 gate를 제거하고 비용·OOS·강건성 공통 gate와 family별 win/payoff
+  gate를 사용한다.
+- V3 네 후보는 `backend.app.research.v6_candidates`에 결과 전 사전등록하며 고정 입력 비교가
+  없으면 `NOT_PROVEN`, promotion false, Registry·LIVE SHADOW 변경 0이다.
+- `audit-v6-system-truth`, family·Governor·4페이지·고유기회·상세 on-demand·payload·E2E와
+  V2/V3 비교용 Make target을 추가한다.
+- 최신 공유 코드 기준 backend 1,004개와 frontend 92개 test, lint, typecheck, build,
+  security scan, repository hygiene와 desktop·tablet·mobile fixture E2E가 PASS했다. source truth
+  감사는 서비스 중지로 `NOT_RUN_STOPPED_OR_UNREACHABLE_RUNTIME`이며 설치된 8870 검증을 대신하지
+  않는다.
+- V6 뒤 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실제 주문·private API·API Key·
+  wallet은 0, `FUNDING_READINESS`는 `NOT_READY`다.

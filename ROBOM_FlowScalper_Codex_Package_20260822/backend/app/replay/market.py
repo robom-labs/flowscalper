@@ -13,7 +13,7 @@ from backend.app.domain.models import MarketDataState, MarketEvent, RuntimeMode,
 from backend.app.replay.engine import ReplayEngine
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import LedgerInvariantError, SQLiteLedger
-from backend.app.strategies.registry import StrategyMode
+from backend.app.strategies.registry import StrategyChangeSource, StrategyMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,9 +169,7 @@ class StoredMarketReplay:
             symbol_counts=digest.symbol_counts,
             strategy_evaluation_count=runtime.strategy_evaluation_count,
             qualified_signal_count=runtime.qualified_signal_count,
-            candidate_plan_count=_candidate_plan_count(
-                runtime.paper_portfolio.audit_events
-            ),
+            candidate_plan_count=_candidate_plan_count(runtime.paper_portfolio.audit_events),
             main_trade_count=len(runtime.paper_portfolio.main.completed_trades),
             shadow_trade_count=sum(
                 len(account.completed_trades)
@@ -201,6 +199,8 @@ class StoredMarketReplay:
                 mode=StrategyMode(str(setting["mode"])),
                 long_enabled=bool(setting["long_enabled"]),
                 short_enabled=bool(setting["short_enabled"]),
+                source=StrategyChangeSource.MIGRATION,
+                reason="REPLAY_HISTORICAL_SETTING",
             )
 
 

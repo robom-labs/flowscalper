@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from uuid import uuid4
 
@@ -42,6 +42,36 @@ class TakeProfitTarget:
             raise ValueError("익절 가격은 양수여야 합니다.")
         if not Decimal(0) < self.quantity_fraction <= Decimal(1):
             raise ValueError("익절 수량 비율은 0보다 크고 1 이하여야 합니다.")
+
+
+@dataclass(frozen=True, slots=True)
+class SharedCapitalArbitrationEvidence:
+    """Shared Capital의 V6 중재에 쓰는 사전등록 evidence만 보관한다."""
+
+    evidence_tier: int = 0
+    stress_cost_adjusted_expectancy_usdt: Decimal | None = None
+    cost_coverage: Decimal | None = None
+    diversification_score: Decimal = Decimal(0)
+
+    def __post_init__(self) -> None:
+        if self.evidence_tier < 0:
+            raise ValueError("evidence tier는 0 이상이어야 합니다.")
+        if self.cost_coverage is not None and self.cost_coverage < 0:
+            raise ValueError("cost coverage는 0 이상이어야 합니다.")
+        if not Decimal(0) <= self.diversification_score <= Decimal(1):
+            raise ValueError("diversification score는 0 이상 1 이하여야 합니다.")
+
+    def ranking_prefix(self) -> tuple[int, Decimal, Decimal]:
+        missing = Decimal("-Infinity")
+        return (
+            -self.evidence_tier,
+            -(
+                self.stress_cost_adjusted_expectancy_usdt
+                if self.stress_cost_adjusted_expectancy_usdt is not None
+                else missing
+            ),
+            -(self.cost_coverage if self.cost_coverage is not None else missing),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,6 +115,9 @@ class CandidatePlan:
     management_policy: tuple[str, ...]
     main_eligible: bool
     shadow_eligible: bool
+    shared_capital_evidence: SharedCapitalArbitrationEvidence = field(
+        default_factory=SharedCapitalArbitrationEvidence
+    )
     trailing_policy: TrailingPolicy | None = None
     trailing_atr: Decimal | None = None
     trailing_structure_stop: Decimal | None = None
@@ -192,6 +225,25 @@ class CandidatePlan:
             f"{self.strategy_id}:{self.direction.value}",
         )
 
+    def shared_capital_arbitration_key(
+        self,
+    ) -> tuple[int, Decimal, Decimal, Decimal, int, Decimal, str, str]:
+        """V6 우선순위로 Shared Capital 후보를 정렬하며 raw 승률은 사용하지 않는다."""
+
+        evidence_tier, stress_expectancy, cost_coverage = (
+            self.shared_capital_evidence.ranking_prefix()
+        )
+        return (
+            evidence_tier,
+            stress_expectancy,
+            cost_coverage,
+            -self.liquidity_quality,
+            -self.signal_time_ms,
+            -self.shared_capital_evidence.diversification_score,
+            self.strategy_id,
+            self.candidate_id,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class PlanBuildResult:
@@ -241,6 +293,7 @@ class CandidatePlanner:
         trailing_reference_interval_seconds: int | None = None,
         take_profit_targets_override: tuple[TakeProfitTarget, ...] | None = None,
         candidate_id_override: str | None = None,
+        shared_capital_evidence: SharedCapitalArbitrationEvidence | None = None,
     ) -> PlanBuildResult:
         if decision.status is not CandidateStatus.QUALIFIED:
             return PlanBuildResult(None, ("STRATEGY_NOT_QUALIFIED",))
@@ -481,6 +534,11 @@ class CandidatePlanner:
             ),
             main_eligible=main_eligible,
             shadow_eligible=shadow_eligible,
+            shared_capital_evidence=(
+                shared_capital_evidence
+                if shared_capital_evidence is not None
+                else SharedCapitalArbitrationEvidence()
+            ),
             trailing_policy=trailing_policy,
             trailing_atr=trailing_atr,
             trailing_structure_stop=trailing_structure_stop,

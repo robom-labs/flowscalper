@@ -257,3 +257,13 @@ No personal credentials exist in exports.
   fail-closed로 유지한다.
 - 세부 결정과 제외 표본 경계는 `docs/adr/ADR-119-research-spill-and-transient-storage-recovery.md`를
   따른다.
+
+## 10.21 V6 고유기회와 작은 UI read model
+
+- 완료 PAPER 결과는 원시 fill·BASE·STRESS 행을 삭제하거나 다시 쓰지 않는다.
+- 성과 표본 key는 `(run_id, strategy_id, strategy_version, opportunity_id, symbol, side)`다. BASE·STRESS와 부분 exit는 같은 opportunity의 세부 결과다.
+- 현재 strategy version 필터는 과거 version을 삭제하지 않고 기본 순위·요약에서만 제외한다.
+- `/api/trades`는 opportunity 한 행 안에 profile 결과와 replay 가능성을 제공한다. 원시 비용행과 fill은 상세에서 조회한다.
+- `/api/ui/summary`는 상태·자산·PnL·열린 포지션·bounded scanner만 제공한다. Family detail, 조건, 거래상세와 diagnostics는 별도 on-demand read다.
+- Fixture payload benchmark는 summary 직렬화 크기가 기존 `/api/dashboard`의 50% 미만인지 측정한다. 이 수치는 LIVE 지연, 장기 안정성이나 수익성 증거가 아니다.
+- 마지막 기준선 32개 raw 현재버전 행은 16개 고유기회다. 서비스 중지 뒤 동적 cache는 다시 관찰하기 전 `UNKNOWN`이며 과거 ready 값을 현재값으로 만들지 않는다.
