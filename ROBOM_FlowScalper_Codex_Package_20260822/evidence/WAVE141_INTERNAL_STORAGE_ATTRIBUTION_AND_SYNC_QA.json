@@ -1,0 +1,140 @@
+{
+  "schema": "flowscalper.internal_storage_attribution_and_sync_qa.v1",
+  "captured_at_kst": "2026-08-31T16:00:32+09:00",
+  "status": "PASS_WITH_PRESERVED_LIVE_IO_INCIDENT_AND_ACTIVE_APP_LIMITS",
+  "scope": {
+    "canonical_source": "/Volumes/ROBOM_FLOWSCALPER/01_WORKSPACE/자동매매/ROBOM_FlowScalper_Codex_Package_20260822",
+    "runtime_root": "/Volumes/ROBOM_FLOWSCALPER/05_RUNTIME/ROBOM_FlowScalper",
+    "external_cache_root": "/Volumes/ROBOM_FLOWSCALPER/03_CACHES/ROBOM_FlowScalper",
+    "github_main": "https://github.com/robom-labs/flowscalper",
+    "github_boundary": "Git-tracked source, tests, docs and evidence only; SQLite, Parquet, logs, caches and Codex conversation history are excluded"
+  },
+  "internal_storage": {
+    "initial_available_gib_observed": 7.7,
+    "final_available_kib": 41912556,
+    "final_available_gib_rounded": 40.0,
+    "final_capacity_percent": 81,
+    "flow_product_named_paths_in_user_home": [
+      {
+        "path": "/Users/runner706/Library/LaunchAgents/kr.robom.flowscalper.plist",
+        "bytes": 1020,
+        "classification": "REQUIRED_MACOS_LAUNCHAGENT_POINTER_TO_EXTERNAL_RUNTIME"
+      }
+    ],
+    "trash_visibility": "BLOCKED_BY_MACOS_TCC_OPERATION_NOT_PERMITTED"
+  },
+  "playwright_migration": {
+    "source_paths_removed_after_checksum_parity": [
+      "/Users/runner706/Library/Caches/ms-playwright/chromium-1234",
+      "/Users/runner706/Library/Caches/ms-playwright/chromium_headless_shell-1234"
+    ],
+    "destination": "/Volumes/ROBOM_FLOWSCALPER/03_CACHES/ROBOM_FlowScalper/playwright",
+    "destination_kib": 587692,
+    "components": [
+      "chromium-1234",
+      "chromium_headless_shell-1234",
+      "ffmpeg-1011"
+    ],
+    "checksum_dry_run_delta": 0,
+    "full_fixture_e2e": "PASS_3_OF_3_DESKTOP_TABLET_MOBILE",
+    "post_removal_cold_desktop_attempt": "FAIL_PRESERVED_TEST_TIMEOUT_31_3S",
+    "post_removal_warm_desktop_retry": "PASS_1_OF_1_6_4S"
+  },
+  "codex_cleanup": {
+    "classification": "CODEX_APPLICATION_DATA_NOT_FLOWSCALPER_PRODUCT_DATA",
+    "closed_session_files_deleted": 1775,
+    "closed_session_logical_bytes_deleted": 32187660066,
+    "regenerable_paths_deleted": [
+      "/Users/runner706/.codex/archived_sessions",
+      "/Users/runner706/.codex/.tmp",
+      "/Users/runner706/.codex/cache",
+      "/Users/runner706/Library/Caches/com.openai.codex"
+    ],
+    "remaining_open_session_files": 3,
+    "remaining_open_session_logical_bytes": 3513660440,
+    "remaining_codex_allocated_kib": 5730388,
+    "remaining_reason": "BLOCKED_ACTIVE_APP_HANDLES; current task and two other open Codex tasks were not truncated or unlinked",
+    "preserved": [
+      "current open task",
+      "two other Codex-open task logs",
+      "active state databases",
+      "authentication and configuration",
+      "memories and installed skills/plugins"
+    ]
+  },
+  "recurrence_prevention": {
+    "source_commit": "bfb4b8707fbd18d54c9ae586bb06735bebd633d4",
+    "make_exports_when_external_volume_is_mounted": [
+      "UV_CACHE_DIR",
+      "UV_PYTHON_INSTALL_DIR",
+      "XDG_CACHE_HOME",
+      "TMPDIR",
+      "NPM_CONFIG_CACHE",
+      "PLAYWRIGHT_BROWSERS_PATH"
+    ],
+    "pnpm_store": "/Volumes/ROBOM_FLOWSCALPER/03_CACHES/ROBOM_FlowScalper/pnpm-store",
+    "targeted_contract_tests": "PASS_20",
+    "repository_hygiene": "PASS",
+    "regression_contracts": "PASS_30_CONTRACTS_59_ANCHORS",
+    "local_lint_typecheck_build": "PASS",
+    "github_actions": {
+      "run_id": 33366291035,
+      "url": "https://github.com/robom-labs/flowscalper/actions/runs/33366291035",
+      "head_sha": "bfb4b8707fbd18d54c9ae586bb06735bebd633d4",
+      "validate": "PASS",
+      "browser": "PASS",
+      "conclusion": "success"
+    }
+  },
+  "preserved_live_io_incident": {
+    "classification": "FAIL_PRESERVED_SAME_PHYSICAL_EXTERNAL_DEVICE_IO_OVERLAP",
+    "cause_boundary": "The 574 MiB browser migration and repeated fixture validation overlapped the live persistence service on the same external physical device",
+    "observed_window_kst": "2026-08-31T15:42:34+09:00 through 2026-08-31T15:50:07+09:00",
+    "persistence_fault_count_after_window": 7,
+    "persistence_buffer_dropped_after_window": 12273,
+    "persistence_backlog_peak": 22074,
+    "persistence_backlog_entry_lock_count": 1,
+    "service_restart_performed": false,
+    "paper_positions_force_closed": false,
+    "open_protected_paper_positions": 2,
+    "first_post_incident_observation": {
+      "file": "evidence/WAVE141_POST_STORAGE_MOVE_RUNNING_SERVICE_60S.json",
+      "status": "FAIL",
+      "only_failure": "wal_checkpoint_continued",
+      "new_persistence_faults": 0,
+      "new_buffer_drops": 0
+    },
+    "clean_retry_observation": {
+      "file": "evidence/WAVE141_POST_STORAGE_MOVE_RUNNING_SERVICE_RETRY_60S.json",
+      "status": "PASS",
+      "observed_seconds": 60.022,
+      "event_delta": 4139,
+      "strategy_evaluation_delta": 26220,
+      "maximum_queue_depth": 13,
+      "maximum_processing_lag_p95_ms": 31.016,
+      "maximum_trade_lag_p95_ms": 88.597,
+      "new_persistence_faults": 0,
+      "new_buffer_drops": 0,
+      "new_unplanned_reconnects": 0,
+      "new_sequence_gaps": 0,
+      "new_resyncs": 0,
+      "actual_orders_enabled": false,
+      "auth_required": false
+    },
+    "long_run_status": "NOT_RUN"
+  },
+  "runtime_deployment": {
+    "active_release_commit": "50c3e8ae7af08667546e8a1f2e4a70890e92d0f6",
+    "source_main_commit": "bfb4b8707fbd18d54c9ae586bb06735bebd633d4",
+    "deployment_status": "NOT_RUN_OPEN_PAPER_POSITIONS_PROTECTED",
+    "note": "The source/test storage guard is on GitHub main, but the active immutable runtime was not restarted while two PAPER positions were open"
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "private_api_requested": false,
+    "api_key_requested": false,
+    "wallet_requested": false,
+    "profitability_status": "NOT_PROVEN",
+    "real_money_status": "NOT_READY"
+  }
+}

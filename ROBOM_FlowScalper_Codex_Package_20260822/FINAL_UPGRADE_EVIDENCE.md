@@ -4536,3 +4536,93 @@ persistence fault·buffer drop·backlog lock·비계획 reconnect·gap·resync·
 
 현 수용상태는
 `EXTERNAL_ONLY_RUNTIME_RECOVERED_UI_REGRESSION_PASS_INCIDENT_PRESERVED_LONG_RUN_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+
+## 102. Wave 141 내장 용량 귀속·외장 cache 고정·GitHub 동기화
+
+### 102.1 무엇이 내장 용량을 사용했는가
+
+정리 시작 시 `/System/Volumes/Data`는 228GiB 중 197GiB 사용, 여유 약 7.7GiB였다.
+FlowScalper 이름을 내장 사용자 폴더에서 다시 조회한 결과 외장 runner와 외장 stdout·stderr만
+가리키는 `/Users/runner706/Library/LaunchAgents/kr.robom.flowscalper.plist` 1개,
+1,020bytes만 남았다. 소스·원장·Parquet 공개시장자료·로그·불변 릴리스·Python·frontend
+의존성은 기존 계약대로 외장에 있다.
+
+내장 대용량의 주원인은 FlowScalper가 아니라 Codex 앱의 과거 작업 JSONL이었다. 사용자 승인에
+따라 닫힌 세션 1,775개, 논리크기 32,187,660,066bytes와 archived session·임시 plugin clone·
+재생성 cache를 제거했다. 내장 여유공간은 최종 41,912,556KiB, 표시 약 40GiB·사용률 81%로
+회복했다. 현재 Codex process가 쓰는 이 작업과 다른 열린 작업 2개의 JSONL 총
+3,513,660,440bytes, 활성 상태 DB, 설정·인증·메모리·skill·plugin은 강제 삭제하지 않았다.
+열린 파일을 unlink 또는 truncate하면 실행 중 작업이 손상되므로 이는
+`BLOCKED_ACTIVE_APP_HANDLES`다.
+
+Codex 대화와 cache는 FlowScalper 제품자료가 아니고 비공개 내용이나 인증정보를 포함할 수 있어
+GitHub에 올리지 않는다. GitHub는 Git에 추적된 소스·테스트·문서·증거만 동기화하며 SQLite,
+Parquet, 로그, browser cache도 계속 외장 전용이다. 사용자 휴지통은 macOS TCC가
+`Operation not permitted`로 차단해 내용을 확인하거나 비우지 않았고 `BLOCKED`로 남긴다.
+
+### 102.2 브라우저 cache 이전과 재발 방지
+
+FlowScalper가 사용하는 Playwright 1.62.1의 Chromium revision 1234와 headless shell을
+외장 `/Volumes/ROBOM_FLOWSCALPER/03_CACHES/ROBOM_FlowScalper/playwright`로 복제했다.
+원본·외장 파일 수는 각각 334/334와 20/20, `rsync --checksum --dry-run --delete` 차이는
+0이었다. 외장 FFmpeg까지 설치한 뒤 desktop·tablet·mobile 전체 3건이 PASS했고 그 뒤에만
+내장 `chromium-1234`·`chromium_headless_shell-1234` 두 경로를 제거했다. 제거 직후 cold
+desktop 단독 시도는 전체 시나리오 30초 제한을 1.3초 넘겨 `FAIL_PRESERVED`였고, 같은 외장
+browser의 다음 시도는 6.4초·1/1 PASS였다. 브라우저 누락이나 내장 fallback 성공으로
+재분류하지 않았다.
+
+commit `bfb4b8707fbd18d54c9ae586bb06735bebd633d4`는 외장 볼륨이 mount된 동안 Make의
+setup·dev·run·test·lint·typecheck·build·network-smoke·security·repository 검증이
+`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`, `XDG_CACHE_HOME`, `TMPDIR`, `NPM_CONFIG_CACHE`,
+`PLAYWRIGHT_BROWSERS_PATH`와 pnpm store를 모두 외장으로 사용하게 한다. mount 여부를 먼저
+검증하고 필요한 외장 디렉터리만 만든다. 관련 macOS 계약은 20건 PASS, repository hygiene는
+위반 0, 회귀계약은 30개·59 anchor PASS였다. 로컬 Ruff, ESLint, mypy 112 source,
+TypeScript, build·PAPER safety, fixture 22건과 Playwright 3건도 PASS했다.
+
+GitHub main의 같은 commit에 대한 Actions
+`https://github.com/robom-labs/flowscalper/actions/runs/33366291035`도 validate·browser 모두
+PASS했다. GitHub에서는 backend 918 PASS·1 skip, frontend 87 PASS, fixture 22 PASS,
+Playwright 3 PASS와 lint·typecheck·build를 확인했다.
+
+### 102.3 같은 외장 물리장치 I/O 경합 실패와 복구
+
+이번 이전 과정에서 574MiB browser cache 복제와 반복 fixture 검증을 LIVE persistence와 같은
+외장 물리장치에서 겹친 판단은 잘못이었다. 2026-08-31 15:42:34~15:50:07 KST 구간에
+`BrokenWorkerProcess` 복구가 누적 7회, persistence buffer drop 12,273, backlog peak
+22,074와 신규진입 backlog lock 1회를 관찰했다. 이는 `FAIL_PRESERVED`이며 저장 이전 성공과
+섞어 PASS로 쓰지 않는다. 서비스 재시작, Run 교체, 열린 PAPER 2건 강제청산은 하지 않았다.
+
+첫 60.017초 후속 관찰은 신규 persistence fault·drop 0이었지만 관찰 종료 시 WAL checkpoint가
+진행 중이라 `wal_checkpoint_continued` 하나를 실패해 전체 `FAIL`로 보존했다. checkpoint 완료 뒤
+다시 관찰한 60.022초는 같은 `run-2b7135a972dd`, process restart 0, event +4,139, 전략평가
++26,220, queue 최대 13, 처리·체결 p95 최대 31.016/88.597ms였다. persistence fault·buffer
+drop·backlog lock·비계획 reconnect·gap·resync·event drop·critical lag incident 증가는 모두
+0이고 열린 포지션 2건은 보호 상태였다. 실제 주문과 인증은 false다. 두 증거는 각각
+`evidence/WAVE141_POST_STORAGE_MOVE_RUNNING_SERVICE_60S.json`과
+`evidence/WAVE141_POST_STORAGE_MOVE_RUNNING_SERVICE_RETRY_60S.json`에 분리했다.
+
+재발 방지 규칙은 대형 cache 이전, recursive checksum, browser download와 활성 원장 full scan을
+같은 물리 외장장치의 LIVE persistence와 겹치지 않는 것이다. 먼저 PAPER가 평평하고 안전하게
+일시정지 또는 종료된 시점에 bytes를 준비하고, 재개한 기존 Run을 별도 관찰한다. 일반 Make
+검증은 이미 준비된 외장 cache를 사용한다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| FlowScalper 제품자료 내장 잔존 | `PASS_WITH_REQUIRED_EXCEPTION` | 외장 runner만 가리키는 LaunchAgent plist 1개·1,020bytes |
+| Playwright 현재 revision 외장 이전 | `PASS` | checksum 차이 0·외장 587,692KiB·내장 현재 revision 제거 |
+| 내장 공간 회복 | `PASS` | 여유 약 7.7GiB에서 40GiB, 사용률 97%에서 81% |
+| 닫힌 Codex 기록·재생성 cache | `PASS_DELETED` | 세션 1,775개·32,187,660,066bytes와 cache 제거 |
+| 열린 Codex 기록 | `BLOCKED_ACTIVE_APP_HANDLES` | 열린 세션 3개·3,513,660,440bytes, 실행 손상 방지를 위해 보존 |
+| 휴지통 확인 | `BLOCKED_BY_MACOS_TCC` | `Operation not permitted`, 비우지 않음 |
+| 외장 cache Make 계약 | `PASS` | 표적 20건·Ruff·mypy·ESLint·TypeScript·build PASS |
+| GitHub main·Actions | `PASS` | commit `bfb4b87`, run `33366291035` validate·browser success |
+| LIVE I/O 경합 | `FAIL_PRESERVED` | fault 7·drop 12,273·backlog peak 22,074 |
+| 첫 복구 관찰 | `FAIL_PRESERVED` | 신규 fault·drop 0, 종료 시 WAL checkpoint 진행 중 |
+| 재시도 60.022초 | `PASS` | event·평가 전진, 신규 fault·drop·비계획 reconnect 0 |
+| 활성 runtime 재배포 | `NOT_RUN` | PAPER 2건 보호, 실행 release는 `50c3e8a` 유지 |
+| 6시간·24시간 | `NOT_RUN` | 이번 저장 이전 뒤 실제 경과 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 저장공간 정리와 테스트 통과는 수익성 증거가 아님 |
+
+기계판독 종합 근거는
+`evidence/WAVE141_INTERNAL_STORAGE_ATTRIBUTION_AND_SYNC_QA.json`이다. 현 수용상태는
+`EXTERNAL_CACHE_AND_GITHUB_SYNC_PASS_INTERNAL_SPACE_RECOVERED_LIVE_IO_INCIDENT_PRESERVED_ACTIVE_APP_AND_TRASH_BLOCKED_LONG_RUN_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

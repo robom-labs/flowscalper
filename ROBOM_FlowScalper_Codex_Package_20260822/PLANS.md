@@ -636,3 +636,28 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   13 frame 저장 재생, 실제 종료, 승률 정렬과 메인 이동을 확인했다.
 - 현재버전 BASE·STRESS 표본은 각 15건으로 30건 미만이다. 수익성은
   `NOT_PROVEN`, 실자금은 `NOT_READY`, 6시간·24시간과 활성 원장 full check는 `NOT_RUN`이다.
+
+## Wave 141 내장 용량 귀속·외장 검증 cache 고정·GitHub 동기화
+
+- 상태는 `PASS_WITH_PRESERVED_LIVE_IO_INCIDENT_AND_ACTIVE_APP_LIMITS`다.
+- 내장 사용자 폴더에서 FlowScalper 제품 이름으로 남은 것은 외장 runner만 가리키는 1,020byte
+  LaunchAgent plist뿐이다. 원장·시장자료·로그·소스·불변 릴리스는 계속 외장에 있다.
+- 현재 Playwright revision 1234를 checksum 차이 0으로 외장 cache에 복제하고 전체
+  desktop·tablet·mobile E2E를 통과한 뒤 내장 552MiB 사본만 제거했다.
+- Make의 setup·test·lint·typecheck·build·E2E 경로는 외장이 연결된 동안 uv·Python·XDG·
+  temp·npm·pnpm·Playwright cache를 외장으로 강제한다. macOS 정적 회귀 20건과 GitHub
+  Actions backend 918·frontend 87·fixture 22·browser 3건이 PASS했다.
+- 닫힌 Codex 세션 1,775개 32,187,660,066bytes와 재생성 cache를 사용자 승인에 따라
+  제거해 내장 여유공간을 약 7.7GiB에서 40GiB로 늘렸다. Codex 대화는 제품 데이터가 아니며
+  GitHub에 올리지 않는다. 현재 앱이 열어 쓰는 세션 3개와 상태 DB·설정·인증·메모리는
+  손상 방지를 위해 남겼다.
+- 브라우저 574MiB 이전을 LIVE 저장과 같은 외장 물리장치에서 겹친 구간의 persistence
+  fault 7·buffer drop 12,273·backlog peak 22,074는 `FAIL_PRESERVED`다. 재시작이나 강제
+  PAPER 청산 없이 복구됐고, 후속 60.022초는 event +4,139·평가 +26,220·신규 fault·drop·
+  비계획 reconnect 0으로 PASS했다. 대형 이전·checksum·browser download·원장 full scan은
+  같은 장치의 LIVE persistence와 다시 겹치지 않는다.
+- 소스 commit `bfb4b8707fbd18d54c9ae586bb06735bebd633d4`는 GitHub main과 Actions
+  `33366291035`에 동기화했다. 보유 PAPER 2건을 보호하기 위해 활성 불변 runtime은
+  `50c3e8ae7af08667546e8a1f2e4a70890e92d0f6` 그대로이며 재배포는 `NOT_RUN`이다.
+- 휴지통 내용은 macOS TCC가 `Operation not permitted`로 차단해 `BLOCKED`다. 수익성은
+  `NOT_PROVEN`, 실자금은 `NOT_READY`, 6시간·24시간은 `NOT_RUN`이다.
