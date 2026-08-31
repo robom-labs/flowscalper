@@ -524,6 +524,64 @@ def test_restore_setting_accepts_only_exact_equal_revision_duplicate() -> None:
         )
 
 
+def test_restore_setting_replaces_only_the_first_persisted_revision_zero() -> None:
+    strategy_id = "CBR_CONTINUATION_V1"
+    registry = StrategyRegistry()
+    legacy_revision_zero = {
+        "mode": StrategyMode.SHADOW,
+        "lifecycle": StrategyLifecycle.SHADOW,
+        "long_enabled": True,
+        "short_enabled": True,
+        "revision": 0,
+        "manual_lock": False,
+        "changed_by": StrategyChangeSource.MIGRATION,
+        "change_reason": "SAFE_DEFAULT",
+        "updated_ts_ms": 0,
+        "recovery_row_token": "legacy-revision-zero-row",
+    }
+
+    restored = registry.restore_setting(strategy_id, **legacy_revision_zero)
+    duplicate = registry.restore_setting(strategy_id, **legacy_revision_zero)
+
+    assert duplicate is restored
+    assert registry.setting(strategy_id).revision == 0
+    assert registry.setting(strategy_id).change_reason == "SAFE_DEFAULT"
+    assert registry.revision_history(strategy_id)[0]["change_reason"] == "SAFE_DEFAULT"
+    with pytest.raises(ValueError, match="복구 상태가 다릅니다"):
+        registry.restore_setting(
+            strategy_id,
+            **(legacy_revision_zero | {"change_reason": "DIVERGENT_REASON"}),
+        )
+    with pytest.raises(ValueError, match="복구 원장 행이 다릅니다"):
+        registry.restore_setting(
+            strategy_id,
+            **(
+                legacy_revision_zero
+                | {"recovery_row_token": "divergent-revision-zero-row"}
+            ),
+        )
+
+    out_of_order = StrategyRegistry()
+    out_of_order.restore_setting(
+        strategy_id,
+        mode=StrategyMode.SHADOW,
+        lifecycle=StrategyLifecycle.CHALLENGER,
+        long_enabled=True,
+        short_enabled=True,
+        revision=7,
+        manual_lock=False,
+        changed_by=StrategyChangeSource.RECOVERY,
+        change_reason="NEWER_RECOVERY_ROW",
+        updated_ts_ms=700,
+        recovery_row_token="newer-revision-seven-row",
+    )
+    with pytest.raises(ValueError, match="복구 상태가 다릅니다"):
+        out_of_order.restore_setting(strategy_id, **legacy_revision_zero)
+
+    assert out_of_order.setting(strategy_id).revision == 7
+    assert out_of_order.setting(strategy_id).change_reason == "NEWER_RECOVERY_ROW"
+
+
 def _complete_active_governance_evidence(
     *,
     timestamp: int,

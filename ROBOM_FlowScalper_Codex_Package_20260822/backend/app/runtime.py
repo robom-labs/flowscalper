@@ -159,6 +159,173 @@ def _recovery_row_token(row: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _fail_closed_recovery_windows(
+    incidents: Sequence[Mapping[str, object]],
+    *,
+    run_id: str,
+) -> tuple[tuple[int, int], ...]:
+    """복구 실패 뒤 다음 성공 복구 전까지의 fail-closed 구간만 반환한다."""
+
+    events: list[tuple[int, str, bool]] = []
+    for incident in incidents:
+        payload = incident.get("payload")
+        if incident.get("run_id") != run_id or not isinstance(payload, Mapping):
+            continue
+        ts_ms = incident.get("ts_ms")
+        new_state = payload.get("new_state")
+        recovery_ok = payload.get("recovery_ok") is True
+        if (
+            isinstance(ts_ms, int)
+            and not isinstance(ts_ms, bool)
+            and ts_ms >= 0
+            and isinstance(new_state, str)
+            and incident.get("category") == "PAPER_RESTART_RECOVERY"
+            and incident.get("incident_id") == payload.get("transition_id")
+            and payload.get("run_id") == run_id
+            and payload.get("occurred_ts_ms") == ts_ms
+            and payload.get("actor") == "RECOVERY"
+            and (
+                (
+                    new_state == "RECOVERY_FAIL_CLOSED"
+                    and payload.get("recovery_ok") is False
+                    and payload.get("reversible") is False
+                )
+                or (
+                    new_state == "RECOVERY_REVALIDATION_LOCKED"
+                    and payload.get("recovery_ok") is True
+                    and payload.get("reversible") is True
+                )
+            )
+        ):
+            events.append((ts_ms, new_state, recovery_ok))
+    events.sort()
+    windows: list[tuple[int, int]] = []
+    opened_at: int | None = None
+    for ts_ms, new_state, recovery_ok in events:
+        if new_state == "RECOVERY_FAIL_CLOSED" and not recovery_ok:
+            if opened_at is None:
+                opened_at = ts_ms
+            continue
+        if (
+            opened_at is not None
+            and recovery_ok
+            and new_state == "RECOVERY_REVALIDATION_LOCKED"
+        ):
+            windows.append((opened_at, ts_ms))
+            opened_at = None
+    return tuple(windows)
+
+
+def _is_fail_closed_governance_contamination(
+    row: Mapping[str, object],
+    *,
+    run_id: str,
+    windows: Sequence[tuple[int, int]],
+    governance_incidents: Sequence[Mapping[str, object]],
+) -> bool:
+    """복구 실패 중 실행돼서는 안 됐던 AUTO_GOVERNOR 행만 좁게 식별한다."""
+
+    strategy_id = row.get("strategy_id")
+    revision = row.get("settings_revision")
+    ts_ms = row.get("ts_ms")
+    transition_id = row.get("transition_id")
+    change_evidence = row.get("change_evidence")
+    if (
+        not isinstance(strategy_id, str)
+        or not strategy_id
+        or not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 1
+        or not isinstance(ts_ms, int)
+        or isinstance(ts_ms, bool)
+        or not isinstance(change_evidence, Mapping)
+    ):
+        return False
+    evidence = change_evidence.get("evidence")
+    assessment = change_evidence.get("assessment")
+    lineage = change_evidence.get("lineage")
+    if (
+        not isinstance(evidence, Mapping)
+        or not isinstance(assessment, Mapping)
+        or not isinstance(lineage, Mapping)
+    ):
+        return False
+    expected_transition_id = (
+        f"strategy-setting-{run_id}-{strategy_id}-rev-{revision}"
+    )
+    exact_fail_closed_transition = (
+        row.get("run_id") == run_id
+        and row.get("changed_by") == StrategyChangeSource.AUTO_GOVERNOR.value
+        and row.get("actor") == StrategyChangeSource.AUTO_GOVERNOR.value
+        and row.get("change_reason") == "OPERATIONAL_FAULT"
+        and row.get("cause") == "OPERATIONAL_FAULT"
+        and row.get("cause_code") == "OPERATIONAL_FAULT"
+        and row.get("mode") == StrategyMode.OFF.value
+        and row.get("lifecycle") == StrategyLifecycle.QUARANTINED.value
+        and row.get("manual_lock") is False
+        and row.get("long_enabled") is True
+        and row.get("short_enabled") is True
+        and row.get("account_id") is None
+        and row.get("symbol") is None
+        and transition_id == expected_transition_id
+        and row.get("request_revision") == revision - 1
+        and row.get("response_revision") == revision
+        and row.get("settings_updated_ts_ms") == ts_ms
+        and row.get("occurred_ts_ms") == ts_ms
+        and assessment.get("strategy_id") == strategy_id
+        and assessment.get("reason_codes") == ["OPERATIONAL_FAULT"]
+        and assessment.get("recommended_lifecycle")
+        == StrategyLifecycle.QUARANTINED.value
+        and assessment.get("automatic_action_allowed") is True
+        and assessment.get("transition_required") is True
+        and evidence.get("operational_fault") is True
+        and evidence.get("operational_health_passed") is False
+        and evidence.get("evaluated_ts_ms") == ts_ms
+        and lineage.get("schema_version") == 1
+        and lineage.get("run_id") == run_id
+        and lineage.get("strategy_id") == strategy_id
+        and lineage.get("settings_revision") == revision
+        and lineage.get("assessment_ts_ms") == ts_ms
+        and lineage.get("release_commit") == "UNAVAILABLE"
+    )
+    if not exact_fail_closed_transition:
+        return False
+    inside_closed_window = any(
+        start_ts_ms <= ts_ms < end_ts_ms
+        for start_ts_ms, end_ts_ms in windows
+    )
+    if not inside_closed_window:
+        return False
+    for incident in governance_incidents:
+        incident_payload = incident.get("payload")
+        if not isinstance(incident_payload, Mapping):
+            continue
+        if (
+            incident.get("incident_id") == transition_id
+            and incident.get("run_id") == run_id
+            and incident.get("category") == "AUTO_GOVERNOR_TRANSITION"
+            and incident.get("ts_ms") == ts_ms
+            and incident_payload.get("transition_id") == transition_id
+            and incident_payload.get("run_id") == run_id
+            and incident_payload.get("strategy_id") == strategy_id
+            and incident_payload.get("settings_revision") == revision
+            and incident_payload.get("changed_by")
+            == StrategyChangeSource.AUTO_GOVERNOR.value
+            and incident_payload.get("change_reason") == "OPERATIONAL_FAULT"
+            and incident_payload.get("mode") == StrategyMode.OFF.value
+            and incident_payload.get("lifecycle")
+            == StrategyLifecycle.QUARANTINED.value
+            and incident_payload.get("settings_updated_ts_ms") == ts_ms
+            and incident_payload.get("occurred_ts_ms") == ts_ms
+            and incident_payload.get("actor")
+            == StrategyChangeSource.AUTO_GOVERNOR.value
+            and incident_payload.get("cause_code") == "OPERATIONAL_FAULT"
+            and incident_payload.get("change_evidence") == change_evidence
+        ):
+            return True
+    return False
+
+
 def _recovery_decimal(
     row: Mapping[str, object],
     field_name: str,
@@ -547,6 +714,10 @@ class PaperRuntime:
     _storage_health_refresh_max_ms: float = 0.0
     _storage_health_refresh_completed_ts_ms: int | None = None
     _recovery_revalidation_symbols: set[str] = field(default_factory=set)
+    _recovery_ignored_governance_row_tokens: tuple[str, ...] = field(
+        default_factory=tuple,
+        repr=False,
+    )
     _manual_pause_requested: bool = False
     _paper_entry_intent_revision: int = 0
     _paper_entry_intent_actor: str = "RECOVERY"
@@ -952,10 +1123,28 @@ class PaperRuntime:
             staged_intent_updated_ts_ms = self._paper_entry_intent_updated_ts_ms
             staged_intent_idempotency = dict(self._paper_entry_intent_idempotency)
             validated_active_tokens: dict[str, dict[int, str]] = {}
+            recovery_windows = _fail_closed_recovery_windows(
+                self.ledger.list_incidents(category="PAPER_RESTART_RECOVERY"),
+                run_id=self.run_id,
+            )
+            governance_incidents = self.ledger.list_incidents(
+                category="AUTO_GOVERNOR_TRANSITION"
+            )
             setting_rows = self.ledger.list_strategy_settings(self.run_id)
             parsed_settings: list[_RecoveredStrategySetting] = []
             seen_recovery_tokens: dict[tuple[str, int], str] = {}
+            ignored_governance_row_tokens: list[str] = []
             for setting_row in setting_rows:
+                if _is_fail_closed_governance_contamination(
+                    setting_row,
+                    run_id=self.run_id,
+                    windows=recovery_windows,
+                    governance_incidents=governance_incidents,
+                ):
+                    ignored_governance_row_tokens.append(
+                        _recovery_row_token(setting_row)
+                    )
+                    continue
                 if setting_row.get("run_id") != self.run_id:
                     raise ValueError("복구 전략 설정의 Run이 현재 Run과 다릅니다.")
                 strategy_id = _strict_recovery_setting_text(setting_row, "strategy_id")
@@ -1252,6 +1441,9 @@ class PaperRuntime:
             self.position_visible = staged_position_visible
             self.selected_symbol = staged_selected_symbol
             self._recovery_revalidation_symbols = staged_recovery_symbols
+            self._recovery_ignored_governance_row_tokens = tuple(
+                ignored_governance_row_tokens
+            )
             self.data_gap_since_ms = staged_data_gap_since_ms
             self.paused = True
             self.runtime_health_flags = staged_runtime_health_flags
@@ -2781,6 +2973,22 @@ class PaperRuntime:
     def run_strategy_governance_cycle(self) -> dict[str, object]:
         """새 자연표본 또는 운영 결함이 있을 때만 보수적 자동 전환을 적용한다."""
 
+        recovery_failed = (
+            self.startup_recovery_audit.get("new_state")
+            == "RECOVERY_FAIL_CLOSED"
+        )
+        if recovery_failed:
+            return {
+                "evaluated_ts_ms": self.clock.utc_ms(),
+                "evaluation_period": "CURRENT_STRATEGY_VERSION_LIVE_PUBLIC",
+                "assessments": [],
+                "changes": [],
+                "blocked_reason": "RECOVERY_FAIL_CLOSED",
+                "promotion_without_formal_oos_evidence": False,
+                "paper_only": True,
+                "real_orders_enabled": False,
+                "auth_required": False,
+            }
         reports = self.strategy_performance(include_persisted=True)
         reports_by_key = {
             (str(report["strategy_id"]), str(report["profile"])): report for report in reports

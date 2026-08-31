@@ -255,6 +255,14 @@ def _restart_recovery_transition_audit(
         "reversible": new_state != "RECOVERY_FAIL_CLOSED",
         "lifecycle_state": previous_state,
         "recovery_ok": applied,
+        "ignored_fail_closed_governance_setting_count": len(
+            runtime._recovery_ignored_governance_row_tokens
+        ),
+        "ignored_fail_closed_governance_setting_tokens": list(
+            runtime._recovery_ignored_governance_row_tokens
+        ),
+        "ignored_fail_closed_governance_data_deleted": False,
+        "ignored_fail_closed_governance_duplicate_revision_relaxed": False,
         "open_position": runtime.paper_portfolio.main.position is not None,
         "requested_mode": requested_mode.value,
     }

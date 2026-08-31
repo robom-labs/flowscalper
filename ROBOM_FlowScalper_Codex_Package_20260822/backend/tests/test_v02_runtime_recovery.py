@@ -533,6 +533,13 @@ def test_restart_recovery_transition_is_normalized_and_public(
     assert payload["reversible"] is True
     assert payload["lifecycle_state"] == "SCANNING"
     assert payload["recovery_ok"] is True
+    assert payload["ignored_fail_closed_governance_setting_count"] == 0
+    assert payload["ignored_fail_closed_governance_setting_tokens"] == []
+    assert payload["ignored_fail_closed_governance_data_deleted"] is False
+    assert (
+        payload["ignored_fail_closed_governance_duplicate_revision_relaxed"]
+        is False
+    )
     assert payload["open_position"] is False
     diagnostics = recovered_runtime._operational_diagnostics()
     assert diagnostics["startup_recovery_transition_id"] == payload["transition_id"]

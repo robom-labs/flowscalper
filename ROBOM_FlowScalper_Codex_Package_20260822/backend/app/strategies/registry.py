@@ -1331,9 +1331,27 @@ class StrategyRegistry:
         }
         historical_row = self._revision_history[strategy_id].get(revision)
         if historical_row is not None:
+            historical_token = self._recovery_row_tokens[strategy_id].get(revision)
+            if (
+                revision == 0
+                and setting.revision == 0
+                and historical_token is None
+                and recovery_row_token is not None
+            ):
+                setting.mode = mode
+                setting.lifecycle = restored_lifecycle
+                setting.long_enabled = long_enabled
+                setting.short_enabled = short_enabled
+                setting.revision = revision
+                setting.manual_lock = manual_lock
+                setting.changed_by = changed_by
+                setting.change_reason = change_reason
+                setting.updated_ts_ms = updated_ts_ms
+                self._revision_history[strategy_id][revision] = restored_row
+                self._recovery_row_tokens[strategy_id][revision] = recovery_row_token
+                return setting
             if historical_row != restored_row:
                 raise ValueError("동일 strategy settings revision의 복구 상태가 다릅니다.")
-            historical_token = self._recovery_row_tokens[strategy_id].get(revision)
             if historical_token is not None and historical_token != recovery_row_token:
                 raise ValueError("동일 strategy settings revision의 복구 원장 행이 다릅니다.")
             if recovery_row_token is not None:
