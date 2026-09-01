@@ -448,6 +448,9 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .topbar { position: relative; z-index: 30; height: 48px; padding: 0 12px; border-bottom: 1px solid #203743; background: #071219; }
 .brand-lockup { display: flex; width: 190px; align-items: baseline; gap: 8px; }
 .brand-lockup h1 { font-size: 18px; }
+.brand-home { min-height: 48px; border: 0; padding: 0; color: inherit; background: transparent; cursor: pointer; text-align: left; }
+.brand-home:hover h1, .brand-home:focus-visible h1 { color: var(--mint); }
+.brand-home:focus-visible { outline: 2px solid var(--mint); outline-offset: -3px; }
 .header-status { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 12px; margin-left: auto; color: #91a8b4; font-size: 9px; white-space: nowrap; }
 .header-action { min-height: 48px; border: 1px solid #31505f; border-radius: 7px; padding: 0 12px; color: #d9e5eb; background: #10212a; cursor: pointer; font-size: 9px; font-weight: 800; }
 .paper-lock { color: #9ae7d1; font-weight: 800; }

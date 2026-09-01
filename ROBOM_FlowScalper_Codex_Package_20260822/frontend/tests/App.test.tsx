@@ -270,6 +270,25 @@ test('returns to the default market through the primary navigation', async () =>
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
 })
 
+test('returns home and fetches the latest PAPER summary when the brand is clicked', async () => {
+  const fetchMock = splitDashboardFetch(initialDashboard)
+  vi.stubGlobal('fetch', fetchMock)
+  vi.stubGlobal('WebSocket', FakeWebSocket)
+  render(<App />)
+
+  fireEvent.click(await screen.findByRole('button', { name: '전략' }))
+  expect(await screen.findByRole('heading', { name: '전략 한눈에 보기' })).toBeInTheDocument()
+  const summaryCallsBefore = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/ui/summary').length
+
+  fireEvent.click(screen.getByRole('button', { name: '시장 메인으로 이동하고 최신 상태 불러오기' }))
+
+  expect(await screen.findByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
+  await waitFor(() => {
+    const summaryCallsAfter = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/ui/summary').length
+    expect(summaryCallsAfter).toBeGreaterThan(summaryCallsBefore)
+  })
+})
+
 test('keeps the market rail to ten deep symbols until search or 전체보기 explicitly opens the catalog', async () => {
   const catalogRows: MarketCatalogRow[] = Array.from({ length: 60 }, (_, index) => {
     const asset = `ASSET${String(index).padStart(3, '0')}`

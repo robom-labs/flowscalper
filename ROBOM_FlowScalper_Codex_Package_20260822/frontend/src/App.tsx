@@ -34,6 +34,7 @@ export default function App() {
     control,
     cancelControl,
     retryControl,
+    refreshUiSummary,
     selectChart,
     configureStrategy,
     rollbackStrategy,
@@ -120,6 +121,13 @@ export default function App() {
     setPage(nextPage)
     window.scrollTo(0, 0)
   }
+  const returnHomeAndRefresh = () => {
+    changePage('market')
+    clearError()
+    void refreshUiSummary().catch(() => {
+      // useDashboard가 최신 상태 요청 오류를 화면에 표시한다.
+    })
+  }
   const changeResearchDetails = (enabled: boolean) => {
     setResearchDetails(enabled)
     try { globalThis.localStorage?.setItem(researchPreferenceKey, enabled ? '1' : '0') } catch { /* 로컬 저장 실패는 PAPER 실행 설정에 영향이 없다. */ }
@@ -128,7 +136,7 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <SafetyHeader data={data} connected={connected} safetyVerified={safetyVerified} connectionState={connectionState} onPauseToggle={pauseToggle} immediateAction={immediateBusyAction} />
+      <SafetyHeader data={data} connected={connected} safetyVerified={safetyVerified} connectionState={connectionState} onHome={returnHomeAndRefresh} onPauseToggle={pauseToggle} immediateAction={immediateBusyAction} />
       <Navigation page={page} onChange={changePage} />
       {globalError ? <p className="connection-error" role="alert">{globalError}</p> : null}
       {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}

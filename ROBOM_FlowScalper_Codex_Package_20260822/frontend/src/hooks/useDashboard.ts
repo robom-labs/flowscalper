@@ -556,7 +556,7 @@ export function useDashboard(page: PageId = 'market') {
     const requestSafetyEpoch = safetyEpoch.current
     const summary = await fetchJson<UiSummaryPayload>(
       '/api/ui/summary',
-      signal ? { signal } : {},
+      signal ? { signal, cache: 'no-store' } : { cache: 'no-store' },
       10_000,
     )
     if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
@@ -1046,6 +1046,7 @@ export function useDashboard(page: PageId = 'market') {
     control,
     cancelControl,
     retryControl,
+    refreshUiSummary,
     selectChart,
     configureStrategy,
     rollbackStrategy,
