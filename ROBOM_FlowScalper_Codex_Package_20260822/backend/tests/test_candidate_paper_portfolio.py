@@ -556,6 +556,105 @@ def test_main_max_one_and_partial_entry_only_protects_actual_fill() -> None:
     assert engine.main.risk_state.open_positions == 1
 
 
+def test_stale_data_health_cancels_all_symbols_and_releases_reservations() -> None:
+    plan = candidate_plan()
+    other_symbol_plan = replace(
+        plan,
+        candidate_id=f"{plan.candidate_id}-eth",
+        signal_event_id="depth-signal-eth",
+        symbol="ETHUSDT",
+    )
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    engine.offer((plan, other_symbol_plan), entries_paused=False)
+    pending_scopes = tuple(
+        (account.account_id, symbol)
+        for account in engine.accounts
+        for symbol in account.pending_entries
+    )
+    assert set(pending_scopes) == {
+        ("MAIN:BASE", "BTCUSDT"),
+        ("LSA_REVERSAL_V1:BASE", "BTCUSDT"),
+        ("LSA_REVERSAL_V1:BASE", "ETHUSDT"),
+        ("LSA_REVERSAL_V1:STRESS", "BTCUSDT"),
+        ("LSA_REVERSAL_V1:STRESS", "ETHUSDT"),
+    }
+    pending_accounts = tuple(
+        account for account in engine.accounts if account.pending_entries
+    )
+    assert all(account.risk_state.pending_planned_risk > 0 for account in pending_accounts)
+    assert all(account.risk_state.pending_notional > 0 for account in pending_accounts)
+
+    cancelled = engine.cancel_all_pending_entries(now_ms=1_100)
+
+    assert len(cancelled) == len(pending_scopes)
+    assert set(cancelled) == {account.account_id for account in pending_accounts}
+    assert all(not account.pending_entries for account in engine.accounts)
+    assert all(account.risk_state.pending_planned_risk == 0 for account in pending_accounts)
+    assert all(account.risk_state.pending_notional == 0 for account in pending_accounts)
+    cancellation_audits = [
+        row
+        for row in engine.audit_events
+        if row["event"] == "ENTRY_REJECTED"
+        and row.get("reason") == "DATA_HEALTH_STALE"
+    ]
+    assert {
+        (str(row["account_id"]), str(row["symbol"])) for row in cancellation_audits
+    } == set(pending_scopes)
+    assert all(row["reason_codes"] == ["DATA_HEALTH_STALE"] for row in cancellation_audits)
+    assert all(row["cause_code"] == "DATA_HEALTH_STALE" for row in cancellation_audits)
+    assert all(row["new_state"] == "SCANNING" for row in cancellation_audits)
+    assert all(row["cancellation_scope"] == "PENDING_ENTRY_ONLY" for row in cancellation_audits)
+
+    audit_count = len(engine.audit_events)
+    assert engine.cancel_all_pending_entries(now_ms=1_101) == ()
+    assert len(engine.audit_events) == audit_count
+
+
+def test_stale_pending_cancellation_preserves_open_position_protection() -> None:
+    plan = candidate_plan()
+    engine = PaperPortfolioEngine(
+        run_id=plan.run_id,
+        strategy_ids=(plan.strategy_id,),
+        shadow_ledger=ShadowLedger((plan.strategy_id,)),
+    )
+    engine.offer((replace(plan, shadow_eligible=False),), entries_paused=False)
+    engine.on_book(book(1_250))
+    managed = engine.main.position
+    assert managed is not None
+    protected_before = managed.protected
+    target_remaining_before = dict(managed.target_remaining)
+    open_planned_risk_before = engine.main.risk_state.open_planned_risk
+    gross_notional_before = engine.main.risk_state.gross_notional
+
+    engine.offer(
+        (replace(plan, main_eligible=False, shadow_eligible=True),),
+        entries_paused=False,
+    )
+    league_accounts = tuple(engine.shadows.values())
+    assert all(plan.symbol in account.pending_entries for account in league_accounts)
+
+    cancelled = engine.cancel_all_pending_entries(now_ms=1_300)
+
+    assert cancelled == tuple(account.account_id for account in league_accounts)
+    assert engine.main.position is managed
+    assert managed.protected is protected_before
+    assert managed.target_remaining == target_remaining_before
+    assert managed.pending_exit is None
+    assert engine.main.risk_state.open_planned_risk == open_planned_risk_before
+    assert engine.main.risk_state.gross_notional == gross_notional_before
+    assert all(account.risk_state.pending_planned_risk == 0 for account in league_accounts)
+    assert all(account.risk_state.pending_notional == 0 for account in league_accounts)
+
+    active_scans_before = engine.book_active_scan_count
+    engine.on_book(book(1_301))
+    assert engine.book_active_scan_count == active_scans_before + 1
+    assert engine.main.position is managed
+
+
 def test_position_can_hold_beyond_120_seconds_but_persistent_edge_decay_arms_exit() -> None:
     plan = candidate_plan(edge_decay_enabled=True)
     shadows = ShadowLedger((plan.strategy_id,))

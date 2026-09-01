@@ -629,6 +629,7 @@ class PaperRuntime:
     )
     data_gap_since_ms: dict[str, int] = field(default_factory=dict)
     _stale_trade_symbols: set[str] = field(default_factory=set, repr=False)
+    _strategy_data_health_epoch: int = field(default=0, repr=False)
     _feature_input_fault_symbols: set[str] = field(default_factory=set, repr=False)
     strategy_evaluation_interval_ms: int = 1_000
     _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
@@ -2335,8 +2336,33 @@ class PaperRuntime:
                     del self._market_event_buffer[:overflow]
                 persistence_backlog = len(self._market_event_buffer)
             self._refresh_persistence_backlog_safety(persistence_backlog)
-        if event.quality.is_stale or not event.quality.sequence_valid:
+        data_health_fault = event.quality.is_stale or not event.quality.sequence_valid
+        if data_health_fault:
+            entering_gap = event.symbol not in self.data_gap_since_ms
             self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
+            if entering_gap:
+                # 진행 중인 이전 healthy 프로세스 결과를 거부하고, 다음 평가에서
+                # 자식 evaluator의 confirmation 이력을 새 상태로 시작한다.
+                self._strategy_data_health_epoch += 1
+            latest_feature = self.latest_features.get(event.symbol)
+            if latest_feature is not None and latest_feature.data_healthy:
+                self.latest_features[event.symbol] = replace(
+                    latest_feature,
+                    data_healthy=False,
+                )
+            self.paused = True
+            if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
+                self.runtime_health_flags.append("ENTRY_LOCK_DATA_HEALTH")
+            cancelled_accounts = self.paper_portfolio.cancel_all_pending_entries(
+                now_ms=event.venue_ts_ms,
+                reason_code=(
+                    "DATA_HEALTH_STALE"
+                    if event.quality.is_stale
+                    else "DATA_HEALTH_SEQUENCE_INVALID"
+                ),
+            )
+            if cancelled_accounts and not defer_execution_persistence:
+                self._persist_execution_state_safely(event.venue_ts_ms)
         if depth_event:
             self._record_live_event_phase(
                 "INGEST_PRE_DISPATCH",
@@ -2345,7 +2371,7 @@ class PaperRuntime:
             )
         prepared: _PreparedStrategyEvaluation | None = None
         if event.event_type == "TRADE":
-            if event.quality.is_stale or not event.quality.sequence_valid:
+            if data_health_fault:
                 self._stale_trade_symbols.add(event.symbol)
             else:
                 self._stale_trade_symbols.discard(event.symbol)
@@ -2800,9 +2826,12 @@ class PaperRuntime:
         return snapshot, revisions
 
     def _strategy_process_state_key(self) -> str:
-        """Run·거래소·전략 버전이 바뀌면 자식 evaluator 이력을 분리한다."""
+        """Run·거래소·전략 버전·데이터 gap이 바뀌면 자식 이력을 분리한다."""
 
-        return f"{self.run_id}:{self.venue.value}:{STRATEGY_VERSION}"
+        return (
+            f"{self.run_id}:{self.venue.value}:{STRATEGY_VERSION}:"
+            f"health-{self._strategy_data_health_epoch}"
+        )
 
     def _strategy_settings_revisions(self) -> tuple[tuple[str, int], ...]:
         registry = self.strategy_registry
@@ -5676,6 +5705,7 @@ class PaperRuntime:
         self.plan_rejections.clear()
         self.data_gap_since_ms.clear()
         self._stale_trade_symbols.clear()
+        self._strategy_data_health_epoch = 0
         self._feature_input_fault_symbols.clear()
         self._last_strategy_evaluation_ms.clear()
         self._recovery_revalidation_symbols.clear()

@@ -2076,7 +2076,9 @@ async def test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists(
     ledger.close()
 
 
-def test_stale_trade_is_archived_but_not_used_for_candles_or_strategy_features() -> None:
+def test_stale_trade_is_archived_but_not_used_for_candles_or_strategy_features(
+    monkeypatch,
+) -> None:
     clock = DeterministicClock(current_utc_ms=2_000)
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
@@ -2132,15 +2134,40 @@ def test_stale_trade_is_archived_but_not_used_for_candles_or_strategy_features()
             },
         )
 
+    cancellation_calls: list[tuple[int, str]] = []
+
+    def record_pending_cancellation(
+        *,
+        now_ms: int,
+        reason_code: str,
+    ) -> tuple[str, ...]:
+        cancellation_calls.append((now_ms, reason_code))
+        return ()
+
+    monkeypatch.setattr(
+        runtime.paper_portfolio,
+        "cancel_all_pending_entries",
+        record_pending_cancellation,
+    )
+    initial_process_state_key = runtime._strategy_process_state_key()
     runtime.ingest_live_event(depth("depth-1", 2_000))
+    evaluation_count = runtime.strategy_evaluation_count
     runtime.ingest_live_event(trade("trade-stale", 2_100, stale=True))
     runtime.ingest_live_event(depth("depth-2", 2_600))
 
     assert runtime.candle_builder.snapshot("BTCUSDT") == ()
     assert runtime.latest_features["BTCUSDT"].data_healthy is False
+    assert runtime.latest_books["BTCUSDT"].ts_ms == 2_600
+    assert runtime.strategy_evaluation_count == evaluation_count
+    assert runtime.paused is True
+    assert "ENTRY_LOCK_DATA_HEALTH" in runtime.runtime_health_flags
+    assert runtime._strategy_process_state_key() != initial_process_state_key
+    assert cancellation_calls == [(2_100, "DATA_HEALTH_STALE")]
     assert runtime.dashboard()["system"]["stale_trade_symbols"] == 1
 
     runtime.ingest_live_event(trade("trade-fresh", 2_700, stale=False))
+    assert runtime.latest_features["BTCUSDT"].data_healthy is False
+    assert "ENTRY_LOCK_DATA_HEALTH" in runtime.runtime_health_flags
     runtime.ingest_live_event(depth("depth-3", 3_200))
 
     assert runtime.candle_builder.snapshot("BTCUSDT")

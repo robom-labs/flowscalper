@@ -414,6 +414,95 @@ class PaperPortfolioEngine:
                         account_id=account.account_id,
                     )
 
+    def cancel_pending_entries_for_symbol(
+        self,
+        symbol: str,
+        *,
+        now_ms: int,
+        reason_code: str = "DATA_HEALTH_STALE",
+    ) -> tuple[str, ...]:
+        """데이터 건강 잠금 시 해당 종목의 PAPER 진입 대기만 취소한다."""
+
+        normalized_symbol = symbol.strip().upper()
+        normalized_reason = reason_code.strip().upper()
+        if not normalized_symbol:
+            raise ValueError("PAPER 진입 취소 종목이 필요합니다.")
+        self._validate_pending_cancel_request(now_ms=now_ms, reason_code=normalized_reason)
+
+        cancelled_account_ids: list[str] = []
+        for account in self.accounts:
+            if self._cancel_pending_entry(
+                account,
+                normalized_symbol,
+                now_ms=now_ms,
+                reason_code=normalized_reason,
+            ):
+                cancelled_account_ids.append(account.account_id)
+        self._refresh_active_symbol(normalized_symbol)
+        return tuple(cancelled_account_ids)
+
+    def cancel_all_pending_entries(
+        self,
+        *,
+        now_ms: int,
+        reason_code: str = "DATA_HEALTH_STALE",
+    ) -> tuple[str, ...]:
+        """전역 데이터 건강 잠금 시 모든 PAPER 진입 대기만 취소한다."""
+
+        normalized_reason = reason_code.strip().upper()
+        self._validate_pending_cancel_request(now_ms=now_ms, reason_code=normalized_reason)
+        cancelled_account_ids: list[str] = []
+        affected_symbols: set[str] = set()
+        for account in self.accounts:
+            for symbol in tuple(account.pending_entries):
+                if self._cancel_pending_entry(
+                    account,
+                    symbol,
+                    now_ms=now_ms,
+                    reason_code=normalized_reason,
+                ):
+                    cancelled_account_ids.append(account.account_id)
+                    affected_symbols.add(symbol)
+        for symbol in affected_symbols:
+            self._refresh_active_symbol(symbol)
+        return tuple(cancelled_account_ids)
+
+    def _cancel_pending_entry(
+        self,
+        account: ExecutionAccount,
+        symbol: str,
+        *,
+        now_ms: int,
+        reason_code: str,
+    ) -> bool:
+        pending = account.pending_entries.get(symbol)
+        if pending is None:
+            return False
+        plan = pending.plan
+        self._risk_manager_for(account).release_pending(
+            account.risk_state,
+            plan.max_planned_loss,
+            plan.position_size * plan.worst_allowed_entry,
+        )
+        account.pending_entries.pop(symbol)
+        self._audit(
+            "ENTRY_REJECTED",
+            plan,
+            audit_ts_ms=now_ms,
+            account_id=account.account_id,
+            reason=reason_code,
+            reason_codes=[reason_code],
+            cancellation_scope="PENDING_ENTRY_ONLY",
+        )
+        return True
+
+    @staticmethod
+    def _validate_pending_cancel_request(*, now_ms: int, reason_code: str) -> None:
+        if now_ms < 0:
+            raise ValueError("PAPER 진입 취소 시각은 음수일 수 없습니다.")
+        if not reason_code:
+            raise ValueError("PAPER 진입 취소 사유가 필요합니다.")
+
     def on_book(self, book: BookSnapshot) -> None:
         try:
             book.validate()
