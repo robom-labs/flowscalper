@@ -338,7 +338,8 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(page.getByRole('heading', { name: '거래 기록' })).toBeVisible()
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('columnheader', { name: '최종 결과' })).toBeVisible()
-    await expect(page.getByRole('columnheader', { name: '종료' })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: '진입 → 종료', exact: true })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: '종료 이유', exact: true })).toBeVisible()
   }
   await page.getByText('기록 범위 바꾸기', { exact: true }).click()
   await expect(page.getByLabel('Run 범위')).toHaveValue('CURRENT')
@@ -347,6 +348,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   const firstHistoryRow = page.locator('.history-table tbody tr').first()
   await firstHistoryRow.getByRole('button', { name: /자세히|비용별 결과/ }).click()
   const tradeDetail = page.getByRole('dialog', { name: '거래 상세' })
+  await expect(tradeDetail.getByRole('heading', { name: '진입부터 종료까지' })).toBeVisible()
   await expect(tradeDetail.getByText('진입 가격', { exact: true })).toBeVisible()
   await expect(tradeDetail.getByText('손절 가격', { exact: true })).toBeVisible()
   await expect(tradeDetail.getByText(/1차 목표|목표가\(과거 기록\)/).first()).toBeVisible()
