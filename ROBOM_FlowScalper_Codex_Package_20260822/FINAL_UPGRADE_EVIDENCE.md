@@ -4732,3 +4732,51 @@ V10은 `SWING_MULTI_HORIZON_TREND_4H1D_V1`, `DAILY_DONCHIAN_RETEST_1D4H_V1`,
 | 설치된 8870 browser·30분·6시간·24시간 | `NOT_RUN` | source fixture는 설치 서비스와 실제 wall-clock 증거가 아님 |
 | 실제 주문·private API·인증·wallet·runtime AI | `PASS_SOURCE_CONTRACT` | 후보 계약은 PAPER-only이며 해당 경로 0. 실제 서비스 관찰은 NOT_RUN |
 | 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 사전등록·source audit·단위검사는 비용후 OOS 수익성 증거가 아님 |
+
+## 105. Wave 143 무진입 원인 분리와 전역 격리 실행 중 자동복구
+
+### 105.1 현재 무진입의 실제 범위
+
+2026-09-01 16:41~16:52 KST에 설치 release
+`303eb64d86ea50b32652c83abdfc482d2dc58ee7`, Run `run-2b7135a972dd`를 읽기 전용으로
+점검했다. PAPER 진입 의도는 `ENTRY_ENABLED`, operation은 `RUNNING`, 공개시장 연결은
+`LIVE`, queue는 0, persistence·consumer fault와 entry·critical-lag lock은 모두 false였다.
+CBR·VWAP·15분 눌림·15분 돌파·30분 돌파·30분 다중추세의 6개 기본 연구전략은 모두
+SHADOW, LONG·SHORT ON이었다. 실제 주문과 인증은 false다.
+
+3분 동안 89개 대시보드 표본에서 12개 정밀종목의 scanner 행 1,068개를 집계했다.
+적격신호는 0, 모든 행은 `REJECTED`였고 HTTP 오류는 없었다. 주요 누적 차단은 구조 재진입
+미확인 801, VWAP 이격 부족 705, 반대호가 재충전 미확인 670, OFI 반전 미확인 660,
+공격적 체결흐름 부족 619건이었다. 같은 구간에 event와 전략평가 카운터는 계속 증가했다.
+따라서 이 관찰창의 무진입은 멈춘 엔진이나 거래기록 최신화 오류가 아니라 현재 조건
+미충족이다. 자연신호를 만들기 위해 기준·비용·체결·TP·SL을 낮추지 않았다.
+
+### 105.2 별도로 확인한 전역 격리 결함과 수정
+
+활성 원장에는 2026-09-01 12:36:18.287 KST 같은 시각에 `OPERATIONAL_FAULT`로 발생한
+`AUTO_GOVERNOR_TRANSITION` 10건이 있다. 현재 기본 연구전략 6개도 OFF·QUARANTINED가 됐고,
+16:18:22 재시작 복구에서 SHADOW·CHALLENGER로 돌아오기 전까지 약 3시간 42분 동안 신규
+진입 대상이 아니었다. 마지막 저장 PAPER 거래는 전날 16:32 KST이므로 밤 전체가 격리였다고
+쓰지 않는다. 격리 전 약 20시간 무진입과 3시간 42분의 설정 결함을 구분한다.
+
+기존 코드는 시작 복구에서만 엄격한 전역 cohort를 되살리고, 실행 중 Governor는 장애가
+사라져도 `QUARANTINE_REQUIRES_REVALIDATION`으로 계속 OFF를 유지했다. 수정 뒤에는 다음
+15분 Governor 주기에서 기본 연구 ENTRY 6개 각각의 BASE·STRESS 두 계좌, LIVE supervisor,
+consumer·queue·저장·지연·데이터·복구 상태가 모두 정상으로 입증된 경우에만 같은 시각의
+전역 cohort를 복구하고 설정·incident·release lineage를 원장에 남긴다. 개별 계좌 fault,
+부분 격리, 사용자 manual lock, 다른 변경 이유, 서로 다른 격리시각 또는 남은 안전잠금은
+자동 복구하지 않는다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 현재 엔진·진입 의도·6전략 | `PASS_OBSERVED` | RUNNING·ENTRY_ENABLED·SHADOW 6·LONG/SHORT ON·event/평가 전진 |
+| 3분 scanner 원인 집계 | `PASS_OBSERVED_NO_SIGNAL` | 89표본·1,068 REJECTED·적격 0·HTTP 오류 0 |
+| 전역 격리 원장 사건 | `FAIL_PRESERVED` | 12:36:18.287 KST 동일 시각 OPERATIONAL_FAULT 전환 10건 |
+| 시작 복구 적용 상태 | `PASS_OBSERVED` | 16:18 이후 적격 6개 SHADOW·CHALLENGER 복구 |
+| 실행 중 엄격 cohort 자동복구 | `PASS_AUTOMATED` | 건강 재검증 복구와 critical-lag 미복구를 포함한 관련 회귀 136개 PASS |
+| Ruff·mypy | `PASS` | 변경 backend·test Ruff, runtime·registry mypy PASS |
+| 불변 release·실제 8870 재설치 | `NOT_RUN` | source 검증은 설치된 서비스 증거를 대신하지 않음 |
+| 실제 브라우저 | `NOT_RUN` | 새 release 설치 뒤 별도 확인 필요 |
+| GitHub main·Actions | `NOT_RUN` | commit·push 전 |
+| 6시간·24시간 | `NOT_RUN` | 실제 경과 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 무진입 원인·복구 회귀 통과는 비용후 수익성 증거가 아님 |

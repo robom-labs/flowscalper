@@ -6,6 +6,7 @@
 
 ## 아직 배포하지 않음
 
+- 전역 운영결함이 해소돼도 같은 시각에 자동 격리된 기본 연구전략 6개가 서비스 재시작 전까지 계속 꺼져 있던 문제를 수정했다. 다음 15분 Governor 주기에 BASE·STRESS 두 계좌, 공개시장 supervisor, 소비자·queue·저장·지연·데이터 건강이 모두 정상임을 다시 입증한 경우에만 동일 전역 cohort를 SHADOW·CHALLENGER로 복구한다. 개별 전략 결함, 일부 격리, 사용자 고정, 남은 안전잠금은 자동 복구하지 않는다.
 - V9의 Directional Change FAST·SWING 관찰과 DC01 추세지속·DC02 소진반전 monitoring-only 규칙을 추가했다. 상·하방 Semivariance·RV/BV Jump 관찰, 계층적 축소·BH/BY FDR·E-process·e-BH·Pareto·연구 게이트는 독립 PAPER 코어로 구현했지만 runtime 진입에는 연결하지 않았다. Signed Jump·Harvey–Liu·Copula 엔진·봉 전용 DC replay는 미완료로 명시해 완료 기능으로 계산하지 않는다. 실제 crossing과 완성봉만 사용하고 stale·순서 불일치·비용 미충족은 fail-closed하며, 모든 신규 후보는 실제 주문·인증·wallet 0을 유지한다.
 - V9 연구 항목 12개의 추적 스위치를 모두 ON으로 표시하되, 방향 전략은 DC 2개, 시장중립 후보는 1개, 나머지는 필터·라우터·위험축소·통계·선별로 분리했다. 소스·엔진 준비상태와 진입 여부를 별도로 보여 추적 ON을 ACTIVE나 주문 허용으로 오인하지 않게 했다.
 - LIVE 전략 평가를 미리 준비한 단일 전용 프로세스로 격리하고, Run·설정이 바뀐 오래된 결과는 적용하지 않는다. 전략 진입판정 최소 간격을 2초로 조정하고 이벤트 대기열이 운영 상한에 닿기 전에 CPU 전략 평가만 적응적으로 건너뛰어, 호가별 TP·SL·포지션 관리·원장 저장·DC 관찰은 계속 진행한다. 화면의 1초 heartbeat와 동일 상태의 최대 5초 snapshot cache는 유지한다.

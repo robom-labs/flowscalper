@@ -689,3 +689,24 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   않는다.
 - V6 뒤 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실제 주문·private API·API Key·
   wallet은 0, `FUNDING_READINESS`는 `NOT_READY`다.
+
+## Wave 143 무진입 원인 분리와 전역 격리 실행 중 자동복구
+
+- 상태는 `IMPLEMENTED_AUTOMATED_VALIDATION_PASS_RUNTIME_INSTALL_NOT_RUN`이다.
+- 같은 Run·현재 release에서 PAPER 진입 의도, 6개 기본 연구전략의 SHADOW·LONG·SHORT,
+  12개 정밀종목, 공개시장 event·전략평가 전진, queue·저장·consumer·지연·안전잠금을 먼저
+  대조한다. 자연 적격신호 0을 엔진 정지나 거래기록 최신화 오류로 단정하지 않는다.
+- 3분 동안 89개 대시보드 표본과 1,068개 scanner 행을 집계해 모두 정상 `REJECTED`였고,
+  구조 재진입·VWAP 이격·호가 재충전·OFI 반전·체결흐름 확인이 주 차단 원인임을 기록했다.
+  거래를 만들기 위해 전략 기준, 비용, TP·SL 또는 안전 체결 기준을 낮추지 않는다.
+- 2026-09-01 12:36:18 KST에 동일 시각 `OPERATIONAL_FAULT`로 10개 설정이 자동 격리됐고,
+  그중 기본 연구전략 6개가 16:18 재시작 복구 전까지 OFF였던 원장 사건을 별도 결함으로
+  분리한다. 실행 중 장애가 해소돼도 Governor가 `QUARANTINE_REQUIRES_REVALIDATION`만 반환해
+  재시작 전에는 복구하지 못하는 원인을 수정한다.
+- 다음 Governor 주기에서 적격 6개 전략 각각의 BASE·STRESS 계좌, LIVE supervisor,
+  consumer·queue·저장·지연·데이터 건강이 모두 명시적으로 정상인 경우에만 같은 시각의
+  전역 cohort를 SHADOW·CHALLENGER로 복구한다. 일부 격리, 개별 계좌 fault, manual lock,
+  critical lag, data/recovery lock은 자동 복구하지 않는다.
+- 관련 복구·Registry·추세·주문흐름 회귀 136개, Ruff와 변경 source mypy는 PASS했다.
+  불변 commit·실제 8870 설치·브라우저·GitHub·6시간·24시간은 별도 실행 전까지 `NOT_RUN`,
+  수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.

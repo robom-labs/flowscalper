@@ -1843,10 +1843,14 @@ def test_runtime_governance_cycle_quarantines_fault_but_does_not_promote_empty_s
     )
 
 
-def _runtime_with_healthy_governance_supervisor() -> PaperRuntime:
+def _runtime_with_healthy_governance_supervisor(
+    *,
+    ledger: SQLiteLedger | None = None,
+) -> PaperRuntime:
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
         clock=DeterministicClock(),
+        ledger=ledger,
         venue=Venue.BINANCE_USDM,
     )
     runtime.market_data_state = MarketDataState.LIVE
@@ -1865,6 +1869,52 @@ def _runtime_with_healthy_governance_supervisor() -> PaperRuntime:
         ),
     )
     return runtime
+
+
+def test_live_governance_restores_only_revalidated_global_quarantine(
+    tmp_path: Path,
+) -> None:
+    ledger = SQLiteLedger(tmp_path / "live-operational-recovery.sqlite3")
+    runtime = _runtime_with_healthy_governance_supervisor(ledger=ledger)
+    _restore_operational_quarantine_cohort(runtime.strategy_registry)
+    settings_before = ledger.count("strategy_settings")
+    incidents_before = ledger.count("incidents")
+
+    result = runtime.run_strategy_governance_cycle()
+
+    assert tuple(row["strategy_id"] for row in result["changes"]) == (
+        _ELIGIBLE_DIRECTION_RESEARCH_IDS
+    )
+    for strategy_id in _ELIGIBLE_DIRECTION_RESEARCH_IDS:
+        setting = runtime.strategy_registry.setting(strategy_id)
+        assert setting.mode is StrategyMode.SHADOW
+        assert setting.lifecycle is (
+            StrategyLifecycle.SHADOW
+            if strategy_id in _CURRENT_DIRECTION_RESEARCH_IDS
+            else StrategyLifecycle.CHALLENGER
+        )
+        assert setting.changed_by is StrategyChangeSource.RECOVERY
+        assert setting.change_reason == (
+            "V9_USER_REQUESTED_SHADOW_DEFAULT_ON_AFTER_GLOBAL_OPERATIONAL_RECOVERY"
+        )
+    assert ledger.count("strategy_settings") == settings_before + 6
+    assert ledger.count("incidents") == incidents_before + 6
+    ledger.close()
+
+
+def test_live_governance_keeps_global_quarantine_until_health_is_proven() -> None:
+    runtime = _runtime_with_healthy_governance_supervisor()
+    _restore_operational_quarantine_cohort(runtime.strategy_registry)
+    runtime._supervisor.telemetry.critical_lag_active = True  # type: ignore[union-attr]
+
+    result = runtime.run_strategy_governance_cycle()
+
+    assert result["changes"] == []
+    for strategy_id in _ELIGIBLE_DIRECTION_RESEARCH_IDS:
+        setting = runtime.strategy_registry.setting(strategy_id)
+        assert setting.mode is StrategyMode.OFF
+        assert setting.lifecycle is StrategyLifecycle.QUARANTINED
+        assert setting.changed_by is StrategyChangeSource.AUTO_GOVERNOR
 
 
 def test_runtime_operational_health_requires_exact_two_strategy_accounts() -> None:

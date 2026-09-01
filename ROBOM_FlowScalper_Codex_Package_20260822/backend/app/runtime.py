@@ -3789,6 +3789,74 @@ class PaperRuntime:
             ),
         }
 
+    def _restore_live_operational_quarantine(
+        self,
+        operational_by_strategy: Mapping[str, Mapping[str, object]],
+        *,
+        evaluated_ts_ms: int,
+    ) -> tuple[dict[str, object], ...]:
+        """현재 LIVE 운영건강을 다시 입증한 전역 격리 cohort만 복구한다."""
+
+        eligible_strategy_ids = tuple(
+            strategy_id
+            for strategy_id in self.strategy_registry.strategy_ids
+            if (
+                self.strategy_registry.descriptor(strategy_id).role is StrategyRole.ENTRY
+                and self.strategy_registry.descriptor(
+                    strategy_id
+                ).default_research_enabled
+                and not self.strategy_registry.is_policy_retired(strategy_id)
+            )
+        )
+        if not eligible_strategy_ids or any(
+            operational_by_strategy.get(strategy_id, {}).get(
+                "operational_health_passed"
+            )
+            is not True
+            or operational_by_strategy.get(strategy_id, {}).get("operational_fault")
+            is not False
+            for strategy_id in eligible_strategy_ids
+        ):
+            return ()
+
+        changed = (
+            self.strategy_registry.restore_operationally_quarantined_research_defaults(
+                updated_ts_ms=evaluated_ts_ms,
+                source=StrategyChangeSource.RECOVERY,
+            )
+        )
+        release_commit = git_commit()
+        for row in changed:
+            strategy_id = str(row["strategy_id"])
+            metadata = {
+                "recovery_scope": "STRICT_GLOBAL_OPERATIONAL_QUARANTINE_COHORT",
+                "operational": dict(operational_by_strategy[strategy_id]),
+                "lineage": {
+                    "schema_version": 1,
+                    "run_id": self.run_id,
+                    "strategy_id": strategy_id,
+                    "strategy_version": STRATEGY_VERSION,
+                    "descriptor_strategy_version": self.strategy_registry.descriptor(
+                        strategy_id
+                    ).research_contract.strategy_version,
+                    "app_version": APP_VERSION,
+                    "release_commit": release_commit,
+                    "revalidated_ts_ms": evaluated_ts_ms,
+                    "settings_revision": int(str(row["settings_revision"])),
+                },
+            }
+            transition = self._persist_strategy_setting(
+                row,
+                timestamp=evaluated_ts_ms,
+                evidence=metadata,
+            )
+            self._record_strategy_incident(
+                category="AUTO_GOVERNOR_OPERATIONAL_RECOVERY",
+                timestamp=evaluated_ts_ms,
+                payload=transition | metadata,
+            )
+        return changed
+
     def _active_champion_expectancy_by_family(
         self,
         reports_by_key: Mapping[tuple[str, str], Mapping[str, object]],
@@ -3837,8 +3905,20 @@ class PaperRuntime:
         champion_expectancy_by_family = self._active_champion_expectancy_by_family(reports_by_key)
         accounts = self.paper_portfolio.league_account_rows(self.latest_books)
         evaluated_ts_ms = self.clock.utc_ms()
+        operational_by_strategy = {
+            strategy_id: self._strategy_governance_operational_evidence(
+                strategy_id,
+                accounts,
+                evaluated_ts_ms=evaluated_ts_ms,
+            )
+            for strategy_id in self.strategy_registry.strategy_ids
+        }
         assessments: list[dict[str, object]] = []
-        changes: list[dict[str, object]] = []
+        recovery_changes = self._restore_live_operational_quarantine(
+            operational_by_strategy,
+            evaluated_ts_ms=evaluated_ts_ms,
+        )
+        changes: list[dict[str, object]] = [dict(row) for row in recovery_changes]
         for strategy_id in self.strategy_registry.strategy_ids:
             base = reports_by_key[(strategy_id, "BASE")]
             stress = reports_by_key[(strategy_id, "STRESS")]
@@ -3904,11 +3984,7 @@ class PaperRuntime:
                 champion_expectancy_usdt=champion_expectancy_by_family.get(
                     self.strategy_registry.descriptor(strategy_id).family_id.value
                 ),
-                operational=self._strategy_governance_operational_evidence(
-                    strategy_id,
-                    accounts,
-                    evaluated_ts_ms=evaluated_ts_ms,
-                ),
+                operational=operational_by_strategy[strategy_id],
             )
             assessment = self.strategy_governor.assess(
                 self.strategy_registry,

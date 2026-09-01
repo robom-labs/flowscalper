@@ -1056,6 +1056,7 @@ class StrategyRegistry:
         self,
         *,
         updated_ts_ms: int,
+        source: StrategyChangeSource = StrategyChangeSource.MIGRATION,
     ) -> tuple[dict[str, object], ...]:
         """동일 전역 장애로 한번에 격리된 적격 ENTRY cohort만 복구한다."""
 
@@ -1095,7 +1096,7 @@ class StrategyRegistry:
             )
             setting.revision += 1
             setting.manual_lock = False
-            setting.changed_by = StrategyChangeSource.MIGRATION
+            setting.changed_by = source
             setting.change_reason = OPERATIONAL_QUARANTINE_SHADOW_RECOVERY_REASON
             setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
             row = self._setting_row(strategy_id)
