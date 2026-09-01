@@ -269,3 +269,41 @@ test('audit:paper_safety_visible', async ({ page }, testInfo) => {
   expect(system.release_commit).toMatch(/^[0-9a-f]{40}$/)
   await captureAudit(page, testInfo, 'paper_safety_visible', auditPage)
 })
+
+test('audit:continuous_entry_and_leverage_visible', async ({ page }, testInfo) => {
+  const auditPage = await openAuditPage(page)
+  await expect(page.getByText('자동 진입 · 항상 허용')).toBeVisible()
+  await expect(page.getByRole('button', { name: '새 진입 잠시 멈추기' })).toHaveCount(0)
+  await openPageByName(page, '설정')
+  const leverage = page.getByRole('combobox', { name: 'PAPER 레버리지' })
+  await expect(leverage).toHaveValue('10')
+  await expect(leverage.locator('option[value="100"]')).toHaveText('100배')
+  const configuration = await page.evaluate(async () => {
+    const response = await fetch('/api/dashboard')
+    if (!response.ok) throw new Error(`dashboard HTTP ${response.status}`)
+    const dashboard = await response.json() as Record<string, unknown>
+    return dashboard.paper_research_configuration as Record<string, unknown>
+  })
+  expect({
+    selected_leverage: configuration.selected_leverage,
+    maximum_available_leverage: configuration.maximum_available_leverage,
+    continuous_entry_mode: configuration.continuous_entry_mode,
+    daily_trade_limit_enabled: configuration.daily_trade_limit_enabled,
+    daily_loss_lock_enabled: configuration.daily_loss_lock_enabled,
+    weekly_loss_lock_enabled: configuration.weekly_loss_lock_enabled,
+    loss_cooldown_enabled: configuration.loss_cooldown_enabled,
+    paper_only: configuration.paper_only,
+    real_orders_enabled: configuration.real_orders_enabled,
+  }).toEqual({
+    selected_leverage: 10,
+    maximum_available_leverage: 100,
+    continuous_entry_mode: true,
+    daily_trade_limit_enabled: false,
+    daily_loss_lock_enabled: false,
+    weekly_loss_lock_enabled: false,
+    loss_cooldown_enabled: false,
+    paper_only: true,
+    real_orders_enabled: false,
+  })
+  await captureAudit(page, testInfo, 'continuous_entry_and_leverage_visible', auditPage)
+})

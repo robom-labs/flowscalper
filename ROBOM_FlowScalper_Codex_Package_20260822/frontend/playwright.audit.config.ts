@@ -10,6 +10,7 @@ const commonChecks = [
   'horizontal_overflow_zero',
   'console_errors_zero',
   'paper_safety_visible',
+  'continuous_entry_and_leverage_visible',
 ]
 
 function auditGrep(checks: string[]) {

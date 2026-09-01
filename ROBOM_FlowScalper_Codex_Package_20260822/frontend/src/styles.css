@@ -30,7 +30,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .eyebrow, .section-kicker { margin: 0 0 5px; color: var(--mint); font-size: 10px; font-weight: 800; letter-spacing: .17em; }
 .fixture-note { display: inline-flex; min-height: 30px; align-items: center; border: 1px solid #355260; border-radius: 999px; padding: 5px 9px; font-size: 10px; font-weight: 800; letter-spacing: .035em; }
 .navigation { gap: 4px; overflow-x: auto; margin-bottom: 18px; padding: 5px; border: 1px solid var(--line); border-radius: 10px; background: #09151c; scrollbar-width: thin; }
-.nav-button, .primary-button, .secondary-button, .danger-button, .table-button { min-height: 48px; border-radius: 8px; padding: 0 16px; border: 1px solid transparent; color: #b9cbd5; background: transparent; cursor: pointer; font-weight: 750; white-space: nowrap; }
+.nav-button, .primary-button, .secondary-button, .danger-button, .table-button { min-width: 48px; min-height: 48px; border-radius: 8px; padding: 0 16px; border: 1px solid transparent; color: #b9cbd5; background: transparent; cursor: pointer; font-weight: 750; white-space: nowrap; }
 .nav-button:hover, .secondary-button:hover { background: #122631; }
 .nav-button.active { color: #081211; background: var(--mint); }
 .primary-button { color: #07110f; background: var(--mint); }
@@ -216,7 +216,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .strategy-compact-table th { color: #718a98; font-size: 8px; }
 .strategy-compact-table td { font-size: 9px; }
 .strategy-compact-table small { display: block; margin-top: 4px; color: #718a98; font-size: 7px; }
-.strategy-sort-button { display: inline-flex; min-height: 48px; align-items: center; gap: 6px; border: 0; padding: 0; color: #718a98; background: transparent; cursor: pointer; font-size: 8px; font-weight: 800; }
+.strategy-sort-button { display: inline-flex; min-width: 48px; min-height: 48px; align-items: center; gap: 6px; border: 0; padding: 0; color: #718a98; background: transparent; cursor: pointer; font-size: 8px; font-weight: 800; }
 .strategy-sort-button:hover, .strategy-sort-button.active { color: #bfeee2; }
 .strategy-mobile-sort { display: none; }
 .strategy-monitor { display: inline-flex; min-height: 26px; align-items: center; border: 1px solid #347a6a; border-radius: 999px; padding: 3px 7px; color: #8fe6cf; background: #102d28; font-size: 8px; font-weight: 850; white-space: nowrap; }
@@ -499,7 +499,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .market-toolbar span { color: #7893a2; font-size: 8px; }
 .market-toolbar label { display: flex; align-items: center; gap: 5px; color: #7893a2; font-size: 8px; }
 .market-toolbar select { min-width: 92px; height: 48px; border: 1px solid #31505f; border-radius: 6px; padding: 0 24px 0 8px; color: #d9e5eb; background: #0e2029; }
-.workspace-button { min-height: 48px; border: 1px solid #31505f; border-radius: 6px; padding: 0 10px; color: #b9cbd5; background: #10212a; cursor: pointer; font-size: 9px; font-weight: 750; white-space: nowrap; }
+.workspace-button { min-width: 48px; min-height: 48px; border: 1px solid #31505f; border-radius: 6px; padding: 0 10px; color: #b9cbd5; background: #10212a; cursor: pointer; font-size: 9px; font-weight: 750; white-space: nowrap; }
 .workspace-button.selected { color: #07110f; border-color: var(--mint); background: var(--mint); }
 .operation-status-card { display: grid; min-height: 52px; flex: 0 0 auto; grid-template-columns: minmax(280px, 1.2fr) minmax(430px, 1fr) auto; align-items: center; gap: 14px; border: 1px solid #2c7565; border-radius: 9px; padding: 3px 12px; background: #0b211f; box-shadow: inset 4px 0 #64d9be; }
 .operation-status-card.ready { border-color: #497185; background: #0b1b24; box-shadow: inset 4px 0 #69bff8; }
@@ -547,7 +547,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .market-rail-head, .focus-rail-title { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #19303b; }
 .market-rail-head strong { font-size: 12px; }
 .market-rail-head span { color: #718a98; font-size: 9px; }
-.market-rail-close { min-height: 48px; border: 1px solid #31505f; border-radius: 6px; padding: 0 9px; color: #b9cbd5; background: #10212a; cursor: pointer; font-size: 8px; }
+.market-rail-close { min-width: 48px; min-height: 48px; border: 1px solid #31505f; border-radius: 6px; padding: 0 9px; color: #b9cbd5; background: #10212a; cursor: pointer; font-size: 8px; }
 .venue-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 6px; }
 .venue-tabs button { min-height: 48px; border: 1px solid #294957; border-radius: 6px; color: #8ea5b0; background: #0c1c24; cursor: pointer; font-size: 8px; }
 .venue-tabs button[aria-pressed="true"] { color: #07110f; border-color: var(--mint); background: var(--mint); font-weight: 800; }
@@ -594,18 +594,18 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .replay-focus-page .page-heading.compact h2 { font-size: 14px; }
 .replay-focus-page .focus-stack { position: relative; }
 .focus-replay-controls { position: absolute; z-index: 12; right: 216px; bottom: 10px; left: 184px; display: flex; min-height: 42px; align-items: center; gap: 7px; overflow-x: auto; border: 1px solid #31505f; border-radius: 7px; padding: 4px 7px; color: #91a8b4; background: #071219e8; font-size: 8px; white-space: nowrap; box-shadow: 0 8px 24px #02070b99; }
-.focus-replay-controls button { min-height: 48px; padding: 0 10px; font-size: 8px; }
+.focus-replay-controls button { min-width: 48px; min-height: 48px; padding: 0 10px; font-size: 8px; }
 .focus-replay-controls label { display: flex; align-items: center; gap: 4px; }
-.focus-replay-controls select { min-height: 48px; border: 1px solid #31505f; border-radius: 6px; color: #d9e5eb; background: #0e2029; }
+.focus-replay-controls select { min-width: 48px; min-height: 48px; border: 1px solid #31505f; border-radius: 6px; color: #d9e5eb; background: #0e2029; }
 .focus-replay-range { min-width: 130px; flex: 1; }
 .focus-replay-range input { min-width: 80px; min-height: 48px; flex: 1; accent-color: var(--mint); }
 .focus-mode-label { color: #7893a2; font-size: 8px; }
 .focus-jumps { display: flex; gap: 3px; }
-.focus-jumps button { min-width: 38px; padding: 0 6px; border: 1px solid #31505f; border-radius: 5px; color: #d9e5eb; background: #0e2029; }
+.focus-jumps button { min-width: 48px; padding: 0 6px; border: 1px solid #31505f; border-radius: 5px; color: #d9e5eb; background: #0e2029; }
 .focus-timeline { position: relative; flex: 0 0 auto; }
 .focus-timeline summary { min-height: 48px; padding: 8px; cursor: pointer; }
 .focus-timeline[open] ol { position: absolute; right: 0; bottom: 38px; width: 210px; max-height: 240px; overflow: auto; margin: 0; border: 1px solid #31505f; border-radius: 7px; padding: 6px; list-style: none; background: #071219; box-shadow: 0 12px 28px #000b; }
-.focus-timeline li button { width: 100%; text-align: left; }
+.focus-timeline li button { width: 100%; min-width: 48px; text-align: left; }
 .fast-forward { color: #f1c96d !important; }
 .focus-mobile-metrics, .focus-sheet-buttons { display: none; }
 .focus-detail-layer { display: none; }
@@ -676,7 +676,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .market-grid .market-rail, .focus-plan, .focus-pnl { display: none; }
   .focus-mobile-metrics { display: flex; min-height: 34px; align-items: center; justify-content: space-around; gap: 8px; border: 1px solid var(--line); border-radius: 7px; color: #91a8b4; background: #09151c; font-size: 9px; }
   .focus-sheet-buttons { display: flex; position: absolute; z-index: 11; right: 14px; top: 42px; gap: 4px; }
-  .focus-sheet-buttons button, .focus-sheet-close { min-height: 48px; border: 1px solid #31505f; border-radius: 7px; color: #d9e5eb; background: #0e2029; }
+  .focus-sheet-buttons button, .focus-sheet-close { min-width: 48px; min-height: 48px; border: 1px solid #31505f; border-radius: 7px; color: #d9e5eb; background: #0e2029; }
   .focus-detail-layer { position: fixed; z-index: 80; inset: 0; display: flex; align-items: stretch; justify-content: flex-end; }
   .focus-detail-layer > .focus-plan, .focus-detail-layer > .focus-pnl { position: relative; z-index: 2; display: block; width: min(82vw, 320px); height: 100%; overflow-y: auto; border-radius: 0; }
   .focus-sheet-close { position: fixed; z-index: 3; right: 10px; bottom: 10px; min-width: 72px; }

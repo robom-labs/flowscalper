@@ -13,8 +13,9 @@ function roundedMs(value: number) {
 type InteractiveTargetAudit = {
   stage: string
   measured_count: number
+  minimum_width_px: number | null
   minimum_height_px: number | null
-  violations: Array<{ tag: string; name: string; class_name: string; height_px: number }>
+  violations: Array<{ tag: string; name: string; class_name: string; width_px: number; height_px: number }>
 }
 
 async function auditVisibleInteractiveTargets(page: Page, stage: string): Promise<InteractiveTargetAudit> {
@@ -43,13 +44,15 @@ async function auditVisibleInteractiveTargets(page: Page, stage: string): Promis
             || element.id
             || '이름 없음',
           class_name: element.className || '',
+          width_px: Math.round(rect.width * 1_000) / 1_000,
           height_px: Math.round(rect.height * 1_000) / 1_000,
         }
       })
     return {
       measured_count: rows.length,
+      minimum_width_px: rows.length ? Math.min(...rows.map((row) => row.width_px)) : null,
       minimum_height_px: rows.length ? Math.min(...rows.map((row) => row.height_px)) : null,
-      violations: rows.filter((row) => row.height_px < 48),
+      violations: rows.filter((row) => row.width_px < 48 || row.height_px < 48),
     }
   })
   return { stage, ...measurement }
@@ -429,6 +432,9 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   const minimumInteractiveHeight = Math.min(
     ...interactiveTargetAudits.flatMap((audit) => audit.minimum_height_px === null ? [] : [audit.minimum_height_px]),
   )
+  const minimumInteractiveWidth = Math.min(
+    ...interactiveTargetAudits.flatMap((audit) => audit.minimum_width_px === null ? [] : [audit.minimum_width_px]),
+  )
   recordBrowserEvidence(testInfo.project.name, {
     status: interactiveViolations.length === 0 ? 'PASS' : 'FAIL',
     viewport_css_px: initialViewport,
@@ -446,6 +452,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
       status_meaning_available_as_text_without_color: colorIndependentStatusText,
       interactive_target_selectors: 'button,input,select,summary,a[href]',
       hidden_disabled_and_aria_disabled_excluded: true,
+      minimum_measured_interactive_width_px: Number.isFinite(minimumInteractiveWidth) ? minimumInteractiveWidth : null,
       minimum_measured_interactive_height_px: Number.isFinite(minimumInteractiveHeight) ? minimumInteractiveHeight : null,
       interactive_target_48px_pass: interactiveViolations.length === 0,
       interactive_target_audits: interactiveTargetAudits,
@@ -455,7 +462,7 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
     zoom_200_percent: zoom200Reflow,
     console_error_count: errors.length,
   })
-  expect(interactiveViolations, 'visible interactive target은 모두 최소 48px이어야 합니다.').toEqual([])
+  expect(interactiveViolations, 'visible interactive target은 가로·세로 모두 최소 48px이어야 합니다.').toEqual([])
 })
 
 test('격리 fixture에서 PAPER 100배·10배 설정과 전략 OFF·복원을 되돌릴 수 있다', async ({ page }, testInfo) => {
