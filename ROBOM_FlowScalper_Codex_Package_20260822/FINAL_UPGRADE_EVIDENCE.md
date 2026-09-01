@@ -4954,7 +4954,8 @@ SQLite app setting으로 보존하고 새 진입부터 적용한다.
 
 ### 107.3 불변 설치·실제 관찰·판정 경계
 
-최종 불변 릴리스 `3964b725d8355cf3228a04cd9c44d2bd5f17cc83`을 같은 Run
+실제 브라우저와 60초 관찰의 구현 기준 불변 릴리스
+`3964b725d8355cf3228a04cd9c44d2bd5f17cc83`을 같은 Run
 `run-2b7135a972dd`에 설치했다. 포지션·대기진입이 모두 0인 시점에서만 유지보수
 일시정지했고 각 전환 후 같은 Run과 10배 설정을 보존한 `ENTRY_ENABLED`로 즉시 복귀했다.
 설치 준비 중 작업트리 증거 산출물과 순간 lag P95 1,029.672ms를 각각 발견한 두 시도는
@@ -4990,4 +4991,12 @@ RUNNING·ENTRY_ENABLED·실행가능 저장·event·전략평가 전진을 함�
 | 실제 거래 및 신규 진입 | `NOT_OBSERVED` |
 | 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
 | 6시간·24시간 | `NOT_RUN` |
-| GitHub main·Actions | `PENDING` |
+| GitHub main·Actions | `PASS` · Wave 145 구현·증거 commit `cf991650140c2ca7fc78313ecb905f8084973f3c`, [Actions 33513856728](https://github.com/robom-labs/flowscalper/actions/runs/33513856728)의 validate 1분58초·browser 1분27초·브라우저 증거 업로드 PASS |
+
+구현·실제 화면·관찰 증거를 포함한 최종 검증 릴리스
+`cf991650140c2ca7fc78313ecb905f8084973f3c`도 같은 Run에 설치했다. 배포 일시정지를
+revision 69→70으로 해제한 뒤 `RUNNING`·`ENTRY_ENABLED`·10배·최대 100배·entry lock false,
+실제 주문·인증·private API·API Key·wallet·runtime AI 주문판단 false를 다시 확인했다.
+3초 재확인에서 공개시장 event 12,434→14,349, 전략평가 10,224→11,652로 각각
+1,915건·1,428건 전진했다. 이 짧은 재확인은 설치 복구와 데이터 전진 증거이며
+장시간 안정성이나 수익성 증거가 아니다.

@@ -759,7 +759,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 145 연속 PAPER 진입과 기본 10배·최대 100배 설정
 
-- 상태는 `IMPLEMENTED_FULL_VALIDATION_PASS_INSTALLED_GITHUB_PENDING`다.
+- 상태는 `COMPLETE_WITH_LIMITS`다.
 - 공동계좌와 30개 전략별 BASE/STRESS 계좌는 하루 거래횟수, 하루 손실, 주간 손실과
   연속손실 cooldown으로 신규 진입을 멈추지 않는다. 기존 카운터·손익·거래·판단은 삭제하지 않는다.
 - drawdown, 동시 포지션, 총 계획손실, 선택 배수에 따른 총 명목금액, 실제 실행가능 호가깊이,
@@ -778,6 +778,10 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 불변 릴리스 `3964b725d8355cf3228a04cd9c44d2bd5f17cc83`을 같은 Run
   `run-2b7135a972dd`에 설치했다. 실제 8870 브라우저 28건과 60.027초 관찰은
   PASS했고, event +7,187·전략평가 +5,424·비계획 재연결·gap·resync·drop·저장결함 0이다.
+- 최종 검증 릴리스 `cf991650140c2ca7fc78313ecb905f8084973f3c`도 같은 Run에 설치했고
+  배포 일시정지 해제 후 3초 동안 event +1,915·전략평가 +1,428과 `ENTRY_ENABLED`를
+  확인했다. Wave 145 구현·증거 commit `cf99165`의 GitHub Actions `33513856728`은
+  validate·browser·증거 업로드가 모두 PASS했다.
 - 실제 관찰에서 적격신호·신규 거래는 0이었다. 이는 RUNNING·ENTRY_ENABLED·event·
   전략평가 전진이 동시에 관찰된 조건 미충족이며, 거래를 만들기 위해 신호·비용·TP·SL을
   완화하지 않았다.
