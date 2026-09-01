@@ -191,10 +191,18 @@ class PaperTrade:
     runner_net_pnl_usdt: Decimal = Decimal(0)
     trail_trigger_slippage_usdt: Decimal = Decimal(0)
     trailing_state_checksum: str | None = None
+    selected_margin_leverage: Decimal = Decimal("1")
+    entry_notional_usdt: Decimal = Decimal(0)
+    margin_used_usdt: Decimal = Decimal(0)
 
     def __post_init__(self) -> None:
         if not self.strategy_version.strip():
             raise ValueError("PAPER 거래의 전략 버전은 비어 있을 수 없습니다.")
+        if (
+            not self.selected_margin_leverage.is_finite()
+            or not Decimal(1) <= self.selected_margin_leverage <= Decimal(100)
+        ):
+            raise ValueError("PAPER 거래 레버리지는 1배 이상 100배 이하여야 합니다.")
         if self.closed_ts_ms < self.opened_ts_ms:
             raise ValueError("PAPER 거래 종료 시각은 진입 이전일 수 없습니다.")
         milestones = (

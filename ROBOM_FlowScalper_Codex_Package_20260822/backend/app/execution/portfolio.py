@@ -199,6 +199,8 @@ class PaperPortfolioEngine:
         venue: Venue | None = None,
         execution_engine: PaperExecutionEngine | None = None,
         risk_manager: RiskManager | None = None,
+        league_risk_manager: RiskManager | None = None,
+        selected_margin_leverage: Decimal = Decimal("1"),
         cost_model: CostModel | None = None,
         position_manager: PositionManager | None = None,
         enforce_v6_family_conflicts: bool = False,
@@ -208,7 +210,15 @@ class PaperPortfolioEngine:
         self.shadow_ledger = shadow_ledger
         self.execution_engine = execution_engine or PaperExecutionEngine()
         self.risk_manager = risk_manager or RiskManager()
-        self.league_risk_manager = RiskManager(STRATEGY_LEAGUE_RISK_LIMITS)
+        self.league_risk_manager = league_risk_manager or RiskManager(
+            STRATEGY_LEAGUE_RISK_LIMITS
+        )
+        if (
+            not selected_margin_leverage.is_finite()
+            or not Decimal(1) <= selected_margin_leverage <= Decimal(100)
+        ):
+            raise ValueError("PAPER 선택 레버리지는 1배 이상 100배 이하여야 합니다.")
+        self.selected_margin_leverage = selected_margin_leverage
         self.cost_model = cost_model or self.execution_engine.cost_model
         self.position_manager = position_manager or PositionManager()
         self.enforce_v6_family_conflicts = enforce_v6_family_conflicts
@@ -734,6 +744,10 @@ class PaperPortfolioEngine:
             "quantity": str(managed.original_quantity),
             "remaining_quantity": str(managed.remaining_quantity),
             "notional": str(entry_fill.notional),
+            "selected_leverage": str(plan.selected_margin_leverage),
+            "margin_used_usdt": str(
+                entry_fill.notional / plan.selected_margin_leverage
+            ),
             "risk_budget": str(plan.risk_budget),
             "maximum_planned_loss": str(plan.max_planned_loss),
             "expected_fees": str(plan.expected_fees_usdt),
@@ -1160,6 +1174,7 @@ class PaperPortfolioEngine:
                     "trade_count": len(trades),
                     "daily_trade_count": account.risk_state.daily_trade_count,
                     "max_daily_trades": self.league_risk_manager.limits.max_daily_trades,
+                    "selected_leverage": str(self.selected_margin_leverage),
                     "realized_today_usdt": str(account.risk_state.realized_today),
                     "realized_week_usdt": str(account.risk_state.realized_week),
                     "daily_period_start_ms": account.risk_state.daily_period_start_ms,
@@ -1232,6 +1247,10 @@ class PaperPortfolioEngine:
                         "original_quantity": str(managed.original_quantity),
                         "remaining_quantity": str(managed.remaining_quantity),
                         "notional": str(notional),
+                        "selected_leverage": str(plan.selected_margin_leverage),
+                        "margin_used_usdt": str(
+                            notional / plan.selected_margin_leverage
+                        ),
                         "effective_leverage": str(notional / account.risk_state.current_equity)
                         if account.risk_state.current_equity > 0
                         else "0",
@@ -2090,6 +2109,11 @@ class PaperPortfolioEngine:
             runner_net_pnl_usdt=runner_net_pnl,
             trail_trigger_slippage_usdt=trail_trigger_slippage,
             trailing_state_checksum=trailing.checksum() if trailing is not None else None,
+            selected_margin_leverage=managed.plan.selected_margin_leverage,
+            entry_notional_usdt=entry.notional,
+            margin_used_usdt=(
+                entry.notional / managed.plan.selected_margin_leverage
+            ),
         )
 
     @staticmethod
@@ -2280,6 +2304,7 @@ class PaperPortfolioEngine:
             cost_burden=((expected_fees + expected_slippage) / gross_reward).quantize(
                 Decimal("0.0001")
             ),
+            selected_margin_leverage=self.selected_margin_leverage,
         )
 
     def _audit(
@@ -2823,6 +2848,7 @@ def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
         ),
         "trailing_reference_ts_ms": plan.trailing_reference_ts_ms,
         "trailing_reference_interval_seconds": plan.trailing_reference_interval_seconds,
+        "selected_margin_leverage": str(plan.selected_margin_leverage),
     }
 
 
@@ -2928,6 +2954,9 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         trailing_reference_interval_seconds=int(str(payload["trailing_reference_interval_seconds"]))
         if payload.get("trailing_reference_interval_seconds") is not None
         else None,
+        selected_margin_leverage=Decimal(
+            str(payload.get("selected_margin_leverage", "1"))
+        ),
     )
 
 
@@ -3179,6 +3208,9 @@ def _paper_trade_payload(trade: PaperTrade) -> dict[str, object]:
         "runner_net_pnl_usdt": str(trade.runner_net_pnl_usdt),
         "trail_trigger_slippage_usdt": str(trade.trail_trigger_slippage_usdt),
         "trailing_state_checksum": trade.trailing_state_checksum,
+        "selected_margin_leverage": str(trade.selected_margin_leverage),
+        "entry_notional_usdt": str(trade.entry_notional_usdt),
+        "margin_used_usdt": str(trade.margin_used_usdt),
         "exit_reason": trade.exit_reason.value,
         "gross_pnl_usdt": str(trade.gross_pnl_usdt),
         "fees_usdt": str(trade.fees_usdt),
@@ -3257,6 +3289,27 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
             str(payload["trailing_state_checksum"])
             if payload.get("trailing_state_checksum") is not None
             else None
+        ),
+        selected_margin_leverage=Decimal(
+            str(payload.get("selected_margin_leverage", "1"))
+        ),
+        entry_notional_usdt=Decimal(
+            str(
+                payload.get(
+                    "entry_notional_usdt",
+                    Decimal(str(payload["entry_price"]))
+                    * Decimal(str(payload["quantity"])),
+                )
+            )
+        ),
+        margin_used_usdt=Decimal(
+            str(
+                payload.get(
+                    "margin_used_usdt",
+                    Decimal(str(payload["entry_price"]))
+                    * Decimal(str(payload["quantity"])),
+                )
+            )
         ),
     )
 

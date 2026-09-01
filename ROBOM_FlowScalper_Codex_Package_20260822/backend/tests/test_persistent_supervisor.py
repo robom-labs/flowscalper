@@ -964,7 +964,7 @@ def test_critical_public_lag_locks_supervisor_and_runtime_until_fresh_depth() ->
     assert runtime.paused is True
     manual_status = runtime.dashboard()["operation_status"]
     assert manual_status["state"] == "MANUALLY_PAUSED"
-    assert manual_status["recommended_action"] == "RESUME"
+    assert manual_status["recommended_action"] == "NONE"
 
 
 def test_sequence_gap_data_health_lock_recovers_after_fresh_depth() -> None:

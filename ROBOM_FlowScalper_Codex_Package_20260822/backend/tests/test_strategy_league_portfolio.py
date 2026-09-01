@@ -250,7 +250,7 @@ def test_league_risk_sizing_fees_leverage_and_total_risk_limit() -> None:
     assert result.quantity is not None and result.planned_loss is not None
     assert result.planned_loss <= Decimal("5")
     assert result.quantity * Decimal("100") / Decimal("1000") <= Decimal("5")
-    assert engine_limits.maximum_gross_notional_fraction == Decimal("5.0")
+    assert engine_limits.maximum_gross_notional_fraction == Decimal("10.0")
 
     state = RiskState(pending_planned_risk=Decimal("10"), pending_notional=Decimal("1000"))
     assert (
@@ -299,6 +299,33 @@ def test_base_stress_latency_partial_fill_fee_and_risk_use_actual_quantity() -> 
         stress.positions["BTCUSDT"].protected.entry_fill.fee_usdt
         > base.positions["BTCUSDT"].protected.entry_fill.fee_usdt
     )
+
+
+def test_selected_margin_leverage_changes_margin_not_actual_notional_fee() -> None:
+    strategy_ids = StrategyRegistry().strategy_ids
+    engine = PaperPortfolioEngine(
+        run_id="run-league",
+        strategy_ids=strategy_ids,
+        shadow_ledger=ShadowLedger(strategy_ids),
+        venue=Venue.FIXTURE,
+        selected_margin_leverage=Decimal("10"),
+    )
+    plan = league_plan("LSA_REVERSAL_V1", "BTCUSDT")
+
+    engine.offer((plan,), entries_paused=False)
+    engine.on_book(league_book("BTCUSDT", 1_250))
+
+    managed = engine.shadows["LSA_REVERSAL_V1:BASE"].positions["BTCUSDT"]
+    fill = managed.protected.entry_fill
+    assert managed.plan.selected_margin_leverage == Decimal("10")
+    assert fill.fee_usdt == fill.notional * Decimal("6") / Decimal("10000")
+    position = next(
+        row
+        for row in engine.league_position_rows()
+        if row["account_id"] == "LSA_REVERSAL_V1:BASE"
+    )
+    assert Decimal(str(position["margin_used_usdt"])) == fill.notional / Decimal("10")
+    assert position["selected_leverage"] == "10"
 
 
 def test_exit_styles_have_exact_fractions_and_trend_uses_tp_sl_after_tp1() -> None:

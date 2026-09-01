@@ -1,6 +1,32 @@
 // Strategy League 화면 단위검사에 쓰는 결정적 Registry fixture를 제공한다.
 import { initialDashboard } from '../src/demoData'
-import type { DashboardData, LeagueAccount, StrategyPerformance, StrategyRow } from '../src/types'
+import type { DashboardData, LeagueAccount, SettingsSummaryPayload, StrategyPerformance, StrategyRow } from '../src/types'
+
+export function paperResearchSettings(
+  selectedLeverage = 10,
+  revision = 0,
+): SettingsSummaryPayload['paper_research'] {
+  return {
+    selected_leverage: selectedLeverage,
+    allowed_leverages: [1, 2, 3, 5, 10, 20, 25, 50, 75, 100],
+    default_leverage: 10,
+    maximum_available_leverage: 100,
+    continuous_entry_mode: true,
+    daily_trade_limit_enabled: false,
+    daily_loss_lock_enabled: false,
+    weekly_loss_lock_enabled: false,
+    loss_cooldown_enabled: false,
+    risk_sized_quantity: true,
+    dollar_risk_preserved: true,
+    fees_on_actual_notional: true,
+    margin_formula_ko: '실제 명목금액 ÷ 선택 레버리지',
+    applies_to_new_entries: true,
+    revision,
+    updated_ts_ms: null,
+    paper_only: true,
+    real_orders_enabled: false,
+  }
+}
 
 const catalog = [
   ['LSA_REVERSAL_V1', 'LSA 반전', '급락·급등 쓸기 반전'],
@@ -190,7 +216,8 @@ export const leagueAccounts: LeagueAccount[] = strategies.flatMap((strategy, str
     slippage_usdt: '0',
     trade_count: 0,
     daily_trade_count: 0,
-    max_daily_trades: 12,
+    max_daily_trades: null,
+    selected_leverage: '10',
     realized_today_usdt: '0',
     realized_week_usdt: '0',
     daily_period_start_ms: 1_759_881_600_000,
@@ -202,7 +229,7 @@ export const leagueAccounts: LeagueAccount[] = strategies.flatMap((strategy, str
     pending_entries: 0,
     gross_notional_usdt: '0',
     effective_leverage: '0',
-    maximum_effective_leverage: '5',
+    maximum_effective_leverage: '10',
     maximum_drawdown_usdt: '0',
     paused: false,
     faulted: false,

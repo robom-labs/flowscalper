@@ -22,14 +22,15 @@ venue:
 paper_account:
   starting_equity_usdt: 1000.0
   base_currency: USDT
-  simulated_leverage: 1.0
+  simulated_leverage: 10.0
+  selectable_leverage: [1, 2, 3, 5, 10, 20, 25, 50, 75, 100]
+  continuous_entry_mode: true
+  fees_on_actual_notional: true
+  preserve_same_dollar_risk: true
   comparison_profiles:
     - id: STRESS
       fee_multiplier: 2.0
       latency_multiplier: 2.0
-    - id: LEVERAGE_2X_SHADOW
-      simulated_leverage: 2.0
-      preserve_same_dollar_risk: true
 
 runtime:
   ui_broadcast_interval_ms: 250

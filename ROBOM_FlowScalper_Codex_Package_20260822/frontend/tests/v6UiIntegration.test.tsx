@@ -6,7 +6,7 @@ import { StrategiesPage } from '../src/pages/StrategiesPage'
 import { SettingsPage } from '../src/pages/SettingsPage'
 import { TradesPage } from '../src/pages/TradesPage'
 import type { HistoryRow, TradesResponse } from '../src/types'
-import { dashboardFixture, leagueAccounts, strategies } from './fixtures'
+import { dashboardFixture, leagueAccounts, paperResearchSettings, strategies } from './fixtures'
 
 afterEach(() => {
   cleanup()
@@ -839,6 +839,7 @@ test('renders backend diagnostic labels and keeps macOS autostart explicitly not
       entry_state: data.paper_entry_intent.state, entry_revision: data.paper_entry_intent.revision, active_locks: [],
     },
     costs: data.risk.strategy_league,
+    paper_research: paperResearchSettings(),
     storage: {},
     connection: { public_market_only: true },
     autostart: {
@@ -867,17 +868,23 @@ test('renders backend diagnostic labels and keeps macOS autostart explicitly not
   }
 
   const onResearchDetailsChange = vi.fn()
-  const view = render(<SettingsPage data={data} connected lastUpdateMs={data.system.server_time_ms as number} researchDetails={false} onResearchDetailsChange={onResearchDetailsChange} onNewRun={vi.fn()} />)
+  const onConfigureLeverage = vi.fn(async () => undefined)
+  const view = render(<SettingsPage data={data} connected lastUpdateMs={data.system.server_time_ms as number} researchDetails={false} onResearchDetailsChange={onResearchDetailsChange} onNewRun={vi.fn()} onConfigureLeverage={onConfigureLeverage} />)
 
-  expect(screen.getByText('자동 시작 · 읽기 전용')).toBeInTheDocument()
-  expect(screen.getByText('확인되지 않음')).toBeInTheDocument()
+  expect(screen.getByText('자동 시작 · 실행 상태')).toBeInTheDocument()
+  expect(screen.getByText(/확인되지 않음/)).toBeInTheDocument()
   expect(screen.getByText(/PAPER 상태 자동 복구는 macOS/)).toBeInTheDocument()
   expect(screen.getByText('Backend PAPER 상태 자동 복구 계약')).toBeInTheDocument()
   expect(screen.getByText('원시 JSON 보기')).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'PAPER 레버리지' }), {
+    target: { value: '100' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '선택 배수 적용' }))
+  expect(onConfigureLeverage).toHaveBeenCalledWith(100, 0)
   expect(screen.getByRole('checkbox', { name: '연구 상세 표시' })).not.toBeChecked()
   fireEvent.click(screen.getByRole('checkbox', { name: '연구 상세 표시' }))
   expect(onResearchDetailsChange).toHaveBeenCalledWith(true)
-  view.rerender(<SettingsPage data={data} connected lastUpdateMs={data.system.server_time_ms as number} researchDetails onResearchDetailsChange={onResearchDetailsChange} onNewRun={vi.fn()} />)
+  view.rerender(<SettingsPage data={data} connected lastUpdateMs={data.system.server_time_ms as number} researchDetails onResearchDetailsChange={onResearchDetailsChange} onNewRun={vi.fn()} onConfigureLeverage={vi.fn(async () => undefined)} />)
   expect(screen.getByRole('checkbox', { name: '연구 상세 표시' })).toBeChecked()
   expect(screen.getByText('전문가 진단').closest('details')).toHaveAttribute('open')
 })

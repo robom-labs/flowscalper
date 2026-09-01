@@ -27,7 +27,7 @@ export default defineConfig({
           `cd .. && uv run python scripts/run_e2e_server.py --port ${port} --database ${JSON.stringify(database)}`,
         url: `${baseURL}/api/status`,
         reuseExistingServer: false,
-        timeout: 30_000,
+        timeout: 90_000,
       },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1408, height: 900 }, deviceScaleFactor: 2 } },

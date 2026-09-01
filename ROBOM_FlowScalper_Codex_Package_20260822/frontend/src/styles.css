@@ -481,6 +481,14 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .settings-summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 12px 8px; }
 .settings-summary-grid span, .settings-summary-grid small { display: block; color: #829aa7; }
 .settings-summary-grid b { display: block; margin-top: 6px; }
+.leverage-settings { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 14px; margin: 0 12px 8px; }
+.leverage-settings h3, .leverage-settings p { margin: 0; }
+.leverage-settings p { margin-top: 5px; color: #8fa7b3; line-height: 1.55; }
+.leverage-settings label { display: grid; gap: 5px; color: #8fa7b3; font-size: 10px; font-weight: 700; }
+.leverage-settings select { min-width: 112px; min-height: 48px; border: 1px solid #31505f; border-radius: 7px; padding: 0 10px; color: #e3edf2; background: #0d2029; }
+.leverage-settings button { min-height: 48px; border: 1px solid #2f7d73; border-radius: 7px; padding: 0 14px; color: #eafffa; background: #14564f; font-weight: 800; }
+.leverage-settings button:disabled { cursor: default; opacity: .45; }
+.leverage-settings > small { grid-column: 1 / -1; color: #6f8996; line-height: 1.55; }
 .settings-toggle { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; }
 .settings-toggle input { width: 48px; height: 48px; }
 .settings-diagnostics { margin: 8px 12px 12px; }
@@ -657,6 +665,8 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .market-workspace { height: calc(100vh - 96px); padding: 6px 8px 8px; }
   .market-summary { grid-template-columns: repeat(6, minmax(92px, 1fr)); overflow-x: auto; }
   .settings-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .leverage-settings { grid-template-columns: 1fr auto; }
+  .leverage-settings > div { grid-column: 1 / -1; }
   .market-notice { position: static; width: 100%; max-width: none; flex: 0 0 auto; justify-content: space-between; }
   .open-position-strip > strong { display: none; }
   .open-position-strip button { min-width: 174px; }
@@ -709,6 +719,8 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .nav-button { min-height: 48px; min-width: 0; padding: 0 5px; font-size: 10px; }
   .market-workspace { height: calc(100vh - 96px); }
   .settings-summary-grid { grid-template-columns: 1fr; }
+  .leverage-settings { grid-template-columns: 1fr; }
+  .leverage-settings > div, .leverage-settings > small { grid-column: auto; }
   .mode-truth-banner { min-height: 36px; flex-basis: 36px; font-size: 10px; }
   .market-toolbar.ready-mode { height: 56px; flex-basis: 56px; flex-wrap: nowrap; }
   .market-toolbar h2 { font-size: 12px; }

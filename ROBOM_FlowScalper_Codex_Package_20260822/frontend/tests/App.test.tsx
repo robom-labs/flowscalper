@@ -6,6 +6,7 @@ import App from '../src/App'
 import { initialDashboard } from '../src/demoData'
 import { MarketPage } from '../src/pages/MarketPage'
 import type { FocusPosition, MarketCatalogRow } from '../src/types'
+import { paperResearchSettings } from './fixtures'
 
 class FakeWebSocket extends EventTarget {
   close() {}
@@ -65,6 +66,7 @@ function splitDashboardFetch(dashboard: unknown) {
           active_locks: data.risk.active_locks,
         },
         costs: data.risk.strategy_league,
+        paper_research: paperResearchSettings(),
         storage: {},
         connection: { public_market_only: true },
         autostart: {
@@ -543,7 +545,7 @@ test('keeps demo truth visible in both the permanent header and market workspace
       market_observation_active: true,
       paper_entry_active: true,
       automatic_recovery: false,
-      recommended_action: 'PAUSE' as const,
+      recommended_action: 'NONE' as const,
     },
   }
   vi.stubGlobal('fetch', splitDashboardFetch(demoDashboard))
@@ -563,7 +565,8 @@ test('keeps demo truth visible in both the permanent header and market workspace
 
   expect(await screen.findByText('샘플 PAPER 데이터 · LIVE 아님')).toBeInTheDocument()
   expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '새 진입 잠시 멈추기' })).toBeInTheDocument()
+  expect(screen.getByText('자동 진입 · 항상 허용')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '새 진입 잠시 멈추기' })).not.toBeInTheDocument()
 })
 
 test('renders an explicit LIVE operating state', async () => {
@@ -583,7 +586,7 @@ test('renders an explicit LIVE operating state', async () => {
       detail_ko: '공개시장을 계속 관찰하며 조건이 맞을 때만 PAPER 진입을 기록합니다.',
       market_observation_active: true,
       paper_entry_active: true,
-      recommended_action: 'PAUSE' as const,
+      recommended_action: 'NONE' as const,
       lag_p95_ms: 120,
     },
   }
@@ -604,7 +607,8 @@ test('renders an explicit LIVE operating state', async () => {
 
   await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중'))
   expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('공개시장을 계속 관찰')
-  expect(screen.getByRole('button', { name: '새 진입 잠시 멈추기' })).toBeInTheDocument()
+  expect(screen.getByText('자동 진입 · 항상 허용')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '새 진입 잠시 멈추기' })).not.toBeInTheDocument()
 })
 
 test('clears a previous run PAPER entry notice when the run changes', async () => {

@@ -272,7 +272,7 @@ def _operation_status(
             "market_observation_active": not paused,
             "paper_entry_active": not paused,
             "automatic_recovery": False,
-            "recommended_action": "RESUME" if paused else "PAUSE",
+            "recommended_action": "NONE",
             "lag_p95_ms": lag,
         }
     hard_blocked = bool(
@@ -359,12 +359,12 @@ def _operation_status(
                 "state": "MANUALLY_PAUSED",
                 "title_ko": "사용자가 일시정지",
                 "detail_ko": (
-                    "시장 관찰은 계속 중입니다. 버튼을 누르면 새 PAPER 진입을 다시 시작합니다."
+                    "시장 관찰은 계속 중이며 다음 정상 재시작에서 자동 진입을 복구합니다."
                 ),
                 "market_observation_active": True,
                 "paper_entry_active": False,
                 "automatic_recovery": False,
-                "recommended_action": "RESUME",
+                "recommended_action": "NONE",
                 "lag_p95_ms": lag,
             }
         return {
@@ -388,7 +388,7 @@ def _operation_status(
             "market_observation_active": True,
             "paper_entry_active": True,
             "automatic_recovery": True,
-            "recommended_action": "PAUSE",
+            "recommended_action": "NONE",
             "lag_p95_ms": lag,
         }
     return {
@@ -414,8 +414,8 @@ def _default_risk_contract(*, account_count: int = 0) -> dict[str, object]:
             "starting_equity_usdt": "1000",
             "risk_per_position": "0.10%",
             "max_positions": 1,
-            "daily_loss_limit": "5 USDT",
-            "weekly_loss_limit": "15 USDT",
+            "daily_loss_limit": "중단 없음",
+            "weekly_loss_limit": "중단 없음",
             "drawdown_lock": "3.00%",
         },
         "strategy_league": {
@@ -424,10 +424,13 @@ def _default_risk_contract(*, account_count: int = 0) -> dict[str, object]:
             "risk_per_position": "0.50%",
             "max_positions_per_account": 3,
             "maximum_total_open_risk": "1.50%",
-            "maximum_effective_leverage": "5.00x",
+            "maximum_effective_leverage": "10.00x",
+            "selected_margin_leverage": "10x",
             "maximum_depth_fraction": "2.00%",
-            "daily_loss_limit": "2.00%",
-            "weekly_loss_limit": "5.00%",
+            "daily_loss_limit": "중단 없음",
+            "weekly_loss_limit": "중단 없음",
+            "daily_trade_limit": "중단 없음",
+            "loss_cooldown": "사용 안 함",
             "drawdown_lock": "8.00%",
             "base_entry_fee": "6bp",
             "base_exit_fee": "6bp",

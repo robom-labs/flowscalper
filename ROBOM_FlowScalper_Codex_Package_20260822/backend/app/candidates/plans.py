@@ -123,6 +123,7 @@ class CandidatePlan:
     trailing_structure_stop: Decimal | None = None
     trailing_reference_ts_ms: int | None = None
     trailing_reference_interval_seconds: int | None = None
+    selected_margin_leverage: Decimal = Decimal("1")
 
     def __post_init__(self) -> None:
         if self.expires_at_ms <= self.signal_time_ms:
@@ -131,6 +132,11 @@ class CandidatePlan:
             raise ValueError("최대 보유시간은 양수여야 합니다.")
         if self.position_size <= 0 or self.minimum_quantity <= 0:
             raise ValueError("수량과 최소 수량은 양수여야 합니다.")
+        if (
+            not self.selected_margin_leverage.is_finite()
+            or not Decimal(1) <= self.selected_margin_leverage <= Decimal(100)
+        ):
+            raise ValueError("PAPER 선택 레버리지는 1배 이상 100배 이하여야 합니다.")
         if not self.take_profit_targets:
             raise ValueError("진입 전에 최소 하나의 익절 목표가 확정돼야 합니다.")
         target_fraction = sum(

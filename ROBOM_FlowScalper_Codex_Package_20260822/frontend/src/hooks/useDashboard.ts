@@ -23,7 +23,7 @@ import type {
   UiWebSocketServerMessage,
 } from '../types'
 
-type ImmediateAction = 'pause' | 'resume' | 'emergency-close'
+type ImmediateAction = 'emergency-close'
 type LongAction = 'new-run' | 'start-live' | 'start-demo'
 export type DashboardControlAction = ImmediateAction | LongAction
 type ConnectionState = 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
@@ -367,11 +367,17 @@ function isSettingsSummaryPayload(value: unknown): value is SettingsSummaryPaylo
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<SettingsSummaryPayload>
   const safety = asRecord(candidate.safety)
+  const paperResearch = asRecord(candidate.paper_research)
   return candidate.schema_version === 1
     && candidate.funding_readiness === 'NOT_READY'
     && safety?.paper_only === true
     && falseSafetyFields.every((field) => safety?.[field] === false)
     && candidate.connection?.public_market_only === true
+    && paperResearch?.paper_only === true
+    && paperResearch?.real_orders_enabled === false
+    && paperResearch?.continuous_entry_mode === true
+    && paperResearch?.fees_on_actual_notional === true
+    && Array.isArray(paperResearch?.allowed_leverages)
     && Boolean(candidate.run && candidate.safety && candidate.costs && candidate.storage && candidate.connection && candidate.autostart)
 }
 
@@ -489,7 +495,11 @@ function mergeSettingsSummary(current: DashboardData, summary: SettingsSummaryPa
     risk: {
       ...current.risk,
       active_locks: summary.safety.active_locks,
-      strategy_league: { ...current.risk.strategy_league, ...summary.costs },
+      strategy_league: {
+        ...current.risk.strategy_league,
+        ...summary.costs,
+        selected_margin_leverage: `${summary.paper_research.selected_leverage}x`,
+      },
     },
     system: {
       ...current.system,
@@ -514,12 +524,10 @@ export function useDashboard(page: PageId = 'market') {
   const [connectionError, setConnectionError] = useState('')
   const [requestError, setRequestError] = useState('')
   const [busyAction, setBusyAction] = useState<LongAction | null>(null)
-  const [immediateBusyAction, setImmediateBusyAction] = useState<'pause' | 'resume' | null>(null)
   const [submittedOperation, setSubmittedOperation] = useState<ControlOperation | null>(null)
   const [selectedFamilyId, setSelectedFamilyId] = useState<string | null>(null)
   const [selectedFamilyDetail, setSelectedFamilyDetail] = useState<UiSelectedFamilyDetail | null>(null)
   const idempotencyKeys = useRef(new Map<LongAction, string>())
-  const immediateIdempotencyKeys = useRef(new Map<'pause' | 'resume', string>())
   const hasConnected = useRef(false)
   const mounted = useRef(true)
   const uiSocket = useRef<WebSocket | null>(null)
@@ -863,31 +871,12 @@ export function useDashboard(page: PageId = 'market') {
     if (action in actionNames) return submitLongControl(action as LongAction)
     setRequestError('')
     try {
-      if (action === 'pause' || action === 'resume') {
-        setImmediateBusyAction(action)
-        const idempotencyKey = immediateIdempotencyKeys.current.get(action) ?? crypto.randomUUID()
-        immediateIdempotencyKeys.current.set(action, idempotencyKey)
-        try {
-          const snapshot = await updateUiSummary(`/api/control/${action}`, {
-            method: 'POST',
-            headers: { 'Idempotency-Key': idempotencyKey },
-            body: JSON.stringify({
-              expected_revision: data.paper_entry_intent.revision,
-              reason: action === 'pause' ? 'USER_PAUSE' : 'USER_RESUME',
-            }),
-          })
-          immediateIdempotencyKeys.current.delete(action)
-          return snapshot
-        } finally {
-          if (mounted.current) setImmediateBusyAction(null)
-        }
-      }
       return await updateUiSummary(`/api/control/${action}`, { method: 'POST' })
     } catch (error) {
       if (mounted.current) setRequestError(errorMessage(error))
       throw error
     }
-  }, [data.paper_entry_intent.revision, submitLongControl, updateUiSummary])
+  }, [submitLongControl, updateUiSummary])
 
   const cancelControl = useCallback(async () => {
     if (!connected || !safetyVerified) {
@@ -944,6 +933,45 @@ export function useDashboard(page: PageId = 'market') {
         }),
       }),
     [updateUiSummary],
+  )
+
+  const configurePaperResearch = useCallback(
+    async (selectedLeverage: number, expectedRevision: number) => {
+      if (!connected || !safetyVerified) {
+        const error = unverifiedSafetyError()
+        if (mounted.current) setRequestError(error.messageKo)
+        throw error
+      }
+      setRequestError('')
+      try {
+        const requestSafetyEpoch = safetyEpoch.current
+        const summary = await fetchJson<SettingsSummaryPayload>(
+          '/api/settings/paper-research',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              selected_leverage: selectedLeverage,
+              expected_revision: expectedRevision,
+              reason: 'USER_PAPER_LEVERAGE_CONFIGURATION',
+            }),
+          },
+        )
+        if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
+        if (!isSettingsSummaryPayload(summary)) {
+          invalidateSafety()
+          throw new ApiError({
+            code: 'INVALID_RESPONSE',
+            messageKo: '변경된 PAPER 배수 설정을 안전하게 확인하지 못했습니다.',
+          })
+        }
+        if (mounted.current) setData((current) => mergeSettingsSummary(current, summary))
+        return summary
+      } catch (error) {
+        if (mounted.current) setRequestError(errorMessage(error))
+        throw error
+      }
+    },
+    [connected, invalidateSafety, safetyVerified],
   )
 
   const rollbackStrategy = useCallback(
@@ -1041,7 +1069,6 @@ export function useDashboard(page: PageId = 'market') {
     connectionError,
     requestError,
     busyAction,
-    immediateBusyAction,
     controlOperation: data.control_operation ?? submittedOperation,
     control,
     cancelControl,
@@ -1049,6 +1076,7 @@ export function useDashboard(page: PageId = 'market') {
     refreshUiSummary,
     selectChart,
     configureStrategy,
+    configurePaperResearch,
     rollbackStrategy,
     configureStrategyFamilyResearch,
     selectedFamilyId,

@@ -459,6 +459,8 @@ const basePosition: LeaguePosition = {
   original_quantity: '1',
   remaining_quantity: '1',
   notional: '100',
+  selected_leverage: '10',
+  margin_used_usdt: '10',
   effective_leverage: '0.1',
   gross_pnl: '1',
   fees: '0.1',

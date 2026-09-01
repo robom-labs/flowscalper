@@ -753,7 +753,8 @@ export type LeagueAccount = {
   slippage_usdt: string
   trade_count: number
   daily_trade_count: number
-  max_daily_trades: number
+  max_daily_trades: number | null
+  selected_leverage: string
   realized_today_usdt: string
   realized_week_usdt: string
   daily_period_start_ms: number | null
@@ -790,6 +791,8 @@ export type LeaguePosition = {
   original_quantity: string
   remaining_quantity: string
   notional: string
+  selected_leverage: string
+  margin_used_usdt: string
   effective_leverage: string
   gross_pnl: string
   fees: string
@@ -858,6 +861,7 @@ export type FocusPosition = {
   maximum_planned_loss_usdt: string
   remaining_planned_loss_usdt: string
   effective_leverage: string
+  selected_leverage: string
   gross_pnl: string
   gross_pnl_usdt: string
   fees: string
@@ -999,9 +1003,12 @@ export type DashboardData = {
       max_positions_per_account: number
       maximum_total_open_risk: string
       maximum_effective_leverage: string
+      selected_margin_leverage?: string
       maximum_depth_fraction: string
       daily_loss_limit: string
       weekly_loss_limit: string
+      daily_trade_limit?: string
+      loss_cooldown?: string
       drawdown_lock: string
       base_entry_fee: string
       base_exit_fee: string
@@ -1052,6 +1059,26 @@ export type SettingsSummaryPayload = {
     active_locks: string[]
   }
   costs: Partial<DashboardData['risk']['strategy_league']>
+  paper_research: {
+    selected_leverage: number
+    allowed_leverages: number[]
+    default_leverage: number
+    maximum_available_leverage: number
+    continuous_entry_mode: true
+    daily_trade_limit_enabled: false
+    daily_loss_lock_enabled: false
+    weekly_loss_lock_enabled: false
+    loss_cooldown_enabled: false
+    risk_sized_quantity: true
+    dollar_risk_preserved: true
+    fees_on_actual_notional: true
+    margin_formula_ko: string
+    applies_to_new_entries: true
+    revision: number
+    updated_ts_ms: number | null
+    paper_only: true
+    real_orders_enabled: false
+  }
   storage: {
     label?: string
     free_mb?: number | null

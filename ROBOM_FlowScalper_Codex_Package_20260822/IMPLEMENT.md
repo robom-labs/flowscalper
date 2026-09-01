@@ -785,6 +785,29 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
     tests supplement but do not replace natural evidence. Keep 6h·24h `NOT_RUN`, profitability
     `NOT_PROVEN` and real-money readiness `NOT_READY` until their independent gates pass.
 
+## Continuous PAPER entry and selectable margin leverage Wave 145
+
+1. Disable daily trade-count, daily-loss, weekly-loss and consecutive-loss cooldown rejection only in
+   the live PAPER runtime's continuous-research risk managers. Preserve counters and immutable history.
+2. Keep drawdown, simultaneous positions, aggregate planned risk, executable depth, cost viability,
+   persistence, recovery, market-data and ledger safety fail-closed.
+3. Restore a global PAPER setting before creating any account. Default to 10x and accept only
+   1·2·3·5·10·20·25·50·75·100x with revision-checked mutation and SQLite persistence.
+4. Apply the selected value to aggregate gross-notional capacity and margin reporting, not as a forced
+   quantity multiplier. Continue sizing from stop distance, both-side fees, exit slippage, dollar risk
+   and executable depth.
+5. Persist entry-time selected leverage, entry notional and margin in candidate, position, trade and
+   recovery payloads. Existing payloads without these additive fields restore at 1x without rewriting
+   immutable history.
+6. Remove routine pause/resume controls and copy from the normal frontend. Keep backend maintenance
+   controls for atomic deployment and preserve a maintenance pause across restart.
+7. Auto-clear an ordinary legacy user pause during normal same-Run recovery and persist an auditable
+   `AUTO_ENTRY_ENABLED_ON_RESTART` revision. Never clear deployment-maintenance pause implicitly.
+8. Validate disabled quota reasons, retained safety gates, 10x fee/margin arithmetic, 100x CAS,
+   invalid-value rejection, recovery, beginner UI and actual-order zero before immutable deployment.
+9. Verify the actual 8870 browser and installed release, then record short performance evidence without
+   treating it as 6h, 24h or profitability proof.
+
 ## Wave 135 전략 결과표·정렬·홈 이동
 
 - `StrategiesPage` 표를 BASE·STRESS 전환과 전략·상태·승률·거래 수·순손익·보유 정렬을 지원하는 결과표로 교체했다.

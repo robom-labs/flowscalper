@@ -81,6 +81,11 @@ from backend.app.market_data.supervisor import (
 from backend.app.market_data.timeframes import TIMEFRAME_REGISTRY
 from backend.app.ops import ProcessResourceSampler
 from backend.app.regime import Regime, RegimeClassifier
+from backend.app.risk import (
+    STRATEGY_LEAGUE_RISK_LIMITS,
+    RiskLimits,
+    RiskManager,
+)
 from backend.app.storage.parquet import (
     ArchivedEventBatch,
     ParquetEventStore,
@@ -472,6 +477,13 @@ _MARKET_PERSISTENCE_BATCH_SIZE = 250
 _SLOW_PERSISTENCE_FLUSH_MS = 2_000.0
 _STORAGE_HEALTH_REFRESH_SECONDS = 1.0
 _STORAGE_HEALTH_STALE_NS = 5_000_000_000
+_PAPER_LEVERAGE_CHOICES = (1, 2, 3, 5, 10, 20, 25, 50, 75, 100)
+_DEFAULT_PAPER_LEVERAGE = Decimal("10")
+_PAPER_RESEARCH_SETTING_KEY = "paper_research_configuration_v1"
+_MAINTENANCE_PAUSE_PREFIXES = (
+    "DEPLOYMENT_MAINTENANCE_",
+    "LEDGER_MAINTENANCE_",
+)
 
 
 class PaperEntryIntentConflict(RuntimeError):
@@ -486,6 +498,15 @@ class PaperEntryIntentConflict(RuntimeError):
     ) -> None:
         super().__init__(error_code)
         self.error_code = error_code
+        self.expected_revision = expected_revision
+        self.current_revision = current_revision
+
+
+class PaperResearchConfigurationConflict(RuntimeError):
+    """오래된 설정 화면이 PAPER 연구 배수를 덮어쓰지 못하게 한다."""
+
+    def __init__(self, *, expected_revision: int, current_revision: int) -> None:
+        super().__init__("PAPER_RESEARCH_CONFIGURATION_REVISION_CONFLICT")
         self.expected_revision = expected_revision
         self.current_revision = current_revision
 
@@ -856,6 +877,9 @@ class PaperRuntime:
         default_factory=dict,
         repr=False,
     )
+    _selected_margin_leverage: Decimal = _DEFAULT_PAPER_LEVERAGE
+    _paper_research_configuration_revision: int = 0
+    _paper_research_configuration_updated_ts_ms: int | None = None
     startup_storage_init_ms: float = 0.0
     startup_ledger_open_ms: float = 0.0
     startup_recovery_lookup_ms: float = 0.0
@@ -870,6 +894,72 @@ class PaperRuntime:
     _persistence_lock: RLock = field(default_factory=RLock, repr=False)
     _dashboard_trade_cache_lock: RLock = field(default_factory=RLock, repr=False)
     _paper_entry_intent_lock: RLock = field(default_factory=RLock, repr=False)
+    _paper_research_configuration_lock: RLock = field(default_factory=RLock, repr=False)
+
+    def _restore_paper_research_configuration(self) -> None:
+        """전역 PAPER 연구 배수를 원장에서 복구하고 기본 10배를 유지한다."""
+
+        if self.ledger is None:
+            return
+        stored = self.ledger.get_app_setting(_PAPER_RESEARCH_SETTING_KEY)
+        if stored is None:
+            return
+        leverage_value = stored.get("selected_leverage")
+        revision_value = stored.get("revision")
+        updated_value = stored.get("updated_ts_ms")
+        if (
+            isinstance(leverage_value, bool)
+            or not isinstance(leverage_value, int)
+            or leverage_value not in _PAPER_LEVERAGE_CHOICES
+        ):
+            raise LedgerInvariantError("저장된 PAPER 레버리지 설정이 허용 범위를 벗어났습니다.")
+        if (
+            isinstance(revision_value, bool)
+            or not isinstance(revision_value, int)
+            or revision_value < 0
+        ):
+            raise LedgerInvariantError("저장된 PAPER 레버리지 revision이 잘못됐습니다.")
+        if (
+            isinstance(updated_value, bool)
+            or not isinstance(updated_value, int)
+            or updated_value < 0
+        ):
+            raise LedgerInvariantError("저장된 PAPER 레버리지 변경 시각이 잘못됐습니다.")
+        self._selected_margin_leverage = Decimal(leverage_value)
+        self._paper_research_configuration_revision = revision_value
+        self._paper_research_configuration_updated_ts_ms = updated_value
+
+    def _continuous_limits(self, base: RiskLimits) -> RiskLimits:
+        """시간·손실 quota는 풀되 계획손실·호가·낙폭 안전경계는 유지한다."""
+
+        return replace(
+            base,
+            max_daily_trades=None,
+            daily_loss_limit_fraction=None,
+            weekly_loss_limit_fraction=None,
+            maximum_gross_notional_fraction=self._selected_margin_leverage,
+            loss_cooldowns_enabled=False,
+        )
+
+    def _new_paper_portfolio(
+        self,
+        shadow_ledger: ShadowLedger,
+        *,
+        strategy_registry: StrategyRegistry | None = None,
+    ) -> PaperPortfolioEngine:
+        registry = strategy_registry or self.strategy_registry
+        return PaperPortfolioEngine(
+            run_id=self.run_id,
+            strategy_ids=registry.strategy_ids,
+            shadow_ledger=shadow_ledger,
+            venue=self.venue,
+            risk_manager=RiskManager(self._continuous_limits(RiskLimits())),
+            league_risk_manager=RiskManager(
+                self._continuous_limits(STRATEGY_LEAGUE_RISK_LIMITS)
+            ),
+            selected_margin_leverage=self._selected_margin_leverage,
+            enforce_v6_family_conflicts=True,
+        )
 
     def __post_init__(self) -> None:
         post_init_started = time.monotonic()
@@ -879,14 +969,10 @@ class PaperRuntime:
             self._events = deque(self._events, maxlen=_LIVE_EVENT_MEMORY_LIMIT)
         storage_path = self.ledger.path.parent if self.ledger is not None else Path.cwd()
         self.resource_sampler = ProcessResourceSampler(storage_path)
+        self._restore_paper_research_configuration()
         portfolio_started = time.monotonic()
         self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
-        self.paper_portfolio = PaperPortfolioEngine(
-            run_id=self.run_id,
-            strategy_ids=self.strategy_registry.strategy_ids,
-            shadow_ledger=self.shadow_ledger,
-            enforce_v6_family_conflicts=True,
-        )
+        self.paper_portfolio = self._new_paper_portfolio(self.shadow_ledger)
         self.startup_portfolio_init_ms = (time.monotonic() - portfolio_started) * 1_000
         if self.mode is RuntimeMode.READY:
             self.run_id = "ready"
@@ -1234,12 +1320,9 @@ class PaperRuntime:
             recovery_validation_ts_ms = self.clock.utc_ms()
             staged_strategy_registry = StrategyRegistry()
             staged_shadow_ledger = ShadowLedger(staged_strategy_registry.strategy_ids)
-            staged_paper_portfolio = PaperPortfolioEngine(
-                run_id=self.run_id,
-                strategy_ids=staged_strategy_registry.strategy_ids,
-                shadow_ledger=staged_shadow_ledger,
-                venue=self.venue,
-                enforce_v6_family_conflicts=True,
+            staged_paper_portfolio = self._new_paper_portfolio(
+                staged_shadow_ledger,
+                strategy_registry=staged_strategy_registry,
             )
             staged_orderflow_runtime = OrderflowConfirmationRuntime()
             staged_orderflow_runtime.restore_state(
@@ -1251,6 +1334,7 @@ class PaperRuntime:
             staged_intent_reason = self._paper_entry_intent_reason
             staged_intent_updated_ts_ms = self._paper_entry_intent_updated_ts_ms
             staged_intent_idempotency = dict(self._paper_entry_intent_idempotency)
+            auto_resumed_user_pause = False
             validated_active_tokens: dict[str, dict[int, str]] = {}
             recovery_windows = _fail_closed_recovery_windows(
                 self.ledger.list_incidents(category="PAPER_RESTART_RECOVERY"),
@@ -1517,6 +1601,14 @@ class PaperRuntime:
                     if not isinstance(paused, bool):
                         raise ValueError("복구 PAPER 진입 의도의 idempotency 값이 bool이 아닙니다.")
                     idempotency[key] = paused
+                if manual_pause and not reason.startswith(_MAINTENANCE_PAUSE_PREFIXES):
+                    manual_pause = False
+                    intent_revision += 1
+                    actor = "SYSTEM_AUTO_START"
+                    reason = "AUTO_ENTRY_ENABLED_ON_RESTART"
+                    intent_updated_value = recovery_validation_ts_ms
+                    idempotency = {}
+                    auto_resumed_user_pause = True
                 staged_manual_pause_requested = manual_pause
                 staged_intent_revision = intent_revision
                 staged_intent_actor = actor
@@ -1673,6 +1765,15 @@ class PaperRuntime:
             self._paper_entry_intent_reason = staged_intent_reason
             self._paper_entry_intent_updated_ts_ms = staged_intent_updated_ts_ms
             self._paper_entry_intent_idempotency = staged_intent_idempotency
+            if auto_resumed_user_pause:
+                self._persist_paper_entry_intent(
+                    updated_ts_ms=staged_intent_updated_ts_ms
+                    or recovery_validation_ts_ms
+                )
+                self._log(
+                    "RISK",
+                    "일반 사용자 일시정지는 재시작 뒤 자동 해제 · PAPER 진입 의도 복구",
+                )
             self._persisted_main_order_ids = staged_persisted_main_order_ids
             self._persisted_main_trade_ids = staged_persisted_main_trade_ids
             self._persisted_shadow_trade_ids = staged_persisted_shadow_trade_ids
@@ -4502,13 +4603,10 @@ class PaperRuntime:
                     ),
                     "stage": stage,
                     "stage_ko": stage_names[stage],
-                    "effective_leverage": str(min(effective_leverage, Decimal(5))),
-                    "margin_usdt": str(
-                        Decimal(str(main["notional"])) / max(effective_leverage, Decimal(1))
-                    ),
-                    "margin_used_usdt": str(
-                        Decimal(str(main["notional"])) / max(effective_leverage, Decimal(1))
-                    ),
+                    "effective_leverage": str(effective_leverage),
+                    "selected_leverage": str(main["selected_leverage"]),
+                    "margin_usdt": str(main["margin_used_usdt"]),
+                    "margin_used_usdt": str(main["margin_used_usdt"]),
                     "original_quantity": str(main["quantity"]),
                     "entry_fee_usdt": str(entry_fee),
                     "realized_exit_fees_usdt": str(realized_exit_fees),
@@ -4518,7 +4616,10 @@ class PaperRuntime:
                     "net_pnl_usdt": str(main["net_pnl"]),
                     "return_on_margin_pct": str(
                         Decimal(str(main["net_pnl"]))
-                        / max(Decimal(str(main["notional"])), Decimal("0.00000001"))
+                        / max(
+                            Decimal(str(main["margin_used_usdt"])),
+                            Decimal("0.00000001"),
+                        )
                         * Decimal(100)
                     ),
                     "account_starting_equity_usdt": "1000",
@@ -4562,9 +4663,7 @@ class PaperRuntime:
                 if managed.original_quantity > 0
                 else Decimal(0)
             )
-            margin = Decimal(str(position["notional"])) / max(
-                Decimal(str(position["effective_leverage"])), Decimal(1)
-            )
+            margin = Decimal(str(position["margin_used_usdt"]))
             rows.append(
                 {
                     **position,
@@ -4584,6 +4683,7 @@ class PaperRuntime:
                     "remaining_planned_loss_usdt": str(plan.max_planned_loss * remaining_fraction),
                     "margin_usdt": str(margin),
                     "margin_used_usdt": str(margin),
+                    "selected_leverage": str(position["selected_leverage"]),
                     "notional_usdt": str(position["notional"]),
                     "signal_ts_ms": int(str(position["signal_time"])),
                     "entry_fee_usdt": str(entry_fee),
@@ -4892,6 +4992,23 @@ class PaperRuntime:
                 str(trade["trailing_state_checksum"])
                 if trade.get("trailing_state_checksum") is not None
                 else None
+            ),
+            "selected_margin_leverage": str(
+                trade.get("selected_margin_leverage", "1")
+            ),
+            "entry_notional_usdt": str(
+                trade.get(
+                    "entry_notional_usdt",
+                    Decimal(str(trade.get("entry_price", "0")))
+                    * Decimal(str(trade.get("quantity", "0"))),
+                )
+            ),
+            "margin_used_usdt": str(
+                trade.get(
+                    "margin_used_usdt",
+                    Decimal(str(trade.get("entry_price", "0")))
+                    * Decimal(str(trade.get("quantity", "0"))),
+                )
             ),
             "quantity": str(trade.get("quantity", "—")),
             "exit_reason": str(trade["exit_reason"]),
@@ -5381,6 +5498,9 @@ class PaperRuntime:
             total_open_position_count == 0 and total_pending_entry_count == 0
         )
         snapshot["paper_entry_intent"] = self.paper_entry_intent()
+        snapshot["paper_research_configuration"] = (
+            self.paper_research_configuration()
+        )
         snapshot["orderflow_confirmation_filter"] = (
             self.orderflow_confirmation_filter_status(symbol=self.selected_symbol)
         )
@@ -5390,6 +5510,101 @@ class PaperRuntime:
             "excluded_prior_version_samples": len(self._historical_prior_version_live_trades),
         }
         return snapshot
+
+    def paper_research_configuration(self) -> dict[str, object]:
+        """현재와 다음 PAPER 진입에 적용되는 연속 연구·배수 계약을 반환한다."""
+
+        return {
+            "selected_leverage": int(self._selected_margin_leverage),
+            "allowed_leverages": list(_PAPER_LEVERAGE_CHOICES),
+            "default_leverage": int(_DEFAULT_PAPER_LEVERAGE),
+            "maximum_available_leverage": max(_PAPER_LEVERAGE_CHOICES),
+            "continuous_entry_mode": True,
+            "daily_trade_limit_enabled": False,
+            "daily_loss_lock_enabled": False,
+            "weekly_loss_lock_enabled": False,
+            "loss_cooldown_enabled": False,
+            "risk_sized_quantity": True,
+            "dollar_risk_preserved": True,
+            "fees_on_actual_notional": True,
+            "margin_formula_ko": "실제 명목금액 ÷ 선택 레버리지",
+            "applies_to_new_entries": True,
+            "revision": self._paper_research_configuration_revision,
+            "updated_ts_ms": self._paper_research_configuration_updated_ts_ms,
+            "paper_only": True,
+            "real_orders_enabled": False,
+        }
+
+    def configure_paper_research(
+        self,
+        *,
+        selected_leverage: int,
+        expected_revision: int,
+        actor: str = "USER_UI",
+        reason: str = "USER_PAPER_LEVERAGE_CONFIGURATION",
+    ) -> dict[str, object]:
+        """선택 배수를 새 진입에 원자적으로 적용하고 기존 거래 기록은 보존한다."""
+
+        if isinstance(selected_leverage, bool) or selected_leverage not in _PAPER_LEVERAGE_CHOICES:
+            raise ValueError("PAPER 레버리지는 화면에 제시된 1배부터 100배 중에서 선택하세요.")
+        with self._paper_research_configuration_lock:
+            if expected_revision != self._paper_research_configuration_revision:
+                raise PaperResearchConfigurationConflict(
+                    expected_revision=expected_revision,
+                    current_revision=self._paper_research_configuration_revision,
+                )
+            if Decimal(selected_leverage) == self._selected_margin_leverage:
+                return self.paper_research_configuration()
+            previous_leverage = self._selected_margin_leverage
+            timestamp = self.clock.utc_ms()
+            self._selected_margin_leverage = Decimal(selected_leverage)
+            self._paper_research_configuration_revision += 1
+            self._paper_research_configuration_updated_ts_ms = timestamp
+            self.paper_portfolio.risk_manager = RiskManager(
+                self._continuous_limits(RiskLimits())
+            )
+            self.paper_portfolio.league_risk_manager = RiskManager(
+                self._continuous_limits(STRATEGY_LEAGUE_RISK_LIMITS)
+            )
+            self.paper_portfolio.selected_margin_leverage = self._selected_margin_leverage
+            for account in self.paper_portfolio.accounts:
+                account.risk_state.cooldowns_until_ms.clear()
+            if self.ledger is not None:
+                self.ledger.set_app_setting(
+                    _PAPER_RESEARCH_SETTING_KEY,
+                    {
+                        "selected_leverage": selected_leverage,
+                        "revision": self._paper_research_configuration_revision,
+                        "continuous_entry_mode": True,
+                        "paper_only": True,
+                    },
+                    updated_ts_ms=timestamp,
+                )
+                if self.mode is not RuntimeMode.READY:
+                    self.ledger.record_incident(
+                        f"paper-research-config-{uuid4().hex}",
+                        run_id=self.run_id,
+                        severity="INFO",
+                        category="PAPER_RESEARCH_CONFIGURATION",
+                        ts_ms=timestamp,
+                        payload={
+                            "previous_leverage": str(previous_leverage),
+                            "selected_leverage": selected_leverage,
+                            "revision": self._paper_research_configuration_revision,
+                            "actor": actor,
+                            "reason": reason,
+                            "applies_to_new_entries": True,
+                            "open_positions_preserve_original_leverage": True,
+                            "daily_weekly_and_cooldown_entry_locks_disabled": True,
+                            "fees_on_actual_notional": True,
+                            "real_orders_enabled": False,
+                        },
+                    )
+            self._log(
+                "RISK",
+                f"PAPER 선택 레버리지 {selected_leverage}배 · 연속 연구 진입 유지",
+            )
+            return self.paper_research_configuration()
 
     def paper_entry_intent(self) -> dict[str, object]:
         """사용자 진입 의도를 자동 안전잠금과 분리한 공개 상태로 반환한다."""
@@ -6119,10 +6334,14 @@ class PaperRuntime:
                 "risk_per_position": percentage(shared.risk_per_trade_fraction),
                 "max_positions": shared.max_open_positions,
                 "daily_loss_limit": (
-                    f"{(starting * shared.daily_loss_limit_fraction).normalize()} USDT"
+                    "중단 없음"
+                    if shared.daily_loss_limit_fraction is None
+                    else f"{(starting * shared.daily_loss_limit_fraction).normalize()} USDT"
                 ),
                 "weekly_loss_limit": (
-                    f"{(starting * shared.weekly_loss_limit_fraction).normalize()} USDT"
+                    "중단 없음"
+                    if shared.weekly_loss_limit_fraction is None
+                    else f"{(starting * shared.weekly_loss_limit_fraction).normalize()} USDT"
                 ),
                 "drawdown_lock": percentage(shared.maximum_drawdown_fraction),
             },
@@ -6133,11 +6352,28 @@ class PaperRuntime:
                 "max_positions_per_account": league.max_open_positions,
                 "maximum_total_open_risk": percentage(league.maximum_total_open_risk_fraction),
                 "maximum_effective_leverage": (f"{league.maximum_gross_notional_fraction:.2f}x"),
+                "selected_margin_leverage": f"{int(self._selected_margin_leverage)}x",
                 "maximum_depth_fraction": percentage(
                     league.maximum_order_fraction_of_executable_depth
                 ),
-                "daily_loss_limit": percentage(league.daily_loss_limit_fraction),
-                "weekly_loss_limit": percentage(league.weekly_loss_limit_fraction),
+                "daily_loss_limit": (
+                    "중단 없음"
+                    if league.daily_loss_limit_fraction is None
+                    else percentage(league.daily_loss_limit_fraction)
+                ),
+                "weekly_loss_limit": (
+                    "중단 없음"
+                    if league.weekly_loss_limit_fraction is None
+                    else percentage(league.weekly_loss_limit_fraction)
+                ),
+                "daily_trade_limit": (
+                    "중단 없음"
+                    if league.max_daily_trades is None
+                    else str(league.max_daily_trades)
+                ),
+                "loss_cooldown": (
+                    "사용 안 함" if not league.loss_cooldowns_enabled else "사용"
+                ),
                 "drawdown_lock": percentage(league.maximum_drawdown_fraction),
                 "base_entry_fee": bps(cost.fee_bps(entry=True, profile=CostProfile.BASE)),
                 "base_exit_fee": bps(cost.fee_bps(entry=False, profile=CostProfile.BASE)),
@@ -6236,13 +6472,7 @@ class PaperRuntime:
         self.strategy_evaluator = StrategySignalEvaluator()
         self.orderflow_confirmation_runtime.reset_configuration()
         self.shadow_ledger = ShadowLedger(self.strategy_registry.strategy_ids)
-        self.paper_portfolio = PaperPortfolioEngine(
-            run_id=self.run_id,
-            strategy_ids=self.strategy_registry.strategy_ids,
-            shadow_ledger=self.shadow_ledger,
-            venue=self.venue,
-            enforce_v6_family_conflicts=True,
-        )
+        self.paper_portfolio = self._new_paper_portfolio(self.shadow_ledger)
         self.latest_books.clear()
         self.plan_rejections.clear()
         self.data_gap_since_ms.clear()
@@ -6331,6 +6561,9 @@ class PaperRuntime:
             "runner_net_pnl_usdt": str(trade.runner_net_pnl_usdt),
             "trail_trigger_slippage_usdt": str(trade.trail_trigger_slippage_usdt),
             "trailing_state_checksum": trade.trailing_state_checksum,
+            "selected_margin_leverage": str(trade.selected_margin_leverage),
+            "entry_notional_usdt": str(trade.entry_notional_usdt),
+            "margin_used_usdt": str(trade.margin_used_usdt),
             "quantity": str(trade.quantity),
             "exit_reason": trade.exit_reason.value,
             "gross_pnl_usdt": str(trade.gross_pnl_usdt),
@@ -6396,6 +6629,12 @@ class PaperRuntime:
             "reason_codes": list(plan.reason_codes),
             "plain_korean_explanation": list(plan.plain_korean_explanation),
             "management_policy": list(plan.management_policy),
+            "selected_margin_leverage": str(plan.selected_margin_leverage),
+            "planned_margin_usdt": str(
+                plan.position_size
+                * plan.worst_allowed_entry
+                / plan.selected_margin_leverage
+            ),
             "main_eligible": plan.main_eligible,
             "shadow_eligible": plan.shadow_eligible,
             "shared_capital_evidence": {

@@ -46,7 +46,11 @@ from backend.app.replay.process import (
 from backend.app.replay.safety import ReplayLiveSafetyViolation, run_with_live_safety
 from backend.app.research.source_metadata import research_source_metadata_rows
 from backend.app.research.v9_candidates import v9_candidate_manifest
-from backend.app.runtime import PaperEntryIntentConflict, PaperRuntime
+from backend.app.runtime import (
+    PaperEntryIntentConflict,
+    PaperResearchConfigurationConflict,
+    PaperRuntime,
+)
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, RecoveryState, SQLiteLedger
 from backend.app.strategies.family import (
@@ -338,6 +342,18 @@ class PaperEntryIntentRequest(BaseModel):
 
     expected_revision: int | None = Field(default=None, ge=0)
     reason: str = Field(default="USER_REQUEST", min_length=3, max_length=120)
+
+
+class PaperResearchConfigurationRequest(BaseModel):
+    """연속 PAPER 연구의 다음 진입 레버리지를 CAS로 변경한다."""
+
+    selected_leverage: int = Field(ge=1, le=100)
+    expected_revision: int = Field(ge=0)
+    reason: str = Field(
+        default="USER_PAPER_LEVERAGE_CONFIGURATION",
+        min_length=3,
+        max_length=120,
+    )
 
 
 class ReplayRequest(BaseModel):
@@ -1517,6 +1533,45 @@ def create_app(
     @app.get("/api/settings/summary")
     async def user_settings_summary() -> dict[str, object]:
         snapshot, _ = await cached_dashboard()
+        return settings_summary(snapshot)
+
+    @app.post("/api/settings/paper-research")
+    async def configure_paper_research(
+        request: PaperResearchConfigurationRequest,
+    ) -> dict[str, object]:
+        try:
+            await asyncio.to_thread(
+                active_runtime.configure_paper_research,
+                selected_leverage=request.selected_leverage,
+                expected_revision=request.expected_revision,
+                actor="USER_UI",
+                reason=request.reason,
+            )
+        except PaperResearchConfigurationConflict as error:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "PAPER_RESEARCH_CONFIGURATION_REVISION_CONFLICT",
+                    "error_message_ko": (
+                        "다른 화면에서 PAPER 배수가 바뀌었습니다. "
+                        "최신 설정을 다시 확인하세요."
+                    ),
+                    "retryable": True,
+                    "expected_revision": error.expected_revision,
+                    "current_revision": error.current_revision,
+                    "current_configuration": active_runtime.paper_research_configuration(),
+                },
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error_code": "PAPER_RESEARCH_CONFIGURATION_INVALID",
+                    "error_message_ko": str(error),
+                    "retryable": False,
+                },
+            ) from error
+        snapshot, _ = await cached_dashboard(force=True)
         return settings_summary(snapshot)
 
     @app.get("/api/diagnostics")

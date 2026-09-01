@@ -1,18 +1,13 @@
 risk:
   risk_per_trade_fraction: 0.001
   max_open_positions: 1
-  max_daily_trades: 12
-  daily_loss_limit_usdt: 5.0
-  weekly_loss_limit_usdt: 15.0
+  max_daily_trades: null
+  daily_loss_limit_usdt: null
+  weekly_loss_limit_usdt: null
+  loss_cooldowns_enabled: false
   maximum_drawdown_lock_fraction: 0.03
-  maximum_gross_notional_fraction_at_1x: 0.50
+  maximum_gross_notional_fraction: 10.0
   maximum_order_fraction_of_executable_depth: 0.02
-  consecutive_losses_global_pause:
-    count: 3
-    pause_minutes: 60
-  symbol_strategy_loss_pause:
-    count: 2
-    pause_minutes: 120
   prohibit:
     averaging_down: true
     martingale: true

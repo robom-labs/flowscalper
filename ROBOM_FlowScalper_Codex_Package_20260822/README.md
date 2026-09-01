@@ -67,12 +67,12 @@ uv run python scripts/verify_macos_ledger_maintenance.py \
 
 유지관리는 localhost를 잠시 내린다. 실제 Wave 48에서 동일 Run은 16.912초 후 복구됐고 전송·검사 동안은 작동 중이었다. 안전선을 넘으면 fail-closed하며, PASS 후 외장 clone과 검증 device의 임시 사본을 제거한다. 세부 계약은 `docs/adr/ADR-049-closed-cross-device-ledger-integrity.md`에 있습니다.
 
-전수검사가 길어 검사 중 자연 PAPER 진입이 열릴 수 있다면 먼저 화면에서
-`새 진입 잠시 멈추기`를 누르고 포지션 0건을 확인한 뒤 `--require-manual-pause`를
-추가한다. 이 옵션은 사용자 일시정지·시장 관찰 유지·새 진입 비활성을 재기동
-전후와 검사 샘플링마다 다시 확인한다. 검사가 성공하거나 중단된 뒤에는 화면에서
-`새 진입 다시 시작`을 눌러야 한다. 포지션·critical lag·실제 주문·인증·저장·재연결
-안전 상한은 느슨하지 않는다. 세부 결정은
+전수검사가 길어 검사 중 자연 PAPER 진입이 열릴 수 있다면 일반 화면에서 임의로 멈추지 말고
+배포 유지관리 절차가 포지션 0건과 `DEPLOYMENT_MAINTENANCE_*` 진입 의도를 원자적으로 확인한
+경우에만 `--require-manual-pause`를 사용한다. 이 내부 옵션은 유지관리 진입·시장 관찰 유지·
+새 진입 비활성을 재기동 전후와 검사 샘플링마다 다시 확인한다. 검사가 성공하거나 중단되면
+배포 절차가 명시적으로 `ENTRY_ENABLED`를 복구한다. 포지션·critical lag·실제 주문·인증·저장·
+재연결 안전 상한은 느슨하지 않는다. 세부 결정은
 `docs/adr/ADR-083-verified-manual-pause-ledger-maintenance.md`에 있다.
 
 ## Windows 첫 실행
@@ -102,7 +102,7 @@ Windows Command Prompt에서는 `set ROBOM_MODE=LIVE_SHADOW_PAPER`를 실행한 
 - 시장은 공개시장 연결, 현재 자산·비용후 PnL, chart, 열린 PAPER 포지션과 신규진입 대기 이유를 먼저 보여 줍니다.
 - 전략은 기존 15개 ID를 8개 family로 묶어 current variant, 모의평가 상태, 고유기회 수, Wilson 95% 하한, 기대값, PF와 순손익을 한곳에 표시합니다. 정확한 조건·현재값·청산·출처·이전 version은 눌렀을 때만 불러옵니다.
 - 거래는 진행 중, 완료, 다시보기를 합칩니다. 같은 진입의 BASE·STRESS는 두 거래가 아니라 한 opportunity 행의 기본·보수 비용결과로 나란히 표시하고 fill·fee·slippage·MFE·MAE는 상세에서 보존합니다.
-- 설정은 신규진입 pause/resume, 위험과 시스템 요약을 합칩니다. queue, WAL, checksum, 원시 reason code 같은 진단은 문제가 있거나 사용자가 고급 진단을 펼쳤을 때만 표시합니다.
+- 설정은 자동 PAPER 진입 상태, 기본 10배·최대 100배 선택, 위험과 시스템 요약을 합칩니다. 일·주 거래 및 손실 quota와 연속손실 cooldown은 신규진입을 멈추지 않으며, queue, WAL, checksum, 원시 reason code 같은 진단은 문제가 있거나 사용자가 고급 진단을 펼쳤을 때만 표시합니다.
 - 실제 캔들·거래량·5선·10선이 기본 표시되고 20선·60선·호가선은 버튼으로 선택합니다. 이동평균은 선택한 차트 시간구간의 캔들 수 기준입니다.
 - 원장과 replay engine, 과거전략·이전 version은 삭제하지 않습니다. 실제 주문, private API, API Key와 wallet은 계속 0이며 `FUNDING_READINESS`는 `NOT_READY`입니다.
 
@@ -120,7 +120,12 @@ Windows Command Prompt에서는 `set ROBOM_MODE=LIVE_SHADOW_PAPER`를 실행한 
 
 ## 설정과 새 Run
 
-`config/*.example.yaml`에 거래소, 유니버스, 전략, 비용, 위험, 저장소 예시가 있습니다. 현재 Run의 시드, 전략 버전, 비용·지연·위험 가정은 불변입니다. 중요 가정을 바꾸면 기존 Run을 종료·보존한 뒤 새 Run을 만듭니다.
+`config/*.example.yaml`에 거래소, 유니버스, 전략, 비용, 위험, 저장소 예시가 있습니다. PAPER
+증거금 배수는 1·2·3·5·10·20·25·50·75·100배 중 선택하며 기본 10배입니다. 배수 변경은 새
+진입부터 적용되고 열린 포지션과 완료 거래는 진입 당시 배수·명목금액·증거금을 보존합니다.
+수량은 거래당 계획손실과 실행가능 호가깊이로 계속 제한되고 수수료·손익은 실제 명목금액으로
+계산합니다. 현재 Run의 시드, 전략 버전, 비용·지연 가정은 불변이며 이를 바꾸면 기존 Run을
+종료·보존한 뒤 새 Run을 만듭니다.
 
 ## 검증 명령
 

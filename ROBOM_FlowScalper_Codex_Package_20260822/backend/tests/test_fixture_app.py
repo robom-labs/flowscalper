@@ -271,6 +271,81 @@ def test_pause_resume_is_revisioned_idempotent_and_append_only(tmp_path: Path) -
         assert resume_transition["cause_code"] == "USER_RESUME_TEST"
 
 
+def test_paper_research_leverage_is_revisioned_persisted_and_capped_at_100(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "paper-research-configuration.sqlite3"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        clock=DeterministicClock(),
+        run_id="run-paper-research-configuration",
+        ledger=ledger,
+    )
+    with TestClient(create_app(runtime)) as client:
+        before = client.get("/api/settings/summary")
+        assert before.status_code == 200
+        assert before.json()["paper_research"]["selected_leverage"] == 10
+        assert before.json()["paper_research"]["maximum_available_leverage"] == 100
+
+        changed = client.post(
+            "/api/settings/paper-research",
+            json={
+                "selected_leverage": 100,
+                "expected_revision": 0,
+                "reason": "USER_MAXIMUM_PAPER_LEVERAGE_TEST",
+            },
+        )
+        assert changed.status_code == 200
+        configuration = changed.json()["paper_research"]
+        assert configuration["selected_leverage"] == 100
+        assert configuration["revision"] == 1
+        assert configuration["continuous_entry_mode"] is True
+        assert configuration["daily_trade_limit_enabled"] is False
+        assert configuration["daily_loss_lock_enabled"] is False
+        assert configuration["weekly_loss_lock_enabled"] is False
+        assert configuration["loss_cooldown_enabled"] is False
+        assert configuration["fees_on_actual_notional"] is True
+
+        stale = client.post(
+            "/api/settings/paper-research",
+            json={"selected_leverage": 50, "expected_revision": 0},
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["current_revision"] == 1
+
+        unsupported = client.post(
+            "/api/settings/paper-research",
+            json={"selected_leverage": 7, "expected_revision": 1},
+        )
+        assert unsupported.status_code == 422
+        assert unsupported.json()["detail"]["error_code"] == (
+            "PAPER_RESEARCH_CONFIGURATION_INVALID"
+        )
+
+    assert runtime.paper_portfolio.selected_margin_leverage == Decimal("100")
+    assert runtime.paper_portfolio.risk_manager.limits.max_daily_trades is None
+    assert runtime.paper_portfolio.league_risk_manager.limits.loss_cooldowns_enabled is False
+    assert (
+        runtime.paper_portfolio.league_risk_manager.limits.maximum_gross_notional_fraction
+        == Decimal("100")
+    )
+    reopened_ledger = SQLiteLedger(database)
+    persisted = reopened_ledger.get_app_setting("paper_research_configuration_v1")
+    assert persisted is not None
+    assert persisted["selected_leverage"] == 100
+    assert persisted["revision"] == 1
+    restored = PaperRuntime(
+        mode=RuntimeMode.DEMO_FIXTURE,
+        clock=DeterministicClock(),
+        run_id="run-paper-research-configuration",
+        ledger=reopened_ledger,
+    )
+    assert restored.paper_research_configuration()["selected_leverage"] == 100
+    assert restored.paper_research_configuration()["revision"] == 1
+    reopened_ledger.close()
+
+
 def test_user_resume_intent_does_not_clear_automatic_safety_wait() -> None:
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,

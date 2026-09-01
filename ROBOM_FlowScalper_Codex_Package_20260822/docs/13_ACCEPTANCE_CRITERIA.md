@@ -276,3 +276,23 @@ Wave 47의 활성 writer 동시검사는 queue 4,096·drop 9,736을 만든 `FAIL
 - [x] Clicking the FlowScalper name returns to the main market from another page.
 - [x] Unit tests and desktop, tablet and mobile Playwright exercise both sorting directions, cost switching, drawer controls and home navigation.
 - [ ] The committed immutable release is installed after every current PAPER position closes naturally and the same interactions are repeated in the actual 8870 browser.
+
+## X. Continuous PAPER entry and selectable margin leverage
+
+- [x] Daily trade count, daily loss, weekly loss and consecutive-loss cooldown do not reject a new
+  candidate in the continuous PAPER runtime.
+- [x] Drawdown, simultaneous-position, planned-risk, actual executable-depth and system-health gates
+  remain fail-closed.
+- [x] PAPER leverage defaults to 10x and accepts only 1·2·3·5·10·20·25·50·75·100x.
+- [x] Quantity remains stop- and depth-risk-sized; fees and PnL use actual filled notional and margin
+  equals actual entry notional divided by entry-time selected leverage.
+- [x] Leverage configuration is revision-checked, persisted and applied only to new entries. Existing
+  positions and completed records preserve entry-time leverage, notional and margin.
+- [x] The normal dashboard has no routine pause/resume control and an ordinary legacy pause auto-recovers
+  on normal restart while deployment-maintenance pause remains protected.
+- [x] Backend and frontend automated regressions cover the new contract.
+- [ ] The immutable release is installed and 1x/100x setting changes, browser labels, current position
+  fields and actual-order zero are verified against the actual 8870 service.
+- [ ] Six-hour and 24-hour post-change stability is observed for the exact installed commit.
+- [ ] Current-version cost-adjusted profitability is proven. Until then it remains `NOT_PROVEN` and
+  real-money readiness remains `NOT_READY`.

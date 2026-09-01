@@ -756,3 +756,23 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   fail-closed 중단됐으며 revision 58로 즉시 재개한 뒤 staging 재사용으로 설치했다.
 - 5분 통과는 거래 증가·수익성·6시간·24시간 안정성 증거가 아니다. 수익성은 계속
   `NOT_PROVEN`, 실자금 준비는 `NOT_READY`, 실제 주문·private API·인증·wallet은 0이다.
+
+## Wave 145 연속 PAPER 진입과 기본 10배·최대 100배 설정
+
+- 상태는 `IMPLEMENTED_FOCUSED_VALIDATION_PASS_FULL_VALIDATION_IN_PROGRESS`다.
+- 공동계좌와 30개 전략별 BASE/STRESS 계좌는 하루 거래횟수, 하루 손실, 주간 손실과
+  연속손실 cooldown으로 신규 진입을 멈추지 않는다. 기존 카운터·손익·거래·판단은 삭제하지 않는다.
+- drawdown, 동시 포지션, 총 계획손실, 선택 배수에 따른 총 명목금액, 실제 실행가능 호가깊이,
+  비용후 손익비, 데이터·저장·복구·원장 fault는 계속 fail-closed한다.
+- PAPER 증거금 배수는 기본 10배이고 1·2·3·5·10·20·25·50·75·100배 중 선택한다. 수량은
+  기존 위험예산과 호가깊이로 정하며 수수료·손익은 실제 명목금액, 증거금은 명목금액을 진입
+  당시 배수로 나눈 값이다.
+- 설정은 revision CAS와 전역 SQLite app setting으로 보존하고 새 진입부터 적용한다. 열린
+  포지션·완료 거래·복구 payload는 진입 당시 배수·명목금액·증거금을 유지한다.
+- 정상 화면의 신규진입 일시정지·재개 버튼을 제거하고 상단에 `자동 진입 · 항상 허용` 또는
+  `자동 진입 · 안전 대기`를 표시한다. 일반 과거 pause는 정상 재시작에서 자동복구하고
+  `DEPLOYMENT_MAINTENANCE_*` pause는 배포 완료 전까지 유지한다.
+- 집중 backend 184건과 frontend 119건, ESLint·TypeScript는 PASS했다. 전체 backend·mypy·
+  build·fixture·Playwright·PAPER safety·security·실제 설치 서비스·브라우저·GitHub는 진행 중이다.
+- 높은 배수나 거래 증가를 수익성으로 해석하지 않는다. 6시간·24시간은 `NOT_RUN`, 수익성은
+  `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.

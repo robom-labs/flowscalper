@@ -19,7 +19,7 @@ from backend.app.execution import (
 from backend.app.execution.models import OrderStatus
 from backend.app.execution.simulator import PaperExecutionError
 from backend.app.research.gates import RiskOverlay, RiskOverlayComponent
-from backend.app.risk import RiskManager, RiskSizingInput, RiskState
+from backend.app.risk import RiskLimits, RiskManager, RiskSizingInput, RiskState
 
 
 def book(
@@ -168,6 +168,39 @@ def test_risk_sizing_rounds_down_and_locks_operate() -> None:
     assert "DAILY_LOSS_LOCK" in manager.entry_rejections(state, "BTC:A", 0)
     state = RiskState(open_positions=1)
     assert manager.entry_rejections(state, "BTC:A", 0) == ("MAX_OPEN_POSITIONS",)
+
+
+def test_continuous_paper_limits_ignore_period_quotas_and_loss_cooldowns() -> None:
+    manager = RiskManager(
+        RiskLimits(
+            max_open_positions=3,
+            max_daily_trades=None,
+            daily_loss_limit_fraction=None,
+            weekly_loss_limit_fraction=None,
+            maximum_drawdown_fraction=Decimal("0.50"),
+            maximum_gross_notional_fraction=Decimal("100"),
+            loss_cooldowns_enabled=False,
+        )
+    )
+    state = RiskState(
+        current_equity=Decimal("900"),
+        peak_equity=Decimal("1000"),
+        realized_today=Decimal("-500"),
+        realized_week=Decimal("-700"),
+        daily_trade_count=100_000,
+        cooldowns_until_ms={"BTC:A": 9_999_999, "GLOBAL": 9_999_999},
+        open_positions=1,
+    )
+
+    assert manager.entry_rejections(state, "BTC:A", 1_000) == ()
+    manager.record_close(
+        state,
+        Decimal("-1"),
+        key="BTC:A",
+        now_ms=1_000,
+    )
+    assert state.global_consecutive_losses == 1
+    assert state.cooldowns_until_ms == {"BTC:A": 9_999_999, "GLOBAL": 9_999_999}
 
 
 def test_risk_overlay_none_and_one_are_identical() -> None:

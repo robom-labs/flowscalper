@@ -104,8 +104,8 @@ For both long and short:
 
 - risk budget exactness;
 - max one position;
-- daily/weekly/drawdown locks;
-- consecutive-loss cooldowns;
+- continuous PAPER mode does not reject on daily trade count, daily loss, weekly loss or consecutive losses;
+- drawdown, total planned risk, gross notional and executable-depth locks remain active;
 - no martingale/pyramiding;
 - active Run configuration immutability;
 - BASE and STRESS accounting separation.
@@ -330,3 +330,22 @@ funding readiness `NOT_READY`.
 - Run the observer against the installed 8870 service without another venue connection, Run, replay or writer. Require the exact wall-clock duration and preserve all samples in JSON.
 - At tablet and mobile widths require summary, primary navigation and secondary navigation controls to be at least 48×48px with zero root horizontal overflow.
 - A 30-minute PASS does not prove 6-hour or 24-hour stability, strategy profitability or Release packaging.
+
+## 12.24 Continuous PAPER entry and margin-leverage regression
+
+- Start above the legacy daily trade, daily loss, weekly loss and consecutive-loss thresholds. Require
+  no `MAX_DAILY_TRADES`, `DAILY_LOSS_LOCK`, `WEEKLY_LOSS_LOCK`, `COOLDOWN_ACTIVE` or
+  `GLOBAL_COOLDOWN_ACTIVE` rejection in continuous mode.
+- In the same suite, require drawdown, open-position, total planned-risk, aggregate notional and
+  executable-depth rejection to remain unchanged.
+- Fill and close a 10x PAPER trade. Require risk-sized quantity, actual entry notional, actual-notional
+  fees and `margin_used_usdt = entry_notional_usdt / 10` through ledger payload and UI rows.
+- Apply 100x through the settings API, require revision advancement and persistence after reopen.
+  Reject stale revision and an unlisted value such as 7x.
+- Change leverage with an open position. Require the open position and completed trade to keep their
+  entry-time leverage while a later plan receives the new value.
+- Restart after an ordinary user pause and require automatic `ENTRY_ENABLED`; restart after a
+  `DEPLOYMENT_MAINTENANCE_*` pause and require the pause to remain until the deployment workflow resumes it.
+- Verify the actual browser has no routine pause/resume control, exposes 1x through 100x, shows default
+  10x, and labels automatic entry separately from system safety waiting.
+- Keep actual orders, private APIs, authentication, keys, secrets and wallet paths false or absent.

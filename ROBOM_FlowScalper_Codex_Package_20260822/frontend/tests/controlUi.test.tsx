@@ -265,7 +265,7 @@ test('shows automatic safety waiting without a misleading manual resume button',
   expect(screen.queryByRole('button', { name: '자동 관찰 계속하기' })).not.toBeInTheDocument()
 })
 
-test('shows a manual pause clearly and resumes it with one click', async () => {
+test('keeps an exceptional manual pause visible without exposing a routine stop control', async () => {
   const base = dashboardFixture()
   const manuallyPaused: DashboardData = {
     ...base,
@@ -280,11 +280,11 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
     operation_status: {
       state: 'MANUALLY_PAUSED',
       title_ko: '사용자가 일시정지',
-      detail_ko: '시장 관찰은 계속 중입니다. 버튼을 누르면 새 PAPER 진입을 다시 시작합니다.',
+      detail_ko: '시장 관찰은 계속 중이며 다음 정상 재시작에서 자동 진입이 복구됩니다.',
       market_observation_active: true,
       paper_entry_active: false,
       automatic_recovery: false,
-      recommended_action: 'RESUME',
+      recommended_action: 'NONE',
       lag_p95_ms: 110,
     },
     paper_entry_intent: {
@@ -297,32 +297,7 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
       reversible: true,
     },
   }
-  const running: DashboardData = {
-    ...manuallyPaused,
-    paused: false,
-    paper_entry_intent: {
-      ...manuallyPaused.paper_entry_intent,
-      state: 'ENTRY_ENABLED',
-      manual_pause_requested: false,
-      revision: 8,
-      reason: 'USER_RESUME',
-    },
-    operation_status: {
-      ...manuallyPaused.operation_status,
-      state: 'RUNNING',
-      title_ko: '작동 중',
-      detail_ko: '공개시장을 계속 관찰하며 조건이 맞을 때만 PAPER 진입을 기록합니다.',
-      paper_entry_active: true,
-      automatic_recovery: true,
-      recommended_action: 'PAUSE',
-    },
-  }
-  let finishResume: ((result: Response) => void) | undefined
-  const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-    void init
-    if (String(path) === '/api/control/resume') {
-      return await new Promise<Response>((resolve) => { finishResume = resolve })
-    }
+  const fetchMock = vi.fn(async (path: RequestInfo | URL) => {
     if (String(path) === '/api/strategies/summary') {
       return response(strategySummary(manuallyPaused))
     }
@@ -331,20 +306,10 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
   vi.stubGlobal('fetch', fetchMock)
 
   render(<App />)
-  const resume = await screen.findByRole('button', { name: '새 진입 다시 시작' })
+  const panel = await screen.findByLabelText('프로그램 작동 상태')
+  expect(panel).toHaveTextContent('사용자가 일시정지')
   expect(screen.getByText('자동 관찰 · 시작됨')).toBeInTheDocument()
-  act(() => FakeWebSocket.instances[0].open())
-  await waitFor(() => expect(resume).toBeEnabled())
-  fireEvent.click(resume)
-
-  expect(screen.getByRole('button', { name: '다시 시작하는 중…' })).toBeDisabled()
-  await waitFor(() => expect(fetchMock.mock.calls.some(([path]) => String(path) === '/api/control/resume')).toBe(true))
-  const resumeRequest = fetchMock.mock.calls.find(([path]) => String(path) === '/api/control/resume')
-  expect(resumeRequest?.[1]?.headers).toMatchObject({ 'Idempotency-Key': expect.any(String) })
-  expect(JSON.parse(String(resumeRequest?.[1]?.body))).toEqual({
-    expected_revision: 7,
-    reason: 'USER_RESUME',
-  })
-  await act(async () => { finishResume?.(response(running)) })
-  await waitFor(() => expect(screen.getByLabelText('프로그램 작동 상태')).toHaveTextContent('작동 중'))
+  expect(screen.queryByRole('button', { name: '새 진입 다시 시작' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '새 진입 잠시 멈춤' })).not.toBeInTheDocument()
+  expect(fetchMock.mock.calls.some(([path]) => String(path).startsWith('/api/control/'))).toBe(false)
 })

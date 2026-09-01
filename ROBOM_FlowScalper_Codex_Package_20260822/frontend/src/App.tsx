@@ -29,7 +29,6 @@ export default function App() {
     connectionError,
     requestError,
     busyAction,
-    immediateBusyAction,
     controlOperation,
     control,
     cancelControl,
@@ -37,6 +36,7 @@ export default function App() {
     refreshUiSummary,
     selectChart,
     configureStrategy,
+    configurePaperResearch,
     rollbackStrategy,
     configureStrategyFamilyResearch,
     selectedFamilyDetail,
@@ -66,18 +66,12 @@ export default function App() {
     )
   }
 
-  const runControl = async (action: 'pause' | 'resume' | 'emergency-close' | 'new-run' | 'start-live' | 'start-demo') => {
+  const runControl = async (action: 'emergency-close' | 'new-run' | 'start-live' | 'start-demo') => {
     try {
       clearError()
       await control(action)
     } catch {
       // useDashboard가 서버의 실제 한국어 오류를 화면 상태로 보존한다.
-    }
-  }
-  const pauseToggle = () => {
-    const action = data.operation_status.recommended_action
-    if (action === 'PAUSE' || action === 'RESUME') {
-      void runControl(action === 'PAUSE' ? 'pause' : 'resume')
     }
   }
   const newRun = () => {
@@ -110,6 +104,14 @@ export default function App() {
       return null
     }
   }
+  const changeLeverage = async (selectedLeverage: number, expectedRevision: number) => {
+    try {
+      clearError()
+      return await configurePaperResearch(selectedLeverage, expectedRevision)
+    } catch {
+      return null
+    }
+  }
   const cancelOperation = async () => {
     try { await cancelControl() } catch { /* useDashboard가 오류를 표시한다. */ }
   }
@@ -136,15 +138,15 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <SafetyHeader data={data} connected={connected} safetyVerified={safetyVerified} connectionState={connectionState} onHome={returnHomeAndRefresh} onPauseToggle={pauseToggle} immediateAction={immediateBusyAction} />
+      <SafetyHeader data={data} connected={connected} safetyVerified={safetyVerified} connectionState={connectionState} onHome={returnHomeAndRefresh} />
       <Navigation page={page} onChange={changePage} />
       {globalError ? <p className="connection-error" role="alert">{globalError}</p> : null}
       {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}
       <Suspense fallback={<p className="bootstrap-state" role="status" aria-live="polite">화면을 불러오는 중입니다.</p>}>
-        {page === 'market' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} busy={!connected || !safetyVerified || busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
+        {page === 'market' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} busy={!connected || !safetyVerified || busyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
         {page === 'strategies' ? <StrategiesPage data={data} history={data.history} strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} researchDetails={researchDetails} controlsEnabled={connected && safetyVerified} selectedFamilyDetail={selectedFamilyDetail} onSelectFamily={selectStrategyFamily} onConfigure={changeStrategy} onRollback={undoStrategy} onConfigureFamilyResearch={configureStrategyFamilyResearch} /> : null}
         {page === 'trades' ? <TradesPage data={data} /> : null}
-        {page === 'settings' ? <SettingsPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} researchDetails={researchDetails} onResearchDetailsChange={changeResearchDetails} onNewRun={newRun} /> : null}
+        {page === 'settings' ? <SettingsPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} researchDetails={researchDetails} onResearchDetailsChange={changeResearchDetails} onNewRun={newRun} onConfigureLeverage={changeLeverage} /> : null}
       </Suspense>
     </main>
   )

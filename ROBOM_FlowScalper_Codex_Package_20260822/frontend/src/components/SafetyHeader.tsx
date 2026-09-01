@@ -1,4 +1,4 @@
-// V6 전 화면에서 PAPER 안전 상태와 한 개의 진입 일시정지 동작을 유지한다.
+// V6 전 화면에서 자동 PAPER 진입과 안전 잠금을 별도 상태로 보여준다.
 import { formatUsdt } from '../format'
 import type { DashboardData } from '../types'
 
@@ -8,23 +8,10 @@ type Props = {
   safetyVerified: boolean
   connectionState: 'CONNECTING' | 'CONNECTED' | 'RECONNECTING'
   onHome: () => void
-  onPauseToggle: () => void
-  immediateAction: 'pause' | 'resume' | null
 }
 
-export function SafetyHeader({ data, connected, safetyVerified, connectionState, onHome, onPauseToggle, immediateAction }: Props) {
+export function SafetyHeader({ data, connected, safetyVerified, connectionState, onHome }: Props) {
   const { status } = data
-  const action = data.operation_status.recommended_action
-  const actionable = action === 'PAUSE' || action === 'RESUME'
-  const actionLabel = immediateAction === 'pause'
-    ? '멈추는 중…'
-    : immediateAction === 'resume'
-      ? '다시 시작하는 중…'
-      : action === 'PAUSE'
-        ? '새 진입 잠시 멈추기'
-        : action === 'RESUME'
-          ? '새 진입 다시 시작'
-          : '자동 안전관리 중'
   const connectionLabel = connected
     ? '화면 연결됨'
     : connectionState === 'CONNECTING'
@@ -51,9 +38,11 @@ export function SafetyHeader({ data, connected, safetyVerified, connectionState,
         <span className={data.operation_status.market_observation_active ? 'connection-on' : 'connection-off'}>
           자동 관찰 · {data.operation_status.market_observation_active ? '시작됨' : '시작 전'}
         </span>
+        <span className={data.operation_status.paper_entry_active ? 'connection-on' : 'connection-off'}>
+          {data.operation_status.paper_entry_active ? '자동 진입 · 항상 허용' : '자동 진입 · 안전 대기'}
+        </span>
         <span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>순손익 {formatUsdt(status.realized_pnl_usdt, { signed: true })}</span>
         <span>보유 {data.focus_positions.length}건</span>
-        <button type="button" className="header-action" disabled={!connected || !safetyVerified || !actionable || immediateAction !== null} onClick={onPauseToggle}>{actionLabel}</button>
       </div>
     </header>
   )

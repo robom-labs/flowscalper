@@ -30,13 +30,14 @@ def _utc_week_start_ms(timestamp_ms: int) -> int:
 class RiskLimits:
     risk_per_trade_fraction: Decimal = Decimal("0.001")
     max_open_positions: int = 1
-    max_daily_trades: int = 12
+    max_daily_trades: int | None = 12
     maximum_total_open_risk_fraction: Decimal = Decimal("0.001")
-    daily_loss_limit_fraction: Decimal = Decimal("0.005")
-    weekly_loss_limit_fraction: Decimal = Decimal("0.015")
+    daily_loss_limit_fraction: Decimal | None = Decimal("0.005")
+    weekly_loss_limit_fraction: Decimal | None = Decimal("0.015")
     maximum_drawdown_fraction: Decimal = Decimal("0.03")
     maximum_gross_notional_fraction: Decimal = Decimal("0.50")
     maximum_order_fraction_of_executable_depth: Decimal = Decimal("0.02")
+    loss_cooldowns_enabled: bool = True
 
 
 STRATEGY_LEAGUE_RISK_LIMITS = RiskLimits(
@@ -46,7 +47,7 @@ STRATEGY_LEAGUE_RISK_LIMITS = RiskLimits(
     daily_loss_limit_fraction=Decimal("0.02"),
     weekly_loss_limit_fraction=Decimal("0.05"),
     maximum_drawdown_fraction=Decimal("0.08"),
-    maximum_gross_notional_fraction=Decimal("5.0"),
+    maximum_gross_notional_fraction=Decimal("10.0"),
     maximum_order_fraction_of_executable_depth=Decimal("0.02"),
 )
 
@@ -202,18 +203,30 @@ class RiskManager:
             reasons.append("RUN_FAULTED")
         if state.open_positions >= self.limits.max_open_positions:
             reasons.append("MAX_OPEN_POSITIONS")
-        if state.daily_trade_count >= self.limits.max_daily_trades:
+        if (
+            self.limits.max_daily_trades is not None
+            and state.daily_trade_count >= self.limits.max_daily_trades
+        ):
             reasons.append("MAX_DAILY_TRADES")
-        if -state.realized_today >= state.current_equity * self.limits.daily_loss_limit_fraction:
+        if (
+            self.limits.daily_loss_limit_fraction is not None
+            and -state.realized_today
+            >= state.current_equity * self.limits.daily_loss_limit_fraction
+        ):
             reasons.append("DAILY_LOSS_LOCK")
-        if -state.realized_week >= state.current_equity * self.limits.weekly_loss_limit_fraction:
+        if (
+            self.limits.weekly_loss_limit_fraction is not None
+            and -state.realized_week
+            >= state.current_equity * self.limits.weekly_loss_limit_fraction
+        ):
             reasons.append("WEEKLY_LOSS_LOCK")
         if state.drawdown_fraction >= self.limits.maximum_drawdown_fraction:
             reasons.append("DRAWDOWN_LOCK")
-        if state.cooldowns_until_ms.get(key, 0) > now_ms:
-            reasons.append("COOLDOWN_ACTIVE")
-        if state.cooldowns_until_ms.get("GLOBAL", 0) > now_ms:
-            reasons.append("GLOBAL_COOLDOWN_ACTIVE")
+        if self.limits.loss_cooldowns_enabled:
+            if state.cooldowns_until_ms.get(key, 0) > now_ms:
+                reasons.append("COOLDOWN_ACTIVE")
+            if state.cooldowns_until_ms.get("GLOBAL", 0) > now_ms:
+                reasons.append("GLOBAL_COOLDOWN_ACTIVE")
         return tuple(reasons)
 
     @staticmethod
@@ -328,8 +341,9 @@ class RiskManager:
         state.realized_week += net_pnl
         if net_pnl < 0:
             state.global_consecutive_losses += 1
-            if state.global_consecutive_losses >= 3:
-                state.cooldowns_until_ms["GLOBAL"] = now_ms + 60 * 60 * 1000
-            state.cooldowns_until_ms[key] = now_ms + 2 * 60 * 60 * 1000
+            if self.limits.loss_cooldowns_enabled:
+                if state.global_consecutive_losses >= 3:
+                    state.cooldowns_until_ms["GLOBAL"] = now_ms + 60 * 60 * 1000
+                state.cooldowns_until_ms[key] = now_ms + 2 * 60 * 60 * 1000
         else:
             state.global_consecutive_losses = 0

@@ -458,21 +458,28 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   expect(interactiveViolations, 'visible interactive target은 모두 최소 48px이어야 합니다.').toEqual([])
 })
 
-test('격리 fixture에서 PAPER 일시정지·재개와 전략 OFF·복원을 되돌릴 수 있다', async ({ page }, testInfo) => {
+test('격리 fixture에서 PAPER 100배·10배 설정과 전략 OFF·복원을 되돌릴 수 있다', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', '상태변경 검증은 한 개의 격리 fixture 프로젝트에서만 실행합니다.')
   test.setTimeout(120_000)
   await installMarketFixtures(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeVisible()
 
-  const pause = page.getByRole('button', { name: '새 진입 잠시 멈추기' })
-  await pause.click()
-  const resume = page.getByRole('button', { name: '새 진입 다시 시작' })
-  await expect(resume).toBeEnabled()
-  await expect(page.getByLabel('프로그램 작동 상태')).toContainText('샘플 멈춤')
-  await resume.click()
-  await expect(page.getByRole('button', { name: '새 진입 잠시 멈추기' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: '새 진입 잠시 멈추기' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '새 진입 다시 시작' })).toHaveCount(0)
   await expect(page.getByLabel('프로그램 작동 상태')).toContainText('샘플 작동 중')
+  await expect(page.getByText('자동 진입 · 항상 허용')).toBeVisible()
+
+  await page.getByRole('navigation', { name: '주요 화면' }).getByRole('button', { name: '설정', exact: true }).click()
+  const leverage = page.getByRole('combobox', { name: 'PAPER 레버리지' })
+  await expect(leverage).toHaveValue('10')
+  await leverage.selectOption('100')
+  await page.getByRole('button', { name: '선택 배수 적용' }).click()
+  await expect(leverage).toHaveValue('100')
+  await expect(page.locator('.leverage-settings')).toContainText('최대 100배')
+  await leverage.selectOption('10')
+  await page.getByRole('button', { name: '선택 배수 적용' }).click()
+  await expect(leverage).toHaveValue('10')
 
   await page.getByRole('navigation', { name: '주요 화면' }).getByRole('button', { name: '전략', exact: true }).click()
   await expect(page.locator('.strategy-compact-table tbody tr')).toHaveCount(3)
@@ -495,7 +502,8 @@ test('격리 fixture에서 PAPER 일시정지·재개와 전략 OFF·복원을 �
     reversible_fixture_controls: {
       status: 'PASS',
       scope: 'ISOLATED_DEMO_FIXTURE_UI_ACTIONS',
-      pause_then_resume: true,
+      normal_pause_resume_controls_removed: true,
+      leverage_10_to_100_to_10: true,
       strategy_shadow_to_off_then_rollback: true,
       open_position_protection: 'UI_COPY_VERIFIED_NOT_RUNTIME_POSITION_TEST',
       external_service_mutation: false,

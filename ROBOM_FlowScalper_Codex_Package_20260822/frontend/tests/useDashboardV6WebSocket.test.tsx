@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { useDashboard } from '../src/hooks/useDashboard'
-import { dashboardFixture } from './fixtures'
+import { dashboardFixture, paperResearchSettings } from './fixtures'
 
 class FakeWebSocket extends EventTarget {
   static instances: FakeWebSocket[] = []
@@ -668,6 +668,7 @@ test('loads raw diagnostics only after the settings page is selected', async () 
             active_locks: dashboard.risk.active_locks,
           },
           costs: dashboard.risk.strategy_league,
+          paper_research: paperResearchSettings(),
           storage: {},
           connection: { public_market_only: true },
           autostart: {
@@ -767,6 +768,7 @@ test('invalidates verified safety when settings deny the public-market-only cont
         active_locks: dashboard.risk.active_locks,
       },
       costs: dashboard.risk.strategy_league,
+      paper_research: paperResearchSettings(),
       storage: {},
       connection: { public_market_only: false },
       autostart: {
@@ -819,6 +821,7 @@ test('invalidates verified safety and rejects contradictory auxiliary diagnostic
             active_locks: dashboard.risk.active_locks,
           },
           costs: dashboard.risk.strategy_league,
+          paper_research: paperResearchSettings(),
           storage: {},
           connection: { public_market_only: true },
           autostart: {

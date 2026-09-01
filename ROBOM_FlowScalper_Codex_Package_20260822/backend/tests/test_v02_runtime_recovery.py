@@ -305,7 +305,8 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     )
     assert recovered_runtime.position_visible is True
     assert recovered_runtime.paused is True
-    assert recovered_runtime._manual_pause_requested is True
+    assert recovered_runtime._manual_pause_requested is False
+    assert recovered_runtime.paper_entry_intent()["reason"] == "AUTO_ENTRY_ENABLED_ON_RESTART"
     assert "ENTRY_LOCK_RECOVERY_REVALIDATION" in recovered_runtime.runtime_health_flags
     assert recovered_runtime._recovery_revalidation_symbol == "BTCUSDT"
     registry = {row["strategy_id"]: row for row in recovered_runtime.strategy_registry.rows()}
@@ -318,7 +319,7 @@ def test_runtime_recovers_registry_open_position_pending_exit_and_final_trade(
     recovered_runtime.ingest_live_event(_live_depth_event(recovered_runtime, 1_500))
     assert recovered_runtime._recovery_revalidation_symbol is None
     assert "ENTRY_LOCK_RECOVERY_REVALIDATION" not in recovered_runtime.runtime_health_flags
-    assert recovered_runtime.paused is True
+    assert recovered_runtime.paused is False
 
     tp1 = recovered_runtime.paper_portfolio.main.position.plan.take_profit_targets[0].price
     recovered_runtime.paper_portfolio.on_book(_live_book(2_000, bid=str(tp1 + 1), ask=str(tp1 + 2)))
@@ -403,7 +404,7 @@ def test_strategy_rollback_history_survives_process_restart(tmp_path: Path) -> N
     reopened.close()
 
 
-def test_paper_entry_intent_revision_survives_process_restart(tmp_path: Path) -> None:
+def test_ordinary_paper_pause_is_auto_resumed_after_process_restart(tmp_path: Path) -> None:
     database = tmp_path / "paper-entry-intent-recovery.sqlite3"
     run_id = "run-paper-entry-intent-recovery"
     ledger = SQLiteLedger(database)
@@ -425,15 +426,43 @@ def test_paper_entry_intent_revision_survives_process_restart(tmp_path: Path) ->
 
     recovered_runtime, reopened = _reopen_runtime(database, run_id)
 
-    assert recovered_runtime.paper_entry_intent()["manual_pause_requested"] is True
-    assert recovered_runtime.paper_entry_intent()["revision"] == 1
-    assert recovered_runtime.paper_entry_intent()["reason"] == "USER_PAUSE_RECOVERY_TEST"
-    repeated = recovered_runtime.set_paused(
+    assert recovered_runtime.paper_entry_intent()["manual_pause_requested"] is False
+    assert recovered_runtime.paper_entry_intent()["revision"] == 2
+    assert recovered_runtime.paper_entry_intent()["reason"] == "AUTO_ENTRY_ENABLED_ON_RESTART"
+    persisted = reopened.get_app_setting("paper_entry_user_intent")
+    assert persisted is not None
+    assert persisted["manual_pause_requested"] is False
+    assert persisted["revision"] == 2
+    assert persisted["idempotency_records"] == []
+    reopened.close()
+
+
+def test_deployment_maintenance_pause_survives_process_restart(tmp_path: Path) -> None:
+    database = tmp_path / "paper-entry-maintenance-recovery.sqlite3"
+    run_id = "run-paper-entry-maintenance-recovery"
+    ledger = SQLiteLedger(database)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    runtime.set_paused(
         True,
         expected_revision=0,
-        idempotency_key="recovery-pause",
+        reason="DEPLOYMENT_MAINTENANCE_WAVE145",
     )
-    assert repeated["revision"] == 1
+    runtime._persist_execution_state(1_250)
+    ledger.close()
+
+    recovered_runtime, reopened = _reopen_runtime(database, run_id)
+
+    assert recovered_runtime.paper_entry_intent()["manual_pause_requested"] is True
+    assert recovered_runtime.paper_entry_intent()["revision"] == 1
+    assert recovered_runtime.paper_entry_intent()["reason"] == (
+        "DEPLOYMENT_MAINTENANCE_WAVE145"
+    )
     reopened.close()
 
 

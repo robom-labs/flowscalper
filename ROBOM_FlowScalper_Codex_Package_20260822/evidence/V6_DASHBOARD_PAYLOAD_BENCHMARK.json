@@ -80,7 +80,7 @@
   "browser_e2e": {
     "status": "PASS",
     "scope": "LOCAL_DEMO_FIXTURE_PLAYWRIGHT",
-    "measured_ts_utc": "2026-08-31T22:34:39.561Z",
+    "measured_ts_utc": "2026-09-01T12:52:16.848Z",
     "measurement_boundary": "브라우저 화면 준비와 DOM 접근성 검증이며 실제 공개시장 서비스 성능은 아닙니다.",
     "projects": {
       "desktop": {
@@ -90,9 +90,9 @@
           "height": 900
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 109.1,
-          "strategy_list_ready_after_keyboard_navigation_ms": 66.4,
-          "selected_strategy_detail_ready_on_demand_ms": 197.4,
+          "first_meaningful_ready_view_ms": 128.9,
+          "strategy_list_ready_after_keyboard_navigation_ms": 2078.2,
+          "selected_strategy_detail_ready_on_demand_ms": 352.5,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -138,13 +138,13 @@
             },
             {
               "stage": "settings_and_diagnostics",
-              "measured_count": 11,
+              "measured_count": 12,
               "minimum_height_px": 48,
               "violations": []
             },
             {
               "stage": "desktop_200_percent_reflow_equivalent",
-              "measured_count": 11,
+              "measured_count": 12,
               "minimum_height_px": 48,
               "violations": []
             }
@@ -170,7 +170,8 @@
         "reversible_fixture_controls": {
           "status": "PASS",
           "scope": "ISOLATED_DEMO_FIXTURE_UI_ACTIONS",
-          "pause_then_resume": true,
+          "normal_pause_resume_controls_removed": true,
+          "leverage_10_to_100_to_10": true,
           "strategy_shadow_to_off_then_rollback": true,
           "open_position_protection": "UI_COPY_VERIFIED_NOT_RUNTIME_POSITION_TEST",
           "external_service_mutation": false,
@@ -184,9 +185,9 @@
           "height": 1180
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 115.4,
-          "strategy_list_ready_after_keyboard_navigation_ms": 24.5,
-          "selected_strategy_detail_ready_on_demand_ms": 22.2,
+          "first_meaningful_ready_view_ms": 106.2,
+          "strategy_list_ready_after_keyboard_navigation_ms": 330.3,
+          "selected_strategy_detail_ready_on_demand_ms": 23.4,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -232,7 +233,7 @@
             },
             {
               "stage": "settings_and_diagnostics",
-              "measured_count": 11,
+              "measured_count": 12,
               "minimum_height_px": 48,
               "violations": []
             }
@@ -253,9 +254,9 @@
           "height": 844
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 94,
-          "strategy_list_ready_after_keyboard_navigation_ms": 20.3,
-          "selected_strategy_detail_ready_on_demand_ms": 16.8,
+          "first_meaningful_ready_view_ms": 103.2,
+          "strategy_list_ready_after_keyboard_navigation_ms": 49.5,
+          "selected_strategy_detail_ready_on_demand_ms": 25,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -301,7 +302,7 @@
             },
             {
               "stage": "settings_and_diagnostics",
-              "measured_count": 11,
+              "measured_count": 12,
               "minimum_height_px": 48,
               "violations": []
             }

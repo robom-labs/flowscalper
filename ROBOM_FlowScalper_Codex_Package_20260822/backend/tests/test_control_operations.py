@@ -397,6 +397,12 @@ def test_dashboard_has_registry_derived_accounts_and_split_risk_contract() -> No
     assert dashboard["league_positions"] == []
     assert dashboard["risk"]["shared_capital"]["risk_per_position"] == "0.10%"
     assert dashboard["risk"]["strategy_league"]["account_count"] == 30
-    assert dashboard["risk"]["strategy_league"]["maximum_effective_leverage"] == "5.00x"
+    league_risk = dashboard["risk"]["strategy_league"]
+    assert league_risk["maximum_effective_leverage"] == "10.00x"
+    assert league_risk["selected_margin_leverage"] == "10x"
+    assert league_risk["daily_trade_limit"] == "중단 없음"
+    assert league_risk["daily_loss_limit"] == "중단 없음"
+    assert league_risk["weekly_loss_limit"] == "중단 없음"
+    assert league_risk["loss_cooldown"] == "사용 안 함"
     assert dashboard["status"]["real_orders_enabled"] is False
     assert dashboard["status"]["auth_required"] is False

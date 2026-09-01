@@ -464,6 +464,7 @@ def settings_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
     system = _mapping(snapshot.get("system"))
     risk = _mapping(snapshot.get("risk"))
     paper_intent = _mapping(snapshot.get("paper_entry_intent"))
+    paper_research = _mapping(snapshot.get("paper_research_configuration"))
     paper_state_recovery = system.get("automatic_recovery_enabled")
     safety = paper_safety_contract(snapshot)
     return {
@@ -492,6 +493,50 @@ def settings_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
             "active_locks": list(_sequence(risk.get("active_locks"))),
         },
         "costs": _mapping(_mapping(risk.get("strategy_league"))),
+        "paper_research": {
+            "selected_leverage": int(str(paper_research.get("selected_leverage", 10))),
+            "allowed_leverages": list(
+                _sequence(
+                    paper_research.get(
+                        "allowed_leverages",
+                        (1, 2, 3, 5, 10, 20, 25, 50, 75, 100),
+                    )
+                )
+            ),
+            "default_leverage": int(str(paper_research.get("default_leverage", 10))),
+            "maximum_available_leverage": int(
+                str(paper_research.get("maximum_available_leverage", 100))
+            ),
+            "continuous_entry_mode": bool(
+                paper_research.get("continuous_entry_mode", True)
+            ),
+            "daily_trade_limit_enabled": bool(
+                paper_research.get("daily_trade_limit_enabled", False)
+            ),
+            "daily_loss_lock_enabled": bool(
+                paper_research.get("daily_loss_lock_enabled", False)
+            ),
+            "weekly_loss_lock_enabled": bool(
+                paper_research.get("weekly_loss_lock_enabled", False)
+            ),
+            "loss_cooldown_enabled": bool(
+                paper_research.get("loss_cooldown_enabled", False)
+            ),
+            "risk_sized_quantity": True,
+            "dollar_risk_preserved": True,
+            "fees_on_actual_notional": True,
+            "margin_formula_ko": str(
+                paper_research.get(
+                    "margin_formula_ko",
+                    "실제 명목금액 ÷ 선택 레버리지",
+                )
+            ),
+            "applies_to_new_entries": True,
+            "revision": int(str(paper_research.get("revision", 0))),
+            "updated_ts_ms": paper_research.get("updated_ts_ms"),
+            "paper_only": True,
+            "real_orders_enabled": False,
+        },
         "storage": {
             "label": system.get("storage", "외장 APFS PAPER 저장소"),
             "free_mb": system.get("disk_free_mb"),
