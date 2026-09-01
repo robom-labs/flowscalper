@@ -178,19 +178,25 @@ def _copy_verified_worktree_commit(
 ) -> None:
     """현재 commit의 regular file만 작업트리에서 blob 검증하며 직접 복사한다."""
 
-    _assert_worktree_commit_binding(source_root, commit)
+    repository_root = Path(
+        _run_git(source_root, "rev-parse", "--show-toplevel")
+    ).resolve(strict=True)
+    _assert_worktree_commit_binding(repository_root, commit)
     destination_root = destination.resolve(strict=True)
     deadline = time.monotonic() + WORKTREE_COPY_TIMEOUT_SECONDS
-    for relative_path, expected_object_id, git_mode in _commit_tree_entries(source_root, commit):
+    for relative_path, expected_object_id, git_mode in _commit_tree_entries(
+        repository_root,
+        commit,
+    ):
         if time.monotonic() >= deadline:
             raise TimeoutError(
                 f"검증된 작업트리 복사가 {WORKTREE_COPY_TIMEOUT_SECONDS}초를 초과했습니다."
             )
-        source_path = source_root / relative_path
+        source_path = repository_root / relative_path
         if source_path.is_symlink() or not source_path.is_file():
             raise RuntimeError(f"릴리스 source가 regular file이 아닙니다: {relative_path}")
         resolved_source = source_path.resolve(strict=True)
-        if not resolved_source.is_relative_to(source_root):
+        if not resolved_source.is_relative_to(repository_root):
             raise RuntimeError(
                 f"릴리스 source 경로가 repository 밖입니다: {relative_path}"
             )
@@ -221,7 +227,7 @@ def _copy_verified_worktree_commit(
                 f"{relative_path}"
             )
         target_path.chmod(0o755 if git_mode == 0o100755 else 0o644)
-    _assert_worktree_commit_binding(source_root, commit)
+    _assert_worktree_commit_binding(repository_root, commit)
 
 
 def _build_frontend(snapshot_root: Path, source_root: Path, commit: str) -> None:

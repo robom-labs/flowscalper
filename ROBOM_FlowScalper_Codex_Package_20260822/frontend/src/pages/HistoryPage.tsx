@@ -227,8 +227,12 @@ function collapsePartialExitRows(rows: HistoryRow[]) {
     ...representative,
     entry_ts_ms: entryTsMs,
     exit_ts_ms: Math.max(...rows.map((row) => row.exit_ts_ms)),
-    tp1_hit_ts_ms: tp1HitTsMs,
-    tp2_hit_ts_ms: tp2HitTsMs,
+    ...(representative.tp1_hit_ts_ms === null || representative.tp1_hit_ts_ms === undefined
+      ? {}
+      : { tp1_hit_ts_ms: tp1HitTsMs }),
+    ...(representative.tp2_hit_ts_ms === null || representative.tp2_hit_ts_ms === undefined
+      ? {}
+      : { tp2_hit_ts_ms: tp2HitTsMs }),
     time_to_tp1_ms: tp1HitTsMs === null ? null : Math.max(0, tp1HitTsMs - entryTsMs),
     time_to_tp2_ms: tp2HitTsMs === null ? null : Math.max(0, tp2HitTsMs - entryTsMs),
     time_to_stop_ms: stopHitTsMs === null ? null : Math.max(0, stopHitTsMs - entryTsMs),

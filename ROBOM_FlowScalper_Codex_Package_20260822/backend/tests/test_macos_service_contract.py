@@ -2513,6 +2513,31 @@ def test_verified_worktree_copy_preserves_executable_mode_and_source_commit(
     assert release_command.stat().st_mode & 0o777 == 0o755
 
 
+def test_verified_worktree_copy_resolves_git_root_above_project_directory(
+    tmp_path: Path,
+) -> None:
+    source, _, _, _ = _release_fixture(tmp_path)
+    project = source / "nested-project"
+    project.mkdir()
+    (project / "tracked.txt").write_text("nested project\n", encoding="utf-8")
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "add nested project")
+    commit = _git(source, "rev-parse", "HEAD")
+    destination = tmp_path / "nested-staging"
+    destination.mkdir()
+
+    stage_macos_release_module._copy_verified_worktree_commit(
+        project,
+        commit,
+        destination,
+    )
+
+    assert (destination / "backend.py").read_bytes() == (source / "backend.py").read_bytes()
+    assert (destination / "nested-project" / "tracked.txt").read_text(
+        encoding="utf-8"
+    ) == "nested project\n"
+
+
 def test_verified_worktree_copy_timeout_cleans_staging(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
