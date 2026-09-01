@@ -80,7 +80,7 @@
   "browser_e2e": {
     "status": "PASS",
     "scope": "LOCAL_DEMO_FIXTURE_PLAYWRIGHT",
-    "measured_ts_utc": "2026-09-01T14:34:56.198Z",
+    "measured_ts_utc": "2026-09-01T21:32:22.259Z",
     "measurement_boundary": "브라우저 화면 준비와 DOM 접근성 검증이며 실제 공개시장 서비스 성능은 아닙니다.",
     "projects": {
       "desktop": {
@@ -90,9 +90,9 @@
           "height": 900
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 79.9,
-          "strategy_list_ready_after_keyboard_navigation_ms": 116.5,
-          "selected_strategy_detail_ready_on_demand_ms": 26.6,
+          "first_meaningful_ready_view_ms": 77.7,
+          "strategy_list_ready_after_keyboard_navigation_ms": 69.6,
+          "selected_strategy_detail_ready_on_demand_ms": 22,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -193,9 +193,9 @@
           "height": 1180
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 106.4,
-          "strategy_list_ready_after_keyboard_navigation_ms": 47.5,
-          "selected_strategy_detail_ready_on_demand_ms": 19.3,
+          "first_meaningful_ready_view_ms": 107.6,
+          "strategy_list_ready_after_keyboard_navigation_ms": 44.6,
+          "selected_strategy_detail_ready_on_demand_ms": 23.8,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
@@ -269,9 +269,9 @@
           "height": 844
         },
         "performance": {
-          "first_meaningful_ready_view_ms": 121,
-          "strategy_list_ready_after_keyboard_navigation_ms": 46.6,
-          "selected_strategy_detail_ready_on_demand_ms": 25.4,
+          "first_meaningful_ready_view_ms": 113.5,
+          "strategy_list_ready_after_keyboard_navigation_ms": 40.1,
+          "selected_strategy_detail_ready_on_demand_ms": 24.1,
           "boundary": "로컬 DEMO_FIXTURE에서 heading과 필수 상세값이 visible이 된 시점입니다."
         },
         "accessibility": {
