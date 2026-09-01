@@ -405,6 +405,16 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await expect(page.getByRole('heading', { name: /거래 집중 재생/ })).toBeVisible()
   await expect(page.locator('.replay-trade-list > button')).toHaveCount(1)
   await expect(page.locator('.replay-trade-list > button').first()).toContainText('BTCUSDT')
+  await expect(page.getByRole('list', { name: '재생 진행 단계' })).toBeVisible()
+  await expect(page.locator('.replay-phase-track li').first()).toHaveAttribute('aria-current', 'step')
+  if (testInfo.project.name !== 'desktop') {
+    await expect(page.getByRole('button', { name: '다른 거래 선택' })).toBeVisible()
+    await expect(page.locator('.replay-trade-list')).toBeHidden()
+    await page.getByRole('button', { name: '다른 거래 선택' }).click()
+    await expect(page.locator('.replay-trade-list')).toBeVisible()
+    await page.getByRole('button', { name: '목록 닫기' }).click()
+    await expect(page.locator('.replay-trade-list')).toBeHidden()
+  }
   await expect(page.getByText('왜 진입했나요?')).toBeVisible()
   await expect(page.getByText('체결과 호가 흐름이 진입 방향을 확인했습니다.')).toBeVisible()
   await page.locator('.trade-replay-range input').fill('2')
@@ -425,6 +435,8 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   } else {
     expect(focusChart?.width).toBeGreaterThanOrEqual(280)
     expect(focusChart?.height).toBeGreaterThanOrEqual(340)
+    expect(focusChart?.y).toBeGreaterThanOrEqual(0)
+    expect(focusChart?.y).toBeLessThan(testInfo.project.name === 'mobile' ? 760 : 920)
     await expect(page.locator('.replay-story-grid')).toBeVisible()
     await capture(page, testInfo.project.name, 'position-focus')
   }

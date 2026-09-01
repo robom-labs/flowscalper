@@ -44,6 +44,7 @@ function replayCatalogRows(response: TradesResponse | null) {
 export function TradesPage({ data }: { data: DashboardData }) {
   const [tab, setTab] = useState<TradeTab>('open')
   const [requestedReplayTrade, setRequestedReplayTrade] = useState<HistoryRow | null>(null)
+  const [replayLibraryOpen, setReplayLibraryOpen] = useState(false)
   const [showRunExplorer, setShowRunExplorer] = useState(false)
   const [tradesLoad, setTradesLoad] = useState<{
     runId: string
@@ -185,15 +186,25 @@ export function TradesPage({ data }: { data: DashboardData }) {
       {tab === 'closed' ? <div role="tabpanel" aria-label="완료">{groupedTrades ? <HistoryPage rows={completedRows} counts={groupedTrades.counts} currentRunId={data.status.run_id} openPositionCount={data.focus_positions.length} historyScope={data.history_scope} strategies={data.strategies} providedScope="CURRENT_ALL" onReplay={openReplay} /> : <p className={currentLoad?.state === 'ERROR' ? 'error-banner' : 'bootstrap-state'} role={currentLoad?.state === 'ERROR' ? 'alert' : 'status'}>{currentLoad?.state === 'ERROR' ? '완료 거래를 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.' : '완료 거래를 불러오는 중입니다.'}</p>}</div> : null}
       {tab === 'replay' ? <div role="tabpanel" aria-label="다시보기" className="trade-replay-tab">
         <section className="trade-replay-browser" aria-label="완료 거래 차트 다시보기">
-          <aside className="replay-trade-library">
-            <header><div><p className="section-kicker">완료 거래</p><h3>다시 볼 거래</h3></div><b>{replayRows.length}건</b></header>
+          <aside className={`replay-trade-library${replayLibraryOpen ? ' mobile-open' : ''}`}>
+            <header>
+              <div>
+                <p className="section-kicker">완료 거래</p>
+                <h3>다시 볼 거래</h3>
+                {selectedReplayTrade ? <p className="replay-library-selected">현재 {selectedReplayTrade.symbol} · {sideLabel(selectedReplayTrade.side)} · {exitReasonLabel(selectedReplayTrade.exit_reason)}</p> : null}
+              </div>
+              <div className="replay-library-actions">
+                <b>{replayRows.length}건</b>
+                <button type="button" className="replay-library-toggle" aria-expanded={replayLibraryOpen} aria-controls="replay-trade-list" onClick={() => setReplayLibraryOpen((open) => !open)}>{replayLibraryOpen ? '목록 닫기' : '다른 거래 선택'}</button>
+              </div>
+            </header>
             <p className="replay-library-help">실제 공개시장 PAPER 거래만 최신순으로 보여주며 15초마다 갱신합니다.</p>
             {replayLoad?.state === 'ERROR' ? <p className="replay-library-error" role="alert">목록 자동 갱신을 확인해야 합니다. 이미 불러온 거래는 계속 볼 수 있습니다.</p> : null}
-            <div className="replay-trade-list">
+            <div className="replay-trade-list" id="replay-trade-list">
               {replayRows.map((row) => {
                 const selected = selectedReplayTrade?.trade_id === row.trade_id && selectedReplayTrade.profile === row.profile
                 const name = strategyLabel(data.strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy)
-                return <button type="button" key={`${row.trade_id}:${row.profile}`} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => setRequestedReplayTrade(row)}><span><b>{row.symbol} · {sideLabel(row.side)}</b><small>{name}</small></span><span><b className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</b><small>{exitReasonLabel(row.exit_reason)} · {formatDurationMs(row.holding_ms)}</small></span><time dateTime={new Date(row.entry_ts_ms).toISOString()}>{formatKstDateTime(row.entry_ts_ms)}</time></button>
+                return <button type="button" key={`${row.trade_id}:${row.profile}`} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => { setRequestedReplayTrade(row); setReplayLibraryOpen(false) }}><span><b>{row.symbol} · {sideLabel(row.side)}</b><small>{name}</small></span><span><b className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</b><small>{exitReasonLabel(row.exit_reason)} · {formatDurationMs(row.holding_ms)}</small></span><time dateTime={new Date(row.entry_ts_ms).toISOString()}>{formatKstDateTime(row.entry_ts_ms)}</time></button>
               })}
               {!replayLoad ? <div className="replay-library-empty" role="status"><b>거래 목록을 불러오는 중입니다.</b></div> : null}
               {replayLoad && replayRows.length === 0 ? <div className="replay-library-empty"><b>다시 볼 공개시장 PAPER 거래가 아직 없습니다.</b><span>거래가 종료되면 여기에 자동으로 추가됩니다.</span></div> : null}

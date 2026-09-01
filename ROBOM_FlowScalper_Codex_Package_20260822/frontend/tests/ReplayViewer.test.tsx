@@ -338,6 +338,8 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
 
   const view = render(<ReplayViewer trade={trade} />)
   expect(await screen.findByRole('heading', { name: 'BTCUSDT 거래 집중 재생' })).toBeInTheDocument()
+  expect(screen.getByText('실제 진입 1초 전')).toBeInTheDocument()
+  expect(screen.getByText('진입 전 확인').closest('li')).toHaveAttribute('aria-current', 'step')
   expect(screen.getByText('왜 진입했나요?')).toBeInTheDocument()
   expect(screen.getByText('체결과 호가 흐름이 진입 방향을 확인했습니다.')).toBeInTheDocument()
   expect(screen.getByText('3분봉')).toBeInTheDocument()
@@ -345,7 +347,9 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
   fireEvent.click(screen.getByRole('button', { name: '실제 진입' }))
   view.rerender(<ReplayViewer trade={{ ...trade }} />)
   await waitFor(() => {
-    expect(screen.getByText('PAPER 보유 중')).toBeInTheDocument()
+    expect(screen.getAllByText('PAPER 보유 중')).toHaveLength(2)
+    expect(screen.getByText('진입 후 0초')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: '재생 진행 단계' }).querySelectorAll('li')[1]).toHaveAttribute('aria-current', 'step')
     expect(focusRequests).toBe(1)
   })
   fireEvent.click(screen.getByText('세부 원장·비용·검증 정보'))
@@ -358,6 +362,8 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
   fireEvent.click(screen.getByRole('button', { name: '실제 종료' }))
   await waitFor(() => {
     expect(screen.getByTestId('replay-chart')).toHaveAttribute('data-candle-count', '2')
+    expect(screen.getByText('1초 보유 후 가격·근거 동시 악화')).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: '재생 진행 단계' }).querySelectorAll('li')[2]).toHaveAttribute('aria-current', 'step')
     expect(screen.getByText('진입 수수료').parentElement).toHaveTextContent('0.3 USDT')
     expect(screen.getByText('종료 수수료').parentElement).toHaveTextContent('0.2 USDT')
     expect(screen.getByText('예상 종료비').parentElement).toHaveTextContent('0.00 USDT')

@@ -129,6 +129,12 @@ function quote(event: ReplayMarketEvent | undefined) {
   return bid !== null && ask !== null ? { bid, ask } : null
 }
 
+function revealReplayChart(element: HTMLDivElement | null) {
+  if (!element || typeof element.scrollIntoView !== 'function') return
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  window.requestAnimationFrame(() => element.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' }))
+}
+
 export function ReplayViewer({ trade, strategies = [] }: Props) {
   const [runs, setRuns] = useState<ReplayRun[]>([])
   const [results, setResults] = useState<ReplayResult[]>([])
@@ -151,6 +157,7 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
   const clockRef = useRef<ReplayClock<ReplayFocusFrame> | null>(null)
   const previewRequestRef = useRef(0)
   const previewAbortRef = useRef<AbortController | null>(null)
+  const replayChartStageRef = useRef<HTMLDivElement | null>(null)
   const result = useMemo(
     () => running
       ? null
@@ -348,12 +355,19 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
     if (!focusSession) { clockRef.current = null; return }
     clockRef.current = new ReplayClock(focusSession.frames, (_frame, index, completed) => {
       setCursor(index)
-      if (completed) setPlaying(false)
+      if (completed) {
+        setPlaying(false)
+        revealReplayChart(replayChartStageRef.current)
+      }
     })
     // 긴 무거래 구간도 버튼이 멈춘 것처럼 보이지 않도록 프레임 간 대기를 최대 1초(5배속 기준)로 압축한다.
     clockRef.current.setMaximumFrameGap(5_000)
     clockRef.current.setSpeed(focusSession.default_speed)
     return () => clockRef.current?.dispose()
+  }, [focusSession])
+
+  useEffect(() => {
+    if (focusSession) revealReplayChart(replayChartStageRef.current)
   }, [focusSession])
 
   useEffect(() => {
@@ -564,6 +578,10 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       setCursor(bounded)
       setPlaying(false)
     }
+    const jumpTo = (index: number) => {
+      seek(index)
+      revealReplayChart(replayChartStageRef.current)
+    }
     const togglePlayback = () => {
       if (playing) {
         clockRef.current?.pause()
@@ -574,6 +592,7 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
         clockRef.current?.seek(0)
         setCursor(0)
       }
+      revealReplayChart(replayChartStageRef.current)
       clockRef.current?.play()
       setPlaying(true)
     }
@@ -600,6 +619,11 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       : currentFocusFrame.phase === 'OPEN'
         ? 'PAPER 보유 중'
         : planVisible ? '진입 계획 확정' : '진입 전 흐름'
+    const sceneTimingLabel = currentFocusFrame.phase === 'CLOSED'
+      ? `${formatDurationMs(focusSession.exit_ts_ms - focusSession.entry_ts_ms)} 보유 후 ${exitReasonLabel(trade.exit_reason)}`
+      : currentFocusFrame.phase === 'OPEN'
+        ? `진입 후 ${formatDurationMs(Math.max(0, currentFocusFrame.ts_ms - focusSession.entry_ts_ms))}`
+        : `실제 진입 ${formatDurationMs(Math.max(0, focusSession.entry_ts_ms - currentFocusFrame.ts_ms))} 전`
     const entryReasons = context?.reason_labels_ko.length
       ? context.reason_labels_ko
       : ['이 거래의 세부 진입 근거 설명은 과거 원장에 남아 있지 않습니다.']
@@ -617,24 +641,30 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
         <span className="stop"><small>초기 손절</small><b>{formatPrice(focusSession.levels.initial_stop)}</b></span>
         <span><small>현재 재생 손익</small><b className={currentNet >= 0 ? 'positive' : 'negative'}>{entered ? formatUsdt(currentNet, { signed: true }) : '진입 전'}</b></span>
       </div>
-      <div className="trade-replay-chart-stage">
+      <div className="replay-scene-caption" aria-live="polite"><span>현재 장면</span><strong>{stageLabel}</strong><b>{sceneTimingLabel}</b><time dateTime={new Date(currentFocusFrame.ts_ms).toISOString()}>{formatKstDateTime(currentFocusFrame.ts_ms)}</time></div>
+      <ol className="replay-phase-track" aria-label="재생 진행 단계">
+        <li className={currentFocusFrame.phase === 'PRE_ENTRY' ? 'current' : 'done'} aria-current={currentFocusFrame.phase === 'PRE_ENTRY' ? 'step' : undefined}><span>1</span><div><b>진입 전 확인</b><time dateTime={new Date(focusSession.start_ts_ms).toISOString()}>{formatKstDateTime(focusSession.start_ts_ms)}</time></div></li>
+        <li className={currentFocusFrame.phase === 'OPEN' ? 'current' : currentFocusFrame.phase === 'CLOSED' ? 'done' : ''} aria-current={currentFocusFrame.phase === 'OPEN' ? 'step' : undefined}><span>2</span><div><b>PAPER 진입</b><time dateTime={new Date(focusSession.entry_ts_ms).toISOString()}>{formatKstDateTime(focusSession.entry_ts_ms)}</time></div></li>
+        <li className={currentFocusFrame.phase === 'CLOSED' ? 'current' : ''} aria-current={currentFocusFrame.phase === 'CLOSED' ? 'step' : undefined}><span>3</span><div><b>{exitReasonLabel(trade.exit_reason)}</b><time dateTime={new Date(focusSession.exit_ts_ms).toISOString()}>{formatKstDateTime(focusSession.exit_ts_ms)}</time></div></li>
+      </ol>
+      <div className="trade-replay-chart-stage" ref={replayChartStageRef}>
         <PriceChart chart={focusChart} overlay={focusOverlay} replayMilestones={currentFocusFrame.markers} replay />
-      </div>
-      <div className="trade-replay-controls" aria-label="거래 재생 제어">
-        <div className="replay-main-controls">
-          <button type="button" className="secondary-button" onClick={() => seek(0)}>처음부터</button>
-          <button type="button" className="secondary-button" disabled={cursor === 0} onClick={() => seek(previousKey)}>이전 장면</button>
+        <div className="replay-main-controls" aria-label="차트 재생 제어">
+          <button type="button" className="secondary-button" onClick={() => jumpTo(0)}>처음부터</button>
+          <button type="button" className="secondary-button" disabled={cursor === 0} onClick={() => jumpTo(previousKey)}>이전 장면</button>
           <button type="button" className="primary-button replay-play-button" onClick={togglePlayback}>{playbackLabel}</button>
-          <button type="button" className="secondary-button" disabled={cursor >= focusSession.frames.length - 1} onClick={() => seek(nextKey)}>다음 장면</button>
+          <button type="button" className="secondary-button" disabled={cursor >= focusSession.frames.length - 1} onClick={() => jumpTo(nextKey)}>다음 장면</button>
           <label>재생 속도<select aria-label="재생 속도" value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{focusSession.speeds.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
         </div>
+      </div>
+      <div className="trade-replay-controls" aria-label="거래 재생 위치와 핵심 장면">
         <label className="trade-replay-range"><span>재생 위치</span><input aria-label="재생 위치" type="range" min="0" max={Math.max(0, focusSession.frames.length - 1)} value={cursor} onChange={(event) => seek(Number(event.target.value))} /><b>{cursor + 1} / {focusSession.frames.length}</b></label>
         <nav className="trade-replay-jumps" aria-label="핵심 장면 바로가기">
-          <button type="button" disabled={signalIndex < 0} onClick={() => seek(signalIndex)}>진입 신호</button>
-          <button type="button" disabled={entryIndex < 0} onClick={() => seek(entryIndex)}>실제 진입</button>
-          <button type="button" disabled={tp1Index < 0} onClick={() => seek(tp1Index)}>1차 목표</button>
-          <button type="button" disabled={tp2Index < 0} onClick={() => seek(tp2Index)}>2차 목표</button>
-          <button type="button" disabled={exitIndex < 0} onClick={() => seek(exitIndex)}>실제 종료</button>
+          <button type="button" disabled={signalIndex < 0} onClick={() => jumpTo(signalIndex)}>진입 신호</button>
+          <button type="button" disabled={entryIndex < 0} onClick={() => jumpTo(entryIndex)}>실제 진입</button>
+          <button type="button" disabled={tp1Index < 0} onClick={() => jumpTo(tp1Index)}>1차 목표</button>
+          <button type="button" disabled={tp2Index < 0} onClick={() => jumpTo(tp2Index)}>2차 목표</button>
+          <button type="button" disabled={exitIndex < 0} onClick={() => jumpTo(exitIndex)}>실제 종료</button>
         </nav>
       </div>
       <section className="replay-story-grid" aria-label="거래 설명">

@@ -1,0 +1,74 @@
+{
+  "wave": 148,
+  "created_at_kst": "2026-09-02T08:53:08+09:00",
+  "status": "SOURCE_PREVIEW_PASS_INSTALL_NOT_RUN",
+  "scope": "COMPLETED_LIVE_PUBLIC_PAPER_TRADE_REPLAY_UI",
+  "source_head_before_change": "fdd5c19b90b719f2bd79f9d47d0812d049eed5af",
+  "actual_backend": "http://127.0.0.1:8870",
+  "source_preview": "http://127.0.0.1:8873",
+  "paper_safety": {
+    "strategy_rules_changed": false,
+    "entry_rules_changed": false,
+    "execution_rules_changed": false,
+    "private_api_added": false,
+    "real_orders_added": false,
+    "api_keys_added": false,
+    "wallet_paths_added": false
+  },
+  "tests": {
+    "replay_viewer_vitest": { "status": "PASS", "tests": 8 },
+    "frontend_vitest": { "status": "PASS", "files": 15, "tests": 119 },
+    "eslint": { "status": "PASS" },
+    "typescript": { "status": "PASS" },
+    "vite_build": { "status": "PASS", "modules": 54 },
+    "replay_focus_and_fixture_backend": { "status": "PASS", "tests": 50 },
+    "fixture_playwright_new_regression": { "status": "NOT_RUN" }
+  },
+  "browser_observation": {
+    "status": "PASS_OBSERVED_SOURCE_PREVIEW",
+    "viewport_css_px": { "width": 1280, "height": 720 },
+    "completed_trade_catalog_count": 54,
+    "selected_trade": {
+      "symbol": "HYPEUSDT",
+      "profile": "BASE",
+      "frames": 41,
+      "played_from": 1,
+      "played_to": 3,
+      "entry_frame": 7,
+      "exit_frame": 41,
+      "entry_ts_kst": "2026-09-01 23:30:05 KST",
+      "exit_ts_kst": "2026-09-02 01:10:02 KST",
+      "holding_label": "1.7시간",
+      "exit_reason_ko": "손절",
+      "net_pnl_usdt": "-3.56"
+    },
+    "layout_before": {
+      "chart_top_px": 467,
+      "chart_bottom_px": 1034.5,
+      "controls_top_px": 1042.5
+    },
+    "layout_after": {
+      "chart_top_px": 104,
+      "chart_bottom_px": 671.5,
+      "chart_width_px": 878,
+      "chart_height_px": 567.5,
+      "replay_overlay_top_px": 599.5,
+      "replay_overlay_bottom_px": 661.5,
+      "advanced_run_top_px": 732,
+      "chart_advanced_run_overlap": false,
+      "horizontal_overflow": false
+    },
+    "screenshots_preview_only": [
+      "artifacts/ui-audit/wave148-replay/06-desktop-chart-centered-fixed.png",
+      "artifacts/ui-audit/wave148-replay/07-desktop-replay-progress.png",
+      "artifacts/ui-audit/wave148-replay/08-desktop-replay-entry.png",
+      "artifacts/ui-audit/wave148-replay/09-desktop-replay-exit.png"
+    ]
+  },
+  "installation": { "status": "NOT_RUN" },
+  "github": { "status": "NOT_RUN" },
+  "long_run_6h": "NOT_RUN",
+  "long_run_24h": "NOT_RUN",
+  "profitability": "NOT_PROVEN",
+  "real_money_readiness": "NOT_READY"
+}

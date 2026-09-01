@@ -847,3 +847,24 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   Ruff·mypy·ESLint·TypeScript·build·PAPER safety·security·저장소 위생·회귀계약을 통과했다.
 - 증거는 `evidence/WAVE147_PROCESS_CANDLE_IPC_*.json`에 보존한다. 6시간·24시간은 `NOT_RUN`,
   수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+## Wave 148 비디오형 차트 중심 거래 다시보기
+
+- 완료 `LIVE_PUBLIC` PAPER 거래를 고르면 신호 전 완성 차트를 즉시 화면 중심에
+  맞춘다. 재생·이전·다음·신호·진입·종료 이동도 같은 차트 중심 화면을 유지한다.
+- 재생·이전·다음·속도 조작을 차트 안의 반투명 영상형 조작부로 옮기고 재생 위치와
+  핵심 장면 바로가기는 차트 바로 아래에 둔다.
+- 진입 전 확인·PAPER 진입·실제 종료를 3단계로 보여 주고, 현재 장면의 KST 시각,
+  진입 전/후 경과, 총 보유시간과 종료 사유를 한 줄로 표시한다.
+- 데스크톱은 거래 목록·차트 2단을 유지하고, 900px 이하는 선택된 거래 요약만
+  남기며 목록을 접는다. `다른 거래 선택`으로만 제한된 높이의 목록을 연다.
+- 고정 높이의 다시보기 영역과 아래 `저장 Run 직접 확인하기` 영역이 차트를 가리던
+  겹침을 재현하고 데스크톱 작업 영역을 720px로 분리해 제거한다.
+- 신호, 진입, TP1·TP2, 초기 SL, 실제 종료는 현재 재생 커서가 도달한 것만 표시하는
+  기존 no-lookahead 계약을 유지한다. 전략·진입·비용·수량·TP·SL·PAPER 체결은 변경하지 않는다.
+- 자동 검증은 frontend 119건, replay·fixture backend 50건, ESLint·TypeScript·build를 먼저
+  통과했다. 실제 공개시장 PAPER 원장을 연결한 8873 source preview에서 완료 거래
+  54건, HYPEUSDT 1/41→3/41 재생, 7/41 실제 진입, 41/41 실제 종료와 시각·보호가·
+  결과를 확인했다.
+- 불변 설치·실제 8870 재확인·GitHub Actions는 source commit 후 실행하며, 실행 전에는
+  `NOT_RUN`으로 유지한다. 6시간·24시간과 수익성은 각각 `NOT_RUN`·`NOT_PROVEN`이다.
