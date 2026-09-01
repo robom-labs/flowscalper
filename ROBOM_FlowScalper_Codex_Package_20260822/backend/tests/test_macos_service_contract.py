@@ -2532,10 +2532,9 @@ def test_verified_worktree_copy_resolves_git_root_above_project_directory(
         destination,
     )
 
-    assert (destination / "backend.py").read_bytes() == (source / "backend.py").read_bytes()
-    assert (destination / "nested-project" / "tracked.txt").read_text(
-        encoding="utf-8"
-    ) == "nested project\n"
+    assert not (destination / "backend.py").exists()
+    assert not (destination / "nested-project").exists()
+    assert (destination / "tracked.txt").read_text(encoding="utf-8") == "nested project\n"
 
 
 def test_verified_worktree_copy_timeout_cleans_staging(

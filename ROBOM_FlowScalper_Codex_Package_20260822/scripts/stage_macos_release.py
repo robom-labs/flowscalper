@@ -178,16 +178,24 @@ def _copy_verified_worktree_commit(
 ) -> None:
     """현재 commit의 regular file만 작업트리에서 blob 검증하며 직접 복사한다."""
 
+    source_root = source_root.resolve(strict=True)
     repository_root = Path(
         _run_git(source_root, "rev-parse", "--show-toplevel")
     ).resolve(strict=True)
+    if not source_root.is_relative_to(repository_root):
+        raise RuntimeError("릴리스 source가 Git repository 밖입니다.")
+    source_prefix = source_root.relative_to(repository_root)
     _assert_worktree_commit_binding(repository_root, commit)
     destination_root = destination.resolve(strict=True)
     deadline = time.monotonic() + WORKTREE_COPY_TIMEOUT_SECONDS
+    copied_file_count = 0
     for relative_path, expected_object_id, git_mode in _commit_tree_entries(
         repository_root,
         commit,
     ):
+        if not relative_path.is_relative_to(source_prefix):
+            continue
+        release_relative_path = relative_path.relative_to(source_prefix)
         if time.monotonic() >= deadline:
             raise TimeoutError(
                 f"검증된 작업트리 복사가 {WORKTREE_COPY_TIMEOUT_SECONDS}초를 초과했습니다."
@@ -204,11 +212,13 @@ def _copy_verified_worktree_commit(
         digest = hashlib.sha1(usedforsecurity=False)
         digest.update(f"blob {source_size}\0".encode("ascii"))
         copied_size = 0
-        target_path = destination_root / relative_path
+        target_path = destination_root / release_relative_path
         target_path.parent.mkdir(parents=True, exist_ok=True)
         resolved_target = target_path.resolve(strict=False)
         if not resolved_target.is_relative_to(destination_root):
-            raise RuntimeError(f"릴리스 대상 경로가 staging 밖입니다: {relative_path}")
+            raise RuntimeError(
+                f"릴리스 대상 경로가 staging 밖입니다: {release_relative_path}"
+            )
         with source_path.open("rb") as source, target_path.open("xb") as target:
             while True:
                 if time.monotonic() >= deadline:
@@ -227,6 +237,9 @@ def _copy_verified_worktree_commit(
                 f"{relative_path}"
             )
         target_path.chmod(0o755 if git_mode == 0o100755 else 0o644)
+        copied_file_count += 1
+    if copied_file_count == 0:
+        raise RuntimeError("릴리스 source에 commit으로 추적된 파일이 없습니다.")
     _assert_worktree_commit_binding(repository_root, commit)
 
 
