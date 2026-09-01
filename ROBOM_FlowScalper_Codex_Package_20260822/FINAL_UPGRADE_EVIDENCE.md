@@ -5015,6 +5015,12 @@ revision 69→70으로 해제한 뒤 `RUNNING`·`ENTRY_ENABLED`·10배·최대 1
 시각만 지나면 아직 완성되지 않은 OHLC가 보일 수 있던 경계를 각 interval의 실제 close 시각으로
 바꿔 replay look-ahead를 막았다.
 
+실제 API를 연결한 새 화면에서 재생 중 15초 catalog refresh가 선택 거래 객체를 교체하면서
+재생 커서를 첫 장면으로 되돌리는 결함도 재현했다. replay focus 의존성을 Run·trade·profile의
+안정적인 식별자로 고정하고 첫 선택만 함수형 상태 갱신으로 수행했다. 같은 거래를 새 객체로 다시
+전달하는 회귀에서 focus 요청은 1회, 재생 커서는 열린 장면을 유지했고 실제 브라우저에서도
+16.5초 갱신 전후 5번째 장면이 그대로 유지됐다.
+
 ### 108.2 이번 source·fixture 검증
 
 | 검증 | 상태 | 이번 실행 결과 |
@@ -5027,6 +5033,7 @@ revision 69→70으로 해제한 뒤 `RUNNING`·`ENTRY_ENABLED`·10배·최대 1
 | fixture Playwright | `PASS` | desktop·tablet·mobile 7 PASS·2 설계상 SKIP |
 | PAPER build safety·security | `PASS` | security 162 source·실제주문 경로·위반·secret 0 |
 | repository hygiene·회귀계약 | `PASS` | hygiene PASS·30개 계약·59개 anchor PASS |
+| GitHub Actions | `PASS` | source `8d7a586ccf5e1af498f550a68d2feead2870d435`·run `33523571757` validate·browser 성공 |
 | fixture 스크린샷 육안 | `PASS_FIXTURE_ONLY` | 목록·큰 차트·시점 이동·이유·시각·결과·모바일 세로 배치 확인 |
 | 실제 8870 설치·브라우저 | `NOT_RUN` | 현재 같은 Run의 PAPER 포지션 2개가 자연 보호 중이라 강제 종료하지 않음 |
 

@@ -830,14 +830,18 @@ so profitability remains NOT_PROVEN and 6h/24h remain NOT_RUN.
    exit, holding duration, simple entry reasons and final result.
 6. Keep desktop as a stable list/chart split and stack it responsively on tablet and mobile without
    root horizontal overflow. Load the replay catalog only while its tab is active.
-7. Run backend, frontend, fixture API, desktop/tablet/mobile browser, lint, typecheck, build, PAPER
+7. Keep replay focus keyed by stable Run, trade and profile identifiers so the 15-second catalog
+   refresh cannot reset an actively playing trade to its first frame.
+8. Run backend, frontend, fixture API, desktop/tablet/mobile browser, lint, typecheck, build, PAPER
    safety, security, hygiene and regression-contract checks.
-8. Do not install while a PAPER position is open. After natural flat, install one committed immutable
+9. Do not install while a PAPER position is open. After natural flat, install one committed immutable
    release into the same Run and repeat the actual 8870 browser journey before final evidence.
-9. Keep actual orders, private APIs, authentication, API keys, secrets, wallets and runtime AI order
+10. Keep actual orders, private APIs, authentication, API keys, secrets, wallets and runtime AI order
    decisions absent. Keep profitability `NOT_PROVEN` and 6h/24h `NOT_RUN` unless independently observed.
 
-Source and fixture validation is complete. Actual immutable installation and browser verification remain
+Source and fixture validation is complete at
+`8d7a586ccf5e1af498f550a68d2feead2870d435`. GitHub Actions run `33523571757`
+passed both validate and browser jobs. Actual immutable installation and browser verification remain
 `NOT_RUN` while two PAPER positions are naturally protected; no position is force-closed for deployment.
 
 ## Wave 135 전략 결과표·정렬·홈 이동

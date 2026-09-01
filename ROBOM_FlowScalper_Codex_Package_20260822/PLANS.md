@@ -804,6 +804,12 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - backend 전체 1,541건, frontend 119건, fixture API 37건, fixture Playwright 7 PASS·2 설계상
   SKIP, Ruff·mypy·ESLint·TypeScript·build·PAPER safety·security·저장소 위생·30개 회귀계약을
   통과했다.
+- 실제 API를 연결한 새 화면에서 완료 거래 53개와 재생 제어를 확인했다. 이 과정에서 15초
+  목록 갱신이 선택 거래 객체를 새로 만들어 재생 커서를 첫 장면으로 되돌리는 결함을 찾아,
+  안정적인 Run·trade·profile 식별자를 기준으로 replay focus를 유지하도록 수정했다. 같은 거래
+  객체를 복제해 전달해도 focus 요청 1회와 재생 위치가 유지되는 frontend 회귀를 추가했다.
+- source commit `8d7a586ccf5e1af498f550a68d2feead2870d435`의 GitHub Actions
+  `33523571757`은 validate와 browser job이 모두 PASS했다.
 - 실제 8870 설치와 브라우저 검증은 현재 2개 PAPER 포지션이 자연 종료되기 전까지 `NOT_RUN`이다.
   포지션을 강제 종료하지 않으며 flat이 된 뒤 같은 Run의 불변 릴리스로 설치해 완료한다.
 - 화면 완료는 수익성 증거가 아니다. 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금
