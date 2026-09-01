@@ -118,7 +118,7 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 
 1. Keep the existing Registry, PAPER execution, risk, storage and replay engines. Add one read-only full-market explorer around public Binance and Upbit endpoints.
 2. Use the five-group compact shell and fixed market rail/chart workspace. Default to 3-minute candles, MA10/MA20 and volume overlay.
-3. Maintain wide 50 and deep 12 with dwell, protected symbols and bounded rotation; append every selected universe snapshot.
+3. Maintain bounded wide 80 and mixed deep 16 with dwell, protected symbols and bounded rotation; append every selected universe snapshot and its selection policy.
 4. Publish strategy×symbol analytics only from completed ledger trades and withhold ranking below 30 samples.
 5. Normalize main and BASE/STRESS positions into `focus_positions`. Auto focus only a newly observed actual `trade_id` fill and persist the user's focus lock.
 6. Build trade-centered replay from stored public events. Bound frames at 50,000, preserve state transitions, hide future markers and use timestamp-based 0.5x–80x playback.
@@ -170,7 +170,7 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 ## Bounded LIVE processing and dashboard statistics Wave
 
 1. Keep the 500ms per-symbol strategy contract and every strict signal, cost, TP, SL and risk gate unchanged.
-2. Use the product requirement's 8–12 machine-health range and subscribe to 12 deep symbols while preserving the 50-symbol wide scan, protected positions and bounded rotation.
+2. Preserve the historical 50/12 result in ADR-025, then apply ADR-134's staged 80-wide and 16-deep profile only when its installed-service capacity gate passes. Keep protected positions and bounded rotation.
 3. Recompute current-version strategy statistics only when a completed independent PAPER trade changes; reuse the immutable report between dashboard frames.
 4. Project only the most recent 512 in-memory events into the live dashboard while retaining the full bounded 10,000-event runtime window for execution and diagnostics.
 5. Measure actual dashboard response time, event lag, queue, reconnect, drop, gap, persistence fault and browser frame stability after restarting the served build.

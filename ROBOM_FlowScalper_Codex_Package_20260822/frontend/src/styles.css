@@ -457,7 +457,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .nav-button { min-width: 72px; min-height: 48px; padding: 0 12px; border-radius: 6px; font-size: 11px; }
 .nav-button.active { color: #dff8f1; border-bottom: 2px solid var(--mint); background: #10252c; }
 .market-workspace { display: flex; height: calc(100vh - 48px); min-height: 520px; flex-direction: column; gap: 6px; overflow: hidden; padding: 8px 12px 12px; }
-.market-summary { display: grid; flex: 0 0 auto; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.market-summary { display: grid; flex: 0 0 auto; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
 .market-summary article { min-width: 0; border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; background: #09151c; }
 .market-summary span { display: block; color: #7893a2; font-size: 8px; }
 .market-summary b { display: block; margin-top: 3px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -652,7 +652,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .nav-button { min-width: 62px; min-height: 48px; flex: 1; }
   .header-action { min-height: 48px; }
   .market-workspace { height: calc(100vh - 96px); padding: 6px 8px 8px; }
-  .market-summary { grid-template-columns: repeat(5, minmax(92px, 1fr)); overflow-x: auto; }
+  .market-summary { grid-template-columns: repeat(6, minmax(92px, 1fr)); overflow-x: auto; }
   .settings-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-notice { position: static; width: 100%; max-width: none; flex: 0 0 auto; justify-content: space-between; }
   .open-position-strip > strong { display: none; }

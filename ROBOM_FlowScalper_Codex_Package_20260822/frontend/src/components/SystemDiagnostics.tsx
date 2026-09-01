@@ -94,7 +94,7 @@ export function SystemDiagnostics({ data, connected, lastUpdateMs }: Props) {
       <div className="page-heading"><div><p className="section-kicker">SYSTEM STATUS</p><h2 id="system-heading">시스템 상태</h2><p className="heading-help">시장 연결, 시간, 저장공간, 자동 재연결 상태를 확인합니다.</p></div><span className="page-note">로그인 정보 전송 {data.system.auth_headers ? '감지됨' : '0건'}</span></div>
       <section className="system-summary-grid">
         <article className="panel"><span>시장데이터</span><b className={healthy ? 'positive' : 'warning'}>{marketStatusTitle}</b><small>{data.status.mode === 'DEMO_FIXTURE' ? '오프라인 DEMO · LIVE 아님' : data.status.venue}</small></article>
-        <article className="panel"><span>감시 / 정밀 분석</span><b>{data.status.wide_symbols} / {data.status.deep_symbols}종목</b><small>넓게 감시한 뒤 상위 종목을 정밀 분석</small></article>
+        <article className="panel"><span>감시 / 정밀 분석</span><b>{data.status.wide_symbols} / {data.status.deep_symbols}종목</b><small>거래대금 핵심과 상승·하락 변동 기회를 함께 분석</small></article>
         <article className="panel"><span>실제 호가 / 체결 지연 p95</span><b>{bookLag.toFixed(0)} / {tradeLag.toFixed(0)}ms</b><small>신규 진입은 실제 호가 지연으로 안전 판단</small></article>
         <article className="panel"><span>현재 시각 KST</span><b title={lastUpdateMs ? formatKstDateTime(lastUpdateMs) : undefined}>{lastUpdateMs ? formatKstTime(lastUpdateMs) : '대기 중'}</b><small>{connected ? `실시간 연결 · 서버 ${clockDeltaMs === null ? '동기 확인 중' : `${clockDeltaMs.toFixed(0)}ms 차이`} · ${venueClockText}` : '자동 재연결 중'}</small></article>
         <article className="panel"><span>비정상 재연결 / 누락</span><b>{reconnects} / {gaps}건</b><small>정상 연결 교체 {plannedRotations}회 · 누락 시 신규 PAPER 진입 잠금</small></article>

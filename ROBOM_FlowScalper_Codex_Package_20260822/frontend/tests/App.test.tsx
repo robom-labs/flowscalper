@@ -305,11 +305,14 @@ test('keeps the market rail to ten deep symbols until search or 전체보기 exp
   }
   render(<MarketPage data={{ ...initialDashboard, scanner, status: { ...initialDashboard.status, deep_symbols: scanner.length } }} {...handlers} />)
 
+  expect(screen.getByText('넓게 감시 / 정밀분석')).toBeInTheDocument()
+  expect(screen.getByText(`${initialDashboard.status.wide_symbols} / ${scanner.length}개`)).toBeInTheDocument()
   const rail = screen.getByRole('complementary', { name: '전체 종목 탐색' })
   await within(rail).findByRole('button', { name: '전체보기' })
   expect(rail.querySelectorAll('.market-row')).toHaveLength(10)
   expect(rail.querySelector('.market-list-virtual')).toHaveStyle({ height: '520px' })
   expect(within(rail).getByText('ASSET025/USDT')).toBeInTheDocument()
+  expect(within(rail).getAllByText('전략 후보', { exact: false }).length).toBeGreaterThan(0)
   expect(within(rail).getByText('ASSET035/USDT')).toBeInTheDocument()
   expect(within(rail).queryByText('ASSET050/USDT')).not.toBeInTheDocument()
 

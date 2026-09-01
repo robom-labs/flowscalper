@@ -28,6 +28,16 @@ def _positive_decimal(value: object, field: str) -> Decimal:
     return number
 
 
+def _finite_decimal(value: object, field: str) -> Decimal:
+    try:
+        number = Decimal(str(value))
+    except Exception as exc:
+        raise BybitProtocolError(f"{field} 숫자가 잘못되었습니다.") from exc
+    if not number.is_finite():
+        raise BybitProtocolError(f"{field}는 유한한 숫자여야 합니다.")
+    return number
+
+
 class BybitPublicAdapter:
     venue = Venue.BYBIT_LINEAR
 
@@ -122,4 +132,8 @@ class BybitPublicAdapter:
             ask=_positive_decimal(item["ask1Price"], "ask1Price"),
             quote_turnover_24h=_positive_decimal(item["turnover24h"], "turnover24h"),
             trade_count_24h=0,
+            price_change_percent_24h=(
+                _finite_decimal(item.get("price24hPcnt", "0"), "price24hPcnt")
+                * Decimal("100")
+            ),
         )

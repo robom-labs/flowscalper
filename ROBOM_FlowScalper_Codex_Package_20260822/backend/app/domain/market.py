@@ -30,6 +30,7 @@ class Ticker:
     ask: Decimal
     quote_turnover_24h: Decimal
     trade_count_24h: int
+    price_change_percent_24h: Decimal = Decimal("0")
 
     @property
     def mid(self) -> Decimal:

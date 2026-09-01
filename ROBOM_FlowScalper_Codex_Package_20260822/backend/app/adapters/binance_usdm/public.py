@@ -32,6 +32,16 @@ def _positive_decimal(value: object, field: str) -> Decimal:
     return number
 
 
+def _finite_decimal(value: object, field: str) -> Decimal:
+    try:
+        number = Decimal(str(value))
+    except Exception as exc:
+        raise BinanceProtocolError(f"{field} 숫자가 잘못되었습니다.") from exc
+    if not number.is_finite():
+        raise BinanceProtocolError(f"{field}는 유한한 숫자여야 합니다.")
+    return number
+
+
 def _filter_value(filters: list[dict[str, Any]], name: str, field: str) -> object:
     for item in filters:
         if item.get("filterType") == name:
@@ -143,6 +153,10 @@ class BinancePublicAdapter:
             ask=_positive_decimal(item["askPrice"], "askPrice"),
             quote_turnover_24h=_positive_decimal(item["quoteVolume"], "quoteVolume"),
             trade_count_24h=int(item.get("count", 0)),
+            price_change_percent_24h=_finite_decimal(
+                item.get("priceChangePercent", "0"),
+                "priceChangePercent",
+            ),
         )
 
 

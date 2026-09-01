@@ -383,7 +383,8 @@ async def test_cancel_during_supervisor_start_leaves_no_tasks(monkeypatch) -> No
         }
     ]
     assert leaked == []
-    assert [options["deep_max"] for options in provider_options] == [12, 12]
+    assert [options["wide_max"] for options in provider_options] == [80, 80]
+    assert [options["deep_max"] for options in provider_options] == [16, 16]
     assert runtime.paused is True
     assert runtime.market_data_state.value != "LIVE"
 

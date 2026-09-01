@@ -118,7 +118,8 @@ Codex must produce an acceptance matrix and evidence for every item.
 - [ ] Exactly four primary pages, `시장`, `전략`, `거래`, `설정`, with market as default and no obsolete secondary route.
 - [ ] Binance active USDT perpetual full catalog and Upbit KRW observation-only full catalog work without authentication.
 - [ ] Default 3-minute candles count 200 with MA10, MA20 and volume; RSI/MACD add and remove real panes without resizing the chart.
-- [ ] Wide 50+ and deep 12 remain bounded; rotation protects pin/open/pending symbols and appends snapshots.
+- [ ] Wide 80 and deep 16 remain bounded; deep contains an eight-symbol liquidity core plus eight absolute 24-hour-movement opportunities, and rotation protects pin/open/pending symbols and appends the selection policy to snapshots.
+- [ ] The installed 80/16 service completes the ADR-134 five-minute capacity gate; otherwise the same Wave preserves the failure and returns to the proven 50/12 profile.
 - [ ] Strategy×symbol report withholds rank below 30 samples and includes expectancy, PF, costs, drawdown and sample status.
 - [ ] Actual fills, not candidates or pending entries, trigger focus. BASE priority, focus lock, selector and 15-second closed review work.
 - [ ] Focus shows actual entry, initial/current stop, TP1/TP2, quantities, planned loss, fee/slippage, net PnL, equity, stage and data health.

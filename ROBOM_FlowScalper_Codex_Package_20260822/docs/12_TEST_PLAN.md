@@ -162,7 +162,9 @@ Results: PASS, FAIL, or NOT_RUN with reason.
 
 Initial targets on a reasonable desktop:
 
-- 50 wide symbols and 10 deep symbols with no critical-lag interval left entry-enabled;
+- 80 wide symbols and exactly 16 mixed deep symbols with no critical-lag interval left entry-enabled;
+- the deep set contains an eight-symbol liquidity core and up to eight non-duplicate absolute 24-hour-movement opportunities while preserving pinned/open/pending symbols;
+- executable and trade p95 remain at most 500ms, process CPU remains below 80 percent, and the strategy-evaluation backpressure skip ratio remains below 1 percent in the post-release five-minute capacity gate;
 - UI update throttled independently from strategy event rate;
 - changing from an old Run to READY or a fresh Run clears the old PAPER-entry toast and focused-position review;
 - bounded queue memory;
@@ -178,6 +180,8 @@ Executable soak commands:
 The 30-minute run is the automated acceptance smoke. The 6-hour and 24-hour commands use the same assertions and must be reported `NOT_RUN` rather than inferred when wall-clock execution is unavailable.
 
 The public-event lag threshold remains 1,500ms. Because an exchange or network can exceed it independently of local queue health, the soak must preserve the maximum and count of critical samples, prove zero fail-open samples, and finish either below the threshold or with both supervisor and runtime entry-locked. Queue overflow, dropped events, unbounded memory, or an unlocked critical-lag sample still fails the run.
+
+The first 80/16 release must also complete a real installed-service five-minute capacity gate with zero unplanned reconnects, gaps, resyncs, event drops, persistence faults and buffer drops. If any local capacity criterion fails, restore 50/12 in the same Wave and preserve the failed 80/16 evidence. Six-hour and 24-hour status remains `NOT_RUN` until the exact wall-clock observations complete.
 
 ## 12.14 Phase 02 control and UI regression
 

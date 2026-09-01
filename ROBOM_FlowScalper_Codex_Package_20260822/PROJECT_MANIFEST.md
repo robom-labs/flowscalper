@@ -91,6 +91,7 @@ Detailed specifications:
 - `docs/adr/ADR-108-replay-preview-live-reader-isolation.md`
 - `docs/adr/ADR-109-parallel-trend-tournament-and-preserved-retirement.md`
 - `docs/adr/ADR-110-structural-tp-sl-without-runtime-time-exit.md`
+- `docs/adr/ADR-134-staged-80-wide-16-mixed-deep-universe.md`
 
 ## Supporting contracts
 

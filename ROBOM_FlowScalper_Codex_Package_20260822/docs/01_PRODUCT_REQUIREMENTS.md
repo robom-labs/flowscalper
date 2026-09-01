@@ -63,7 +63,7 @@ Fixture data must never be labeled LIVE.
 
 ### FR-003 Dynamic multi-symbol universe
 
-The application must discover eligible contracts from public venue metadata and rank them by liquidity, cost and data quality. Default targets are 50 wide-scan symbols and 8–12 deep-scan symbols, subject to machine and connection health.
+The application must discover eligible contracts from public venue metadata and rank them by liquidity, cost and data quality. The bounded persistent profile observes 80 wide-scan symbols and deeply analyzes 16 symbols, split between eight liquidity-core symbols and eight absolute 24-hour-movement opportunities. If measured machine or connection health fails the ADR-134 gate, the release must roll back to the last proven 50/12 profile rather than weaken strategy or PAPER safety criteria.
 
 ### FR-004 Paper portfolio
 

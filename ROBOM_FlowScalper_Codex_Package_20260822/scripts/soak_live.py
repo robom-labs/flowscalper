@@ -124,8 +124,8 @@ async def run_soak(arguments: argparse.Namespace) -> dict[str, object]:
     checks = {
         "public_live_started": started,
         "requested_duration_completed": completed,
-        "wide_symbols_at_least_50": runtime.wide_symbol_count >= 50,
-        "deep_symbols_between_10_and_30": 10 <= runtime.deep_symbol_count <= 30,
+        "wide_symbols_at_least_80": runtime.wide_symbol_count >= 80,
+        "deep_symbols_exactly_16": runtime.deep_symbol_count == 16,
         "events_continued": bool(event_counts and event_counts[-1] > event_counts[0]),
         "event_memory_bounded": max(event_memory, default=0) <= 10_000,
         "queue_bounded": max(queue_depths, default=0)

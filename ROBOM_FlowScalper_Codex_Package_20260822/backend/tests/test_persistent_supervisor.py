@@ -8,6 +8,8 @@ import time
 from collections.abc import AsyncIterator, Mapping
 from decimal import Decimal
 
+import pytest
+
 import backend.app.market_data.supervisor as supervisor_module
 from backend.app.adapters.base import BackoffPolicy, ConnectionState
 from backend.app.clocks import TestClock as DeterministicClock
@@ -23,6 +25,7 @@ from backend.app.market_data.supervisor import (
     BinanceDepthCoalescer,
     BinancePersistentProvider,
     BinanceTradeCoalescer,
+    BybitPersistentProvider,
     PersistentPublicSupervisor,
     ProviderSelection,
     SupervisorTelemetry,
@@ -268,6 +271,9 @@ async def test_rotation_universe_snapshot_is_persisted_outside_event_loop() -> N
 
     assert len(probe.rows) == 1
     assert probe.rows[0]["reason"] == "SAFE_DEEP_ROTATION"
+    assert probe.rows[0]["selection_policy"] == "LIQUIDITY_CORE_PLUS_ABSOLUTE_24H_CHANGE"
+    assert probe.rows[0]["liquidity_core_target"] == 8
+    assert probe.rows[0]["opportunity_target"] == 8
     assert probe.thread_ids != [event_loop_thread_id]
     assert runtime._universe_snapshot_buffer == []
     assert runtime._universe_snapshot_persisted_count == 1
@@ -806,6 +812,33 @@ def test_recovered_position_symbol_is_pinned_into_wide_and_deep_selection() -> N
     assert len(deep) == 10
     assert "S59USDT" in wide
     assert deep[0] == "S59USDT"
+
+
+def test_wide_and_deep_combines_liquidity_core_with_moving_symbols() -> None:
+    ranked = tuple(f"S{index:02d}USDT" for index in range(100))
+    scores = {
+        f"S{index:02d}USDT": Decimal(str(100 - index))
+        for index in range(72, 80)
+    }
+
+    wide, deep = _wide_and_deep(
+        ranked,
+        80,
+        16,
+        opportunity_scores=scores,
+    )
+
+    assert len(wide) == 80
+    assert len(deep) == 16
+    assert deep[:8] == ranked[:8]
+    assert set(deep[8:]) == {f"S{index:02d}USDT" for index in range(72, 80)}
+
+
+def test_public_provider_rejects_wide_universe_that_would_be_silently_sharded() -> None:
+    with pytest.raises(ValueError, match="100 이하"):
+        BinancePersistentProvider(wide_max=101, deep_max=16)
+    with pytest.raises(ValueError, match="100 이하"):
+        BybitPersistentProvider(wide_max=101, deep_max=16)
 
 
 async def test_manual_pause_survives_persistent_supervisor_connection(monkeypatch) -> None:

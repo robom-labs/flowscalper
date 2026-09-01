@@ -52,7 +52,14 @@ def test_binance_routes_public_and_market_streams_separately() -> None:
 async def test_binance_combines_statistics_with_public_book_ticker() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/ticker/24hr"):
-            payload = [{"symbol": "BTCUSDT", "quoteVolume": "100000000", "count": 42}]
+            payload = [
+                {
+                    "symbol": "BTCUSDT",
+                    "quoteVolume": "100000000",
+                    "count": 42,
+                    "priceChangePercent": "5.25",
+                }
+            ]
         else:
             payload = [{"symbol": "BTCUSDT", "bidPrice": "100", "askPrice": "100.1"}]
         return httpx.Response(200, content=json.dumps(payload).encode())
@@ -65,6 +72,21 @@ async def test_binance_combines_statistics_with_public_book_ticker() -> None:
     assert len(tickers) == 1
     assert tickers[0].bid == Decimal("100")
     assert tickers[0].quote_turnover_24h == Decimal("100000000")
+    assert tickers[0].price_change_percent_24h == Decimal("5.25")
+
+
+def test_bybit_normalizes_fractional_24h_change_to_percent() -> None:
+    ticker = BybitPublicAdapter.parse_ticker(
+        {
+            "symbol": "BTCUSDT",
+            "bid1Price": "100",
+            "ask1Price": "100.1",
+            "turnover24h": "100000000",
+            "price24hPcnt": "-0.031",
+        }
+    )
+
+    assert ticker.price_change_percent_24h == Decimal("-3.100")
 
 
 @pytest.mark.asyncio

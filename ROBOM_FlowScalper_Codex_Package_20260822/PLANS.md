@@ -721,3 +721,25 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   `33489124714`의 validate·browser·증거 업로드는 모두 PASS했다.
 - 이번에 실제 시간을 채우지 않은 6시간·24시간은 `NOT_RUN`, 비용 후 수익성은 `NOT_PROVEN`,
   실자금 준비는 `NOT_READY`다.
+
+## Wave 144 공개시장 80개 감시·16개 혼합 정밀분석
+
+- 상태는 `SOURCE_VALIDATION_PASS_INSTALLATION_PENDING`다.
+- 현재 50개 wide·12개 deep 서비스는 event·전략평가·저장·WebSocket이 전진하고 최근 12개
+  scanner 행이 모두 정상 `REJECTED`여서, 무진입을 단순 처리대상 부족이나 엔진 정지로
+  단정하지 않는다.
+- 공식 자동매매 구현은 전체 종목을 무차별 정밀처리하기보다 거래대금·가격변화·spread·변동성
+  같은 가벼운 필터로 좁힌 뒤 소수의 유동성 종목을 정밀처리한다. 현재 장비의 과거 deep 20
+  지연 실패도 함께 고려해 706개 전체가 아니라 80개 wide·16개 deep로 한 단계만 확장한다.
+- deep 16개는 거래대금 핵심 8개와 절대 24시간 가격변동 상위 8개를 중복 없이 구성한다.
+  상승·하락 방향은 기존 LONG·SHORT 전략이 결정하고 진입기준·비용·체결·TP·SL은 바꾸지 않는다.
+- Binance·Bybit 24시간 가격변동을 같은 percent 단위로 정규화하고, 한 연결만 사용하는 현재
+  Binance router가 조용히 일부 symbol을 누락하지 않게 wide 100 초과 설정은 생성 단계에서 거부한다.
+- source 기준 backend 1,534개, frontend 118개, fixture 36개, Playwright 7개가 PASS했고
+  Ruff·mypy 127 source·ESLint·TypeScript·production build·PAPER safety·security 162 source·
+  저장소 위생·30개 회귀계약도 PASS했다.
+- 평평한 PAPER 상태에서 불변 릴리스를 설치한 뒤 5분 동안 처리·trade p95 500ms 이하,
+  CPU 80% 미만, 메모리 증가 256MB 이하, backpressure skip 1% 미만과 신규 운영결함 0을
+  모두 확인한다. 하나라도 실패하면 증거를 보존하고 50/12로 되돌린다.
+- 5분 통과는 거래 증가·수익성·6시간·24시간 안정성 증거가 아니다. 수익성은 계속
+  `NOT_PROVEN`, 실자금 준비는 `NOT_READY`, 실제 주문·private API·인증·wallet은 0이다.

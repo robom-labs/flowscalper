@@ -78,6 +78,22 @@ Important current facts to re-check in code:
 - Long-horizon Codex tasks  
   https://developers.openai.com/blog/run-long-horizon-tasks-with-codex
 
+## Universe-selection implementation references
+
+Verified again 2026-09-01. These are implementation-pattern references, not evidence that any strategy is profitable.
+
+- Freqtrade dynamic VolumePairList, PercentChangePairList and chained liquidity/spread/volatility filters
+  - https://www.freqtrade.io/en/stable/plugins/
+
+- QuantConnect crypto universes and official top-10 USD-volume examples
+  - https://www.quantconnect.com/docs/v2/writing-algorithms/universes/crypto
+
+- Bybit V5 public WebSocket topic and 21,000-character args boundary
+  - https://bybit-exchange.github.io/docs/v5/ws/connect
+
+- Binance USD-M public WebSocket market streams
+  - https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams
+
 ## Chart implementation
 
 The v0.1 dashboard uses a local SVG chart component and does not depend on TradingView, an account, alerts or webhooks.

@@ -41,8 +41,8 @@ class UniverseSelector:
     def __init__(
         self,
         *,
-        wide_max: int = 50,
-        deep_max: int = 20,
+        wide_max: int = 80,
+        deep_max: int = 16,
         minimum_turnover: Decimal = Decimal("20000000"),
         maximum_spread_bps: Decimal = Decimal("12"),
         minimum_warmup_minutes: float = 10.0,

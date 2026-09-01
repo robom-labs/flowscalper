@@ -8,7 +8,7 @@ import json
 import random
 import statistics
 from collections import deque
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Protocol
@@ -41,6 +41,7 @@ _EVENT_LOOP_WATCHDOG_INTERVAL_SECONDS = 0.1
 _EVENT_LOOP_LAG_OBSERVATION_MS = 100.0
 _EVENT_LOOP_SOAK_LAG_THRESHOLD_MS = 500.0
 _CONSUMER_COOPERATIVE_YIELD_SECONDS = 0.01
+_MAXIMUM_WIDE_SYMBOLS_PER_CONNECTION = 100
 
 
 def _rotation_depth_output_ready(
@@ -805,6 +806,8 @@ class BinancePersistentProvider:
     ) -> None:
         if not 10 <= deep_max <= 30:
             raise ValueError("deep_max는 10..30 범위여야 합니다.")
+        if not deep_max <= wide_max <= _MAXIMUM_WIDE_SYMBOLS_PER_CONNECTION:
+            raise ValueError("wide_max는 deep_max 이상이고 100 이하여야 합니다.")
         self.wide_max = wide_max
         self.deep_max = deep_max
         self.planned_rotation_seconds = planned_rotation_seconds
@@ -835,6 +838,10 @@ class BinancePersistentProvider:
             tuple(eligible),
             self.wide_max,
             self.deep_max,
+            opportunity_scores={
+                symbol: ticker.price_change_percent_24h
+                for symbol, ticker in eligible.items()
+            },
             pinned_symbols=self.pinned_symbols,
         )
         deep = _safe_rotate_deep(
@@ -1316,6 +1323,8 @@ class BybitPersistentProvider:
     ) -> None:
         if not 10 <= deep_max <= 30:
             raise ValueError("deep_max는 10..30 범위여야 합니다.")
+        if not deep_max <= wide_max <= _MAXIMUM_WIDE_SYMBOLS_PER_CONNECTION:
+            raise ValueError("wide_max는 deep_max 이상이고 100 이하여야 합니다.")
         self.wide_max = wide_max
         self.deep_max = deep_max
         self.planned_rotation_seconds = planned_rotation_seconds
@@ -1346,6 +1355,10 @@ class BybitPersistentProvider:
             tuple(eligible),
             self.wide_max,
             self.deep_max,
+            opportunity_scores={
+                symbol: ticker.price_change_percent_24h
+                for symbol, ticker in eligible.items()
+            },
             pinned_symbols=self.pinned_symbols,
         )
         deep = _safe_rotate_deep(
@@ -1499,6 +1512,7 @@ def _wide_and_deep(
     wide_max: int,
     deep_max: int,
     *,
+    opportunity_scores: Mapping[str, Decimal] | None = None,
     pinned_symbols: Sequence[str] = (),
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if wide_max < deep_max:
@@ -1517,9 +1531,21 @@ def _wide_and_deep(
             del wide_values[wide_max:]
         if symbol not in deep_values:
             deep_values.append(symbol)
-    for priority in ("BTCUSDT", "ETHUSDT", "SOLUSDT"):
-        if priority in wide_values and priority not in deep_values:
-            deep_values.append(priority)
+    liquidity_core_size = max(3, deep_max // 2)
+    for symbol in wide_values[:liquidity_core_size]:
+        if symbol not in deep_values:
+            deep_values.append(symbol)
+    scores = opportunity_scores or {}
+    wide_rank = {symbol: index for index, symbol in enumerate(wide_values)}
+    opportunity_values = sorted(
+        wide_values,
+        key=lambda symbol: (
+            -abs(scores.get(symbol, Decimal("0"))),
+            wide_rank[symbol],
+            symbol,
+        ),
+    )
+    deep_values.extend(symbol for symbol in opportunity_values if symbol not in deep_values)
     deep_values.extend(symbol for symbol in wide_values if symbol not in deep_values)
     return tuple(wide_values), tuple(deep_values[:deep_max])
 

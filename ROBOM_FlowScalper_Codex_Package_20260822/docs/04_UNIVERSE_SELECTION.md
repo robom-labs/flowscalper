@@ -26,12 +26,12 @@ A contract is eligible only when all applicable conditions pass:
 ## 4.3 Default sizing
 
 - discovery candidates: all eligible active contracts;
-- wide scan: up to 50;
-- deep scan: 10;
+- wide scan: up to 80;
+- deep scan: 16, made from eight liquidity-core and eight absolute 24-hour-movement opportunities;
 - candidate shortlist: 3;
 - open paper positions: 1.
 
-These are maximums. The system may lower them based on CPU load, memory, WebSocket health and processing lag.
+These are bounded release targets. A release that exceeds the ADR-134 load gate must return to the last proven 50/12 profile. It must not silently exceed the one-connection 100-symbol router boundary or lower entry, cost, fill, TP, SL or risk criteria to create trades.
 
 ## 4.4 Ranking score
 
@@ -106,10 +106,12 @@ Expose deterministic codes and Korean descriptions:
 
 Do not assume a symbol's displayed name equals one base token. Contracts such as multiplier-prefixed symbols must use venue metadata for contract size and display. Never infer economic exposure from the name string alone.
 
-## 4.10 Phase 03 deep rotation
+## 4.10 Bounded mixed deep rotation
 
-- Wide observation remains at least 50 symbols. Deep analysis defaults to 12, within the product requirement's 8–12 target and the provider's 10..30 safety bound.
+- Wide observation uses the top 80 active USDT perpetuals by public 24-hour quote turnover.
+- Deep analysis uses 16 symbols. The first eight are the liquidity core; the remaining eight are selected from the wide set by absolute public 24-hour price change, with quote-turnover order as a deterministic tie-break.
 - Deep selection has a 15-minute minimum dwell. A rotation changes at most four symbols and at most 30 percent of the set.
 - User-pinned chart symbols plus open and pending PAPER symbols are protected from demotion.
 - Each selection is appended as an immutable universe snapshot for later audit and replay context.
 - Catalog browsing does not imply deep subscription and cannot bypass strategy, cost, stale-data or risk gates.
+- The 706-like full catalog is for browsing and eligibility discovery only. It is not the count of symbols receiving deep strategy evaluation.

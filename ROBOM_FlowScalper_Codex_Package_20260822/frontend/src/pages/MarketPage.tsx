@@ -116,7 +116,7 @@ function MarketRail({ rows, preferredSymbols, selected, onSelect, onClose }: { r
     <input className="market-search" aria-label="종목 검색" placeholder="BTC, 비트코인 검색" value={query} onChange={(event) => { setQuery(event.target.value); setScrollTop(0) }} />
     <div className="market-list" onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
       <div className="market-list-virtual" style={{ height: `${filtered.length * 52}px` }}><div className="market-window" style={{ transform: `translateY(${start * 52}px)` }}>{visible.map((row) => <button type="button" key={`${row.venue}:${row.symbol}`} className={selected === row.symbol ? 'market-row selected' : 'market-row'} onClick={() => onSelect(row)}>
-        <span><b>{row.korean_name || row.display_symbol}</b><small>{row.display_symbol} · {row.market_role === 'OBSERVATION_ONLY' ? '관찰 전용' : 'PAPER 가능'}</small></span>
+        <span><b>{row.korean_name || row.display_symbol}</b><small>{row.display_symbol} · {row.market_role === 'OBSERVATION_ONLY' ? '관찰 전용' : '전략 후보'}</small></span>
         <span><b>{row.last ? row.last.toLocaleString('ko-KR', { maximumFractionDigits: 6 }) : '관찰 중'}</b><small>{row.quote_volume_24h ? `거래대금 ${formatCompact(row.quote_volume_24h)}` : row.status}</small></span>
       </button>)}</div></div>
       {!filtered.length ? <p className="market-empty">조건에 맞는 종목이 없습니다.</p> : null}
@@ -277,6 +277,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, busy
       <article><span>오늘 순손익</span><b className={Number(data.status.realized_pnl_usdt) >= 0 ? 'positive' : 'negative'}>{formatUsdt(data.status.realized_pnl_usdt, { signed: true })}</b></article>
       <article><span>진행 PAPER</span><b>{data.focus_positions.length}건</b></article>
       <article><span>모의평가 전략</span><b>{enabledEntryCandidateCount}개</b></article>
+      <article><span>넓게 감시 / 정밀분석</span><b>{data.status.wide_symbols} / {data.status.deep_symbols}개</b></article>
     </section>
     <header className={data.status.mode === 'READY' ? 'market-toolbar ready-mode' : 'market-toolbar'}>
       <div><h2 id="market-heading">{displayedFocus ? `${displayedFocus.symbol} 포지션 집중` : `${selectedMarket.symbol} 시장`}</h2><span>{displayedFocus ? `${sideLabel(displayedFocus.side)} · ${displayedFocus.strategy_display_name_ko} · ${costProfileLabel(displayedFocus.profile)} · ${paperAccountLabel(displayedFocus.account_id)} · PAPER` : selectedMarket.source === 'UPBIT_KRW' ? '관찰 전용 · KRW 현물' : data.status.market_data_state === 'LIVE' ? '실시간 공개시장 · PAPER만' : data.status.mode === 'DEMO_FIXTURE' ? '연습용 샘플 · 실시간 아님' : '공개시장 연결 대기'}</span></div>

@@ -527,7 +527,8 @@ _MAX_WAL_FRAMES_WITHOUT_CHECKPOINT = _MAX_WAL_BYTES_WITHOUT_CHECKPOINT // 4_096
 _PERSISTENCE_BACKLOG_ENTRY_LOCK_EVENTS = 10_000
 _PERSISTENCE_BACKLOG_RECOVERY_EVENTS = 2_000
 _PERSISTED_CANDLE_INTERVALS = frozenset({1, 180})
-_LIVE_DEEP_SYMBOL_TARGET = 12
+_LIVE_WIDE_SYMBOL_TARGET = 80
+_LIVE_DEEP_SYMBOL_TARGET = 16
 _LIVE_DASHBOARD_EVENT_LIMIT = 512
 _DEFAULT_EVENT_MEMORY_LIMIT = 10_000
 _LIVE_EVENT_MEMORY_LIMIT = 2_048
@@ -2258,10 +2259,12 @@ class PaperRuntime:
         pinned_symbols = tuple(sorted(self._recovery_revalidation_symbols))
         providers: dict[Venue, PublicStreamProvider] = {
             Venue.BINANCE_USDM: BinancePersistentProvider(
+                wide_max=_LIVE_WIDE_SYMBOL_TARGET,
                 deep_max=_LIVE_DEEP_SYMBOL_TARGET,
                 pinned_symbols=pinned_symbols,
             ),
             Venue.BYBIT_LINEAR: BybitPersistentProvider(
+                wide_max=_LIVE_WIDE_SYMBOL_TARGET,
                 deep_max=_LIVE_DEEP_SYMBOL_TARGET,
                 pinned_symbols=pinned_symbols,
             ),
@@ -3078,6 +3081,9 @@ class PaperRuntime:
             "rotation_interval_seconds": 900,
             "minimum_residency_seconds": 1800,
             "maximum_replacements": 4,
+            "selection_policy": "LIQUIDITY_CORE_PLUS_ABSOLUTE_24H_CHANGE",
+            "liquidity_core_target": _LIVE_DEEP_SYMBOL_TARGET // 2,
+            "opportunity_target": _LIVE_DEEP_SYMBOL_TARGET // 2,
             "protected_symbols": list(self._protected_deep_symbols()),
         }
         with self._persistence_lock:
