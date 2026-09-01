@@ -1,12 +1,12 @@
-# ROBOM FlowScalper v0.2 Package Manifest
+# ROBOM FlowScalper 0.3.0-paper Package Manifest
 
-이 패키지는 구현 지시서만 있는 초기 계약이 아니라 빌드된 프런트엔드, PAPER backend, 실행기, 테스트, 문서, 검증 증거를 포함하는 0.2.0-paper 릴리스 소스다.
+이 패키지는 구현 지시서만 있는 초기 계약이 아니라 빌드된 프런트엔드, PAPER backend, 실행기, 테스트, 문서와 검증 증거를 포함하는 현재 `0.3.0-paper` 소스다. `v0.2.0-paper-wave10` Release는 과거 공개 ZIP이며 현재 GitHub main 소스와 같은 버전으로 해석하지 않는다.
 
 ## AI·개발자 시작점
 
 - `00_AI_HANDOFF_먼저읽기.md`는 제품 목적, 사용자 요구, 기능별 코드·문서·테스트 지도, 안전 경계, 검증 상태와 다음 작업 완료 기준을 한곳에 정리한다.
 - `01_GPT_업그레이드_방향_요청프롬프트_KO.txt`는 GitHub를 읽을 수 있는 GPT에게 업그레이드 방향과 Codex 실행 프롬프트를 요청할 때 그대로 복사한다.
-- `RELEASE_NOTES_v0.2_WAVE10.md`는 현재 배포물의 기능·검증·checksum을 요약한다.
+- `RELEASE_NOTES_v0.2_WAVE10.md`는 과거 공개 ZIP의 기능·검증·checksum을 요약한다.
 - `FINAL_UPGRADE_EVIDENCE.md`는 PASS·NOT_RUN·BLOCKED를 구분한 최종 증거다.
 - `VERSION`은 현재 제품 버전의 단일 원본이고 `CHANGELOG.md`는 과거 버전의 중요한 변화만 짧게 남긴다.
 - `docs/18_VERSIONING_AND_UPGRADE_POLICY_KO.md`와 ADR-009는 최신 소스 한 벌·tag·Release·migration archive로 반복 업그레이드를 정리하는 규칙이다.
@@ -177,6 +177,11 @@ Detailed specifications:
 - `evidence/WAVE110_RESEARCH_ITERATION_GUARD_QA.json`
 - `evidence/WAVE116J_POST_READINESS_RUNTIME_QA.json`
 - `evidence/WAVE116K_INTRADAY_TREND_AND_REPLAY_QA.json`
+- `evidence/WAVE144_STAGED_80_WIDE_16_DEEP_RUNNING_SERVICE_300S.json`
+- `evidence/WAVE144_FINAL_RELEASE_RUNNING_SERVICE_60S.json`
+- `evidence/WAVE144_ISOLATED_80_16_SOAK_180S.json`
+- `evidence/WAVE144_PROCESS_CANDLE_PAYLOAD_RUNNING_SERVICE_180S.json`
+- `evidence/screenshots/WAVE144_ACTUAL_MAIN_BRAND_HOME_REFRESH.png`
 - `evidence/RESEARCH_TRIAL_HISTORY.jsonl`
 - `evidence/screenshots/wave21-live-market-1280x720.png`
 - `evidence/screenshots/wave21-live-strategies-1280x720.png`

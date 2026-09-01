@@ -4820,3 +4820,91 @@ BASE/STRESS 표본 증가는 모두 0이었다. 종료 직후 scanner 12행도 �
 수정 테스트는 로컬에서 3회 연속 PASS했고 전체 backend 1,531개도 다시 PASS했다. 최종 commit의
 두 Actions는 실제 Chromium E2E와 browser evidence upload까지 모두 PASS했다. 설치 서비스는
 제품 소스 commit `c4ad6c2`를 계속 실행하며 이후 commit은 문서·증거·테스트 격리만 포함한다.
+
+## 106. Wave 144 공개시장 80개 감시·16개 혼합 정밀분석과 항상 작동 상태
+
+### 106.1 범위와 선별 결정
+
+화면의 약 706개는 공개 거래소 전체 카탈로그이며 모두를 depth·trade·전략으로 정밀 처리하는
+수가 아니다. 공식 구현 자료는 전체 종목을 무차별 처리하기보다 거래대금·가격변화·spread·
+변동성 같은 가벼운 필터로 먼저 좁히고 소수의 유동성 종목을 정밀 처리하는 계층형 선별을
+사용한다. 과거 deep 20에서 보존한 지연 실패와 현재 단일 Binance stream shard 경계까지
+고려해 50/12에서 80/16으로 한 단계만 확장했다. wide 100 초과는 조용한 누락을 막기 위해
+생성 단계에서 거부한다.
+
+deep 16은 거래대금 핵심 8개와 절대 24시간 가격변동 상위 8개를 중복 없이 섞는다. 상승·하락
+방향은 기존 LONG·SHORT 전략이 판단하며, 진입기준·비용·실제 bid·ask PAPER 체결·TP1·TP2·
+SL·수량·최대손실은 바꾸지 않았다. 15개 등록 전략과 30개 BASE/STRESS 독립계좌를 보존했고,
+현재 진입 평가 후보 6개는 SHADOW·LONG·SHORT ON이다. 비용후 재현에 실패하거나 legacy인
+9개는 원장과 판단근거를 보존한 OFF/RETIRED/RESEARCH 상태이며 거래수를 만들기 위해 임의로
+되살리지 않았다.
+
+### 106.2 자동 검증과 실제 배포 측정
+
+최종 source 기준 backend 1,536개, frontend 119개, fixture 36개, Playwright 7개가 PASS했고
+설계상 비대상 제어 2개만 skip했다. Ruff, mypy 127 source, ESLint, TypeScript, production
+build, PAPER build safety, security 162 source, repository hygiene와 누적 회귀계약 30개도
+PASS했다. 캔들 전달 최적화의 집중 회귀 5개는 500개 원본과 마지막 200개의 시간구간
+추세·모멘텀 판단 동등성까지 확인한다.
+
+첫 80/16 불변 릴리스 300.029초 설치 서비스 관찰은 event +33,811·전략평가 +26,064,
+queue 최대 60, 처리·체결 P95 최대 109.670/234.343ms, CPU 최대 58.034%, 메모리 증가
+32.391MB로 PASS했다. 신규 비계획 재연결·gap·resync·drop·저장 fault·buffer drop·critical
+lag·실제 주문·인증은 0이었다. 근거는
+`evidence/WAVE144_STAGED_80_WIDE_16_DEEP_RUNNING_SERVICE_300S.json`이다.
+
+상단 이름의 메인 복귀·최신화 수정 뒤 60.026초 관찰에서는 전략평가 단계 최대
+1,450.297ms와 신규 500ms 초과 event-loop 지연 1회를 재현했다. 이 결과는 PASS로 바꾸지
+않고 `evidence/WAVE144_FINAL_RELEASE_RUNNING_SERVICE_60S.json`에 FAIL로 보존했다. 매 2초
+평가 때 실제 최장 결정 창보다 많은 15분·30분·1시간 완성봉을 각각 500개씩 자식 프로세스로
+전달하던 경로를 찾아, 전략 계산에 필요한 마지막 200개씩만 보내도록 수정했다. 반복 전달
+최대치는 1,500개에서 600개로 줄었고 진입·청산·전략 파라미터는 변경하지 않았다.
+
+수정 불변 릴리스 `84550d32be2178d79d661d3eaec7f54b68a26c10`을 같은 Run
+`run-2b7135a972dd`에 설치한 뒤 진입 의도를 revision 60 `ENTRY_ENABLED`로 즉시 재개했다.
+180.060초 실제 설치 서비스 관찰은 event +19,974·전략평가 +16,104, queue 최대 36,
+처리·체결 P95 최대 48.896/233.032ms, 전략평가 최대 394.444ms, CPU 최대 47.685%, 메모리
+증가 12.640MB였다. 신규 500ms 초과 event-loop 지연·비계획 재연결·gap·resync·drop·저장
+fault·buffer drop·backlog 진입잠금·critical lag·실제 주문·인증은 0으로 PASS했다. 근거는
+`evidence/WAVE144_PROCESS_CANDLE_PAYLOAD_RUNNING_SERVICE_180S.json`이다.
+
+첫 설치 준비 시 외장 staging build와 LIVE 저장이 겹쳐 lag P95 1,258ms가 됐다. 설치기는
+서비스 전환 전에 `PRESTOP_CONTRACT_CHANGED`로 fail-closed 중단했고 기존 릴리스와 Run을
+보존했다. 진입 의도를 revision 58로 즉시 재개해 RUNNING·queue 0·lag P95 125ms로 자동
+회복한 뒤, 이미 검증된 staging을 재사용해 무거운 빌드 없이 최종 전환했다. 두 실제 전환은
+포지션·대기진입 0건에서만 짧게 일시정지했으며 종료 시 프로그램은 RUNNING·ENTRY_ENABLED다.
+
+별도 독립 Run의 `soak_live.py` 180초는 event 19,505·평가 16,188·event-loop 최대
+48.692ms·운영오류 0이었지만 3분 안에 15분 계획회전을 보지 못해 전체 FAIL이다. 설치된 8870
+검증으로 사용하지 않고 `evidence/WAVE144_ISOLATED_80_16_SOAK_180S.json`에 범위를 분리해
+보존했다.
+
+### 106.3 실제 화면과 무진입 판정
+
+실제 in-app browser를 새로고침하고 전략 화면을 연 뒤 상단 `ROBOM FlowScalper` 이름을 직접
+눌렀다. 시장 메인으로 복귀하면서 최신 요약을 다시 읽었고 `작동 중`, `공개시장 연결됨`,
+`PAPER · 실제 주문 0`, 현재자산 999.72 USDT, 진행 0건, 모의평가 전략 6개, 넓게 감시 80·
+정밀분석 16을 확인했다. 브라우저 error log는 0이다. 실제 캡처는
+`evidence/screenshots/WAVE144_ACTUAL_MAIN_BRAND_HOME_REFRESH.png`다.
+
+최종 180초에 적격신호·신규 MAIN/LEAGUE 거래·현재버전 BASE/STRESS 표본 증가는 모두 0이다.
+그러나 operation은 전체 표본에서 RUNNING, paper entry는 전체 표본에서 active였고 이벤트와
+전략평가는 각각 19,974·16,104회 증가했다. 따라서 이번 무진입은 프로그램 정지나 거래기록
+최신화 오류가 아니라 현재 16개 정밀종목에서 진입 조건이 충족되지 않은 상태다. 자연신호를
+만들려고 기준·비용·TP·SL을 낮추지 않았다.
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| 80 wide·16 mixed deep | `PASS_OBSERVED` | 거래대금 8+절대 가격변화 8, 실제 설치 서비스에서 80/16 유지 |
+| 현재 엔진·진입 의도 | `PASS_OBSERVED` | 같은 Run·RUNNING·ENTRY_ENABLED revision 60·event/평가 전진 |
+| 현재 진입 후보 6개 | `PASS_OBSERVED` | 6 SHADOW·LONG/SHORT ON, 15전략·30독립계좌 안정 |
+| 첫 5분 용량 gate | `PASS_OBSERVED_NO_SIGNAL` | 300.029초·event +33,811·평가 +26,064·신규 운영결함 0 |
+| 후속 60초 지연 | `FAIL_PRESERVED` | 전략평가 1,450.297ms·신규 500ms 초과 1회 |
+| 캔들 전달 최적화 | `PASS_AUTOMATED` | 시간구간별 500→200, 전략 분석 동등성 회귀 포함 집중 5개 PASS |
+| 최종 180초 설치 서비스 | `PASS_OBSERVED_NO_SIGNAL` | event +19,974·평가 +16,104·전략평가 최대 394.444ms·적격 0 |
+| 실제 브라우저 메인 복귀·최신화 | `PASS_OBSERVED` | 전략→상단 이름 클릭→시장, 작동 중·80/16·error 0 |
+| 자동 시작·재개 상태 | `PASS_OBSERVED` | LaunchAgent 설치, 최종 RUNNING·ENTRY_ENABLED·automatic recovery true |
+| 실제 주문·private API·API Key·wallet | `PASS` | 실제 주문·인증 false, 해당 경로 0 유지 |
+| 자연 거래·현재버전 성과 | `NOT_OBSERVED / NOT_PROVEN` | 최종 관찰 적격·거래·표본 증가 0 |
+| 6시간·24시간 | `NOT_RUN` | 실제 wall-clock 미충족 |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 용량·UI·무진입 진단 통과는 비용후 수익성 증거가 아님 |

@@ -724,7 +724,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 144 공개시장 80개 감시·16개 혼합 정밀분석
 
-- 상태는 `SOURCE_VALIDATION_PASS_INSTALLATION_PENDING`다.
+- 상태는 `COMPLETE_WITH_PRESERVED_FAILURES_AND_LIMITS`다.
 - 현재 50개 wide·12개 deep 서비스는 event·전략평가·저장·WebSocket이 전진하고 최근 12개
   scanner 행이 모두 정상 `REJECTED`여서, 무진입을 단순 처리대상 부족이나 엔진 정지로
   단정하지 않는다.
@@ -735,11 +735,24 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   상승·하락 방향은 기존 LONG·SHORT 전략이 결정하고 진입기준·비용·체결·TP·SL은 바꾸지 않는다.
 - Binance·Bybit 24시간 가격변동을 같은 percent 단위로 정규화하고, 한 연결만 사용하는 현재
   Binance router가 조용히 일부 symbol을 누락하지 않게 wide 100 초과 설정은 생성 단계에서 거부한다.
-- source 기준 backend 1,534개, frontend 118개, fixture 36개, Playwright 7개가 PASS했고
+- 최종 source 기준 backend 1,536개, frontend 119개, fixture 36개, Playwright 7개가 PASS했고
   Ruff·mypy 127 source·ESLint·TypeScript·production build·PAPER safety·security 162 source·
   저장소 위생·30개 회귀계약도 PASS했다.
-- 평평한 PAPER 상태에서 불변 릴리스를 설치한 뒤 5분 동안 처리·trade p95 500ms 이하,
-  CPU 80% 미만, 메모리 증가 256MB 이하, backpressure skip 1% 미만과 신규 운영결함 0을
-  모두 확인한다. 하나라도 실패하면 증거를 보존하고 50/12로 되돌린다.
+- 첫 80/16 불변 릴리스의 300.029초 설치 서비스 관찰은 event +33,811·평가 +26,064,
+  queue 최대 60, 처리·체결 P95 최대 109.670/234.343ms, CPU 최대 58.034%, 메모리 증가
+  32.391MB와 신규 운영결함 0으로 PASS했다. 따라서 50/12 롤백 조건에는 해당하지 않는다.
+- 상단 이름의 메인 이동·최신화 수정 뒤 60.026초 관찰에서 전략평가 단계 1,450.297ms와
+  신규 500ms 초과 event-loop 지연 1회를 재현해 `FAIL`로 보존했다. 전략마다 2초마다 보내던
+  완성봉을 실제 최장 결정 창인 시간구간별 200개로 제한하고 500개 원본과 추세·모멘텀
+  결과가 같은지 회귀 고정했다.
+- 최종 불변 릴리스 `84550d32be2178d79d661d3eaec7f54b68a26c10`을 같은 Run에 설치하고
+  revision 60으로 즉시 재개했다. 180.060초 관찰은 event +19,974·평가 +16,104,
+  queue 최대 36, 처리·체결 P95 최대 48.896/233.032ms, 전략평가 최대 394.444ms,
+  신규 500ms 초과 지연·재연결·gap·drop·저장결함·실제주문·인증 0으로 PASS했다.
+- 실제 브라우저에서 전략 화면 뒤 상단 이름을 눌러 시장 메인 복귀와 최신 요약 재조회,
+  `작동 중`, 실제 주문 0, 모의평가 전략 6개, 감시 80·정밀 16을 확인했고 error log는 0이었다.
+- 두 설치 전환은 flat 상태에서만 짧게 수동 일시정지했고 모두 같은 Run을 보존해 즉시
+  `ENTRY_ENABLED`로 복귀했다. 첫 준비 중 lag P95 1,258ms가 발생한 시도는 전환 전에
+  fail-closed 중단됐으며 revision 58로 즉시 재개한 뒤 staging 재사용으로 설치했다.
 - 5분 통과는 거래 증가·수익성·6시간·24시간 안정성 증거가 아니다. 수익성은 계속
   `NOT_PROVEN`, 실자금 준비는 `NOT_READY`, 실제 주문·private API·인증·wallet은 0이다.
