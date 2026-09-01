@@ -4,8 +4,18 @@ import { ApiError, fetchJson } from '../api/client'
 import { SideDrawer } from '../components/SideDrawer'
 import { StrategyPerformancePanel } from '../components/StrategyPerformancePanel'
 import { StrategySymbolPanel } from '../components/StrategySymbolPanel'
-import { costProfileLabel, formatDurationMs, formatPercentFraction, formatRatio, formatUsdt } from '../format'
+import {
+  costProfileLabel,
+  exitReasonLabel,
+  formatDurationMs,
+  formatPercentFraction,
+  formatPrice,
+  formatRatio,
+  formatUsdt,
+  sideLabel,
+} from '../format'
 import { modeLabels, strategyWaitReasonLabel } from '../strategyPresentation'
+import { formatKstDateTime, formatKstTime } from '../time'
 import type {
   DashboardData,
   HistoryRow,
@@ -117,6 +127,32 @@ const familyCategoryOptions: Array<{ id: FamilyCategoryFilter; label: string }> 
   { id: 'marketNeutral', label: '시장중립' },
   { id: 'ranking', label: '순위' },
 ]
+
+function completedMilestoneTimestamp(row: HistoryRow, milestone: 'TP1' | 'TP2' | 'STOP') {
+  if (milestone === 'TP1') {
+    return row.tp1_hit_ts_ms
+      ?? (row.time_to_tp1_ms === null || row.time_to_tp1_ms === undefined
+        ? null
+        : row.entry_ts_ms + row.time_to_tp1_ms)
+  }
+  if (milestone === 'TP2') {
+    return row.tp2_hit_ts_ms
+      ?? (row.time_to_tp2_ms === null || row.time_to_tp2_ms === undefined
+        ? null
+        : row.entry_ts_ms + row.time_to_tp2_ms)
+  }
+  if (row.exit_reason === 'STOP' || row.exit_reason === 'STOP_LOSS') return row.exit_ts_ms
+  return row.time_to_stop_ms === null || row.time_to_stop_ms === undefined
+    ? null
+    : row.entry_ts_ms + row.time_to_stop_ms
+}
+
+function completedMilestoneClock(row: HistoryRow, milestone: 'TP1' | 'TP2' | 'STOP') {
+  const timestamp = completedMilestoneTimestamp(row, milestone)
+  return timestamp === null
+    ? '미도달'
+    : `${formatKstTime(timestamp)} · 진입 후 ${formatDurationMs(timestamp - row.entry_ts_ms)}`
+}
 
 function profileUniqueSamples(
   report: Pick<StrategyPerformance, 'sample_size' | 'profile_unique_opportunity_count'>,
@@ -774,6 +810,7 @@ function StrategyOverview({
   strategies,
   leagueAccounts,
   data,
+  history = [],
   analyticsReady = true,
   researchDetails = false,
   selectedFamilyDetail: streamedFamilyDetail,
@@ -983,6 +1020,22 @@ function StrategyOverview({
     onSelectFamily?.(null)
   }, [onSelectFamily])
   const accounts = selectedSummary ? leagueAccounts.filter((account) => account.strategy_id === selectedSummary.strategy_id) : []
+  const selectedOpenPosition = useMemo(() => (
+    data?.league_positions.find((position) => (
+      position.strategy_id === selectedSummary?.strategy_id && position.profile === profile
+    )) ?? null
+  ), [data?.league_positions, profile, selectedSummary?.strategy_id])
+  const selectedLatestTrade = useMemo(() => {
+    if (!selectedSummary) return null
+    const currentRows = history.filter((row) => (
+      row.strategy === selectedSummary.strategy_id
+      && row.profile === profile
+      && (!row.strategy_version || row.strategy_version === selectedSummary.strategy_version)
+    ))
+    const leagueRows = currentRows.filter((row) => row.account_scope === 'LEAGUE')
+    return [...(leagueRows.length ? leagueRows : currentRows)]
+      .sort((left, right) => right.exit_ts_ms - left.exit_ts_ms)[0] ?? null
+  }, [history, profile, selectedSummary])
   const rows = useMemo(() => {
     const accountsByStrategy = new Map<string, LeagueAccount[]>()
     for (const account of leagueAccounts) {
@@ -993,10 +1046,14 @@ function StrategyOverview({
     return ordered.map((strategy, originalIndex) => {
       const strategyAccounts = accountsByStrategy.get(strategy.strategy_id) ?? []
       const account = strategyAccounts.find((item) => item.profile === profile)
+      const currentPosition = data?.league_positions.find((position) => (
+        position.strategy_id === strategy.strategy_id && position.profile === profile
+      ))
       const report = strategy.performance[profile]
       return {
         strategy,
         account,
+        currentPosition,
         report,
         monitor: monitorState(strategy, strategyAccounts),
         uniqueSamples: profileUniqueSamples(report),
@@ -1025,7 +1082,7 @@ function StrategyOverview({
       const directed = comparison * (sortDirection === 'ascending' ? 1 : -1)
       return directed || left.originalIndex - right.originalIndex
     })
-  }, [leagueAccounts, ordered, profile, sortDirection, sortKey])
+  }, [data?.league_positions, leagueAccounts, ordered, profile, sortDirection, sortKey])
   const sortBy = useCallback((key: StrategySortKey) => {
     if (key === sortKey) {
       setSortDirection((current) => current === 'ascending' ? 'descending' : 'ascending')
@@ -1120,7 +1177,7 @@ function StrategyOverview({
           <th>주요 대기이유</th>
           <SortableHeader label="보유" sortKey="openPositions" activeKey={sortKey} direction={sortDirection} onSort={sortBy} />
           <th>보기</th>
-        </tr></thead><tbody>{rows.map(({ strategy, account, report, monitor, uniqueSamples, wilson, expectancy, net }) => {
+        </tr></thead><tbody>{rows.map(({ strategy, account, currentPosition, report, monitor, uniqueSamples, wilson, expectancy, net }) => {
           const confidenceRate = !analyticsReady ? '불러오는 중' : uniqueSamples < 30 ? '순위 제외' : wilson === null ? '계산 대기' : formatPercentFraction(wilson)
           const evaluationEnabled = strategy.mode !== 'OFF' && (strategy.long_enabled || strategy.short_enabled)
           return <tr key={strategy.strategy_id} data-strategy-id={strategy.strategy_id}>
@@ -1133,7 +1190,7 @@ function StrategyOverview({
             <td data-label="순손익"><span className={net > 0 ? 'positive' : net < 0 ? 'negative' : ''}>{formatUsdt(net, { signed: true })}</span><small>현재 전략 버전</small></td>
             <td data-label="PF"><strong>{formatRatio(report.profit_factor)}</strong><small>비용 후</small></td>
             <td data-label="주요 대기이유"><span>{monitor.detail}</span></td>
-            <td data-label="보유"><strong>{account?.open_positions ?? 0}건</strong><small>{costProfileLabel(profile)}</small></td>
+            <td data-label="보유"><strong>{account?.open_positions ?? 0}건</strong><small>{currentPosition ? `${formatKstTime(currentPosition.opened_ts_ms)} 진입 · ${formatDurationMs(currentPosition.elapsed_seconds * 1_000)} 보유` : '새 진입 대기'}</small></td>
             <td data-label="보기"><button type="button" className="secondary-button" onClick={() => { setDetailTab('status'); setFamilyMutation(null); setFamilyMutationError(''); setSelectedId(strategy.strategy_id); onSelectFamily?.(strategy.family_id ?? null) }}>자세히·설정</button></td>
           </tr>
         })}</tbody></table></div>
@@ -1180,6 +1237,31 @@ function StrategyOverview({
             {previousVariants.length ? <ul>{previousVariants.map((variant) => <li key={variant.strategy_id}><strong>{variant.variant_label_ko || variant.strategy_id}</strong><span>{variant.setting?.lifecycle || variant.role || '기록 보존'} · {variant.setting?.mode || '실행 안 함'}</span></li>)}</ul> : <p>등록된 이전 runtime variant가 없습니다.</p>}
           </section> : null}
           {detailTab === 'previous' && !familyDetail ? <section className="profile-detail-block"><h3>이전 버전</h3><p role="status">{familyDetailLoading ? '이전 버전 기록을 불러오는 중입니다.' : familyDetailError || '등록된 이전 버전 정보를 확인하지 못했습니다.'}</p></section> : null}
+          {detailTab === 'status' ? <section className="profile-detail-block strategy-activity-block">
+            <h3>현재와 최근 거래</h3>
+            <div className="strategy-activity-grid">
+              {selectedOpenPosition ? <article className="strategy-activity-card open">
+                <p><strong>현재 PAPER 보유 중</strong><span>{costProfileLabel(selectedOpenPosition.profile)}</span></p>
+                <h4>{selectedOpenPosition.symbol} · {sideLabel(selectedOpenPosition.side)}</h4>
+                <dl>
+                  <div><dt>진입</dt><dd>{formatKstDateTime(selectedOpenPosition.opened_ts_ms)}</dd></div>
+                  <div><dt>보유시간</dt><dd>{formatDurationMs(selectedOpenPosition.elapsed_seconds * 1_000)}</dd></div>
+                  <div><dt>현재 순손익</dt><dd className={Number(selectedOpenPosition.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(selectedOpenPosition.net_pnl, { signed: true })}</dd></div>
+                  <div><dt>보호 가격</dt><dd>1차 {formatPrice(selectedOpenPosition.TP1)} · 2차 {formatPrice(selectedOpenPosition.TP2)} · 손절 {formatPrice(selectedOpenPosition.current_stop)}</dd></div>
+                </dl>
+              </article> : <article className="strategy-activity-card waiting"><p><strong>현재 보유 없음</strong><span>{costProfileLabel(profile)}</span></p><small>진입조건이 맞는 공개시장 기회를 기다리고 있습니다.</small></article>}
+              {selectedLatestTrade ? <article className="strategy-activity-card completed">
+                <p><strong>가장 최근 완료</strong><span className={Number(selectedLatestTrade.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(selectedLatestTrade.net_pnl, { signed: true })}</span></p>
+                <h4>{selectedLatestTrade.symbol} · {sideLabel(selectedLatestTrade.side)}</h4>
+                <dl>
+                  <div><dt>진입</dt><dd>{formatKstDateTime(selectedLatestTrade.entry_ts_ms)}</dd></div>
+                  <div><dt>종료</dt><dd>{formatKstDateTime(selectedLatestTrade.exit_ts_ms)} · {exitReasonLabel(selectedLatestTrade.exit_reason)}</dd></div>
+                  <div><dt>목표·손절 시각</dt><dd>1차 {completedMilestoneClock(selectedLatestTrade, 'TP1')} · 2차 {completedMilestoneClock(selectedLatestTrade, 'TP2')} · 손절 {completedMilestoneClock(selectedLatestTrade, 'STOP')}</dd></div>
+                  <div><dt>총 보유</dt><dd>{formatDurationMs(selectedLatestTrade.holding_ms)}</dd></div>
+                </dl>
+              </article> : <article className="strategy-activity-card waiting"><p><strong>최근 완료 기록 없음</strong><span>현재 버전</span></p><small>완료된 PAPER 거래가 생기면 진입·익절·손절·종료 시각을 여기에 표시합니다.</small></article>}
+            </div>
+          </section> : null}
           {selectedFamilyId && (detailTab === 'status' || detailTab === 'conditions' || detailTab === 'exit') ? <div>
             <StrategyConditionsPanel familyId={selectedFamilyId} view={detailTab} />
           </div> : null}

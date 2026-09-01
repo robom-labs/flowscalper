@@ -6,7 +6,8 @@ import { PositionList } from '../src/components/PositionList'
 import { StrategyPerformancePanel } from '../src/components/StrategyPerformancePanel'
 import { StrategiesPage } from '../src/pages/StrategiesPage'
 import { StrategySymbolPanel } from '../src/components/StrategySymbolPanel'
-import type { LeaguePosition, V9ResearchCandidate } from '../src/types'
+import { formatKstDateTime, formatKstTime } from '../src/time'
+import type { HistoryRow, LeaguePosition, V9ResearchCandidate } from '../src/types'
 import { dashboardFixture, leagueAccounts, strategies } from './fixtures'
 
 afterEach(() => {
@@ -467,6 +468,84 @@ const basePosition: LeaguePosition = {
   exit_style: 'TWO_TARGET',
   management_reason: '진입 근거 유지',
 }
+
+test('shows current entry and the latest completed TP or stop timeline in strategy detail', () => {
+  const data = dashboardFixture()
+  const strategy = data.strategies[1]
+  const openedTsMs = 1_759_888_000_000
+  const completedEntryTsMs = openedTsMs - 300_000
+  const completedExitTsMs = completedEntryTsMs + 120_000
+  const openPosition: LeaguePosition = {
+    ...basePosition,
+    trade_id: 'trade-strategy-current',
+    candidate_id: 'candidate-strategy-current',
+    account_id: `${strategy.strategy_id}:BASE`,
+    strategy_id: strategy.strategy_id,
+    opened_ts_ms: openedTsMs,
+    elapsed_seconds: 90,
+  }
+  const completed: HistoryRow = {
+    run_id: 'run-fixture',
+    trade_id: 'trade-strategy-completed',
+    opportunity_id: 'opportunity-strategy-completed',
+    symbol: 'ETHUSDT',
+    strategy: strategy.strategy_id,
+    side: 'LONG',
+    entry: '100',
+    exit: '99',
+    entry_ts_ms: completedEntryTsMs,
+    exit_ts_ms: completedExitTsMs,
+    initial_stop: '99',
+    take_profit: '103',
+    take_profit_1: '101.5',
+    take_profit_2: '103',
+    tp1_hit_ts_ms: completedEntryTsMs + 45_000,
+    tp2_hit_ts_ms: null,
+    time_to_tp1_ms: 45_000,
+    time_to_tp2_ms: null,
+    time_to_stop_ms: 120_000,
+    quantity: '1',
+    exit_reason: 'STOP',
+    gross_pnl: '-1',
+    fees: '0.1',
+    slippage: '0.05',
+    net_pnl: '-1.15',
+    holding_ms: 120_000,
+    holding_seconds: 120,
+    profile: 'BASE',
+    sample_type: 'LIVE_PUBLIC',
+    account_scope: 'LEAGUE',
+    account_id: `${strategy.strategy_id}:BASE`,
+    strategy_version: strategy.strategy_version,
+  }
+  data.league_positions = [openPosition]
+  data.history = [completed]
+  const account = data.league_accounts.find((item) => (
+    item.strategy_id === strategy.strategy_id && item.profile === 'BASE'
+  ))
+  if (!account) throw new Error('strategy BASE account missing')
+  account.open_positions = 1
+
+  render(<StrategiesPage data={data} history={data.history} strategies={data.strategies} leagueAccounts={data.league_accounts} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
+
+  const row = document.querySelector(`[data-strategy-id="${strategy.strategy_id}"]`)
+  if (!(row instanceof HTMLElement)) throw new Error('strategy row missing')
+  expect(row).toHaveTextContent(`${formatKstTime(openedTsMs)} 진입 · 1분 30초 보유`)
+  fireEvent.click(within(row).getByRole('button', { name: '자세히·설정' }))
+
+  const detail = screen.getByRole('dialog', { name: '전략 상세 정보' })
+  const activity = within(detail).getByRole('heading', { name: '현재와 최근 거래' }).closest('section')
+  if (!(activity instanceof HTMLElement)) throw new Error('strategy activity section missing')
+  expect(activity).toHaveTextContent('현재 PAPER 보유 중')
+  expect(activity).toHaveTextContent(formatKstDateTime(openedTsMs))
+  expect(activity).toHaveTextContent('1차 102 · 2차 103 · 손절 99.5')
+  expect(activity).toHaveTextContent('가장 최근 완료')
+  expect(activity).toHaveTextContent(formatKstDateTime(completedEntryTsMs))
+  expect(activity).toHaveTextContent(formatKstDateTime(completedExitTsMs))
+  expect(activity).toHaveTextContent(`1차 ${formatKstTime(completedEntryTsMs + 45_000)} · 진입 후 45초`)
+  expect(activity).toHaveTextContent('2차 미도달')
+  expect(activity).toHaveTextContent(`손절 ${formatKstTime(completedExitTsMs)} · 진입 후 2분`)
+})
 
 test('uses the basic-cost account as the default open-trade filter and can reveal conservative costs', () => {
   const stressPosition = { ...basePosition, trade_id: 'trade-stress', candidate_id: 'candidate-stress', account_id: `${strategies[0].strategy_id}:STRESS`, profile: 'STRESS' as const, symbol: 'ETHUSDT' }

@@ -64,6 +64,8 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .history-table th, .history-table td, .performance-table th, .performance-table td { padding: 11px 8px; border-bottom: 1px solid #152a35; text-align: left; vertical-align: middle; }
 .history-table th, .performance-table th { position: sticky; top: 0; z-index: 1; color: #6f8998; background: #0b171e; font-size: 9px; letter-spacing: .05em; white-space: nowrap; }
 .history-table td small, .performance-table td small { display: block; margin-top: 3px; color: #698392; font-size: 9px; }
+.history-time-cell { min-width: 145px; }
+.history-time-cell time { color: inherit; font-variant-numeric: tabular-nums; }
 .history-cost-results { display: grid; gap: 4px; min-width: 150px; }
 .history-cost-results span { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .history-cost-results b { color: #8da5b0; font-size: 9px; font-weight: 750; }
@@ -270,12 +272,35 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .trade-result-lead { display: grid; gap: 4px; margin: 14px 0 4px; border: 1px solid #21434c; border-radius: 9px; padding: 12px; background: #0a1b22; }
 .trade-result-lead strong { font-size: 18px; }
 .trade-result-lead span { color: #8ca4af; font-size: 10px; }
+.trade-time-flow { overflow: hidden; margin: 0; border: 1px solid #21404b; border-radius: 9px; background: #09171e; }
+.trade-time-flow > div { position: relative; display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; padding: 10px 12px 10px 28px; border-bottom: 1px solid #142934; }
+.trade-time-flow > div:last-child { border-bottom: 0; }
+.trade-time-flow > div::before { position: absolute; top: 14px; left: 12px; width: 8px; height: 8px; border: 2px solid #45616d; border-radius: 50%; background: #0b1a21; content: ''; }
+.trade-time-flow > div.reached::before { border-color: var(--mint); background: var(--mint); }
+.trade-time-flow > div.stop-reached::before { border-color: #ff7883; background: #ff7883; }
+.trade-time-flow > div.closed::before { border-color: #f1c96d; background: #f1c96d; }
+.trade-time-flow dt { color: #8ca4af; font-size: 10px; font-weight: 800; }
+.trade-time-flow dd { display: grid; gap: 3px; margin: 0; text-align: right; font-size: 10px; }
+.trade-time-flow dd strong { font-variant-numeric: tabular-nums; }
+.trade-time-flow dd small, .trade-time-flow .not-reached dd strong { color: #718b98; font-size: 9px; font-weight: 600; }
 .history-opportunity-note { margin: 12px 0 8px; border: 1px solid #2d5d62; border-radius: 8px; padding: 10px; color: #a8c8ca; background: #0a1e22; font-size: 10px; line-height: 1.55; }
 .history-profile-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .history-profile-tabs button { display: grid; min-height: 54px; gap: 3px; border: 1px solid #294957; border-radius: 8px; padding: 7px 9px; color: #9bb0ba; background: #0c1c24; cursor: pointer; text-align: left; }
 .history-profile-tabs button[aria-pressed="true"] { border-color: var(--mint); background: #102b2b; box-shadow: inset 0 0 0 1px #65d6c344; }
 .history-profile-tabs span { font-size: 9px; font-weight: 800; }
 .history-profile-tabs strong { font-size: 11px; }
+.strategy-activity-grid { display: grid; gap: 8px; }
+.strategy-activity-card { border: 1px solid #203d49; border-radius: 9px; padding: 11px; background: #091820; }
+.strategy-activity-card.open { border-color: #31736d; background: #0a201f; }
+.strategy-activity-card.completed { border-color: #2b4a57; }
+.strategy-activity-card > p { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 7px; }
+.strategy-activity-card > p strong { color: #d7e6ec; font-size: 11px; }
+.strategy-activity-card > p span, .strategy-activity-card > small { color: #89a1ad; font-size: 9px; }
+.strategy-activity-card h4 { margin: 0 0 7px; color: #b8d6dc; font-size: 11px; }
+.strategy-activity-card dl { display: grid; gap: 5px; margin: 0; }
+.strategy-activity-card dl > div { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 9px; }
+.strategy-activity-card dt { color: #718b98; font-size: 9px; }
+.strategy-activity-card dd { margin: 0; text-align: right; font-size: 9px; line-height: 1.45; font-variant-numeric: tabular-nums; }
 .detail-list dd small { display: block; margin-top: 4px; color: #7893a2; line-height: 1.45; }
 .close-button { min-width: 48px; min-height: 48px; border: 1px solid #31505f; border-radius: 8px; color: #b9cbd5; background: #10212a; cursor: pointer; }
 .table-actions { display: flex; gap: 5px; }

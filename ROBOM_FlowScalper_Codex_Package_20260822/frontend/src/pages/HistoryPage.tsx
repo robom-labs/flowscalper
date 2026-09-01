@@ -13,7 +13,7 @@ import {
   sideLabel,
 } from '../format'
 import { strategyLabel } from '../strategyPresentation'
-import { formatKstTime } from '../time'
+import { formatKstDateTime, formatKstTime } from '../time'
 import { collapseTradeOpportunities } from '../tradeOpportunities'
 import type { HistoryRow, StrategySummaryRow, TradesResponse } from '../types'
 
@@ -47,6 +47,45 @@ function isCurrentStrategyVersion(row: HistoryRow, currentVersion?: string) {
 
 function milestoneDuration(value: number | null | undefined, empty = '미도달') {
   return value === null || value === undefined ? empty : formatDurationMs(value)
+}
+
+function earliestTimestamp(values: Array<number | null | undefined>) {
+  const recorded = values.filter((value): value is number => (
+    typeof value === 'number' && Number.isFinite(value)
+  ))
+  return recorded.length ? Math.min(...recorded) : null
+}
+
+function milestoneTimestamp(
+  row: HistoryRow,
+  milestone: 'TP1' | 'TP2' | 'STOP',
+) {
+  if (milestone === 'TP1') {
+    return row.tp1_hit_ts_ms
+      ?? (row.time_to_tp1_ms === null || row.time_to_tp1_ms === undefined
+        ? null
+        : row.entry_ts_ms + row.time_to_tp1_ms)
+  }
+  if (milestone === 'TP2') {
+    return row.tp2_hit_ts_ms
+      ?? (row.time_to_tp2_ms === null || row.time_to_tp2_ms === undefined
+        ? null
+        : row.entry_ts_ms + row.time_to_tp2_ms)
+  }
+  if (row.exit_reason === 'STOP' || row.exit_reason === 'STOP_LOSS') return row.exit_ts_ms
+  return row.time_to_stop_ms === null || row.time_to_stop_ms === undefined
+    ? null
+    : row.entry_ts_ms + row.time_to_stop_ms
+}
+
+function milestoneClockLabel(
+  row: HistoryRow,
+  milestone: 'TP1' | 'TP2' | 'STOP',
+  empty: string,
+) {
+  const timestamp = milestoneTimestamp(row, milestone)
+  if (timestamp === null) return empty
+  return `${formatKstDateTime(timestamp)} · 진입 후 ${formatDurationMs(timestamp - row.entry_ts_ms)}`
 }
 
 function movementInR(value: string | null | undefined) {
@@ -180,10 +219,19 @@ function collapsePartialExitRows(rows: HistoryRow[]) {
   const representative = rows.find((row) => row.replay_available) ?? latest
   const fills = mergedFills(rows)
   const fillEvidence = mergedFillEvidence(rows, fills)
+  const entryTsMs = Math.min(...rows.map((row) => row.entry_ts_ms))
+  const tp1HitTsMs = earliestTimestamp(rows.map((row) => milestoneTimestamp(row, 'TP1')))
+  const tp2HitTsMs = earliestTimestamp(rows.map((row) => milestoneTimestamp(row, 'TP2')))
+  const stopHitTsMs = earliestTimestamp(rows.map((row) => milestoneTimestamp(row, 'STOP')))
   return {
     ...representative,
-    entry_ts_ms: Math.min(...rows.map((row) => row.entry_ts_ms)),
+    entry_ts_ms: entryTsMs,
     exit_ts_ms: Math.max(...rows.map((row) => row.exit_ts_ms)),
+    tp1_hit_ts_ms: tp1HitTsMs,
+    tp2_hit_ts_ms: tp2HitTsMs,
+    time_to_tp1_ms: tp1HitTsMs === null ? null : Math.max(0, tp1HitTsMs - entryTsMs),
+    time_to_tp2_ms: tp2HitTsMs === null ? null : Math.max(0, tp2HitTsMs - entryTsMs),
+    time_to_stop_ms: stopHitTsMs === null ? null : Math.max(0, stopHitTsMs - entryTsMs),
     exit: latest.exit,
     quantity: sumHistoryRows(rows, 'quantity'),
     gross_pnl: sumHistoryRows(rows, 'gross_pnl'),
@@ -481,18 +529,24 @@ export function HistoryPage({
       <div className="history-layout">
         <section className="panel wide-panel table-scroll">
           <table className="history-table">
-            <thead><tr><th>거래</th><th>전략·계좌</th><th>최종 결과</th><th>종료</th><th>보유</th><th>보기</th></tr></thead>
+            <thead><tr><th>거래</th><th>전략·계좌</th><th>진입 → 종료</th><th>최종 결과</th><th>종료 이유</th><th>보기</th></tr></thead>
             <tbody>{opportunities.map((opportunity) => {
               const row = opportunity.primary
               const comparison = opportunityComparison(opportunity)
               const sameExitReason = opportunity.rows.every((item) => item.exit_reason === row.exit_reason)
+              const entryTsMs = Math.min(...opportunity.rows.map((item) => item.entry_ts_ms))
+              const earliestExitTsMs = Math.min(...opportunity.rows.map((item) => item.exit_ts_ms))
+              const latestExitTsMs = Math.max(...opportunity.rows.map((item) => item.exit_ts_ms))
+              const exitClock = earliestExitTsMs === latestExitTsMs
+                ? formatKstTime(latestExitTsMs)
+                : `${formatKstTime(earliestExitTsMs)}~${formatKstTime(latestExitTsMs)}`
               return (
               <tr key={opportunity.key}>
                 <td data-label="거래"><strong>{row.symbol}</strong><small>{sideLabel(row.side)} · {sampleTypeLabel(row.sample_type)}</small></td>
                 <td data-label="전략·계좌"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy)}</strong><small>{opportunity.rows.length > 1 ? comparison.label : `${accountLabel(row)} · ${comparison.label}`}</small></td>
+                <td data-label="진입 → 종료" className="history-time-cell"><strong><time dateTime={new Date(entryTsMs).toISOString()} title={formatKstDateTime(entryTsMs)}>{formatKstTime(entryTsMs)}</time> 진입</strong><small><time dateTime={new Date(latestExitTsMs).toISOString()} title={formatKstDateTime(latestExitTsMs)}>{exitClock}</time> 종료 · {opportunityHoldingLabel(opportunity)} 보유</small></td>
                 <td data-label="최종 결과">{opportunity.rows.length > 1 ? <><div className="history-cost-results">{opportunity.rows.map((result) => <span className={Number(result.net_pnl) >= 0 ? 'positive' : 'negative'} key={historyResultIdentity(result)}><b>{historyResultLabel(opportunity, result)}</b><strong>{formatUsdt(result.net_pnl, { signed: true })}</strong></span>)}</div><small>{comparison.note}</small></> : <><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong><small>가격 손익 {formatUsdt(row.gross_pnl, { signed: true })} · 총비용 {formatUsdt(Number(row.fees) + Number(row.slippage))}</small></>}</td>
-                <td data-label="종료"><strong>{sameExitReason ? historyExitLabel(row.exit_reason, isPriorVersion(row)) : '결과별 종료 다름'}</strong><small>{sameExitReason ? exitExplanation(row.exit_reason, isPriorVersion(row)) : '세부 결과를 열어 각각의 종료 이유를 확인하세요.'}</small></td>
-                <td data-label="보유"><strong>{opportunityHoldingLabel(opportunity)}</strong><small>1차 목표 {milestoneDuration(row.time_to_tp1_ms, missingMilestone(row, '미도달'))}</small></td>
+                <td data-label="종료 이유"><strong>{sameExitReason ? historyExitLabel(row.exit_reason, isPriorVersion(row)) : '결과별 종료 다름'}</strong><small>{sameExitReason ? exitExplanation(row.exit_reason, isPriorVersion(row)) : '세부 결과를 열어 각각의 종료 이유를 확인하세요.'}</small></td>
                 <td data-label="보기"><div className="table-actions"><button type="button" className="table-button" onClick={() => setSelected(row)}>{comparison.button}</button><button type="button" className="table-button" disabled={row.replay_available === false} title={row.replay_available === false ? '저장된 공개시장 데이터가 없습니다.' : undefined} onClick={() => onReplay(row)}>{row.replay_available === false ? '다시보기 없음' : '다시보기'}</button></div></td>
               </tr>
               )
@@ -509,6 +563,16 @@ export function HistoryPage({
           {selected ? <>
             {selectedOpportunity && selectedOpportunity.rows.length > 1 ? <><p className="history-opportunity-note">{opportunityComparison(selectedOpportunity).drawerNote}</p><div className="history-profile-tabs" role="group" aria-label={opportunityComparison(selectedOpportunity).groupLabel}>{selectedOpportunity.rows.map((row) => <button type="button" aria-pressed={historyResultIdentity(row) === historyResultIdentity(selected)} key={historyResultIdentity(row)} onClick={() => setSelected(row)}><span>{historyResultLabel(selectedOpportunity, row)}</span><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong></button>)}</div></> : null}
             <p className="trade-result-lead"><strong className={Number(selected.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(selected.net_pnl, { signed: true })}</strong><span>{historyExitLabel(selected.exit_reason, isPriorVersion(selected))} · {formatDurationMs(selected.holding_ms)} 보유</span></p>
+            <section className="trade-detail-section" aria-labelledby="trade-timeline-heading">
+              <h3 id="trade-timeline-heading">진입부터 종료까지</h3>
+              <dl className="trade-time-flow" aria-label="진입부터 종료까지 시간 흐름">
+                <div className="reached"><dt>진입</dt><dd><strong>{formatKstDateTime(selected.entry_ts_ms)}</strong><small>진입가 {formatPrice(selected.entry)}</small></dd></div>
+                <div className={milestoneTimestamp(selected, 'TP1') === null ? 'not-reached' : 'reached'}><dt>1차 익절</dt><dd><strong>{milestoneClockLabel(selected, 'TP1', missingMilestone(selected, '미도달'))}</strong><small>{selected.take_profit_1 ? `목표가 ${formatPrice(selected.take_profit_1)}` : '과거 기록에는 1차 목표가가 없습니다.'}</small></dd></div>
+                <div className={milestoneTimestamp(selected, 'TP2') === null ? 'not-reached' : 'reached'}><dt>2차 익절</dt><dd><strong>{milestoneClockLabel(selected, 'TP2', missingMilestone(selected, '미도달'))}</strong><small>{selected.take_profit_2 ? `목표가 ${formatPrice(selected.take_profit_2)}` : '과거 기록에는 2차 목표가가 없습니다.'}</small></dd></div>
+                <div className={milestoneTimestamp(selected, 'STOP') === null ? 'not-reached' : 'stop-reached'}><dt>손절</dt><dd><strong>{milestoneClockLabel(selected, 'STOP', missingMilestone(selected, '미도달'))}</strong><small>초기 손절가 {formatPrice(selected.initial_stop)}</small></dd></div>
+                <div className="closed"><dt>최종 종료</dt><dd><strong>{formatKstDateTime(selected.exit_ts_ms)}</strong><small>{historyExitLabel(selected.exit_reason, isPriorVersion(selected))} · 총 {formatDurationMs(selected.holding_ms)} 보유</small></dd></div>
+              </dl>
+            </section>
             <section className="trade-detail-section" aria-labelledby="trade-summary-heading">
               <h3 id="trade-summary-heading">거래 요약</h3>
               <dl className="detail-list">

@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { HistoryPage } from '../src/pages/HistoryPage'
+import { formatKstDateTime, formatKstTime } from '../src/time'
 import type { HistoryRow } from '../src/types'
 
 afterEach(() => {
@@ -21,7 +22,7 @@ const trade: HistoryRow = {
   entry: '100',
   exit: '101',
   entry_ts_ms: 1_000,
-  exit_ts_ms: 2_000,
+  exit_ts_ms: 2_696,
   initial_stop: '99',
   take_profit: '103',
   take_profit_1: '102',
@@ -131,7 +132,9 @@ test('clears stale trade detail when the current history no longer contains it',
   const view = render(<HistoryPage rows={[trade]} currentRunId="run-history" onReplay={vi.fn()} />)
   fireEvent.change(screen.getByLabelText('전략 버전'), { target: { value: 'CURRENT' } })
   fireEvent.change(screen.getByLabelText('계좌 범위'), { target: { value: 'MAIN' } })
-  expect(screen.getByText('1.7초')).toBeInTheDocument()
+  const historyTable = document.querySelector('.history-table')
+  expect(historyTable).toHaveTextContent(`${formatKstTime(trade.entry_ts_ms)} 진입`)
+  expect(historyTable).toHaveTextContent(`${formatKstTime(trade.exit_ts_ms)} 종료 · 1.7초 보유`)
   expect(screen.getByText('2차 익절')).toBeInTheDocument()
   const openButton = screen.getByRole('button', { name: '자세히' })
   openButton.focus()
@@ -152,6 +155,12 @@ test('clears stale trade detail when the current history no longer contains it',
   expect(screen.getByText('최고 미실현 손익')).toBeInTheDocument()
   expect(screen.getByText('고점 대비 되돌림')).toBeInTheDocument()
   expect(screen.getByText('남은 수량 순기여')).toBeInTheDocument()
+  const timeline = within(screen.getByRole('dialog', { name: '거래 상세' })).getByLabelText('진입부터 종료까지 시간 흐름')
+  expect(timeline).toHaveTextContent(formatKstDateTime(trade.entry_ts_ms))
+  expect(timeline).toHaveTextContent(formatKstDateTime(trade.entry_ts_ms + 800))
+  expect(timeline).toHaveTextContent(formatKstDateTime(trade.entry_ts_ms + 1_696))
+  expect(timeline).toHaveTextContent(`최종 종료${formatKstDateTime(trade.exit_ts_ms)}`)
+  expect(timeline).toHaveTextContent('손절미도달')
   fireEvent.keyDown(document, { key: 'Escape' })
   expect(screen.queryByRole('dialog', { name: '거래 상세' })).not.toBeInTheDocument()
   expect(openButton).toHaveFocus()
