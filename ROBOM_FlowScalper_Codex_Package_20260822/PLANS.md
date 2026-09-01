@@ -759,7 +759,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 145 연속 PAPER 진입과 기본 10배·최대 100배 설정
 
-- 상태는 `IMPLEMENTED_FOCUSED_VALIDATION_PASS_FULL_VALIDATION_IN_PROGRESS`다.
+- 상태는 `IMPLEMENTED_FULL_VALIDATION_PASS_INSTALLED_GITHUB_PENDING`다.
 - 공동계좌와 30개 전략별 BASE/STRESS 계좌는 하루 거래횟수, 하루 손실, 주간 손실과
   연속손실 cooldown으로 신규 진입을 멈추지 않는다. 기존 카운터·손익·거래·판단은 삭제하지 않는다.
 - drawdown, 동시 포지션, 총 계획손실, 선택 배수에 따른 총 명목금액, 실제 실행가능 호가깊이,
@@ -772,7 +772,14 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 정상 화면의 신규진입 일시정지·재개 버튼을 제거하고 상단에 `자동 진입 · 항상 허용` 또는
   `자동 진입 · 안전 대기`를 표시한다. 일반 과거 pause는 정상 재시작에서 자동복구하고
   `DEPLOYMENT_MAINTENANCE_*` pause는 배포 완료 전까지 유지한다.
-- 집중 backend 184건과 frontend 119건, ESLint·TypeScript는 PASS했다. 전체 backend·mypy·
-  build·fixture·Playwright·PAPER safety·security·실제 설치 서비스·브라우저·GitHub는 진행 중이다.
+- 집중 backend 184건, 전체 backend 1,540건, frontend 119건, fixture API 37건,
+  fixture Playwright 7 PASS·2 SKIP, Ruff·mypy 127 source·ESLint·TypeScript·build·PAPER
+  safety·security 162 source·repository hygiene·30개 회귀계약을 PASS했다.
+- 불변 릴리스 `3964b725d8355cf3228a04cd9c44d2bd5f17cc83`을 같은 Run
+  `run-2b7135a972dd`에 설치했다. 실제 8870 브라우저 28건과 60.027초 관찰은
+  PASS했고, event +7,187·전략평가 +5,424·비계획 재연결·gap·resync·drop·저장결함 0이다.
+- 실제 관찰에서 적격신호·신규 거래는 0이었다. 이는 RUNNING·ENTRY_ENABLED·event·
+  전략평가 전진이 동시에 관찰된 조건 미충족이며, 거래를 만들기 위해 신호·비용·TP·SL을
+  완화하지 않았다.
 - 높은 배수나 거래 증가를 수익성으로 해석하지 않는다. 6시간·24시간은 `NOT_RUN`, 수익성은
   `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.

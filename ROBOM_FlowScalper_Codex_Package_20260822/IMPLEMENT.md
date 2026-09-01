@@ -808,6 +808,15 @@ Create or update `FINAL_UPGRADE_EVIDENCE.md` containing:
 9. Verify the actual 8870 browser and installed release, then record short performance evidence without
    treating it as 6h, 24h or profitability proof.
 
+Validation completed on the immutable installed release
+`3964b725d8355cf3228a04cd9c44d2bd5f17cc83`. Backend 1,540 tests, frontend 119 tests,
+fixture API 37 tests, fixture Playwright 7 passed with 2 intentional skips, all static and PAPER safety
+checks, and 28 actual 8870 desktop/tablet/mobile checks passed. The clean-tree 60.027 second observer
+passed with 7,187 new public-market events, 5,424 strategy evaluations, queue maximum 15,
+processing/trade P95 maximum 33.787/83.902ms, and zero new unplanned reconnect, gap, resync, drop,
+persistence fault, actual order or authentication event. Qualified signals and new trades remained zero,
+so profitability remains NOT_PROVEN and 6h/24h remain NOT_RUN.
+
 ## Wave 135 전략 결과표·정렬·홈 이동
 
 - `StrategiesPage` 표를 BASE·STRESS 전환과 전략·상태·승률·거래 수·순손익·보유 정렬을 지원하는 결과표로 교체했다.

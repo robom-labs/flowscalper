@@ -1,0 +1,133 @@
+{
+  "schema": "flowscalper.wave145_continuous_entry_and_leverage_validation.v1",
+  "status": "PASS",
+  "generated_ts_utc": "2026-09-01T13:19:01Z",
+  "installed_release_commit": "3964b725d8355cf3228a04cd9c44d2bd5f17cc83",
+  "run_id": "run-2b7135a972dd",
+  "operation": {
+    "state": "RUNNING",
+    "paper_entry_active": true,
+    "automatic_recovery": true,
+    "entry_intent_revision": 68,
+    "manual_pause_requested": false
+  },
+  "continuous_research_limits": {
+    "daily_trade_limit_enabled": false,
+    "daily_loss_lock_enabled": false,
+    "weekly_loss_lock_enabled": false,
+    "loss_cooldown_enabled": false,
+    "shared_daily_loss_limit_ko": "중단 없음",
+    "shared_weekly_loss_limit_ko": "중단 없음",
+    "league_daily_trade_limit_ko": "중단 없음",
+    "league_daily_loss_limit_ko": "중단 없음",
+    "league_weekly_loss_limit_ko": "중단 없음",
+    "league_loss_cooldown_ko": "사용 안 함"
+  },
+  "leverage": {
+    "default": 10,
+    "selected": 10,
+    "maximum_available": 100,
+    "allowed": [1, 2, 3, 5, 10, 20, 25, 50, 75, 100],
+    "mutation_test": [
+      {"selected": 10, "revision": 0},
+      {"selected": 100, "revision": 1},
+      {"selected": 10, "revision": 2}
+    ],
+    "quantity_contract": "RISK_AND_EXECUTABLE_DEPTH_SIZED",
+    "fees_contract": "ACTUAL_PAPER_NOTIONAL",
+    "margin_formula": "ACTUAL_NOTIONAL_DIVIDED_BY_SELECTED_LEVERAGE"
+  },
+  "retained_fail_closed_controls": [
+    "DRAWDOWN",
+    "SIMULTANEOUS_POSITION_LIMIT",
+    "AGGREGATE_PLANNED_RISK",
+    "EXECUTABLE_DEPTH",
+    "COST_VIABILITY",
+    "MARKET_DATA_HEALTH",
+    "PERSISTENCE",
+    "RECOVERY",
+    "LEDGER_INTEGRITY"
+  ],
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_key_enabled": false,
+    "wallet_enabled": false,
+    "runtime_ai_order_decision_enabled": false,
+    "funding_readiness": "NOT_READY"
+  },
+  "strategy_shape": {
+    "registered": 15,
+    "active": 0,
+    "shadow": 6,
+    "off": 9,
+    "base_stress_accounts": 30,
+    "retired_or_legacy_reenabled_to_create_trades": false
+  },
+  "automated_validation": {
+    "backend_focused_tests_passed": 184,
+    "backend_full_tests_passed": 1540,
+    "frontend_test_files_passed": 15,
+    "frontend_tests_passed": 119,
+    "fixture_api_tests_passed": 37,
+    "fixture_playwright_passed": 7,
+    "fixture_playwright_intentional_skips": 2,
+    "actual_8870_playwright_passed": 28,
+    "ruff": "PASS",
+    "mypy_source_files": 127,
+    "mypy": "PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": "PASS",
+    "paper_build_safety": "PASS",
+    "security_source_files": 162,
+    "security": "PASS",
+    "repository_hygiene": "PASS",
+    "regression_contracts_passed": 30
+  },
+  "actual_browser": {
+    "status": "PASS",
+    "desktop_tablet_mobile": true,
+    "continuous_entry_label_visible": true,
+    "routine_pause_resume_controls_present": false,
+    "selected_leverage_visible": 10,
+    "maximum_leverage_option_visible": 100,
+    "interactive_targets_minimum_width_and_height_px": 48,
+    "horizontal_overflow": 0,
+    "console_and_page_errors": 0,
+    "screenshots": "evidence/screenshots/v6-actual-8870/"
+  },
+  "running_service_observation": {
+    "evidence": "evidence/WAVE145_CONTINUOUS_ENTRY_OBSERVATION.json",
+    "status": "PASS",
+    "duration_seconds": 60.027,
+    "public_market_event_delta": 7187,
+    "strategy_evaluation_delta": 5424,
+    "qualified_signal_delta": 0,
+    "main_trade_delta": 0,
+    "league_trade_delta": 0,
+    "maximum_queue_depth": 15,
+    "maximum_processing_lag_p95_ms": 33.786865234375,
+    "maximum_trade_lag_p95_ms": 83.90185546875,
+    "maximum_event_loop_lag_ms": 208.0,
+    "memory_growth_mb": 24.531,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "resync_delta": 0,
+    "drop_delta": 0,
+    "persistence_fault_delta": 0,
+    "persistence_buffer_drop_delta": 0,
+    "source_release_commit_match": true,
+    "source_worktree_clean_at_start_and_end": true
+  },
+  "interpretation": {
+    "zero_new_trades": "NO_QUALIFIED_NATURAL_SIGNAL_DURING_OBSERVATION",
+    "thresholds_lowered_to_force_trades": false,
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN"
+  }
+}

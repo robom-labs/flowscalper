@@ -4908,3 +4908,86 @@ fault·buffer drop·backlog 진입잠금·critical lag·실제 주문·인증은
 | 자연 거래·현재버전 성과 | `NOT_OBSERVED / NOT_PROVEN` | 최종 관찰 적격·거래·표본 증가 0 |
 | 6시간·24시간 | `NOT_RUN` | 실제 wall-clock 미충족 |
 | 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 용량·UI·무진입 진단 통과는 비용후 수익성 증거가 아님 |
+
+## 107. Wave 145 연속 PAPER 진입·기본 10배·최대 100배 선택
+
+### 107.1 적용 범위와 유지한 안전 경계
+
+정상 PAPER 연구의 하루 거래횟수, 하루 손실, 주간 손실과 연속손실 cooldown을
+신규 진입 거절 사유에서 제거했다. 공동계좌와 30개 전략별 BASE/STRESS 독립계좌의
+카운터·손익·완료 거래·판단 기록은 삭제하지 않았다. drawdown, 동시 포지션,
+총 계획위험, 실행가능 호가깊이, 비용후 손익비, 데이터·저장·복구·원장 결함은 계속
+fail-closed한다.
+
+PAPER 증거금 배수는 1·2·3·5·10·20·25·50·75·100배 중에서 선택하고 기본은 10배다.
+수량은 손절거리·양방향 수수료·슬리피지·달러 위험예산·호가깊이로 정하며 100배를
+선택했다고 수량을 자산의 100배로 강제하지 않는다. 수수료·슬리피지·손익은 실제 PAPER
+명목금액, 증거금은 `명목금액 ÷ 진입 당시 선택배수`로 계산한다. 설정은 revision CAS와
+SQLite app setting으로 보존하고 새 진입부터 적용한다.
+
+### 107.2 자동검증과 실제 화면
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| backend 집중 | `PASS` | 184건 |
+| backend 전체 | `PASS` | 1,540건, 51.11초 |
+| frontend Vitest | `PASS` | 15 files·119 tests |
+| Ruff·mypy | `PASS` | Ruff 오류 0·mypy 127 source 오류 0 |
+| ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules |
+| fixture API | `PASS` | 37건 |
+| fixture Playwright | `PASS` | desktop·tablet·mobile 7 PASS·2 설계상 SKIP |
+| PAPER build safety·security | `PASS` | security 162 source, 실제주문 경로·위반·secret 0 |
+| repository hygiene·회귀계약 | `PASS` | hygiene PASS·30개 회귀계약 PASS |
+| 실제 8870 Playwright | `PASS` | desktop·tablet·mobile 28건 |
+| in-app browser 육안·DOM | `PASS_OBSERVED` | `자동 진입 · 항상 허용`, 10배 선택, 100배 선택지, 일·주 한도 없음 |
+
+첫 실제 8870 검수에서 25건 중 22건은 PASS했지만 `전체보기`·`전체화면`·태블릿
+`종목` 버튼 너비가 각각 47.688px·47.688px·37.578px이어서 FAIL로 보존했다. 공통 버튼,
+전략 정렬, replay 이동·시점, 모바일 상세 버튼의 가로·세로를 모두 48px 이상으로
+맞추고 fixture 측정도 높이 전용에서 가로·세로 동시 검증으로 강화했다. 최종 28건은
+모두 PASS했고 가로 overflow·console/page error는 0이다. 스크린샷 28개는
+`evidence/screenshots/v6-actual-8870/`에 보존했다.
+
+설정 API는 10배 revision 0에서 100배 revision 1로 변경한 뒤 10배 revision 2로 복원했다.
+현재 화면·API·재시작 복구 모두 10배이며, 허용되지 않는 7배와 낡은 revision은 거절하는
+것을 회귀테스트로 확인했다.
+
+### 107.3 불변 설치·실제 관찰·판정 경계
+
+최종 불변 릴리스 `3964b725d8355cf3228a04cd9c44d2bd5f17cc83`을 같은 Run
+`run-2b7135a972dd`에 설치했다. 포지션·대기진입이 모두 0인 시점에서만 유지보수
+일시정지했고 각 전환 후 같은 Run과 10배 설정을 보존한 `ENTRY_ENABLED`로 즉시 복귀했다.
+설치 준비 중 작업트리 증거 산출물과 순간 lag P95 1,029.672ms를 각각 발견한 두 시도는
+서비스 전환 전에 fail-closed 중단했다. lag가 172.706ms로 회복한 후에만 설치했다.
+
+깨끗한 작업트리와 설치 릴리스를 60.027초 관찰한 결과는 다음과 같다.
+
+| 항목 | 결과 |
+|---|---:|
+| 상태 | `PASS` |
+| 공개시장 event / 전략평가 증가 | 7,187 / 5,424 |
+| 적격신호 / main 거래 / league 거래 증가 | 0 / 0 / 0 |
+| queue 최대 | 15 / 4,096 |
+| 처리 / 거래 지연 P95 최대 | 33.787 / 83.902ms |
+| event-loop 지연 최대 / event 정지 | 208ms / 0초 |
+| 메모리 증가 / 저장 buffer 최대 | 24.531MB / 249 |
+| 비계획 재연결 / 신규 gap / resync / drop | 0 / 0 / 0 / 0 |
+| 저장 fault / buffer drop / backlog 진입잠금 | 0 / 0 / 0 |
+| 실제 주문 / 인증 / private API / API Key / wallet | 0 / 0 / 0 / 0 / 0 |
+| source·release SHA 일치 / 작업트리 시작·종료 clean | PASS / PASS |
+
+기계판독 근거는 `evidence/WAVE145_CONTINUOUS_ENTRY_OBSERVATION.json`과
+`evidence/WAVE145_CONTINUOUS_ENTRY_AND_LEVERAGE_VALIDATION.json`이다. 이 60초에서 적격신호가 0이었으나
+RUNNING·ENTRY_ENABLED·실행가능 저장·event·전략평가 전진을 함께 확인했다. 따라서
+이 구간의 신규 거래 0은 일·주 손실한도나 cooldown 차단 오류가 아니라 자연 진입조건
+미충족이다. 기준·비용·TP·SL을 낮추지 않았고 퇴역·legacy 9개를 거래수 증가 목적으로
+재활성화하지 않았다.
+
+| 최종 판정 | 상태 |
+|---|---|
+| 연속 PAPER 진입·기본 10배·최대 100배 | `PASS_IMPLEMENTED_AND_OBSERVED` |
+| 실제 8870 화면·접근성 | `PASS_OBSERVED` |
+| 실제 거래 및 신규 진입 | `NOT_OBSERVED` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+| 6시간·24시간 | `NOT_RUN` |
+| GitHub main·Actions | `PENDING` |
