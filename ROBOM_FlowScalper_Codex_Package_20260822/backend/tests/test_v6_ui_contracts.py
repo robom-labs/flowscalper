@@ -635,6 +635,57 @@ def test_v6_family_catalog_detail_conditions_and_cas_research_api() -> None:
         assert catalog_payload["wallet_enabled"] is False
         assert catalog_payload["runtime_ai_order_decision_enabled"] is False
         assert catalog_payload["funding_readiness"] == "NOT_READY"
+        assert catalog_payload["inventory"] == {
+            "schema": "flowscalper.strategy_inventory.v1",
+            "registered_catalog_item_count": 16,
+            "runtime_registry_variant_count": 15,
+            "enabled_directional_entry_candidate_count": 6,
+            "current_family_entry_representative_count": 3,
+            "inactive_history_runtime_variant_count": 9,
+            "catalog_virtual_filter_count": 1,
+            "active_directional_entry_count": 0,
+        }
+        v9_research = catalog_payload["v9_research"]
+        assert v9_research["candidate_count"] == 12
+        assert v9_research["monitoring_on_count"] == 12
+        assert v9_research["direction_strategy_count"] == 2
+        assert v9_research["market_neutral_strategy_count"] == 1
+        assert v9_research["runtime_entry_registered_count"] == 0
+        assert v9_research["entry_enabled_count"] == 0
+        assert v9_research["active_count"] == 0
+        assert len(v9_research["candidates"]) == 12
+        assert all(row["monitoring_enabled"] for row in v9_research["candidates"])
+        assert not any(row["entry_enabled"] for row in v9_research["candidates"])
+        assert all(
+            row["source_ids"]
+            and len(row["source_ids"]) == len(set(row["source_ids"]))
+            and all(source_id.startswith("SRC-") for source_id in row["source_ids"])
+            for row in v9_research["candidates"]
+        )
+        dc_candidates = [
+            row
+            for row in v9_research["candidates"]
+            if str(row["candidate_id"]).startswith("DC_OVERSHOOT_")
+        ]
+        assert len(dc_candidates) == 2
+        assert all(
+            row["readiness"] == "PARTIAL_SOURCE_NOT_CONNECTED"
+            for row in dc_candidates
+        )
+        semivariance_candidates = [
+            row
+            for row in v9_research["candidates"]
+            if row["candidate_id"]
+            in {
+                "SEMIVARIANCE_MOMENTUM_REVERSAL_ROUTER_V1",
+                "DOWNSIDE_SEMIVARIANCE_RISK_OVERLAY_V1",
+            }
+        ]
+        assert len(semivariance_candidates) == 2
+        assert all(
+            row["readiness"] == "PARTIAL_SOURCE_NOT_CONNECTED"
+            for row in semivariance_candidates
+        )
         etag = catalog_response.headers["etag"]
         cached = client.get("/api/strategy-families", headers={"If-None-Match": etag})
         detail = client.get("/api/strategy-families/TREND_PULLBACK")
@@ -647,6 +698,7 @@ def test_v6_family_catalog_detail_conditions_and_cas_research_api() -> None:
                 "reason": "USER_V6_TEST_OFF",
             },
         )
+        disabled_catalog = client.get("/api/strategy-families")
         stale = client.patch(
             "/api/strategy-families/TREND_PULLBACK/research-enabled",
             json={
@@ -685,6 +737,13 @@ def test_v6_family_catalog_detail_conditions_and_cas_research_api() -> None:
     assert availability["MARKET_NEUTRAL"] == "엔진 검증 필요"
     assert cached.status_code == 304
     assert cached.content == b""
+    assert disabled_catalog.headers["etag"] != etag
+    assert disabled_catalog.json()["inventory"][
+        "enabled_directional_entry_candidate_count"
+    ] == 5
+    assert disabled_catalog.json()["inventory"][
+        "inactive_history_runtime_variant_count"
+    ] == 10
     assert detail.status_code == 200
     assert detail.json()["current_variant_id"] == "TREND_PULLBACK_RECLAIM_15M_V2"
     detail_current = next(

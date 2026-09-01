@@ -129,10 +129,28 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .family-category-tabs { display: flex; gap: 5px; overflow-x: auto; margin-bottom: 8px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: #09151c; scrollbar-width: thin; }
 .family-category-tabs button { min-width: 72px; min-height: 48px; border: 1px solid transparent; border-radius: 7px; padding: 0 12px; color: #91a8b4; background: transparent; cursor: pointer; font-size: 10px; font-weight: 800; white-space: nowrap; }
 .family-category-tabs button[aria-selected="true"] { color: #07110f; border-color: var(--mint); background: var(--mint); }
-.strategy-summary-strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
+.strategy-summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 8px; }
 .strategy-summary-strip article { min-width: 0; border: 1px solid #1d3540; border-radius: 8px; padding: 10px 12px; background: #09171e; }
 .strategy-summary-strip span { display: block; color: #7893a2; font-size: 8px; font-weight: 800; }
 .strategy-summary-strip b { display: block; margin-top: 5px; color: #dce9ee; font-size: 18px; }
+.strategy-inventory-note { margin: 0 0 8px; border: 1px solid #24414d; border-radius: 8px; padding: 9px 12px; background: #0a1a21; color: #9db0ba; font-size: 9px; line-height: 1.55; }
+.v9-research-catalog { margin: 0 0 10px; border: 1px solid #285263; border-radius: 10px; padding: 12px; background: #081820; }
+.v9-research-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.v9-research-heading div { display: grid; gap: 3px; }
+.v9-research-heading span, .v9-research-heading p { color: #81a0ae; font-size: 9px; }
+.v9-research-heading strong { color: #dcebef; font-size: 15px; }
+.v9-research-heading p { margin: 0; text-align: right; }
+.v9-research-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.v9-research-grid article { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; min-width: 0; border: 1px solid #1d3c48; border-radius: 8px; padding: 9px; background: #0b1d25; }
+.v9-research-grid article > div { display: grid; min-width: 0; gap: 2px; grid-row: span 2; }
+.v9-research-grid b { overflow: hidden; color: #d4e5ea; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.v9-research-grid small { color: #83a0ad; font-size: 8px; }
+.v9-research-grid code { overflow: hidden; color: #638391; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.v9-research-grid span, .v9-research-grid em { justify-self: end; font-size: 8px; font-style: normal; white-space: nowrap; }
+.v9-monitor-on { color: #75dfb2; }
+.v9-monitor-off { color: #ff9c96; }
+.v9-research-grid em { color: #d6b978; }
+.v9-research-catalog > p { margin: 9px 0 0; color: #89a4af; font-size: 8px; line-height: 1.55; }
 .family-placeholder-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
 .family-placeholder-grid article { display: grid; gap: 6px; min-height: 150px; }
 .family-placeholder-grid span, .family-placeholder-grid small { color: #7893a2; font-size: 8px; }
@@ -344,6 +362,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .metric-strip, .system-summary-grid { grid-template-columns: repeat(3, 1fr); }
   .diagnostic-grid { grid-template-columns: repeat(3, 1fr); }
   .strategy-summary-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .v9-research-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .family-placeholder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -648,6 +667,9 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .history-table td, .strategy-compact-table td, .performance-table td, .league-position-table td { grid-template-columns: 74px minmax(0, 1fr); padding-inline: 8px; }
   .family-category-tabs button { min-width: 66px; padding-inline: 9px; }
   .strategy-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .v9-research-heading { align-items: start; flex-direction: column; }
+  .v9-research-heading p { text-align: left; }
+  .v9-research-grid { grid-template-columns: 1fr; }
   .family-placeholder-grid { grid-template-columns: 1fr; }
   .orderflow-filter-grid, .strategy-condition-summary { grid-template-columns: 1fr; }
   .orderflow-filter-grid > div, .strategy-condition-summary > div { border-right: 0; border-bottom: 1px solid #1d3d3a; }

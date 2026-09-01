@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import ROUND_DOWN, Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.app.research.gates import RiskOverlay
 
 _DAY_MS = 24 * 60 * 60 * 1_000
 
@@ -66,6 +70,8 @@ class RiskSizingResult:
     risk_budget: Decimal
     planned_loss: Decimal | None
     rejection_codes: tuple[str, ...]
+    base_risk_budget: Decimal
+    risk_multiplier: Decimal
 
 
 @dataclass(slots=True)
@@ -100,8 +106,39 @@ class RiskManager:
     def __init__(self, limits: RiskLimits | None = None) -> None:
         self.limits = limits or RiskLimits()
 
-    def size(self, values: RiskSizingInput) -> RiskSizingResult:
-        risk_budget = values.equity * self.limits.risk_per_trade_fraction
+    def size(
+        self,
+        values: RiskSizingInput,
+        *,
+        risk_overlay: RiskOverlay | None = None,
+    ) -> RiskSizingResult:
+        base_risk_budget = values.equity * self.limits.risk_per_trade_fraction
+        risk_multiplier = (
+            risk_overlay.multiplier if risk_overlay is not None else Decimal(1)
+        )
+        if (
+            not risk_multiplier.is_finite()
+            or risk_multiplier < 0
+            or risk_multiplier > 1
+        ):
+            return RiskSizingResult(
+                quantity=None,
+                risk_budget=Decimal(0),
+                planned_loss=None,
+                rejection_codes=("INVALID_RISK_OVERLAY",),
+                base_risk_budget=base_risk_budget,
+                risk_multiplier=Decimal(0),
+            )
+        risk_budget = base_risk_budget * risk_multiplier
+        if risk_multiplier == 0:
+            return RiskSizingResult(
+                quantity=None,
+                risk_budget=risk_budget,
+                planned_loss=None,
+                rejection_codes=("RISK_OVERLAY_ZERO",),
+                base_risk_budget=base_risk_budget,
+                risk_multiplier=risk_multiplier,
+            )
         loss_per_unit = (
             abs(values.entry_price - values.stop_price)
             + values.entry_fee_per_unit
@@ -109,7 +146,14 @@ class RiskManager:
             + values.p95_exit_slippage_per_unit
         )
         if loss_per_unit <= 0 or values.quantity_step <= 0:
-            return RiskSizingResult(None, risk_budget, None, ("INVALID_RISK_INPUT",))
+            return RiskSizingResult(
+                quantity=None,
+                risk_budget=risk_budget,
+                planned_loss=None,
+                rejection_codes=("INVALID_RISK_INPUT",),
+                base_risk_budget=base_risk_budget,
+                risk_multiplier=risk_multiplier,
+            )
         raw_quantity = risk_budget / loss_per_unit
         exposure_cap = (
             values.equity * self.limits.maximum_gross_notional_fraction / values.entry_price
@@ -122,16 +166,32 @@ class RiskManager:
         quantity = (capped / values.quantity_step).to_integral_value(rounding=ROUND_DOWN)
         quantity *= values.quantity_step
         if quantity < values.minimum_quantity:
-            return RiskSizingResult(None, risk_budget, None, ("QUANTITY_BELOW_MINIMUM",))
+            return RiskSizingResult(
+                quantity=None,
+                risk_budget=risk_budget,
+                planned_loss=None,
+                rejection_codes=("QUANTITY_BELOW_MINIMUM",),
+                base_risk_budget=base_risk_budget,
+                risk_multiplier=risk_multiplier,
+            )
         planned_loss = quantity * loss_per_unit
         if planned_loss > risk_budget:
             return RiskSizingResult(
-                None,
-                risk_budget,
-                planned_loss,
-                ("PLANNED_LOSS_EXCEEDS_BUDGET",),
+                quantity=None,
+                risk_budget=risk_budget,
+                planned_loss=planned_loss,
+                rejection_codes=("PLANNED_LOSS_EXCEEDS_BUDGET",),
+                base_risk_budget=base_risk_budget,
+                risk_multiplier=risk_multiplier,
             )
-        return RiskSizingResult(quantity, risk_budget, planned_loss, ())
+        return RiskSizingResult(
+            quantity=quantity,
+            risk_budget=risk_budget,
+            planned_loss=planned_loss,
+            rejection_codes=(),
+            base_risk_budget=base_risk_budget,
+            risk_multiplier=risk_multiplier,
+        )
 
     def entry_rejections(self, state: RiskState, key: str, now_ms: int) -> tuple[str, ...]:
         self.refresh_periods(state, now_ms)

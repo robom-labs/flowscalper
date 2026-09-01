@@ -73,6 +73,7 @@ function DashboardProbe() {
       <span data-testid="safety-verified">{safetyVerified ? 'VERIFIED' : 'UNVERIFIED'}</span>
       <span data-testid="selected-family">{selectedFamilyId ?? 'NONE'}</span>
       <span data-testid="selected-detail">{selectedFamilyDetail?.label_ko ?? 'NONE'}</span>
+      <span data-testid="enabled-entry-count">{data.strategy_family_catalog?.inventory?.enabled_directional_entry_candidate_count ?? -1}</span>
       <span data-testid="request-error">{requestError || 'NONE'}</span>
       <button type="button" onClick={() => void control('start-demo').catch(() => undefined)}>
         샘플 제어 요청
@@ -420,6 +421,63 @@ test('invalidates safety when a family research mutation response contradicts PA
   ))
   await waitFor(() => expect(screen.getByTestId('safety-verified')).toHaveTextContent('UNVERIFIED'))
   expect(screen.getByTestId('selected-detail')).toHaveTextContent('NONE')
+})
+
+test('refreshes the inventory without HTTP cache after a family research mutation', async () => {
+  const dashboard = dashboardFixture()
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const path = String(input)
+    const body = path.endsWith('/research-enabled')
+      ? {
+          family_id: 'TREND_PULLBACK',
+          variants: [],
+          ...flatPaperSafety,
+        }
+      : path === '/api/strategy-families'
+        ? {
+            schema_version: 1,
+            families: [],
+            inventory: {
+              schema: 'flowscalper.strategy_inventory.v1',
+              registered_catalog_item_count: 16,
+              runtime_registry_variant_count: 15,
+              enabled_directional_entry_candidate_count: 5,
+              current_family_entry_representative_count: 3,
+              inactive_history_runtime_variant_count: 10,
+              catalog_virtual_filter_count: 1,
+              active_directional_entry_count: 0,
+            },
+            ...flatPaperSafety,
+          }
+        : path === '/api/strategies/summary'
+          ? {
+              schema_version: 1,
+              analysis_scope: 'CURRENT_STRATEGY_VERSION',
+              strategies: dashboard.strategies,
+              league_accounts: dashboard.league_accounts,
+              strategy_count: dashboard.strategies.length,
+              league_account_count: dashboard.league_accounts.length,
+              ...flatPaperSafety,
+            }
+          : dashboard
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+
+  render(<DashboardProbe />)
+  await waitFor(() => expect(screen.getByTestId('safety-verified')).toHaveTextContent('VERIFIED'))
+  act(() => FakeWebSocket.instances[0].open())
+  fireEvent.click(screen.getByRole('button', { name: '추세 모의평가 끄기' }))
+
+  await waitFor(() => expect(screen.getByTestId('enabled-entry-count')).toHaveTextContent('5'))
+  expect(fetchMock).toHaveBeenCalledWith(
+    '/api/strategy-families',
+    expect.objectContaining({ cache: 'no-store' }),
+  )
+  expect(screen.getByTestId('request-error')).toHaveTextContent('NONE')
 })
 
 test('does not send mutation requests before PAPER safety is verified', async () => {

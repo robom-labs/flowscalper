@@ -490,9 +490,55 @@ export type FlatPaperSafetyContract = {
   funding_readiness: 'NOT_READY'
 }
 
+export type V9ResearchCandidate = {
+  candidate_id: string
+  label_ko: string
+  role: 'ENTRY' | 'MARKET_NEUTRAL_MULTI_LEG' | 'ROUTER' | 'RISK_OVERLAY' | 'FILTER' | 'STATISTICS' | 'SELECTION'
+  family_id: string | null
+  prerequisite_capability_ids: string[]
+  source_ids: string[]
+  readiness: 'SOURCE_IMPLEMENTED_NOT_CONNECTED' | 'PARTIAL_SOURCE_NOT_CONNECTED' | 'BLOCKED_PREREQUISITE' | 'BLOCKED_ENGINE'
+  monitoring_enabled: boolean
+  entry_enabled: boolean
+  active_enabled: boolean
+  runtime_entry_registered: boolean
+  can_increase_risk: boolean
+  paper_only: true
+  counts_as_direction_strategy: boolean
+  counts_as_market_neutral_strategy: boolean
+}
+
+export type V9ResearchManifest = FlatPaperSafetyContract & {
+  schema: 'flowscalper.v9_candidate_registry.v1'
+  status: 'MONITORING_ON_ENTRY_BLOCKED'
+  source_commit: string
+  candidate_count: number
+  monitoring_on_count: number
+  direction_strategy_count: number
+  market_neutral_strategy_count: number
+  runtime_entry_registered_count: number
+  active_count: number
+  entry_enabled_count: number
+  candidates: V9ResearchCandidate[]
+  manifest_sha256: string
+}
+
+export type StrategyInventory = {
+  schema: 'flowscalper.strategy_inventory.v1'
+  registered_catalog_item_count: number
+  runtime_registry_variant_count: number
+  enabled_directional_entry_candidate_count: number
+  current_family_entry_representative_count: number
+  inactive_history_runtime_variant_count: number
+  catalog_virtual_filter_count: number
+  active_directional_entry_count: number
+}
+
 export type StrategyFamilyCatalogPayload = FlatPaperSafetyContract & {
   schema_version: 1
   families: StrategyFamilyCatalogRow[]
+  inventory?: StrategyInventory
+  v9_research?: V9ResearchManifest
 }
 
 export type StrategyFamilyCondition = {

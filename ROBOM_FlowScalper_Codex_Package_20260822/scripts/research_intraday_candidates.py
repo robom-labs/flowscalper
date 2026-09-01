@@ -46,6 +46,7 @@ from backend.app.research import (
     finalize_research_manifest,
     probability_of_backtest_overfitting,
 )
+from backend.app.research.preregistration import preregister_research_protocol
 
 DEFAULT_RESEARCH_TRAIN_RUNS = (
     "RUN-94899287D623",
@@ -1052,29 +1053,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    if args.maximum_events is not None and args.maximum_events <= 0:
-        raise ValueError("maximum-events는 양수여야 합니다.")
-    project_root = Path(__file__).resolve().parents[1]
-    configured_runs = (
-        *DEFAULT_RESEARCH_TRAIN_RUNS,
-        *DEFAULT_VALIDATION_RUNS,
-        *DEFAULT_OOS_RUNS,
-    )
-    selected_runs = tuple(args.run_id or configured_runs)
-    unknown_runs = set(selected_runs) - set(configured_runs)
-    if unknown_runs:
-        raise ValueError(f"사전등록되지 않은 Run입니다: {sorted(unknown_runs)}")
-    dataset = tuple(
-        _dataset_slice(run_id, args.archive / f"run={run_id}") for run_id in selected_runs
-    )
-    protocol = ResearchProtocol(
+def _research_protocol() -> ResearchProtocol:
+    return ResearchProtocol(
         hypothesis_id="HYP-INTRADAY-CANDLE-ORIGINAL-MIRROR-REVERSE-V1",
         strategy_id="RESEARCH_ONLY_INTRADAY_CANDIDATES",
         strategy_version=STRATEGY_VERSION,
         feature_version="COMPLETED_CANDLE_MTF_V1",
+        label_version="STRUCTURE_EXIT_NET_BPS_V1",
+        engine_version="INTRADAY_CANDLE_RESEARCH_ENGINE_V1",
         cost_model_version="TOP_OF_BOOK_BASE13_STRESS25_V1",
+        cost_profile="BASE_STRESS",
         parameter_grid={
             "horizon_interval": tuple(spec.key for spec in INTERVAL_SPECS),
             "candidate_family": tuple(family.value for family in CandidateFamily),
@@ -1096,12 +1084,59 @@ def main() -> None:
         ),
         baseline_ids=("NO_TRADE", "MECHANICAL_MIRROR", "HYPOTHESIS_REVERSE"),
     )
+
+
+def _research_evidence_contract(
+    protocol: ResearchProtocol,
+    dataset: Sequence[DatasetSlice],
+):
+    return preregister_research_protocol(
+        protocol,
+        dataset,
+        strategy_family="INTRADAY_CANDLE_CANDIDATE_RESEARCH",
+        parameter_id_prefix="INTRADAY-GRID",
+        exit_id="STRUCTURE-TP1-TP2-STOP-MAX-HOLD-V1",
+        execution_policy="PAPER-EXECUTABLE-TOP-OF-BOOK-V1",
+        filter_combination=(
+            "COMPLETED-CANDLE-ONLY-V1",
+            "SEQUENCE-VALID-FRESH-BOOK-V1",
+        ),
+        dataset_id_prefix="BINANCE-USDM-PUBLIC-ARCHIVE",
+        epoch_id_prefix="INTRADAY-CANDIDATE-EPOCH",
+        fee_model_version="TOP_OF_BOOK_BASE13_STRESS25_V1",
+        matching_model_version="ARCHIVE-TOP-OF-BOOK-V1",
+        symbol_contract_version="BINANCE-USDM-SYMBOL-V1",
+        data_adapter_version="MARKET-PARQUET-V6-V1",
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    if args.maximum_events is not None and args.maximum_events <= 0:
+        raise ValueError("maximum-events는 양수여야 합니다.")
+    project_root = Path(__file__).resolve().parents[1]
+    configured_runs = (
+        *DEFAULT_RESEARCH_TRAIN_RUNS,
+        *DEFAULT_VALIDATION_RUNS,
+        *DEFAULT_OOS_RUNS,
+    )
+    selected_runs = tuple(args.run_id or configured_runs)
+    unknown_runs = set(selected_runs) - set(configured_runs)
+    if unknown_runs:
+        raise ValueError(f"사전등록되지 않은 Run입니다: {sorted(unknown_runs)}")
+    dataset = tuple(
+        _dataset_slice(run_id, args.archive / f"run={run_id}") for run_id in selected_runs
+    )
+    protocol = _research_protocol()
+    hypothesis_registry, evidence_epoch = _research_evidence_contract(protocol, dataset)
     started_ts_ms = time.time_ns() // 1_000_000
     manifest = protocol.manifest(
         dataset,
         code_hash=git_commit(),
         config_hash=_config_hash(project_root),
         generated_ts_ms=started_ts_ms,
+        hypothesis_registry=hypothesis_registry,
+        evidence_epoch=evidence_epoch,
     )
     by_run: dict[str, list[ResearchOutcome]] = {}
     diagnostics: dict[str, object] = {}

@@ -3,14 +3,22 @@
 set -euo pipefail
 
 PREPARE_ONLY="false"
-if [[ "${1:-}" == "--prepare-only" ]]; then
-  PREPARE_ONLY="true"
+MAINTENANCE_STOPPED="false"
+while (( $# > 0 )); do
+  case "$1" in
+    --prepare-only)
+      PREPARE_ONLY="true"
+      ;;
+    --maintenance-stopped)
+      MAINTENANCE_STOPPED="true"
+      ;;
+    *)
+      echo "사용법: $0 [--prepare-only] [--maintenance-stopped]" >&2
+      exit 2
+      ;;
+  esac
   shift
-fi
-if (( $# != 0 )); then
-  echo "사용법: $0 [--prepare-only]" >&2
-  exit 2
-fi
+done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SOURCE_PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
@@ -42,6 +50,11 @@ PREFLIGHT_IDENTITY="$SUPPORT_DIR/latest-install-preflight-identity.json"
 ROLLBACK_RESULT="$SUPPORT_DIR/latest-install-rollback.json"
 TRUSTED_RUNNER_SCRIPT="$SUPPORT_DIR/run_macos_service.sh"
 RELEASE_INTEGRITY_ANCHOR="$SUPPORT_DIR/current-release-integrity.json"
+MAINTENANCE_STOPPED_EVIDENCE="$SUPPORT_DIR/latest-install-maintenance-stopped-evidence.json"
+MAINTENANCE_POSTFLIGHT_FIRST="$SUPPORT_DIR/latest-install-maintenance-postflight-first.json"
+MAINTENANCE_POSTFLIGHT_FINAL="$SUPPORT_DIR/latest-install-maintenance-postflight-final.json"
+MAINTENANCE_ARTIFACT_BACKUP="$SUPPORT_DIR/.maintenance-stopped-artifacts.$$"
+MAINTENANCE_TRANSITION_STARTED="false"
 
 if [[ "$SOURCE_PROJECT_DIR" != "$WORKSPACE_MOUNT"/* ]]; then
   echo "자동 서비스 소스는 외장 APFS 작업공간 안에 있어야 합니다: $SOURCE_PROJECT_DIR" >&2
@@ -95,6 +108,13 @@ handle_install_exit() {
     if ! fail_closed_unverified_service "INSTALL_EXIT_${exit_code}"; then
       echo "치명 상태: 설치 종료 중 readiness 미증명 서비스를 완전히 중지하지 못했습니다." >&2
       exit_code=70
+    fi
+  fi
+  if [[ "${MAINTENANCE_TRANSITION_STARTED:-false}" == "true" ]]; then
+    echo "유지보수 정지 설치가 중간 종료되어 구 릴리스 artifact를 정지 상태로 복구합니다." >&2
+    if ! rollback_previous_release_stopped "INSTALL_EXIT_${exit_code}"; then
+      echo "치명 상태: 구 릴리스 artifact를 정지 상태로 복구하지 못했습니다." >&2
+      exit_code=71
     fi
   fi
   release_install_lock
@@ -240,6 +260,375 @@ install_trusted_runner_from_release() {
   fi
 }
 
+launchctl_command() {
+  /bin/launchctl "$@"
+}
+
+verify_stopped_process_absence_exact() {
+  local phase="$1"
+  local launchctl_output=""
+  local launchctl_status=0
+  local expected="Bad request.
+Could not find service \"$LABEL\" in domain for user gui: $USER_ID"
+  local lsof_probe_output="$SUPPORT_DIR/latest-install-${phase}-lsof-probe.txt"
+  local listener_output="$SUPPORT_DIR/latest-install-${phase}-listener.txt"
+  local listener_error="$SUPPORT_DIR/latest-install-${phase}-listener-error.txt"
+  if launchctl_output="$(launchctl_command print "$SERVICE_TARGET" 2>&1)"; then
+    launchctl_status=0
+  else
+    launchctl_status=$?
+  fi
+  if (( launchctl_status != 113 )) || [[ "$launchctl_output" != "$expected" ]]; then
+    echo "LaunchAgent $phase 부재 응답이 exact 계약과 다릅니다." >&2
+    return 1
+  fi
+  if ! /usr/sbin/lsof -nP -p "$$" > "$lsof_probe_output" 2>&1 || \
+    [[ ! -s "$lsof_probe_output" ]]; then
+    echo "lsof 자체 진단이 실패해 $phase 프로세스 부재를 확정할 수 없습니다." >&2
+    return 1
+  fi
+  local listener_status=0
+  if /usr/sbin/lsof -nP -F0pfnDi -iTCP:8870 -sTCP:LISTEN \
+    > "$listener_output" 2> "$listener_error"; then
+    listener_status=0
+  else
+    listener_status=$?
+  fi
+  if (( listener_status != 1 )) || [[ -s "$listener_output" || -s "$listener_error" ]]; then
+    echo "TCP 8870 listener가 남았거나 lsof 진단이 실패했습니다: $phase" >&2
+    return 1
+  fi
+  local ledger_path="$ACTIVE_LEDGER_DIR/run-ledger.sqlite3"
+  if [[ -L "$ledger_path" || ! -f "$ledger_path" ]]; then
+    echo "active ledger가 regular file이 아닙니다: $ledger_path" >&2
+    return 1
+  fi
+  local ledger_candidate=""
+  for ledger_candidate in "$ledger_path" "$ledger_path-wal" "$ledger_path-shm"; do
+    if [[ ! -e "$ledger_candidate" && ! -L "$ledger_candidate" ]]; then
+      continue
+    fi
+    if [[ -L "$ledger_candidate" || ! -f "$ledger_candidate" ]]; then
+      echo "active ledger 계열 경로가 regular file이 아닙니다: $ledger_candidate" >&2
+      return 1
+    fi
+    local ledger_output="$SUPPORT_DIR/latest-install-${phase}-${ledger_candidate:t}-owner.txt"
+    local ledger_error="$SUPPORT_DIR/latest-install-${phase}-${ledger_candidate:t}-owner-error.txt"
+    local ledger_status=0
+    if /usr/sbin/lsof -nP -F0pfnDi "$ledger_candidate" \
+      > "$ledger_output" 2> "$ledger_error"; then
+      ledger_status=0
+    else
+      ledger_status=$?
+    fi
+    if (( ledger_status != 1 )) || [[ -s "$ledger_output" || -s "$ledger_error" ]]; then
+      echo "active ledger 보유 프로세스가 남았거나 lsof 진단이 실패했습니다: $ledger_candidate" >&2
+      return 1
+    fi
+  done
+  if launchctl_output="$(launchctl_command print "$SERVICE_TARGET" 2>&1)"; then
+    launchctl_status=0
+  else
+    launchctl_status=$?
+  fi
+  if (( launchctl_status != 113 )) || [[ "$launchctl_output" != "$expected" ]]; then
+    echo "LaunchAgent $phase 최종 부재 응답이 exact 계약과 다릅니다." >&2
+    return 1
+  fi
+}
+
+verify_maintenance_stopped_evidence() {
+  local phase="$1"
+  if ! verify_stopped_process_absence_exact "${phase}-before"; then
+    return 1
+  fi
+  if [[ ! -f "$PREFLIGHT_DASHBOARD" || -L "$PREFLIGHT_DASHBOARD" || \
+    ! -f "$PREFLIGHT_IDENTITY" || -L "$PREFLIGHT_IDENTITY" ]]; then
+    echo "유지보수 정지 전 dashboard·identity 증거가 regular file로 남아 있지 않습니다." >&2
+    return 1
+  fi
+  if ! PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
+    PYTHONPATH="$PREVIOUS_RELEASE" "$RUNTIME_VENV/bin/python" -P - \
+    "$RUNTIME_ROOT" "$PREVIOUS_RELEASE" "$PREFLIGHT_DASHBOARD" \
+    "$PREFLIGHT_IDENTITY" "$RELEASE_INTEGRITY_ANCHOR" \
+    "$RUNTIME_ROOT/current-deployment.json" "$MAINTENANCE_STOPPED_EVIDENCE" <<'PY'
+import hashlib
+import json
+import math
+import os
+import sqlite3
+import stat
+import sys
+from pathlib import Path
+from urllib.parse import quote
+from uuid import uuid4
+
+from scripts.stage_macos_release import _verify_release_tree
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
+def read_object(path: Path, label: str) -> dict[str, object]:
+    require(not path.is_symlink() and path.is_file(), f"{label}가 regular file이 아닙니다.")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(payload, dict), f"{label}가 JSON object가 아닙니다.")
+    return payload
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def non_negative_int(value: object, label: str) -> int:
+    require(type(value) is int and value >= 0, f"{label}가 0 이상 int가 아닙니다: {value!r}")
+    return int(value)
+
+
+def finite_number(value: object, label: str) -> float:
+    require(
+        type(value) in (int, float) and math.isfinite(value),
+        f"{label}가 유한한 숫자가 아닙니다: {value!r}",
+    )
+    return float(value)
+
+
+runtime_root, previous_release, dashboard_path, identity_path, anchor_path, deployment_path, output_path = map(
+    Path, sys.argv[1:8]
+)
+require(not runtime_root.is_symlink(), "runtime root symlink는 허용하지 않습니다.")
+runtime_root = runtime_root.resolve(strict=True)
+previous_release = previous_release.resolve(strict=True)
+require(previous_release.parent == runtime_root / "releases", "기존 릴리스가 runtime releases direct child가 아닙니다.")
+current_pointer = runtime_root / "current"
+require(current_pointer.is_symlink(), "current 포인터가 symlink가 아닙니다.")
+require(current_pointer.resolve(strict=True) == previous_release, "current 포인터가 예상 구 릴리스와 다릅니다.")
+manifest = _verify_release_tree(previous_release)
+require(manifest.get("schema_version") == 2, "유지보수 정지 설치는 검증된 schema v2 릴리스만 허용합니다.")
+commit = manifest.get("commit")
+require(commit == previous_release.name, "구 릴리스 commit·directory가 다릅니다.")
+for field, expected in (
+    ("paper_only", True),
+    ("real_orders_enabled", False),
+    ("auth_required", False),
+    ("private_api_enabled", False),
+    ("wallet_paths_enabled", False),
+):
+    require(manifest.get(field) is expected, f"구 릴리스 manifest {field}가 안전값이 아닙니다.")
+
+anchor = read_object(anchor_path, "current release anchor")
+require(anchor.get("schema_version") == 2, "current release anchor schema가 2가 아닙니다.")
+require(anchor.get("release_path") == str(previous_release), "anchor release_path가 current와 다릅니다.")
+require(anchor.get("release_commit") == commit, "anchor release_commit이 current와 다릅니다.")
+require(anchor.get("manifest_sha256") == sha256(previous_release / "release-manifest.json"), "anchor manifest checksum이 다릅니다.")
+trusted_runner = runtime_root / "support" / "run_macos_service.sh"
+source_runner = previous_release / "scripts" / "run_macos_service.sh"
+require(not trusted_runner.is_symlink() and trusted_runner.is_file(), "trusted runner가 regular file이 아닙니다.")
+require(not source_runner.is_symlink() and source_runner.is_file(), "구 릴리스 runner가 regular file이 아닙니다.")
+require(anchor.get("launcher_path") == str(trusted_runner), "anchor launcher_path가 trusted runner와 다릅니다.")
+require(anchor.get("launcher_source_release_path") == str(previous_release), "anchor launcher source release가 current와 다릅니다.")
+require(anchor.get("launcher_source_commit") == commit, "anchor launcher source commit이 current와 다릅니다.")
+require(anchor.get("launcher_sha256") == sha256(trusted_runner) == sha256(source_runner), "anchor·trusted·source runner checksum이 다릅니다.")
+require(anchor.get("launcher_source_manifest_sha256") == sha256(previous_release / "release-manifest.json"), "anchor launcher source manifest checksum이 다릅니다.")
+require(anchor.get("paper_only") is True, "anchor PAPER only가 True가 아닙니다.")
+require(anchor.get("real_orders_enabled") is False, "anchor real order가 비활성이 아닙니다.")
+deployment = read_object(deployment_path, "current deployment")
+require(deployment.get("new_state") == str(previous_release), "deployment new_state가 current와 다릅니다.")
+require(deployment.get("release_commit") == commit, "deployment release_commit이 current와 다릅니다.")
+require(deployment.get("paper_only") is True, "deployment PAPER only가 True가 아닙니다.")
+require(deployment.get("real_orders_enabled") is False, "deployment real order가 비활성이 아닙니다.")
+
+dashboard = read_object(dashboard_path, "maintenance dashboard")
+identity = read_object(identity_path, "maintenance identity")
+status = dashboard.get("status")
+system = dashboard.get("system")
+risk = dashboard.get("risk")
+operation = dashboard.get("operation_status")
+intent = dashboard.get("paper_entry_intent")
+for value, label in (
+    (status, "dashboard status"),
+    (system, "dashboard system"),
+    (risk, "dashboard risk"),
+    (operation, "dashboard operation_status"),
+    (intent, "dashboard paper_entry_intent"),
+):
+    require(isinstance(value, dict), f"{label}가 object가 아닙니다.")
+run_id = status.get("run_id")
+revision = non_negative_int(intent.get("revision"), "dashboard pause revision")
+require(isinstance(run_id, str) and bool(run_id) and "\t" not in run_id, "dashboard run_id가 올바르지 않습니다.")
+require(identity.get("run_id") == run_id, "identity run_id가 dashboard와 다릅니다.")
+require(identity.get("pause_state") == "USER_PAUSED", "identity pause_state가 USER_PAUSED가 아닙니다.")
+require(identity.get("pause_revision") == revision, "identity pause revision이 dashboard와 다릅니다.")
+require(identity.get("release_commit") == commit, "identity release commit이 current와 다릅니다.")
+require(status.get("market_data_state") == "LIVE", "정지 전 market data가 LIVE가 아닙니다.")
+require(status.get("execution_state") == "PAPER", "정지 전 execution이 PAPER가 아닙니다.")
+require(status.get("real_orders_enabled") is False, "정지 전 real order가 비활성이 아닙니다.")
+require(status.get("auth_required") is False, "정지 전 auth가 비활성이 아닙니다.")
+require(system.get("release_commit") == commit, "dashboard release commit이 current와 다릅니다.")
+require(system.get("release_isolated") is True, "dashboard release_isolated가 True가 아닙니다.")
+require(risk.get("paper_only") is True, "dashboard PAPER only가 True가 아닙니다.")
+require(dashboard.get("paused") is True, "정지 전 PAPER entry가 수동 일시정지가 아닙니다.")
+require(operation.get("state") == "MANUALLY_PAUSED", "정지 전 operation이 MANUALLY_PAUSED가 아닙니다.")
+require(operation.get("market_observation_active") is True, "정지 전 시장 관찰이 활성이 아닙니다.")
+require(operation.get("paper_entry_active") is False, "정지 전 PAPER entry가 비활성이 아닙니다.")
+require(operation.get("automatic_recovery") is False, "수동 일시정지에서 automatic recovery가 활성입니다.")
+require(intent.get("state") == "USER_PAUSED", "정지 전 intent가 USER_PAUSED가 아닙니다.")
+require(intent.get("manual_pause_requested") is True, "정지 전 manual pause 의도가 True가 아닙니다.")
+require(dashboard.get("position") is None, "정지 전 main position이 flat이 아닙니다.")
+require(dashboard.get("focus_positions") == [], "정지 전 focus position이 flat이 아닙니다.")
+require(dashboard.get("league_positions") == [], "정지 전 league position이 flat이 아닙니다.")
+for field in (
+    "main_pending_entry_count",
+    "league_pending_entry_count",
+    "total_pending_entry_count",
+    "total_open_position_count",
+):
+    require(non_negative_int(dashboard.get(field), f"dashboard {field}") == 0, f"dashboard {field}가 0이 아닙니다.")
+require(dashboard.get("paper_portfolio_flat") is True, "dashboard paper portfolio가 flat이 아닙니다.")
+for field, maximum in (("lag_p95_ms", 500.0), ("trade_lag_p95_ms", 1000.0)):
+    require(0 <= finite_number(system.get(field), field) <= maximum, f"dashboard {field}가 임계를 넘었습니다.")
+queue_depth = non_negative_int(system.get("queue_depth"), "dashboard queue_depth")
+require(queue_depth <= 64, "정지 전 queue depth가 64를 넘었습니다.")
+require(system.get("queue_overload_active") is False, "정지 전 queue overload가 활성입니다.")
+require(system.get("critical_lag_active") is False, "정지 전 critical lag가 활성입니다.")
+require(system.get("persistence_fault_active") is False, "정지 전 persistence fault가 활성입니다.")
+require(system.get("persistence_last_error") == "NONE", "정지 전 persistence error가 남아 있습니다.")
+baseline_fields = (
+    "queue_overload_drop_count",
+    "critical_lag_incident_count",
+    "persistence_buffer_dropped",
+    "persistence_fault_count",
+)
+baseline = {field: non_negative_int(system.get(field), f"dashboard {field}") for field in baseline_fields}
+baseline["queue_depth"] = queue_depth
+
+ledger_path = runtime_root / "active-ledger" / "run-ledger.sqlite3"
+require(not ledger_path.is_symlink() and ledger_path.is_file(), "active ledger가 regular file이 아닙니다.")
+for suffix in ("-wal", "-shm"):
+    sidecar = Path(f"{ledger_path}{suffix}")
+    require(not sidecar.exists() and not sidecar.is_symlink(), f"정지된 active ledger에 {suffix} sidecar가 남아 있습니다.")
+metadata = ledger_path.stat()
+require(stat.S_ISREG(metadata.st_mode), "active ledger가 regular file이 아닙니다.")
+uri = f"file:{quote(str(ledger_path), safe='/')}?mode=ro&immutable=1&cache=private"
+connection = sqlite3.connect(uri, uri=True, timeout=1.0, isolation_level=None)
+try:
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA query_only=ON")
+    connection.execute("PRAGMA trusted_schema=OFF")
+    require(connection.execute("PRAGMA query_only").fetchone()[0] == 1, "SQLite query_only가 활성이 아닙니다.")
+    checks: dict[str, str] = {}
+    for table in ("runs", "positions", "paper_orders", "trades", "transitions"):
+        schema = connection.execute(
+            "SELECT type FROM sqlite_schema WHERE name = ? AND tbl_name = ?",
+            (table, table),
+        ).fetchall()
+        require([row[0] for row in schema] == ["table"], f"critical table {table}가 exact table이 아닙니다.")
+        rows = connection.execute(f"PRAGMA quick_check('{table}')").fetchall()
+        require([row[0] for row in rows] == ["ok"], f"critical table {table} quick_check가 ok가 아닙니다.")
+        checks[table] = "ok"
+    open_runs = connection.execute(
+        "SELECT run_id, mode, venue FROM runs WHERE finalized_ts_ms IS NULL ORDER BY started_ts_ms DESC LIMIT 2"
+    ).fetchall()
+    require(len(open_runs) == 1, "active ledger open Run이 정확히 하나가 아닙니다.")
+    require(open_runs[0]["run_id"] == run_id, "active ledger Run이 dashboard와 다릅니다.")
+    require(open_runs[0]["mode"] == "LIVE_SHADOW_PAPER", "active ledger Run mode가 LIVE_SHADOW_PAPER가 아닙니다.")
+    setting_rows = connection.execute(
+        "SELECT value_json, updated_ts_ms FROM app_settings WHERE setting_key = 'paper_entry_user_intent' LIMIT 2"
+    ).fetchall()
+    require(len(setting_rows) == 1, "active ledger pause setting이 정확히 하나가 아닙니다.")
+    setting = json.loads(setting_rows[0]["value_json"])
+    require(isinstance(setting, dict), "active ledger pause setting이 object가 아닙니다.")
+    require(setting.get("run_id") == run_id, "active ledger pause Run이 dashboard와 다릅니다.")
+    require(setting.get("manual_pause_requested") is True, "active ledger manual pause가 True가 아닙니다.")
+    require(setting.get("revision") == revision, "active ledger pause revision이 dashboard와 다릅니다.")
+    dashboard_intent_ts = non_negative_int(intent.get("updated_ts_ms"), "dashboard intent updated_ts_ms")
+    require(
+        non_negative_int(setting_rows[0]["updated_ts_ms"], "active ledger pause updated_ts_ms") >= dashboard_intent_ts,
+        "active ledger pause setting이 dashboard 증거보다 오래됐습니다.",
+    )
+    snapshot = connection.execute(
+        "SELECT lifecycle_state, payload_json FROM snapshots WHERE run_id = ? ORDER BY snapshot_id DESC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    require(snapshot is not None and snapshot["lifecycle_state"] == "SCANNING", "active ledger 최신 snapshot이 SCANNING이 아닙니다.")
+    snapshot_payload = json.loads(snapshot["payload_json"])
+    require(snapshot_payload.get("open_position") is None, "active ledger snapshot main position이 flat이 아닙니다.")
+    portfolio = snapshot_payload.get("portfolio")
+    require(isinstance(portfolio, dict) and portfolio.get("run_id") == run_id, "active ledger snapshot portfolio Run이 다릅니다.")
+    accounts = portfolio.get("accounts")
+    require(isinstance(accounts, list) and bool(accounts), "active ledger snapshot account가 비어 있습니다.")
+    for account in accounts:
+        require(isinstance(account, dict), "active ledger snapshot account가 object가 아닙니다.")
+        require(account.get("pending_entries") == {}, "active ledger snapshot에 pending entry가 남아 있습니다.")
+        require(account.get("positions") == {}, "active ledger snapshot에 open position이 남아 있습니다.")
+    open_position_rows = connection.execute(
+        "SELECT COUNT(*) FROM positions WHERE run_id = ? AND lifecycle_state != 'CLOSED'",
+        (run_id,),
+    ).fetchone()[0]
+    pending_order_rows = connection.execute(
+        "SELECT COUNT(*) FROM paper_orders WHERE run_id = ? AND status NOT IN ('FILLED', 'REJECTED', 'FINALIZED')",
+        (run_id,),
+    ).fetchone()[0]
+    require(open_position_rows == 0, "active ledger positions에 open row가 남아 있습니다.")
+    require(pending_order_rows == 0, "active ledger paper_orders에 pending row가 남아 있습니다.")
+    user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+finally:
+    connection.close()
+
+evidence = {
+    "schema_version": 1,
+    "status": "PASS",
+    "mode": "MAINTENANCE_STOPPED",
+    "expected_current_release": str(previous_release),
+    "expected_current_commit": commit,
+    "expected_run_id": run_id,
+    "expected_pause_state": "USER_PAUSED",
+    "expected_pause_revision": revision,
+    "dashboard_intent_updated_ts_ms": dashboard_intent_ts,
+    "baseline": baseline,
+    "ledger": {
+        "path": str(ledger_path),
+        "device": metadata.st_dev,
+        "inode": metadata.st_ino,
+        "size": metadata.st_size,
+        "mtime_ns": metadata.st_mtime_ns,
+        "user_version": user_version,
+        "open_run_count": 1,
+        "open_position_count": 0,
+        "pending_order_count": 0,
+        "critical_quick_check": checks,
+        "wal_absent": True,
+        "shm_absent": True,
+    },
+    "paper_only": True,
+    "real_orders_enabled": False,
+    "auth_required": False,
+}
+output_path.parent.mkdir(parents=True, exist_ok=True)
+require(not output_path.is_symlink(), "maintenance stopped 증거 경로 symlink는 허용하지 않습니다.")
+temporary = output_path.with_name(f".{output_path.name}.{uuid4().hex}.tmp")
+try:
+    temporary.write_text(json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.chmod(0o600)
+    os.replace(temporary, output_path)
+finally:
+    temporary.unlink(missing_ok=True)
+PY
+  then
+    echo "유지보수 정지 dashboard·current commit·Run·pause revision·offline ledger 결합 검증이 실패했습니다." >&2
+    return 1
+  fi
+  if ! verify_stopped_process_absence_exact "${phase}-after"; then
+    return 1
+  fi
+}
+
 HAD_CURRENT="false"
 HAD_JOB="false"
 PREVIOUS_RELEASE=""
@@ -262,7 +651,31 @@ if launchctl print "$SERVICE_TARGET" >/dev/null 2>&1; then
 fi
 FIRST_INSTALL="false"
 FIRST_INSTALL_LABEL_WAS_DISABLED="false"
-if [[ "$HAD_CURRENT" == "false" && "$HAD_JOB" == "false" ]]; then
+if [[ "$MAINTENANCE_STOPPED" == "true" ]]; then
+  if [[ "$HAD_CURRENT" != "true" || "$HAD_JOB" != "false" ]]; then
+    echo "--maintenance-stopped는 current가 있고 LaunchAgent가 완전히 중지된 상태에서만 허용합니다." >&2
+    exit 4
+  fi
+  if ! maintenance_disabled_services="$(launchctl_command print-disabled "gui/$USER_ID")" || \
+    printf '%s\n' "$maintenance_disabled_services" | \
+      /usr/bin/grep -Fq "\"$LABEL\" => disabled"; then
+    echo "--maintenance-stopped는 기존 자동 시작 label이 enabled인 유지보수 정지 상태만 허용합니다." >&2
+    exit 4
+  fi
+  if ! verify_maintenance_stopped_evidence "initial-maintenance"; then
+    echo "유지보수 정지 최초 증거 검증이 실패해 릴리스를 준비하지 않습니다." >&2
+    exit 4
+  fi
+  if ! IFS=$'\t' read -r EXPECTED_RUN_ID EXPECTED_PAUSE_STATE \
+    EXPECTED_PAUSE_REVISION PREVIOUS_RELEASE_COMMIT <<< \
+    "$(PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
+      "$RUNTIME_VENV/bin/python" -P -c \
+      'import json,sys; p=json.load(open(sys.argv[1], encoding="utf-8")); print(p["expected_run_id"], p["expected_pause_state"], p["expected_pause_revision"], p["expected_current_commit"], sep="\t")' \
+      "$MAINTENANCE_STOPPED_EVIDENCE")"; then
+    echo "유지보수 정지 예상 Run·pause·commit을 읽지 못했습니다." >&2
+    exit 4
+  fi
+elif [[ "$HAD_CURRENT" == "false" && "$HAD_JOB" == "false" ]]; then
   FIRST_INSTALL="true"
   if ! disabled_services="$(/bin/launchctl print-disabled "gui/$USER_ID")"; then
     echo "최초 설치 전 LaunchAgent disabled 상태를 확인하지 못했습니다." >&2
@@ -645,6 +1058,21 @@ if ! ACTIVATION_PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"; then
   abort_before_transition "ACTIVATION_PATH_RESOLVE_FAILED" 1
 fi
 
+verify_staged_source_commit_still_final() {
+  local source_status=""
+  local source_commit=""
+  if ! source_status="$(git -C "$SOURCE_PROJECT_DIR" status --porcelain --untracked-files=all)" || \
+    [[ -n "$source_status" ]]; then
+    echo "stage 후 source worktree가 clean 상태가 아닙니다." >&2
+    return 1
+  fi
+  if ! source_commit="$(git -C "$SOURCE_PROJECT_DIR" rev-parse HEAD)" || \
+    [[ "$source_commit" != "$EXPECTED_RELEASE_COMMIT" ]]; then
+    echo "stage 후 source HEAD가 준비된 최종 릴리스 commit과 다릅니다." >&2
+    return 1
+  fi
+}
+
 if [[ "$PREPARE_ONLY" == "true" ]]; then
   echo "PASS: 불변 PAPER 릴리스 STAGED 완료 · 실행 서비스와 current 유지"
   echo "현재 서비스·current·외부 runner·anchor·LaunchAgent plist는 변경하지 않았습니다."
@@ -695,6 +1123,13 @@ bootstrap_launch_agent() {
   fi
 }
 
+bootstrap_launch_agent_once() {
+  if ! launchctl_command bootstrap "gui/$USER_ID" "$TARGET_PLIST"; then
+    echo "유지보수 정지 설치의 새 LaunchAgent 1회 등록이 실패했습니다: $TARGET_PLIST" >&2
+    return 1
+  fi
+}
+
 verify_service_fully_stopped() {
   verify_launch_agent_absent_exact() {
     local phase="$1"
@@ -730,6 +1165,30 @@ Could not find service \"$LABEL\" in domain for user gui: $USER_ID"
     echo "TCP 8870 listener 부재를 확정하지 못했습니다." >&2
     return 1
   fi
+  local ledger_path="$ACTIVE_LEDGER_DIR/run-ledger.sqlite3"
+  local ledger_candidate=""
+  for ledger_candidate in "$ledger_path" "$ledger_path-wal" "$ledger_path-shm"; do
+    if [[ ! -e "$ledger_candidate" && ! -L "$ledger_candidate" ]]; then
+      continue
+    fi
+    if [[ -L "$ledger_candidate" || ! -f "$ledger_candidate" ]]; then
+      echo "active ledger 계열 경로가 regular file이 아닙니다: $ledger_candidate" >&2
+      return 1
+    fi
+    local ledger_output="$SUPPORT_DIR/latest-install-poststop-${ledger_candidate:t}-owner.txt"
+    local ledger_error="$SUPPORT_DIR/latest-install-poststop-${ledger_candidate:t}-owner-error.txt"
+    local ledger_status=0
+    if /usr/sbin/lsof -nP -F0pfnDi "$ledger_candidate" \
+      > "$ledger_output" 2> "$ledger_error"; then
+      ledger_status=0
+    else
+      ledger_status=$?
+    fi
+    if (( ledger_status != 1 )) || [[ -s "$ledger_output" || -s "$ledger_error" ]]; then
+      echo "active ledger 보유 프로세스가 bootout 뒤에도 남았거나 lsof 진단이 실패했습니다." >&2
+      return 1
+    fi
+  done
   if ! verify_launch_agent_absent_exact "최종"; then
     return 1
   fi
@@ -848,6 +1307,166 @@ install_transition_artifacts() {
     chmod 755 "$VERIFIER_RELEASE/scripts/run_macos_service.sh"
 }
 
+prepare_maintenance_artifact_backup() {
+  if [[ "$MAINTENANCE_STOPPED" != "true" ]]; then
+    return 0
+  fi
+  if [[ -e "$MAINTENANCE_ARTIFACT_BACKUP" || -L "$MAINTENANCE_ARTIFACT_BACKUP" ]]; then
+    echo "유지보수 정지 artifact backup 경로가 이미 있습니다: $MAINTENANCE_ARTIFACT_BACKUP" >&2
+    return 1
+  fi
+  if ! mkdir "$MAINTENANCE_ARTIFACT_BACKUP" || ! chmod 700 "$MAINTENANCE_ARTIFACT_BACKUP"; then
+    echo "유지보수 정지 artifact backup 디렉터리를 만들지 못했습니다." >&2
+    return 1
+  fi
+  local artifact=""
+  local artifact_name=""
+  for artifact in \
+    "$TARGET_PLIST" \
+    "$TRUSTED_RUNNER_SCRIPT" \
+    "$RELEASE_INTEGRITY_ANCHOR" \
+    "$RUNTIME_ROOT/current-deployment.json"; do
+    if [[ -L "$artifact" || ! -f "$artifact" ]]; then
+      echo "구 릴리스 artifact가 regular file이 아닙니다: $artifact" >&2
+      return 1
+    fi
+    artifact_name="${artifact:t}"
+    if ! ditto "$artifact" "$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name" || \
+      ! cmp -s "$artifact" "$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name"; then
+      echo "구 릴리스 artifact backup이 실패했습니다: $artifact" >&2
+      return 1
+    fi
+  done
+}
+
+restore_maintenance_artifacts() {
+  if [[ ! -d "$MAINTENANCE_ARTIFACT_BACKUP" || -L "$MAINTENANCE_ARTIFACT_BACKUP" ]]; then
+    echo "유지보수 정지 artifact backup이 canonical directory가 아닙니다." >&2
+    return 1
+  fi
+  local artifact=""
+  local artifact_name=""
+  local backup=""
+  local temporary=""
+  for artifact in \
+    "$TARGET_PLIST" \
+    "$TRUSTED_RUNNER_SCRIPT" \
+    "$RELEASE_INTEGRITY_ANCHOR" \
+    "$RUNTIME_ROOT/current-deployment.json"; do
+    artifact_name="${artifact:t}"
+    backup="$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name"
+    temporary="${artifact}.$$.maintenance-restore"
+    if [[ -L "$backup" || ! -f "$backup" || -L "$artifact" || \
+      ( -e "$artifact" && ! -f "$artifact" ) || -e "$temporary" || -L "$temporary" ]]; then
+      echo "유지보수 정지 artifact 복구 경로가 regular file 계약이 아닙니다: $artifact" >&2
+      return 1
+    fi
+    if ! ditto "$backup" "$temporary" || ! cmp -s "$backup" "$temporary" || \
+      ! /bin/mv -f "$temporary" "$artifact" || ! cmp -s "$backup" "$artifact"; then
+      if [[ -e "$temporary" || -L "$temporary" ]]; then
+        /bin/unlink "$temporary" 2>/dev/null || true
+      fi
+      echo "유지보수 정지 artifact를 원자적으로 복구하지 못했습니다: $artifact" >&2
+      return 1
+    fi
+  done
+}
+
+cleanup_maintenance_artifact_backup() {
+  if [[ ! -e "$MAINTENANCE_ARTIFACT_BACKUP" && ! -L "$MAINTENANCE_ARTIFACT_BACKUP" ]]; then
+    return 0
+  fi
+  if [[ ! -d "$MAINTENANCE_ARTIFACT_BACKUP" || -L "$MAINTENANCE_ARTIFACT_BACKUP" ]]; then
+    echo "정리할 유지보수 artifact backup이 canonical directory가 아닙니다." >&2
+    return 1
+  fi
+  local artifact_name=""
+  for artifact_name in \
+    "$LABEL.plist" \
+    "run_macos_service.sh" \
+    "current-release-integrity.json" \
+    "current-deployment.json"; do
+    if [[ -e "$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name" || \
+      -L "$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name" ]]; then
+      if [[ -L "$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name" || \
+        ! -f "$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name" ]] || \
+        ! /bin/unlink "$MAINTENANCE_ARTIFACT_BACKUP/$artifact_name"; then
+        echo "유지보수 artifact backup 파일을 정리하지 못했습니다: $artifact_name" >&2
+        return 1
+      fi
+    fi
+  done
+  if ! rmdir "$MAINTENANCE_ARTIFACT_BACKUP"; then
+    echo "유지보수 artifact backup 디렉터리가 비어 있지 않습니다." >&2
+    return 1
+  fi
+}
+
+activate_previous_release_stopped() {
+  PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$VERIFIER_RELEASE" \
+    "$RUNTIME_VENV/bin/python" -P - \
+    "$RUNTIME_ROOT" "$PREVIOUS_RELEASE" "$1" > "$ROLLBACK_RESULT" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from scripts.stage_macos_release import activate_release, current_release
+
+runtime_root = Path(sys.argv[1])
+previous_release = Path(sys.argv[2]).resolve(strict=True)
+failure_reason = sys.argv[3]
+result = activate_release(
+    runtime_root,
+    previous_release,
+    actor="CODEX_DEPLOY_ROLLBACK_STOPPED",
+    reason=f"MAINTENANCE_STOPPED_INSTALL_FAILURE_{failure_reason}",
+)
+if current_release(runtime_root) != previous_release:
+    raise RuntimeError("정지 rollback 뒤 current가 구 릴리스와 다릅니다.")
+print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+PY
+}
+
+rollback_previous_release_stopped() {
+  local failure_reason="$1"
+  echo "유지보수 정지 설치 실패로 구 릴리스 artifact를 중지 상태로 복구합니다: $failure_reason" >&2
+  if ! stop_loaded_service; then
+    echo "정지 rollback 전 새 릴리스 종료가 실패했습니다." >&2
+    return 1
+  fi
+  launchctl_command bootout "$SERVICE_TARGET" >/dev/null 2>&1 || true
+  if ! verify_stopped_process_absence_exact "maintenance-rollback-before"; then
+    echo "정지 rollback 전 LaunchAgent·listener·ledger holder 부재를 확정하지 못했습니다." >&2
+    return 1
+  fi
+  UNVERIFIED_SERVICE_MAY_BE_RUNNING="false"
+  if [[ -z "$ROLLBACK_RELEASE" || "$ROLLBACK_RELEASE" != "$PREVIOUS_RELEASE" ]]; then
+    echo "정지 rollback 릴리스가 예상 구 릴리스와 다릅니다." >&2
+    return 1
+  fi
+  if ! activate_previous_release_stopped "$failure_reason"; then
+    echo "구 릴리스 current 포인터를 복구하지 못했습니다." >&2
+    return 1
+  fi
+  if ! restore_maintenance_artifacts; then
+    return 1
+  fi
+  if [[ ! -L "$CURRENT_POINTER" || \
+    "$(cd "$CURRENT_POINTER" 2>/dev/null && pwd -P)" != "$PREVIOUS_RELEASE" ]]; then
+    echo "정지 rollback 후 current 포인터가 구 릴리스와 다릅니다." >&2
+    return 1
+  fi
+  if ! verify_stopped_process_absence_exact "maintenance-rollback-after"; then
+    echo "구 릴리스 artifact 복구 후 정지 상태가 깨졌습니다." >&2
+    return 1
+  fi
+  MAINTENANCE_TRANSITION_STARTED="false"
+  if ! cleanup_maintenance_artifact_backup; then
+    return 1
+  fi
+  echo "구 릴리스 artifact를 복구했고 구 LaunchAgent는 재시작하지 않았습니다." >&2
+}
+
 dashboard_matches_install_contract() {
   local expected_commit="$1"
   local preserve_identity="$2"
@@ -962,9 +1581,75 @@ for field in ("persistence_fault_count", "persistence_recovery_count", "persiste
     "$earlier_dashboard" "$later_dashboard"
 }
 
+maintenance_postflight_contract() {
+  local earlier_dashboard="$1"
+  local later_dashboard="$2"
+  PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
+    "$RUNTIME_VENV/bin/python" -P -c \
+    'import json,math,sys
+evidence=json.load(open(sys.argv[1], encoding="utf-8"))
+earlier=json.load(open(sys.argv[2], encoding="utf-8"))["system"]
+later=json.load(open(sys.argv[3], encoding="utf-8"))["system"]
+baseline=evidence["baseline"]
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+def count(payload, field):
+    value=payload.get(field)
+    require(type(value) is int and value >= 0, f"{field}가 0 이상 int가 아닙니다: {value!r}")
+    return value
+
+for label,payload in (("first", earlier), ("final", later)):
+    queue_depth=count(payload, "queue_depth")
+    require(queue_depth <= 64, f"{label} postflight queue depth가 64를 넘었습니다: {queue_depth}")
+    require(payload.get("queue_overload_active") is False, f"{label} postflight queue overload가 활성입니다.")
+    require(payload.get("critical_lag_active") is False, f"{label} postflight critical lag가 활성입니다.")
+    require(payload.get("persistence_fault_active") is False, f"{label} postflight persistence fault가 활성입니다.")
+    for field,maximum in (("lag_p95_ms",500.0),("trade_lag_p95_ms",1000.0)):
+        value=payload.get(field)
+        require(type(value) in (int,float) and math.isfinite(value) and 0 <= value <= maximum, f"{label} postflight {field}가 임계를 넘었습니다: {value!r}")
+for field in ("queue_overload_drop_count", "critical_lag_incident_count", "persistence_buffer_dropped", "persistence_fault_count"):
+    before=count(earlier, field)
+    after=count(later, field)
+    require(before <= int(baseline[field]), f"postflight 최초 {field}가 정지 전 baseline보다 커졌습니다: {baseline[field]!r} -> {before!r}")
+    require(after == before, f"postflight 관찰 중 {field}가 변경됐습니다: {before!r} -> {after!r}")' \
+    "$MAINTENANCE_STOPPED_EVIDENCE" "$earlier_dashboard" "$later_dashboard"
+}
+
+verify_maintenance_postflight_stable() {
+  local first_payload=""
+  local final_payload=""
+  if ! first_payload="$(curl -fsS --max-time 3 http://127.0.0.1:8870/api/dashboard)" || \
+    ! write_text_file_atomic "$MAINTENANCE_POSTFLIGHT_FIRST" "$first_payload" || \
+    ! dashboard_matches_install_contract "$EXPECTED_RELEASE_COMMIT" "true" "false" \
+      < "$MAINTENANCE_POSTFLIGHT_FIRST"; then
+    echo "유지보수 설치 첫 postflight dashboard가 동일 Run·pause·PAPER 계약을 충족하지 않습니다." >&2
+    return 1
+  fi
+  sleep 5
+  if ! final_payload="$(curl -fsS --max-time 3 http://127.0.0.1:8870/api/dashboard)" || \
+    ! write_text_file_atomic "$MAINTENANCE_POSTFLIGHT_FINAL" "$final_payload" || \
+    ! dashboard_matches_install_contract "$EXPECTED_RELEASE_COMMIT" "true" "false" \
+      < "$MAINTENANCE_POSTFLIGHT_FINAL"; then
+    echo "유지보수 설치 최종 postflight dashboard가 동일 Run·pause·PAPER 계약을 충족하지 않습니다." >&2
+    return 1
+  fi
+  if ! maintenance_postflight_contract \
+    "$MAINTENANCE_POSTFLIGHT_FIRST" "$MAINTENANCE_POSTFLIGHT_FINAL"; then
+    echo "postflight queue·critical lag·drop·fault 안정성 계약을 충족하지 않습니다." >&2
+    return 1
+  fi
+}
+
 verify_loaded_service_unchanged_before_stop() {
   if [[ "$FIRST_INSTALL" == "true" ]]; then
     return 0
+  fi
+  if [[ "$MAINTENANCE_STOPPED" == "true" ]]; then
+    verify_maintenance_stopped_evidence "pre-transition-maintenance"
+    return $?
   fi
   local prestop_dashboard="$SUPPORT_DIR/latest-install-prestop-dashboard.json"
   if ! curl -fsS --max-time 3 http://127.0.0.1:8870/api/dashboard > "$prestop_dashboard"; then
@@ -1126,6 +1811,10 @@ fail_closed_unverified_service() {
 
 rollback_previous_release() {
   local failure_reason="$1"
+  if [[ "$MAINTENANCE_STOPPED" == "true" ]]; then
+    rollback_previous_release_stopped "$failure_reason"
+    return $?
+  fi
   echo "새 릴리스 활성화 실패를 감지해 이전 검증 릴리스로 rollback을 시도합니다: $failure_reason" >&2
   if ! stop_loaded_service; then
     echo "rollback 전 실패 서비스를 안전 종료하지 못했습니다." >&2
@@ -1252,6 +1941,23 @@ if ! prepare_previous_release_for_rollback; then
   echo "기존 릴리스 전체 tree를 rollback 대상으로 검증하지 못해 서비스를 재시작하지 않습니다." >&2
   exit 7
 fi
+if ! verify_staged_source_commit_still_final; then
+  echo "stage 이후 source가 변경되어 최종 commit을 전환하지 않습니다." >&2
+  exit 7
+fi
+if [[ "$MAINTENANCE_STOPPED" == "true" ]]; then
+  if ! prepare_maintenance_artifact_backup; then
+    cleanup_maintenance_artifact_backup >/dev/null 2>&1 || true
+    echo "구 릴리스 artifact backup을 완전히 준비하지 못해 전환하지 않습니다." >&2
+    exit 7
+  fi
+  if ! verify_stopped_process_absence_exact "maintenance-immediate-preactivation"; then
+    cleanup_maintenance_artifact_backup >/dev/null 2>&1 || true
+    echo "활성화 직전 LaunchAgent·listener·ledger holder 부재를 확정하지 못해 전환하지 않습니다." >&2
+    exit 7
+  fi
+  MAINTENANCE_TRANSITION_STARTED="true"
+fi
 if ! activate_staged_release; then
   if rollback_previous_release "POSTSTOP_ACTIVATION_FAILED"; then
     exit 5
@@ -1265,18 +1971,34 @@ if ! install_transition_artifacts; then
   fi
   exit 7
 fi
-UNVERIFIED_SERVICE_MAY_BE_RUNNING="true"
-if ! bootstrap_launch_agent; then
-  if rollback_previous_release "BOOTSTRAP_FAILED"; then
+if [[ "$MAINTENANCE_STOPPED" == "true" ]] && \
+  ! verify_stopped_process_absence_exact "maintenance-immediate-prebootstrap"; then
+  if rollback_previous_release "PREBOOTSTRAP_ABSENCE_FAILED"; then
     exit 5
   fi
   exit 7
 fi
-if ! launchctl enable "$SERVICE_TARGET" || ! launchctl kickstart "$SERVICE_TARGET"; then
-  if rollback_previous_release "KICKSTART_FAILED"; then
-    exit 5
+UNVERIFIED_SERVICE_MAY_BE_RUNNING="true"
+if [[ "$MAINTENANCE_STOPPED" == "true" ]]; then
+  if ! launchctl_command enable "$SERVICE_TARGET" || ! bootstrap_launch_agent_once; then
+    if rollback_previous_release "SINGLE_BOOTSTRAP_FAILED"; then
+      exit 5
+    fi
+    exit 7
   fi
-  exit 7
+else
+  if ! bootstrap_launch_agent; then
+    if rollback_previous_release "BOOTSTRAP_FAILED"; then
+      exit 5
+    fi
+    exit 7
+  fi
+  if ! launchctl enable "$SERVICE_TARGET" || ! launchctl kickstart "$SERVICE_TARGET"; then
+    if rollback_previous_release "KICKSTART_FAILED"; then
+      exit 5
+    fi
+    exit 7
+  fi
 fi
 
 PRESERVE_EXISTING_IDENTITY="true"
@@ -1303,7 +2025,20 @@ if [[ "$service_ready" != "true" ]]; then
   fi
   exit 7
 fi
+if [[ "$MAINTENANCE_STOPPED" == "true" ]] && \
+  ! verify_maintenance_postflight_stable; then
+  if rollback_previous_release "POSTFLIGHT_STABILITY_FAILED"; then
+    exit 6
+  fi
+  exit 7
+fi
 UNVERIFIED_SERVICE_MAY_BE_RUNNING="false"
+if [[ "$MAINTENANCE_STOPPED" == "true" ]]; then
+  MAINTENANCE_TRANSITION_STARTED="false"
+  if ! cleanup_maintenance_artifact_backup; then
+    echo "경고: 새 릴리스는 검증되었지만 임시 유지보수 artifact backup 정리가 실패했습니다." >&2
+  fi
+fi
 
 PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONPATH="$VERIFIER_RELEASE" \
   "$RUNTIME_VENV/bin/python" -P "$VERIFIER_RELEASE/scripts/stage_macos_release.py" \

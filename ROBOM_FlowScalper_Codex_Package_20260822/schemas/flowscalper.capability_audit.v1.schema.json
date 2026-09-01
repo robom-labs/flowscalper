@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robom.local/schemas/flowscalper.capability_audit.v1.schema.json",
+  "title": "FlowScalperCapabilityAuditV1",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "generated_ts_utc",
+    "through",
+    "status",
+    "source",
+    "baseline",
+    "safety",
+    "versions",
+    "summary",
+    "unresolved",
+    "artifact_count",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": {"const": "flowscalper.capability_audit.v1"},
+    "schema_version": {"const": 1},
+    "generated_ts_utc": {"type": "string", "format": "date-time"},
+    "through": {"enum": ["V7", "V8", "V9"]},
+    "status": {"$ref": "#/$defs/status"},
+    "source": {
+      "type": "object",
+      "required": [
+        "commit",
+        "commit_at_end",
+        "clean_at_start",
+        "clean_at_end",
+        "stable_during_audit",
+        "change_count_at_start",
+        "change_count_at_end"
+      ],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "commit_at_end": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "clean_at_start": {"type": "boolean"},
+        "clean_at_end": {"type": "boolean"},
+        "stable_during_audit": {"type": "boolean"},
+        "change_count_at_start": {"type": "integer", "minimum": 0},
+        "change_count_at_end": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "baseline": {
+      "type": "object",
+      "required": ["v6", "verification_manifest"],
+      "properties": {
+        "v6": {"type": "object"},
+        "verification_manifest": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "status",
+        "paper_only",
+        "real_orders_enabled",
+        "private_api_enabled",
+        "risk_increase_capability_count",
+        "violations"
+      ],
+      "properties": {
+        "status": {"$ref": "#/$defs/status"},
+        "paper_only": {"type": ["boolean", "null"]},
+        "real_orders_enabled": {"type": ["boolean", "null"]},
+        "private_api_enabled": {"type": ["boolean", "null"]},
+        "risk_increase_capability_count": {"type": "integer", "minimum": 0},
+        "violations": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "versions": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 3,
+      "propertyNames": {"enum": ["V7", "V8", "V9"]},
+      "additionalProperties": {"$ref": "#/$defs/versionResult"}
+    },
+    "summary": {"$ref": "#/$defs/summary"},
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "version", "status", "reason", "blockers"],
+        "properties": {
+          "id": {"type": "string"},
+          "version": {"type": "string"},
+          "status": {"$ref": "#/$defs/status"},
+          "reason": {"type": "string"},
+          "blockers": {"type": "array", "items": {"type": "string"}}
+        },
+        "additionalProperties": false
+      }
+    },
+    "artifact_count": {"type": "integer", "minimum": 0},
+    "artifacts": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/artifact"}
+    }
+  },
+  "$defs": {
+    "status": {
+      "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "NOT_PROVEN"]
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "declared",
+        "source_present",
+        "verified",
+        "not_proven",
+        "not_run",
+        "blocked",
+        "failed"
+      ],
+      "properties": {
+        "declared": {"type": "integer", "minimum": 0},
+        "source_present": {"type": "integer", "minimum": 0},
+        "verified": {"type": "integer", "minimum": 0},
+        "not_proven": {"type": "integer", "minimum": 0},
+        "not_run": {"type": "integer", "minimum": 0},
+        "blocked": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "sourceProbe": {
+      "type": "object",
+      "required": [
+        "roots",
+        "required_symbols",
+        "matches",
+        "present_symbol_count",
+        "required_symbol_count",
+        "any_present",
+        "all_present"
+      ],
+      "properties": {
+        "roots": {"type": "array", "items": {"type": "string"}},
+        "required_symbols": {"type": "array", "items": {"type": "string"}},
+        "matches": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          }
+        },
+        "present_symbol_count": {"type": "integer", "minimum": 0},
+        "required_symbol_count": {"type": "integer", "minimum": 1},
+        "any_present": {"type": "boolean"},
+        "all_present": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "declared_status",
+        "source_commit",
+        "test_ids",
+        "artifact_count",
+        "validation_errors"
+      ],
+      "properties": {
+        "declared_status": {"type": ["string", "null"]},
+        "source_commit": {"type": ["string", "null"]},
+        "test_ids": {"type": "array", "items": {"type": "string"}},
+        "artifact_count": {"type": "integer", "minimum": 0},
+        "validation_errors": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    },
+    "roleContract": {
+      "type": "object",
+      "required": [
+        "creates_candidate_plan",
+        "can_increase_risk",
+        "requires_observed_event_time",
+        "same_opportunity_execution_comparison"
+      ],
+      "properties": {
+        "creates_candidate_plan": {"type": "boolean"},
+        "can_increase_risk": {"type": "boolean"},
+        "requires_observed_event_time": {"type": "boolean"},
+        "same_opportunity_execution_comparison": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["path", "sha256", "byte_count", "format"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "byte_count": {"type": "integer", "minimum": 0},
+        "format": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "capability": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "kind",
+        "status",
+        "reason",
+        "prerequisite_ids",
+        "source",
+        "required_checks",
+        "evidence",
+        "role_contract",
+        "safety_violations",
+        "blockers",
+        "artifacts"
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^V[789]\\.[A-Z0-9_]+$"},
+        "version": {"enum": ["V7", "V8", "V9"]},
+        "kind": {
+          "enum": ["EXECUTION", "FILTER", "ROUTER", "RISK_OVERLAY", "STATISTICS", "SELECTION"]
+        },
+        "status": {"$ref": "#/$defs/status"},
+        "reason": {"type": "string", "minLength": 1},
+        "prerequisite_ids": {"type": "array", "items": {"type": "string"}},
+        "source": {"$ref": "#/$defs/sourceProbe"},
+        "required_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "role_contract": {"$ref": "#/$defs/roleContract"},
+        "safety_violations": {
+          "type": "array",
+          "items": {"type": "string"},
+          "uniqueItems": true
+        },
+        "blockers": {"type": "array", "items": {"type": "string"}},
+        "artifacts": {"type": "array", "items": {"$ref": "#/$defs/artifact"}}
+      },
+      "additionalProperties": false
+    },
+    "versionResult": {
+      "type": "object",
+      "required": ["status", "prerequisites", "summary", "capabilities"],
+      "properties": {
+        "status": {"$ref": "#/$defs/status"},
+        "prerequisites": {"type": "array", "items": {"type": "string"}},
+        "summary": {"$ref": "#/$defs/summary"},
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/capability"}
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

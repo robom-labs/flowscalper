@@ -50,6 +50,7 @@ from scripts.run_live_safe_strategy_league_replay import (
     _low_priority_command,
     _release_replay_resource_lock,
     _run_child,
+    _v2_trial_identity,
 )
 
 _OUTPUT_FILENAMES = {
@@ -329,25 +330,50 @@ def _trial_proposal(arguments: argparse.Namespace) -> ResearchTrialProposal:
             for row in rows
         ],
     }
+    parameter_hash = parameter_fingerprint(parameter_material)
+    dataset_hash = _canonical_hash(dataset_material)
+    implementation_hash = _canonical_hash(
+        {
+            "manifest_sha256": trial.get("manifest_sha256"),
+            "source_checksums": dict(sorted(source_checksums.items())),
+            "research_infrastructure_fingerprint": (
+                _research_infrastructure_fingerprint(arguments.project_root)
+            ),
+        }
+    )
+    cost_model_hash = _canonical_hash(cost_sources)
+    strategy_id = (
+        "COST_COVERED_EARLY_TP_RUNNER_E06"
+        if manifest_kind == _COST_COVERED_BATCH_KIND
+        else "STRATEGY_100_FROZEN_BATCH"
+    )
+    identity = _v2_trial_identity(
+        hypothesis_id=hypothesis_id,
+        strategy_id=strategy_id,
+        parameter_fingerprint=parameter_hash,
+        dataset_fingerprint=dataset_hash,
+        implementation_fingerprint=implementation_hash,
+        cost_model_fingerprint=cost_model_hash,
+        cost_profile="BASE_STRESS",
+        feature_version="FROZEN_PUBLIC_SCREENING_FEATURES_V1",
+        label_version="COST_ADJUSTED_PAPER_OUTCOME_V1",
+        engine_version="LIVE_SAFE_STRATEGY_SCREENING_V2",
+        epoch_prefix="LIVE-SAFE-STRATEGY-SCREENING-EPOCH",
+    )
     return ResearchTrialProposal(
         hypothesis_id=hypothesis_id,
-        parameter_fingerprint=parameter_fingerprint(parameter_material),
-        dataset_fingerprint=_canonical_hash(dataset_material),
+        parameter_fingerprint=parameter_hash,
+        dataset_fingerprint=dataset_hash,
         dataset_start_ts_ms=min(int(str(row["start_ts_ms"])) for row in rows),
         dataset_end_ts_ms=max(int(str(row["end_ts_ms"])) for row in rows),
-        implementation_fingerprint=_canonical_hash(
-            {
-                "manifest_sha256": trial.get("manifest_sha256"),
-                "source_checksums": dict(sorted(source_checksums.items())),
-                "research_infrastructure_fingerprint": (
-                    _research_infrastructure_fingerprint(arguments.project_root)
-                ),
-            }
-        ),
-        cost_model_fingerprint=_canonical_hash(cost_sources),
+        implementation_fingerprint=implementation_hash,
+        cost_model_fingerprint=cost_model_hash,
+        **identity,
         dataset_member_fingerprints=tuple(
             f"{row.get('run_id')}:{row.get('checksum') or _canonical_hash(row)}" for row in rows
         ),
+        paper_only=True,
+        real_orders_enabled=False,
     )
 
 

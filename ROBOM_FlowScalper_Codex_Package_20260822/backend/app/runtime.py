@@ -12,7 +12,7 @@ from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from itertools import islice
 from pathlib import Path
 from threading import RLock
@@ -46,7 +46,25 @@ from backend.app.domain.safety import assert_paper_only
 from backend.app.execution import BookSnapshot, ExitReason
 from backend.app.execution.models import PaperOrder, PaperTrade
 from backend.app.execution.portfolio import PaperPortfolioEngine
-from backend.app.features import BookFrame, FeatureEngine, FeatureInputError, FeatureSnapshot
+from backend.app.features import (
+    BookFrame,
+    DCMidObservation,
+    DCState,
+    DirectionalChangeEngine,
+    FeatureEngine,
+    FeatureInputError,
+    FeatureSnapshot,
+    FixedThresholdProvider,
+)
+from backend.app.features.semivariance import (
+    CompletedMinuteReturn,
+    SemivarianceInputError,
+    SemivarianceJumpEngine,
+    SemivarianceJumpSnapshot,
+)
+from backend.app.features.semivariance import (
+    FeatureReadiness as SemivarianceReadiness,
+)
 from backend.app.live_public import (
     LiveBootstrapProbe,
     LivePublicBootstrapper,
@@ -513,6 +531,18 @@ _LIVE_DEEP_SYMBOL_TARGET = 12
 _LIVE_DASHBOARD_EVENT_LIMIT = 512
 _DEFAULT_EVENT_MEMORY_LIMIT = 10_000
 _LIVE_EVENT_MEMORY_LIMIT = 2_048
+_STRATEGY_EVALUATION_QUEUE_HIGH_WATER_DIVISOR = 2
+_STRATEGY_EVALUATION_QUEUE_HIGH_WATER_MAX = 64
+_STRATEGY_EVALUATION_QUEUE_LOW_WATER_DIVISOR = 4
+_DIRECTIONAL_CHANGE_PROFILES = (
+    ("FAST", Decimal("0.0050")),
+    ("SWING", Decimal("0.0100")),
+)
+_DIRECTIONAL_CHANGE_SYMBOL_LIMIT = _LIVE_DEEP_SYMBOL_TARGET * 2
+_DIRECTIONAL_CHANGE_DEDUPE_CAPACITY = 256
+_SEMIVARIANCE_SYMBOL_LIMIT = _LIVE_DEEP_SYMBOL_TARGET * 2
+_SEMIVARIANCE_MINUTE_SECONDS = 60
+_SEMIVARIANCE_MINUTE_MS = _SEMIVARIANCE_MINUTE_SECONDS * 1_000
 _DEFER_STRATEGY_EVALUATION: ContextVar[bool] = ContextVar(
     "defer_strategy_evaluation",
     default=False,
@@ -619,6 +649,50 @@ class PaperRuntime:
     latest_regimes: dict[str, Regime] = field(default_factory=dict)
     strategy_signals: dict[tuple[str, str, str], EvaluatedSignal] = field(default_factory=dict)
     strategy_evaluation_count: int = 0
+    _strategy_evaluation_backpressure_active: bool = False
+    _strategy_evaluation_backpressure_skip_count: int = 0
+    _strategy_evaluation_backpressure_resume_count: int = 0
+    _directional_change_engines: dict[tuple[str, str], DirectionalChangeEngine] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    _directional_change_symbols: dict[str, None] = field(default_factory=dict, repr=False)
+    _directional_change_initialized: dict[str, bool] = field(
+        default_factory=lambda: {"FAST": False, "SWING": False},
+        repr=False,
+    )
+    _directional_change_event_counts: dict[str, int] = field(
+        default_factory=lambda: {"FAST": 0, "SWING": 0},
+        repr=False,
+    )
+    _directional_change_last_directions: dict[str, DCState] = field(
+        default_factory=lambda: {
+            "FAST": DCState.UNINITIALIZED,
+            "SWING": DCState.UNINITIALIZED,
+        },
+        repr=False,
+    )
+    _directional_change_last_confirmation_types: dict[str, str] = field(
+        default_factory=lambda: {"FAST": "NONE", "SWING": "NONE"},
+        repr=False,
+    )
+    _semivariance_symbols: dict[str, None] = field(default_factory=dict, repr=False)
+    _semivariance_engines: dict[str, SemivarianceJumpEngine] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    _semivariance_previous_completed_closes: dict[str, tuple[int, Decimal]] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    _semivariance_latest_snapshots: dict[str, SemivarianceJumpSnapshot] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    _semivariance_last_symbol: str = "NONE"
+    _semivariance_last_completed_minute_ts_ms: int | None = None
+    _semivariance_last_status: str = "WAITING_COMPLETED_MINUTE"
+    _semivariance_last_reset_reason: str = "NONE"
     qualified_signal_count: int = 0
     shadow_ledger: ShadowLedger = field(init=False)
     paper_portfolio: PaperPortfolioEngine = field(init=False)
@@ -631,7 +705,7 @@ class PaperRuntime:
     _stale_trade_symbols: set[str] = field(default_factory=set, repr=False)
     _strategy_data_health_epoch: int = field(default=0, repr=False)
     _feature_input_fault_symbols: set[str] = field(default_factory=set, repr=False)
-    strategy_evaluation_interval_ms: int = 1_000
+    strategy_evaluation_interval_ms: int = 2_000
     _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
     _market_event_buffer: list[dict[str, object]] = field(default_factory=list)
     _candle_buffer: list[dict[str, object]] = field(default_factory=list)
@@ -1789,6 +1863,15 @@ class PaperRuntime:
         self._refresh_storage_safety()
         recovery_audit = self.startup_recovery_audit
         paper_transition = self.paper_portfolio.latest_execution_transition
+        queue_capacity = (
+            self._supervisor.telemetry.queue_capacity
+            if self._supervisor is not None
+            else 0
+        )
+        strategy_high_water, strategy_low_water = (
+            self._strategy_evaluation_queue_watermarks(queue_capacity)
+        )
+        semivariance_snapshots = tuple(self._semivariance_latest_snapshots.values())
         return {
             "server_time_ms": self.clock.utc_ms(),
             "display_timezone": "Asia/Seoul",
@@ -1965,6 +2048,55 @@ class PaperRuntime:
             "feature_input_fault_symbols": len(self._feature_input_fault_symbols),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
             "strategy_evaluation_count": self.strategy_evaluation_count,
+            "strategy_evaluation_backpressure_active": (
+                self._strategy_evaluation_backpressure_active
+            ),
+            "strategy_evaluation_backpressure_skip_count": (
+                self._strategy_evaluation_backpressure_skip_count
+            ),
+            "strategy_evaluation_backpressure_resume_count": (
+                self._strategy_evaluation_backpressure_resume_count
+            ),
+            "strategy_evaluation_backpressure_high_water": strategy_high_water,
+            "strategy_evaluation_backpressure_low_water": strategy_low_water,
+            "directional_change_mode": "OBSERVATION_ONLY",
+            "directional_change_profiles": {
+                profile_id: {
+                    "initialized": self._directional_change_initialized[profile_id],
+                    "event_count": self._directional_change_event_counts[profile_id],
+                    "last_direction": self._directional_change_last_directions[
+                        profile_id
+                    ].value,
+                    "last_confirmation_type": (
+                        self._directional_change_last_confirmation_types[profile_id]
+                    ),
+                }
+                for profile_id, _threshold in _DIRECTIONAL_CHANGE_PROFILES
+            },
+            "semivariance_observation": {
+                "mode": "OBSERVATION_ONLY",
+                "tracked_symbol_count": len(self._semivariance_symbols),
+                "one_hour_ready_symbol_count": sum(
+                    snapshot.one_hour.status is SemivarianceReadiness.READY
+                    for snapshot in semivariance_snapshots
+                ),
+                "four_hour_ready_symbol_count": sum(
+                    snapshot.four_hour.status is SemivarianceReadiness.READY
+                    for snapshot in semivariance_snapshots
+                ),
+                "jump_ready_symbol_count": sum(
+                    snapshot.jump_one_hour.status is SemivarianceReadiness.READY
+                    for snapshot in semivariance_snapshots
+                ),
+                "periodicity_status": "PERIODICITY_UNCALIBRATED",
+                "last_symbol": self._semivariance_last_symbol,
+                "last_completed_minute_ts_ms": (
+                    self._semivariance_last_completed_minute_ts_ms
+                ),
+                "last_status": self._semivariance_last_status,
+                "last_reset_reason": self._semivariance_last_reset_reason,
+                "risk_multiplier_applied": False,
+            },
             "strategy_evaluation_executor": (
                 "DEDICATED_PROCESS"
                 if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
@@ -2241,7 +2373,10 @@ class PaperRuntime:
         worker_error: Exception | None = None
         try:
             prepared = self.ingest_live_event(event, defer_execution_persistence=True)
-            if prepared is not None:
+            skip_strategy_evaluation = self._refresh_strategy_evaluation_backpressure()
+            if prepared is not None and skip_strategy_evaluation:
+                self._strategy_evaluation_backpressure_skip_count += 1
+            elif prepared is not None:
                 phase_started = time.perf_counter()
                 process_request = self._live_strategy_evaluator.request(
                     state_key=self._strategy_process_state_key(),
@@ -2294,6 +2429,39 @@ class PaperRuntime:
             raise worker_error
 
     @staticmethod
+    def _strategy_evaluation_queue_watermarks(capacity: int) -> tuple[int, int]:
+        """작은 queue는 비율로, 운영 queue는 64건 이내에서 CPU 평가를 줄인다."""
+
+        bounded_capacity = max(0, capacity)
+        if bounded_capacity == 0:
+            return 0, 0
+        high_water = min(
+            _STRATEGY_EVALUATION_QUEUE_HIGH_WATER_MAX,
+            max(1, bounded_capacity // _STRATEGY_EVALUATION_QUEUE_HIGH_WATER_DIVISOR),
+        )
+        return high_water, high_water // _STRATEGY_EVALUATION_QUEUE_LOW_WATER_DIVISOR
+
+    def _refresh_strategy_evaluation_backpressure(self) -> bool:
+        """supervisor 큐가 안전한 low-water로 회복될 때까지 CPU 평가만 줄인다."""
+
+        if self._supervisor is None:
+            return self._strategy_evaluation_backpressure_active
+        telemetry = self._supervisor.telemetry
+        capacity = max(0, telemetry.queue_capacity)
+        depth = max(0, telemetry.queue_depth)
+        high_water, low_water = self._strategy_evaluation_queue_watermarks(capacity)
+        if self._strategy_evaluation_backpressure_active:
+            if not telemetry.queue_overload_active and depth <= low_water:
+                self._strategy_evaluation_backpressure_active = False
+                self._strategy_evaluation_backpressure_resume_count += 1
+                return False
+            return True
+        if telemetry.queue_overload_active or (capacity > 0 and depth >= high_water):
+            self._strategy_evaluation_backpressure_active = True
+            return True
+        return False
+
+    @staticmethod
     async def _run_worker_to_completion[WorkerResult](
         function: Callable[..., WorkerResult],
         *arguments: object,
@@ -2337,7 +2505,10 @@ class PaperRuntime:
                 persistence_backlog = len(self._market_event_buffer)
             self._refresh_persistence_backlog_safety(persistence_backlog)
         data_health_fault = event.quality.is_stale or not event.quality.sequence_valid
+        if depth_event and data_health_fault:
+            self._observe_directional_change(event)
         if data_health_fault:
+            self._reset_semivariance_symbol(event.symbol, "DATA_GAP")
             entering_gap = event.symbol not in self.data_gap_since_ms
             self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
             if entering_gap:
@@ -2392,6 +2563,9 @@ class PaperRuntime:
                         or trade.quantity <= 0
                     ):
                         raise FeatureInputError("체결 가격과 수량은 유한한 양수여야 합니다.")
+                    out_of_order_trade_count = (
+                        self.candle_builder.diagnostics.out_of_order_trades
+                    )
                     completed_candles = self.candle_builder.add(trade)
                     feature_engine = self.feature_engines.get(event.symbol)
                     if feature_engine is not None:
@@ -2405,6 +2579,19 @@ class PaperRuntime:
                 ) as error:
                     self._record_feature_input_fault(event.symbol, error)
                 else:
+                    if (
+                        self.candle_builder.diagnostics.out_of_order_trades
+                        > out_of_order_trade_count
+                    ):
+                        self._reset_semivariance_symbol(
+                            event.symbol,
+                            "OUT_OF_ORDER_TRADE",
+                        )
+                    else:
+                        self._observe_completed_minute_candles(
+                            completed_candles,
+                            completed_ts_ms=trade.trade_ts_ms,
+                        )
                     self._buffer_completed_candles(completed_candles)
         elif event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}:
             prepared = self._evaluate_book_event(
@@ -2586,6 +2773,261 @@ class PaperRuntime:
         self._log("MARKET_DATA", "모든 피처 입력 재검증 완료")
         self._refresh_supervisor_entry_safety()
 
+    def _directional_change_engines_for_symbol(
+        self,
+        symbol: str,
+    ) -> tuple[tuple[str, DirectionalChangeEngine], ...]:
+        """회전 심볼을 유한하게 유지하며 종목별 관찰 엔진을 반환한다."""
+
+        if symbol not in self._directional_change_symbols:
+            if len(self._directional_change_symbols) >= _DIRECTIONAL_CHANGE_SYMBOL_LIMIT:
+                expired_symbol = next(iter(self._directional_change_symbols))
+                self._directional_change_symbols.pop(expired_symbol, None)
+                for profile_id, _threshold in _DIRECTIONAL_CHANGE_PROFILES:
+                    self._directional_change_engines.pop(
+                        (expired_symbol, profile_id),
+                        None,
+                    )
+            self._directional_change_symbols[symbol] = None
+        engines: list[tuple[str, DirectionalChangeEngine]] = []
+        for profile_id, threshold in _DIRECTIONAL_CHANGE_PROFILES:
+            key = (symbol, profile_id)
+            engine = self._directional_change_engines.get(key)
+            if engine is None:
+                engine = DirectionalChangeEngine(
+                    run_id=self.run_id,
+                    venue=self.venue,
+                    symbol=symbol,
+                    profile_id=profile_id,
+                    threshold_provider=FixedThresholdProvider(
+                        profile_id=profile_id,
+                        threshold=threshold,
+                    ),
+                    dedupe_capacity=_DIRECTIONAL_CHANGE_DEDUPE_CAPACITY,
+                )
+                self._directional_change_engines[key] = engine
+            engines.append((profile_id, engine))
+        return tuple(engines)
+
+    def _discard_directional_change_symbol(self, symbol: str) -> None:
+        """안전한 mid를 만들 수 없으면 해당 종목 연속성을 즉시 폐기한다."""
+
+        self._directional_change_symbols.pop(symbol, None)
+        for profile_id, _threshold in _DIRECTIONAL_CHANGE_PROFILES:
+            self._directional_change_engines.pop((symbol, profile_id), None)
+            self._directional_change_initialized[profile_id] = False
+            self._directional_change_last_directions[profile_id] = DCState.UNINITIALIZED
+
+    @staticmethod
+    def _directional_change_top_prices(event: MarketEvent) -> tuple[Decimal, Decimal]:
+        bids_value = event.data.get("bids")
+        asks_value = event.data.get("asks")
+        bid = (
+            Decimal(str(bids_value[0][0]))
+            if isinstance(bids_value, list) and bids_value
+            else Decimal(str(event.data["bid"]))
+        )
+        ask = (
+            Decimal(str(asks_value[0][0]))
+            if isinstance(asks_value, list) and asks_value
+            else Decimal(str(event.data["ask"]))
+        )
+        return bid, ask
+
+    def _observe_directional_change(
+        self,
+        event: MarketEvent,
+        *,
+        bid: Decimal | None = None,
+        ask: Decimal | None = None,
+    ) -> None:
+        """실제 depth mid를 진입과 분리된 FAST·SWING DC 상태에만 반영한다."""
+
+        quality_fault = event.quality.is_stale or not event.quality.sequence_valid
+        try:
+            if bid is None or ask is None:
+                try:
+                    bid, ask = self._directional_change_top_prices(event)
+                except (ArithmeticError, KeyError, IndexError, TypeError, ValueError):
+                    previous_book = self.latest_books.get(event.symbol)
+                    if not quality_fault or previous_book is None:
+                        raise
+                    bid = previous_book.bids[0][0]
+                    ask = previous_book.asks[0][0]
+            observation = DCMidObservation(
+                run_id=self.run_id,
+                venue=self.venue,
+                symbol=event.symbol,
+                event_id=event.event_id,
+                venue_ts_ms=event.venue_ts_ms,
+                receive_monotonic_ns=event.receive_monotonic_ns,
+                bid=bid,
+                ask=ask,
+                sequence_start=event.sequence_start,
+                sequence_end=event.sequence_end,
+                previous_sequence_end=event.previous_sequence_end,
+                sequence_valid=event.quality.sequence_valid,
+                stale=event.quality.is_stale,
+                lag_ms=(
+                    Decimal(str(event.quality.lag_ms))
+                    if event.quality.lag_ms is not None
+                    else None
+                ),
+            )
+            updates = tuple(
+                (profile_id, engine.update(observation))
+                for profile_id, engine in self._directional_change_engines_for_symbol(
+                    event.symbol
+                )
+            )
+        except (ArithmeticError, KeyError, IndexError, TypeError, ValueError):
+            self._discard_directional_change_symbol(event.symbol)
+            return
+        if quality_fault and any(update.reset is None for _profile_id, update in updates):
+            # 중복 event ID도 stale·sequence-invalid 상태를 유지시키지 않는다.
+            self._discard_directional_change_symbol(event.symbol)
+            return
+        for profile_id, update in updates:
+            snapshot = update.snapshot
+            self._directional_change_initialized[profile_id] = (
+                snapshot.threshold is not None and snapshot.event_start_price is not None
+            )
+            self._directional_change_last_directions[profile_id] = snapshot.state
+            if update.event is not None:
+                self._directional_change_event_counts[profile_id] += 1
+                self._directional_change_last_confirmation_types[profile_id] = (
+                    update.event.event_type.value
+                )
+
+    def _semivariance_engine_for_symbol(self, symbol: str) -> SemivarianceJumpEngine:
+        """완료 1분봉 관찰 종목을 최대 24개로 유지한다."""
+
+        if symbol not in self._semivariance_symbols:
+            if len(self._semivariance_symbols) >= _SEMIVARIANCE_SYMBOL_LIMIT:
+                expired_symbol = next(iter(self._semivariance_symbols))
+                self._semivariance_symbols.pop(expired_symbol, None)
+                self._semivariance_engines.pop(expired_symbol, None)
+                self._semivariance_previous_completed_closes.pop(expired_symbol, None)
+                self._semivariance_latest_snapshots.pop(expired_symbol, None)
+            self._semivariance_symbols[symbol] = None
+        engine = self._semivariance_engines.get(symbol)
+        if engine is None:
+            # 8주 완료 보정 자료가 없으므로 Jump는 미보정 WAIT을 유지한다.
+            engine = SemivarianceJumpEngine(periodicity=None)
+            self._semivariance_engines[symbol] = engine
+        return engine
+
+    def _reset_semivariance_symbol(self, symbol: str, reason: str) -> None:
+        """공백·역순·불완전 입력이 발생하면 종목 연속성을 폐기한다."""
+
+        self._semivariance_symbols.pop(symbol, None)
+        self._semivariance_engines.pop(symbol, None)
+        self._semivariance_previous_completed_closes.pop(symbol, None)
+        self._semivariance_latest_snapshots.pop(symbol, None)
+        self._semivariance_last_symbol = symbol
+        self._semivariance_last_status = "RESET"
+        self._semivariance_last_reset_reason = reason
+
+    def _observe_completed_minute_candles(
+        self,
+        candles: Sequence[Candle],
+        *,
+        completed_ts_ms: int,
+    ) -> None:
+        """CandleBuilder가 반환한 새 완료 1분봉만 한 번씩 관찰한다."""
+
+        for candle in candles:
+            if candle.interval_seconds == _SEMIVARIANCE_MINUTE_SECONDS:
+                self._observe_completed_minute_candle(
+                    candle,
+                    completed_ts_ms=completed_ts_ms,
+                )
+
+    def _observe_completed_minute_candle(
+        self,
+        candle: Candle,
+        *,
+        completed_ts_ms: int,
+    ) -> None:
+        if (
+            candle.interval_seconds != _SEMIVARIANCE_MINUTE_SECONDS
+            or candle.open_ts_ms < 0
+            or candle.open_ts_ms % _SEMIVARIANCE_MINUTE_MS != 0
+            or not candle.close.is_finite()
+            or candle.close <= 0
+            or completed_ts_ms < candle.open_ts_ms + _SEMIVARIANCE_MINUTE_MS
+        ):
+            self._reset_semivariance_symbol(candle.symbol, "INCOMPLETE_OR_INVALID_MINUTE")
+            return
+        completion_bucket = completed_ts_ms - completed_ts_ms % _SEMIVARIANCE_MINUTE_MS
+        if completion_bucket != candle.open_ts_ms + _SEMIVARIANCE_MINUTE_MS:
+            self._reset_semivariance_symbol(candle.symbol, "COMPLETED_MINUTE_GAP")
+            return
+
+        engine = self._semivariance_engine_for_symbol(candle.symbol)
+        previous = self._semivariance_previous_completed_closes.get(candle.symbol)
+        if previous is None:
+            self._semivariance_previous_completed_closes[candle.symbol] = (
+                candle.open_ts_ms,
+                candle.close,
+            )
+            self._semivariance_last_symbol = candle.symbol
+            self._semivariance_last_completed_minute_ts_ms = candle.open_ts_ms
+            self._semivariance_last_status = "WAITING_PREVIOUS_CLOSE"
+            return
+        previous_ts_ms, previous_close = previous
+        if candle.open_ts_ms == previous_ts_ms:
+            if candle.close != previous_close:
+                self._reset_semivariance_symbol(
+                    candle.symbol,
+                    "DUPLICATE_MINUTE_CONFLICT",
+                )
+            return
+        if candle.open_ts_ms < previous_ts_ms:
+            self._reset_semivariance_symbol(
+                candle.symbol,
+                "OUT_OF_ORDER_COMPLETED_MINUTE",
+            )
+            return
+        if candle.open_ts_ms != previous_ts_ms + _SEMIVARIANCE_MINUTE_MS:
+            self._reset_semivariance_symbol(candle.symbol, "COMPLETED_MINUTE_GAP")
+            self._semivariance_engine_for_symbol(candle.symbol)
+            self._semivariance_previous_completed_closes[candle.symbol] = (
+                candle.open_ts_ms,
+                candle.close,
+            )
+            self._semivariance_last_completed_minute_ts_ms = candle.open_ts_ms
+            self._semivariance_last_status = "WAITING_PREVIOUS_CLOSE"
+            return
+        try:
+            with localcontext() as context:
+                context.prec = 50
+                log_return = (candle.close / previous_close).ln()
+            snapshot = engine.update(
+                CompletedMinuteReturn(
+                    minute_start_ts_ms=candle.open_ts_ms,
+                    completed_ts_ms=completed_ts_ms,
+                    log_return=log_return,
+                )
+            )
+        except (ArithmeticError, SemivarianceInputError):
+            self._reset_semivariance_symbol(candle.symbol, "SEMIVARIANCE_INPUT_REJECTED")
+            return
+        self._semivariance_previous_completed_closes[candle.symbol] = (
+            candle.open_ts_ms,
+            candle.close,
+        )
+        self._semivariance_latest_snapshots[candle.symbol] = snapshot
+        self._semivariance_last_symbol = candle.symbol
+        self._semivariance_last_completed_minute_ts_ms = candle.open_ts_ms
+        self._semivariance_last_reset_reason = "NONE"
+        if snapshot.four_hour.status is SemivarianceReadiness.READY:
+            self._semivariance_last_status = "SEMIVARIANCE_READY_JUMP_UNCALIBRATED"
+        elif snapshot.one_hour.status is SemivarianceReadiness.READY:
+            self._semivariance_last_status = "WARMUP_4H"
+        else:
+            self._semivariance_last_status = "WARMUP_1H"
+
     def _protected_deep_symbols(self) -> tuple[str, ...]:
         protected = [self.selected_symbol]
         pending = self.paper_portfolio.main.pending_entry
@@ -2715,6 +3157,11 @@ class PaperRuntime:
         self.latest_books[event.symbol] = book
         self.paper_portfolio.on_book(book)
         self._record_live_event_phase("PAPER_PORTFOLIO_ON_BOOK", phase_started, event)
+        self._observe_directional_change(
+            event,
+            bid=book.bids[0][0],
+            ask=book.asks[0][0],
+        )
         if persist_execution:
             phase_started = time.perf_counter()
             self._persist_execution_state_safely(event.venue_ts_ms)
@@ -2750,14 +3197,6 @@ class PaperRuntime:
         engine = self.feature_engines.setdefault(event.symbol, FeatureEngine())
         try:
             engine.ingest_book(frame)
-            last_evaluation = self._last_strategy_evaluation_ms.get(event.symbol)
-            if (
-                last_evaluation is not None
-                and event.venue_ts_ms - last_evaluation < self.strategy_evaluation_interval_ms
-            ):
-                self._record_live_event_phase("FEATURE_SNAPSHOT", phase_started, event)
-                return None
-            self._last_strategy_evaluation_ms[event.symbol] = event.venue_ts_ms
             snapshot = engine.snapshot()
             if event.symbol in self._stale_trade_symbols:
                 snapshot = replace(snapshot, data_healthy=False)
@@ -2771,8 +3210,6 @@ class PaperRuntime:
         self._refresh_feature_input_entry_safety(event.symbol)
         self.latest_features[event.symbol] = snapshot
         self.latest_regimes[event.symbol] = regime
-        for side in (Side.LONG, Side.SHORT):
-            self.orderflow_confirmation_runtime.evaluate(snapshot, side)
         gap_started = self.data_gap_since_ms.pop(event.symbol, None)
         self.paper_portfolio.evaluate_health(
             snapshot,
@@ -2785,7 +3222,15 @@ class PaperRuntime:
         )
         self._refresh_data_health_entry_safety()
         self._record_live_event_phase("HEALTH_EVALUATION", phase_started, event)
-        phase_started = time.perf_counter()
+        last_evaluation = self._last_strategy_evaluation_ms.get(event.symbol)
+        if (
+            last_evaluation is not None
+            and event.venue_ts_ms - last_evaluation < self.strategy_evaluation_interval_ms
+        ):
+            return None
+        self._last_strategy_evaluation_ms[event.symbol] = event.venue_ts_ms
+        for side in (Side.LONG, Side.SHORT):
+            self.orderflow_confirmation_runtime.evaluate(snapshot, side)
         instrument = (
             self.live_selection.instruments.get(event.symbol)
             if self.live_selection is not None
@@ -5722,6 +6167,24 @@ class PaperRuntime:
         self._strategy_arbitration_evidence_cache = {}
         self._strategy_arbitration_evidence_ready = False
         self.strategy_evaluation_count = 0
+        self._strategy_evaluation_backpressure_active = False
+        self._strategy_evaluation_backpressure_skip_count = 0
+        self._strategy_evaluation_backpressure_resume_count = 0
+        self._directional_change_engines.clear()
+        self._directional_change_symbols.clear()
+        for profile_id, _threshold in _DIRECTIONAL_CHANGE_PROFILES:
+            self._directional_change_initialized[profile_id] = False
+            self._directional_change_event_counts[profile_id] = 0
+            self._directional_change_last_directions[profile_id] = DCState.UNINITIALIZED
+            self._directional_change_last_confirmation_types[profile_id] = "NONE"
+        self._semivariance_symbols.clear()
+        self._semivariance_engines.clear()
+        self._semivariance_previous_completed_closes.clear()
+        self._semivariance_latest_snapshots.clear()
+        self._semivariance_last_symbol = "NONE"
+        self._semivariance_last_completed_minute_ts_ms = None
+        self._semivariance_last_status = "WAITING_COMPLETED_MINUTE"
+        self._semivariance_last_reset_reason = "NONE"
         self.qualified_signal_count = 0
 
     def _current_main_book(self) -> BookSnapshot | None:

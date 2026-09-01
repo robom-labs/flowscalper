@@ -276,12 +276,84 @@ function isStrategyPageSummaryPayload(value: unknown): value is StrategyPageSumm
     && Array.isArray(candidate.league_accounts)
 }
 
+function hasNonNegativeIntegerFields(
+  candidate: UnknownRecord,
+  fields: readonly string[],
+) {
+  return fields.every((field) => (
+    typeof candidate[field] === 'number'
+    && Number.isInteger(candidate[field])
+    && Number(candidate[field]) >= 0
+  ))
+}
+
+function isStrategyInventoryPayload(value: unknown) {
+  const candidate = asRecord(value)
+  if (!candidate || candidate.schema !== 'flowscalper.strategy_inventory.v1') return false
+  const fields = [
+    'registered_catalog_item_count',
+    'runtime_registry_variant_count',
+    'enabled_directional_entry_candidate_count',
+    'current_family_entry_representative_count',
+    'inactive_history_runtime_variant_count',
+    'catalog_virtual_filter_count',
+    'active_directional_entry_count',
+  ] as const
+  if (!hasNonNegativeIntegerFields(candidate, fields)) return false
+  return candidate.registered_catalog_item_count
+      === Number(candidate.runtime_registry_variant_count) + Number(candidate.catalog_virtual_filter_count)
+    && candidate.runtime_registry_variant_count
+      === Number(candidate.enabled_directional_entry_candidate_count) + Number(candidate.inactive_history_runtime_variant_count)
+    && Number(candidate.active_directional_entry_count)
+      <= Number(candidate.enabled_directional_entry_candidate_count)
+    && Number(candidate.current_family_entry_representative_count)
+      <= Number(candidate.runtime_registry_variant_count)
+}
+
+function isV9ResearchManifestPayload(value: unknown) {
+  const candidate = asRecord(value)
+  if (
+    !candidate
+    || candidate.schema !== 'flowscalper.v9_candidate_registry.v1'
+    || candidate.status !== 'MONITORING_ON_ENTRY_BLOCKED'
+    || !hasCompleteFlatPaperSafetyContract(candidate)
+    || !Array.isArray(candidate.candidates)
+  ) return false
+  const fields = [
+    'candidate_count',
+    'monitoring_on_count',
+    'direction_strategy_count',
+    'market_neutral_strategy_count',
+    'runtime_entry_registered_count',
+    'active_count',
+    'entry_enabled_count',
+  ] as const
+  if (!hasNonNegativeIntegerFields(candidate, fields)) return false
+  const rows = candidate.candidates.map(asRecord)
+  if (rows.some((row) => {
+    if (row === null || row.paper_only !== true || !Array.isArray(row.source_ids)) return true
+    const sourceIds = row.source_ids
+    return sourceIds.length === 0
+      || sourceIds.some((sourceId) => typeof sourceId !== 'string' || !sourceId.startsWith('SRC-'))
+      || new Set(sourceIds).size !== sourceIds.length
+  })) return false
+  return Number(candidate.candidate_count) === rows.length
+    && Number(candidate.monitoring_on_count) === rows.filter((row) => row?.monitoring_enabled === true).length
+    && Number(candidate.direction_strategy_count) === rows.filter((row) => row?.counts_as_direction_strategy === true).length
+    && Number(candidate.market_neutral_strategy_count) === rows.filter((row) => row?.counts_as_market_neutral_strategy === true).length
+    && Number(candidate.runtime_entry_registered_count) === rows.filter((row) => row?.runtime_entry_registered === true).length
+    && Number(candidate.active_count) === rows.filter((row) => row?.active_enabled === true).length
+    && Number(candidate.entry_enabled_count) === rows.filter((row) => row?.entry_enabled === true).length
+}
+
 function isStrategyFamilyCatalogPayload(value: unknown): value is StrategyFamilyCatalogPayload {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<StrategyFamilyCatalogPayload>
   return candidate.schema_version === 1
     && hasCompleteFlatPaperSafetyContract(candidate)
     && Array.isArray(candidate.families)
+    && (candidate.inventory === undefined || isStrategyInventoryPayload(candidate.inventory))
+    && (candidate.v9_research === undefined || isV9ResearchManifestPayload(candidate.v9_research))
 }
 
 function isSettingsSummaryPayload(value: unknown): value is SettingsSummaryPayload {
@@ -904,6 +976,27 @@ export function useDashboard(page: PageId = 'market') {
         code: 'INVALID_RESPONSE',
         messageKo: '전략 family 변경 응답의 PAPER 안전 상태가 올바르지 않습니다.',
       })
+    }
+    try {
+      const catalog = await fetchJson<StrategyFamilyCatalogPayload>(
+        '/api/strategy-families',
+        { cache: 'no-store' },
+        10_000,
+      )
+      if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
+      if (!isStrategyFamilyCatalogPayload(catalog)) {
+        invalidateSafety()
+        if (mounted.current) {
+          setRequestError('전략 설정은 저장됐지만 변경 후 수량 요약의 PAPER 계약을 확인할 수 없습니다.')
+        }
+      } else if (mounted.current) {
+        setData((current) => ({ ...current, strategy_family_catalog: catalog }))
+      }
+    } catch {
+      if (requestSafetyEpoch !== safetyEpoch.current) throw unverifiedSafetyError()
+      if (mounted.current) {
+        setRequestError('전략 설정은 저장됐지만 전체 수량을 새로고침하지 못했습니다.')
+      }
     }
     return detail
   }, [connected, invalidateSafety, safetyVerified])

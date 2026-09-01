@@ -31,6 +31,7 @@ from backend.app.research import (
     finalize_research_manifest,
     probability_of_backtest_overfitting,
 )
+from backend.app.research.preregistration import preregister_research_protocol
 from backend.app.strategies.base import CandidateStatus
 from backend.app.strategies.registry import StrategyMode, StrategyRegistry
 from backend.app.strategies.runtime_evaluator import StrategySignalEvaluator
@@ -653,6 +654,60 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _research_protocol(horizons: tuple[int, ...]) -> ResearchProtocol:
+    return ResearchProtocol(
+        hypothesis_id="HYP-STRATEGY-LEAGUE-A-J-COST-AFTER-OOS-V1",
+        strategy_id="STRATEGY_LEAGUE_A_J",
+        strategy_version=STRATEGY_VERSION,
+        feature_version="FEATURE_ENGINE_RUNTIME_V1",
+        label_version="FIXED_HORIZON_NET_BPS_V1",
+        engine_version="STRATEGY_REVISION_REPLAY_ENGINE_V1",
+        cost_model_version="TOP_OF_BOOK_BASE13_STRESS25_V1",
+        cost_profile="BASE_STRESS",
+        parameter_grid={
+            "variant": tuple(variant.name for variant in VARIANTS) + RUNTIME_VARIANT_NAMES,
+            "horizon_seconds": horizons,
+        },
+        horizon_seconds=horizons,
+        base_cost_bps=13,
+        stress_cost_bps=25,
+        seed=20260825,
+        purge_ms=60_000,
+        embargo_ms=60_000,
+        falsification_criteria=(
+            "OOS BASE expectancy_bps <= 0",
+            "OOS BASE profit_factor < 1",
+            "OOS STRESS expectancy_bps <= 0",
+            "OOS sample_size < 30",
+        ),
+        baseline_ids=("NO_TRADE", "RUNTIME_A_J", "GROSS_BEFORE_COST"),
+    )
+
+
+def _research_evidence_contract(
+    protocol: ResearchProtocol,
+    dataset: tuple[DatasetSlice, ...],
+):
+    return preregister_research_protocol(
+        protocol,
+        dataset,
+        strategy_family="STRATEGY_LEAGUE_REVISION_RESEARCH",
+        parameter_id_prefix="STRATEGY-REVISION-GRID",
+        exit_id="FIXED-HORIZON-EXECUTABLE-BOOK-V1",
+        execution_policy="PAPER-RECONSTRUCTED-TOP-OF-BOOK-V1",
+        filter_combination=(
+            "REAL-EVENT-TIME-CONFIRMATION-V1",
+            "SEQUENCE-VALID-FRESH-BOOK-V1",
+        ),
+        dataset_id_prefix="BINANCE-USDM-PUBLIC-ARCHIVE",
+        epoch_id_prefix="STRATEGY-REVISION-EPOCH",
+        fee_model_version="TOP_OF_BOOK_BASE13_STRESS25_V1",
+        matching_model_version="RECONSTRUCTED-10-LEVEL-TOP-OF-BOOK-V1",
+        symbol_contract_version="BINANCE-USDM-SYMBOL-V1",
+        data_adapter_version="MARKET-PARQUET-V6-V1",
+    )
+
+
 def main() -> None:
     args = parse_args()
     horizons = tuple(args.horizon_seconds or (15, 30, 60, 180))
@@ -675,36 +730,16 @@ def main() -> None:
     validation_boundary_ms = max(
         dataset_by_run[run_id].end_ts_ms for run_id in DEFAULT_VALIDATION_RUNS
     )
-    protocol = ResearchProtocol(
-        hypothesis_id="HYP-STRATEGY-LEAGUE-A-J-COST-AFTER-OOS-V1",
-        strategy_id="STRATEGY_LEAGUE_A_J",
-        strategy_version=STRATEGY_VERSION,
-        feature_version="FEATURE_ENGINE_RUNTIME_V1",
-        cost_model_version="TOP_OF_BOOK_BASE13_STRESS25_V1",
-        parameter_grid={
-            "variant": tuple(variant.name for variant in VARIANTS) + RUNTIME_VARIANT_NAMES,
-            "horizon_seconds": horizons,
-        },
-        horizon_seconds=horizons,
-        base_cost_bps=13,
-        stress_cost_bps=25,
-        seed=20260825,
-        purge_ms=60_000,
-        embargo_ms=60_000,
-        falsification_criteria=(
-            "OOS BASE expectancy_bps <= 0",
-            "OOS BASE profit_factor < 1",
-            "OOS STRESS expectancy_bps <= 0",
-            "OOS sample_size < 30",
-        ),
-        baseline_ids=("NO_TRADE", "RUNTIME_A_J", "GROSS_BEFORE_COST"),
-    )
+    protocol = _research_protocol(horizons)
+    hypothesis_registry, evidence_epoch = _research_evidence_contract(protocol, dataset)
     started_ts_ms = time.time_ns() // 1_000_000
     manifest = protocol.manifest(
         dataset,
         code_hash=git_commit(),
         config_hash=_config_hash(project_root),
         generated_ts_ms=started_ts_ms,
+        hypothesis_registry=hypothesis_registry,
+        evidence_epoch=evidence_epoch,
     )
     result: dict[str, Any] = {
         "schema_version": 2,

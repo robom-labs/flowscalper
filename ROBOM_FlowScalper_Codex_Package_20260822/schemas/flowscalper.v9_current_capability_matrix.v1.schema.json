@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robom.local/schemas/flowscalper.v9_current_capability_matrix.v1.schema.json",
+  "title": "FlowScalperV9CurrentCapabilityMatrixV1",
+  "type": "object",
+  "required": [
+    "schema",
+    "schema_version",
+    "generated_ts_utc",
+    "status",
+    "git_commit",
+    "installed_commit",
+    "installation_status",
+    "installation_reason",
+    "strategy_families",
+    "current_variants",
+    "challenger_variants",
+    "previous_variants",
+    "directional_change_supported",
+    "actual_confirmation_guard_supported",
+    "semivariance_supported",
+    "periodicity_adjusted_jump_supported",
+    "copula_pairs_supported",
+    "hierarchical_shrinkage_supported",
+    "batch_fdr_supported",
+    "e_value_supported",
+    "e_bh_supported",
+    "pareto_set_supported",
+    "hysteresis_supported",
+    "evidence_freshness_supported",
+    "actual_orders_enabled",
+    "private_api_enabled",
+    "api_key_required",
+    "wallet_enabled",
+    "capability_status",
+    "known_gaps"
+  ],
+  "properties": {
+    "schema": {"const": "flowscalper.v9_current_capability_matrix.v1"},
+    "schema_version": {"const": 1},
+    "generated_ts_utc": {"type": "string", "format": "date-time"},
+    "status": {"type": "string"},
+    "git_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "installed_commit": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        {"type": "null"}
+      ]
+    },
+    "installation_status": {"enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN", "NOT_PROVEN"]},
+    "installation_reason": {"type": "string"},
+    "strategy_families": {"$ref": "#/$defs/uniqueStrings"},
+    "current_variants": {"$ref": "#/$defs/uniqueStrings"},
+    "challenger_variants": {"$ref": "#/$defs/uniqueStrings"},
+    "previous_variants": {"$ref": "#/$defs/uniqueStrings"},
+    "directional_change_supported": {"type": "boolean"},
+    "actual_confirmation_guard_supported": {"type": "boolean"},
+    "semivariance_supported": {"type": "boolean"},
+    "periodicity_adjusted_jump_supported": {"type": "boolean"},
+    "copula_pairs_supported": {"type": "boolean"},
+    "hierarchical_shrinkage_supported": {"type": "boolean"},
+    "batch_fdr_supported": {"type": "boolean"},
+    "e_value_supported": {"type": "boolean"},
+    "e_bh_supported": {"type": "boolean"},
+    "pareto_set_supported": {"type": "boolean"},
+    "hysteresis_supported": {"type": "boolean"},
+    "evidence_freshness_supported": {"type": "boolean"},
+    "actual_orders_enabled": {"type": ["boolean", "null"]},
+    "private_api_enabled": {"type": ["boolean", "null"]},
+    "api_key_required": {"type": ["boolean", "null"]},
+    "wallet_enabled": {"type": ["boolean", "null"]},
+    "capability_status": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "known_gaps": {"$ref": "#/$defs/uniqueStrings"}
+  },
+  "$defs": {
+    "uniqueStrings": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

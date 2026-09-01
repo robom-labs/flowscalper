@@ -763,7 +763,7 @@ test('filters the seven family categories and ranks only eligible strategies wit
   const categoryTabs = screen.getByRole('tablist', { name: '전략 family 분류' })
   const visibleIds = () => [...document.querySelectorAll<HTMLTableRowElement>('.strategy-compact-table tbody tr')].map((row) => row.dataset.strategyId)
 
-  expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent('모의평가 ON')
+  expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent('방향 진입 후보 ON')
   expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent('진행 포지션')
   expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent('30건 이상')
   expect(screen.getByRole('columnheader', { name: '모의평가' })).toBeInTheDocument()

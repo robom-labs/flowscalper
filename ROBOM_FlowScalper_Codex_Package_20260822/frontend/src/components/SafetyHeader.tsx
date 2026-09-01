@@ -39,6 +39,9 @@ export function SafetyHeader({ data, connected, safetyVerified, connectionState,
           {safetyVerified ? 'PAPER · 실제 주문 0' : '안전 상태 미확인 · 조작 잠금'}
         </span>
         <span className={connected ? 'connection-on' : 'connection-off'}>{connectionLabel}</span>
+        <span className={data.operation_status.market_observation_active ? 'connection-on' : 'connection-off'}>
+          자동 관찰 · {data.operation_status.market_observation_active ? '시작됨' : '시작 전'}
+        </span>
         <span className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}>순손익 {formatUsdt(status.realized_pnl_usdt, { signed: true })}</span>
         <span>보유 {data.focus_positions.length}건</span>
         <button type="button" className="header-action" disabled={!connected || !safetyVerified || !actionable || immediateAction !== null} onClick={onPauseToggle}>{actionLabel}</button>

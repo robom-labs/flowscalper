@@ -34,6 +34,9 @@ endif
 .PHONY: external-cache-prepare
 .PHONY: audit-v6-system-truth test-strategy-family test-v6-governor compare-v2-v3
 .PHONY: build-v6-conflict-matrix
+.PHONY: audit-upgrade-capabilities audit-v7-capabilities audit-v8-capabilities audit-v9-capabilities
+.PHONY: test-capability-audit test-v9-foundations test-directional-change test-dc-strategy-monitors test-semivariance
+.PHONY: test-v9-statistics test-v9-research-gates test-v9-candidates
 .PHONY: test-ui-four-pages test-trade-opportunity-grouping test-strategy-detail-on-demand
 .PHONY: benchmark-dashboard-payload e2e-simple-user-flow
 
@@ -149,6 +152,51 @@ audit-v6-system-truth: | external-cache-prepare
 
 build-v6-conflict-matrix: | external-cache-prepare
 	$(UV) run python scripts/build_v6_conflict_matrix.py
+
+audit-upgrade-capabilities: audit-v9-capabilities
+
+audit-v7-capabilities: | external-cache-prepare
+	$(UV) run python scripts/audit_upgrade_capabilities.py \
+		--through V7 --output evidence/V9_CAPABILITY_AUDIT.json
+
+audit-v8-capabilities: | external-cache-prepare
+	$(UV) run python scripts/audit_upgrade_capabilities.py \
+		--through V8 --output evidence/V9_CAPABILITY_AUDIT.json
+
+audit-v9-capabilities: | external-cache-prepare
+	$(UV) run python scripts/audit_upgrade_capabilities.py \
+		--through V9 --output evidence/V9_CAPABILITY_AUDIT.json
+
+test-capability-audit: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_upgrade_capability_audit.py
+
+test-directional-change: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_directional_change_engine.py backend/tests/test_directional_change_guards.py
+
+test-dc-strategy-monitors: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_dc_strategy_monitors.py
+
+test-semivariance: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_semivariance_jump_router.py
+
+test-v9-statistics: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v9_statistical_evidence.py
+
+test-v9-research-gates: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v8_v9_research_gates.py
+
+test-v9-candidates: | external-cache-prepare
+	$(UV) run pytest backend/tests/test_v9_candidate_registry.py
+
+test-v9-foundations: | external-cache-prepare
+	$(UV) run pytest \
+		backend/tests/test_directional_change_engine.py \
+		backend/tests/test_directional_change_guards.py \
+		backend/tests/test_dc_strategy_monitors.py \
+		backend/tests/test_semivariance_jump_router.py \
+		backend/tests/test_v8_v9_research_gates.py \
+		backend/tests/test_v9_candidate_registry.py \
+		backend/tests/test_v9_statistical_evidence.py
 
 test-strategy-family: | external-cache-prepare
 	$(UV) run pytest backend/tests/test_v6_family_governor_opportunities.py \

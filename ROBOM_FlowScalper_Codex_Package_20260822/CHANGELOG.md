@@ -6,8 +6,11 @@
 
 ## 아직 배포하지 않음
 
-- LIVE 전략 평가를 미리 준비한 단일 전용 프로세스로 격리해 CPU 계산이 공개시장 이벤트 루프를 막지 않게 하고, Run·설정이 바뀐 오래된 결과는 적용하지 않는다. 5초 신호 반감기 안에서 평가 간격을 1초로 제한해 공개시장 queue 처리량을 확보하고, 사용자 화면의 1초 heartbeat는 유지하면서 상태가 같을 때 무거운 전체 snapshot 재생성은 최대 5초에 한 번으로 줄였다.
-- 전략 평가 1초 주기는 유지하되 stale·sequence-invalid 시장 이벤트가 들어오면 즉시 신규 PAPER 진입을 잠그고, 대기 중인 모의 진입을 취소해 위험 예약을 회수한다. 이후 전략 프로세스의 data-health epoch을 새로 시작해 공백 이전 평가와 확인 이력이 신선한 호가 회복 후 신호에 섞이지 않게 했다.
+- V9의 Directional Change FAST·SWING 관찰과 DC01 추세지속·DC02 소진반전 monitoring-only 규칙을 추가했다. 상·하방 Semivariance·RV/BV Jump 관찰, 계층적 축소·BH/BY FDR·E-process·e-BH·Pareto·연구 게이트는 독립 PAPER 코어로 구현했지만 runtime 진입에는 연결하지 않았다. Signed Jump·Harvey–Liu·Copula 엔진·봉 전용 DC replay는 미완료로 명시해 완료 기능으로 계산하지 않는다. 실제 crossing과 완성봉만 사용하고 stale·순서 불일치·비용 미충족은 fail-closed하며, 모든 신규 후보는 실제 주문·인증·wallet 0을 유지한다.
+- V9 연구 항목 12개의 추적 스위치를 모두 ON으로 표시하되, 방향 전략은 DC 2개, 시장중립 후보는 1개, 나머지는 필터·라우터·위험축소·통계·선별로 분리했다. 소스·엔진 준비상태와 진입 여부를 별도로 보여 추적 ON을 ACTIVE나 주문 허용으로 오인하지 않게 했다.
+- LIVE 전략 평가를 미리 준비한 단일 전용 프로세스로 격리하고, Run·설정이 바뀐 오래된 결과는 적용하지 않는다. 전략 진입판정 최소 간격을 2초로 조정하고 이벤트 대기열이 운영 상한에 닿기 전에 CPU 전략 평가만 적응적으로 건너뛰어, 호가별 TP·SL·포지션 관리·원장 저장·DC 관찰은 계속 진행한다. 화면의 1초 heartbeat와 동일 상태의 최대 5초 snapshot cache는 유지한다.
+- stale·sequence-invalid 시장 이벤트가 들어오면 즉시 신규 PAPER 진입을 잠그고 대기 중인 모의 진입을 취소해 위험 예약을 회수한다. 이후 전략 프로세스의 data-health epoch을 새로 시작해 공백 이전 평가와 확인 이력이 신선한 호가 회복 후 신호에 섞이지 않게 했다.
+- 연구 manifest V2에 strategy·feature·label·engine·cost·parameter·dataset을 묶은 canonical hypothesis key와 evidence epoch을 추가했다. 서로 다른 근거 축이 같은 시험으로 섞이거나 같은 가설을 별칭으로 재등록하는 것을 차단하고, 기존 append-only 시험 이력은 삭제 없이 별도 legacy epoch로 격리해 읽는다.
 
 ## 0.3.0-paper — 2026-08-31
 

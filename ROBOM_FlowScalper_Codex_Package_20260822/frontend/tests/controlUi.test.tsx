@@ -332,6 +332,7 @@ test('shows a manual pause clearly and resumes it with one click', async () => {
 
   render(<App />)
   const resume = await screen.findByRole('button', { name: '새 진입 다시 시작' })
+  expect(screen.getByText('자동 관찰 · 시작됨')).toBeInTheDocument()
   act(() => FakeWebSocket.instances[0].open())
   await waitFor(() => expect(resume).toBeEnabled())
   fireEvent.click(resume)

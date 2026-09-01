@@ -45,6 +45,7 @@ from backend.app.replay.process import (
 )
 from backend.app.replay.safety import ReplayLiveSafetyViolation, run_with_live_safety
 from backend.app.research.source_metadata import research_source_metadata_rows
+from backend.app.research.v9_candidates import v9_candidate_manifest
 from backend.app.runtime import PaperEntryIntentConflict, PaperRuntime
 from backend.app.storage.parquet import ParquetEventStore
 from backend.app.storage.sqlite import LedgerInvariantError, RecoveryState, SQLiteLedger
@@ -963,6 +964,69 @@ def create_app(
             )
         return catalog
 
+    def strategy_inventory(catalog: list[dict[str, object]]) -> dict[str, object]:
+        """등록 항목과 실제 방향 진입 후보를 서로 섞지 않는 화면용 집계를 만든다."""
+
+        registry = active_runtime.strategy_registry
+        enabled_entry_ids: set[str] = set()
+        inactive_history_ids: set[str] = set()
+        current_entry_representative_ids: set[str] = set()
+        active_entry_ids: set[str] = set()
+        for strategy_id in registry.strategy_ids:
+            descriptor = registry.descriptor(strategy_id)
+            setting = registry.setting(strategy_id)
+            if (
+                descriptor.role.value == "ENTRY"
+                and descriptor.is_current_variant
+                and descriptor.user_visible_by_default
+                and descriptor.superseded_by_strategy_id is None
+            ):
+                current_entry_representative_ids.add(strategy_id)
+            entry_enabled = (
+                descriptor.role.value == "ENTRY"
+                and descriptor.superseded_by_strategy_id is None
+                and setting.mode in {StrategyMode.SHADOW, StrategyMode.ACTIVE}
+                and setting.lifecycle
+                in {
+                    StrategyLifecycle.SHADOW,
+                    StrategyLifecycle.CHALLENGER,
+                    StrategyLifecycle.ACTIVE,
+                }
+                and (setting.long_enabled or setting.short_enabled)
+            )
+            if entry_enabled:
+                enabled_entry_ids.add(strategy_id)
+                if (
+                    setting.mode is StrategyMode.ACTIVE
+                    and setting.lifecycle is StrategyLifecycle.ACTIVE
+                ):
+                    active_entry_ids.add(strategy_id)
+            else:
+                inactive_history_ids.add(strategy_id)
+
+        registered_catalog_item_count = 0
+        for row in catalog:
+            raw_variant_count = row.get("variant_count")
+            if not isinstance(raw_variant_count, int) or raw_variant_count < 0:
+                raise ValueError("전략 catalog variant_count가 올바르지 않습니다.")
+            registered_catalog_item_count += raw_variant_count
+        runtime_registry_variant_count = len(registry.strategy_ids)
+        return {
+            "schema": "flowscalper.strategy_inventory.v1",
+            "registered_catalog_item_count": registered_catalog_item_count,
+            "runtime_registry_variant_count": runtime_registry_variant_count,
+            "enabled_directional_entry_candidate_count": len(enabled_entry_ids),
+            "current_family_entry_representative_count": len(
+                current_entry_representative_ids
+            ),
+            "inactive_history_runtime_variant_count": len(inactive_history_ids),
+            "catalog_virtual_filter_count": max(
+                registered_catalog_item_count - runtime_registry_variant_count,
+                0,
+            ),
+            "active_directional_entry_count": len(active_entry_ids),
+        }
+
     def history_with_trade_fill_evidence(
         history: Mapping[str, object],
     ) -> dict[str, object]:
@@ -1466,9 +1530,17 @@ def create_app(
     ) -> Response:
         snapshot, _ = await cached_dashboard()
         catalog = static_family_catalog()
+        raw_system = snapshot.get("system")
+        source_commit = (
+            str(raw_system.get("release_commit", "development"))
+            if isinstance(raw_system, Mapping)
+            else "development"
+        )
         payload = {
             "schema_version": 1,
             "families": catalog,
+            "inventory": strategy_inventory(catalog),
+            "v9_research": v9_candidate_manifest(source_commit=source_commit),
         } | paper_safety_contract(snapshot)
         etag = stable_etag(payload)
         if if_none_match == etag:

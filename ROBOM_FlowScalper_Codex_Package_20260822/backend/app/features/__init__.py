@@ -1,5 +1,46 @@
 """결정적 미세구조 피처 엔진을 공개한다."""
 
+from backend.app.features.directional_change import (
+    CompletedCandleThreshold,
+    CompletedCandleThresholdProvider,
+    CompletedCandleThresholdSource,
+    DCEventType,
+    DCMidObservation,
+    DCState,
+    DCUpdateReason,
+    DirectionalChangeEngine,
+    DirectionalChangeEvent,
+    DirectionalChangeInputError,
+    DirectionalChangeReset,
+    DirectionalChangeSnapshot,
+    DirectionalChangeUpdate,
+    FixedThresholdProvider,
+    ThresholdDecision,
+    ThresholdProvider,
+    ThresholdProviderError,
+)
 from backend.app.features.engine import BookFrame, FeatureEngine, FeatureInputError, FeatureSnapshot
 
-__all__ = ["BookFrame", "FeatureEngine", "FeatureInputError", "FeatureSnapshot"]
+__all__ = [
+    "BookFrame",
+    "CompletedCandleThreshold",
+    "CompletedCandleThresholdProvider",
+    "CompletedCandleThresholdSource",
+    "DCEventType",
+    "DCMidObservation",
+    "DCState",
+    "DCUpdateReason",
+    "DirectionalChangeEngine",
+    "DirectionalChangeEvent",
+    "DirectionalChangeInputError",
+    "DirectionalChangeReset",
+    "DirectionalChangeSnapshot",
+    "DirectionalChangeUpdate",
+    "FeatureEngine",
+    "FeatureInputError",
+    "FeatureSnapshot",
+    "FixedThresholdProvider",
+    "ThresholdDecision",
+    "ThresholdProvider",
+    "ThresholdProviderError",
+]

@@ -123,6 +123,15 @@ def test_e06_live_safe_proposal_binds_parameters_data_code_and_cost(tmp_path: Pa
     assert proposal.parameter_fingerprint
     assert proposal.implementation_fingerprint
     assert proposal.cost_model_fingerprint
+    assert proposal.strategy_id == "COST_COVERED_EARLY_TP_RUNNER_E06"
+    assert len(proposal.hypothesis_key_fingerprint) == 64
+    assert proposal.evidence_epoch_id.startswith(
+        "LIVE-SAFE-STRATEGY-SCREENING-EPOCH-"
+    )
+    assert len(proposal.evidence_epoch_fingerprint) == 64
+    assert proposal.cost_profile == "BASE_STRESS"
+    assert proposal.paper_only is True
+    assert proposal.real_orders_enabled is False
 
     launcher = tmp_path / "scripts" / "run_server.py"
     launcher.write_text("fixture:runtime-mitigation-v2\n", encoding="utf-8")
@@ -257,6 +266,9 @@ def test_strategy_100_live_safe_proposal_binds_frozen_public_inputs(
     assert proposal.dataset_end_ts_ms == 300
     assert proposal.dataset_member_fingerprints[0].startswith("RUN-TRAIN:")
     assert not proposal.dataset_member_fingerprints[0].endswith(":None")
+    assert proposal.strategy_id == "STRATEGY_100_FROZEN_BATCH"
+    assert len(proposal.hypothesis_key_fingerprint) == 64
+    assert len(proposal.evidence_epoch_fingerprint) == 64
 
 
 def test_strategy_100_live_safe_result_accepts_100_registered_90_executable(

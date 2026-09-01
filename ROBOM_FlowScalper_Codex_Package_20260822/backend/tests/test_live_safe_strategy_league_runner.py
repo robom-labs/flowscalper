@@ -11,6 +11,7 @@ import pytest
 
 from backend.app.replay.safety import ReplayLiveSafetySnapshot
 from backend.app.research.trial_history import (
+    ResearchTrialProposal,
     ResearchTrialRecord,
     ResearchTrialStatus,
     evaluate_trial_proposal,
@@ -320,6 +321,13 @@ def test_live_safe_runner_persists_append_only_trial_history(tmp_path: Path) -> 
         strategy_logic=STRATEGY_LOGIC_CURRENT,
     )
     proposal = _trial_proposal_from_arguments(arguments)
+    assert proposal.strategy_id == "STRATEGY_LEAGUE_ALL_REGISTERED"
+    assert len(proposal.hypothesis_key_fingerprint) == 64
+    assert proposal.evidence_epoch_id.startswith("LIVE-SAFE-STRATEGY-LEAGUE-EPOCH-")
+    assert len(proposal.evidence_epoch_fingerprint) == 64
+    assert proposal.cost_profile == "BASE_STRESS"
+    assert proposal.paper_only is True
+    assert proposal.real_orders_enabled is False
     record = ResearchTrialRecord(
         trial_id="TRIAL-ONE",
         proposal=proposal,
@@ -335,6 +343,67 @@ def test_live_safe_runner_persists_append_only_trial_history(tmp_path: Path) -> 
     assert evaluate_trial_proposal(loaded, proposal)["decision"] == (
         "BLOCK_DUPLICATE_COMPLETE_TRIAL"
     )
+
+
+def test_load_trial_history_preserves_and_isolates_legacy_v1_rows(
+    tmp_path: Path,
+) -> None:
+    catalog = tmp_path / "legacy-trial-history.jsonl"
+    legacy_payload = {
+        "schema": "flowscalper.research_trial_history_record.v1",
+        "trial_id": "LEGACY-TRIAL-ONE",
+        "proposal": {
+            "hypothesis_id": "HYP-LEGACY-ONE",
+            "parameter_fingerprint": "a" * 64,
+            "dataset_fingerprint": "b" * 64,
+            "dataset_start_ts_ms": 100,
+            "dataset_end_ts_ms": 200,
+            "implementation_fingerprint": "legacy-implementation",
+            "cost_model_fingerprint": "legacy-cost-model",
+            "dataset_member_fingerprints": [f"RUN-OLD:{'c' * 64}"],
+            "paper_only": True,
+            "real_orders_enabled": False,
+        },
+        "status": "COMPLETE",
+        "evidence_path": "evidence/LEGACY-TRIAL-ONE.json",
+    }
+    original = json.dumps(legacy_payload, sort_keys=True) + "\n"
+    catalog.write_text(original, encoding="utf-8")
+
+    first = _load_trial_history(catalog)
+    second = _load_trial_history(catalog)
+
+    assert first == second
+    assert catalog.read_text(encoding="utf-8") == original
+    isolated = first[0].proposal
+    assert isolated.hypothesis_id.startswith("LEGACY_ISOLATED-")
+    assert isolated.strategy_id.startswith("LEGACY_ISOLATED-")
+    assert isolated.evidence_epoch_id.startswith("LEGACY_ISOLATED-EPOCH-")
+    assert len(isolated.hypothesis_key_fingerprint) == 64
+    assert len(isolated.evidence_epoch_fingerprint) == 64
+    assert isolated.cost_profile == "LEGACY_ISOLATED"
+
+    current = ResearchTrialProposal(
+        hypothesis_id="HYP-LEGACY-ONE",
+        strategy_id="CURRENT-V2-STRATEGY",
+        hypothesis_key_fingerprint="d" * 64,
+        parameter_fingerprint="a" * 64,
+        dataset_fingerprint="b" * 64,
+        dataset_start_ts_ms=100,
+        dataset_end_ts_ms=200,
+        implementation_fingerprint="current-implementation",
+        cost_model_fingerprint="current-cost-model",
+        evidence_epoch_id="CURRENT-V2-EPOCH",
+        evidence_epoch_fingerprint="e" * 64,
+        cost_profile="BASE_STRESS",
+        feature_version="CURRENT-FEATURE-V2",
+        label_version="CURRENT-LABEL-V2",
+        engine_version="CURRENT-ENGINE-V2",
+        dataset_member_fingerprints=(f"RUN-OLD:{'c' * 64}",),
+    )
+    decision = evaluate_trial_proposal(first, current)
+    assert decision["decision"] == "ALLOW_NEW_HYPOTHESIS"
+    assert decision["historical_records_preserved"] is True
 
 
 def test_none_gate_history_identity_ignores_an_inactive_target(tmp_path: Path) -> None:

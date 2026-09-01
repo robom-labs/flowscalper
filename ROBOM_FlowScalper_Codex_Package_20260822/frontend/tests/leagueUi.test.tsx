@@ -6,7 +6,7 @@ import { PositionList } from '../src/components/PositionList'
 import { StrategyPerformancePanel } from '../src/components/StrategyPerformancePanel'
 import { StrategiesPage } from '../src/pages/StrategiesPage'
 import { StrategySymbolPanel } from '../src/components/StrategySymbolPanel'
-import type { LeaguePosition } from '../src/types'
+import type { LeaguePosition, V9ResearchCandidate } from '../src/types'
 import { dashboardFixture, leagueAccounts, strategies } from './fixtures'
 
 afterEach(() => {
@@ -26,7 +26,10 @@ test('shows only current non-retired strategies with trust-first ranking evidenc
   expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-inline-modes button')).toHaveLength(0)
   expect(screen.queryByText('기록만 하기')).not.toBeInTheDocument()
-  expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent(/모의평가 ON10/)
+  expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent(/방향 진입 후보 ON10/)
+  expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent(/표시 중인 family 대표10/)
+  expect(screen.getByRole('region', { name: '전략 모의평가 요약' })).toHaveTextContent(/전체 등록15/)
+  expect(screen.getByText(/현재·도전자를 합친 방향 진입 후보 10개만 독립 SHADOW 모의평가 ON/)).toBeInTheDocument()
   expect(screen.getAllByText('준비 중')).toHaveLength(10)
   expect(document.querySelectorAll('.strategy-monitor.off')).toHaveLength(0)
   expect(document.querySelector('[data-strategy-id="LSA_REVERSAL_V1"]')).not.toBeInTheDocument()
@@ -283,6 +286,134 @@ test('never offers direct shared-capital activation and keeps family research se
   expect(onConfigure).not.toHaveBeenCalled()
 })
 
+test('counts enabled challenger variants without adding them to the current family table', () => {
+  const source = strategies[0]
+  const challenger = {
+    ...source,
+    strategy_id: `${source.strategy_id}_CHALLENGER`,
+    variant_id: `${source.strategy_id}_CHALLENGER`,
+    variant_label_ko: '독립 검증 도전자',
+    is_current_variant: false,
+    user_visible_by_default: false,
+    final_ranking_eligible: false,
+    lifecycle: 'SHADOW' as const,
+    mode: 'SHADOW' as const,
+  }
+
+  render(<StrategiesPage strategies={[...strategies, challenger]} leagueAccounts={leagueAccounts} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
+
+  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(10)
+  const summary = screen.getByRole('region', { name: '전략 모의평가 요약' })
+  expect(summary).toHaveTextContent(/방향 진입 후보 ON11/)
+  expect(summary).toHaveTextContent(/표시 중인 family 대표10/)
+  expect(summary).toHaveTextContent(/전체 등록16/)
+})
+
+test('separates the existing inventory from all 12 V9 tracking-only items', () => {
+  const data = dashboardFixture()
+  const candidateSpecs: Array<Pick<V9ResearchCandidate, 'candidate_id' | 'label_ko' | 'role' | 'family_id' | 'readiness'>> = [
+    { candidate_id: 'DC_OVERSHOOT_CONTINUATION_V1', label_ko: 'DC Overshoot 추세 지속', role: 'ENTRY', family_id: 'BREAKOUT_RUNNER', readiness: 'PARTIAL_SOURCE_NOT_CONNECTED' },
+    { candidate_id: 'DC_OVERSHOOT_EXHAUSTION_REVERSAL_V1', label_ko: 'DC Overshoot 소진 반전', role: 'ENTRY', family_id: 'EXHAUSTION_REVERSION', readiness: 'PARTIAL_SOURCE_NOT_CONNECTED' },
+    { candidate_id: 'COPULA_COINTEGRATED_PAIRS_1H_V2', label_ko: 'Copula 비선형 시장중립 Pairs', role: 'MARKET_NEUTRAL_MULTI_LEG', family_id: 'MARKET_NEUTRAL', readiness: 'BLOCKED_ENGINE' },
+    { candidate_id: 'SEMIVARIANCE_MOMENTUM_REVERSAL_ROUTER_V1', label_ko: '상승·하락 Semivariance Router', role: 'ROUTER', family_id: null, readiness: 'PARTIAL_SOURCE_NOT_CONNECTED' },
+    { candidate_id: 'DOWNSIDE_SEMIVARIANCE_RISK_OVERLAY_V1', label_ko: '하방 Semivariance 위험축소', role: 'RISK_OVERLAY', family_id: null, readiness: 'PARTIAL_SOURCE_NOT_CONNECTED' },
+    { candidate_id: 'HYSTERESIS_SETUP_GATE_V1', label_ko: 'Setup Hysteresis Gate', role: 'FILTER', family_id: null, readiness: 'SOURCE_IMPLEMENTED_NOT_CONNECTED' },
+    { candidate_id: 'EVIDENCE_FRESHNESS_GATE_V1', label_ko: '최근 근거 신선도 Gate', role: 'SELECTION', family_id: null, readiness: 'SOURCE_IMPLEMENTED_NOT_CONNECTED' },
+    { candidate_id: 'HIERARCHICAL_PERFORMANCE_SHRINKAGE_V1', label_ko: '계층적 성과 보정', role: 'STATISTICS', family_id: null, readiness: 'SOURCE_IMPLEMENTED_NOT_CONNECTED' },
+    { candidate_id: 'BATCH_FDR_HARVEY_LIU_V1', label_ko: 'Batch FDR 검증', role: 'STATISTICS', family_id: null, readiness: 'BLOCKED_PREREQUISITE' },
+    { candidate_id: 'ANYTIME_EPROCESS_V1', label_ko: 'Anytime E-process', role: 'STATISTICS', family_id: null, readiness: 'SOURCE_IMPLEMENTED_NOT_CONNECTED' },
+    { candidate_id: 'E_BH_STRATEGY_SELECTION_V1', label_ko: 'e-BH 전략 선별', role: 'SELECTION', family_id: null, readiness: 'SOURCE_IMPLEMENTED_NOT_CONNECTED' },
+    { candidate_id: 'PARETO_ROBUST_SET_V1', label_ko: 'Pareto 강건 후보집합', role: 'SELECTION', family_id: null, readiness: 'SOURCE_IMPLEMENTED_NOT_CONNECTED' },
+  ]
+  const v9Candidates: V9ResearchCandidate[] = candidateSpecs.map((candidate, index) => ({
+    ...candidate,
+    prerequisite_capability_ids: [`V9.${candidate.candidate_id}`],
+    source_ids: [`SRC-V9-FIXTURE-${index + 1}`],
+    monitoring_enabled: true,
+    entry_enabled: false,
+    active_enabled: false,
+    runtime_entry_registered: false,
+    can_increase_risk: false,
+    paper_only: true,
+    counts_as_direction_strategy: candidate.role === 'ENTRY',
+    counts_as_market_neutral_strategy: candidate.role === 'MARKET_NEUTRAL_MULTI_LEG',
+  }))
+  data.strategies = [
+    { ...strategies[2], family_id: 'EXHAUSTION_REVERSION', role: 'ENTRY', is_current_variant: true, user_visible_by_default: true },
+    { ...strategies[11], family_id: 'TREND_PULLBACK', role: 'ENTRY', is_current_variant: true, user_visible_by_default: true },
+    { ...strategies[13], family_id: 'BREAKOUT_RUNNER', role: 'ENTRY', is_current_variant: true, user_visible_by_default: true },
+  ]
+  const visibleIds = new Set(data.strategies.map((strategy) => strategy.strategy_id))
+  data.league_accounts = data.league_accounts.filter((account) => visibleIds.has(account.strategy_id))
+  data.strategy_family_catalog = {
+    schema_version: 1,
+    families: [],
+    inventory: {
+      schema: 'flowscalper.strategy_inventory.v1',
+      registered_catalog_item_count: 16,
+      runtime_registry_variant_count: 15,
+      enabled_directional_entry_candidate_count: 6,
+      current_family_entry_representative_count: 3,
+      inactive_history_runtime_variant_count: 9,
+      catalog_virtual_filter_count: 1,
+      active_directional_entry_count: 0,
+    },
+    paper_only: true,
+    real_orders_enabled: false,
+    auth_required: false,
+    private_api_enabled: false,
+    api_key_enabled: false,
+    wallet_enabled: false,
+    runtime_ai_order_decision_enabled: false,
+    funding_readiness: 'NOT_READY',
+    v9_research: {
+      schema: 'flowscalper.v9_candidate_registry.v1',
+      status: 'MONITORING_ON_ENTRY_BLOCKED',
+      source_commit: 'a'.repeat(40),
+      candidate_count: 12,
+      monitoring_on_count: 12,
+      direction_strategy_count: 2,
+      market_neutral_strategy_count: 1,
+      runtime_entry_registered_count: 0,
+      active_count: 0,
+      entry_enabled_count: 0,
+      candidates: v9Candidates,
+      manifest_sha256: 'b'.repeat(64),
+      paper_only: true,
+      real_orders_enabled: false,
+      auth_required: false,
+      private_api_enabled: false,
+      api_key_enabled: false,
+      wallet_enabled: false,
+      runtime_ai_order_decision_enabled: false,
+      funding_readiness: 'NOT_READY',
+    },
+  }
+
+  render(<StrategiesPage data={data} strategies={data.strategies} leagueAccounts={data.league_accounts} controlsEnabled onConfigure={vi.fn(async () => undefined)} />)
+
+  const summary = screen.getByRole('region', { name: '전략 모의평가 요약' })
+  expect(summary).toHaveTextContent(/방향 진입 후보 ON6/)
+  expect(summary).toHaveTextContent(/기존 보존·중지9/)
+  expect(summary).toHaveTextContent(/표시 중인 family 대표3/)
+  expect(summary).toHaveTextContent(/기존 전체 등록16/)
+  expect(document.querySelectorAll('.strategy-compact-table tbody tr')).toHaveLength(3)
+
+  const panel = screen.getByRole('region', { name: 'V9 연구 추적 상태' })
+  expect(within(panel).getByText('연구 추적 ON 12/12')).toBeInTheDocument()
+  expect(within(panel).getByText(/새 방향 전략 2개 · 새 시장중립 1개 · PAPER 진입 활성 0개/)).toBeInTheDocument()
+  expect(within(panel).getByText(/DC Overshoot 추세 지속/)).toBeInTheDocument()
+  expect(within(panel).getAllByText(/방향 전략 · 핵심 소스 일부 구현 · 진입 미연결/)).toHaveLength(2)
+  expect(within(panel).getByText(/시장중립 전략 · 실행 엔진 대기/)).toBeInTheDocument()
+  expect(within(panel).getByText(/필터 · 소스 구현 · 진입 미연결/)).toBeInTheDocument()
+  expect(within(panel).getByText(/통계 검증 · 선행 검증 대기/)).toBeInTheDocument()
+  expect(within(panel).getAllByText('추적 ON')).toHaveLength(12)
+  expect(within(panel).getAllByText('검증 전 진입 차단')).toHaveLength(12)
+  expect(within(panel).getAllByText('등록 출처 1개')).toHaveLength(12)
+  expect(within(panel).getByText(/추적 ON은 읽기 전용 연구 상태이며 PAPER 진입 스위치가 아닙니다/)).toBeInTheDocument()
+  expect(panel.querySelectorAll('.v9-research-grid article')).toHaveLength(12)
+})
+
 test('distinguishes healthy condition waiting, open PAPER management and faults', () => {
   const rows = strategies.map((strategy, index) => ({
     ...strategy,
@@ -303,7 +434,7 @@ test('distinguishes healthy condition waiting, open PAPER management and faults'
   expect(screen.getByText('확인 필요')).toBeInTheDocument()
   expect(screen.getByText('조건 미충족')).toBeInTheDocument()
   const summary = screen.getByRole('region', { name: '전략 모의평가 요약' })
-  expect(summary).toHaveTextContent(/모의평가 ON10/)
+  expect(summary).toHaveTextContent(/방향 진입 후보 ON10/)
   expect(summary).toHaveTextContent(/진행 포지션1/)
   expect(screen.getByText(/1건 자동 관리/)).toBeInTheDocument()
 })

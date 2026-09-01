@@ -19,6 +19,7 @@ import type {
   StrategyPerformance,
   StrategyRow,
   StrategySummaryRow,
+  V9ResearchCandidate,
 } from '../types'
 
 type StrategyConfiguration = {
@@ -80,6 +81,23 @@ type FamilyResearchUndo = {
 }
 
 const orderflowFamilyId = 'ORDERFLOW_CONFIRMATION'
+
+const v9RoleLabels: Record<V9ResearchCandidate['role'], string> = {
+  ENTRY: '방향 전략',
+  MARKET_NEUTRAL_MULTI_LEG: '시장중립 전략',
+  ROUTER: '라우터',
+  RISK_OVERLAY: '위험 축소',
+  FILTER: '필터',
+  STATISTICS: '통계 검증',
+  SELECTION: '후보 선별',
+}
+
+const v9ReadinessLabels: Record<V9ResearchCandidate['readiness'], string> = {
+  SOURCE_IMPLEMENTED_NOT_CONNECTED: '소스 구현 · 진입 미연결',
+  PARTIAL_SOURCE_NOT_CONNECTED: '핵심 소스 일부 구현 · 진입 미연결',
+  BLOCKED_PREREQUISITE: '선행 검증 대기',
+  BLOCKED_ENGINE: '실행 엔진 대기',
+}
 
 const strategyDetailTabs: Array<{ id: StrategyDetailTab; label: string }> = [
   { id: 'status', label: '지금 상태' },
@@ -1016,8 +1034,24 @@ function StrategyOverview({
     setSortKey(key)
     setSortDirection(defaultSortDirection[key])
   }, [sortKey])
-  const enabledCount = currentStrategies.filter((strategy) => strategy.mode !== 'OFF' && (strategy.long_enabled || strategy.short_enabled)).length
-  const disabledCount = currentStrategies.length - enabledCount
+  const fallbackEnabledCount = strategies.filter((strategy) => strategy.mode !== 'OFF' && (strategy.long_enabled || strategy.short_enabled)).length
+  const fallbackDisabledCount = strategies.length - fallbackEnabledCount
+  const inventory = data?.strategy_family_catalog?.inventory
+  const enabledEntryCandidateCount = inventory?.enabled_directional_entry_candidate_count ?? fallbackEnabledCount
+  const inactiveHistoryCount = inventory?.inactive_history_runtime_variant_count ?? fallbackDisabledCount
+  const currentRepresentativeCount = inventory?.current_family_entry_representative_count ?? currentStrategies.length
+  const catalogVirtualFilterCount = inventory?.catalog_virtual_filter_count ?? 0
+  const registeredVariantCount = inventory?.registered_catalog_item_count ?? data?.strategy_family_catalog?.families.reduce(
+    (total, family) => total + family.variant_count,
+    0,
+  ) ?? strategies.length
+  const v9Research = data?.strategy_family_catalog?.v9_research
+  const v9ManifestComplete = v9Research
+    ? v9Research.candidates.length === v9Research.candidate_count
+      && v9Research.candidates.filter((candidate) => candidate.monitoring_enabled).length === v9Research.monitoring_on_count
+    : false
+  const v9AllTrackingOn = v9ManifestComplete
+    && v9Research?.monitoring_on_count === v9Research?.candidate_count
   const openPositionCount = leagueAccounts.reduce((total, account) => total + account.open_positions, 0)
   const provenSampleCount = currentStrategies.filter((strategy) => {
     const report = strategy.performance[profile]
@@ -1034,15 +1068,30 @@ function StrategyOverview({
     .slice(0, 10).length
   return (
     <section aria-labelledby="strategies-heading">
-      <div className="page-heading"><div><p className="section-kicker">전략 family별 모의결과</p><h2 id="strategies-heading">전략 한눈에 보기</h2><p className="heading-help">현재 variant의 신뢰승률 하한, 표본, 기대값과 비용 후 순손익을 함께 봅니다.</p></div><span className="page-note">{costProfileLabel(profile)} · 현재 variant {currentStrategies.length}개</span></div>
+      <div className="page-heading"><div><p className="section-kicker">전략 family별 모의결과</p><h2 id="strategies-heading">전략 한눈에 보기</h2><p className="heading-help">현재 variant의 신뢰승률 하한, 표본, 기대값과 비용 후 순손익을 함께 봅니다.</p></div><span className="page-note">{costProfileLabel(profile)} · 화면 대표 {currentRepresentativeCount}개 · 기존 등록 {registeredVariantCount}개</span></div>
       <section className="strategy-summary-strip" aria-label="전략 모의평가 요약">
-        <article><span>모의평가 ON</span><b>{enabledCount}</b></article>
-        <article><span>OFF</span><b>{disabledCount}</b></article>
+        <article><span>방향 진입 후보 ON</span><b>{enabledEntryCandidateCount}</b></article>
+        <article><span>기존 보존·중지</span><b>{inactiveHistoryCount}</b></article>
+        <article><span>표시 중인 family 대표</span><b>{currentRepresentativeCount}</b></article>
+        <article><span>기존 전체 등록</span><b>{registeredVariantCount}</b></article>
         <article><span>진행 포지션</span><b>{openPositionCount}</b></article>
         <article><span>30건 이상</span><b>{provenSampleCount}</b></article>
         <article><span>비용후 양수</span><b>{positiveAfterCostCount}</b></article>
         <article><span>TOP10 후보</span><b>{topCandidateCount}</b></article>
       </section>
+      <p className="strategy-inventory-note">기본 표의 {currentRepresentativeCount}개는 family별 화면 대표이며 ACTIVE 승격을 뜻하지 않습니다. 현재·도전자를 합친 방향 진입 후보 {enabledEntryCandidateCount}개만 독립 SHADOW 모의평가 ON입니다. 기존 전체 등록 {registeredVariantCount}개에는 보존된 이전·legacy {inactiveHistoryCount}개와 진입하지 않는 실행확인 필터 {catalogVirtualFilterCount}개가 포함됩니다.</p>
+      {v9Research ? <section className="v9-research-catalog" aria-label="V9 연구 추적 상태">
+        <div className="v9-research-heading">
+          <div><span>V9 연구 모듈·후보</span><strong>연구 추적 ON {v9Research.monitoring_on_count}/{v9Research.candidate_count}</strong></div>
+          <p>새 방향 전략 {v9Research.direction_strategy_count}개 · 새 시장중립 {v9Research.market_neutral_strategy_count}개 · PAPER 진입 활성 {v9Research.entry_enabled_count}개</p>
+        </div>
+        <div className="v9-research-grid">{v9Research.candidates.map((candidate) => <article key={candidate.candidate_id}>
+          <div><b>{candidate.label_ko}</b><small>{v9RoleLabels[candidate.role] ?? candidate.role} · {v9ReadinessLabels[candidate.readiness] ?? candidate.readiness}</small><small>등록 출처 {candidate.source_ids.length}개</small><code>{candidate.candidate_id}</code></div>
+          <span className={candidate.monitoring_enabled ? 'v9-monitor-on' : 'v9-monitor-off'}>{candidate.monitoring_enabled ? '추적 ON' : '추적 OFF'}</span>
+          <em>{candidate.entry_enabled ? 'PAPER 진입 ON' : '검증 전 진입 차단'}</em>
+        </article>)}</div>
+        <p>{!v9ManifestComplete ? `연구 추적 목록 계약을 확인해야 합니다. 화면 ${v9Research.candidates.length}개 · 선언 ${v9Research.candidate_count}개입니다.` : v9AllTrackingOn ? `${v9Research.candidate_count}개 항목의 연구 추적 스위치는 모두 ON입니다.` : `연구 추적 ${v9Research.monitoring_on_count}/${v9Research.candidate_count}개가 ON입니다.`} 추적 ON은 읽기 전용 연구 상태이며 PAPER 진입 스위치가 아닙니다. 필터·라우터·통계는 방향 전략 개수에 합산하지 않고 검증 전 후보는 ACTIVE나 주문을 만들지 않습니다.</p>
+      </section> : null}
       {!analyticsReady ? <p className="profile-scope-note" role="status">과거 거래통계를 전략 버전별로 불러오는 중입니다. 준비 전 숫자는 순위나 승률로 사용하지 않습니다.</p> : null}
       <div className="family-category-tabs" role="tablist" aria-label="전략 family 분류">{familyCategoryOptions.map((option) => <button type="button" role="tab" aria-selected={familyCategory === option.id} key={option.id} onClick={() => setFamilyCategory(option.id)}>{option.label}</button>)}</div>
       {currentStrategies.length === 0 ? <div className="panel empty-state"><b>전략 정보를 불러오는 중입니다.</b></div> : null}
@@ -1217,7 +1266,7 @@ export function StrategiesPage(props: Props) {
         <button type="button" role="tab" aria-selected={tab === 'performance'} onClick={() => setTab('performance')}>성과</button>
         <button type="button" role="tab" aria-selected={tab === 'symbols'} onClick={() => setTab('symbols')}>종목별</button>
       </div>
-      {tab === 'overview' ? <div role="tabpanel" aria-label="전체"><StrategyOverview {...props} strategies={visibleStrategies} /></div> : null}
+      {tab === 'overview' ? <div role="tabpanel" aria-label="전체"><StrategyOverview {...props} /></div> : null}
       {tab === 'performance' ? <div role="tabpanel" aria-label="성과">{props.data ? <StrategyPerformancePanel data={props.data} strategies={visibleStrategies} leagueAccounts={props.leagueAccounts} history={props.history ?? []} /> : <p className="empty-copy">성과 정보를 불러오는 중입니다.</p>}</div> : null}
       {tab === 'symbols' ? <div role="tabpanel" aria-label="종목별"><StrategySymbolPanel strategies={visibleStrategies} /></div> : null}
     </section>

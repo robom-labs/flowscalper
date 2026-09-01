@@ -307,7 +307,8 @@ def test_installer_reports_pass_only_after_safe_live_dashboard_is_ready() -> Non
 def test_installer_can_prepare_release_without_restarting_loaded_service() -> None:
     installer = (PROJECT_ROOT / "scripts" / "install_macos_service.sh").read_text(encoding="utf-8")
 
-    assert '"${1:-}" == "--prepare-only"' in installer
+    assert '--prepare-only)' in installer
+    assert 'PREPARE_ONLY="true"' in installer
     prepare_only_at = installer.index('if [[ "$PREPARE_ONLY" == "true" ]]')
     bootout_at = installer.index('launchctl bootout "$SERVICE_TARGET"')
     assert prepare_only_at < bootout_at

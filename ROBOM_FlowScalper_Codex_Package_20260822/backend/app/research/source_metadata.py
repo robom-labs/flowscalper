@@ -136,6 +136,179 @@ _SOURCES = {
 }
 
 
+def _v9_spec_source(
+    source_id: str,
+    title: str,
+    year: str,
+    doi: str | None,
+    idea_used: str,
+    our_modification: str,
+) -> ResearchSourceMetadata:
+    """사용자가 제공한 V9 명세의 Source ID를 수익성 주장 없이 등록한다."""
+
+    return ResearchSourceMetadata(
+        source_id=source_id,
+        title=title,
+        publisher="V9 통합마스터지침 등록 출처",
+        date=year,
+        url=f"https://doi.org/{doi}" if doi is not None else None,
+        idea_used=idea_used,
+        our_modification=our_modification,
+        metadata_status="REGISTERED_FROM_V9_SPEC",
+    )
+
+
+_V9_SOURCES = (
+    _v9_spec_source(
+        "SRC-DC-ALGO-TRADING-2022",
+        "Algorithmic trading with directional changes",
+        "2022",
+        "10.1007/s10462-022-10307-0",
+        "Event-based intrinsic time과 multi-threshold DC 연구 가설에 사용합니다.",
+        "논문 성과를 crypto 수익성으로 일반화하지 않고 실제 관측 mid로 다시 검증합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-DC-ACTUAL-CONFIRMATION-2024",
+        "Exploiting the potential of a directional changes-based trading "
+        "algorithm in the stock market",
+        "2024",
+        "10.1016/j.frl.2023.104936",
+        "이론적 DC 확인과 실제 관측 가능한 crossing을 분리합니다.",
+        "봉 내부 보간을 진입 근거로 쓰지 않고 actual confirmation만 허용합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-DC-TSFDC-2018",
+        "Directional Change trend-reversal forecasting study",
+        "2018",
+        "10.1002/isaf.1425",
+        "DC trend reversal forecast를 연구 가설로만 사용합니다.",
+        "FX 결과를 crypto에 이식하지 않고 PAPER OOS로 다시 반증합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-DC-MULTI-THRESHOLD-2026",
+        "A genetic algorithm for the optimization of multi-threshold trading "
+        "strategies in the directional changes paradigm",
+        "2026",
+        "10.1007/s10462-025-11419-z",
+        "Multi-threshold DC 후보 설계에 사용합니다.",
+        "모든 탐색을 trial 수에 포함하고 runtime 자동 최적화를 금지합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-REALIZED-SEMIVARIANCE-MOMREV-2023",
+        "Realized semivariance momentum-reversal study",
+        "2023",
+        "10.1016/j.jempfin.2023.03.001",
+        "Upside·downside realized semivariance 비대칭을 router 연구에 사용합니다.",
+        "Commodity 결과를 crypto 방향 신호로 직접 사용하지 않습니다.",
+    ),
+    _v9_spec_source(
+        "SRC-BTC-JUMP-STRUCTURAL-BREAK-2020",
+        "Bitcoin jump and structural-break volatility study",
+        "2020",
+        "10.1111/eufm.12254",
+        "Bitcoin 변동성의 jump·structural break 위험 가설에 사용합니다.",
+        "예측 성과를 진입 근거로 삼지 않고 위험 축소 후보로만 검증합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-CRYPTO-JUMP-TICK-2024",
+        "Crypto jump clustering and intraday-pattern study",
+        "2024",
+        "10.1007/s42521-024-00116-1",
+        "Crypto jump 군집·시간패턴과 negative jump 위험 가설에 사용합니다.",
+        "Signed jump threshold가 사전등록되기 전에는 진입과 위험계수에 적용하지 않습니다.",
+    ),
+    _v9_spec_source(
+        "SRC-INTRAWEEK-PERIODICITY-JUMP",
+        "Intraweek periodicity and jump-detection study",
+        "2010",
+        "10.1016/j.jempfin.2010.11.004",
+        "Time-of-week periodicity가 jump 검출을 왜곡하는지 검증합니다.",
+        "현재 주를 제외한 8주 이상 완료 자료 전에는 Jump를 미보정으로 차단합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-CRYPTO-ASYMMETRIC-PERSISTENCE-2026",
+        "Crypto asymmetric persistence study",
+        "2026",
+        "10.1016/j.frl.2026.109913",
+        "Downside mean reversion·upside persistence를 router 가설로 사용합니다.",
+        "직접 방향을 만들지 않고 기존 전략의 PAPER 필터로만 비교합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-COPULA-CRYPTO-PAIRS-2025",
+        "Conditional-copula crypto pairs study",
+        "2025",
+        "10.1186/s40854-024-00702-7",
+        "Cointegrated spread의 conditional copula mispricing 가설에 사용합니다.",
+        "Multi-leg·legging·funding 엔진과 OOS 검증 전에는 BLOCKED_ENGINE로 유지합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-FDR-BH-1995",
+        "Controlling the False Discovery Rate",
+        "1995",
+        "10.1111/j.2517-6161.1995.tb02031.x",
+        "Batch 다중검정의 BH FDR 진단에 사용합니다.",
+        "경제성·OOS·비용 gate를 대체하지 않고 BY 진단과 함께 보고합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-FALSE-DISCOVERIES-FINANCE-2020",
+        "False discoveries in finance",
+        "2020",
+        "10.1111/jofi.12951",
+        "Finance 다중검정과 Type I·II 비용 관리에 사용합니다.",
+        "Harvey–Liu double-bootstrap이 구현되기 전에는 primary FDR gate 통과를 주장하지 않습니다.",
+    ),
+    _v9_spec_source(
+        "SRC-PHACKING-TRADING-STRATEGIES",
+        "p-Hacking: Evidence from Two Million Trading Strategies",
+        "SSRN 3017677",
+        None,
+        "대규모 후보탐색의 거짓 발견 위험을 trial 수에 반영합니다.",
+        "버린 후보도 검정 family와 append-only 이력에 포함합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-E-BH-2022",
+        "E-values and the e-BH procedure",
+        "2022",
+        "10.1111/rssb.12489",
+        "임의 의존성에서 e-value FDR 선별을 연구합니다.",
+        "e-BH 결과만으로 ACTIVE를 만들지 않습니다.",
+    ),
+    _v9_spec_source(
+        "SRC-EVALUE-DYNAMIC-VOLATILITY-2025",
+        "E-value dynamic-volatility calibration study",
+        "2025",
+        "10.1016/j.spl.2025.110515",
+        "실시간 anytime-valid calibration monitoring 가설에 사용합니다.",
+        "고정된 non-overlapping PAPER opportunity만 순차 근거로 사용합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-ANYTIME-VALID-2026",
+        "Anytime-valid sequential testing study",
+        "2026",
+        "10.1093/jrsssb/qkag050",
+        "Optional stopping에도 유효한 순차 검정 가설에 사용합니다.",
+        "사전등록 상한과 고정 점수를 유지하며 중간 성과로 자동 승격하지 않습니다.",
+    ),
+    _v9_spec_source(
+        "SRC-HIERARCHICAL-SHRINKAGE-2013",
+        "Hierarchical shrinkage forecasting study",
+        "2013",
+        "10.1016/j.ijforecast.2012.05.006",
+        "희소 전략·종목 소표본 성과를 family 수준으로 보수화합니다.",
+        "수축값이 원시 손실을 이익으로 바꾸거나 단독 승격 근거가 되지 않게 합니다.",
+    ),
+    _v9_spec_source(
+        "SRC-DC-MULTIOBJECTIVE-2026",
+        "Directional-change multi-objective optimization study",
+        "2026",
+        "10.1007/s10462-025-11390-9",
+        "수익·tail risk·비용·안정성을 Pareto 목표로 분리합니다.",
+        "단일 승률이나 Sharpe 점수로 숨은 가중합을 만들지 않습니다.",
+    ),
+)
+_SOURCES.update({row.source_id: row for row in _V9_SOURCES})
+
+
 def research_source_metadata(source_id: str) -> dict[str, str | None]:
     source = _SOURCES.get(source_id)
     if source is not None:

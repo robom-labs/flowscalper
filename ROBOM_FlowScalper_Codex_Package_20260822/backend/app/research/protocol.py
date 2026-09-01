@@ -12,6 +12,8 @@ from itertools import combinations
 from statistics import NormalDist, fmean, pstdev
 from typing import Any
 
+from backend.app.research.gates import EvidenceEpoch, HypothesisRegistry
+
 
 def _canonical_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -65,7 +67,10 @@ class ResearchProtocol:
     strategy_id: str
     strategy_version: str
     feature_version: str
+    label_version: str
+    engine_version: str
     cost_model_version: str
+    cost_profile: str
     parameter_grid: Mapping[str, Sequence[object]]
     horizon_seconds: tuple[int, ...]
     base_cost_bps: float
@@ -82,7 +87,10 @@ class ResearchProtocol:
             self.strategy_id,
             self.strategy_version,
             self.feature_version,
+            self.label_version,
+            self.engine_version,
             self.cost_model_version,
+            self.cost_profile,
         )
         if any(not value for value in identifiers):
             raise ValueError("연구 가설·전략·버전 식별자가 모두 필요합니다.")
@@ -104,6 +112,8 @@ class ResearchProtocol:
         code_hash: str,
         config_hash: str,
         generated_ts_ms: int,
+        hypothesis_registry: HypothesisRegistry,
+        evidence_epoch: EvidenceEpoch,
     ) -> dict[str, Any]:
         if not dataset:
             raise ValueError("연구 dataset manifest가 비어 있습니다.")
@@ -115,8 +125,36 @@ class ResearchProtocol:
                 key: list(values) for key, values in sorted(self.parameter_grid.items())
             },
         }
+        dataset_hash = _checksum(dataset_rows)
+        parameter_hash = _checksum(protocol_payload["parameter_grid"])
+        registration = evidence_epoch.validate_binding(
+            hypothesis_registry,
+            self.hypothesis_id,
+        )
+        key = registration.key
+        contract_mismatches: list[str] = []
+        expected_contract = {
+            "candidate_id": self.strategy_id,
+            "strategy_version": self.strategy_version,
+            "feature_version": self.feature_version,
+            "label_version": self.label_version,
+            "engine_version": self.engine_version,
+            "cost_profile": self.cost_profile,
+            "parameter_hash": parameter_hash,
+            "dataset_hash": dataset_hash,
+        }
+        for name, expected in expected_contract.items():
+            if getattr(key, name) != expected:
+                contract_mismatches.append(name)
+        if evidence_epoch.cost_model_version != self.cost_model_version:
+            contract_mismatches.append("cost_model_version")
+        if contract_mismatches:
+            raise ValueError(
+                "research protocol과 hypothesis/evidence epoch 계약이 섞였습니다: "
+                + ", ".join(sorted(set(contract_mismatches)))
+            )
         manifest: dict[str, Any] = {
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "PREREGISTERED",
             "generated_ts_ms": generated_ts_ms,
             "hypothesis": {
@@ -124,18 +162,28 @@ class ResearchProtocol:
                 "strategy_id": self.strategy_id,
                 "falsification_criteria": list(self.falsification_criteria),
                 "baseline_ids": list(self.baseline_ids),
+                "key": key.canonical_payload(),
+                "key_fingerprint": registration.key_fingerprint,
             },
             "versions": {
                 "strategy_version": self.strategy_version,
                 "feature_version": self.feature_version,
+                "label_version": self.label_version,
+                "engine_version": self.engine_version,
                 "cost_model_version": self.cost_model_version,
+                "cost_profile": self.cost_profile,
                 "code_hash": code_hash,
                 "config_hash": config_hash,
             },
+            "hypothesis_registry": {
+                "registrations": hypothesis_registry.canonical_payload(),
+                "registry_hash": hypothesis_registry.fingerprint(),
+            },
+            "evidence_epoch": evidence_epoch.canonical_payload(),
             "protocol": protocol_payload,
             "dataset": dataset_rows,
-            "dataset_hash": _checksum(dataset_rows),
-            "parameter_hash": _checksum(protocol_payload["parameter_grid"]),
+            "dataset_hash": dataset_hash,
+            "parameter_hash": parameter_hash,
             "run_ids": [row.run_id for row in ordered],
             "time_range": {
                 "start_ts_ms": min(row.start_ts_ms for row in ordered),
@@ -156,6 +204,59 @@ class ResearchProtocol:
         }
         manifest["manifest_checksum"] = _checksum(manifest)
         return manifest
+
+
+def validate_research_manifest(manifest: Mapping[str, object]) -> None:
+    """저장된 manifest checksum과 V2 registry·epoch 연결을 fail-closed 검증한다."""
+
+    checksum = manifest.get("manifest_checksum")
+    if not isinstance(checksum, str):
+        raise ValueError("research manifest checksum이 필요합니다.")
+    unsigned = dict(manifest)
+    unsigned.pop("manifest_checksum", None)
+    if _checksum(unsigned) != checksum:
+        raise ValueError("research manifest checksum이 canonical 내용과 다릅니다.")
+    if (
+        manifest.get("paper_only") is not True
+        or manifest.get("real_orders_enabled") is not False
+        or manifest.get("auth_required") is not False
+    ):
+        raise ValueError("research manifest는 PAPER-only, 실제 주문·인증 0이어야 합니다.")
+    schema_version = manifest.get("schema_version")
+    if schema_version == 1:
+        return
+    if schema_version != 2:
+        raise ValueError("지원하지 않는 research manifest schema version입니다.")
+    registry_payload = manifest.get("hypothesis_registry")
+    epoch_payload = manifest.get("evidence_epoch")
+    hypothesis_payload = manifest.get("hypothesis")
+    if not isinstance(registry_payload, dict) or set(registry_payload) != {
+        "registrations",
+        "registry_hash",
+    }:
+        raise ValueError("V2 research manifest의 hypothesis registry가 올바르지 않습니다.")
+    if not isinstance(registry_payload["registry_hash"], str):
+        raise ValueError("V2 research manifest의 registry hash가 문자열이 아닙니다.")
+    registry = HypothesisRegistry.from_payload(registry_payload["registrations"])
+    if registry.fingerprint() != registry_payload["registry_hash"]:
+        raise ValueError("V2 research manifest의 registry hash가 canonical 내용과 다릅니다.")
+    if not isinstance(epoch_payload, dict):
+        raise ValueError("V2 research manifest의 evidence epoch가 필요합니다.")
+    epoch = EvidenceEpoch.from_payload(epoch_payload)
+    if not isinstance(hypothesis_payload, dict):
+        raise ValueError("V2 research manifest의 hypothesis가 필요합니다.")
+    hypothesis_id = hypothesis_payload.get("hypothesis_id")
+    if not isinstance(hypothesis_id, str):
+        raise ValueError("V2 research manifest의 hypothesis ID가 필요합니다.")
+    registration = epoch.validate_binding(registry, hypothesis_id)
+    if hypothesis_payload.get("key") != registration.key.canonical_payload():
+        raise ValueError("V2 research manifest의 hypothesis key가 registry와 다릅니다.")
+    if hypothesis_payload.get("key_fingerprint") != registration.key_fingerprint:
+        raise ValueError("V2 research manifest의 hypothesis fingerprint가 registry와 다릅니다.")
+    if manifest.get("dataset_hash") != registration.key.dataset_hash:
+        raise ValueError("V2 research manifest의 dataset hash가 hypothesis와 다릅니다.")
+    if manifest.get("parameter_hash") != registration.key.parameter_hash:
+        raise ValueError("V2 research manifest의 parameter hash가 hypothesis와 다릅니다.")
 
 
 def chronological_split(
@@ -359,6 +460,7 @@ def finalize_research_manifest(
 ) -> dict[str, object]:
     """사전등록 manifest와 실행결과를 checksum으로 묶어 사후수정을 드러낸다."""
 
+    validate_research_manifest(manifest)
     if manifest.get("status") != "PREREGISTERED":
         raise ValueError("PREREGISTERED 연구만 실행 완료로 전환할 수 있습니다.")
     finalized = {

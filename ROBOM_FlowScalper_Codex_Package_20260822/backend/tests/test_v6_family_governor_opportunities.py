@@ -21,6 +21,11 @@ from backend.app.candidates import SharedCapitalArbitrationEvidence, TakeProfitT
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import RuntimeMode, Side
 from backend.app.execution.portfolio import PaperPortfolioEngine
+from backend.app.research.gates import (
+    EvidenceEpoch,
+    EvidenceHorizon,
+    EvidenceSample,
+)
 from backend.app.runtime import PaperRuntime
 from backend.app.strategies.family import (
     FAMILY_CATALOG,
@@ -53,6 +58,52 @@ from backend.tests.test_candidate_paper_portfolio import candidate_plan
 from scripts.build_v6_conflict_matrix import build_conflict_matrix
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_EVIDENCE_HASH = "a" * 64
+
+
+def _evidence_epoch(*, strategy_version: str = "v9-current") -> EvidenceEpoch:
+    return EvidenceEpoch(
+        epoch_id="EPOCH-V9-CURRENT",
+        opened_ts_ms=0,
+        closed_ts_ms=None,
+        strategy_version=strategy_version,
+        feature_version="feature-v9",
+        label_version="label-v9",
+        engine_version="engine-v9",
+        cost_model_version="cost-v9",
+        cost_profile="BASE_STRESS",
+        parameter_hash=_EVIDENCE_HASH,
+        dataset_hash=_EVIDENCE_HASH,
+        fee_model_version="fee-v9",
+        matching_model_version="matching-v9",
+        symbol_contract_version="symbol-v9",
+        data_adapter_version="adapter-v9",
+        hypothesis_registry_hash=_EVIDENCE_HASH,
+        hypothesis_key_fingerprint=_EVIDENCE_HASH,
+    )
+
+
+def _freshness_inputs(
+    *,
+    horizon: EvidenceHorizon,
+    sample_count: int,
+    assessment_ts_ms: int = 1_000,
+    sample_strategy_version: str = "v9-current",
+) -> dict[str, object]:
+    samples = tuple(
+        EvidenceSample(
+            opportunity_id=f"OPP-{index:04d}",
+            observed_ts_ms=assessment_ts_ms,
+            evidence_epoch_id="EPOCH-V9-CURRENT",
+            strategy_version=sample_strategy_version,
+        )
+        for index in range(sample_count)
+    )
+    return {
+        "evidence_samples": samples,
+        "evidence_epoch": _evidence_epoch(),
+        "evidence_horizon": horizon,
+    }
 
 
 def _evidence(**overrides: object) -> GovernanceEvidence:
@@ -93,6 +144,35 @@ def _evidence(**overrides: object) -> GovernanceEvidence:
     }
     values.update(overrides)
     return GovernanceEvidence(**values)  # type: ignore[arg-type]
+
+
+def _challenger_registry(
+    strategy_id: str = "BREAKOUT_RETEST_30M_V2",
+) -> StrategyRegistry:
+    registry = StrategyRegistry()
+    registry.restore_setting(
+        strategy_id,
+        mode=StrategyMode.SHADOW,
+        lifecycle=StrategyLifecycle.CHALLENGER,
+        long_enabled=True,
+        short_enabled=True,
+        revision=1,
+        manual_lock=False,
+        changed_by=StrategyChangeSource.RECOVERY,
+        change_reason="TEST_PROVEN_CHALLENGER",
+        updated_ts_ms=1_000,
+    )
+    return registry
+
+
+def _active_promotion_evidence(**overrides: object) -> GovernanceEvidence:
+    return _evidence(
+        sample_span_days=30,
+        regime_count=3,
+        independent_period_count=3,
+        strategy_correlation_abs=0.40,
+        **overrides,
+    )
 
 
 def test_eight_family_catalog_maps_every_existing_strategy_once() -> None:
@@ -1197,6 +1277,200 @@ def test_governor_requires_assessment_timestamp_and_accepts_fresh_positive() -> 
     assert fresh.recommended_lifecycle is StrategyLifecycle.CHALLENGER
     assert fresh.reason_codes == ("SHADOW_GATES_PASSED",)
     assert fresh.automatic_action_allowed is True
+
+
+@pytest.mark.parametrize(
+    ("category", "required", "lookback_days"),
+    (
+        (EvidenceHorizon.FAST, 50, 90),
+        (EvidenceHorizon.SWING, 30, 180),
+        (EvidenceHorizon.MICRO, 200, 60),
+        (EvidenceHorizon.MARKET_NEUTRAL, 20, 180),
+    ),
+)
+def test_governor_blocks_active_promotion_below_v9_freshness_thresholds(
+    category: EvidenceHorizon,
+    required: int,
+    lookback_days: int,
+) -> None:
+    registry = _challenger_registry()
+
+    assessment = StrategyGovernor().assess(
+        registry,
+        "BREAKOUT_RETEST_30M_V2",
+        _active_promotion_evidence(
+            **_freshness_inputs(
+                horizon=category,
+                sample_count=required - 1,
+            )
+        ),
+        assessment_ts_ms=1_000,
+    )
+
+    assert assessment.current_lifecycle is StrategyLifecycle.CHALLENGER
+    assert assessment.recommended_lifecycle is StrategyLifecycle.CHALLENGER
+    assert assessment.reason_codes == (
+        "STALE_EVIDENCE",
+        f"UNIQUE_SAMPLES_LT_{required}",
+    )
+    assert assessment.automatic_action_allowed is False
+    assert assessment.evidence_freshness is not None
+    assert assessment.evidence_freshness.window_days == lookback_days
+    assert assessment.evidence_freshness.minimum_unique_samples == required
+    assert (
+        registry.setting("BREAKOUT_RETEST_30M_V2").lifecycle
+        is StrategyLifecycle.CHALLENGER
+    )
+
+
+def test_governor_blocks_active_promotion_on_evidence_version_mismatch() -> None:
+    registry = _challenger_registry()
+
+    assessment = StrategyGovernor().assess(
+        registry,
+        "BREAKOUT_RETEST_30M_V2",
+        _active_promotion_evidence(
+            **_freshness_inputs(
+                horizon=EvidenceHorizon.FAST,
+                sample_count=1_000,
+                sample_strategy_version="v9-old-strategy",
+            )
+        ),
+        assessment_ts_ms=1_000,
+    )
+
+    assert assessment.recommended_lifecycle is StrategyLifecycle.CHALLENGER
+    assert assessment.reason_codes == (
+        "STALE_EVIDENCE",
+        "EVIDENCE_STRATEGY_VERSION_MISMATCH",
+    )
+    assert assessment.automatic_action_allowed is False
+    serialized = assessment.as_dict()["evidence_freshness"]
+    assert isinstance(serialized, dict)
+    assert serialized["promotion_allowed"] is False
+    assert serialized["reason_codes"] == ["EVIDENCE_STRATEGY_VERSION_MISMATCH"]
+
+
+def test_governor_rejects_aggregate_only_or_future_freshness_claims() -> None:
+    aggregate_only = GovernanceEvidence.from_reports(
+        {},
+        {},
+        multiple_testing={
+            "evidence_category": "FAST",
+            "observed_unique_opportunities": 50_000,
+            "evidence_version": "v9-current",
+            "current_evidence_version": "v9-current",
+        },
+    )
+    assert aggregate_only.evidence_samples is None
+    assert aggregate_only.evidence_epoch is None
+    assert aggregate_only.evidence_horizon is None
+
+    raw = _active_promotion_evidence(
+        **_freshness_inputs(
+            horizon=EvidenceHorizon.SWING,
+            sample_count=30,
+        )
+    )
+    restored_raw = GovernanceEvidence.from_reports(
+        {},
+        {},
+        multiple_testing=raw.as_dict(),
+    )
+    assert restored_raw.evidence_samples == raw.evidence_samples
+    assert restored_raw.evidence_epoch == raw.evidence_epoch
+    assert restored_raw.evidence_horizon is EvidenceHorizon.SWING
+
+    future_inputs = _freshness_inputs(
+        horizon=EvidenceHorizon.FAST,
+        sample_count=50,
+        assessment_ts_ms=1_001,
+    )
+    future = StrategyGovernor().assess(
+        _challenger_registry(),
+        "BREAKOUT_RETEST_30M_V2",
+        _active_promotion_evidence(**future_inputs),
+        assessment_ts_ms=1_000,
+    )
+    aggregate = StrategyGovernor().assess(
+        _challenger_registry(),
+        "BREAKOUT_RETEST_30M_V2",
+        _active_promotion_evidence(),
+        assessment_ts_ms=1_000,
+    )
+
+    assert future.reason_codes == ("EVIDENCE_FRESHNESS_NOT_PROVEN",)
+    assert aggregate.reason_codes == ("EVIDENCE_FRESHNESS_NOT_PROVEN",)
+    assert future.automatic_action_allowed is aggregate.automatic_action_allowed is False
+
+
+def test_governor_requires_freshness_evidence_and_allows_exact_boundary() -> None:
+    missing = StrategyGovernor().assess(
+        _challenger_registry(),
+        "BREAKOUT_RETEST_30M_V2",
+        _active_promotion_evidence(),
+        assessment_ts_ms=1_000,
+    )
+    promoted = StrategyGovernor().assess(
+        _challenger_registry(),
+        "BREAKOUT_RETEST_30M_V2",
+        _active_promotion_evidence(
+            **_freshness_inputs(
+                horizon=EvidenceHorizon.SWING,
+                sample_count=30,
+            )
+        ),
+        assessment_ts_ms=1_000,
+    )
+
+    assert missing.recommended_lifecycle is StrategyLifecycle.CHALLENGER
+    assert missing.reason_codes == ("EVIDENCE_FRESHNESS_NOT_PROVEN",)
+    assert missing.automatic_action_allowed is False
+    assert promoted.recommended_lifecycle is StrategyLifecycle.ACTIVE
+    assert promoted.reason_codes == ("CHALLENGER_BEATS_CHAMPION",)
+    assert promoted.automatic_action_allowed is True
+    assert promoted.evidence_freshness is not None
+    assert promoted.evidence_freshness.promotion_allowed is True
+
+
+def test_governor_retains_existing_active_when_freshness_is_stale() -> None:
+    registry = StrategyRegistry()
+    registry.restore_setting(
+        "BREAKOUT_RETEST_30M_V2",
+        mode=StrategyMode.ACTIVE,
+        lifecycle=StrategyLifecycle.ACTIVE,
+        long_enabled=True,
+        short_enabled=True,
+        revision=1,
+        manual_lock=False,
+        changed_by=StrategyChangeSource.RECOVERY,
+        change_reason="TEST_EXISTING_ACTIVE",
+        updated_ts_ms=1_000,
+    )
+    history_before = registry.revision_history("BREAKOUT_RETEST_30M_V2")
+    assessment = StrategyGovernor().assess(
+        registry,
+        "BREAKOUT_RETEST_30M_V2",
+        _active_promotion_evidence(
+            **_freshness_inputs(
+                horizon=EvidenceHorizon.MICRO,
+                sample_count=199,
+            )
+        ),
+        assessment_ts_ms=1_000,
+    )
+
+    assert assessment.recommended_lifecycle is StrategyLifecycle.ACTIVE
+    assert assessment.reason_codes == (
+        "ACTIVE_GATES_HEALTHY",
+        "STALE_EVIDENCE",
+        "UNIQUE_SAMPLES_LT_200",
+    )
+    assert assessment.automatic_action_allowed is False
+    assert assessment.evidence_freshness is not None
+    assert assessment.evidence_freshness.promotion_allowed is False
+    assert registry.setting("BREAKOUT_RETEST_30M_V2").mode is StrategyMode.ACTIVE
+    assert registry.revision_history("BREAKOUT_RETEST_30M_V2") == history_before
 
 
 def test_runtime_champion_expectancy_is_scoped_by_family() -> None:

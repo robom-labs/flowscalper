@@ -27,6 +27,11 @@ from backend.app.domain.models import (
     Venue,
 )
 from backend.app.regime import Regime
+from backend.app.research.gates import (
+    EvidenceEpoch,
+    EvidenceHorizon,
+    EvidenceSample,
+)
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.sqlite import LedgerInvariantError, RecoveryState, SQLiteLedger
 from backend.app.strategies.base import CandidateStatus
@@ -45,6 +50,48 @@ from backend.app.strategies.runtime_evaluator import (
 )
 from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 from backend.tests.test_strategies import features
+
+_EVIDENCE_HASH = "a" * 64
+
+
+def _governance_freshness_inputs(
+    *,
+    assessment_ts_ms: int,
+    sample_count: int = 30,
+) -> dict[str, object]:
+    epoch = EvidenceEpoch(
+        epoch_id="EPOCH-V9-REGISTRY",
+        opened_ts_ms=0,
+        closed_ts_ms=None,
+        strategy_version="v9-current",
+        feature_version="feature-v9",
+        label_version="label-v9",
+        engine_version="engine-v9",
+        cost_model_version="cost-v9",
+        cost_profile="BASE_STRESS",
+        parameter_hash=_EVIDENCE_HASH,
+        dataset_hash=_EVIDENCE_HASH,
+        fee_model_version="fee-v9",
+        matching_model_version="matching-v9",
+        symbol_contract_version="symbol-v9",
+        data_adapter_version="adapter-v9",
+        hypothesis_registry_hash=_EVIDENCE_HASH,
+        hypothesis_key_fingerprint=_EVIDENCE_HASH,
+    )
+    samples = tuple(
+        EvidenceSample(
+            opportunity_id=f"REGISTRY-OPP-{index:04d}",
+            observed_ts_ms=assessment_ts_ms,
+            evidence_epoch_id=epoch.epoch_id,
+            strategy_version=epoch.strategy_version,
+        )
+        for index in range(sample_count)
+    )
+    return {
+        "evidence_samples": samples,
+        "evidence_epoch": epoch,
+        "evidence_horizon": EvidenceHorizon.SWING,
+    }
 
 
 def test_registry_exposes_fifteen_strategies_and_honors_mode_and_direction() -> None:
@@ -673,6 +720,7 @@ def _complete_active_governance_evidence(
         stress_win_rate_ci95_lower=Decimal("0.43"),
         base_payoff_ratio=Decimal("1.50"),
         stress_payoff_ratio=Decimal("1.40"),
+        **_governance_freshness_inputs(assessment_ts_ms=timestamp),
     )
 
 
@@ -1385,6 +1433,7 @@ def test_governor_requires_multiple_testing_then_swaps_champion_atomically() -> 
         operational_health_evaluated_ts_ms=2_000,
         evaluation_period="FIXED_OOS_TEST_PERIOD",
         evaluated_ts_ms=2_000,
+        **_governance_freshness_inputs(assessment_ts_ms=2_000),
     )
     promotion = governor.assess(
         registry,
@@ -1898,7 +1947,10 @@ def test_governor_never_quarantines_active_strategy_from_one_bad_evaluation() ->
     assessment = governor.assess(registry, strategy_id, one_bad_cycle)
 
     assert assessment.recommended_lifecycle is StrategyLifecycle.ACTIVE
-    assert assessment.reason_codes == ("ACTIVE_GATES_HEALTHY",)
+    assert assessment.reason_codes == (
+        "ACTIVE_GATES_HEALTHY",
+        "EVIDENCE_FRESHNESS_NOT_PROVEN",
+    )
     assert assessment.automatic_action_allowed is False
 
     second_bad_cycle = replace(
@@ -1942,11 +1994,17 @@ def test_governor_never_quarantines_active_only_for_low_win_rate() -> None:
 
     first = governor.assess(registry, strategy_id, one_low_cycle)
     assert first.recommended_lifecycle is StrategyLifecycle.ACTIVE
-    assert first.reason_codes == ("ACTIVE_GATES_HEALTHY",)
+    assert first.reason_codes == (
+        "ACTIVE_GATES_HEALTHY",
+        "EVIDENCE_FRESHNESS_NOT_PROVEN",
+    )
 
     second = governor.assess(registry, strategy_id, one_low_cycle)
     assert second.recommended_lifecycle is StrategyLifecycle.ACTIVE
-    assert second.reason_codes == ("ACTIVE_GATES_HEALTHY",)
+    assert second.reason_codes == (
+        "ACTIVE_GATES_HEALTHY",
+        "EVIDENCE_FRESHNESS_NOT_PROVEN",
+    )
 
 
 def test_governor_quarantines_repeated_stress_cost_degradation_only_after_hysteresis() -> None:

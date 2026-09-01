@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from backend.app.strategies.family import StrategyFamilyId, StrategyRole
 from backend.app.strategies.registry import (
@@ -15,6 +16,14 @@ from backend.app.strategies.registry import (
     StrategyRegistry,
     StrategyRevisionConflict,
 )
+
+if TYPE_CHECKING:
+    from backend.app.research.gates import (
+        EvidenceEpoch,
+        EvidenceFreshnessAssessment,
+        EvidenceHorizon,
+        EvidenceSample,
+    )
 
 GOVERNANCE_EVIDENCE_MAX_AGE_MS = 60_000
 
@@ -56,6 +65,84 @@ def _fresh_evidence_timestamp(
         return False
     age_ms = assessment_ts_ms - evidence_ts_ms
     return 0 <= age_ms <= GOVERNANCE_EVIDENCE_MAX_AGE_MS
+
+
+def _evidence_freshness_dict(
+    freshness: EvidenceFreshnessAssessment,
+) -> dict[str, object]:
+    return {
+        "status": freshness.status.value,
+        "horizon": freshness.horizon.value,
+        "window_days": freshness.window_days,
+        "minimum_unique_samples": freshness.minimum_unique_samples,
+        "observed_unique_samples": freshness.observed_unique_samples,
+        "cutoff_ts_ms": freshness.cutoff_ts_ms,
+        "evidence_epoch_id": freshness.evidence_epoch_id,
+        "strategy_version": freshness.strategy_version,
+        "promotion_allowed": freshness.promotion_allowed,
+        "reason_codes": list(freshness.reason_codes),
+    }
+
+
+def _reassess_evidence_freshness(
+    *,
+    samples: tuple[EvidenceSample, ...] | None,
+    epoch: EvidenceEpoch | None,
+    horizon: EvidenceHorizon | None,
+    assessment_ts_ms: int | None,
+) -> EvidenceFreshnessAssessment | None:
+    if (
+        samples is None
+        or epoch is None
+        or horizon is None
+        or not isinstance(assessment_ts_ms, int)
+        or isinstance(assessment_ts_ms, bool)
+        or assessment_ts_ms < 0
+    ):
+        return None
+    from backend.app.research.gates import assess_evidence_freshness
+
+    try:
+        return assess_evidence_freshness(
+            samples,
+            horizon=horizon,
+            as_of_ts_ms=assessment_ts_ms,
+            epoch=epoch,
+        )
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+
+
+def _evidence_freshness_inputs_from_report(
+    report: Mapping[str, object],
+) -> tuple[
+    tuple[EvidenceSample, ...] | None,
+    EvidenceEpoch | None,
+    EvidenceHorizon | None,
+]:
+    from backend.app.research.gates import EvidenceEpoch, EvidenceHorizon, EvidenceSample
+
+    raw_samples = report.get("evidence_samples")
+    raw_epoch = report.get("evidence_epoch")
+    raw_horizon = report.get("evidence_horizon")
+    if not isinstance(raw_samples, list) or not isinstance(raw_epoch, Mapping):
+        return None, None, None
+    expected_sample_fields = {
+        field.name for field in EvidenceSample.__dataclass_fields__.values()
+    }
+    try:
+        samples = tuple(
+            EvidenceSample(**row)
+            for row in raw_samples
+            if isinstance(row, dict) and set(row) == expected_sample_fields
+        )
+        if len(samples) != len(raw_samples):
+            return None, None, None
+        epoch = EvidenceEpoch.from_payload(raw_epoch)
+        horizon = EvidenceHorizon(str(raw_horizon))
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None, None, None
+    return samples, epoch, horizon
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,15 +194,29 @@ class GovernanceEvidence:
     stress_largest_trade_contribution: Decimal | None = None
     base_cost_coverage: Decimal | None = None
     stress_cost_coverage: Decimal | None = None
+    evidence_samples: tuple[EvidenceSample, ...] | None = None
+    evidence_epoch: EvidenceEpoch | None = None
+    evidence_horizon: EvidenceHorizon | None = None
 
     def as_dict(self) -> dict[str, object]:
         """원장과 증거 파일에 그대로 저장할 JSON 계약을 만든다."""
 
-        return {
-            field_name: str(value) if isinstance(value, Decimal) else value
-            for field_name in self.__dataclass_fields__
-            if (value := getattr(self, field_name)) is not None
-        }
+        payload: dict[str, object] = {}
+        for field_name in self.__dataclass_fields__:
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if isinstance(value, Decimal):
+                payload[field_name] = str(value)
+            elif field_name == "evidence_samples":
+                payload[field_name] = [asdict(sample) for sample in value]
+            elif field_name == "evidence_epoch":
+                payload[field_name] = value.canonical_payload()
+            elif field_name == "evidence_horizon":
+                payload[field_name] = value.value
+            else:
+                payload[field_name] = value
+        return payload
 
     @classmethod
     def from_reports(
@@ -129,6 +230,9 @@ class GovernanceEvidence:
     ) -> GovernanceEvidence:
         testing = multiple_testing or {}
         health = operational or {}
+        evidence_samples, evidence_epoch, evidence_horizon = (
+            _evidence_freshness_inputs_from_report(testing)
+        )
         return cls(
             base_sample_size=int(str(base.get("sample_size", 0))),
             stress_sample_size=int(str(stress.get("sample_size", 0))),
@@ -250,6 +354,9 @@ class GovernanceEvidence:
             stress_cost_coverage=_first_decimal(
                 testing.get("stress_cost_coverage"), stress.get("cost_coverage")
             ),
+            evidence_samples=evidence_samples,
+            evidence_epoch=evidence_epoch,
+            evidence_horizon=evidence_horizon,
         )
 
 
@@ -261,13 +368,14 @@ class GovernanceAssessment:
     reason_codes: tuple[str, ...]
     automatic_action_allowed: bool
     champion_id: str | None = None
+    evidence_freshness: EvidenceFreshnessAssessment | None = None
 
     @property
     def transition_required(self) -> bool:
         return self.current_lifecycle is not self.recommended_lifecycle
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "strategy_id": self.strategy_id,
             "current_lifecycle": self.current_lifecycle.value,
             "recommended_lifecycle": self.recommended_lifecycle.value,
@@ -276,6 +384,11 @@ class GovernanceAssessment:
             "transition_required": self.transition_required,
             "champion_id": self.champion_id,
         }
+        if self.evidence_freshness is not None:
+            payload["evidence_freshness"] = _evidence_freshness_dict(
+                self.evidence_freshness
+            )
+        return payload
 
 
 class StrategyGovernor:
@@ -292,6 +405,12 @@ class StrategyGovernor:
         setting = registry.setting(strategy_id)
         descriptor = registry.descriptor(strategy_id)
         current = setting.lifecycle
+        evidence_freshness = _reassess_evidence_freshness(
+            samples=evidence.evidence_samples,
+            epoch=evidence.evidence_epoch,
+            horizon=evidence.evidence_horizon,
+            assessment_ts_ms=assessment_ts_ms,
+        )
         supported_regime_count = len(descriptor.supported_regimes)
         shadow_required_regime_count = min(2, supported_regime_count)
         active_required_regime_count = min(3, supported_regime_count)
@@ -427,13 +546,23 @@ class StrategyGovernor:
             )
             degraded = cost_degraded
             reason_codes = ("COST_AFTER_DEGRADATION",) if cost_degraded else ()
+            freshness_reasons: tuple[str, ...] = ()
+            if evidence_freshness is None:
+                freshness_reasons = ("EVIDENCE_FRESHNESS_NOT_PROVEN",)
+            elif not evidence_freshness.promotion_allowed:
+                freshness_reasons = tuple(
+                    dict.fromkeys(("STALE_EVIDENCE", *evidence_freshness.reason_codes))
+                )
             return GovernanceAssessment(
                 strategy_id,
                 current,
                 StrategyLifecycle.QUARANTINED if degraded else current,
-                reason_codes if degraded else ("ACTIVE_GATES_HEALTHY",),
+                reason_codes
+                if degraded
+                else ("ACTIVE_GATES_HEALTHY", *freshness_reasons),
                 degraded,
                 champion_id,
+                evidence_freshness,
             )
         common_missing = self._common_gate_failures(
             evidence,
@@ -508,6 +637,27 @@ class StrategyGovernor:
                 False,
                 champion_id,
             )
+        if evidence_freshness is None:
+            return GovernanceAssessment(
+                strategy_id,
+                current,
+                current,
+                ("EVIDENCE_FRESHNESS_NOT_PROVEN",),
+                False,
+                champion_id,
+            )
+        if not evidence_freshness.promotion_allowed:
+            return GovernanceAssessment(
+                strategy_id,
+                current,
+                current,
+                tuple(
+                    dict.fromkeys(("STALE_EVIDENCE", *evidence_freshness.reason_codes))
+                ),
+                False,
+                champion_id,
+                evidence_freshness,
+            )
         return GovernanceAssessment(
             strategy_id,
             current,
@@ -515,6 +665,7 @@ class StrategyGovernor:
             ("CHALLENGER_BEATS_CHAMPION",),
             True,
             champion_id,
+            evidence_freshness,
         )
 
     def apply(

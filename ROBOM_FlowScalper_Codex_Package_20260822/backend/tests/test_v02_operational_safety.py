@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 from dataclasses import replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from pathlib import Path
 
 from anyio import BrokenWorkerProcess
@@ -595,6 +595,632 @@ async def test_supervisor_lock_during_evaluation_pauses_completed_offer(monkeypa
     assert observed_entry_locks == [True]
     assert runtime.paused is True
     assert "SUPERVISOR_ENTRY_LOCK" in runtime.runtime_health_flags
+
+
+async def test_strategy_backpressure_skips_only_cpu_evaluation(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-strategy-backpressure-scope",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    event = MarketEvent(
+        event_id="depth-strategy-backpressure-scope",
+        run_id=runtime.run_id,
+        venue=runtime.venue,
+        symbol="BTCUSDT",
+        event_type="DEPTH_UPDATE",
+        venue_ts_ms=1_000,
+        receive_monotonic_ns=1_000,
+        quality=DataQuality(
+            is_live=True,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+    )
+
+    class SupervisorStub:
+        selection = None
+
+        def __init__(self) -> None:
+            self.telemetry = SupervisorTelemetry(
+                queue_depth=64,
+                queue_capacity=4_096,
+                entry_locked=False,
+                consumer_running=True,
+            )
+
+        @staticmethod
+        def running() -> bool:
+            return True
+
+    lifecycle: list[str] = []
+    supervisor = SupervisorStub()
+    evaluator = _AsyncFakeProcessEvaluator()
+    runtime._supervisor = supervisor  # type: ignore[assignment]
+    runtime._live_strategy_evaluator = evaluator  # type: ignore[assignment]
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.paused = False
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING"]
+    runtime.ledger = object()  # type: ignore[assignment]
+    original_on_book = runtime.paper_portfolio.on_book
+    original_evaluate_health = runtime.paper_portfolio.evaluate_health
+
+    def record_on_book(book) -> None:
+        lifecycle.append("on_book")
+        original_on_book(book)
+
+    def record_health(*args, **kwargs) -> None:
+        lifecycle.append("health")
+        original_evaluate_health(*args, **kwargs)
+
+    def record_persistence(_self: PaperRuntime, _ts_ms: int) -> bool:
+        lifecycle.append("persistence")
+        return True
+
+    monkeypatch.setattr(runtime.paper_portfolio, "on_book", record_on_book)
+    monkeypatch.setattr(runtime.paper_portfolio, "evaluate_health", record_health)
+    monkeypatch.setattr(PaperRuntime, "_has_unpersisted_execution_state", lambda _self: True)
+    monkeypatch.setattr(PaperRuntime, "_persist_execution_state_safely", record_persistence)
+
+    await runtime.ingest_live_event_async(event)
+
+    assert lifecycle == ["on_book", "health", "persistence"]
+    assert len(runtime._market_event_buffer) == 1
+    assert evaluator.completed_symbols == []
+    assert evaluator.max_in_flight == 0
+    assert runtime.paused is False
+    assert "ENTRY_LOCK_EVENT_QUEUE_OVERLOAD" not in runtime.runtime_health_flags
+    assert runtime._strategy_evaluation_backpressure_active is True
+    assert runtime._strategy_evaluation_backpressure_skip_count == 1
+
+    runtime.ledger = None
+    system = runtime.dashboard()["system"]
+    assert isinstance(system, dict)
+    assert system["strategy_evaluation_backpressure_active"] is True
+    assert system["strategy_evaluation_backpressure_skip_count"] == 1
+    assert system["strategy_evaluation_backpressure_resume_count"] == 0
+    assert system["strategy_evaluation_backpressure_high_water"] == 64
+    assert system["strategy_evaluation_backpressure_low_water"] == 16
+
+
+def test_strategy_backpressure_watermarks_cap_operational_queue() -> None:
+    assert PaperRuntime._strategy_evaluation_queue_watermarks(4_096) == (64, 16)
+    assert PaperRuntime._strategy_evaluation_queue_watermarks(64) == (32, 8)
+    assert PaperRuntime._strategy_evaluation_queue_watermarks(1) == (1, 0)
+    assert PaperRuntime._strategy_evaluation_queue_watermarks(0) == (0, 0)
+
+
+async def test_strategy_backpressure_resumes_only_at_low_water() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-strategy-backpressure-hysteresis",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+
+    def depth(ts_ms: int) -> MarketEvent:
+        return MarketEvent(
+            event_id=f"depth-strategy-backpressure-{ts_ms}",
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol="BTCUSDT",
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=ts_ms,
+            receive_monotonic_ns=ts_ms,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=0,
+            ),
+            data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+        )
+
+    class SupervisorStub:
+        selection = None
+
+        def __init__(self) -> None:
+            self.telemetry = SupervisorTelemetry(
+                queue_depth=64,
+                queue_capacity=4_096,
+                queue_overload_active=True,
+                entry_locked=True,
+                consumer_running=True,
+            )
+
+        @staticmethod
+        def running() -> bool:
+            return True
+
+    supervisor = SupervisorStub()
+    evaluator = _AsyncFakeProcessEvaluator()
+    runtime._supervisor = supervisor  # type: ignore[assignment]
+    runtime._live_strategy_evaluator = evaluator  # type: ignore[assignment]
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING"]
+
+    await runtime.ingest_live_event_async(depth(1_000))
+    assert runtime._strategy_evaluation_backpressure_active is True
+    assert runtime.paused is True
+
+    supervisor.telemetry.queue_overload_active = False
+    supervisor.telemetry.entry_locked = False
+    supervisor.telemetry.queue_depth = 17
+    await runtime.ingest_live_event_async(depth(3_000))
+    assert runtime._strategy_evaluation_backpressure_active is True
+    assert runtime.paused is False
+
+    supervisor.telemetry.queue_depth = 16
+    await runtime.ingest_live_event_async(depth(5_000))
+
+    assert runtime._strategy_evaluation_backpressure_active is False
+    assert runtime._strategy_evaluation_backpressure_skip_count == 2
+    assert runtime._strategy_evaluation_backpressure_resume_count == 1
+    assert evaluator.completed_symbols == ["BTCUSDT"]
+    assert evaluator.max_in_flight == 1
+
+
+async def test_directional_change_observes_every_book_before_2s_strategy_cadence(
+    monkeypatch,
+) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-directional-change-cadence",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    evaluator = _AsyncFakeProcessEvaluator()
+    runtime._live_strategy_evaluator = evaluator  # type: ignore[assignment]
+    runtime.ledger = object()  # type: ignore[assignment]
+    on_book_times: list[int] = []
+    health_times: list[int] = []
+    lifecycle: list[str] = []
+    original_on_book = runtime.paper_portfolio.on_book
+    original_evaluate_health = runtime.paper_portfolio.evaluate_health
+    original_dc_update = runtime_module.DirectionalChangeEngine.update
+
+    def depth(sequence: int, ts_ms: int, mid: Decimal) -> MarketEvent:
+        half_spread = Decimal("0.01")
+        return MarketEvent(
+            event_id=f"depth-directional-change-{sequence}",
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol="BTCUSDT",
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=ts_ms,
+            receive_monotonic_ns=ts_ms * 1_000,
+            sequence_start=sequence,
+            sequence_end=sequence,
+            previous_sequence_end=sequence - 1 if sequence > 1 else None,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=0,
+            ),
+            data={
+                "bid": str(mid - half_spread),
+                "bid_qty": "1",
+                "ask": str(mid + half_spread),
+                "ask_qty": "1",
+            },
+        )
+
+    def record_on_book(book) -> None:
+        on_book_times.append(book.ts_ms)
+        lifecycle.append(f"on_book:{book.ts_ms}")
+        original_on_book(book)
+
+    def record_dc_update(engine, observation):
+        lifecycle.append(f"dc:{engine.profile_id}:{observation.venue_ts_ms}")
+        return original_dc_update(engine, observation)
+
+    def record_health(snapshot, *args, **kwargs) -> None:
+        health_times.append(snapshot.ts_ms)
+        lifecycle.append(f"health:{snapshot.ts_ms}")
+        original_evaluate_health(snapshot, *args, **kwargs)
+
+    monkeypatch.setattr(runtime.paper_portfolio, "on_book", record_on_book)
+    monkeypatch.setattr(runtime.paper_portfolio, "evaluate_health", record_health)
+    monkeypatch.setattr(runtime_module.DirectionalChangeEngine, "update", record_dc_update)
+    monkeypatch.setattr(PaperRuntime, "_has_unpersisted_execution_state", lambda _self: False)
+
+    await runtime.ingest_live_event_async(depth(1, 1_000, Decimal("100")))
+    await runtime.ingest_live_event_async(depth(2, 1_500, Decimal("100.50")))
+
+    assert runtime.strategy_evaluation_interval_ms == 2_000
+    assert evaluator.completed_symbols == ["BTCUSDT"]
+    assert on_book_times == [1_000, 1_500]
+    assert health_times == [1_000, 1_500]
+    assert len(runtime._market_event_buffer) == 2
+    assert lifecycle == [
+        "on_book:1000",
+        "dc:FAST:1000",
+        "dc:SWING:1000",
+        "health:1000",
+        "on_book:1500",
+        "dc:FAST:1500",
+        "dc:SWING:1500",
+        "health:1500",
+    ]
+
+    runtime.ledger = None
+    system = runtime.dashboard()["system"]
+    assert isinstance(system, dict)
+    assert system["directional_change_mode"] == "OBSERVATION_ONLY"
+    profiles = system["directional_change_profiles"]
+    assert isinstance(profiles, dict)
+    assert profiles["FAST"] == {
+        "initialized": True,
+        "event_count": 1,
+        "last_direction": "UP_RUN",
+        "last_confirmation_type": "UPTURN",
+    }
+    assert profiles["SWING"] == {
+        "initialized": True,
+        "event_count": 0,
+        "last_direction": "UNINITIALIZED",
+        "last_confirmation_type": "NONE",
+    }
+
+
+async def test_directional_change_quality_faults_reset_without_losing_last_confirmation() -> None:
+    for fault_name, stale, sequence_valid in (
+        ("stale", True, True),
+        ("sequence-invalid", False, False),
+    ):
+        runtime = PaperRuntime(
+            mode=RuntimeMode.LIVE_SHADOW_PAPER,
+            run_id=f"run-directional-change-{fault_name}",
+            venue=Venue.BINANCE_USDM,
+            clock=DeterministicClock(),
+        )
+        evaluator = _AsyncFakeProcessEvaluator()
+        runtime._live_strategy_evaluator = evaluator  # type: ignore[assignment]
+
+        def depth(
+            sequence: int,
+            ts_ms: int,
+            mid: Decimal,
+            *,
+            event_stale: bool = False,
+            event_sequence_valid: bool = True,
+            _runtime: PaperRuntime = runtime,
+            _fault_name: str = fault_name,
+        ) -> MarketEvent:
+            half_spread = Decimal("0.01")
+            return MarketEvent(
+                event_id=f"depth-{_fault_name}-{sequence}",
+                run_id=_runtime.run_id,
+                venue=_runtime.venue,
+                symbol="BTCUSDT",
+                event_type="DEPTH_UPDATE",
+                venue_ts_ms=ts_ms,
+                receive_monotonic_ns=ts_ms * 1_000,
+                sequence_start=sequence,
+                sequence_end=sequence,
+                previous_sequence_end=sequence - 1 if sequence > 1 else None,
+                quality=DataQuality(
+                    is_live=True,
+                    is_stale=event_stale,
+                    sequence_valid=event_sequence_valid,
+                    lag_ms=0,
+                ),
+                data={
+                    "bid": str(mid - half_spread),
+                    "bid_qty": "1",
+                    "ask": str(mid + half_spread),
+                    "ask_qty": "1",
+                },
+            )
+
+        await runtime.ingest_live_event_async(depth(1, 1_000, Decimal("100")))
+        await runtime.ingest_live_event_async(depth(2, 1_500, Decimal("100.50")))
+        await runtime.ingest_live_event_async(
+            depth(
+                3,
+                1_600,
+                Decimal("90"),
+                event_stale=stale,
+                event_sequence_valid=sequence_valid,
+            )
+        )
+
+        for profile_id in ("FAST", "SWING"):
+            snapshot = runtime._directional_change_engines[
+                ("BTCUSDT", profile_id)
+            ].snapshot
+            assert snapshot.state.value == "UNINITIALIZED"
+            assert snapshot.threshold is None
+            assert snapshot.continuity_epoch == 1
+        profiles = runtime.dashboard()["system"]["directional_change_profiles"]
+        assert isinstance(profiles, dict)
+        assert profiles["FAST"] == {
+            "initialized": False,
+            "event_count": 1,
+            "last_direction": "UNINITIALIZED",
+            "last_confirmation_type": "UPTURN",
+        }
+        assert profiles["SWING"]["initialized"] is False
+
+
+def test_directional_change_runtime_memory_is_bounded() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-directional-change-bounded",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+
+    def observation(symbol: str, sequence: int) -> MarketEvent:
+        return MarketEvent(
+            event_id=f"dc-bounded-{symbol}-{sequence}",
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol=symbol,
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=sequence,
+            receive_monotonic_ns=sequence,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=0,
+            ),
+            data={},
+        )
+
+    for index in range(runtime_module._DIRECTIONAL_CHANGE_SYMBOL_LIMIT + 10):
+        runtime._observe_directional_change(
+            observation(f"S{index:02d}USDT", 1),
+            bid=Decimal("99.99"),
+            ask=Decimal("100.01"),
+        )
+    latest_symbol = f"S{runtime_module._DIRECTIONAL_CHANGE_SYMBOL_LIMIT + 9:02d}USDT"
+    for sequence in range(2, 302):
+        runtime._observe_directional_change(
+            observation(latest_symbol, sequence),
+            bid=Decimal("99.99"),
+            ask=Decimal("100.01"),
+        )
+
+    assert len(runtime._directional_change_symbols) == (
+        runtime_module._DIRECTIONAL_CHANGE_SYMBOL_LIMIT
+    )
+    assert len(runtime._directional_change_engines) == (
+        runtime_module._DIRECTIONAL_CHANGE_SYMBOL_LIMIT * 2
+    )
+    assert all(
+        len(engine._seen_event_ids) <= runtime_module._DIRECTIONAL_CHANGE_DEDUPE_CAPACITY
+        for engine in runtime._directional_change_engines.values()
+    )
+    assert runtime.strategy_evaluation_count == 0
+    assert runtime._candidate_plan_buffer == []
+
+
+def test_semivariance_updates_once_per_completed_minute_and_not_on_depth(
+    monkeypatch,
+) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-semivariance-completed-minute",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    update_calls: list[int] = []
+    original_update = runtime_module.SemivarianceJumpEngine.update
+
+    def trade(event_id: str, ts_ms: int, price: str) -> MarketEvent:
+        return MarketEvent(
+            event_id=event_id,
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol="BTCUSDT",
+            event_type="TRADE",
+            venue_ts_ms=ts_ms,
+            transaction_ts_ms=ts_ms,
+            receive_monotonic_ns=ts_ms * 1_000,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=0,
+            ),
+            data={
+                "price": price,
+                "quantity": "1",
+                "buyer_is_aggressor": True,
+            },
+        )
+
+    def depth(event_id: str, ts_ms: int) -> MarketEvent:
+        return MarketEvent(
+            event_id=event_id,
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol="BTCUSDT",
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=ts_ms,
+            receive_monotonic_ns=ts_ms * 1_000,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=0,
+            ),
+            data={"bid": "102.9", "bid_qty": "1", "ask": "103.1", "ask_qty": "1"},
+        )
+
+    def record_update(engine, observation):
+        update_calls.append(observation.minute_start_ts_ms)
+        return original_update(engine, observation)
+
+    monkeypatch.setattr(runtime_module.SemivarianceJumpEngine, "update", record_update)
+
+    runtime.ingest_live_event(trade("trade-0", 0, "100"))
+    runtime.ingest_live_event(trade("trade-30", 30_000, "101"))
+    runtime.ingest_live_event(depth("depth-40", 40_000))
+    assert runtime._semivariance_engines == {}
+    assert runtime.dashboard()["system"]["semivariance_observation"]["last_status"] == (
+        "WAITING_COMPLETED_MINUTE"
+    )
+
+    runtime.ingest_live_event(trade("trade-60", 60_000, "102"))
+    engine = runtime._semivariance_engines["BTCUSDT"]
+    assert engine.buffer_sizes == (0, 0, 0)
+    runtime.ingest_live_event(trade("trade-90", 90_000, "103"))
+    runtime.ingest_live_event(depth("depth-100", 100_000))
+    assert engine.buffer_sizes == (0, 0, 0)
+    runtime.ingest_live_event(trade("trade-120", 120_000, "104"))
+
+    assert update_calls == [60_000]
+    assert engine.buffer_sizes == (1, 1, 0)
+    snapshot = runtime._semivariance_latest_snapshots["BTCUSDT"]
+    with localcontext() as context:
+        context.prec = 50
+        expected_return = (Decimal("103") / Decimal("101")).ln()
+    assert snapshot.log_return == expected_return
+    assert runtime.paper_portfolio.main.position is None
+    assert runtime._candidate_plan_buffer == []
+    summary = runtime.dashboard()["system"]["semivariance_observation"]
+    assert summary == {
+        "mode": "OBSERVATION_ONLY",
+        "tracked_symbol_count": 1,
+        "one_hour_ready_symbol_count": 0,
+        "four_hour_ready_symbol_count": 0,
+        "jump_ready_symbol_count": 0,
+        "periodicity_status": "PERIODICITY_UNCALIBRATED",
+        "last_symbol": "BTCUSDT",
+        "last_completed_minute_ts_ms": 60_000,
+        "last_status": "WARMUP_1H",
+        "last_reset_reason": "NONE",
+        "risk_multiplier_applied": False,
+    }
+
+
+def test_semivariance_gap_incomplete_and_out_of_order_fail_closed() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-semivariance-fail-closed",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+
+    def trade(event_id: str, ts_ms: int, price: str) -> MarketEvent:
+        return MarketEvent(
+            event_id=event_id,
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol="BTCUSDT",
+            event_type="TRADE",
+            venue_ts_ms=ts_ms,
+            transaction_ts_ms=ts_ms,
+            receive_monotonic_ns=ts_ms * 1_000,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=0,
+            ),
+            data={
+                "price": price,
+                "quantity": "1",
+                "buyer_is_aggressor": True,
+            },
+        )
+
+    runtime.ingest_live_event(trade("trade-0", 0, "100"))
+    runtime.ingest_live_event(trade("trade-60", 60_000, "101"))
+    runtime.ingest_live_event(trade("trade-120", 120_000, "102"))
+    assert runtime._semivariance_engines["BTCUSDT"].buffer_sizes == (1, 1, 0)
+
+    runtime.ingest_live_event(trade("trade-gap", 240_000, "103"))
+    assert "BTCUSDT" not in runtime._semivariance_engines
+    summary = runtime.dashboard()["system"]["semivariance_observation"]
+    assert summary["last_status"] == "RESET"
+    assert summary["last_reset_reason"] == "COMPLETED_MINUTE_GAP"
+
+    runtime.ingest_live_event(trade("trade-300", 300_000, "104"))
+    runtime.ingest_live_event(trade("trade-360", 360_000, "105"))
+    assert runtime._semivariance_engines["BTCUSDT"].buffer_sizes == (1, 1, 0)
+    runtime.ingest_live_event(trade("trade-old", 350_000, "99"))
+    assert "BTCUSDT" not in runtime._semivariance_engines
+    summary = runtime.dashboard()["system"]["semivariance_observation"]
+    assert summary["last_status"] == "RESET"
+    assert summary["last_reset_reason"] == "OUT_OF_ORDER_TRADE"
+
+    runtime._observe_completed_minute_candle(
+        Candle(
+            symbol="BTCUSDT",
+            interval_seconds=60,
+            open_ts_ms=420_000,
+            open=Decimal("105"),
+            high=Decimal("105"),
+            low=Decimal("105"),
+            close=Decimal("105"),
+            volume=Decimal("1"),
+            trade_count=1,
+        ),
+        completed_ts_ms=479_999,
+    )
+    assert runtime._semivariance_last_status == "RESET"
+    assert runtime._semivariance_last_reset_reason == "INCOMPLETE_OR_INVALID_MINUTE"
+
+
+def test_semivariance_runtime_memory_is_bounded_and_risk_is_untouched() -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-semivariance-bounded",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    initial_risk_state = replace(runtime.paper_portfolio.main.risk_state)
+
+    def candle(symbol: str, minute: int, close: Decimal) -> Candle:
+        return Candle(
+            symbol=symbol,
+            interval_seconds=60,
+            open_ts_ms=minute * 60_000,
+            open=close,
+            high=close,
+            low=close,
+            close=close,
+            volume=Decimal("1"),
+            trade_count=1,
+        )
+
+    for index in range(runtime_module._SEMIVARIANCE_SYMBOL_LIMIT + 10):
+        symbol = f"S{index:02d}USDT"
+        runtime._observe_completed_minute_candle(
+            candle(symbol, 0, Decimal("100")),
+            completed_ts_ms=60_000,
+        )
+        runtime._observe_completed_minute_candle(
+            candle(symbol, 1, Decimal("101")),
+            completed_ts_ms=120_000,
+        )
+    latest_symbol = f"S{runtime_module._SEMIVARIANCE_SYMBOL_LIMIT + 9:02d}USDT"
+    for minute in range(2, 302):
+        runtime._observe_completed_minute_candle(
+            candle(latest_symbol, minute, Decimal("101")),
+            completed_ts_ms=(minute + 1) * 60_000,
+        )
+
+    assert len(runtime._semivariance_symbols) == runtime_module._SEMIVARIANCE_SYMBOL_LIMIT
+    assert len(runtime._semivariance_engines) == runtime_module._SEMIVARIANCE_SYMBOL_LIMIT
+    assert len(runtime._semivariance_previous_completed_closes) == (
+        runtime_module._SEMIVARIANCE_SYMBOL_LIMIT
+    )
+    assert len(runtime._semivariance_latest_snapshots) == (
+        runtime_module._SEMIVARIANCE_SYMBOL_LIMIT
+    )
+    assert runtime._semivariance_engines[latest_symbol].buffer_sizes == (60, 240, 0)
+    assert runtime.paper_portfolio.main.risk_state == initial_risk_state
+    assert runtime.paper_portfolio.main.position is None
+    assert runtime._candidate_plan_buffer == []
 
 
 def test_live_book_event_reports_slowest_processing_phase(monkeypatch) -> None:
@@ -2172,6 +2798,7 @@ def test_stale_trade_is_archived_but_not_used_for_candles_or_strategy_features(
 
     assert runtime.candle_builder.snapshot("BTCUSDT")
     assert runtime.latest_features["BTCUSDT"].data_healthy is True
+    assert runtime.strategy_evaluation_count == evaluation_count
     assert runtime.dashboard()["system"]["stale_trade_symbols"] == 0
 
 

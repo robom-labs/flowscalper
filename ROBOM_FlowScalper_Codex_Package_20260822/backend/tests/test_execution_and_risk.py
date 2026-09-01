@@ -1,6 +1,8 @@
 """호가소진·비용·부분체결·보호·회계·위험잠금 수명주기를 검증한다."""
 
 from decimal import Decimal
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -16,6 +18,7 @@ from backend.app.execution import (
 )
 from backend.app.execution.models import OrderStatus
 from backend.app.execution.simulator import PaperExecutionError
+from backend.app.research.gates import RiskOverlay, RiskOverlayComponent
 from backend.app.risk import RiskManager, RiskSizingInput, RiskState
 
 
@@ -53,6 +56,24 @@ def open_arguments(side: Side, requested: str = "1") -> dict[str, object]:
         "book_at_arrival": book(),
         "minimum_quantity": Decimal("0.001"),
     }
+
+
+def risk_sizing_input(
+    *,
+    stop_price: str = "99",
+    executable_depth_quantity: str = "1000",
+) -> RiskSizingInput:
+    return RiskSizingInput(
+        equity=Decimal("1000"),
+        entry_price=Decimal("100"),
+        stop_price=Decimal(stop_price),
+        entry_fee_per_unit=Decimal("0.06"),
+        stop_fee_per_unit=Decimal("0.06"),
+        p95_exit_slippage_per_unit=Decimal("0.03"),
+        quantity_step=Decimal("0.001"),
+        minimum_quantity=Decimal("0.001"),
+        executable_depth_quantity=Decimal(executable_depth_quantity),
+    )
 
 
 def test_long_entry_consumes_asks_with_partial_ioc_and_exact_costs() -> None:
@@ -137,26 +158,138 @@ def test_exit_uses_executable_side_and_ambiguous_ordering_is_pessimistic() -> No
 
 def test_risk_sizing_rounds_down_and_locks_operate() -> None:
     manager = RiskManager()
-    result = manager.size(
-        RiskSizingInput(
-            equity=Decimal("1000"),
-            entry_price=Decimal("100"),
-            stop_price=Decimal("99"),
-            entry_fee_per_unit=Decimal("0.06"),
-            stop_fee_per_unit=Decimal("0.06"),
-            p95_exit_slippage_per_unit=Decimal("0.03"),
-            quantity_step=Decimal("0.001"),
-            minimum_quantity=Decimal("0.001"),
-            executable_depth_quantity=Decimal("1000"),
-        )
-    )
+    result = manager.size(risk_sizing_input())
     assert result.quantity == Decimal("0.869")
     assert result.planned_loss is not None and result.planned_loss <= Decimal("1")
+    assert result.base_risk_budget == result.risk_budget == Decimal("1")
+    assert result.risk_multiplier == Decimal(1)
 
     state = RiskState(realized_today=Decimal("-5"))
     assert "DAILY_LOSS_LOCK" in manager.entry_rejections(state, "BTC:A", 0)
     state = RiskState(open_positions=1)
     assert manager.entry_rejections(state, "BTC:A", 0) == ("MAX_OPEN_POSITIONS",)
+
+
+def test_risk_overlay_none_and_one_are_identical() -> None:
+    manager = RiskManager()
+    values = risk_sizing_input()
+
+    without_overlay = manager.size(values)
+    empty_overlay = manager.size(values, risk_overlay=RiskOverlay())
+    one_overlay = manager.size(
+        values,
+        risk_overlay=RiskOverlay(
+            (RiskOverlayComponent(overlay_id="UNITY", multiplier=Decimal(1)),)
+        ),
+    )
+
+    assert without_overlay == empty_overlay == one_overlay
+
+
+def test_risk_overlay_reduces_only_final_budget_and_quantity() -> None:
+    manager = RiskManager()
+    result = manager.size(
+        risk_sizing_input(),
+        risk_overlay=RiskOverlay(
+            (
+                RiskOverlayComponent(
+                    overlay_id="TAIL_EXPECTED_SHORTFALL",
+                    multiplier=Decimal("0.5"),
+                    reason_codes=("TAIL_RISK_ELEVATED",),
+                ),
+            )
+        ),
+    )
+
+    assert result.base_risk_budget == Decimal("1")
+    assert result.risk_multiplier == Decimal("0.5")
+    assert result.risk_budget == Decimal("0.5")
+    assert result.quantity == Decimal("0.434")
+    assert result.planned_loss == Decimal("0.49910")
+    assert result.rejection_codes == ()
+
+
+def test_zero_risk_overlay_is_explicitly_rejected() -> None:
+    result = RiskManager().size(
+        risk_sizing_input(),
+        risk_overlay=RiskOverlay(
+            (
+                RiskOverlayComponent(
+                    overlay_id="DATA_SAFETY",
+                    multiplier=Decimal(0),
+                    reason_codes=("DATA_UNSAFE",),
+                ),
+            )
+        ),
+    )
+
+    assert result.quantity is None
+    assert result.planned_loss is None
+    assert result.base_risk_budget == Decimal("1")
+    assert result.risk_multiplier == Decimal(0)
+    assert result.risk_budget == Decimal(0)
+    assert result.rejection_codes == ("RISK_OVERLAY_ZERO",)
+
+
+@pytest.mark.parametrize("multiplier", (Decimal("1.01"), Decimal("-0.01"), Decimal("NaN")))
+def test_invalid_runtime_overlay_can_never_increase_risk(multiplier: Decimal) -> None:
+    unsafe_overlay = cast(RiskOverlay, SimpleNamespace(multiplier=multiplier))
+
+    result = RiskManager().size(
+        risk_sizing_input(),
+        risk_overlay=unsafe_overlay,
+    )
+
+    assert result.quantity is None
+    assert result.risk_budget == Decimal(0)
+    assert result.risk_multiplier == Decimal(0)
+    assert result.rejection_codes == ("INVALID_RISK_OVERLAY",)
+
+
+@pytest.mark.parametrize(
+    ("executable_depth_quantity", "expected_quantity"),
+    (("1000", "5"), ("10", "0.2")),
+)
+def test_existing_caps_remain_more_conservative_than_overlay_budget(
+    executable_depth_quantity: str,
+    expected_quantity: str,
+) -> None:
+    manager = RiskManager()
+    values = RiskSizingInput(
+        equity=Decimal("1000"),
+        entry_price=Decimal("100"),
+        stop_price=Decimal("99.99"),
+        entry_fee_per_unit=Decimal(0),
+        stop_fee_per_unit=Decimal(0),
+        p95_exit_slippage_per_unit=Decimal(0),
+        quantity_step=Decimal("0.001"),
+        minimum_quantity=Decimal("0.001"),
+        executable_depth_quantity=Decimal(executable_depth_quantity),
+    )
+    result = manager.size(
+        values,
+        risk_overlay=RiskOverlay(
+            (
+                RiskOverlayComponent(
+                    overlay_id="CLUSTER_EXPOSURE",
+                    multiplier=Decimal("0.5"),
+                    reason_codes=("BTC_BETA_CLUSTER",),
+                ),
+            )
+        ),
+    )
+
+    assert result.risk_budget == Decimal("0.5")
+    assert result.quantity == Decimal(expected_quantity)
+    assert result.planned_loss is not None
+    state = RiskState(
+        open_planned_risk=Decimal("1") - result.planned_loss + Decimal("0.001")
+    )
+    assert "MAXIMUM_TOTAL_OPEN_RISK" in manager.pending_rejections(
+        state,
+        planned_risk=result.planned_loss,
+        planned_notional=result.quantity * values.entry_price,
+    )
 
 
 def test_daily_and_weekly_risk_limits_roll_at_utc_boundaries() -> None:

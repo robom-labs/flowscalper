@@ -65,6 +65,22 @@ _IMPLEMENTATION_BOUND_PATHS = (
     "scripts/research_runtime_strategy_replay.py",
 )
 _DEFAULT_RESEARCH_TARGET_CPU_RATIO = 0.25
+_TRIAL_COST_PROFILE = "BASE_STRESS"
+_TRIAL_FEATURE_VERSION = "FEATURE_ENGINE_RUNTIME_V1"
+_TRIAL_LABEL_VERSION = "PAPER_REPLAY_REALIZED_OUTCOME_V1"
+_TRIAL_ENGINE_VERSION = "LIVE_SAFE_STRATEGY_LEAGUE_REPLAY_V2"
+_V2_TRIAL_IDENTITY_FIELDS = frozenset(
+    {
+        "strategy_id",
+        "hypothesis_key_fingerprint",
+        "evidence_epoch_id",
+        "evidence_epoch_fingerprint",
+        "cost_profile",
+        "feature_version",
+        "label_version",
+        "engine_version",
+    }
+)
 
 
 def _default_live_ledger_path(project_root: Path) -> Path:
@@ -261,6 +277,109 @@ def _canonical_hash(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _v2_trial_identity(
+    *,
+    hypothesis_id: str,
+    strategy_id: str,
+    parameter_fingerprint: str,
+    dataset_fingerprint: str,
+    implementation_fingerprint: str,
+    cost_model_fingerprint: str,
+    cost_profile: str,
+    feature_version: str,
+    label_version: str,
+    engine_version: str,
+    epoch_prefix: str,
+) -> dict[str, str]:
+    key_fingerprint = _canonical_hash(
+        {
+            "schema": "flowscalper.research_hypothesis_key.v2",
+            "hypothesis_id": hypothesis_id,
+            "strategy_id": strategy_id,
+            "parameter_fingerprint": parameter_fingerprint,
+            "dataset_fingerprint": dataset_fingerprint,
+            "cost_profile": cost_profile,
+            "feature_version": feature_version,
+            "label_version": label_version,
+            "engine_version": engine_version,
+        }
+    )
+    evidence_epoch_id = f"{epoch_prefix}-{key_fingerprint[:16]}"
+    evidence_epoch_fingerprint = _canonical_hash(
+        {
+            "schema": "flowscalper.research_evidence_epoch.v2",
+            "evidence_epoch_id": evidence_epoch_id,
+            "hypothesis_key_fingerprint": key_fingerprint,
+            "parameter_fingerprint": parameter_fingerprint,
+            "dataset_fingerprint": dataset_fingerprint,
+            "implementation_fingerprint": implementation_fingerprint,
+            "cost_model_fingerprint": cost_model_fingerprint,
+            "cost_profile": cost_profile,
+            "feature_version": feature_version,
+            "label_version": label_version,
+            "engine_version": engine_version,
+        }
+    )
+    return {
+        "strategy_id": strategy_id,
+        "hypothesis_key_fingerprint": key_fingerprint,
+        "evidence_epoch_id": evidence_epoch_id,
+        "evidence_epoch_fingerprint": evidence_epoch_fingerprint,
+        "cost_profile": cost_profile,
+        "feature_version": feature_version,
+        "label_version": label_version,
+        "engine_version": engine_version,
+    }
+
+
+def _legacy_isolated_proposal_payload(
+    proposal_payload: dict[str, object],
+) -> dict[str, object]:
+    present = _V2_TRIAL_IDENTITY_FIELDS.intersection(proposal_payload)
+    if present == _V2_TRIAL_IDENTITY_FIELDS:
+        return proposal_payload
+    if present:
+        missing = sorted(_V2_TRIAL_IDENTITY_FIELDS - present)
+        raise ValueError(f"V2 연구시험 이력 식별자가 일부만 있습니다: {missing}")
+    legacy_fingerprint = _canonical_hash(
+        {
+            "schema": "flowscalper.research_trial_proposal.legacy_isolated.v1",
+            "proposal": proposal_payload,
+        }
+    )
+    original_hypothesis_id = str(proposal_payload.get("hypothesis_id", "UNKNOWN"))
+    hypothesis_key_fingerprint = _canonical_hash(
+        {
+            "scope": "LEGACY_ISOLATED_KEY_V1",
+            "legacy_fingerprint": legacy_fingerprint,
+        }
+    )
+    evidence_epoch_id = f"LEGACY_ISOLATED-EPOCH-{legacy_fingerprint[:16]}"
+    proposal_payload.update(
+        {
+            "hypothesis_id": (
+                f"LEGACY_ISOLATED-{legacy_fingerprint[:16]}-{original_hypothesis_id}"
+            ),
+            "strategy_id": f"LEGACY_ISOLATED-{legacy_fingerprint[:16]}",
+            "hypothesis_key_fingerprint": hypothesis_key_fingerprint,
+            "evidence_epoch_id": evidence_epoch_id,
+            "evidence_epoch_fingerprint": _canonical_hash(
+                {
+                    "scope": "LEGACY_ISOLATED_EPOCH_V1",
+                    "evidence_epoch_id": evidence_epoch_id,
+                    "hypothesis_key_fingerprint": hypothesis_key_fingerprint,
+                    "legacy_fingerprint": legacy_fingerprint,
+                }
+            ),
+            "cost_profile": "LEGACY_ISOLATED",
+            "feature_version": "LEGACY_ISOLATED_V1",
+            "label_version": "LEGACY_ISOLATED_V1",
+            "engine_version": "LEGACY_ISOLATED_V1",
+        }
+    )
+    return proposal_payload
+
+
 def _source_bundle_fingerprint(project_root: Path) -> str:
     rows: list[dict[str, str]] = []
     for relative in _IMPLEMENTATION_BOUND_PATHS:
@@ -319,39 +438,64 @@ def _trial_proposal_from_arguments(arguments: argparse.Namespace) -> ResearchTri
         arguments.project_root / "backend" / "app" / "costing" / "models.py",
         arguments.project_root / "backend" / "app" / "execution" / "simulator.py",
     )
+    parameter_hash = parameter_fingerprint(
+        {
+            "signal_gate": str(arguments.signal_gate),
+            "target_strategy_id": normalized_target,
+            "strategy_logic": str(arguments.strategy_logic),
+            "maximum_events": arguments.maximum_events,
+        }
+    )
+    dataset_hash = _canonical_hash(dataset_material)
+    implementation_hash = _source_bundle_fingerprint(arguments.project_root)
+    cost_model_hash = _canonical_hash(
+        [
+            {
+                "path": path.relative_to(arguments.project_root).as_posix(),
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+            for path in cost_paths
+        ]
+    )
+    strategy_id = (
+        "STRATEGY_LEAGUE_ALL_REGISTERED"
+        if normalized_target in {"NO_TARGET", SIGNAL_GATE_TARGET_ALL}
+        else normalized_target
+    )
+    identity = _v2_trial_identity(
+        hypothesis_id=hypothesis_id,
+        strategy_id=strategy_id,
+        parameter_fingerprint=parameter_hash,
+        dataset_fingerprint=dataset_hash,
+        implementation_fingerprint=implementation_hash,
+        cost_model_fingerprint=cost_model_hash,
+        cost_profile=_TRIAL_COST_PROFILE,
+        feature_version=_TRIAL_FEATURE_VERSION,
+        label_version=_TRIAL_LABEL_VERSION,
+        engine_version=_TRIAL_ENGINE_VERSION,
+        epoch_prefix="LIVE-SAFE-STRATEGY-LEAGUE-EPOCH",
+    )
     return ResearchTrialProposal(
         hypothesis_id=hypothesis_id,
-        parameter_fingerprint=parameter_fingerprint(
-            {
-                "signal_gate": str(arguments.signal_gate),
-                "target_strategy_id": normalized_target,
-                "strategy_logic": str(arguments.strategy_logic),
-                "maximum_events": arguments.maximum_events,
-            }
-        ),
-        dataset_fingerprint=_canonical_hash(dataset_material),
+        parameter_fingerprint=parameter_hash,
+        dataset_fingerprint=dataset_hash,
         dataset_start_ts_ms=min(int(row["start_ts_ms"]) for row in selected_rows),
         dataset_end_ts_ms=max(int(row["end_ts_ms"]) for row in selected_rows),
-        implementation_fingerprint=_source_bundle_fingerprint(arguments.project_root),
-        cost_model_fingerprint=_canonical_hash(
-            [
-                {
-                    "path": path.relative_to(arguments.project_root).as_posix(),
-                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                }
-                for path in cost_paths
-            ]
-        ),
+        implementation_fingerprint=implementation_hash,
+        cost_model_fingerprint=cost_model_hash,
+        **identity,
         dataset_member_fingerprints=tuple(
             f"{row.get('run_id')}:{row.get('checksum')}" for row in selected_rows
         ),
+        paper_only=True,
+        real_orders_enabled=False,
     )
 
 
 def _trial_record_from_json(payload: object) -> ResearchTrialRecord:
     if not isinstance(payload, dict) or not isinstance(payload.get("proposal"), dict):
         raise ValueError("연구시험 이력 행이 올바른 JSON 객체가 아닙니다.")
-    proposal_payload = dict(payload["proposal"])
+    proposal_payload = _legacy_isolated_proposal_payload(dict(payload["proposal"]))
     members = proposal_payload.get("dataset_member_fingerprints", ())
     if not isinstance(members, list | tuple):
         raise ValueError("연구시험 dataset member 지문이 JSON 배열이 아닙니다.")

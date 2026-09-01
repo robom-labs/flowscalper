@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -18,6 +21,67 @@ from backend.app.research import (
     probability_of_backtest_overfitting,
     walk_forward_folds,
 )
+from backend.app.research.gates import EvidenceEpoch, HypothesisKey, HypothesisRegistry
+from backend.app.research.protocol import validate_research_manifest
+from backend.app.research.trial_history import ResearchTrialProposal
+
+
+def _checksum(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _evidence_contract(
+    protocol: ResearchProtocol,
+    slices: tuple[DatasetSlice, ...],
+) -> tuple[HypothesisRegistry, EvidenceEpoch]:
+    ordered = sorted(slices, key=lambda row: (row.start_ts_ms, row.run_id))
+    dataset_hash = _checksum([asdict(row) for row in ordered])
+    parameter_hash = _checksum(
+        {key: list(values) for key, values in sorted(protocol.parameter_grid.items())}
+    )
+    key = HypothesisKey(
+        strategy_family="MICROSTRUCTURE",
+        candidate_id=protocol.strategy_id,
+        strategy_version=protocol.strategy_version,
+        parameter_id="GRID-V1",
+        exit_id="STRUCTURE-EXIT-V1",
+        execution_policy="TAKER-IOC",
+        filter_combination=("QUALITY-V1",),
+        dataset_id="RESEARCH-DATASET-V1",
+        parameter_hash=parameter_hash,
+        cost_profile=protocol.cost_profile,
+        dataset_hash=dataset_hash,
+        feature_version=protocol.feature_version,
+        label_version=protocol.label_version,
+        engine_version=protocol.engine_version,
+    )
+    registry = HypothesisRegistry().register(protocol.hypothesis_id, key)
+    epoch = EvidenceEpoch(
+        epoch_id="EPOCH-RESEARCH-001",
+        opened_ts_ms=0,
+        closed_ts_ms=None,
+        strategy_version=protocol.strategy_version,
+        feature_version=protocol.feature_version,
+        label_version=protocol.label_version,
+        engine_version=protocol.engine_version,
+        cost_model_version=protocol.cost_model_version,
+        cost_profile=protocol.cost_profile,
+        parameter_hash=parameter_hash,
+        dataset_hash=dataset_hash,
+        fee_model_version="FEE-V1",
+        matching_model_version="MATCHING-V1",
+        symbol_contract_version="SYMBOL-V1",
+        data_adapter_version="ADAPTER-V1",
+        hypothesis_registry_hash=registry.fingerprint(),
+        hypothesis_key_fingerprint=key.fingerprint(),
+    )
+    return registry, epoch
 
 
 def _observations(count: int = 20) -> list[ResearchObservation]:
@@ -41,7 +105,10 @@ def test_manifest_is_deterministic_complete_and_paper_only() -> None:
         strategy_id="TEST_STRATEGY_V1",
         strategy_version="strategy-v1",
         feature_version="feature-v2",
+        label_version="label-v1",
+        engine_version="engine-v1",
         cost_model_version="cost-v1",
+        cost_profile="BASE",
         parameter_grid={"threshold": (1.5, 2.0), "confirmation_ms": (500, 1_000)},
         horizon_seconds=(15, 30, 60, 180),
         base_cost_bps=13,
@@ -56,27 +123,44 @@ def test_manifest_is_deterministic_complete_and_paper_only() -> None:
         DatasetSlice("run-b", "BINANCE_USDM", ("ETHUSDT",), 2_000, 3_000, 10, "b" * 64),
         DatasetSlice("run-a", "BINANCE_USDM", ("BTCUSDT",), 1_000, 1_900, 20, "a" * 64),
     )
+    registry, epoch = _evidence_contract(protocol, slices)
 
     first = protocol.manifest(
         slices,
         code_hash="c" * 40,
         config_hash="d" * 64,
         generated_ts_ms=1_000,
+        hypothesis_registry=registry,
+        evidence_epoch=epoch,
     )
     second = protocol.manifest(
         tuple(reversed(slices)),
         code_hash="c" * 40,
         config_hash="d" * 64,
         generated_ts_ms=1_000,
+        hypothesis_registry=registry,
+        evidence_epoch=epoch,
     )
 
     assert first == second
+    assert first["schema_version"] == 2
     assert first["run_ids"] == ["run-a", "run-b"]
     assert first["protocol"]["horizon_seconds"] == (15, 30, 60, 180)
     assert len(first["dataset_hash"]) == len(first["parameter_hash"]) == 64
     assert first["paper_only"] is True
     assert first["real_orders_enabled"] is False
     assert first["auth_required"] is False
+    assert first["hypothesis_registry"]["registry_hash"] == registry.fingerprint()
+    assert first["evidence_epoch"]["epoch_fingerprint"] == epoch.fingerprint()
+    validate_research_manifest(first)
+    proposal = ResearchTrialProposal.from_manifest(
+        first,
+        dataset_member_fingerprints=("run-a:a", "run-b:b"),
+    )
+    assert proposal.evidence_epoch_id == epoch.epoch_id
+    assert proposal.evidence_epoch_fingerprint == epoch.fingerprint()
+    assert proposal.parameter_fingerprint == first["parameter_hash"]
+    assert proposal.dataset_fingerprint == first["dataset_hash"]
     executed = finalize_research_manifest(
         first,
         result={"oos": {"expectancy_bps": -1.0}},
@@ -87,6 +171,56 @@ def test_manifest_is_deterministic_complete_and_paper_only() -> None:
     assert executed["manifest_checksum"] != first["manifest_checksum"]
     schema = json.loads(Path("schemas/research_manifest.schema.json").read_text())
     assert set(schema["required"]) <= set(first)
+
+
+def test_manifest_registry_epoch_collision_and_checksum_tampering_fail_closed() -> None:
+    protocol = ResearchProtocol(
+        hypothesis_id="HYP-MICRO-001",
+        strategy_id="TEST_STRATEGY_V1",
+        strategy_version="strategy-v1",
+        feature_version="feature-v2",
+        label_version="label-v1",
+        engine_version="engine-v1",
+        cost_model_version="cost-v1",
+        cost_profile="BASE",
+        parameter_grid={"threshold": (1.5, 2.0)},
+        horizon_seconds=(15, 30),
+        base_cost_bps=13,
+        stress_cost_bps=25,
+        seed=17,
+        purge_ms=1_000,
+        embargo_ms=1_000,
+        falsification_criteria=("OOS EV <= 0",),
+        baseline_ids=("NO_TRADE",),
+    )
+    slices = (
+        DatasetSlice("run-a", "BINANCE_USDM", ("BTCUSDT",), 1_000, 2_000, 20, "a" * 64),
+    )
+    registry, epoch = _evidence_contract(protocol, slices)
+    manifest = protocol.manifest(
+        slices,
+        code_hash="c" * 40,
+        config_hash="d" * 64,
+        generated_ts_ms=1_000,
+        hypothesis_registry=registry,
+        evidence_epoch=epoch,
+    )
+
+    tampered = copy.deepcopy(manifest)
+    tampered["parameter_hash"] = "0" * 64
+    with pytest.raises(ValueError, match="checksum"):
+        validate_research_manifest(tampered)
+
+    mixed_epoch = replace(epoch, cost_profile="STRESS")
+    with pytest.raises(ValueError, match="섞였습니다"):
+        protocol.manifest(
+            slices,
+            code_hash="c" * 40,
+            config_hash="d" * 64,
+            generated_ts_ms=1_000,
+            hypothesis_registry=registry,
+            evidence_epoch=mixed_epoch,
+        )
 
 
 def test_chronological_split_enforces_purge_embargo_and_no_overlap() -> None:
