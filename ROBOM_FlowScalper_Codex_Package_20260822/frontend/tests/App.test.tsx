@@ -223,6 +223,33 @@ test('keeps controls locked until the backend PAPER contract is verified', async
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
 })
 
+test('shows every enabled entry candidate in the market summary', () => {
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
+  const dashboard = {
+    ...initialDashboard,
+    strategy_family_catalog: {
+      schema_version: 1 as const,
+      families: [],
+      inventory: {
+        schema: 'flowscalper.strategy_inventory.v1' as const,
+        registered_catalog_item_count: 16,
+        runtime_registry_variant_count: 15,
+        enabled_directional_entry_candidate_count: 6,
+        current_family_entry_representative_count: initialDashboard.strategies.length,
+        inactive_history_runtime_variant_count: 9,
+        catalog_virtual_filter_count: 1,
+        active_directional_entry_count: 0,
+      },
+      ...flatPaperSafety,
+    },
+  }
+
+  render(<MarketPage data={dashboard} onChartChange={vi.fn()} onStartLive={vi.fn()} onStartDemo={vi.fn()} busy={false} operation={null} onCancel={vi.fn()} onRetry={vi.fn()} />)
+
+  expect(within(screen.getByLabelText('시장 요약')).getByText('모의평가 전략')).toBeInTheDocument()
+  expect(within(screen.getByLabelText('시장 요약')).getByText('6개')).toBeInTheDocument()
+})
+
 test('uses exactly four primary pages without secondary navigation', async () => {
   vi.stubGlobal('fetch', splitDashboardFetch(initialDashboard))
   vi.stubGlobal('WebSocket', FakeWebSocket)

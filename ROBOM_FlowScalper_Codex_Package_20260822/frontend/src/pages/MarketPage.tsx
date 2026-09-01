@@ -263,6 +263,8 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, busy
   }
   const activeRows = !explorerEnabled ? fallbackCatalog(data) : catalog.length ? catalog : fallbackCatalog(data)
   const enabledStrategies = data.strategies.filter((strategy) => strategy.mode !== 'OFF' && (strategy.long_enabled || strategy.short_enabled))
+  const enabledEntryCandidateCount = data.strategy_family_catalog?.inventory?.enabled_directional_entry_candidate_count
+    ?? enabledStrategies.length
   const noTradeReason = enabledStrategies.find((strategy) => strategy.reason_ko)?.reason_ko
     || (data.operation_status.paper_entry_active ? '현재 전략의 세부 진입 조건을 기다리고 있습니다.' : data.operation_status.detail_ko)
   const operationNeedsDetail = data.operation_status.state !== 'RUNNING'
@@ -273,7 +275,7 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, busy
       <article><span>현재자산</span><b>{formatUsdt(data.status.current_equity_usdt, { equity: true })}</b></article>
       <article><span>오늘 순손익</span><b className={Number(data.status.realized_pnl_usdt) >= 0 ? 'positive' : 'negative'}>{formatUsdt(data.status.realized_pnl_usdt, { signed: true })}</b></article>
       <article><span>진행 PAPER</span><b>{data.focus_positions.length}건</b></article>
-      <article><span>켜진 전략</span><b>{enabledStrategies.length}개</b></article>
+      <article><span>모의평가 전략</span><b>{enabledEntryCandidateCount}개</b></article>
     </section>
     <header className={data.status.mode === 'READY' ? 'market-toolbar ready-mode' : 'market-toolbar'}>
       <div><h2 id="market-heading">{displayedFocus ? `${displayedFocus.symbol} 포지션 집중` : `${selectedMarket.symbol} 시장`}</h2><span>{displayedFocus ? `${sideLabel(displayedFocus.side)} · ${displayedFocus.strategy_display_name_ko} · ${costProfileLabel(displayedFocus.profile)} · ${paperAccountLabel(displayedFocus.account_id)} · PAPER` : selectedMarket.source === 'UPBIT_KRW' ? '관찰 전용 · KRW 현물' : data.status.market_data_state === 'LIVE' ? '실시간 공개시장 · PAPER만' : data.status.mode === 'DEMO_FIXTURE' ? '연습용 샘플 · 실시간 아님' : '공개시장 연결 대기'}</span></div>
