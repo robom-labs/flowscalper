@@ -692,7 +692,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 143 무진입 원인 분리와 전역 격리 실행 중 자동복구
 
-- 상태는 `IMPLEMENTED_VALIDATED_INSTALLED_BROWSER_PASS_GITHUB_PENDING`이다.
+- 상태는 `COMPLETE_WITH_LIMITS`다.
 - 같은 Run·현재 release에서 PAPER 진입 의도, 6개 기본 연구전략의 SHADOW·LONG·SHORT,
   12개 정밀종목, 공개시장 event·전략평가 전진, queue·저장·consumer·지연·안전잠금을 먼저
   대조한다. 자연 적격신호 0을 엔진 정지나 거래기록 최신화 오류로 단정하지 않는다.
@@ -714,5 +714,10 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   `RUNNING`, 공개시장 연결, PAPER 실제주문 0과 모의평가 전략 6개를 확인했다. 60.027초
   관찰은 event +5,188·전략평가 +4,068·신규 운영결함 0으로 PASS했지만 적격신호는 0이라
   현재 무진입은 계속 조건 미충족으로 분류한다.
-- GitHub main·Actions와 6시간·24시간은 실행 전까지 `NOT_RUN`, 수익성은 `NOT_PROVEN`,
+- 코드·테스트 기준 commit `d7ebc69103ef4a697f40ecbb85ee0d111b9a66b2`을 GitHub main과
+  업그레이드 브랜치에 동기화했다. 첫 Actions는 Linux 실행속도에 따라 가장 느린 내부 단계가
+  달라지는 진단 테스트 한 건으로 실패를 보존했고, 제품 코드는 바꾸지 않은 채 해당 테스트의
+  비대상 전략평가 시간을 격리했다. 최종 main Actions `33489127696`과 브랜치 Actions
+  `33489124714`의 validate·browser·증거 업로드는 모두 PASS했다.
+- 이번에 실제 시간을 채우지 않은 6시간·24시간은 `NOT_RUN`, 비용 후 수익성은 `NOT_PROVEN`,
   실자금 준비는 `NOT_READY`다.

@@ -4809,6 +4809,14 @@ BASE/STRESS 표본 증가는 모두 0이었다. 종료 직후 scanner 12행도 �
 | 불변 release·실제 8870 재설치 | `PASS_OBSERVED` | release `c4ad6c2`, 같은 Run·revision 50·RUNNING·LIVE·PAPER·실제주문 0 |
 | 실제 브라우저 | `PASS_OBSERVED` | 작동 중·연결됨·모의평가 전략 6개·거래 대기 사유·warning/error 0 |
 | 최종 60.027초 실행 관찰 | `PASS_OBSERVED_NO_SIGNAL` | event +5,188·평가 +4,068·queue 최대 19·신규 운영결함 0·적격신호 0 |
-| GitHub main·Actions | `NOT_RUN` | commit·push 전 |
+| GitHub main·Actions | `PASS_WITH_TEST_REPAIR` | 코드·테스트 commit `d7ebc69103ef4a697f40ecbb85ee0d111b9a66b2`, main Actions `33489127696`·브랜치 Actions `33489124714`의 validate·browser·증거 업로드 PASS |
 | 6시간·24시간 | `NOT_RUN` | 실제 경과 미충족 |
 | 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 무진입 원인·복구 회귀 통과는 비용후 수익성 증거가 아님 |
+
+첫 증거 push `8925345ee77dd7c1d126c4bc6fff04303fb0ae64`의 main Actions
+`33488308155`와 브랜치 Actions `33488305036`은 Linux 실행속도에 따라 전략평가가 인위적으로
+지연한 PAPER 단계보다 느려져, 가장 느린 처리단계를 확인하는 진단 테스트 한 건이 실패했다.
+제품 실행경로는 변경하지 않고 해당 테스트 안에서 비대상 전략평가 시간을 결정적으로 격리했다.
+수정 테스트는 로컬에서 3회 연속 PASS했고 전체 backend 1,531개도 다시 PASS했다. 최종 commit의
+두 Actions는 실제 Chromium E2E와 browser evidence upload까지 모두 PASS했다. 설치 서비스는
+제품 소스 commit `c4ad6c2`를 계속 실행하며 이후 commit은 문서·증거·테스트 격리만 포함한다.
