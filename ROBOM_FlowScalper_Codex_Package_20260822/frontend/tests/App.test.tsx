@@ -166,7 +166,7 @@ test('shows a compact matching immutable release in advanced diagnostics', async
 
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: '설정' }))
-  fireEvent.click(screen.getByText('고급 진단 보기'))
+  fireEvent.click(await screen.findByText('고급 진단 보기'))
 
   expect(await screen.findByText('실행 릴리스')).toBeInTheDocument()
   expect(screen.getByTitle(releaseCommit)).toHaveTextContent('aaaaaaaaaaaa')
@@ -196,7 +196,7 @@ test('separates local event-loop delay from public-market delay in diagnostics',
 
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: '설정' }))
-  fireEvent.click(screen.getByText('고급 진단 보기'))
+  fireEvent.click(await screen.findByText('고급 진단 보기'))
 
   expect(await screen.findByText('로컬 처리루프 최근 지연 ms')).toBeInTheDocument()
   expect(screen.getByText('로컬 처리루프 최대 지연 ms')).toBeInTheDocument()
@@ -235,7 +235,7 @@ test('uses exactly four primary pages without secondary navigation', async () =>
     ['시장', 'BTCUSDT 시장'],
   ]) {
     fireEvent.click(screen.getByRole('button', { name: button }))
-    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
     expect(screen.getByText('PAPER · 실제 주문 0')).toBeInTheDocument()
   }
   expect(within(screen.getByRole('navigation', { name: '주요 화면' })).getAllByRole('button')).toHaveLength(4)
@@ -248,7 +248,7 @@ test('returns to the default market through the primary navigation', async () =>
   render(<App />)
 
   fireEvent.click(await screen.findByRole('button', { name: '전략' }))
-  expect(screen.getByRole('heading', { name: '전략 한눈에 보기' })).toBeInTheDocument()
+  expect(await screen.findByRole('heading', { name: '전략 한눈에 보기' })).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '시장' }))
   expect(screen.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeInTheDocument()
 })

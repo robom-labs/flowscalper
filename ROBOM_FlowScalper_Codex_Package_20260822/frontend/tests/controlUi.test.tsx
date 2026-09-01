@@ -261,7 +261,7 @@ test('shows automatic safety waiting without a misleading manual resume button',
   expect(panel).toHaveTextContent('정상화되면 자동으로 다시 시작합니다.')
   expect(screen.queryByRole('button', { name: '새 진입 다시 시작' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '설정' }))
-  expect(screen.getByLabelText('자동 진입 제어 상태')).toHaveTextContent('작동 중 · 안전 대기')
+  expect(await screen.findByLabelText('자동 진입 제어 상태')).toHaveTextContent('작동 중 · 안전 대기')
   expect(screen.queryByRole('button', { name: '자동 관찰 계속하기' })).not.toBeInTheDocument()
 })
 

@@ -1,15 +1,15 @@
 // 시장을 기본으로 V6 네 화면과 PAPER 제어 상태를 조합하는 애플리케이션 루트다.
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Navigation } from './components/Navigation'
 import { SafetyHeader } from './components/SafetyHeader'
 import { useDashboard } from './hooks/useDashboard'
 import { MarketPage } from './pages/MarketPage'
-import { StrategiesPage } from './pages/StrategiesPage'
-import { TradesPage } from './pages/TradesPage'
-import { SettingsPage } from './pages/SettingsPage'
 import { compareReleaseCommits, readFrontendReleaseCommit } from './releaseCompatibility'
 import type { PageId } from './types'
 
+const StrategiesPage = lazy(() => import('./pages/StrategiesPage').then((module) => ({ default: module.StrategiesPage })))
+const TradesPage = lazy(() => import('./pages/TradesPage').then((module) => ({ default: module.TradesPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })))
 const researchPreferenceKey = 'robom.flowscalper.research-details'
 
 function initialResearchDetails() {
@@ -132,10 +132,12 @@ export default function App() {
       <Navigation page={page} onChange={changePage} />
       {globalError ? <p className="connection-error" role="alert">{globalError}</p> : null}
       {bootstrapState === 'LOADING' ? <p className="bootstrap-state" role="status">프로그램 상태를 불러오는 중입니다.</p> : null}
-      {page === 'market' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} busy={!connected || !safetyVerified || busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
-      {page === 'strategies' ? <StrategiesPage data={data} history={data.history} strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} researchDetails={researchDetails} controlsEnabled={connected && safetyVerified} selectedFamilyDetail={selectedFamilyDetail} onSelectFamily={selectStrategyFamily} onConfigure={changeStrategy} onRollback={undoStrategy} onConfigureFamilyResearch={configureStrategyFamilyResearch} /> : null}
-      {page === 'trades' ? <TradesPage data={data} /> : null}
-      {page === 'settings' ? <SettingsPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} researchDetails={researchDetails} onResearchDetailsChange={changeResearchDetails} onNewRun={newRun} /> : null}
+      <Suspense fallback={<p className="bootstrap-state" role="status" aria-live="polite">화면을 불러오는 중입니다.</p>}>
+        {page === 'market' ? <MarketPage data={data} onChartChange={(symbol, interval) => void changeChart(symbol, interval)} onStartLive={() => void runControl('start-live')} onStartDemo={() => void runControl('start-demo')} busy={!connected || !safetyVerified || busyAction !== null || immediateBusyAction !== null || Boolean(controlOperation && !['COMPLETED', 'FAILED_RETRYABLE', 'FAILED_BLOCKED', 'CANCELLED'].includes(controlOperation.state))} operation={controlOperation} onCancel={() => void cancelOperation()} onRetry={() => void retryOperation()} /> : null}
+        {page === 'strategies' ? <StrategiesPage data={data} history={data.history} strategies={data.strategies} leagueAccounts={data.league_accounts} analyticsReady={data.system.dashboard_trade_cache_ready !== false} researchDetails={researchDetails} controlsEnabled={connected && safetyVerified} selectedFamilyDetail={selectedFamilyDetail} onSelectFamily={selectStrategyFamily} onConfigure={changeStrategy} onRollback={undoStrategy} onConfigureFamilyResearch={configureStrategyFamilyResearch} /> : null}
+        {page === 'trades' ? <TradesPage data={data} /> : null}
+        {page === 'settings' ? <SettingsPage data={data} connected={connected} lastUpdateMs={lastUpdateMs} researchDetails={researchDetails} onResearchDetailsChange={changeResearchDetails} onNewRun={newRun} /> : null}
+      </Suspense>
     </main>
   )
 }
