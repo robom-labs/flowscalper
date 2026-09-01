@@ -1253,6 +1253,11 @@ def test_live_book_event_reports_slowest_processing_phase(monkeypatch) -> None:
         original_on_book(book)
 
     monkeypatch.setattr(runtime.paper_portfolio, "on_book", slow_on_book)
+    monkeypatch.setattr(
+        PaperRuntime,
+        "_evaluate_prepared_strategy",
+        lambda _runtime, _prepared: (),
+    )
 
     runtime.ingest_live_event(event, defer_execution_persistence=True)
     diagnostics = runtime._operational_diagnostics()
