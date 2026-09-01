@@ -4692,3 +4692,43 @@ false, settings revision은 25, 이유는 `V6_MAINTENANCE_PAUSE`였다.
 | V6 release·설치·설치된 8870 browser·remote push | `NOT_RUN` | 자동화 fixture 검증은 설치·실서비스·외부 동기화를 대신하지 않음 |
 | 실제 주문·private API·인증·wallet | `PASS_SOURCE_CONTRACT` | 모두 0, stopped runtime은 시작하지 않음 |
 | 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 코드·fixture·문서 통과는 수익성 증거가 아님 |
+
+## 104. V10 중단타·스윙·횡단면 연구 사전등록과 비노출 경계
+
+### 104.1 범위와 현재 상태
+
+V10은 `SWING_MULTI_HORIZON_TREND_4H1D_V1`, `DAILY_DONCHIAN_RETEST_1D4H_V1`,
+`CFTC_CME_BITCOIN_CROWDING_FILTER_V1`, `CRYPTO_FUTURES_CURVE_REGIME_FILTER_V1`,
+`RESIDUAL_14D_RELATIVE_STRENGTH_V1`, `BASIS_MOMENTUM_CROSS_SECTIONAL_RESEARCH_V1`의
+정확히 6개 연구 후보를 사전등록한다. 역할은 방향 entry 3개(`ENTRY` 2개와
+`ENTRY_RESEARCH` 1개), `FILTER` 2개, `MARKET_NEUTRAL_MULTI_LEG` 1개다.
+
+이 후보들은 기존 V6 runtime Registry 15개와 기본 current entry representative 3개를 늘리지
+않으며 V9의 추적 ON 12개 manifest와도 합치지 않는다. 기본 OFF는 V10 신규 후보에만 적용하고
+기존 실행 가능 V6 SHADOW 후보 6개의 기본 연구 ON은 유지한다. V10은 사용자 기본 UI hidden·
+최종순위 제외·PAPER trial 전용이고 runtime entry 0, `ACTIVE` 0이다. 후보별 채택 이유, V6/V9
+중복과 차이, exact readiness, OOS gate와 공식 출처 경계는
+`docs/research/V10_SWING_AND_CROSS_SECTIONAL_CANDIDATE_PREREGISTRATION_KO.md`에 고정했다.
+
+`CME_WEEKEND_GAP_FILL`은 2026-05-29 CME crypto 24/7 전환 뒤에도 금요일 폐장·일요일 재개장을
+고정 전제로 쓰므로 `REJECTED / OBSOLETE_REGIME`다. 전환 전·후 epoch를 분리한 별도 연구가
+아니면 현재 후보로 되살리지 않는다.
+
+### 104.2 검증 행렬
+
+| 검증 | 상태 | 이번 실행 근거 |
+|---|---|---|
+| V10 6개 candidate registry·역할·집계 | `PASS` | 전용 registry 계약 10개 PASS. exact ID·role·readiness, 3/2/1 집계, deterministic SHA, 차단·PAPER 불변조건 확인 |
+| V10 사전등록 문서 대조 | `PASS` | 사용자 제공 V10 명세와 CFTC·CME 공식 source를 교차검토하고 중복·차이·gate·readiness를 문서에 고정 |
+| 기본 runtime Registry·API·UI 비노출 | `PASS_FIXTURE_ONLY` | 전용 비노출 계약 1개 PASS. V6 Registry 15·catalog 16·대표 3과 V9 12를 보존하고 V10 ID 노출 0 확인 |
+| CFTC code·release lag 경계 | `PASS_SOURCE_AUDIT` | CFTC 현재표·2026-06-02 보관본에서 133741·133742 확인, report date와 schedule·first observed를 분리 |
+| CME 24/7 전환·주말갭 폐기 | `PASS_SOURCE_AUDIT` | CME 출시 발표·Globex notice에서 2026-05-29 전환과 maintenance·trade-date 경계 확인 |
+| V8·V9 연구·전략 Registry 회귀 | `PASS` | V8/V9 foundation·source·statistics, V10, strategy shadow 복구·contamination 253개 PASS |
+| macOS HEAD staging·원자성 회귀 | `PASS_SOURCE_CONTRACT` | `git archive` 병목 우회, blob hash·권한·변조·timeout·symlink·current 보존을 포함한 설치 계약 135개 PASS. 실제 설치는 아직 NOT_RUN |
+| 변경 파일 정적 검사 | `PASS` | Ruff 대상 파일 PASS, mypy V10·source·staging 3개 source PASS, frontend TypeScript PASS |
+| offline screen·walk-forward | `NOT_RUN` | 고정 입력 실행 전, 후보 성과를 생성하지 않음 |
+| event replay·full PAPER replay | `NOT_RUN` | replay 실행 전 |
+| SHADOW·CHALLENGER·ACTIVE | `NOT_RUN / ACTIVE_0` | runtime entry 등록과 승격 0 |
+| 설치된 8870 browser·30분·6시간·24시간 | `NOT_RUN` | source fixture는 설치 서비스와 실제 wall-clock 증거가 아님 |
+| 실제 주문·private API·인증·wallet·runtime AI | `PASS_SOURCE_CONTRACT` | 후보 계약은 PAPER-only이며 해당 경로 0. 실제 서비스 관찰은 NOT_RUN |
+| 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 사전등록·source audit·단위검사는 비용후 OOS 수익성 증거가 아님 |

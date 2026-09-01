@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,8 @@ from typing import Any
 from uuid import uuid4
 
 GIT_ARCHIVE_TIMEOUT_SECONDS = 300
+WORKTREE_COPY_TIMEOUT_SECONDS = 600
+WORKTREE_COPY_CHUNK_BYTES = 1024 * 1024
 _COMMIT_DIRECTORY = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _RELEASE_MANIFEST_NAME = "release-manifest.json"
@@ -43,6 +46,17 @@ def _run_git(source_root: Path, *arguments: str) -> str:
         timeout=30,
     )
     return result.stdout.strip()
+
+
+def _run_git_bytes(source_root: Path, *arguments: str) -> bytes:
+    result = subprocess.run(
+        ["git", *arguments],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+    return result.stdout
 
 
 def _sha256(path: Path) -> str:
@@ -95,6 +109,119 @@ def _extract_commit(source_root: Path, commit: str, destination: Path) -> None:
             archive.extractall(destination, filter="data")
     finally:
         archive_path.unlink(missing_ok=True)
+
+
+def _assert_worktree_commit_binding(source_root: Path, commit: str) -> None:
+    if _run_git(source_root, "rev-parse", "HEAD") != commit:
+        raise RuntimeError("릴리스 준비 중 source HEAD가 변경됐습니다.")
+    commit_tree = _run_git(source_root, "rev-parse", f"{commit}^{{tree}}")
+    if _run_git(source_root, "write-tree") != commit_tree:
+        raise RuntimeError("릴리스 source index가 SOURCE_COMMIT tree와 다릅니다.")
+    if _run_git(source_root, "status", "--porcelain", "--untracked-files=all"):
+        raise RuntimeError(
+            "추적 또는 미추적 파일 변경이 남아 있어 불변 릴리스를 만들 수 없습니다."
+        )
+
+
+def _commit_tree_entries(
+    source_root: Path,
+    commit: str,
+) -> tuple[tuple[Path, str, int], ...]:
+    raw_entries = _run_git_bytes(
+        source_root,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--full-tree",
+        commit,
+    )
+    entries: list[tuple[Path, str, int]] = []
+    for raw_entry in raw_entries.split(b"\0"):
+        if not raw_entry:
+            continue
+        metadata, separator, raw_path = raw_entry.partition(b"\t")
+        if not separator or not raw_path:
+            raise RuntimeError("SOURCE_COMMIT tree 항목 형식이 올바르지 않습니다.")
+        try:
+            raw_mode, object_type, object_id = metadata.decode("ascii").split()
+            path_text = raw_path.decode("utf-8")
+        except (UnicodeDecodeError, ValueError) as error:
+            raise RuntimeError(
+                "SOURCE_COMMIT tree 항목을 안전하게 해석할 수 없습니다."
+            ) from error
+        if (
+            object_type != "blob"
+            or raw_mode not in {"100644", "100755"}
+            or _COMMIT_DIRECTORY.fullmatch(object_id) is None
+        ):
+            raise RuntimeError(
+                "SOURCE_COMMIT tree에는 regular file만 허용합니다: "
+                f"{raw_mode} {object_type} {path_text}"
+            )
+        relative_path = Path(path_text)
+        if (
+            relative_path.is_absolute()
+            or ".." in relative_path.parts
+            or relative_path.as_posix() != path_text
+        ):
+            raise RuntimeError(
+                f"SOURCE_COMMIT tree 경로가 안전하지 않습니다: {path_text}"
+            )
+        entries.append((relative_path, object_id, int(raw_mode, 8)))
+    return tuple(entries)
+
+
+def _copy_verified_worktree_commit(
+    source_root: Path,
+    commit: str,
+    destination: Path,
+) -> None:
+    """현재 commit의 regular file만 작업트리에서 blob 검증하며 직접 복사한다."""
+
+    _assert_worktree_commit_binding(source_root, commit)
+    destination_root = destination.resolve(strict=True)
+    deadline = time.monotonic() + WORKTREE_COPY_TIMEOUT_SECONDS
+    for relative_path, expected_object_id, git_mode in _commit_tree_entries(source_root, commit):
+        if time.monotonic() >= deadline:
+            raise TimeoutError(
+                f"검증된 작업트리 복사가 {WORKTREE_COPY_TIMEOUT_SECONDS}초를 초과했습니다."
+            )
+        source_path = source_root / relative_path
+        if source_path.is_symlink() or not source_path.is_file():
+            raise RuntimeError(f"릴리스 source가 regular file이 아닙니다: {relative_path}")
+        resolved_source = source_path.resolve(strict=True)
+        if not resolved_source.is_relative_to(source_root):
+            raise RuntimeError(
+                f"릴리스 source 경로가 repository 밖입니다: {relative_path}"
+            )
+        source_size = source_path.stat(follow_symlinks=False).st_size
+        digest = hashlib.sha1(usedforsecurity=False)
+        digest.update(f"blob {source_size}\0".encode("ascii"))
+        copied_size = 0
+        target_path = destination_root / relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved_target = target_path.resolve(strict=False)
+        if not resolved_target.is_relative_to(destination_root):
+            raise RuntimeError(f"릴리스 대상 경로가 staging 밖입니다: {relative_path}")
+        with source_path.open("rb") as source, target_path.open("xb") as target:
+            while True:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"검증된 작업트리 복사가 {WORKTREE_COPY_TIMEOUT_SECONDS}초를 초과했습니다."
+                    )
+                chunk = source.read(WORKTREE_COPY_CHUNK_BYTES)
+                if not chunk:
+                    break
+                digest.update(chunk)
+                target.write(chunk)
+                copied_size += len(chunk)
+        if copied_size != source_size or digest.hexdigest() != expected_object_id:
+            raise RuntimeError(
+                "릴리스 source 파일이 SOURCE_COMMIT blob과 다릅니다: "
+                f"{relative_path}"
+            )
+        target_path.chmod(0o755 if git_mode == 0o100755 else 0o644)
+    _assert_worktree_commit_binding(source_root, commit)
 
 
 def _build_frontend(snapshot_root: Path, source_root: Path, commit: str) -> None:
@@ -746,11 +873,10 @@ def stage_release(
     runtime_root = runtime_root.resolve()
     market_archive_path = market_archive_path.resolve(strict=True)
     active_ledger_dir = active_ledger_dir.resolve()
-    if _run_git(source_root, "status", "--porcelain", "--untracked-files=all"):
-        raise RuntimeError("추적 또는 미추적 파일 변경이 남아 있어 불변 릴리스를 만들 수 없습니다.")
     commit = _run_git(source_root, "rev-parse", "HEAD")
     if len(commit) != 40:
         raise RuntimeError(f"Git commit 형식이 올바르지 않습니다: {commit}")
+    _assert_worktree_commit_binding(source_root, commit)
     releases_root = runtime_root / "releases"
     releases_root.mkdir(parents=True, exist_ok=True)
     release_path = releases_root / commit
@@ -760,7 +886,7 @@ def stage_release(
     staging.mkdir(mode=0o700)
     previous = current_release(runtime_root)
     try:
-        _extract_commit(source_root, commit, staging)
+        _copy_verified_worktree_commit(source_root, commit, staging)
         if build_frontend:
             _build_frontend(staging, source_root, commit)
         else:

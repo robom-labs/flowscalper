@@ -309,6 +309,125 @@ _V9_SOURCES = (
 _SOURCES.update({row.source_id: row for row in _V9_SOURCES})
 
 
+def _v10_source(
+    source_id: str,
+    title: str,
+    publisher: str,
+    date: str,
+    url: str | None,
+    idea_used: str,
+    our_modification: str,
+    *,
+    metadata_status: str = "OFFICIAL_PRIMARY_SOURCE",
+) -> ResearchSourceMetadata:
+    """V10 후보의 공식 출처와 검증 대기 출처를 명시적으로 구분한다."""
+
+    return ResearchSourceMetadata(
+        source_id=source_id,
+        title=title,
+        publisher=publisher,
+        date=date,
+        url=url,
+        idea_used=idea_used,
+        our_modification=our_modification,
+        metadata_status=metadata_status,
+    )
+
+
+_V10_SOURCES = (
+    _v10_source(
+        "SRC-CFTC-TFF-FUTURES-ONLY",
+        "Commitments of Traders Short Report: Financial Traders in Markets",
+        "U.S. Commodity Futures Trading Commission",
+        "상시 갱신",
+        "https://www.cftc.gov/dea/futures/financial_lf.htm",
+        "TFF Futures Only의 Bitcoin 133741과 Micro Bitcoin 133742를 구분합니다.",
+        "CFTC 계약시장 코드를 상품 ticker로 바꾸지 않고 보고서 기준일·수집시각·"
+        "응답 hash를 함께 보존합니다.",
+    ),
+    _v10_source(
+        "SRC-CFTC-COT-RELEASE-SCHEDULE",
+        "Commitments of Traders Release Schedule",
+        "U.S. Commodity Futures Trading Commission",
+        "상시 갱신",
+        "https://www.cftc.gov/MarketReports/CommitmentsofTraders/ReleaseSchedule/index.htm",
+        "COT의 공식 연도별 공개일과 휴일 지연을 availability gate에 사용합니다.",
+        "America/New_York 15:30 예정시각과 실제 first-observed 시각을 분리하고 "
+        "단순 화요일+3일 계산을 금지합니다.",
+    ),
+    _v10_source(
+        "SRC-CFTC-COT-HISTORICAL-VIEWABLE",
+        "Commitments of Traders Historical Viewable",
+        "U.S. Commodity Futures Trading Commission",
+        "상시 갱신",
+        "https://www.cftc.gov/MarketReports/CommitmentsofTraders/HistoricalViewable/index.htm",
+        "보관 페이지 날짜가 report date이며 release timestamp가 아님을 구분합니다.",
+        "관측 이력이 없는 archive 날짜를 실제 공개시각으로 소급 사용하지 않습니다.",
+    ),
+    _v10_source(
+        "SRC-CME-CRYPTO-24X7-LAUNCH-2026",
+        "CME Group Announces Launch of 24/7 Cryptocurrency Futures and Options Trading",
+        "CME Group",
+        "2026-06-01",
+        "https://investor.cmegroup.com/news-releases/news-release-details/cme-group-announces-launch-247-cryptocurrency-futures-and",
+        "2026-05-29의 실제 CME crypto 24/7 전환을 시장구조 epoch로 사용합니다.",
+        "전환 이후 Friday-close·Sunday-reopen 고정 gap 가설을 현재 전략에서 제외합니다.",
+    ),
+    _v10_source(
+        "SRC-CME-GLOBEX-CRYPTO-24X7-20260525",
+        "CME Globex Notice: May 25, 2026",
+        "CME Group",
+        "2026-05-25",
+        "https://www.cmegroup.com/notices/electronic-trading/2026/05/20260525.html",
+        "2026-05-29 16:00 America/Chicago 전환과 주간 maintenance 예외를 고정합니다.",
+        "주말 trade date와 달력일을 합치지 않고 최소 2시간 maintenance를 무시하지 않습니다.",
+    ),
+    _v10_source(
+        "SRC-CME-CRYPTO-24X7-REGIME-2026",
+        "Aligning Cryptocurrency Derivatives with Spot Markets: "
+        "Measuring the 24/7 Trading Opportunity",
+        "CME Group",
+        "2026",
+        "https://www.cmegroup.com/articles/2026/aligning-cryptocurrency-derivatives-with-spot-markets-measuring-the-247-trading-opportunity.html",
+        "전통적 금요일 폐장·일요일 재개 구간이 24/7 도입으로 바뀐 범위를 확인합니다.",
+        "전환 전·후 microstructure epoch를 혼합하지 않으며 모든 주말 불연속이 "
+        "사라졌다고 과장하지 않습니다.",
+    ),
+    _v10_source(
+        "SRC-CRYPTO-FUTURES-RISK-FACTORS-2023",
+        "An empirical investigation on risk factors in cryptocurrency futures",
+        "V10 통합마스터지침 등록 출처",
+        "2023",
+        None,
+        "Futures basis와 횡단면 수익의 관계를 검증할 연구가설로만 등록합니다.",
+        "원문·DOI 검증과 walk-forward sign stability 전에는 방향 부호나 수익성을 "
+        "주장하지 않습니다.",
+        metadata_status="REGISTERED_FROM_V10_SPEC_UNVERIFIED",
+    ),
+    _v10_source(
+        "SRC-DYNAMIC-CRYPTO-TSMOM-2021",
+        "Dynamic time series momentum of cryptocurrencies",
+        "V10 통합마스터지침 등록 출처",
+        "2021",
+        None,
+        "다중 시간축 crypto momentum을 V10 스윙 연구가설로만 등록합니다.",
+        "원문 메타데이터와 현재 PAPER OOS를 검증하기 전에는 성과를 이전하지 않습니다.",
+        metadata_status="REGISTERED_FROM_V10_SPEC_UNVERIFIED",
+    ),
+    _v10_source(
+        "SRC-CRYPTO-MOMENTUM-REVERSAL-2021",
+        "Cryptocurrency Momentum and Reversal",
+        "V10 통합마스터지침 등록 출처",
+        "2021",
+        None,
+        "Momentum·reversal 분리를 스윙 및 잔차강도 연구가설로만 등록합니다.",
+        "논문 방향·기간 결과를 현재 crypto PAPER 수익성으로 일반화하지 않습니다.",
+        metadata_status="REGISTERED_FROM_V10_SPEC_UNVERIFIED",
+    ),
+)
+_SOURCES.update({row.source_id: row for row in _V10_SOURCES})
+
+
 def research_source_metadata(source_id: str) -> dict[str, str | None]:
     source = _SOURCES.get(source_id)
     if source is not None:

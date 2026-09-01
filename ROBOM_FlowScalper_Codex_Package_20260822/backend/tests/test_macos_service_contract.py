@@ -11,7 +11,6 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -262,6 +261,14 @@ def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> N
     assert 'payload.get("status") != "STAGED"' in installer
     assert "GIT_ARCHIVE_TIMEOUT_SECONDS = 300" in stage
     assert "timeout=GIT_ARCHIVE_TIMEOUT_SECONDS" in stage
+    assert "WORKTREE_COPY_TIMEOUT_SECONDS = 600" in stage
+    assert '"ls-tree"' in stage
+    assert "hashlib.sha1(usedforsecurity=False)" in stage
+    stage_release_source = stage[
+        stage.index("def stage_release(") : stage.index("def _default_runtime_root(")
+    ]
+    assert "_copy_verified_worktree_commit(source_root, commit, staging)" in stage_release_source
+    assert "_extract_commit(source_root, commit, staging)" not in stage_release_source
     assert "stdout=sys.stderr" in stage
     assert "stderr=sys.stderr" in stage
 
@@ -2450,25 +2457,22 @@ def test_staged_release_is_unchanged_when_worktree_assets_and_source_change(
     )
 
 
-def test_release_archive_temp_file_stays_on_runtime_volume(
+def test_current_release_staging_bypasses_git_archive(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source, runtime, market_archive, ledger = _release_fixture(tmp_path)
-    observed_directories: list[Path | None] = []
-    real_named_temporary_file = tempfile.NamedTemporaryFile
 
-    def observed_named_temporary_file(*args: object, **kwargs: object) -> object:
-        directory = kwargs.get("dir")
-        observed_directories.append(Path(directory) if directory is not None else None)
-        return real_named_temporary_file(*args, **kwargs)
+    def reject_archive(*_: object) -> None:
+        raise AssertionError("현재 HEAD staging은 git archive를 호출하면 안 됩니다.")
 
     monkeypatch.setattr(
-        "scripts.stage_macos_release.tempfile.NamedTemporaryFile",
-        observed_named_temporary_file,
+        stage_macos_release_module,
+        "_extract_commit",
+        reject_archive,
     )
 
-    stage_release(
+    manifest = stage_release(
         source,
         runtime,
         market_archive,
@@ -2477,7 +2481,135 @@ def test_release_archive_temp_file_stays_on_runtime_volume(
         prebuilt_frontend_dist=source / "frontend" / "dist",
     )
 
-    assert observed_directories == [(runtime / "releases").resolve()]
+    release = Path(str(manifest["release_path"]))
+    assert manifest["commit"] == _git(source, "rev-parse", "HEAD")
+    assert (release / "backend.py").read_bytes() == (source / "backend.py").read_bytes()
+
+
+def test_verified_worktree_copy_preserves_executable_mode_and_source_commit(
+    tmp_path: Path,
+) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    command = source / "scripts" / "tracked.command"
+    command.parent.mkdir()
+    command.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    command.chmod(0o755)
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "add tracked executable")
+
+    manifest = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+
+    release = Path(str(manifest["release_path"]))
+    release_command = release / "scripts" / "tracked.command"
+    assert manifest["commit"] == _git(source, "rev-parse", "HEAD")
+    assert release_command.read_bytes() == command.read_bytes()
+    assert release_command.stat().st_mode & 0o777 == 0o755
+
+
+def test_verified_worktree_copy_timeout_cleans_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    commit = _git(source, "rev-parse", "HEAD")
+    monkeypatch.setattr(stage_macos_release_module, "WORKTREE_COPY_TIMEOUT_SECONDS", 0)
+
+    with pytest.raises(TimeoutError, match="작업트리 복사가 0초"):
+        stage_release(
+            source,
+            runtime,
+            market_archive,
+            ledger,
+            build_frontend=False,
+            prebuilt_frontend_dist=source / "frontend" / "dist",
+        )
+
+    releases = runtime / "releases"
+    assert not (releases / commit).exists()
+    assert not tuple(releases.glob(".staging-*"))
+    assert current_release(runtime) is None
+
+
+def test_source_blob_change_during_copy_cleans_staging_and_keeps_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    first = stage_release(
+        source,
+        runtime,
+        market_archive,
+        ledger,
+        build_frontend=False,
+        prebuilt_frontend_dist=source / "frontend" / "dist",
+    )
+    first_release = Path(str(first["release_path"]))
+    activate_release(runtime, first_release)
+    (source / "backend.py").write_text("RELEASE = 2\n", encoding="utf-8")
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "fixture release two")
+    second_commit = _git(source, "rev-parse", "HEAD")
+    real_commit_tree_entries = stage_macos_release_module._commit_tree_entries
+
+    def mutate_after_tree_listing(
+        repository: Path,
+        commit: str,
+    ) -> tuple[tuple[Path, str, int], ...]:
+        entries = real_commit_tree_entries(repository, commit)
+        (repository / "backend.py").write_text("RELEASE = 999\n", encoding="utf-8")
+        return entries
+
+    monkeypatch.setattr(
+        stage_macos_release_module,
+        "_commit_tree_entries",
+        mutate_after_tree_listing,
+    )
+
+    with pytest.raises(RuntimeError, match="SOURCE_COMMIT blob"):
+        stage_release(
+            source,
+            runtime,
+            market_archive,
+            ledger,
+            build_frontend=False,
+            prebuilt_frontend_dist=source / "frontend" / "dist",
+        )
+
+    releases = runtime / "releases"
+    assert current_release(runtime) == first_release.resolve()
+    assert not (releases / second_commit).exists()
+    assert not tuple(releases.glob(".staging-*"))
+
+
+def test_current_release_staging_rejects_committed_symlink_and_cleans_staging(
+    tmp_path: Path,
+) -> None:
+    source, runtime, market_archive, ledger = _release_fixture(tmp_path)
+    (source / "linked-backend.py").symlink_to("backend.py")
+    _git(source, "add", ".")
+    _git(source, "commit", "-m", "add forbidden symlink")
+    commit = _git(source, "rev-parse", "HEAD")
+
+    with pytest.raises(RuntimeError, match="regular file만 허용"):
+        stage_release(
+            source,
+            runtime,
+            market_archive,
+            ledger,
+            build_frontend=False,
+            prebuilt_frontend_dist=source / "frontend" / "dist",
+        )
+
+    releases = runtime / "releases"
+    assert not (releases / commit).exists()
+    assert not tuple(releases.glob(".staging-*"))
 
 
 def test_release_pointer_switch_records_rollback_and_can_restore_previous_release(
