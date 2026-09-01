@@ -24,9 +24,85 @@ from backend.app.ops import ProcessResourceSampler
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import DiskUsage, ParquetEventStore, StoragePressureError
 from backend.app.storage.sqlite import SQLiteLedger
+from backend.app.strategies.process_evaluator import (
+    ProcessStrategyEvaluator,
+    StrategyEvaluationRequest,
+    StrategyEvaluationResult,
+)
 from backend.tests.test_candidate_paper_portfolio import candidate_plan
 from backend.tests.test_storage_replay_analytics import _sample_trade
 from scripts.soak_live import maximum_observed_growth
+
+
+def _slow_strategy_process_worker(
+    request: StrategyEvaluationRequest,
+) -> StrategyEvaluationResult:
+    """실제 spawn 프로세스의 비동기 평가 경계를 검증한다."""
+
+    assert request.snapshot.symbol == "BTCUSDT"
+    time.sleep(0.25)
+    return StrategyEvaluationResult(signals=(), condition_rows=())
+
+
+class _AsyncFakeProcessEvaluator:
+    """취소·단일 순서·중간 잠금을 결정적으로 제어하는 테스트 프로세스 경계다."""
+
+    def __init__(
+        self,
+        *,
+        delay_seconds: float = 0.0,
+        release: asyncio.Event | None = None,
+    ) -> None:
+        self.delay_seconds = delay_seconds
+        self.release = release
+        self.started = asyncio.Event()
+        self.completed_symbols: list[str] = []
+        self.in_flight = 0
+        self.max_in_flight = 0
+        self._lock = asyncio.Lock()
+
+    @staticmethod
+    def request(**kwargs) -> StrategyEvaluationRequest:
+        return StrategyEvaluationRequest.from_registry(**kwargs)
+
+    async def evaluate_to_completion(
+        self,
+        request: StrategyEvaluationRequest,
+    ) -> tuple[StrategyEvaluationResult, asyncio.CancelledError | None]:
+        cancellation: asyncio.CancelledError | None = None
+        async with self._lock:
+            self.in_flight += 1
+            self.max_in_flight = max(self.max_in_flight, self.in_flight)
+            self.started.set()
+
+            async def finish() -> StrategyEvaluationResult:
+                if self.release is not None:
+                    await self.release.wait()
+                elif self.delay_seconds:
+                    await asyncio.sleep(self.delay_seconds)
+                self.completed_symbols.append(request.snapshot.symbol)
+                return StrategyEvaluationResult(signals=(), condition_rows=())
+
+            worker = asyncio.create_task(finish())
+            try:
+                while True:
+                    try:
+                        return await asyncio.shield(worker), cancellation
+                    except asyncio.CancelledError as error:
+                        cancellation = error
+            finally:
+                self.in_flight -= 1
+
+    @staticmethod
+    def accept_result(
+        _request: StrategyEvaluationRequest,
+        _result: StrategyEvaluationResult,
+    ) -> bool:
+        return True
+
+    async def aclose(self) -> None:
+        if self.release is not None:
+            self.release.set()
 
 
 def test_process_resource_sampler_reports_actual_cpu_memory_and_disk(tmp_path: Path) -> None:
@@ -360,33 +436,31 @@ async def test_live_strategy_evaluation_does_not_block_event_loop(monkeypatch) -
         ),
         data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
     )
-    evaluation_started = threading.Event()
-    evaluation_finished = threading.Event()
     stop_ticker = asyncio.Event()
     ticks_during_evaluation = 0
-
-    def slow_evaluate(*_args, **_kwargs):
-        evaluation_started.set()
-        time.sleep(0.25)
-        evaluation_finished.set()
-        return []
 
     async def ticker() -> None:
         nonlocal ticks_during_evaluation
         while not stop_ticker.is_set():
             await asyncio.sleep(0.005)
-            if evaluation_started.is_set() and not evaluation_finished.is_set():
-                ticks_during_evaluation += 1
+            ticks_during_evaluation += 1
 
-    monkeypatch.setattr(runtime.strategy_evaluator, "evaluate", slow_evaluate)
+    evaluator = ProcessStrategyEvaluator(worker_function=_slow_strategy_process_worker)
+    runtime._live_strategy_evaluator = evaluator
 
-    ticker_task = asyncio.create_task(ticker())
-    await asyncio.sleep(0)
-    await runtime.ingest_live_event_async(event)
-    stop_ticker.set()
-    await ticker_task
+    ticker_task: asyncio.Task[None] | None = None
+    try:
+        process_id = await evaluator.warm(runtime._strategy_process_state_key())
+        assert process_id > 0
+        ticker_task = asyncio.create_task(ticker())
+        await asyncio.sleep(0)
+        await runtime.ingest_live_event_async(event)
+    finally:
+        stop_ticker.set()
+        if ticker_task is not None:
+            await ticker_task
+        await evaluator.aclose()
 
-    assert evaluation_finished.is_set()
     assert ticks_during_evaluation >= 5
 
 
@@ -416,27 +490,10 @@ async def test_cancelled_live_evaluation_drains_single_worker_before_rethrow(mon
             data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
         )
 
-    evaluation_started = threading.Event()
-    in_flight = 0
-    max_in_flight = 0
-    in_flight_lock = threading.Lock()
-    completed_workers: list[str] = []
     applied_events: list[str] = []
     lifecycle: list[str] = []
-
-    def slow_evaluate(_registry, snapshot, _regime, **_kwargs):
-        nonlocal in_flight, max_in_flight
-        with in_flight_lock:
-            in_flight += 1
-            max_in_flight = max(max_in_flight, in_flight)
-        evaluation_started.set()
-        try:
-            time.sleep(0.15)
-            completed_workers.append(snapshot.symbol)
-            return ()
-        finally:
-            with in_flight_lock:
-                in_flight -= 1
+    evaluator = _AsyncFakeProcessEvaluator(delay_seconds=0.15)
+    runtime._live_strategy_evaluator = evaluator  # type: ignore[assignment]
 
     def record_completion(
         _self: PaperRuntime,
@@ -444,22 +501,25 @@ async def test_cancelled_live_evaluation_drains_single_worker_before_rethrow(mon
         _signals,
         *,
         persist_execution: bool,
+        process_request,
+        process_result,
     ) -> None:
         assert persist_execution is False
+        assert isinstance(process_request, StrategyEvaluationRequest)
+        assert isinstance(process_result, StrategyEvaluationResult)
         applied_events.append(prepared.event.event_id)
 
     def record_persistence(_self: PaperRuntime, ts_ms: int) -> bool:
         lifecycle.append(f"persist:{ts_ms}")
         return True
 
-    monkeypatch.setattr(runtime.strategy_evaluator, "evaluate", slow_evaluate)
     monkeypatch.setattr(PaperRuntime, "_complete_strategy_evaluation", record_completion)
     monkeypatch.setattr(PaperRuntime, "_has_unpersisted_execution_state", lambda _self: True)
     monkeypatch.setattr(PaperRuntime, "_persist_execution_state_safely", record_persistence)
 
     first = asyncio.create_task(runtime.ingest_live_event_async(depth("BTCUSDT", 1_000)))
     first.add_done_callback(lambda _task: lifecycle.append("cancelled_rethrown"))
-    assert await asyncio.wait_for(asyncio.to_thread(evaluation_started.wait, 2), timeout=3)
+    await asyncio.wait_for(evaluator.started.wait(), timeout=3)
     second = asyncio.create_task(runtime.ingest_live_event_async(depth("ETHUSDT", 2_000)))
     first.cancel()
 
@@ -471,8 +531,8 @@ async def test_cancelled_live_evaluation_drains_single_worker_before_rethrow(mon
 
     assert isinstance(first_result, asyncio.CancelledError)
     assert second_result is None
-    assert completed_workers == ["BTCUSDT", "ETHUSDT"]
-    assert max_in_flight == 1
+    assert evaluator.completed_symbols == ["BTCUSDT", "ETHUSDT"]
+    assert evaluator.max_in_flight == 1
     assert applied_events == ["depth-cancelled-ethusdt"]
     assert lifecycle.index("persist:1000") < lifecycle.index("cancelled_rethrown")
 
@@ -500,8 +560,7 @@ async def test_supervisor_lock_during_evaluation_pauses_completed_offer(monkeypa
         ),
         data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
     )
-    evaluation_started = threading.Event()
-    release_evaluation = threading.Event()
+    release_evaluation = asyncio.Event()
     observed_entry_locks: list[bool] = []
 
     class SupervisorStub:
@@ -517,22 +576,18 @@ async def test_supervisor_lock_during_evaluation_pauses_completed_offer(monkeypa
         def running() -> bool:
             return True
 
-    def slow_evaluate(*_args, **_kwargs):
-        evaluation_started.set()
-        assert release_evaluation.wait(timeout=2)
-        return ()
-
     def record_offer(_self, _plans, *, entries_paused: bool) -> None:
         observed_entry_locks.append(entries_paused)
 
     supervisor = SupervisorStub()
     runtime._supervisor = supervisor  # type: ignore[assignment]
     runtime.paused = False
-    monkeypatch.setattr(runtime.strategy_evaluator, "evaluate", slow_evaluate)
+    evaluator = _AsyncFakeProcessEvaluator(release=release_evaluation)
+    runtime._live_strategy_evaluator = evaluator  # type: ignore[assignment]
     monkeypatch.setattr(type(runtime.paper_portfolio), "offer", record_offer)
 
     ingest_task = asyncio.create_task(runtime.ingest_live_event_async(event))
-    assert await asyncio.wait_for(asyncio.to_thread(evaluation_started.wait, 2), timeout=3)
+    await asyncio.wait_for(evaluator.started.wait(), timeout=3)
     supervisor.telemetry.entry_locked = True
     release_evaluation.set()
     await ingest_task

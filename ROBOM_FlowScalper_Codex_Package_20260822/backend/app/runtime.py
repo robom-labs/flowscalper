@@ -88,6 +88,11 @@ from backend.app.strategies.orderflow_confirmation import (
     ORDERFLOW_AFFECTED_STRATEGY_IDS,
     OrderflowConfirmationRuntime,
 )
+from backend.app.strategies.process_evaluator import (
+    ProcessStrategyEvaluator,
+    StrategyEvaluationRequest,
+    StrategyEvaluationResult,
+)
 from backend.app.strategies.registry import (
     StrategyChangeSource,
     StrategyDescriptor,
@@ -594,6 +599,12 @@ class PaperRuntime:
     )
     _governance_last_cycle_ts_ms: int | None = None
     strategy_evaluator: StrategySignalEvaluator = field(default_factory=StrategySignalEvaluator)
+    _live_strategy_evaluator: ProcessStrategyEvaluator = field(
+        default_factory=ProcessStrategyEvaluator,
+        init=False,
+        repr=False,
+    )
+    _live_strategy_process_pid: int | None = field(default=None, init=False, repr=False)
     _strategy_evaluation_lock: RLock = field(
         default_factory=RLock,
         init=False,
@@ -1953,6 +1964,12 @@ class PaperRuntime:
             "feature_input_fault_symbols": len(self._feature_input_fault_symbols),
             "strategy_evaluation_interval_ms": self.strategy_evaluation_interval_ms,
             "strategy_evaluation_count": self.strategy_evaluation_count,
+            "strategy_evaluation_executor": (
+                "DEDICATED_PROCESS"
+                if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                else "SYNCHRONOUS"
+            ),
+            "strategy_evaluation_process_pid": self._live_strategy_process_pid,
             "qualified_signal_count": self.qualified_signal_count,
             "manual_pause_requested": self._manual_pause_requested,
             "paper_entry_intent_revision": self._paper_entry_intent_revision,
@@ -2124,6 +2141,25 @@ class PaperRuntime:
             provider = providers[candidate_venue]
             if candidate_venue is not self.venue:
                 self._switch_venue_run(candidate_venue)
+            self._live_strategy_process_pid = None
+            try:
+                self._live_strategy_process_pid = await self._live_strategy_evaluator.warm(
+                    self._strategy_process_state_key()
+                )
+            except asyncio.CancelledError:
+                self.paused = True
+                self.market_data_state = MarketDataState.DISCONNECTED
+                self.runtime_health_flags = ["ENTRY_LOCK_DATA_NOT_VERIFIED"]
+                raise
+            except Exception as error:
+                self.paused = True
+                self.market_data_state = MarketDataState.DISCONNECTED
+                self.runtime_health_flags = ["ENTRY_LOCK_STRATEGY_PROCESS_UNAVAILABLE"]
+                self._log(
+                    "STRATEGY",
+                    f"LIVE 전략 평가 프로세스 준비 실패 · {type(error).__name__}",
+                )
+                return False
             supervisor = PersistentPublicSupervisor(
                 provider,
                 run_id=self.run_id,
@@ -2201,22 +2237,38 @@ class PaperRuntime:
         started = asyncio.get_running_loop().time()
         defer_token = _DEFER_STRATEGY_EVALUATION.set(True)
         cancellation: asyncio.CancelledError | None = None
+        worker_error: Exception | None = None
         try:
             prepared = self.ingest_live_event(event, defer_execution_persistence=True)
             if prepared is not None:
                 phase_started = time.perf_counter()
-                signals, cancellation = await self._run_worker_to_completion(
-                    self._evaluate_prepared_strategy,
-                    prepared,
+                process_request = self._live_strategy_evaluator.request(
+                    state_key=self._strategy_process_state_key(),
+                    registry=prepared.strategy_registry,
+                    snapshot=prepared.snapshot,
+                    regime=prepared.regime,
+                    tick_size=prepared.tick_size,
+                    fifteen_minute_candles=prepared.fifteen_minute_candles,
+                    thirty_minute_candles=prepared.thirty_minute_candles,
+                    hourly_candles=prepared.hourly_candles,
+                )
+                process_result, cancellation = (
+                    await self._live_strategy_evaluator.evaluate_to_completion(
+                        process_request
+                    )
                 )
                 self._record_live_event_phase("STRATEGY_EVALUATION", phase_started, event)
                 if cancellation is None:
                     self._refresh_supervisor_entry_safety()
                     self._complete_strategy_evaluation(
                         prepared,
-                        signals,
+                        process_result.signals,
                         persist_execution=False,
+                        process_request=process_request,
+                        process_result=process_result,
                     )
+        except Exception as error:
+            worker_error = error
         finally:
             _DEFER_STRATEGY_EVALUATION.reset(defer_token)
             elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
@@ -2237,6 +2289,8 @@ class PaperRuntime:
             cancellation = persistence_cancellation or cancellation
         if cancellation is not None:
             raise cancellation
+        if worker_error is not None:
+            raise worker_error
 
     @staticmethod
     async def _run_worker_to_completion[WorkerResult](
@@ -2745,6 +2799,11 @@ class PaperRuntime:
             )
         return snapshot, revisions
 
+    def _strategy_process_state_key(self) -> str:
+        """Run·거래소·전략 버전이 바뀌면 자식 evaluator 이력을 분리한다."""
+
+        return f"{self.run_id}:{self.venue.value}:{STRATEGY_VERSION}"
+
     def _strategy_settings_revisions(self) -> tuple[tuple[str, int], ...]:
         registry = self.strategy_registry
         with registry._setting_lock:
@@ -2757,7 +2816,7 @@ class PaperRuntime:
         self,
         prepared: _PreparedStrategyEvaluation,
     ) -> tuple[EvaluatedSignal, ...]:
-        """순서화된 LIVE worker 또는 동기 replay 경로에서 같은 evaluator를 실행한다."""
+        """fixture·replay의 결정적 동기 경로에서 기존 evaluator를 실행한다."""
 
         with self._strategy_evaluation_lock:
             return self.strategy_evaluator.evaluate(
@@ -2776,6 +2835,8 @@ class PaperRuntime:
         signals: tuple[EvaluatedSignal, ...],
         *,
         persist_execution: bool,
+        process_request: StrategyEvaluationRequest | None = None,
+        process_result: StrategyEvaluationResult | None = None,
     ) -> None:
         event = prepared.event
         if self._strategy_settings_revisions() != prepared.settings_revisions:
@@ -2784,6 +2845,24 @@ class PaperRuntime:
                 f"{event.symbol} 평가 중 설정 revision 변경 · 오래된 후보 적용 생략",
             )
             return
+        if (process_request is None) is not (process_result is None):
+            raise RuntimeError("전략 프로세스 요청과 결과는 함께 적용해야 합니다.")
+        if process_request is not None and process_result is not None:
+            if process_request.state_key != self._strategy_process_state_key():
+                self._log(
+                    "STRATEGY",
+                    f"{event.symbol} 이전 Run 전략 평가 결과 적용 생략",
+                )
+                return
+            if not self._live_strategy_evaluator.accept_result(
+                process_request,
+                process_result,
+            ):
+                self._log(
+                    "STRATEGY",
+                    f"{event.symbol} 이전 Run 전략 평가 결과 적용 생략",
+                )
+                return
         self.strategy_evaluation_count += len(signals)
         self.qualified_signal_count += sum(
             signal.decision.status.value == "QUALIFIED" for signal in signals
@@ -4465,6 +4544,7 @@ class PaperRuntime:
     async def shutdown(self) -> None:
         await self.shutdown_supervisor()
         self.flush_storage()
+        await self._live_strategy_evaluator.aclose()
 
     def _live_scanner_rows(self) -> tuple[dict[str, object], ...]:
         """정밀 분석 종목의 실제 전략 판단과 비용을 확률 없이 UI 행으로 만든다."""
@@ -4789,10 +4869,22 @@ class PaperRuntime:
 
         resolved_symbol = (symbol or self.selected_symbol).strip().upper()
         descriptor = self.strategy_registry.descriptor(strategy_id)
+        condition_evaluator = (
+            self._live_strategy_evaluator
+            if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+            else self.strategy_evaluator
+        )
         side_payloads: list[dict[str, object]] = []
         for side in Side:
             condition_rows = list(
-                self.strategy_evaluator.condition_rows(
+                self._live_strategy_evaluator.condition_rows(
+                    resolved_symbol,
+                    strategy_id,
+                    side,
+                    state_key=self._strategy_process_state_key(),
+                )
+                if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
+                else condition_evaluator.condition_rows(
                     resolved_symbol,
                     strategy_id,
                     side,

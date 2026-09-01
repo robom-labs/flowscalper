@@ -85,6 +85,7 @@ _TERMINAL_OPERATION_STATES = {
 }
 
 _DASHBOARD_REFRESH_SECONDS = 1.0
+_UI_FULL_DASHBOARD_REFRESH_SECONDS = 5.0
 
 _ORDERFLOW_RESEARCH_SOURCE_IDS = (
     "SRC-OFI-2010",
@@ -648,6 +649,7 @@ def create_app(
         *,
         force: bool = False,
         serialization: str | None = None,
+        max_age_seconds: float = _DASHBOARD_REFRESH_SECONDS,
     ) -> tuple[dict[str, object], str | None]:
         """화면 한 주기에는 같은 전체 snapshot과 JSON을 모든 소비자가 공유한다."""
 
@@ -676,7 +678,7 @@ def create_app(
             expired = (
                 dashboard_snapshot_cache is None
                 or dashboard_cache_identity != current_identity
-                or now - dashboard_cache_created_monotonic >= _DASHBOARD_REFRESH_SECONDS
+                or now - dashboard_cache_created_monotonic >= max_age_seconds
             )
             if force or expired:
                 dashboard_snapshot_cache = await asyncio.to_thread(dashboard_snapshot)
@@ -730,6 +732,14 @@ def create_app(
             if dashboard_snapshot_cache is None:
                 raise RuntimeError("dashboard snapshot cache was not initialized")
             return dashboard_snapshot_cache, payload
+
+    async def cached_ui_dashboard() -> dict[str, object]:
+        """실시간 heartbeat와 무거운 전체 snapshot 재생성 주기를 분리한다."""
+
+        snapshot, _ = await cached_dashboard(
+            max_age_seconds=_UI_FULL_DASHBOARD_REFRESH_SECONDS,
+        )
+        return snapshot
 
     async def dashboard_message(*, force: bool = False) -> str:
         _, payload = await cached_dashboard(force=force, serialization="websocket")
@@ -1416,8 +1426,7 @@ def create_app(
 
     @app.get("/api/ui/summary")
     async def ui_summary() -> dict[str, object]:
-        snapshot, _ = await cached_dashboard()
-        return compact_ui_summary(snapshot)
+        return compact_ui_summary(await cached_ui_dashboard())
 
     @app.get("/api/strategies/summary")
     async def strategies_summary(
@@ -2556,7 +2565,7 @@ def create_app(
             return compact_selected_family_detail(family_payload(dashboard, family_id))
 
         try:
-            dashboard, _ = await cached_dashboard()
+            dashboard = await cached_ui_dashboard()
             previous_summary = compact_ui_summary(dashboard)
             await send_ui_message("snapshot", previous_summary)
             while True:
@@ -2566,7 +2575,7 @@ def create_app(
                         timeout=_DASHBOARD_REFRESH_SECONDS,
                     )
                 except TimeoutError:
-                    dashboard, _ = await cached_dashboard()
+                    dashboard = await cached_ui_dashboard()
                     current_summary = compact_ui_summary(dashboard)
                     messages = ui_delta_messages(previous_summary, current_summary)
                     previous_summary = current_summary
