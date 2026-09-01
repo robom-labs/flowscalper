@@ -1299,6 +1299,52 @@ class StrategyRegistry:
         return tuple(changed_rows)
 
     @_setting_locked
+    def reserve_ignored_recovery_revision(
+        self,
+        strategy_id: str,
+        *,
+        revision: int,
+        updated_ts_ms: int,
+        recovery_row_token: str,
+    ) -> dict[str, object] | None:
+        """무시한 fail-closed 원장 revision을 안전 상태 tombstone으로 예약한다."""
+
+        setting = self.setting(strategy_id)
+        if isinstance(revision, bool) or revision < 1:
+            raise ValueError("예약할 복구 strategy revision이 양의 정수가 아닙니다.")
+        if not recovery_row_token.strip():
+            raise ValueError("예약할 복구 strategy 원장 token이 없습니다.")
+        historical_row = self._revision_history[strategy_id].get(revision)
+        if revision <= setting.revision:
+            if historical_row is not None and historical_row.get(
+                "recovery_revision_reserved"
+            ) is True:
+                historical_token = self._recovery_row_tokens[strategy_id].get(revision)
+                if historical_token != recovery_row_token:
+                    raise ValueError("예약된 strategy revision의 복구 원장 행이 다릅니다.")
+                return dict(historical_row)
+            return None
+        if revision != setting.revision + 1 or historical_row is not None:
+            raise ValueError("무시한 strategy revision이 현재 복구 계보와 연속되지 않습니다.")
+
+        effective_previous_revision = setting.revision
+        setting.revision = revision
+        setting.changed_by = StrategyChangeSource.RECOVERY
+        setting.change_reason = "IGNORED_FAIL_CLOSED_GOVERNANCE_REVISION"
+        setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
+        reserved_row = self._setting_row(strategy_id) | {
+            "recovery_revision_reserved": True,
+            "ignored_source_applied": False,
+            "effective_previous_revision": effective_previous_revision,
+            "recovery_source_row_token": recovery_row_token,
+            "data_deleted": False,
+            "duplicate_revision_relaxed": False,
+        }
+        self._revision_history[strategy_id][revision] = reserved_row
+        self._recovery_row_tokens[strategy_id][revision] = recovery_row_token
+        return dict(reserved_row)
+
+    @_setting_locked
     def restore_setting(
         self,
         strategy_id: str,

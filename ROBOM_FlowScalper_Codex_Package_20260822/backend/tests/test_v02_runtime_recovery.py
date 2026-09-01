@@ -540,6 +540,7 @@ def test_restart_recovery_transition_is_normalized_and_public(
         payload["ignored_fail_closed_governance_duplicate_revision_relaxed"]
         is False
     )
+    assert payload["ignored_fail_closed_governance_revision_reservations"] == []
     assert payload["open_position"] is False
     diagnostics = recovered_runtime._operational_diagnostics()
     assert diagnostics["startup_recovery_transition_id"] == payload["transition_id"]

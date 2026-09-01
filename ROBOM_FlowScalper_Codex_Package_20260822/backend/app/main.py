@@ -263,6 +263,9 @@ def _restart_recovery_transition_audit(
         ),
         "ignored_fail_closed_governance_data_deleted": False,
         "ignored_fail_closed_governance_duplicate_revision_relaxed": False,
+        "ignored_fail_closed_governance_revision_reservations": [
+            dict(row) for row in runtime._recovery_reserved_governance_revisions
+        ],
         "open_position": runtime.paper_portfolio.main.position is not None,
         "requested_mode": requested_mode.value,
     }

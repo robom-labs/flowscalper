@@ -483,6 +483,17 @@ class _RecoveredStrategySetting:
     recovery_row_token: str
 
 
+@dataclass(frozen=True, slots=True)
+class _IgnoredRecoveryStrategyRevision:
+    """상태에는 적용하지 않고 immutable revision cursor에만 남길 원장 행이다."""
+
+    source: Mapping[str, object]
+    strategy_id: str
+    revision: int
+    updated_ts_ms: int
+    recovery_row_token: str
+
+
 _WAL_CHECKPOINT_FLUSH_INTERVAL = 4
 _SLOW_WAL_CHECKPOINT_MS = 2_000.0
 _WAL_CHECKPOINT_SOFT_BYTES = 16 * 1024 * 1024
@@ -715,6 +726,10 @@ class PaperRuntime:
     _storage_health_refresh_completed_ts_ms: int | None = None
     _recovery_revalidation_symbols: set[str] = field(default_factory=set)
     _recovery_ignored_governance_row_tokens: tuple[str, ...] = field(
+        default_factory=tuple,
+        repr=False,
+    )
+    _recovery_reserved_governance_revisions: tuple[dict[str, object], ...] = field(
         default_factory=tuple,
         repr=False,
     )
@@ -1131,9 +1146,13 @@ class PaperRuntime:
                 category="AUTO_GOVERNOR_TRANSITION"
             )
             setting_rows = self.ledger.list_strategy_settings(self.run_id)
-            parsed_settings: list[_RecoveredStrategySetting] = []
+            recovery_setting_actions: list[
+                _RecoveredStrategySetting | _IgnoredRecoveryStrategyRevision
+            ] = []
             seen_recovery_tokens: dict[tuple[str, int], str] = {}
+            seen_ignored_tokens: dict[tuple[str, int], str] = {}
             ignored_governance_row_tokens: list[str] = []
+            reserved_governance_revisions: list[dict[str, object]] = []
             for setting_row in setting_rows:
                 if _is_fail_closed_governance_contamination(
                     setting_row,
@@ -1141,8 +1160,36 @@ class PaperRuntime:
                     windows=recovery_windows,
                     governance_incidents=governance_incidents,
                 ):
-                    ignored_governance_row_tokens.append(
-                        _recovery_row_token(setting_row)
+                    strategy_id = _strict_recovery_setting_text(
+                        setting_row, "strategy_id"
+                    )
+                    staged_strategy_registry.descriptor(strategy_id)
+                    revision = _strict_recovery_setting_int(
+                        setting_row, "settings_revision"
+                    )
+                    updated_ts_ms = _strict_recovery_setting_int(
+                        setting_row, "settings_updated_ts_ms"
+                    )
+                    recovery_row_token = _recovery_row_token(setting_row)
+                    revision_key = (strategy_id, revision)
+                    previous_token = seen_ignored_tokens.get(revision_key)
+                    if (
+                        previous_token is not None
+                        and previous_token != recovery_row_token
+                    ):
+                        raise ValueError(
+                            "동일 ignored strategy revision의 복구 원장 행이 다릅니다."
+                        )
+                    seen_ignored_tokens[revision_key] = recovery_row_token
+                    ignored_governance_row_tokens.append(recovery_row_token)
+                    recovery_setting_actions.append(
+                        _IgnoredRecoveryStrategyRevision(
+                            source=setting_row,
+                            strategy_id=strategy_id,
+                            revision=revision,
+                            updated_ts_ms=updated_ts_ms,
+                            recovery_row_token=recovery_row_token,
+                        )
                     )
                     continue
                 if setting_row.get("run_id") != self.run_id:
@@ -1189,7 +1236,7 @@ class PaperRuntime:
                         "동일 strategy settings revision의 복구 원장 행이 다릅니다."
                     )
                 seen_recovery_tokens[revision_key] = recovery_row_token
-                parsed_settings.append(
+                recovery_setting_actions.append(
                     _RecoveredStrategySetting(
                         source=setting_row,
                         strategy_id=strategy_id,
@@ -1205,7 +1252,54 @@ class PaperRuntime:
                         recovery_row_token=recovery_row_token,
                     )
                 )
-            for parsed_setting in parsed_settings:
+            for recovery_action in recovery_setting_actions:
+                if isinstance(recovery_action, _IgnoredRecoveryStrategyRevision):
+                    reserved_row = (
+                        staged_strategy_registry.reserve_ignored_recovery_revision(
+                            recovery_action.strategy_id,
+                            revision=recovery_action.revision,
+                            updated_ts_ms=recovery_action.updated_ts_ms,
+                            recovery_row_token=recovery_action.recovery_row_token,
+                        )
+                    )
+                    if reserved_row is not None:
+                        source_ts_ms = _strict_recovery_setting_int(
+                            recovery_action.source, "ts_ms"
+                        )
+                        recovery_window = next(
+                            (
+                                (start_ts_ms, end_ts_ms)
+                                for start_ts_ms, end_ts_ms in recovery_windows
+                                if start_ts_ms <= source_ts_ms < end_ts_ms
+                            ),
+                            None,
+                        )
+                        if recovery_window is None:
+                            raise ValueError(
+                                "ignored strategy revision의 닫힌 복구 구간이 없습니다."
+                            )
+                        reserved_governance_revisions.append(
+                            {
+                                "strategy_id": recovery_action.strategy_id,
+                                "ignored_revision": recovery_action.revision,
+                                "effective_previous_revision": reserved_row[
+                                    "effective_previous_revision"
+                                ],
+                                "recovery_source_row_token": (
+                                    recovery_action.recovery_row_token
+                                ),
+                                "ignored_transition_id": recovery_action.source.get(
+                                    "transition_id"
+                                ),
+                                "fail_closed_started_ts_ms": recovery_window[0],
+                                "recovery_succeeded_ts_ms": recovery_window[1],
+                                "ignored_source_applied": False,
+                                "data_deleted": False,
+                                "duplicate_revision_relaxed": False,
+                            }
+                        )
+                    continue
+                parsed_setting = recovery_action
                 valid_governor_active = (
                     self._validated_governor_active_recovery_revision(
                         parsed_setting.source,
@@ -1344,6 +1438,9 @@ class PaperRuntime:
                 ),
             )
             migration_records: list[tuple[dict[str, object], str]] = []
+            reservation_by_strategy = {
+                str(row["strategy_id"]): row for row in reserved_governance_revisions
+            }
             for rows, evidence, category in migration_rows:
                 for migrated in rows:
                     migration_ts_ms = int(str(migrated["settings_updated_ts_ms"]))
@@ -1351,13 +1448,25 @@ class PaperRuntime:
                         migrated,
                         strategy_registry=staged_strategy_registry,
                     )
+                    migration_evidence = dict(evidence)
+                    reservation = reservation_by_strategy.get(
+                        str(migrated["strategy_id"])
+                    )
+                    if (
+                        reservation is not None
+                        and int(str(migrated["settings_revision"]))
+                        == int(str(reservation["ignored_revision"])) + 1
+                    ):
+                        migration_evidence[
+                            "recovery_contamination_policy_reassertion"
+                        ] = dict(reservation)
                     migration_records.append(
                         (
                             {
                                 "run_id": self.run_id,
                                 "ts_ms": migration_ts_ms,
                                 **transition,
-                                "change_evidence": dict(evidence),
+                                "change_evidence": migration_evidence,
                             },
                             category,
                         )
@@ -1443,6 +1552,9 @@ class PaperRuntime:
             self._recovery_revalidation_symbols = staged_recovery_symbols
             self._recovery_ignored_governance_row_tokens = tuple(
                 ignored_governance_row_tokens
+            )
+            self._recovery_reserved_governance_revisions = tuple(
+                dict(row) for row in reserved_governance_revisions
             )
             self.data_gap_since_ms = staged_data_gap_since_ms
             self.paused = True

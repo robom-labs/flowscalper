@@ -582,6 +582,64 @@ def test_restore_setting_replaces_only_the_first_persisted_revision_zero() -> No
     assert out_of_order.setting(strategy_id).change_reason == "NEWER_RECOVERY_ROW"
 
 
+def test_ignored_recovery_revision_reserves_safe_tombstone_before_policy() -> None:
+    strategy_id = "AGGRESSOR_FLOW_CONTINUATION_V1"
+    registry = StrategyRegistry()
+    before = registry.setting_row(strategy_id)
+
+    reserved = registry.reserve_ignored_recovery_revision(
+        strategy_id,
+        revision=1,
+        updated_ts_ms=100,
+        recovery_row_token="ignored-governance-revision-one",
+    )
+
+    assert reserved is not None
+    assert reserved["mode"] == before["mode"]
+    assert reserved["lifecycle"] == before["lifecycle"]
+    assert reserved["settings_revision"] == 1
+    assert reserved["changed_by"] == StrategyChangeSource.RECOVERY.value
+    assert reserved["change_reason"] == "IGNORED_FAIL_CLOSED_GOVERNANCE_REVISION"
+    assert reserved["recovery_revision_reserved"] is True
+    assert reserved["ignored_source_applied"] is False
+    assert reserved["effective_previous_revision"] == 0
+    assert reserved["data_deleted"] is False
+    assert reserved["duplicate_revision_relaxed"] is False
+    assert (
+        registry.reserve_ignored_recovery_revision(
+            strategy_id,
+            revision=1,
+            updated_ts_ms=100,
+            recovery_row_token="ignored-governance-revision-one",
+        )
+        == reserved
+    )
+    with pytest.raises(ValueError, match="복구 원장 행이 다릅니다"):
+        registry.reserve_ignored_recovery_revision(
+            strategy_id,
+            revision=1,
+            updated_ts_ms=100,
+            recovery_row_token="different-ignored-governance-row",
+        )
+
+    migrations = registry.enforce_v6_family_runtime_policy(updated_ts_ms=200)
+
+    assert len(migrations) == 1
+    assert migrations[0]["strategy_id"] == strategy_id
+    assert migrations[0]["settings_revision"] == 2
+    assert migrations[0]["change_reason"] == "V6_LEGACY_COMPONENT_HISTORY_ONLY"
+    assert [
+        row["settings_revision"] for row in registry.revision_history(strategy_id)
+    ] == [0, 1, 2]
+    with pytest.raises(ValueError, match="연속되지 않습니다"):
+        registry.reserve_ignored_recovery_revision(
+            strategy_id,
+            revision=4,
+            updated_ts_ms=300,
+            recovery_row_token="skipped-revision-four",
+        )
+
+
 def _complete_active_governance_evidence(
     *,
     timestamp: int,
