@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import os
 import time
 from collections import deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from itertools import islice
@@ -506,6 +508,10 @@ _LIVE_DEEP_SYMBOL_TARGET = 12
 _LIVE_DASHBOARD_EVENT_LIMIT = 512
 _DEFAULT_EVENT_MEMORY_LIMIT = 10_000
 _LIVE_EVENT_MEMORY_LIMIT = 2_048
+_DEFER_STRATEGY_EVALUATION: ContextVar[bool] = ContextVar(
+    "defer_strategy_evaluation",
+    default=False,
+)
 _RECOVERY_STATE_AUDIT_EVENTS = frozenset(
     {
         "MAIN_CANDIDATE_SELECTED",
@@ -528,6 +534,22 @@ _RECOVERY_STATE_AUDIT_EVENTS = frozenset(
         "EXIT_FILL",
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedStrategyEvaluation:
+    """LIVE 이벤트 루프 밖에서 평가할 불변 전략 입력을 보존한다."""
+
+    event: MarketEvent
+    snapshot: FeatureSnapshot
+    regime: Regime
+    book: BookSnapshot
+    strategy_registry: StrategyRegistry
+    settings_revisions: tuple[tuple[str, int], ...]
+    tick_size: Decimal
+    fifteen_minute_candles: tuple[Candle, ...]
+    thirty_minute_candles: tuple[Candle, ...]
+    hourly_candles: tuple[Candle, ...]
 
 
 @dataclass(slots=True)
@@ -572,6 +594,11 @@ class PaperRuntime:
     )
     _governance_last_cycle_ts_ms: int | None = None
     strategy_evaluator: StrategySignalEvaluator = field(default_factory=StrategySignalEvaluator)
+    _strategy_evaluation_lock: RLock = field(
+        default_factory=RLock,
+        init=False,
+        repr=False,
+    )
     orderflow_confirmation_runtime: OrderflowConfirmationRuntime = field(
         default_factory=OrderflowConfirmationRuntime,
     )
@@ -2169,12 +2196,29 @@ class PaperRuntime:
         return True
 
     async def ingest_live_event_async(self, event: MarketEvent) -> None:
-        """시장 판단은 순서대로 유지하고 SQLite 동기 I/O만 worker thread로 보낸다."""
+        """시장 판단 순서를 유지하며 전략 평가와 SQLite I/O를 worker로 보낸다."""
 
         started = asyncio.get_running_loop().time()
+        defer_token = _DEFER_STRATEGY_EVALUATION.set(True)
+        cancellation: asyncio.CancelledError | None = None
         try:
-            self.ingest_live_event(event, defer_execution_persistence=True)
+            prepared = self.ingest_live_event(event, defer_execution_persistence=True)
+            if prepared is not None:
+                phase_started = time.perf_counter()
+                signals, cancellation = await self._run_worker_to_completion(
+                    self._evaluate_prepared_strategy,
+                    prepared,
+                )
+                self._record_live_event_phase("STRATEGY_EVALUATION", phase_started, event)
+                if cancellation is None:
+                    self._refresh_supervisor_entry_safety()
+                    self._complete_strategy_evaluation(
+                        prepared,
+                        signals,
+                        persist_execution=False,
+                    )
         finally:
+            _DEFER_STRATEGY_EVALUATION.reset(defer_token)
             elapsed_ms = (asyncio.get_running_loop().time() - started) * 1_000
             self._live_event_processing_count += 1
             self._live_event_processing_last_ms = elapsed_ms
@@ -2186,17 +2230,40 @@ class PaperRuntime:
                 self._live_event_processing_max_event_type = event.event_type
                 self._live_event_processing_max_symbol = event.symbol
         if self._has_unpersisted_execution_state():
-            await to_thread.run_sync(
+            _, persistence_cancellation = await self._run_worker_to_completion(
                 self._persist_execution_state_safely,
                 event.venue_ts_ms,
             )
+            cancellation = persistence_cancellation or cancellation
+        if cancellation is not None:
+            raise cancellation
+
+    @staticmethod
+    async def _run_worker_to_completion[WorkerResult](
+        function: Callable[..., WorkerResult],
+        *arguments: object,
+    ) -> tuple[WorkerResult, asyncio.CancelledError | None]:
+        """호출 task 취소 뒤에도 안전 경계 worker를 완료까지 drain한다."""
+
+        worker = asyncio.create_task(
+            to_thread.run_sync(
+                function,
+                *arguments,
+            )
+        )
+        cancellation: asyncio.CancelledError | None = None
+        while True:
+            try:
+                return await asyncio.shield(worker), cancellation
+            except asyncio.CancelledError as error:
+                cancellation = error
 
     def ingest_live_event(
         self,
         event: MarketEvent,
         *,
         defer_execution_persistence: bool = False,
-    ) -> None:
+    ) -> _PreparedStrategyEvaluation | None:
         if event.run_id != self.run_id or event.venue is not self.venue:
             raise ValueError("다른 Run 또는 거래소 이벤트를 LIVE 런타임에 섞을 수 없습니다.")
         depth_event = event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}
@@ -2222,6 +2289,7 @@ class PaperRuntime:
                 pre_dispatch_started,
                 event,
             )
+        prepared: _PreparedStrategyEvaluation | None = None
         if event.event_type == "TRADE":
             if event.quality.is_stale or not event.quality.sequence_valid:
                 self._stale_trade_symbols.add(event.symbol)
@@ -2259,7 +2327,7 @@ class PaperRuntime:
                 else:
                     self._buffer_completed_candles(completed_candles)
         elif event.event_type in {"DEPTH_UPDATE", "ORDERBOOK"}:
-            self._evaluate_book_event(
+            prepared = self._evaluate_book_event(
                 event,
                 persist_execution=not defer_execution_persistence,
             )
@@ -2276,6 +2344,7 @@ class PaperRuntime:
                 post_dispatch_started,
                 event,
             )
+        return prepared
 
     def _record_live_event_phase(
         self,
@@ -2482,11 +2551,35 @@ class PaperRuntime:
         event: MarketEvent,
         *,
         persist_execution: bool = True,
-    ) -> None:
+    ) -> _PreparedStrategyEvaluation | None:
+        prepared = self._prepare_strategy_evaluation(
+            event,
+            persist_execution=persist_execution,
+        )
+        if prepared is None:
+            return None
+        if _DEFER_STRATEGY_EVALUATION.get():
+            return prepared
+        phase_started = time.perf_counter()
+        signals = self._evaluate_prepared_strategy(prepared)
+        self._record_live_event_phase("STRATEGY_EVALUATION", phase_started, event)
+        self._complete_strategy_evaluation(
+            prepared,
+            signals,
+            persist_execution=persist_execution,
+        )
+        return None
+
+    def _prepare_strategy_evaluation(
+        self,
+        event: MarketEvent,
+        *,
+        persist_execution: bool,
+    ) -> _PreparedStrategyEvaluation | None:
         if event.quality.is_stale or not event.quality.sequence_valid:
             # 원본 이벤트와 data-gap 시작점은 보존하지만, 오래되거나 끊긴 호가로
             # 최신 체결호가·피처 이력·전략 후보·포지션 관리를 갱신하지 않는다.
-            return
+            return None
         phase_started = time.perf_counter()
         try:
             bids_value = event.data.get("bids")
@@ -2536,7 +2629,7 @@ class PaperRuntime:
         ) as error:
             self._record_live_event_phase("BOOK_BUILD", phase_started, event)
             self._record_feature_input_fault(event.symbol, error)
-            return
+            return None
         self._record_live_event_phase("BOOK_BUILD", phase_started, event)
         phase_started = time.perf_counter()
         self.latest_books[event.symbol] = book
@@ -2583,7 +2676,7 @@ class PaperRuntime:
                 and event.venue_ts_ms - last_evaluation < self.strategy_evaluation_interval_ms
             ):
                 self._record_live_event_phase("FEATURE_SNAPSHOT", phase_started, event)
-                return
+                return None
             self._last_strategy_evaluation_ms[event.symbol] = event.venue_ts_ms
             snapshot = engine.snapshot()
             if event.symbol in self._stale_trade_symbols:
@@ -2592,7 +2685,7 @@ class PaperRuntime:
         except (FeatureInputError, KeyError, IndexError, ValueError) as error:
             self._record_live_event_phase("FEATURE_SNAPSHOT", phase_started, event)
             self._record_feature_input_fault(event.symbol, error)
-            return
+            return None
         self._record_live_event_phase("FEATURE_SNAPSHOT", phase_started, event)
         phase_started = time.perf_counter()
         self._refresh_feature_input_entry_safety(event.symbol)
@@ -2619,16 +2712,78 @@ class PaperRuntime:
             else None
         )
         tick_size = instrument.tick_size if instrument is not None else Decimal("0.00000001")
-        signals = self.strategy_evaluator.evaluate(
-            self.strategy_registry,
-            snapshot,
-            regime,
+        strategy_registry, settings_revisions = self._strategy_evaluation_registry_snapshot()
+        return _PreparedStrategyEvaluation(
+            event=event,
+            snapshot=snapshot,
+            regime=regime,
+            book=book,
+            strategy_registry=strategy_registry,
+            settings_revisions=settings_revisions,
             tick_size=tick_size,
             fifteen_minute_candles=self.strategy_completed_candles(event.symbol, 900),
             thirty_minute_candles=self.strategy_completed_candles(event.symbol, 1_800),
             hourly_candles=self.hourly_completed_candles(event.symbol),
         )
-        self._record_live_event_phase("STRATEGY_EVALUATION", phase_started, event)
+
+    def _strategy_evaluation_registry_snapshot(
+        self,
+    ) -> tuple[StrategyRegistry, tuple[tuple[str, int], ...]]:
+        """한 평가가 동일한 전략 설정 revision만 읽도록 얕은 사본을 만든다."""
+
+        registry = self.strategy_registry
+        with registry._setting_lock:
+            snapshot = copy.copy(registry)
+            snapshot._setting_lock = RLock()
+            snapshot._settings = {
+                strategy_id: replace(registry.setting(strategy_id))
+                for strategy_id in registry.strategy_ids
+            }
+            revisions = tuple(
+                (strategy_id, setting.revision)
+                for strategy_id, setting in snapshot._settings.items()
+            )
+        return snapshot, revisions
+
+    def _strategy_settings_revisions(self) -> tuple[tuple[str, int], ...]:
+        registry = self.strategy_registry
+        with registry._setting_lock:
+            return tuple(
+                (strategy_id, registry.setting(strategy_id).revision)
+                for strategy_id in registry.strategy_ids
+            )
+
+    def _evaluate_prepared_strategy(
+        self,
+        prepared: _PreparedStrategyEvaluation,
+    ) -> tuple[EvaluatedSignal, ...]:
+        """순서화된 LIVE worker 또는 동기 replay 경로에서 같은 evaluator를 실행한다."""
+
+        with self._strategy_evaluation_lock:
+            return self.strategy_evaluator.evaluate(
+                prepared.strategy_registry,
+                prepared.snapshot,
+                prepared.regime,
+                tick_size=prepared.tick_size,
+                fifteen_minute_candles=prepared.fifteen_minute_candles,
+                thirty_minute_candles=prepared.thirty_minute_candles,
+                hourly_candles=prepared.hourly_candles,
+            )
+
+    def _complete_strategy_evaluation(
+        self,
+        prepared: _PreparedStrategyEvaluation,
+        signals: tuple[EvaluatedSignal, ...],
+        *,
+        persist_execution: bool,
+    ) -> None:
+        event = prepared.event
+        if self._strategy_settings_revisions() != prepared.settings_revisions:
+            self._log(
+                "STRATEGY",
+                f"{event.symbol} 평가 중 설정 revision 변경 · 오래된 후보 적용 생략",
+            )
+            return
         self.strategy_evaluation_count += len(signals)
         self.qualified_signal_count += sum(
             signal.decision.status.value == "QUALIFIED" for signal in signals
@@ -2641,7 +2796,13 @@ class PaperRuntime:
             )
             self.strategy_signals[key] = signal
         phase_started = time.perf_counter()
-        plans = self._build_candidate_plans(event, snapshot, regime, book, signals)
+        plans = self._build_candidate_plans(
+            event,
+            prepared.snapshot,
+            prepared.regime,
+            prepared.book,
+            signals,
+        )
         self._record_live_event_phase("CANDIDATE_PLANNING", phase_started, event)
         phase_started = time.perf_counter()
         storage_ready = self._refresh_storage_safety()

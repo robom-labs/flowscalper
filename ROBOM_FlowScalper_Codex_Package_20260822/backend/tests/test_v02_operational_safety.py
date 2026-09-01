@@ -19,6 +19,7 @@ import backend.app.storage.sqlite as sqlite_module
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketDataState, MarketEvent, RuntimeMode, Venue
 from backend.app.market_data.candles import Candle
+from backend.app.market_data.supervisor import SupervisorTelemetry
 from backend.app.ops import ProcessResourceSampler
 from backend.app.runtime import PaperRuntime
 from backend.app.storage.parquet import DiskUsage, ParquetEventStore, StoragePressureError
@@ -334,6 +335,211 @@ async def test_live_sink_defers_changed_execution_persistence_to_worker(monkeypa
     assert runtime._live_event_processing_last_ms >= 0
     assert runtime._live_event_processing_max_event_type == "DEPTH_UPDATE"
     assert runtime._live_event_processing_max_symbol == "BTCUSDT"
+
+
+async def test_live_strategy_evaluation_does_not_block_event_loop(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-threaded-strategy-evaluation",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    event = MarketEvent(
+        event_id="depth-threaded-strategy-evaluation",
+        run_id=runtime.run_id,
+        venue=runtime.venue,
+        symbol="BTCUSDT",
+        event_type="DEPTH_UPDATE",
+        venue_ts_ms=1_000,
+        receive_monotonic_ns=1_000,
+        quality=DataQuality(
+            is_live=True,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+    )
+    evaluation_started = threading.Event()
+    evaluation_finished = threading.Event()
+    stop_ticker = asyncio.Event()
+    ticks_during_evaluation = 0
+
+    def slow_evaluate(*_args, **_kwargs):
+        evaluation_started.set()
+        time.sleep(0.25)
+        evaluation_finished.set()
+        return []
+
+    async def ticker() -> None:
+        nonlocal ticks_during_evaluation
+        while not stop_ticker.is_set():
+            await asyncio.sleep(0.005)
+            if evaluation_started.is_set() and not evaluation_finished.is_set():
+                ticks_during_evaluation += 1
+
+    monkeypatch.setattr(runtime.strategy_evaluator, "evaluate", slow_evaluate)
+
+    ticker_task = asyncio.create_task(ticker())
+    await asyncio.sleep(0)
+    await runtime.ingest_live_event_async(event)
+    stop_ticker.set()
+    await ticker_task
+
+    assert evaluation_finished.is_set()
+    assert ticks_during_evaluation >= 5
+
+
+async def test_cancelled_live_evaluation_drains_single_worker_before_rethrow(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-cancelled-strategy-evaluation",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+
+    def depth(symbol: str, ts_ms: int) -> MarketEvent:
+        return MarketEvent(
+            event_id=f"depth-cancelled-{symbol.lower()}",
+            run_id=runtime.run_id,
+            venue=runtime.venue,
+            symbol=symbol,
+            event_type="DEPTH_UPDATE",
+            venue_ts_ms=ts_ms,
+            receive_monotonic_ns=ts_ms,
+            quality=DataQuality(
+                is_live=True,
+                is_stale=False,
+                sequence_valid=True,
+                lag_ms=0,
+            ),
+            data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+        )
+
+    evaluation_started = threading.Event()
+    in_flight = 0
+    max_in_flight = 0
+    in_flight_lock = threading.Lock()
+    completed_workers: list[str] = []
+    applied_events: list[str] = []
+    lifecycle: list[str] = []
+
+    def slow_evaluate(_registry, snapshot, _regime, **_kwargs):
+        nonlocal in_flight, max_in_flight
+        with in_flight_lock:
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+        evaluation_started.set()
+        try:
+            time.sleep(0.15)
+            completed_workers.append(snapshot.symbol)
+            return ()
+        finally:
+            with in_flight_lock:
+                in_flight -= 1
+
+    def record_completion(
+        _self: PaperRuntime,
+        prepared,
+        _signals,
+        *,
+        persist_execution: bool,
+    ) -> None:
+        assert persist_execution is False
+        applied_events.append(prepared.event.event_id)
+
+    def record_persistence(_self: PaperRuntime, ts_ms: int) -> bool:
+        lifecycle.append(f"persist:{ts_ms}")
+        return True
+
+    monkeypatch.setattr(runtime.strategy_evaluator, "evaluate", slow_evaluate)
+    monkeypatch.setattr(PaperRuntime, "_complete_strategy_evaluation", record_completion)
+    monkeypatch.setattr(PaperRuntime, "_has_unpersisted_execution_state", lambda _self: True)
+    monkeypatch.setattr(PaperRuntime, "_persist_execution_state_safely", record_persistence)
+
+    first = asyncio.create_task(runtime.ingest_live_event_async(depth("BTCUSDT", 1_000)))
+    first.add_done_callback(lambda _task: lifecycle.append("cancelled_rethrown"))
+    assert await asyncio.wait_for(asyncio.to_thread(evaluation_started.wait, 2), timeout=3)
+    second = asyncio.create_task(runtime.ingest_live_event_async(depth("ETHUSDT", 2_000)))
+    first.cancel()
+
+    first_result, second_result = await asyncio.gather(
+        first,
+        second,
+        return_exceptions=True,
+    )
+
+    assert isinstance(first_result, asyncio.CancelledError)
+    assert second_result is None
+    assert completed_workers == ["BTCUSDT", "ETHUSDT"]
+    assert max_in_flight == 1
+    assert applied_events == ["depth-cancelled-ethusdt"]
+    assert lifecycle.index("persist:1000") < lifecycle.index("cancelled_rethrown")
+
+
+async def test_supervisor_lock_during_evaluation_pauses_completed_offer(monkeypatch) -> None:
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-mid-evaluation-supervisor-lock",
+        venue=Venue.BINANCE_USDM,
+        clock=DeterministicClock(),
+    )
+    event = MarketEvent(
+        event_id="depth-mid-evaluation-supervisor-lock",
+        run_id=runtime.run_id,
+        venue=runtime.venue,
+        symbol="BTCUSDT",
+        event_type="DEPTH_UPDATE",
+        venue_ts_ms=1_000,
+        receive_monotonic_ns=1_000,
+        quality=DataQuality(
+            is_live=True,
+            is_stale=False,
+            sequence_valid=True,
+            lag_ms=0,
+        ),
+        data={"bid": "99", "bid_qty": "1", "ask": "101", "ask_qty": "1"},
+    )
+    evaluation_started = threading.Event()
+    release_evaluation = threading.Event()
+    observed_entry_locks: list[bool] = []
+
+    class SupervisorStub:
+        selection = None
+
+        def __init__(self) -> None:
+            self.telemetry = SupervisorTelemetry(
+                entry_locked=False,
+                consumer_running=True,
+            )
+
+        @staticmethod
+        def running() -> bool:
+            return True
+
+    def slow_evaluate(*_args, **_kwargs):
+        evaluation_started.set()
+        assert release_evaluation.wait(timeout=2)
+        return ()
+
+    def record_offer(_self, _plans, *, entries_paused: bool) -> None:
+        observed_entry_locks.append(entries_paused)
+
+    supervisor = SupervisorStub()
+    runtime._supervisor = supervisor  # type: ignore[assignment]
+    runtime.paused = False
+    monkeypatch.setattr(runtime.strategy_evaluator, "evaluate", slow_evaluate)
+    monkeypatch.setattr(type(runtime.paper_portfolio), "offer", record_offer)
+
+    ingest_task = asyncio.create_task(runtime.ingest_live_event_async(event))
+    assert await asyncio.wait_for(asyncio.to_thread(evaluation_started.wait, 2), timeout=3)
+    supervisor.telemetry.entry_locked = True
+    release_evaluation.set()
+    await ingest_task
+
+    assert observed_entry_locks == [True]
+    assert runtime.paused is True
+    assert "SUPERVISOR_ENTRY_LOCK" in runtime.runtime_health_flags
 
 
 def test_live_book_event_reports_slowest_processing_phase(monkeypatch) -> None:
