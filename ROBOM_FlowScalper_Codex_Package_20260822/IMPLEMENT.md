@@ -884,3 +884,29 @@ profitability remains `NOT_PROVEN`, and real-money readiness remains `NOT_READY`
   `ascending`을 만든 뒤 `descending`을 기대해 실패했다. 최초 `descending`을 먼저 확인하고
   양방향 전환 뒤 다시 `descending`으로 돌아오는 계약으로 수정했으며 로컬 Playwright 3종을 통과했다.
 - 후속 GitHub Actions `33318712295`는 validate 1분 19초와 browser 1분 15초가 모두 통과했다.
+
+## Strategy candle IPC reuse Wave 147
+
+1. Profile the dedicated strategy process request before changing any signal, cost, risk, TP or SL rule.
+2. Cache only completed 15-minute, 30-minute and hourly candle histories by state key, symbol and interval.
+   Send full bounded histories on the first request, a changed final candle or a changed state key; otherwise
+   send an explicit reuse marker and no repeated candle objects.
+3. Keep a matching worker-side cache. Treat a missing worker history as a fail-closed cache miss, retry once
+   from the main-side full cache and never reinterpret the miss as an empty strategy history.
+4. Bound every history at 200 completed candles and clear both caches on worker restart or runtime state-key
+   change. Expose full, reused and cache-miss-retry counters in runtime diagnostics.
+5. Regression-test first, unchanged, changed and new-state payloads, real spawned-worker retry and serialized
+   size. Require an unchanged request to remain below 10 percent of the first full request.
+6. Preserve two failing pre-change 55-second observations, then install only when the PAPER portfolio is flat
+   and compare repeated post-install windows on the same Run. Do not hide a WAL-window-only failure.
+7. Exercise the actual 8870 completed-trade replay after installation and verify playback, entry/exit jumps,
+   exact plan prices, Korean reasons and browser console state.
+8. Keep six-hour and 24-hour status `NOT_RUN`, profitability `NOT_PROVEN` and real-money readiness
+   `NOT_READY` until those independent gates are actually completed.
+
+The first full serialized request measured 58,799 bytes and an unchanged request 2,319 bytes, a 96.056%
+reduction. Backend 1,544 tests, frontend 119 tests, fixture API 37 tests and fixture Playwright 7 tests passed
+with 2 intentional skips. Three post-install 55-second windows passed with zero new event-loop stalls above
+500ms, while one intervening window is preserved as a WAL-checkpoint-only failure. The actual 8870 replay
+loaded 54 completed opportunities and progressed from frame 1 to frame 10 at 5x with zero browser warnings
+or errors. Six-hour and 24-hour stability remain `NOT_RUN`; profitability remains `NOT_PROVEN`.

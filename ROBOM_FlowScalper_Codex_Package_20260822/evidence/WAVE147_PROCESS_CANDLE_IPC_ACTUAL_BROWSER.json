@@ -1,0 +1,61 @@
+{
+  "schema": "flowscalper.wave147_process_candle_ipc_actual_browser.v1",
+  "observed_at_utc": "2026-09-01T21:47:37Z",
+  "runtime_url": "http://127.0.0.1:8870",
+  "run_id": "run-2b7135a972dd",
+  "release_commit": "9e29a5c5d520054c5030282ed6c95ed4b19209d9",
+  "status": "PASS",
+  "replay": {
+    "completed_opportunity_count": 54,
+    "selected_symbol": "HYPEUSDT",
+    "selected_direction": "LONG",
+    "frame_count": 41,
+    "initial_frame": 1,
+    "playback_observed_from_frame": 1,
+    "playback_observed_to_frame": 10,
+    "selected_speed": "5x",
+    "entry_jump_observed": true,
+    "exit_jump_observed": true,
+    "entry_state_ko": "PAPER 보유 중",
+    "exit_state_ko": "종료 · 손절",
+    "entry_price": "83.908",
+    "tp1_price": "85.5522",
+    "tp2_price": "87.1535",
+    "initial_stop_price": "82.8919",
+    "entry_ts_kst": "2026-09-01T23:30:05+09:00",
+    "exit_ts_kst": "2026-09-02T01:10:02+09:00",
+    "exit_price": "82.874",
+    "final_net_pnl_usdt": "-3.56",
+    "korean_entry_reason_visible": true,
+    "required_timeframes_visible": [
+      "30분봉",
+      "1시간봉",
+      "24시간 흐름",
+      "공개 호가 흐름"
+    ]
+  },
+  "browser_console": {
+    "warning_count": 0,
+    "error_count": 0
+  },
+  "runtime_diagnostics": {
+    "strategy_evaluation_executor": "DEDICATED_PROCESS",
+    "strategy_candle_ipc_cached_history_count": 48,
+    "strategy_candle_ipc_full_payload_count": 158,
+    "strategy_candle_ipc_reuse_payload_count": 15367,
+    "strategy_candle_ipc_cache_miss_retry_count": 0
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_key_enabled": false,
+    "wallet_enabled": false
+  },
+  "limitations": {
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}

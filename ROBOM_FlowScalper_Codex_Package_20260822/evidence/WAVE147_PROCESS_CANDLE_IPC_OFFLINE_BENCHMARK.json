@@ -36,7 +36,10 @@
     "regression_contracts": "PASS"
   },
   "runtime_boundary": {
-    "actual_8870_post_install_observation": "NOT_RUN",
+    "actual_8870_post_install_observation": "PASS_THREE_55_SECOND_WINDOWS_ONE_WAL_WINDOW_FAILURE_PRESERVED",
+    "actual_8870_browser_replay": "PASS_OBSERVED",
+    "current_release_commit": "9e29a5c5d520054c5030282ed6c95ed4b19209d9",
+    "current_run_id": "run-2b7135a972dd",
     "six_hour_soak": "NOT_RUN",
     "twenty_four_hour_soak": "NOT_RUN",
     "profitability": "NOT_PROVEN",

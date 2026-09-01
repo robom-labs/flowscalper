@@ -5081,3 +5081,92 @@ persistence fault·buffer drop·실제주문·인증은 0이었다. 이 짧은 �
 현재 상태는 `COMPLETE_WITH_LIMITS`다. 화면 구현·자동검증·불변 설치·실제 8870 조작검증은
 완료했다. 6시간·24시간과 비용 후 수익성은 별도 장기 증거가 없으므로 `NOT_RUN`·`NOT_PROVEN`,
 실자금 준비는 `NOT_READY`를 유지한다.
+
+## 109. Wave 147 전략 완성봉 IPC 재사용과 실제 서비스 지연 검증
+
+### 109.1 재현한 원인과 수정 범위
+
+변경 전 실제 8870을 같은 Run에서 55초씩 두 번 관찰했다. 공개시장 이벤트와 전략평가는 계속
+전진했지만 신규 500ms 초과 event-loop 지연이 각각 1회와 3회 발생해 두 실행 모두
+`event_loop_lag_bounded`를 실패했다. 프로파일링 결과 전용 전략 프로세스에 전달하는 각 평가
+요청이 15분·30분·1시간 `Decimal` 완성봉 200개씩, 총 600개를 변동 여부와 무관하게 pickle로
+반복 직렬화하고 있었다.
+
+메인은 Run·설정 state key, 종목과 시간구간별 마지막 완성봉을 제한된 cache에 보존한다. 첫 요청,
+완성봉 변경 또는 state key 변경 때만 최근 200개 전체를 보내며 나머지는 재사용 표식과 빈
+완성봉 payload를 보낸다. worker도 같은 key로 실제 완성봉을 보존한다. worker 재시작 등으로
+cache가 없으면 `StrategyCandleCacheMiss`로 fail closed하고 메인이 전체 이력으로 정확히 한 번
+재시도한다. 이 변경은 strategy signal, 진입·청산, 비용, TP1·TP2·SL, 수량, 보수적 bid·ask
+PAPER 체결을 바꾸지 않는다.
+
+동일한 600개 완성봉 요청의 pickle 크기는 58,799byte에서 2,319byte로 줄어 96.056% 감소했다.
+회귀계약은 재사용 요청이 첫 전체 요청의 10% 미만이어야 한다. 실제 설치 뒤 runtime 진단에서
+전략 evaluator는 `DEDICATED_PROCESS`, cache 이력 48개, 전체 payload 158회, 재사용 payload
+15,367회, cache miss 재시도 0회를 확인했다.
+
+### 109.2 자동검증과 실측 결과
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 전략 프로세스·runtime 핵심 | `PASS` | 68건, 최종 크기 회귀 포함 핵심 파일 8건 |
+| backend 전체 | `PASS` | 1,544건 |
+| frontend Vitest | `PASS` | 119건 |
+| Ruff·mypy | `PASS` | Ruff 오류 0·mypy 127 source 오류 0 |
+| ESLint·TypeScript·Vite build | `PASS` | 오류 0 |
+| fixture API | `PASS` | 37건 |
+| fixture Playwright | `PASS` | 7 PASS·2 설계상 SKIP |
+| PAPER build safety·security | `PASS` | 실제주문 경로·위반·secret 0 |
+| repository hygiene·회귀계약 | `PASS` | 모두 통과 |
+| 변경 전 실제 8870 55초 두 번 | `FAIL_PRESERVED` | 신규 500ms 초과 event-loop 지연 1회·3회 |
+| 설치 뒤 실제 8870 55초 첫 관찰 | `PASS` | event +5,094·평가 +4,848·queue 18·처리/trade P95 22.990/29.080ms |
+| 설치 뒤 WAL 겹침 55초 | `FAIL_PRESERVED` | event-loop 목표 PASS, `wal_checkpoint_continued`만 FAIL |
+| WAL 완료 뒤 실제 8870 55초 | `PASS` | event +5,148·평가 +4,860·queue 7·처리/trade P95 24.212/30.921ms |
+| 연속 확인 실제 8870 55초 | `PASS` | event +4,841·평가 +4,836·queue 11·처리/trade P95 23.588/29.602ms |
+| 실제 8870 browser replay | `PASS_OBSERVED` | 54개·1/41→10/41 재생·진입/종료 이동·오류/경고 0 |
+
+세 post-install PASS 창 모두 신규 500ms 초과 event-loop 지연, unplanned reconnect, sequence gap,
+resync, drop, persistence fault, buffer drop과 critical lag가 0이었다. WAL 겹침 실패는 삭제하거나
+전체 성공으로 바꾸지 않았다. checkpoint가 끝난 뒤 같은 기준을 다시 실행해 PASS했고, 뒤이은
+확인 창도 PASS했다.
+
+### 109.3 실제 다시보기와 원장 경계
+
+실제 `http://127.0.0.1:8870`의 `거래 → 다시보기`에서 완료 기회 54개가 로드됐다. 최신
+HYPEUSDT 거래는 진입 전 1/41에서 시작했고 5배속 재생으로 10/41까지 전진했다. 실제 진입
+이동 시 `PAPER 보유 중`, 진입 83.908, TP1 85.5522, TP2 87.1535, 초기 SL 82.8919와 당시
+손익을 확인했다. 실제 종료 이동 시 `종료 · 손절`, 종료가 82.874, 최종 -3.56 USDT가 표시됐다.
+30분봉·1시간봉·24시간 흐름·공개 호가 흐름의 한국어 진입근거와 KST 진입·종료 시각도 보였고
+browser warning·error는 0이었다.
+
+현재 활성 5.46GB 원장에 LIVE와 동시에 full `quick_check`를 실행하지 않았다. 과거 같은 장치
+동시 전수검사가 queue와 drop을 만든 회귀가 있기 때문이다. 이번 관찰에서는 persistence fault,
+buffer drop, pending entry와 open position이 모두 0이었고 WAL checkpoint 완료도 확인했다.
+전체 원장 전수 무결성은 서비스를 닫고 다른 물리장치의 byte-verified immutable 사본에서 수행하기
+전까지 이번 Wave 기준 `NOT_RUN`이다.
+
+### 109.4 증거와 현재 판정
+
+- 변경 전 실패는 `evidence/WAVE147_PROCESS_CANDLE_IPC_BASELINE_55S.json`과
+  `evidence/WAVE147_PROCESS_CANDLE_IPC_BASELINE_RETRY_55S.json`에 보존한다.
+- 직렬화와 테스트 결과는 `evidence/WAVE147_PROCESS_CANDLE_IPC_OFFLINE_BENCHMARK.json`에
+  보존한다.
+- 실제 서비스 PASS 세 번은 `evidence/WAVE147_PROCESS_CANDLE_IPC_POST_INSTALL_55S.json`,
+  `evidence/WAVE147_PROCESS_CANDLE_IPC_POST_INSTALL_RETRY_55S.json`,
+  `evidence/WAVE147_PROCESS_CANDLE_IPC_POST_INSTALL_CONFIRM_55S.json`에 보존한다.
+- WAL 창 실패는
+  `evidence/WAVE147_PROCESS_CANDLE_IPC_POST_INSTALL_RETRY_WAL_WINDOW_55S.json`에 보존한다.
+- 실제 다시보기 상호작용은 `evidence/WAVE147_PROCESS_CANDLE_IPC_ACTUAL_BROWSER.json`에 보존한다.
+
+| 항목 | 상태 |
+|---|---|
+| 전략 IPC 병목·회귀검증 | `PASS` |
+| 실제 8870 반복 단기관찰 | `PASS_WITH_PRESERVED_WAL_WINDOW_FAILURE` |
+| 실제 8870 다시보기 | `PASS_OBSERVED` |
+| 활성 원장 full 전수검사 | `NOT_RUN` |
+| 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
+| 6시간·24시간 | `NOT_RUN` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+
+현재 상태는 `COMPLETE_WITH_LIMITS`다. 반복 직렬화 병목, 단기 event-loop 지연 회귀와 실제
+다시보기 동작은 검증했다. 장시간 안정성, 전체 원장 전수검사와 비용 후 수익성은 각각 실제 gate를
+완료하지 않았으므로 `NOT_RUN`·`NOT_PROVEN`을 유지한다.

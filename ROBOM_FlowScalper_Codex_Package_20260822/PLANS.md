@@ -824,3 +824,26 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   `evidence/screenshots/v6-actual-8870/`에 보존한다.
 - 화면 완료는 수익성 증거가 아니다. 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금
   준비는 `NOT_READY`, 실제 주문·private API·API Key·wallet·runtime AI 주문판단은 0을 유지한다.
+
+## Wave 147 전략 완성봉 IPC 재사용과 지연 회귀 차단
+
+- 상태는 `COMPLETE_WITH_LIMITS`다.
+- 같은 Run·설정·종목의 15분·30분·1시간 완성봉 이력을 메인과 전략 worker 양쪽의 제한된 cache에
+  둔다. 마지막 완성봉이 같으면 빈 payload와 재사용 표식만 전달하고, 완성봉 또는 state key가
+  바뀌면 최근 200개 전체를 다시 전달한다.
+- worker cache miss는 정상 신호로 취급하지 않는다. 메인은 보유한 전체 이력으로 정확히 한 번
+  재시도하고, 다시 실패하면 기존 fail-closed 전략평가 경계로 반환한다.
+- 첫 payload·재사용·봉 변경·state key 변경·실제 spawn worker 재시작·cache miss 복구와 pickle
+  크기 상한을 회귀 고정했다. 전략 기준·진입·청산·비용·TP·SL·호가 체결은 변경하지 않는다.
+- 변경 전 55초 관찰 두 번은 신규 500ms 초과 event-loop 지연 1회·3회로 모두 `FAIL`이었다.
+  설치 뒤 55초 관찰 세 번은 각각 event +5,094/+5,148/+4,841, 전략평가
+  +4,848/+4,860/+4,836이고 신규 500ms 초과 지연은 모두 0으로 `PASS`했다.
+- 중간 한 번은 event-loop 목표를 통과했지만 관찰 종료 시 WAL checkpoint가 진행 중이라
+  `wal_checkpoint_continued`만 `FAIL`했다. 이 창은 전략 성능 PASS로 덮어쓰지 않고 별도 파일에
+  보존한다.
+- 실제 8870에서 완료 거래 54개를 불러와 1/41에서 10/41까지 재생하고 실제 진입·종료 이동,
+  진입가·TP1·TP2·초기 SL·KST 시각·한국어 근거·최종 손익과 browser 오류 0을 다시 확인했다.
+- backend 1,544건, frontend 119건, fixture API 37건, fixture Playwright 7 PASS·2 설계상 SKIP,
+  Ruff·mypy·ESLint·TypeScript·build·PAPER safety·security·저장소 위생·회귀계약을 통과했다.
+- 증거는 `evidence/WAVE147_PROCESS_CANDLE_IPC_*.json`에 보존한다. 6시간·24시간은 `NOT_RUN`,
+  수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
