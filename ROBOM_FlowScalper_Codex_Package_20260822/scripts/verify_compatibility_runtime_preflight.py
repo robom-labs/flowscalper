@@ -843,7 +843,6 @@ def verify_running_process_binding(
     pid = loaded_pid()
     if expected_service_pid is not None:
         _require(pid == expected_service_pid, "legacy LaunchAgent PID가 preflight와 달라졌습니다.")
-    _require(Path("/usr/sbin/lsof").is_file(), "lsof 실행 파일이 없습니다.")
     require_current_pointer()
     ledger_owner = lsof_records("-a", "-p", str(pid), str(ledger_path))
     listener = lsof_records(
