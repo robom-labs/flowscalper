@@ -630,7 +630,7 @@ class PaperRuntime:
     data_gap_since_ms: dict[str, int] = field(default_factory=dict)
     _stale_trade_symbols: set[str] = field(default_factory=set, repr=False)
     _feature_input_fault_symbols: set[str] = field(default_factory=set, repr=False)
-    strategy_evaluation_interval_ms: int = 500
+    strategy_evaluation_interval_ms: int = 1_000
     _last_strategy_evaluation_ms: dict[str, int] = field(default_factory=dict)
     _market_event_buffer: list[dict[str, object]] = field(default_factory=list)
     _candle_buffer: list[dict[str, object]] = field(default_factory=list)

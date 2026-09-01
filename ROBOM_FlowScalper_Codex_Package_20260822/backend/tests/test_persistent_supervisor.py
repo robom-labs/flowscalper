@@ -752,7 +752,7 @@ def test_binance_depth_coalescer_preserves_sequence_span_and_latest_book() -> No
     assert len(coalescer.flush()) == 1
 
 
-def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execution() -> None:
+def test_strategy_snapshot_work_is_bounded_to_1s_but_every_book_reaches_execution() -> None:
     clock = DeterministicClock(current_utc_ms=1_000)
     runtime = PaperRuntime(
         mode=RuntimeMode.LIVE_SHADOW_PAPER,
@@ -769,6 +769,9 @@ def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execu
     fourth = _event(runtime.run_id, "BTCUSDT", clock, 3).model_copy(
         update={"event_type": "DEPTH_UPDATE", "venue_ts_ms": 1_500}
     )
+    fifth = _event(runtime.run_id, "BTCUSDT", clock, 4).model_copy(
+        update={"event_type": "DEPTH_UPDATE", "venue_ts_ms": 2_000}
+    )
 
     runtime.ingest_live_event(first)
     first_count = runtime.strategy_evaluation_count
@@ -779,8 +782,11 @@ def test_strategy_snapshot_work_is_bounded_to_500ms_but_every_book_reaches_execu
     assert runtime.strategy_evaluation_count == first_count
     assert runtime.latest_books["BTCUSDT"].ts_ms == 1_250
     runtime.ingest_live_event(fourth)
-    assert runtime.strategy_evaluation_count > first_count
+    assert runtime.strategy_evaluation_count == first_count
     assert runtime.latest_books["BTCUSDT"].ts_ms == 1_500
+    runtime.ingest_live_event(fifth)
+    assert runtime.strategy_evaluation_count > first_count
+    assert runtime.latest_books["BTCUSDT"].ts_ms == 2_000
     diagnostics = runtime.dashboard()["system"]
     assert diagnostics["strategy_evaluation_count"] == runtime.strategy_evaluation_count
     assert diagnostics["qualified_signal_count"] == runtime.qualified_signal_count
