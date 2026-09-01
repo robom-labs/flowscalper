@@ -152,6 +152,9 @@ class _WorkerState:
 
 _WORKER_STATE: _WorkerState | None = None
 
+# 현재 모든 캔들 기반 전략의 가장 긴 결정 창은 완성봉 200개다.
+_PROCESS_CANDLE_LIMIT = 200
+
 
 def _fresh_worker_state(state_key: str, history_limit: int) -> _WorkerState:
     return _WorkerState(
@@ -290,9 +293,9 @@ class ProcessStrategyEvaluator:
             snapshot=snapshot,
             regime=regime,
             tick_size=tick_size,
-            fifteen_minute_candles=fifteen_minute_candles,
-            thirty_minute_candles=thirty_minute_candles,
-            hourly_candles=hourly_candles,
+            fifteen_minute_candles=fifteen_minute_candles[-_PROCESS_CANDLE_LIMIT:],
+            thirty_minute_candles=thirty_minute_candles[-_PROCESS_CANDLE_LIMIT:],
+            hourly_candles=hourly_candles[-_PROCESS_CANDLE_LIMIT:],
             history_limit=self._history_limit,
         )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -9,8 +10,14 @@ import pytest
 from backend.app.clocks import TestClock as DeterministicClock
 from backend.app.domain.models import DataQuality, MarketEvent, RuntimeMode, Side, Venue
 from backend.app.features import FeatureSnapshot
+from backend.app.market_data import Candle
 from backend.app.regime import Regime
 from backend.app.runtime import PaperRuntime
+from backend.app.strategies.hourly_momentum_breakout import hourly_momentum_state
+from backend.app.strategies.intraday_trend import (
+    IntradayTrendVariant,
+    intraday_trend_state,
+)
 from backend.app.strategies.process_evaluator import (
     ProcessStrategyEvaluator,
     StrategyConditionRows,
@@ -117,6 +124,87 @@ def _feature_snapshot(*, ts_ms: int = 1_000) -> FeatureSnapshot:
         compression_ratio=1.0,
         efficiency_ratio_30s=0.0,
         micro_vwap_10s=100.0,
+    )
+
+
+def _candles(interval_seconds: int, count: int) -> tuple[Candle, ...]:
+    return tuple(
+        Candle(
+            symbol="BTCUSDT",
+            interval_seconds=interval_seconds,
+            open_ts_ms=index * interval_seconds * 1_000,
+            open=Decimal("100") + Decimal(index) * Decimal("0.1"),
+            high=Decimal("100.2") + Decimal(index) * Decimal("0.1"),
+            low=Decimal("99.8") + Decimal(index) * Decimal("0.1"),
+            close=Decimal("100.1") + Decimal(index) * Decimal("0.1"),
+            volume=Decimal("100") + Decimal(index % 9),
+            trade_count=100 + index,
+        )
+        for index in range(count)
+    )
+
+
+def test_process_request_sends_only_required_candle_window() -> None:
+    evaluator = ProcessStrategyEvaluator()
+    runtime = _runtime("run-process-candle-window")
+    fifteen = _candles(900, 500)
+    thirty = _candles(1_800, 500)
+    hourly = _candles(3_600, 500)
+
+    request = evaluator.request(
+        state_key=runtime._strategy_process_state_key(),
+        registry=runtime.strategy_registry,
+        snapshot=_feature_snapshot(),
+        regime=Regime.TREND_UP,
+        fifteen_minute_candles=fifteen,
+        thirty_minute_candles=thirty,
+        hourly_candles=hourly,
+    )
+
+    assert request.fifteen_minute_candles == fifteen[-200:]
+    assert request.thirty_minute_candles == thirty[-200:]
+    assert request.hourly_candles == hourly[-200:]
+
+
+def test_bounded_process_candles_preserve_strategy_analysis() -> None:
+    fifteen = _candles(900, 500)
+    thirty = _candles(1_800, 500)
+    hourly = _candles(3_600, 500)
+
+    full_hourly = hourly_momentum_state(hourly)
+    bounded_hourly = hourly_momentum_state(hourly[-200:])
+    assert bounded_hourly == full_hourly
+
+    full_fifteen = intraday_trend_state(
+        fifteen,
+        hourly,
+        IntradayTrendVariant.PULLBACK_RECLAIM_15M,
+    )
+    bounded_fifteen = intraday_trend_state(
+        fifteen[-200:],
+        hourly[-200:],
+        IntradayTrendVariant.PULLBACK_RECLAIM_15M,
+    )
+    assert bounded_fifteen == replace(
+        full_fifteen,
+        history_count=200,
+        hourly_history_count=200,
+    )
+
+    full_thirty = intraday_trend_state(
+        thirty,
+        hourly,
+        IntradayTrendVariant.BREAKOUT_RETEST_30M,
+    )
+    bounded_thirty = intraday_trend_state(
+        thirty[-200:],
+        hourly[-200:],
+        IntradayTrendVariant.BREAKOUT_RETEST_30M,
+    )
+    assert bounded_thirty == replace(
+        full_thirty,
+        history_count=200,
+        hourly_history_count=200,
     )
 
 
