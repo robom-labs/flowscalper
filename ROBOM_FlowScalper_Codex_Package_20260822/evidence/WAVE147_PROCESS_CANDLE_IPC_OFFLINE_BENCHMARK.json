@@ -1,0 +1,46 @@
+{
+  "schema": "flowscalper.wave147_process_candle_ipc_offline_benchmark.v1",
+  "measured_at": "2026-09-02T06:33:41+09:00",
+  "scope": "OFFLINE_REQUEST_SERIALIZATION_AND_REGRESSION_TESTS",
+  "source_commit_before_change": "1216788849ac5e99ec0f8b115d174f091b6659ee",
+  "change": {
+    "description_ko": "15분·30분·1시간 완성봉 최대 200개를 매 평가마다 재직렬화하지 않고, 완성봉이 바뀌 때만 자식 프로세스에 전체 이력을 전송한다.",
+    "strategy_thresholds_changed": false,
+    "entry_exit_contract_changed": false,
+    "paper_execution_contract_changed": false
+  },
+  "serialization": {
+    "protocol": "pickle.HIGHEST_PROTOCOL",
+    "fifteen_minute_candles": 200,
+    "thirty_minute_candles": 200,
+    "hourly_candles": 200,
+    "first_request_bytes": 58799,
+    "unchanged_request_bytes": 2319,
+    "reduction_percent": 96.056,
+    "unchanged_to_first_ratio": 0.0394,
+    "regression_contract": "UNCHANGED_REQUEST_LT_10_PERCENT_OF_FIRST_REQUEST"
+  },
+  "verification": {
+    "targeted_process_and_runtime_tests": "68_PASS",
+    "full_backend_tests": "1544_PASS",
+    "frontend_unit_tests": "119_PASS",
+    "frontend_e2e": "7_PASS_2_EXPECTED_SKIP",
+    "python_lint": "PASS",
+    "python_typecheck": "PASS",
+    "frontend_lint": "PASS",
+    "frontend_typecheck": "PASS",
+    "frontend_build": "PASS",
+    "paper_build_safety": "PASS",
+    "security_scan": "PASS",
+    "repository_hygiene": "PASS",
+    "regression_contracts": "PASS"
+  },
+  "runtime_boundary": {
+    "actual_8870_post_install_observation": "NOT_RUN",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_orders_enabled": false,
+    "auth_required": false
+  }
+}

@@ -1978,6 +1978,11 @@ class PaperRuntime:
 
     def _operational_diagnostics(self) -> dict[str, object]:
         self._refresh_storage_safety()
+        strategy_candle_cache_diagnostics = (
+            self._live_strategy_evaluator.candle_cache_diagnostics()
+            if isinstance(self._live_strategy_evaluator, ProcessStrategyEvaluator)
+            else {}
+        )
         recovery_audit = self.startup_recovery_audit
         paper_transition = self.paper_portfolio.latest_execution_transition
         queue_capacity = (
@@ -2220,6 +2225,7 @@ class PaperRuntime:
                 else "SYNCHRONOUS"
             ),
             "strategy_evaluation_process_pid": self._live_strategy_process_pid,
+            **strategy_candle_cache_diagnostics,
             "qualified_signal_count": self.qualified_signal_count,
             "manual_pause_requested": self._manual_pause_requested,
             "paper_entry_intent_revision": self._paper_entry_intent_revision,

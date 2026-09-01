@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pickle
 from dataclasses import replace
 from decimal import Decimal
 
@@ -20,9 +21,12 @@ from backend.app.strategies.intraday_trend import (
 )
 from backend.app.strategies.process_evaluator import (
     ProcessStrategyEvaluator,
+    StrategyCandleCacheMiss,
     StrategyConditionRows,
     StrategyEvaluationRequest,
     StrategyEvaluationResult,
+    _fresh_worker_state,
+    _resolve_worker_candles,
 )
 
 
@@ -144,6 +148,33 @@ def _candles(interval_seconds: int, count: int) -> tuple[Candle, ...]:
     )
 
 
+def _cache_miss_without_full_history_worker(
+    request: StrategyEvaluationRequest,
+) -> StrategyEvaluationResult:
+    if (
+        request.reuse_fifteen_minute_candles
+        or request.reuse_thirty_minute_candles
+        or request.reuse_hourly_candles
+    ):
+        raise StrategyCandleCacheMiss("자식 프로세스 재시작 모의")
+    return StrategyEvaluationResult(
+        signals=(),
+        condition_rows=(
+            StrategyConditionRows(
+                symbol=request.snapshot.symbol,
+                strategy_id="CBR_CONTINUATION_V1",
+                side=Side.LONG,
+                rows=(
+                    {
+                        "condition_id": "FULL_HISTORY_COUNT",
+                        "value": len(request.fifteen_minute_candles),
+                    },
+                ),
+            ),
+        ),
+    )
+
+
 def test_process_request_sends_only_required_candle_window() -> None:
     evaluator = ProcessStrategyEvaluator()
     runtime = _runtime("run-process-candle-window")
@@ -164,6 +195,127 @@ def test_process_request_sends_only_required_candle_window() -> None:
     assert request.fifteen_minute_candles == fifteen[-200:]
     assert request.thirty_minute_candles == thirty[-200:]
     assert request.hourly_candles == hourly[-200:]
+    assert request.reuse_fifteen_minute_candles is False
+    assert request.reuse_thirty_minute_candles is False
+    assert request.reuse_hourly_candles is False
+
+
+def test_process_request_reuses_unchanged_candles_and_resends_changes() -> None:
+    evaluator = ProcessStrategyEvaluator()
+    runtime = _runtime("run-process-candle-reuse")
+    fifteen = _candles(900, 500)
+    thirty = _candles(1_800, 500)
+    hourly = _candles(3_600, 500)
+    request_kwargs = {
+        "state_key": runtime._strategy_process_state_key(),
+        "registry": runtime.strategy_registry,
+        "snapshot": _feature_snapshot(),
+        "regime": Regime.TREND_UP,
+        "fifteen_minute_candles": fifteen,
+        "thirty_minute_candles": thirty,
+        "hourly_candles": hourly,
+    }
+
+    first = evaluator.request(**request_kwargs)
+    unchanged = evaluator.request(**request_kwargs)
+    changed = evaluator.request(
+        **{
+            **request_kwargs,
+            "fifteen_minute_candles": _candles(900, 501),
+        }
+    )
+    new_state = evaluator.request(
+        **{
+            **request_kwargs,
+            "state_key": "run-process-candle-reuse:BINANCE_USDM:new-health-epoch",
+        }
+    )
+
+    assert unchanged.fifteen_minute_candles == ()
+    assert unchanged.thirty_minute_candles == ()
+    assert unchanged.hourly_candles == ()
+    assert unchanged.reuse_fifteen_minute_candles is True
+    assert unchanged.reuse_thirty_minute_candles is True
+    assert unchanged.reuse_hourly_candles is True
+    full_payload_bytes = len(pickle.dumps(first, protocol=pickle.HIGHEST_PROTOCOL))
+    reuse_payload_bytes = len(
+        pickle.dumps(unchanged, protocol=pickle.HIGHEST_PROTOCOL)
+    )
+    assert reuse_payload_bytes < full_payload_bytes * 0.1
+    assert changed.fifteen_minute_candles == _candles(900, 501)[-200:]
+    assert changed.reuse_fifteen_minute_candles is False
+    assert changed.reuse_thirty_minute_candles is True
+    assert changed.reuse_hourly_candles is True
+    assert new_state.fifteen_minute_candles == fifteen[-200:]
+    assert new_state.thirty_minute_candles == thirty[-200:]
+    assert new_state.hourly_candles == hourly[-200:]
+    diagnostics = evaluator.candle_cache_diagnostics()
+    assert diagnostics["strategy_candle_ipc_full_payload_count"] == 7
+    assert diagnostics["strategy_candle_ipc_reuse_payload_count"] == 5
+
+
+def test_worker_candle_cache_reuses_exact_history_and_fails_closed_on_miss() -> None:
+    candles = _candles(900, 200)
+    state = _fresh_worker_state("run-worker-candle-cache", 1_200)
+
+    first = _resolve_worker_candles(
+        state,
+        symbol="BTCUSDT",
+        interval_seconds=900,
+        candles=candles,
+        reuse=False,
+    )
+    reused = _resolve_worker_candles(
+        state,
+        symbol="BTCUSDT",
+        interval_seconds=900,
+        candles=(),
+        reuse=True,
+    )
+
+    assert first == candles
+    assert reused == candles
+    with pytest.raises(StrategyCandleCacheMiss):
+        _resolve_worker_candles(
+            state,
+            symbol="ETHUSDT",
+            interval_seconds=900,
+            candles=(),
+            reuse=True,
+        )
+
+
+async def test_process_candle_cache_miss_retries_once_with_full_history() -> None:
+    evaluator = ProcessStrategyEvaluator(
+        worker_function=_cache_miss_without_full_history_worker,
+    )
+    runtime = _runtime("run-process-candle-cache-retry")
+    fifteen = _candles(900, 500)
+    thirty = _candles(1_800, 500)
+    hourly = _candles(3_600, 500)
+    request_kwargs = {
+        "state_key": runtime._strategy_process_state_key(),
+        "registry": runtime.strategy_registry,
+        "snapshot": _feature_snapshot(),
+        "regime": Regime.TREND_UP,
+        "fifteen_minute_candles": fifteen,
+        "thirty_minute_candles": thirty,
+        "hourly_candles": hourly,
+    }
+
+    try:
+        first = evaluator.request(**request_kwargs)
+        await evaluator.evaluate_to_completion(first)
+        reuse = evaluator.request(**request_kwargs)
+        result, cancellation = await evaluator.evaluate_to_completion(reuse)
+    finally:
+        await evaluator.aclose()
+
+    assert cancellation is None
+    assert result.condition_rows[0].rows[0]["value"] == 200
+    assert evaluator.candle_cache_diagnostics()[
+        "strategy_candle_ipc_cache_miss_retry_count"
+    ] == 1
 
 
 def test_bounded_process_candles_preserve_strategy_analysis() -> None:
