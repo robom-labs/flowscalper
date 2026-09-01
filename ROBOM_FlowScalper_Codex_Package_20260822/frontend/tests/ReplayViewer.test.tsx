@@ -274,6 +274,7 @@ test('shows a visible retry action when a focused trade chart request fails', as
 })
 
 test('shows allocated entry and exit fees at the matching replay stage', async () => {
+  let focusRequests = 0
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
     if (url === '/api/replay/runs' || url === '/api/replay/results') {
@@ -283,6 +284,7 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
       return new Response('null', { status: 200 })
     }
     if (url.includes('/focus?')) {
+      focusRequests += 1
       return new Response(JSON.stringify({
         session_version: 8,
         run_id: 'run-costs', trade_id: 'trade-costs', profile: 'BASE',
@@ -334,13 +336,18 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
     net_pnl: '0.4', holding_ms: 1_000, holding_seconds: 1, sample_type: 'LIVE_PUBLIC',
   } as unknown as HistoryRow
 
-  render(<ReplayViewer trade={trade} />)
+  const view = render(<ReplayViewer trade={trade} />)
   expect(await screen.findByRole('heading', { name: 'BTCUSDT 거래 집중 재생' })).toBeInTheDocument()
   expect(screen.getByText('왜 진입했나요?')).toBeInTheDocument()
   expect(screen.getByText('체결과 호가 흐름이 진입 방향을 확인했습니다.')).toBeInTheDocument()
   expect(screen.getByText('3분봉')).toBeInTheDocument()
   expect(screen.getByTestId('replay-chart')).toHaveAttribute('data-candle-count', '1')
   fireEvent.click(screen.getByRole('button', { name: '실제 진입' }))
+  view.rerender(<ReplayViewer trade={{ ...trade }} />)
+  await waitFor(() => {
+    expect(screen.getByText('PAPER 보유 중')).toBeInTheDocument()
+    expect(focusRequests).toBe(1)
+  })
   fireEvent.click(screen.getByText('세부 원장·비용·검증 정보'))
   await waitFor(() => {
     expect(screen.getByText('진입 수수료').parentElement).toHaveTextContent('0.3 USDT')

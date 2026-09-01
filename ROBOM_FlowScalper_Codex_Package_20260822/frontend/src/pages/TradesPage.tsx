@@ -112,6 +112,8 @@ export function TradesPage({ data }: { data: DashboardData }) {
       ).then((response) => {
         if (disposed) return
         if (!Array.isArray(response.opportunities)) throw new Error('invalid replay catalog response')
+        const firstReplayTrade = replayCatalogRows(response)[0] ?? null
+        setRequestedReplayTrade((current) => current ?? firstReplayTrade)
         setReplayLoad({ state: 'READY', data: response, lastUpdatedMs: Date.now() })
       }).catch(() => {
         if (disposed || controller?.signal.aborted) return

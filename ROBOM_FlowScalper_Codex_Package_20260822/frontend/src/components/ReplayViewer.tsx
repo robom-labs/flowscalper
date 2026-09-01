@@ -312,8 +312,12 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
     }
   }, [operationId, operationState])
 
+  const focusedRunId = trade?.run_id ?? null
+  const focusedTradeId = trade?.trade_id ?? null
+  const focusedProfile = trade?.profile || 'BASE'
+
   useEffect(() => {
-    if (!trade) return
+    if (!focusedRunId || !focusedTradeId) return
     const controller = new AbortController()
     queueMicrotask(() => {
       if (controller.signal.aborted) return
@@ -321,8 +325,8 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       setFocusSession(null)
       setError('')
     })
-    const query = new URLSearchParams({ trade_id: trade.trade_id, profile: trade.profile || 'BASE' })
-    void fetch(`/api/replay/${encodeURIComponent(trade.run_id)}/focus?${query}`, { signal: controller.signal })
+    const query = new URLSearchParams({ trade_id: focusedTradeId, profile: focusedProfile })
+    void fetch(`/api/replay/${encodeURIComponent(focusedRunId)}/focus?${query}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(await replayErrorMessage(response, '선택한 거래의 집중 리플레이를 만들지 못했습니다.'))
         const session = await response.json() as ReplayFocusSession
@@ -337,7 +341,7 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
         if (!controller.signal.aborted) setFocusLoading(false)
       })
     return () => controller.abort()
-  }, [focusAttempt, trade])
+  }, [focusAttempt, focusedProfile, focusedRunId, focusedTradeId])
 
   useEffect(() => {
     clockRef.current?.dispose()
