@@ -88,7 +88,9 @@ function splitDashboardFetch(dashboard: unknown) {
       body = {
         schema_version: 1, analysis_scope: 'CURRENT_STRATEGY_VERSION', strategies: data.strategies,
         league_accounts: data.league_accounts, strategy_count: data.strategies.length,
-        league_account_count: data.league_accounts.length, ...flatPaperSafety,
+        league_account_count: data.league_accounts.length,
+        enabled_directional_entry_candidate_count: data.enabled_directional_entry_candidate_count,
+        ...flatPaperSafety,
       }
     } else if (path === '/api/strategy-families') {
       body = { schema_version: 1, families: [], ...flatPaperSafety }
@@ -223,31 +225,19 @@ test('keeps controls locked until the backend PAPER contract is verified', async
   expect(screen.queryByText('LIVE DATA')).not.toBeInTheDocument()
 })
 
-test('shows every enabled entry candidate in the market summary', () => {
-  vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)))
+test('shows every enabled entry candidate in the market summary', async () => {
   const dashboard = {
     ...initialDashboard,
-    strategy_family_catalog: {
-      schema_version: 1 as const,
-      families: [],
-      inventory: {
-        schema: 'flowscalper.strategy_inventory.v1' as const,
-        registered_catalog_item_count: 16,
-        runtime_registry_variant_count: 15,
-        enabled_directional_entry_candidate_count: 6,
-        current_family_entry_representative_count: initialDashboard.strategies.length,
-        inactive_history_runtime_variant_count: 9,
-        catalog_virtual_filter_count: 1,
-        active_directional_entry_count: 0,
-      },
-      ...flatPaperSafety,
-    },
+    enabled_directional_entry_candidate_count: 6,
   }
+  vi.stubGlobal('fetch', splitDashboardFetch(dashboard))
+  vi.stubGlobal('WebSocket', FakeWebSocket)
 
-  render(<MarketPage data={dashboard} onChartChange={vi.fn()} onStartLive={vi.fn()} onStartDemo={vi.fn()} busy={false} operation={null} onCancel={vi.fn()} onRetry={vi.fn()} />)
+  render(<App />)
 
-  expect(within(screen.getByLabelText('시장 요약')).getByText('모의평가 전략')).toBeInTheDocument()
-  expect(within(screen.getByLabelText('시장 요약')).getByText('6개')).toBeInTheDocument()
+  const summary = await screen.findByLabelText('시장 요약')
+  await waitFor(() => expect(within(summary).getByText('모의평가 전략')).toBeInTheDocument())
+  expect(within(summary).getByText('6개')).toBeInTheDocument()
 })
 
 test('uses exactly four primary pages without secondary navigation', async () => {

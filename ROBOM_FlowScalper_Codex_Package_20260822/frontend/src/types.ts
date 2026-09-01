@@ -1013,6 +1013,7 @@ export type DashboardData = {
   settings_summary?: SettingsSummaryPayload
   diagnostics?: DiagnosticsPayload
   strategy_family_catalog?: StrategyFamilyCatalogPayload
+  enabled_directional_entry_candidate_count?: number
 }
 
 export type UiStrategyStateRow = Partial<Omit<StrategySummaryRow, 'strategy_id' | 'performance'>> & {
@@ -1027,6 +1028,7 @@ export type StrategyPageSummaryPayload = FlatPaperSafetyContract & {
   league_accounts: LeagueAccount[]
   strategy_count: number
   league_account_count: number
+  enabled_directional_entry_candidate_count?: number
 }
 
 export type SettingsSummaryPayload = {

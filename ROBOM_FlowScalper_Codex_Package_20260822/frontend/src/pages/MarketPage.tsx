@@ -263,7 +263,8 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, busy
   }
   const activeRows = !explorerEnabled ? fallbackCatalog(data) : catalog.length ? catalog : fallbackCatalog(data)
   const enabledStrategies = data.strategies.filter((strategy) => strategy.mode !== 'OFF' && (strategy.long_enabled || strategy.short_enabled))
-  const enabledEntryCandidateCount = data.strategy_family_catalog?.inventory?.enabled_directional_entry_candidate_count
+  const enabledEntryCandidateCount = data.enabled_directional_entry_candidate_count
+    ?? data.strategy_family_catalog?.inventory?.enabled_directional_entry_candidate_count
     ?? enabledStrategies.length
   const noTradeReason = enabledStrategies.find((strategy) => strategy.reason_ko)?.reason_ko
     || (data.operation_status.paper_entry_active ? '현재 전략의 세부 진입 조건을 기다리고 있습니다.' : data.operation_status.detail_ko)

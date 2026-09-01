@@ -274,6 +274,16 @@ def strategy_page_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
     """전략 화면 표에 필요한 current/default-visible 행과 계좌만 만든다."""
 
     source_rows = _sequence_of_mappings(snapshot.get("strategies"))
+    enabled_directional_entry_candidate_count = sum(
+        1
+        for row in source_rows
+        if str(row.get("role", "")) == "ENTRY"
+        and row.get("superseded_by_strategy_id") is None
+        and str(row.get("mode", "")) in {"SHADOW", "ACTIVE"}
+        and str(row.get("lifecycle", ""))
+        in {"SHADOW", "CHALLENGER", "ACTIVE"}
+        and (bool(row.get("long_enabled")) or bool(row.get("short_enabled")))
+    )
     visible_rows = [
         row
         for row in source_rows
@@ -303,6 +313,9 @@ def strategy_page_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
         "league_accounts": league_accounts,
         "strategy_count": len(strategies),
         "league_account_count": len(league_accounts),
+        "enabled_directional_entry_candidate_count": (
+            enabled_directional_entry_candidate_count
+        ),
     } | safety
 
 

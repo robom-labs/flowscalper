@@ -274,6 +274,13 @@ function isStrategyPageSummaryPayload(value: unknown): value is StrategyPageSumm
     && hasCompleteFlatPaperSafetyContract(candidate)
     && Array.isArray(candidate.strategies)
     && Array.isArray(candidate.league_accounts)
+    && (
+      candidate.enabled_directional_entry_candidate_count === undefined
+      || (
+        Number.isInteger(candidate.enabled_directional_entry_candidate_count)
+        && Number(candidate.enabled_directional_entry_candidate_count) >= 0
+      )
+    )
 }
 
 function hasNonNegativeIntegerFields(
@@ -743,6 +750,10 @@ export function useDashboard(page: PageId = 'market') {
           }),
           league_accounts: summary.league_accounts,
           strategy_family_catalog: catalog ?? current.strategy_family_catalog,
+          enabled_directional_entry_candidate_count: (
+            summary.enabled_directional_entry_candidate_count
+            ?? current.enabled_directional_entry_candidate_count
+          ),
         }))
       })().catch((error: unknown) => {
         if (!controller.signal.aborted && mounted.current) setRequestError(errorMessage(error))

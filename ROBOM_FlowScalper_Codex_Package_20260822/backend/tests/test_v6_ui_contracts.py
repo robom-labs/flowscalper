@@ -63,6 +63,7 @@ def test_v6_summary_excludes_heavy_detail_and_is_less_than_half_dashboard() -> N
     strategy_summary = strategy_page_summary(dashboard)
     assert strategy_summary["strategy_count"] == 3
     assert strategy_summary["league_account_count"] == 6
+    assert strategy_summary["enabled_directional_entry_candidate_count"] == 6
     assert strategy_summary["paper_only"] is True
     assert strategy_summary["real_orders_enabled"] is False
     assert strategy_summary["auth_required"] is False
