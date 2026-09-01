@@ -13,7 +13,7 @@ from typing import Any
 
 from backend.app.storage.sqlite import SQLiteLedger
 
-_FOCUS_SESSION_VERSION = 7
+_FOCUS_SESSION_VERSION = 8
 _CANDIDATE_ID_PATTERN = re.compile(r"^paper-(candidate-[0-9a-f]+)-")
 _EXIT_REASON_LABELS = {
     "TAKE_PROFIT": "익절",
@@ -33,6 +33,26 @@ _MILESTONE_ORDER = {
     "TP2_HIT": 3,
     "STOP_HIT": 4,
     "EXIT": 5,
+}
+_ENTRY_REASON_LABELS_KO = {
+    "AGGRESSIVE_NOTIONAL_STRONG": "공격 체결 금액이 평소보다 강했습니다.",
+    "MULTI_WINDOW_FLOW_ALIGNED": "짧은 구간과 긴 구간의 체결 방향이 같았습니다.",
+    "OFI_ALIGNED": "호가 주문흐름이 진입 방향과 같았습니다.",
+    "PRICE_RESPONSE_EFFICIENT": "체결 압력이 실제 가격 이동으로 이어졌습니다.",
+    "MICROPRICE_ALIGNED": "호가 수량을 반영한 참고가격이 같은 방향이었습니다.",
+    "FLOW_ALIGNMENT_PERSISTENT": "방향성이 순간값이 아니라 정해진 시간 동안 이어졌습니다.",
+    "STRUCTURE_CONFIRMED": "가격 구조가 진입 방향을 확인했습니다.",
+    "FLOW_CONFIRMED": "체결과 호가 흐름이 진입 방향을 확인했습니다.",
+    "OFI_REACCELERATION": "주문흐름이 조정 후 다시 강해졌습니다.",
+    "TWENTY_FOUR_HOUR_MOMENTUM": "24시간 모멘텀이 진입 방향과 같았습니다.",
+    "ACTUAL_BOOK_ENTRY_REQUIRED": "실제 공개호가에서 진입 비용 조건을 확인했습니다.",
+}
+_REGIME_LABELS_KO = {
+    "TREND_UP": "상승 추세",
+    "TREND_DOWN": "하락 추세",
+    "RANGE": "박스권",
+    "HIGH_VOL": "변동성 확대",
+    "LOW_VOL": "변동성 축소",
 }
 
 
@@ -63,6 +83,7 @@ class ReplayFocusSessionBuilder:
         trade = self._find_trade(ledger, run_id, trade_id, profile)
         candidate = self._find_candidate(ledger, run_id, trade)
         levels = self._plan_levels(trade, candidate)
+        entry_context = self._entry_context(trade, candidate, levels)
         symbol = str(trade["symbol"])
         entry_ts = int(str(trade["entry_ts_ms"]))
         exit_ts = int(str(trade["exit_ts_ms"]))
@@ -190,6 +211,7 @@ class ReplayFocusSessionBuilder:
             "symbol": symbol,
             "side": str(trade["side"]),
             "strategy_id": str(trade["strategy_id"]),
+            "entry_context": entry_context,
             "levels": levels,
             "milestones": milestones,
             "start_ts_ms": int(str(frames[0]["ts_ms"])),
@@ -426,6 +448,72 @@ class ReplayFocusSessionBuilder:
             "take_profit_2": take_profit_2,
         }
 
+    @staticmethod
+    def _entry_context(
+        trade: Mapping[str, object],
+        candidate: Mapping[str, object] | None,
+        levels: Mapping[str, object],
+    ) -> dict[str, object]:
+        """원장의 실제 신호 근거와 Registry 설명을 분리해 사람이 읽을 수 있게 정리한다."""
+
+        raw_reason_codes = candidate.get("reason_codes", []) if candidate else []
+        reason_codes = (
+            [str(code) for code in raw_reason_codes]
+            if isinstance(raw_reason_codes, list | tuple)
+            else []
+        )
+        reason_labels = list(
+            dict.fromkeys(
+                _ENTRY_REASON_LABELS_KO.get(
+                    code,
+                    "저장된 전략의 세부 진입 조건을 충족했습니다.",
+                )
+                for code in reason_codes
+            )
+        )
+        strategy_id = str(trade["strategy_id"])
+        descriptor = None
+        try:
+            from backend.app.strategies.registry import StrategyRegistry
+
+            descriptor = StrategyRegistry().descriptor(strategy_id)
+        except ValueError:
+            descriptor = None
+        trade_version = str(trade.get("strategy_version") or "")
+        registry_version = (
+            descriptor.research_contract.strategy_version if descriptor is not None else ""
+        )
+        regime = str(candidate.get("regime", "UNKNOWN")) if candidate else "UNKNOWN"
+        return {
+            "signal_ts_ms": int(str(levels["signal_ts_ms"])),
+            "reason_codes": reason_codes,
+            "reason_labels_ko": reason_labels,
+            "regime": regime,
+            "regime_ko": _REGIME_LABELS_KO.get(regime, "시장 상태 확인"),
+            "strategy_display_name_ko": (
+                descriptor.display_name_ko if descriptor is not None else "이전 전략"
+            ),
+            "strategy_summary_ko": descriptor.summary_ko if descriptor is not None else "",
+            "entry_hypothesis_ko": (
+                descriptor.research_contract.entry_hypothesis_ko
+                if descriptor is not None
+                else ""
+            ),
+            "required_timeframes": (
+                list(descriptor.required_timeframes) if descriptor is not None else []
+            ),
+            "entry_rules_ko": (
+                list(descriptor.entry_rules_ko) if descriptor is not None else []
+            ),
+            "trade_strategy_version": trade_version,
+            "registry_strategy_version": registry_version,
+            "registry_metadata_matches_trade": bool(
+                descriptor is not None and trade_version and trade_version == registry_version
+            ),
+            "evidence_ko": "저장된 공개시장 신호·PAPER 원장 기준",
+            "paper_only": True,
+        }
+
     @classmethod
     def _milestones(
         cls,
@@ -481,8 +569,8 @@ class ReplayFocusSessionBuilder:
                 {
                     "kind": "STOP_HIT",
                     "ts_ms": exit_ts_ms,
-                    "price": str(levels["initial_stop"]),
-                    "label": "손절선 도달",
+                    "price": str(trade["exit_price"]),
+                    "label": "손절·보호선 실제 체결",
                 }
             )
         reason_label = _EXIT_REASON_LABELS.get(exit_reason, exit_reason)

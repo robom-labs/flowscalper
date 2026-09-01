@@ -176,20 +176,27 @@ test('polls completed trades without overlapping and refreshes a closure in the 
   }
   let resolveFirst!: (value: Response) => void
   const firstResponse = new Promise<Response>((resolve) => { resolveFirst = resolve })
-  const fetchMock = vi.fn()
-    .mockImplementationOnce(() => firstResponse)
-    .mockResolvedValue(response(groupedTradesResponse(completed)))
+  let currentScopeRequests = 0
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init
+    const url = String(input)
+    if (url.includes('run_scope=ALL')) return response(groupedTradesResponse(completed))
+    currentScopeRequests += 1
+    if (currentScopeRequests === 1) return firstResponse
+    return response(groupedTradesResponse(completed))
+  })
   vi.stubGlobal('fetch', fetchMock)
 
   const view = render(<TradesPage data={data} />)
   await vi.advanceTimersByTimeAsync(10_000)
-  expect(fetchMock).toHaveBeenCalledTimes(1)
+  expect(currentScopeRequests).toBe(1)
   resolveFirst(response(groupedTradesResponse()))
   await vi.waitFor(() => expect(screen.getByText(/5초마다 확인/)).toBeInTheDocument())
   await vi.advanceTimersByTimeAsync(5_000)
   await vi.waitFor(() => expect(screen.getByText(/완료 1회 · 원장 1행/)).toBeInTheDocument())
-  expect(fetchMock).toHaveBeenCalledTimes(2)
-  const latestSignal = (fetchMock.mock.calls.at(-1)?.[1] as RequestInit | undefined)?.signal as AbortSignal
+  expect(currentScopeRequests).toBe(2)
+  const latestCurrentCall = fetchMock.mock.calls.filter(([input]) => String(input).includes('run_scope=CURRENT')).at(-1)
+  const latestSignal = (latestCurrentCall?.[1] as RequestInit | undefined)?.signal as AbortSignal
   view.unmount()
   expect(latestSignal.aborted).toBe(true)
 })

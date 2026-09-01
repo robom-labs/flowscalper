@@ -6,7 +6,7 @@ import { ReplayViewer } from '../src/components/ReplayViewer'
 import type { HistoryRow } from '../src/types'
 
 vi.mock('../src/components/PriceChart', () => ({
-  PriceChart: () => <div data-testid="replay-chart" />,
+  PriceChart: ({ chart }: { chart: { candles: unknown[] } }) => <div data-testid="replay-chart" data-candle-count={chart.candles.length} />,
 }))
 
 afterEach(() => {
@@ -284,9 +284,20 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
     }
     if (url.includes('/focus?')) {
       return new Response(JSON.stringify({
-        session_version: 7,
+        session_version: 8,
         run_id: 'run-costs', trade_id: 'trade-costs', profile: 'BASE',
         symbol: 'BTCUSDT', side: 'LONG', strategy_id: 'LSA_REVERSAL_V1',
+        entry_context: {
+          signal_ts_ms: 1_000,
+          reason_codes: ['FLOW_CONFIRMED', 'STRUCTURE_CONFIRMED'],
+          reason_labels_ko: ['체결과 호가 흐름이 진입 방향을 확인했습니다.', '가격 구조가 진입 방향을 확인했습니다.'],
+          regime: 'TREND_UP', regime_ko: '상승 추세', strategy_display_name_ko: '유동성 고갈 반전',
+          strategy_summary_ko: '호가와 체결 흐름이 함께 확인된 반전만 연구합니다.',
+          entry_hypothesis_ko: '가격 구조와 실제 호가 비용이 모두 맞을 때만 PAPER 진입합니다.',
+          required_timeframes: ['3m'], entry_rules_ko: ['가격 구조 확인'], trade_strategy_version: 'V1',
+          registry_strategy_version: 'V1', registry_metadata_matches_trade: true,
+          evidence_ko: '저장된 공개시장 신호·PAPER 원장 기준', paper_only: true,
+        },
         levels: { signal_ts_ms: 1_000, entry: '100', initial_stop: '98', take_profit_1: '102', take_profit_2: '104' },
         milestones: [
           { kind: 'SIGNAL', ts_ms: 1_000, price: '100' },
@@ -300,7 +311,10 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
           { ts_ms: 2_000, event_id: 'entry', event_type: 'PAPER_LEDGER_TRANSITION', data: { mid: '100' }, phase: 'OPEN', markers: [{ kind: 'SIGNAL', ts_ms: 1_000, price: '100' }, { kind: 'ENTRY', ts_ms: 2_000, price: '100' }], fills: [] },
           { ts_ms: 3_000, event_id: 'exit', event_type: 'PAPER_LEDGER_TRANSITION', data: { mid: '101' }, phase: 'CLOSED', markers: [{ kind: 'SIGNAL', ts_ms: 1_000, price: '100' }, { kind: 'ENTRY', ts_ms: 2_000, price: '100' }, { kind: 'EXIT', ts_ms: 3_000, price: '101' }], fills: [] },
         ],
-        candles: [], keyframes: [{ frame_index: 0, ts_ms: 1_000 }, { frame_index: 1, ts_ms: 2_000 }, { frame_index: 2, ts_ms: 3_000 }],
+        candles: [
+          { time: 0, open_ts_ms: 0, open: 99, high: 100, low: 98, close: 100, volume: 2, trade_count: 3, interval_seconds: 1 },
+          { time: 2, open_ts_ms: 2_000, open: 100, high: 101, low: 100, close: 101, volume: 4, trade_count: 5, interval_seconds: 1 },
+        ], keyframes: [{ frame_index: 0, ts_ms: 1_000 }, { frame_index: 1, ts_ms: 2_000 }, { frame_index: 2, ts_ms: 3_000 }],
         trade: {},
         fills: [
           { fill_id: 'entry', trade_id: 'trade-costs', intent: 'ENTRY', price: '100', quantity: '1', fee_usdt: '0.3', slippage_usdt: '0.02', ts_ms: 2_000 },
@@ -322,7 +336,12 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
 
   render(<ReplayViewer trade={trade} />)
   expect(await screen.findByRole('heading', { name: 'BTCUSDT 거래 집중 재생' })).toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '진입' }))
+  expect(screen.getByText('왜 진입했나요?')).toBeInTheDocument()
+  expect(screen.getByText('체결과 호가 흐름이 진입 방향을 확인했습니다.')).toBeInTheDocument()
+  expect(screen.getByText('3분봉')).toBeInTheDocument()
+  expect(screen.getByTestId('replay-chart')).toHaveAttribute('data-candle-count', '1')
+  fireEvent.click(screen.getByRole('button', { name: '실제 진입' }))
+  fireEvent.click(screen.getByText('세부 원장·비용·검증 정보'))
   await waitFor(() => {
     expect(screen.getByText('진입 수수료').parentElement).toHaveTextContent('0.3 USDT')
     expect(screen.getByText('종료 수수료').parentElement).toHaveTextContent('0.00 USDT')
@@ -331,14 +350,14 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
 
   fireEvent.click(screen.getByRole('button', { name: '실제 종료' }))
   await waitFor(() => {
+    expect(screen.getByTestId('replay-chart')).toHaveAttribute('data-candle-count', '2')
     expect(screen.getByText('진입 수수료').parentElement).toHaveTextContent('0.3 USDT')
     expect(screen.getByText('종료 수수료').parentElement).toHaveTextContent('0.2 USDT')
     expect(screen.getByText('예상 종료비').parentElement).toHaveTextContent('0.00 USDT')
   })
-  expect(screen.getByText('거래 다시보기')).toBeInTheDocument()
-  expect(screen.getByText('종료 이유 · 가격·근거 동시 악화')).toBeInTheDocument()
+  expect(screen.getByText('어떻게 끝났나요?')).toBeInTheDocument()
+  expect(screen.getByText(/가격이 왕복 비용 구간보다 불리하게 움직이고/)).toBeInTheDocument()
   expect(screen.queryByText('TRADE REPLAY')).not.toBeInTheDocument()
-  expect(screen.queryByText('EDGE_DECAY')).not.toBeInTheDocument()
   expect(screen.queryByText('BASE')).not.toBeInTheDocument()
 })
 

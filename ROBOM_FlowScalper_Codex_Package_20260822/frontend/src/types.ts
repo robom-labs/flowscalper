@@ -97,6 +97,7 @@ export type ChartData = {
     close: number
     volume: number
     trade_count: number
+    interval_seconds?: number
   }[]
   lines: {
     entry: number | null
@@ -1281,6 +1282,23 @@ export type ReplayFocusSession = {
   symbol: string
   side: 'LONG' | 'SHORT'
   strategy_id: string
+  entry_context?: {
+    signal_ts_ms: number
+    reason_codes: string[]
+    reason_labels_ko: string[]
+    regime: string
+    regime_ko: string
+    strategy_display_name_ko: string
+    strategy_summary_ko: string
+    entry_hypothesis_ko: string
+    required_timeframes: string[]
+    entry_rules_ko: string[]
+    trade_strategy_version: string
+    registry_strategy_version: string
+    registry_metadata_matches_trade: boolean
+    evidence_ko: string
+    paper_only: true
+  }
   levels: {
     signal_ts_ms: number
     entry: string

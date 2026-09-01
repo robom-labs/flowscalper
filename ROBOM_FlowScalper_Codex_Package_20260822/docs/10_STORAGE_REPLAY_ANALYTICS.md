@@ -267,3 +267,18 @@ No personal credentials exist in exports.
 - `/api/ui/summary`는 상태·자산·PnL·열린 포지션·bounded scanner만 제공한다. Family detail, 조건, 거래상세와 diagnostics는 별도 on-demand read다.
 - Fixture payload benchmark는 summary 직렬화 크기가 기존 `/api/dashboard`의 50% 미만인지 측정한다. 이 수치는 LIVE 지연, 장기 안정성이나 수익성 증거가 아니다.
 - 마지막 기준선 32개 raw 현재버전 행은 16개 고유기회다. 서비스 중지 뒤 동적 cache는 다시 관찰하기 전 `UNKNOWN`이며 과거 ready 값을 현재값으로 만들지 않는다.
+
+## 10.22 완료 거래 focus replay의 시간·근거 계약
+
+- focus replay 응답은 저장 거래와 후보에서 `signal_ts`, 실제 진입·종료, TP 도달 상태, 초기 SL,
+  reason code와 regime를 읽는다. 원장을 수정하거나 과거 판단을 현재 계산으로 덮어쓰지 않는다.
+- Registry 이름·요약·필수 시간구간은 설명용 snapshot이며 저장 거래 버전과 현재 Registry 버전의
+  일치 여부를 함께 반환한다. 불일치하면 과거 전략 정의의 증거로 사용하지 않는다.
+- 캔들은 각 interval의 마감 시각이 재생 커서 이하일 때만 노출한다. open 시각만 지난 미완성 봉을
+  보여 주지 않아 replay look-ahead를 막는다.
+- STOP 결과 표시는 원장의 실제 `exit_price`를 사용한다. `initial_stop`은 계획선이며 실제 체결가로
+  대체하지 않는다.
+- 완료 거래 catalog는 같은 opportunity의 중복 표시만 줄인다. 원시 BASE·STRESS·account 행과 fill,
+  수수료, 손익은 SQLite 원장에 그대로 남는다.
+- catalog는 사용자가 다시보기 탭을 열었을 때만 읽고 15초마다 갱신한다. 일반 거래기록의 현재 범위
+  조회는 기존 5초 주기를 유지하며 무거운 ALL-history 조회를 모든 화면에 추가하지 않는다.

@@ -787,3 +787,24 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   완화하지 않았다.
 - 높은 배수나 거래 증가를 수익성으로 해석하지 않는다. 6시간·24시간은 `NOT_RUN`, 수익성은
   `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+## Wave 146 차트 중심 완료 거래 다시보기
+
+- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_WAITING_FOR_FLAT_PAPER`다.
+- 완료된 `LIVE_PUBLIC` PAPER 거래를 최신순 목록으로 보여 주고 선택 즉시 신호 전 완성 캔들부터
+  재생한다. 같은 기회의 BASE·STRESS 원장 행은 보존하며 목록에서만 대표 한 건으로 묶는다.
+- 차트는 재생 시각에 맞춰 신호·실제 진입·TP1·TP2·초기 SL·실제 종료를 누적 표시한다.
+  미래 캔들 노출을 막기 위해 실제 봉 마감 시각 전 OHLC를 표시하지 않는다.
+- 진입 근거는 저장 후보의 reason code와 regime를 쉬운 한국어로 설명하고, Registry의 전략명·
+  시간구간·진입규칙은 버전 일치 여부가 보이는 참고 정보로 분리한다.
+- `STOP_HIT`의 종료 표시는 초기 SL이 아니라 원장 실제 종료 가격·시각을 사용한다. 초기 SL은
+  별도 계획선으로 남겨 계획과 실제 체결을 혼동하지 않는다.
+- 데스크톱은 목록과 큰 차트를 나란히, 태블릿·모바일은 차트 중심 세로 배치로 고정한다. 속도,
+  처음부터, 이전·다음, 신호·진입·TP1·TP2·종료 이동과 KST 시각·보유시간·결과 설명을 제공한다.
+- backend 전체 1,541건, frontend 119건, fixture API 37건, fixture Playwright 7 PASS·2 설계상
+  SKIP, Ruff·mypy·ESLint·TypeScript·build·PAPER safety·security·저장소 위생·30개 회귀계약을
+  통과했다.
+- 실제 8870 설치와 브라우저 검증은 현재 2개 PAPER 포지션이 자연 종료되기 전까지 `NOT_RUN`이다.
+  포지션을 강제 종료하지 않으며 flat이 된 뒤 같은 Run의 불변 릴리스로 설치해 완료한다.
+- 화면 완료는 수익성 증거가 아니다. 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금
+  준비는 `NOT_READY`, 실제 주문·private API·API Key·wallet·runtime AI 주문판단은 0을 유지한다.

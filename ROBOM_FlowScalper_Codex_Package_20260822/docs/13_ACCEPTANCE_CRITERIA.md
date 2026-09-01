@@ -296,3 +296,22 @@ Wave 47의 활성 writer 동시검사는 queue 4,096·drop 9,736을 만든 `FAIL
 - [ ] Six-hour and 24-hour post-change stability is observed for the exact installed commit.
 - [ ] Current-version cost-adjusted profitability is proven. Until then it remains `NOT_PROVEN` and
   real-money readiness remains `NOT_READY`.
+
+## Y. Chart-centered completed-trade replay
+
+- [x] Completed `LIVE_PUBLIC` PAPER opportunities appear newest first and one visual row does not delete
+  or rewrite underlying BASE/STRESS/account ledger rows.
+- [x] Selecting a trade starts before the signal and the chart reveals signal, actual entry, TP1, TP2,
+  initial SL and actual exit only when playback reaches each event.
+- [x] The player provides beginning, previous, play/pause, next, speed and event-jump controls.
+- [x] Easy Korean entry reasons, required timeframes, exact KST entry and exit times, holding duration,
+  exit reason and cost-adjusted result are visible; raw codes and version details remain advanced.
+- [x] `STOP_HIT` uses the persisted actual exit marker while the initial stop remains a separate plan line.
+- [x] Incomplete future candles and future event markers are not revealed before their event time.
+- [x] Desktop, tablet and mobile fixture browsers keep the chart stable without root overflow or browser errors.
+- [x] Backend 1,541 tests, frontend 119 tests, fixture API 37 tests, fixture Playwright 7 PASS with two
+  intentional skips, static checks, PAPER safety and security pass.
+- [ ] A committed immutable Wave 146 release is installed into the same Run after all open PAPER positions
+  close naturally, then the actual 8870 browser journey and actual-order zero are verified.
+- [ ] Six-hour and 24-hour stability and current-version cost-adjusted profitability are independently proven.
+  Until then they remain `NOT_RUN`, `NOT_PROVEN` and real-money readiness remains `NOT_READY`.

@@ -349,3 +349,22 @@ funding readiness `NOT_READY`.
 - Verify the actual browser has no routine pause/resume control, exposes 1x through 100x, shows default
   10x, and labels automatic entry separately from system safety waiting.
 - Keep actual orders, private APIs, authentication, keys, secrets and wallet paths false or absent.
+
+## 12.25 Chart-centered completed-trade replay regression
+
+- Build a focus session from a completed PAPER trade and require pre-signal lead-in, signal, actual
+  entry, TP1, TP2, initial stop, actual exit, KST timestamps, duration and stored reason context.
+- For `STOP_HIT`, require the exit marker price to equal the persisted actual exit and remain distinct
+  from the initial stop plan line.
+- At every cursor position expose only candles whose interval has closed. Reject future OHLC, future
+  TP and future exit markers.
+- Deduplicate the visual catalog by opportunity while retaining raw BASE/STRESS/account ledger rows.
+  Prefer BASE and shared MAIN only for the representative visual row.
+- Exercise list selection, beginning, previous, play/pause, next, speed, signal, entry, TP1, TP2 and
+  exit jumps in desktop, tablet and mobile fixture browsers.
+- Require stable chart layout, no root horizontal overflow, touch targets at least 48px where required,
+  and no console or page error.
+- Keep the full-Run replay diagnostic folded and verify it still opens independently.
+- Repeat the same journey against the installed immutable 8870 release only after PAPER is naturally
+  flat. Fixture success is not installed-runtime evidence.
+- Keep actual orders, private APIs, authentication, keys, secrets and wallet paths false or absent.

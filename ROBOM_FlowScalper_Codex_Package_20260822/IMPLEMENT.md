@@ -817,6 +817,29 @@ processing/trade P95 maximum 33.787/83.902ms, and zero new unplanned reconnect, 
 persistence fault, actual order or authentication event. Qualified signals and new trades remained zero,
 so profitability remains NOT_PROVEN and 6h/24h remain NOT_RUN.
 
+## Chart-centered completed-trade replay Wave 146
+
+1. Add stored candidate entry context, Korean reason labels, regime, Registry reference metadata and
+   exact required timeframes to the focus replay response without rewriting immutable trades.
+2. Use actual ledger exit price for `STOP_HIT`; keep the initial stop as a separate plan line.
+3. Build the default replay surface from deduplicated completed `LIVE_PUBLIC` opportunities and keep
+   the generic saved-Run explorer folded as an advanced diagnostic.
+4. Start before the signal and reveal plan, fill, TP1, TP2 and exit markers only when playback reaches
+   their event time. Reveal candles only after their actual interval close.
+5. Provide beginning, previous, play/pause, next, speed and event-jump controls plus exact KST entry,
+   exit, holding duration, simple entry reasons and final result.
+6. Keep desktop as a stable list/chart split and stack it responsively on tablet and mobile without
+   root horizontal overflow. Load the replay catalog only while its tab is active.
+7. Run backend, frontend, fixture API, desktop/tablet/mobile browser, lint, typecheck, build, PAPER
+   safety, security, hygiene and regression-contract checks.
+8. Do not install while a PAPER position is open. After natural flat, install one committed immutable
+   release into the same Run and repeat the actual 8870 browser journey before final evidence.
+9. Keep actual orders, private APIs, authentication, API keys, secrets, wallets and runtime AI order
+   decisions absent. Keep profitability `NOT_PROVEN` and 6h/24h `NOT_RUN` unless independently observed.
+
+Source and fixture validation is complete. Actual immutable installation and browser verification remain
+`NOT_RUN` while two PAPER positions are naturally protected; no position is force-closed for deployment.
+
 ## Wave 135 전략 결과표·정렬·홈 이동
 
 - `StrategiesPage` 표를 BASE·STRESS 전환과 전략·상태·승률·거래 수·순손익·보유 정렬을 지원하는 결과표로 교체했다.

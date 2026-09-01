@@ -36,7 +36,7 @@ export type ChartOverlay = {
   stop: number
   initialStop?: number
   currentStop?: number
-  status?: 'OPEN' | 'CLOSED'
+  status?: 'PLANNED' | 'OPEN' | 'CLOSED'
 }
 
 type Props = { chart: ChartData; overlay?: ChartOverlay | null; activePositionCount?: number; history?: HistoryRow[]; replayMilestones?: ReplayFocusFrame['markers']; replay?: boolean; compact?: boolean }
@@ -386,7 +386,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
         : milestone.kind === 'ENTRY' ? '진입'
         : milestone.kind === 'TP1_HIT' ? '1차 목표'
         : milestone.kind === 'TP2_HIT' ? '2차 목표'
-        : milestone.kind === 'STOP_HIT' ? '손절'
+        : milestone.kind === 'STOP_HIT' ? milestone.label ?? '손절·보호 종료'
         : milestone.kind === 'EXIT' ? '실제 종료'
         : milestone.label ?? '핵심 지점'
       markers.push({ time, position: isBelow ? 'belowBar' : 'aboveBar', color: presentation.color, shape: presentation.shape, text: `${markerLabel} ${formatPrice(milestone.price)}` })
@@ -426,7 +426,7 @@ export const PriceChart = memo(function PriceChart({ chart, overlay = null, acti
       {latestCandle ? <dl className="chart-stats"><div><dt>현재</dt><dd>{formatPrice(latestCandle.close)}</dd></div><div><dt>시가</dt><dd>{formatPrice(latestCandle.open)}</dd></div><div><dt>고가</dt><dd>{formatPrice(latestCandle.high)}</dd></div><div><dt>저가</dt><dd>{formatPrice(latestCandle.low)}</dd></div><div><dt>거래량</dt><dd>{formatCompactNumber(latestCandle.volume)}</dd></div></dl> : null}
       <div ref={containerRef} className="chart-wrap" role="img" aria-label={`${chart.symbol} 실제 캔들·거래량·전문 보조지표 PAPER 차트`}>
         {!hasData ? <div className="chart-empty"><b>시장 캔들을 기다리고 있습니다.</b><span>실제 공개시장 데이터가 도착하면 자동으로 표시됩니다.</span></div> : null}
-        {overlay?.symbol === chart.symbol ? <div className={`chart-position-banner ${overlay.side.toLowerCase()}`} aria-label={overlay.status === 'CLOSED' ? '종료된 PAPER 거래' : '현재 PAPER 진입'}><b>{overlay.status === 'CLOSED' ? 'PAPER 거래 종료' : 'PAPER 진입 중'} · {overlay.side === 'LONG' ? '상승' : '하락'}</b><span>{overlay.label}{activePositionCount > 1 ? ` · 같은 종목 외 ${activePositionCount - 1}건` : ''}</span><small>진입 {formatPrice(overlay.entry)} · 1차 목표 {formatPrice(overlay.tp1)} · 손절 {formatPrice(overlay.currentStop ?? overlay.stop)}</small></div> : null}
+        {overlay?.symbol === chart.symbol ? <div className={`chart-position-banner ${overlay.side.toLowerCase()}`} aria-label={overlay.status === 'CLOSED' ? '종료된 PAPER 거래' : overlay.status === 'PLANNED' ? '확정된 PAPER 진입 계획' : '현재 PAPER 진입'}><b>{overlay.status === 'CLOSED' ? 'PAPER 거래 종료' : overlay.status === 'PLANNED' ? '진입 계획 확정' : 'PAPER 진입 중'} · {overlay.side === 'LONG' ? '상승' : '하락'}</b><span>{overlay.label}{activePositionCount > 1 ? ` · 같은 종목 외 ${activePositionCount - 1}건` : ''}</span><small>진입 {formatPrice(overlay.entry)} · 1차 목표 {formatPrice(overlay.tp1)} · 손절 {formatPrice(overlay.currentStop ?? overlay.stop)}</small></div> : null}
         <div ref={tooltipRef} className="chart-tooltip" hidden />
         {showReturn ? <button type="button" className="return-realtime" onClick={() => chartApiRef.current?.timeScale().scrollToRealTime()}>현재로 돌아가기</button> : null}
       </div>

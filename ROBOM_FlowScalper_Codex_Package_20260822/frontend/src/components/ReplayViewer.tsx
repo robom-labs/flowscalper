@@ -1,15 +1,13 @@
 // 저장 공개시장 이벤트를 backend ReplayEngine으로 재처리하고 같은 입력 프레임을 동기 재생한다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { PositionFocusWorkspace } from '../components/PositionFocusWorkspace'
 import type { ChartOverlay } from '../components/PriceChart'
 import { PriceChart } from '../components/PriceChart'
-import { costProfileLabel, exitReasonLabel } from '../format'
+import { costProfileLabel, exitReasonLabel, formatDurationMs, formatPrice, formatUsdt, sideLabel } from '../format'
 import { ReplayClock } from '../replay/ReplayClock'
 import { strategyLabel } from '../strategyPresentation'
-import { formatKstTime } from '../time'
+import { formatKstDateTime, formatKstTime } from '../time'
 import type {
   ChartData,
-  FocusPosition,
   HistoryRow,
   ReplayFocusFrame,
   ReplayFocusSession,
@@ -64,6 +62,43 @@ function elapsedLabel(startedTsMs: number, nowTsMs: number) {
 function numeric(value: unknown) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function replayExitExplanation(reason: string) {
+  if (reason.includes('TAKE_PROFIT') || reason === 'TP1' || reason === 'TP2') return '미리 정한 목표 가격에 도달해 이익을 확정했습니다.'
+  if (reason === 'STOP' || reason === 'STOP_LOSS' || reason === 'TRAILING_STOP') return '초기 손절 또는 진입 후 조정된 보호선에서 종료했습니다. 차트의 초기 손절선과 실제 종료 가격을 함께 확인하세요.'
+  if (reason.includes('EDGE_DECAY')) return '가격이 왕복 비용 구간보다 불리하게 움직이고 진입 근거도 함께 약해져 종료했습니다.'
+  if (reason.includes('PROFIT_PROTECTION')) return '이익 구간 진입 후 흐름이 약해져 남은 이익을 보호했습니다.'
+  if (reason.includes('STALE') || reason === 'DATA_GAP' || reason === 'FAULT') return '시장 데이터나 시스템 안전 기준을 지키기 위해 종료했습니다.'
+  if (reason.includes('MAX_HOLD')) return '이 과거 전략 버전이 정한 최대 보유시간에 도달해 종료했습니다.'
+  return '저장된 PAPER 종료 규칙에 따라 종료했습니다.'
+}
+
+function replayTimeframeLabel(value: string) {
+  const exact: Record<string, string> = {
+    '250ms': '0.25초 흐름',
+    '1s': '1초 흐름',
+    '3s': '3초 흐름',
+    '10s': '10초 흐름',
+    '30s': '30초 흐름',
+    '120s': '2분 흐름',
+    '4h EMA': '4시간봉 이동평균',
+    '24h momentum': '24시간 흐름',
+    'public book flow': '공개 호가 흐름',
+  }
+  if (exact[value]) return exact[value]
+  const minutes = value.match(/^(\d+)m$/)
+  if (minutes) return `${minutes[1]}분봉`
+  const hours = value.match(/^(\d+)h$/)
+  if (hours) return `${hours[1]}시간봉`
+  return value
+}
+
+function replayChartInterval(intervalSeconds: number | undefined) {
+  const seconds = intervalSeconds && intervalSeconds > 0 ? intervalSeconds : 180
+  if (seconds % 3_600 === 0) return `${seconds / 3_600}h`
+  if (seconds % 60 === 0) return `${seconds / 60}m`
+  return `${seconds}s`
 }
 
 async function replayErrorMessage(response: Response, fallback: string) {
@@ -280,6 +315,12 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
   useEffect(() => {
     if (!trade) return
     const controller = new AbortController()
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return
+      setFocusLoading(true)
+      setFocusSession(null)
+      setError('')
+    })
     const query = new URLSearchParams({ trade_id: trade.trade_id, profile: trade.profile || 'BASE' })
     void fetch(`/api/replay/${encodeURIComponent(trade.run_id)}/focus?${query}`, { signal: controller.signal })
       .then(async (response) => {
@@ -443,53 +484,6 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
     : null
 
   const focusFrame = focusSession?.frames[cursor] ?? null
-  const focusPosition = useMemo<FocusPosition | null>(() => {
-    if (!focusSession || !trade) return null
-    const levels = focusSession.levels
-    const current = numeric(focusFrame?.data.mid) ?? numeric(focusFrame?.data.price) ?? Number(trade.exit)
-    const entry = Number(trade.entry)
-    const quantity = Number(trade.quantity)
-    const entered = focusFrame?.phase !== 'PRE_ENTRY'
-    const closed = focusFrame?.phase === 'CLOSED'
-    const gross = entered ? focusSession.side === 'LONG' ? (current - entry) * quantity : (entry - current) * quantity : 0
-    const recordedFees = entered ? Number(trade.fees) : 0
-    const entryFill = focusSession.fills.find((fill) => fill.intent === 'ENTRY')
-    const exitFill = focusSession.fills.find((fill) => fill.intent === 'EXIT')
-    const allocatedEntryFee = numeric(entryFill?.fee_usdt)
-    const allocatedExitFee = numeric(exitFill?.fee_usdt)
-    const hasAllocatedFees = allocatedEntryFee !== null && allocatedExitFee !== null
-    const entryFee = entered
-      ? hasAllocatedFees ? allocatedEntryFee ?? 0 : recordedFees
-      : 0
-    const realizedExitFee = closed && hasAllocatedFees ? allocatedExitFee ?? 0 : 0
-    const estimatedExitFee = entered && !closed && hasAllocatedFees ? allocatedExitFee ?? 0 : 0
-    const entrySlippage = numeric(entryFill?.slippage_usdt)
-    const exitSlippage = numeric(exitFill?.slippage_usdt)
-    const hasAllocatedSlippage = entrySlippage !== null && exitSlippage !== null
-    const slippage = entered
-      ? hasAllocatedSlippage
-        ? (entrySlippage ?? 0) + (closed ? exitSlippage ?? 0 : 0)
-        : Number(trade.slippage)
-      : 0
-    const fees = entryFee + realizedExitFee + estimatedExitFee
-    const elapsed = Math.max(0, Math.floor(((focusFrame?.ts_ms ?? focusSession.start_ts_ms) - focusSession.entry_ts_ms) / 1000))
-    const stage = focusFrame?.phase ?? 'PRE_ENTRY'
-    const stageKo = stage === 'PRE_ENTRY' ? '진입 전 흐름' : stage === 'OPEN' ? '익절·손절 보호 중' : '거래 종료'
-    const notional = entry * quantity
-    const maximumLoss = Math.abs(entry - Number(trade.initial_stop)) * quantity
-    const net = gross - fees - slippage
-    return {
-      focus_key: `replay:${trade.trade_id}`, trade_id: trade.trade_id, candidate_id: '', run_id: trade.run_id, account_id: 'REPLAY', profile: focusSession.profile,
-      venue: 'BINANCE_USDM', symbol: focusSession.symbol, side: focusSession.side, strategy: focusSession.strategy_id, strategy_id: focusSession.strategy_id, strategy_display_name_ko: strategyLabel(strategies.find((strategy) => strategy.strategy_id === focusSession.strategy_id), focusSession.strategy_id), exit_style: '저장 거래', signal_time: focusSession.entry_ts_ms, signal_ts_ms: focusSession.entry_ts_ms,
-      planned_entry: levels.entry, actual_entry: entered ? levels.entry : '아직 체결 전', current_mark: String(current), initial_stop: levels.initial_stop, current_stop: levels.initial_stop,
-      take_profit: levels.take_profit_1, take_profit_1: levels.take_profit_1, take_profit_2: levels.take_profit_2, quantity: trade.quantity, original_quantity: trade.quantity, remaining_quantity: stage === 'CLOSED' ? '0' : trade.quantity, notional: String(notional), notional_usdt: String(notional),
-      margin_usdt: String(notional), margin_used_usdt: String(notional), risk_budget: String(maximumLoss), risk_budget_usdt: String(maximumLoss), maximum_planned_loss: String(maximumLoss), maximum_planned_loss_usdt: String(maximumLoss), remaining_planned_loss_usdt: stage === 'CLOSED' ? '0' : String(maximumLoss), effective_leverage: '1', selected_leverage: '1',
-      gross_pnl: gross.toFixed(4), gross_pnl_usdt: gross.toFixed(4), fees: String(fees), entry_fee_usdt: String(entryFee), realized_exit_fees_usdt: String(realizedExitFee), estimated_exit_fee_usdt: String(estimatedExitFee), slippage: String(slippage), slippage_usdt: String(slippage), net_pnl: net.toFixed(4), net_pnl_usdt: net.toFixed(4), return_on_margin_pct: notional > 0 ? String(net / notional * 100) : '0', account_starting_equity_usdt: '1000', account_current_equity_usdt: String(1000 + net), elapsed_seconds: elapsed,
-      management_reason: focusFrame?.phase === 'PRE_ENTRY' ? '진입 전 공개시장 흐름 확인' : focusFrame?.phase === 'OPEN' ? '저장된 PAPER 포지션 진행 중' : `종료 이유 · ${exitReasonLabel(trade.exit_reason)}`,
-      management_reason_ko: focusFrame?.phase === 'PRE_ENTRY' ? '진입 전 공개시장 흐름 확인' : focusFrame?.phase === 'OPEN' ? '저장된 PAPER 포지션 진행 중' : `종료 이유 · ${exitReasonLabel(trade.exit_reason)}`,
-      stage, stage_ko: stageKo, data_health: '저장 이벤트 정상', recovered: false, auto_focus_eligible: false, paper_only: true, real_orders_enabled: false, auth_required: false,
-    }
-  }, [focusFrame, focusSession, strategies, trade])
   const focusChart = useMemo<ChartData | null>(() => {
     if (!focusSession || !focusFrame) return null
     const visibleFrames = focusSession.frames.slice(0, cursor + 1)
@@ -503,10 +497,14 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       const mid = price ?? (resolvedBid + resolvedAsk) / 2
       return [{ index, ts_ms: frame.ts_ms, bid: resolvedBid, ask: resolvedAsk, mid, microprice: mid }]
     })
+    const intervalSeconds = focusSession.candles[0]?.interval_seconds ?? 180
     return {
-      symbol: focusSession.symbol, interval: '3m', points,
-      candles: focusSession.candles.filter((candle) => candle.open_ts_ms <= focusFrame.ts_ms),
-      lines: focusFrame.phase === 'PRE_ENTRY' ? { entry: null, take_profit: null, take_profit_2: null, stop: null } : { entry: Number(focusSession.levels.entry), take_profit: Number(focusSession.levels.take_profit_1), take_profit_2: numeric(focusSession.levels.take_profit_2), stop: Number(focusSession.levels.initial_stop) }, fixture: false,
+      symbol: focusSession.symbol, interval: replayChartInterval(intervalSeconds), points,
+      candles: focusSession.candles.filter((candle) => (
+        candle.open_ts_ms + (candle.interval_seconds ?? intervalSeconds) * 1_000 - 1
+        <= focusFrame.ts_ms
+      )),
+      lines: focusFrame.ts_ms < focusSession.levels.signal_ts_ms ? { entry: null, take_profit: null, take_profit_2: null, stop: null } : { entry: Number(focusSession.levels.entry), take_profit: Number(focusSession.levels.take_profit_1), take_profit_2: numeric(focusSession.levels.take_profit_2), stop: Number(focusSession.levels.initial_stop) }, fixture: false,
     }
   }, [cursor, focusFrame, focusSession])
 
@@ -518,9 +516,29 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
     return <section aria-labelledby="replay-focus-error"><div className="page-heading"><div><p className="section-kicker">거래 다시보기</p><h2 id="replay-focus-error">{trade.symbol} 거래 차트를 열지 못했습니다</h2><p className="heading-help">거래 기록은 원장에 남아 있으며 다시보기 화면만 준비하지 못했습니다.</p></div><span className="page-note">원장 기록 보존</span></div><div className="panel empty-state" role="alert"><b>{error}</b><p>공개시장 관찰과 PAPER 관리는 계속 작동합니다.</p><button type="button" className="primary-button" onClick={() => { setFocusLoading(true); setFocusSession(null); setError(''); setFocusAttempt((value) => value + 1) }}>거래 차트 다시 시도</button></div></section>
   }
 
-  if (focusSession && focusPosition && focusChart) {
+  if (focusSession && trade && focusChart) {
     const currentFocusFrame = focusFrame as ReplayFocusFrame
-    const focusOverlay: ChartOverlay | null = currentFocusFrame.phase !== 'PRE_ENTRY' ? { key: `replay:${focusSession.trade_id}`, label: `${strategyLabel(strategies.find((strategy) => strategy.strategy_id === focusSession.strategy_id), focusSession.strategy_id)} · ${costProfileLabel(focusSession.profile)}`, symbol: focusSession.symbol, side: focusSession.side, signalTime: focusSession.levels.signal_ts_ms, entry: Number(focusSession.levels.entry), tp1: Number(focusSession.levels.take_profit_1), tp2: numeric(focusSession.levels.take_profit_2), stop: Number(focusSession.levels.initial_stop), initialStop: Number(focusSession.levels.initial_stop), currentStop: Number(focusSession.levels.initial_stop), status: currentFocusFrame.phase === 'CLOSED' ? 'CLOSED' : 'OPEN' } : null
+    const planVisible = currentFocusFrame.ts_ms >= focusSession.levels.signal_ts_ms
+    const context = focusSession.entry_context
+    const registeredStrategy = strategies.find((strategy) => strategy.strategy_id === focusSession.strategy_id)
+    const compactStrategyName = strategyLabel(registeredStrategy, focusSession.strategy_id)
+    const strategyName = compactStrategyName === '알 수 없는 이전 전략'
+      ? context?.strategy_display_name_ko || compactStrategyName
+      : compactStrategyName
+    const focusOverlay: ChartOverlay | null = planVisible ? {
+      key: `replay:${focusSession.trade_id}`,
+      label: `${strategyName} · ${costProfileLabel(focusSession.profile)}`,
+      symbol: focusSession.symbol,
+      side: focusSession.side,
+      signalTime: focusSession.levels.signal_ts_ms,
+      entry: Number(focusSession.levels.entry),
+      tp1: Number(focusSession.levels.take_profit_1),
+      tp2: numeric(focusSession.levels.take_profit_2),
+      stop: Number(focusSession.levels.initial_stop),
+      initialStop: Number(focusSession.levels.initial_stop),
+      currentStop: Number(focusSession.levels.initial_stop),
+      status: currentFocusFrame.phase === 'CLOSED' ? 'CLOSED' : currentFocusFrame.phase === 'OPEN' ? 'OPEN' : 'PLANNED',
+    } : null
     const keyIndices = [...new Set(focusSession.keyframes.map((item) => item.frame_index))].sort((left, right) => left - right)
     const previousKey = [...keyIndices].reverse().find((index) => index < cursor) ?? 0
     const nextKey = keyIndices.find((index) => index > cursor) ?? focusSession.frames.length - 1
@@ -530,9 +548,9 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       const milestone = focusSession.milestones.find((item) => item.kind === kind)
       return milestone ? focusSession.frames.findIndex((frame) => frame.ts_ms >= milestone.ts_ms) : -1
     }
+    const signalIndex = milestoneIndex('SIGNAL')
     const tp1Index = milestoneIndex('TP1_HIT')
     const tp2Index = milestoneIndex('TP2_HIT')
-    const replayTrade: HistoryRow | null = trade ? { ...trade, take_profit: focusSession.levels.take_profit_1, take_profit_1: focusSession.levels.take_profit_1, take_profit_2: focusSession.levels.take_profit_2 } : null
     const verificationLabel = focusSession.reconciliation.matched === null
       ? focusSession.reconciliation.applicable ? '차트 준비 완료 · 전체 전략 검증 미실행' : '샘플 UI 검수'
       : focusSession.reconciliation.matched ? '전체 전략 검증 일치' : '전체 전략 검증 확인 필요'
@@ -542,11 +560,86 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       setCursor(bounded)
       setPlaying(false)
     }
-    const controls = <><button type="button" className="secondary-button" onClick={() => seek(0)}>처음</button><button type="button" className="secondary-button" disabled={cursor === 0} onClick={() => seek(previousKey)}>이전 핵심</button><button type="button" className="primary-button" onClick={() => {
-      if (playing) clockRef.current?.pause(); else clockRef.current?.play()
-      setPlaying((value) => !value)
-    }}>{playing ? '일시정지' : '재생'}</button><button type="button" className="secondary-button" disabled={cursor >= focusSession.frames.length - 1} onClick={() => seek(cursor + 1)}>다음 이벤트</button><button type="button" className="secondary-button" disabled={cursor >= focusSession.frames.length - 1} onClick={() => seek(nextKey)}>다음 핵심</button><button type="button" className="secondary-button" onClick={() => seek(focusSession.frames.length - 1)}>끝</button><label>속도<select value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{focusSession.speeds.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label><label className="focus-replay-range">시간<input type="range" min="0" max={Math.max(0, focusSession.frames.length - 1)} value={cursor} onChange={(event) => seek(Number(event.target.value))} /></label><span>{cursor + 1} / {focusSession.frames.length} · {formatKstTime(currentFocusFrame.ts_ms)} 한국시간</span><div className="focus-jumps"><button type="button" onClick={() => seek(0)}>신호</button><button type="button" disabled={entryIndex < 0} onClick={() => seek(entryIndex)}>진입</button><button type="button" disabled={tp1Index < 0} onClick={() => seek(tp1Index)}>1차 목표</button><button type="button" disabled={tp2Index < 0} onClick={() => seek(tp2Index)}>2차 목표</button><button type="button" disabled={exitIndex < 0} onClick={() => seek(exitIndex)}>실제 종료</button></div><details className="focus-timeline"><summary>핵심 과정</summary><ol>{focusSession.milestones.map((item) => { const index = milestoneIndex(item.kind); return <li key={`${item.kind}:${item.ts_ms}`}><button type="button" disabled={index < 0} onClick={() => seek(index)}>{formatKstTime(item.ts_ms)} · {item.label}</button></li> })}</ol></details><span className="checksum">{verificationLabel}</span></>
-    return <section className="replay-focus-page" aria-labelledby="replay-focus-heading"><div className="page-heading compact"><div><p className="section-kicker">거래 다시보기</p><h2 id="replay-focus-heading">{focusSession.symbol} 거래 집중 재생</h2></div><span className={speed === 80 ? 'page-note fast-forward' : 'page-note'}>{speed === 80 ? '빨리감기 · 80배속' : 'PAPER · 저장 이벤트만'}</span></div><PositionFocusWorkspace mode={currentFocusFrame.phase === 'CLOSED' ? 'CLOSED_REVIEW' : 'REPLAY'} position={focusPosition} chart={focusChart} overlay={focusOverlay} history={replayTrade && currentFocusFrame.phase === 'CLOSED' ? [replayTrade] : []} replayMilestones={currentFocusFrame.markers} controls={controls} /></section>
+    const togglePlayback = () => {
+      if (playing) {
+        clockRef.current?.pause()
+        setPlaying(false)
+        return
+      }
+      if (cursor >= focusSession.frames.length - 1) {
+        clockRef.current?.seek(0)
+        setCursor(0)
+      }
+      clockRef.current?.play()
+      setPlaying(true)
+    }
+    const entryFill = focusSession.fills.find((fill) => fill.intent === 'ENTRY')
+    const exitFill = focusSession.fills.find((fill) => fill.intent === 'EXIT')
+    const allocatedEntryFee = numeric(entryFill?.fee_usdt)
+    const allocatedExitFee = numeric(exitFill?.fee_usdt)
+    const hasAllocatedFees = allocatedEntryFee !== null && allocatedExitFee !== null
+    const entered = currentFocusFrame.phase !== 'PRE_ENTRY'
+    const closed = currentFocusFrame.phase === 'CLOSED'
+    const entryFee = entered ? hasAllocatedFees ? allocatedEntryFee ?? 0 : Number(trade.fees) : 0
+    const realizedExitFee = closed && hasAllocatedFees ? allocatedExitFee ?? 0 : 0
+    const estimatedExitFee = entered && !closed && hasAllocatedFees ? allocatedExitFee ?? 0 : 0
+    const currentPrice = numeric(currentFocusFrame.data.mid) ?? numeric(currentFocusFrame.data.price) ?? Number(trade.exit)
+    const quantity = Number(trade.quantity)
+    const gross = entered
+      ? focusSession.side === 'LONG'
+        ? (currentPrice - Number(trade.entry)) * quantity
+        : (Number(trade.entry) - currentPrice) * quantity
+      : 0
+    const currentNet = closed ? Number(trade.net_pnl) : gross - entryFee - estimatedExitFee
+    const stageLabel = currentFocusFrame.phase === 'CLOSED'
+      ? `종료 · ${exitReasonLabel(trade.exit_reason)}`
+      : currentFocusFrame.phase === 'OPEN'
+        ? 'PAPER 보유 중'
+        : planVisible ? '진입 계획 확정' : '진입 전 흐름'
+    const entryReasons = context?.reason_labels_ko.length
+      ? context.reason_labels_ko
+      : ['이 거래의 세부 진입 근거 설명은 과거 원장에 남아 있지 않습니다.']
+    const timeframes = context?.required_timeframes ?? []
+    const playbackLabel = playing ? '일시정지' : cursor >= focusSession.frames.length - 1 ? '처음부터 다시 재생' : cursor === 0 ? '처음부터 재생' : '계속 재생'
+    return <section className="trade-replay-player" aria-labelledby="replay-focus-heading">
+      <header className="trade-replay-player-head">
+        <div><p className="section-kicker">거래 다시보기</p><h2 id="replay-focus-heading">{focusSession.symbol} 거래 집중 재생</h2><p>{strategyName} · {sideLabel(focusSession.side)} · {costProfileLabel(focusSession.profile)}</p></div>
+        <div className={`replay-stage ${currentFocusFrame.phase.toLowerCase()}`} aria-live="polite"><strong>{stageLabel}</strong><span>{formatKstDateTime(currentFocusFrame.ts_ms)}</span></div>
+      </header>
+      <div className="replay-level-strip" aria-label="진입과 보호 계획">
+        <span><small>진입</small><b>{formatPrice(focusSession.levels.entry)}</b></span>
+        <span className="target"><small>1차 목표</small><b>{formatPrice(focusSession.levels.take_profit_1)}</b></span>
+        <span className="target"><small>2차 목표</small><b>{formatPrice(focusSession.levels.take_profit_2)}</b></span>
+        <span className="stop"><small>초기 손절</small><b>{formatPrice(focusSession.levels.initial_stop)}</b></span>
+        <span><small>현재 재생 손익</small><b className={currentNet >= 0 ? 'positive' : 'negative'}>{entered ? formatUsdt(currentNet, { signed: true }) : '진입 전'}</b></span>
+      </div>
+      <div className="trade-replay-chart-stage">
+        <PriceChart chart={focusChart} overlay={focusOverlay} replayMilestones={currentFocusFrame.markers} replay />
+      </div>
+      <div className="trade-replay-controls" aria-label="거래 재생 제어">
+        <div className="replay-main-controls">
+          <button type="button" className="secondary-button" onClick={() => seek(0)}>처음부터</button>
+          <button type="button" className="secondary-button" disabled={cursor === 0} onClick={() => seek(previousKey)}>이전 장면</button>
+          <button type="button" className="primary-button replay-play-button" onClick={togglePlayback}>{playbackLabel}</button>
+          <button type="button" className="secondary-button" disabled={cursor >= focusSession.frames.length - 1} onClick={() => seek(nextKey)}>다음 장면</button>
+          <label>재생 속도<select aria-label="재생 속도" value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>{focusSession.speeds.map((value) => <option value={value} key={value}>{value}×</option>)}</select></label>
+        </div>
+        <label className="trade-replay-range"><span>재생 위치</span><input aria-label="재생 위치" type="range" min="0" max={Math.max(0, focusSession.frames.length - 1)} value={cursor} onChange={(event) => seek(Number(event.target.value))} /><b>{cursor + 1} / {focusSession.frames.length}</b></label>
+        <nav className="trade-replay-jumps" aria-label="핵심 장면 바로가기">
+          <button type="button" disabled={signalIndex < 0} onClick={() => seek(signalIndex)}>진입 신호</button>
+          <button type="button" disabled={entryIndex < 0} onClick={() => seek(entryIndex)}>실제 진입</button>
+          <button type="button" disabled={tp1Index < 0} onClick={() => seek(tp1Index)}>1차 목표</button>
+          <button type="button" disabled={tp2Index < 0} onClick={() => seek(tp2Index)}>2차 목표</button>
+          <button type="button" disabled={exitIndex < 0} onClick={() => seek(exitIndex)}>실제 종료</button>
+        </nav>
+      </div>
+      <section className="replay-story-grid" aria-label="거래 설명">
+        <article className="panel replay-story entry-story"><span>왜 진입했나요?</span><h3>{context?.strategy_summary_ko || `${strategyName}의 저장된 진입 신호`}</h3><p>{context?.entry_hypothesis_ko || '저장된 전략 규칙이 가격·호가·체결 조건을 확인했습니다.'}</p><div className="replay-timeframes"><small>확인 구간</small>{timeframes.length ? timeframes.map((item) => <b key={item}>{replayTimeframeLabel(item)}</b>) : <b>저장 정보 없음</b>}</div><ul>{entryReasons.slice(0, 6).map((reason) => <li key={reason}>{reason}</li>)}</ul></article>
+        <article className="panel replay-story time-story"><span>언제 진입하고 나왔나요?</span><dl><div><dt>신호 확정</dt><dd>{formatKstDateTime(focusSession.levels.signal_ts_ms)}</dd></div><div><dt>실제 진입</dt><dd>{formatKstDateTime(focusSession.entry_ts_ms)}</dd></div><div><dt>실제 종료</dt><dd>{formatKstDateTime(focusSession.exit_ts_ms)}</dd></div><div><dt>총 보유시간</dt><dd>{formatDurationMs(trade.holding_ms || focusSession.exit_ts_ms - focusSession.entry_ts_ms)}</dd></div></dl></article>
+        <article className="panel replay-story exit-story"><span>어떻게 끝났나요?</span><h3>{exitReasonLabel(trade.exit_reason)} · <b className={Number(trade.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(trade.net_pnl, { signed: true })}</b></h3><p>{replayExitExplanation(trade.exit_reason)}</p><dl><div><dt>실제 종료가</dt><dd>{formatPrice(trade.exit)}</dd></div><div><dt>총 비용</dt><dd>{formatUsdt(Number(trade.fees) + Number(trade.slippage))}</dd></div></dl></article>
+      </section>
+      <details className="panel advanced-details trade-replay-technical"><summary>세부 원장·비용·검증 정보</summary><div className="trade-replay-technical-grid"><dl><div><dt>진입 수수료</dt><dd>{formatUsdt(entryFee)}</dd></div><div><dt>종료 수수료</dt><dd>{formatUsdt(realizedExitFee)}</dd></div><div><dt>예상 종료비</dt><dd>{formatUsdt(estimatedExitFee)}</dd></div><div><dt>시장 상태</dt><dd>{context?.regime_ko ?? '저장 정보 없음'}</dd></div></dl><div><b>{verificationLabel}</b><p>{context?.evidence_ko ?? '저장된 PAPER 원장 기준'}</p>{context && !context.registry_metadata_matches_trade ? <p>진입 신호는 과거 원장 기준이며, 전략 요약과 시간구간은 현재 Registry 참고 설명입니다.</p> : null}<p className="checksum">전략 {focusSession.strategy_id} · {context?.reason_codes.join(', ') || '상세 코드 없음'}</p></div></div></details>
+    </section>
   }
 
   return (

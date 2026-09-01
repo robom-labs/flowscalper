@@ -399,11 +399,15 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     session = first.json()
     assert session == second.json()
     assert ledger.count("replay_focus_cache") == 1
-    assert session["session_version"] == 7
+    assert session["session_version"] == 8
     assert session["default_speed"] == 5
     assert session["speeds"] == [0.5, 1, 2, 5, 10, 20, 40, 80]
     assert session["paper_only"] is True
     assert session["real_orders_enabled"] is False and session["auth_required"] is False
+    assert session["entry_context"]["paper_only"] is True
+    assert session["entry_context"]["signal_ts_ms"] == trade["entry_ts_ms"]
+    assert isinstance(session["entry_context"]["reason_labels_ko"], list)
+    assert isinstance(session["entry_context"]["required_timeframes"], list)
     assert session["reconciliation"]["applicable"] is False
     assert session["reconciliation"]["matched"] is None
     assert session["reconciliation"]["reason"] == "OFFLINE_FIXTURE_UI_ONLY"
@@ -456,7 +460,7 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
             runtime.run_id,
             str(trade["trade_id"]),
             "BASE",
-            session_version=7,
+            session_version=8,
         )
     finally:
         ledger._read_lock = shared_read_lock  # noqa: SLF001
@@ -494,9 +498,41 @@ def test_trade_focus_replay_returns_session_when_optional_cache_is_busy(
         runtime.run_id,
         str(trade["trade_id"]),
         "BASE",
-        session_version=7,
+        session_version=8,
     )
     assert remembered == response.json()
+
+
+def test_stop_focus_marks_the_actual_exit_fill_not_the_initial_stop() -> None:
+    milestones = ReplayFocusSessionBuilder._milestones(  # noqa: SLF001 - 표식 계약 회귀 검증
+        [],
+        {
+            "entry_ts_ms": 2_000,
+            "exit_ts_ms": 8_000,
+            "side": "LONG",
+            "exit_reason": "STOP",
+            "exit_price": "101.25",
+            "flags": [],
+        },
+        {
+            "signal_ts_ms": 1_000,
+            "entry": "100.00",
+            "initial_stop": "98.00",
+            "take_profit_1": "102.00",
+            "take_profit_2": None,
+        },
+    )
+
+    stop_hit = next(item for item in milestones if item["kind"] == "STOP_HIT")
+    exit_marker = next(item for item in milestones if item["kind"] == "EXIT")
+    assert stop_hit == {
+        "kind": "STOP_HIT",
+        "ts_ms": 8_000,
+        "price": "101.25",
+        "label": "손절·보호선 실제 체결",
+    }
+    assert exit_marker["price"] == "101.25"
+    assert stop_hit["price"] != "98.00"
 
 
 def test_trade_focus_reuses_verified_replay_covering_trade_window(tmp_path: Path) -> None:

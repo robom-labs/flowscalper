@@ -5000,3 +5000,51 @@ revision 69→70으로 해제한 뒤 `RUNNING`·`ENTRY_ENABLED`·10배·최대 1
 3초 재확인에서 공개시장 event 12,434→14,349, 전략평가 10,224→11,652로 각각
 1,915건·1,428건 전진했다. 이 짧은 재확인은 설치 복구와 데이터 전진 증거이며
 장시간 안정성이나 수익성 증거가 아니다.
+
+## 108. Wave 146 차트 중심 완료 거래 다시보기
+
+### 108.1 구현과 교정한 오류
+
+완료된 `LIVE_PUBLIC` PAPER 거래를 최신순 목록으로 보여 주고 선택 즉시 신호 전 캔들부터
+재생하는 차트 중심 화면을 구현했다. 신호·실제 진입·TP1·TP2·초기 SL·실제 종료는 재생
+커서가 각 시점에 도달한 뒤에만 나타난다. 속도, 처음부터, 이전·다음, 신호·진입·TP1·TP2·
+종료 이동, 정확한 KST 시각·보유시간·쉬운 한국어 진입근거·종료결과를 한 플레이어에 배치했다.
+
+기존 `STOP_HIT` marker가 실제 원장 종료가 아니라 초기 SL에 찍히던 표시 오류를 교정했다.
+실제 종료점은 저장 `exit_price`로 표시하고 초기 SL은 별도 계획선으로 보존한다. 또한 캔들 open
+시각만 지나면 아직 완성되지 않은 OHLC가 보일 수 있던 경계를 각 interval의 실제 close 시각으로
+바꿔 replay look-ahead를 막았다.
+
+### 108.2 이번 source·fixture 검증
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| backend 전체 | `PASS` | 1,541건 |
+| frontend Vitest | `PASS` | 15 files·119 tests |
+| Ruff·mypy | `PASS` | Ruff 오류 0·mypy 127 source 오류 0 |
+| ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules |
+| fixture API | `PASS` | 37건 |
+| fixture Playwright | `PASS` | desktop·tablet·mobile 7 PASS·2 설계상 SKIP |
+| PAPER build safety·security | `PASS` | security 162 source·실제주문 경로·위반·secret 0 |
+| repository hygiene·회귀계약 | `PASS` | hygiene PASS·30개 계약·59개 anchor PASS |
+| fixture 스크린샷 육안 | `PASS_FIXTURE_ONLY` | 목록·큰 차트·시점 이동·이유·시각·결과·모바일 세로 배치 확인 |
+| 실제 8870 설치·브라우저 | `NOT_RUN` | 현재 같은 Run의 PAPER 포지션 2개가 자연 보호 중이라 강제 종료하지 않음 |
+
+fixture 경계는 `LOCAL_DEMO_FIXTURE_PLAYWRIGHT`다. fixture 스크린샷과 테스트를 실제 설치
+서비스 증거로 바꾸지 않는다. 실제 8870 설치와 브라우저 검증은 포지션이 자연 종료돼 flat이
+된 뒤 불변 commit으로 수행한다.
+
+### 108.3 현재 판정 경계
+
+| 항목 | 상태 |
+|---|---|
+| source·자동검증 | `PASS` |
+| fixture 반응형 화면·상호작용 | `PASS_FIXTURE_ONLY` |
+| 불변 설치·실제 8870 화면 | `NOT_RUN_WAITING_FOR_FLAT_PAPER` |
+| 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
+| 6시간·24시간 | `NOT_RUN` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+
+현재 상태는 `SOURCE_VALIDATION_PASS_INSTALL_WAITING_FOR_FLAT_PAPER`다. 화면 구현과 자동검증은
+완료했지만 열린 PAPER 포지션을 배포 편의 때문에 강제 종료하지 않았으므로 실제 설치 완료라고
+기록하지 않는다.

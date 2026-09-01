@@ -79,15 +79,15 @@
           "path": "frontend/tests/ReplayViewer.test.tsx",
           "contains": [
             "shows allocated entry and exit fees at the matching replay stage",
-            "fireEvent.click(screen.getByRole('button', { name: '진입' }))",
+            "fireEvent.click(screen.getByRole('button', { name: '실제 진입' }))",
             "fireEvent.click(screen.getByRole('button', { name: '실제 종료' }))"
           ]
         },
         {
           "path": "frontend/e2e/dashboard.spec.ts",
           "contains": [
-            "focus-replay-range input",
-            "getByRole('button', { name: '처음', exact: true }).click()"
+            ".trade-replay-range input",
+            "getByRole('button', { name: '처음부터', exact: true }).click()"
           ]
         }
       ]

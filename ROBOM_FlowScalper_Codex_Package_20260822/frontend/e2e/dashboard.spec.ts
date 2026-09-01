@@ -78,16 +78,56 @@ async function installMarketFixtures(page: Page) {
   })
   await page.route('**/api/markets/select', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ auth_required: false, real_orders_enabled: false }) }))
   await page.route('**/api/analytics/strategy-symbols', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ generated_ts_ms: 1_721_000_000_000, rows: [{ strategy_id: 'LSA_REVERSAL_V1', profile: 'BASE', symbol: 'BTCUSDT', sample_size: 30, sample_status: 'RESEARCH_SAMPLE', ranking_eligible: true, rank_score: 1, rank: 1, win_rate: '0.6', expectancy_usdt: '0.2', profit_factor: '1.4', fees: '1', slippage: '1', net_pnl: '6', maximum_drawdown: '2', analysis_scope: 'CURRENT_STRATEGY_VERSION', strategy_version: 'e2e-current', excluded_prior_version_samples: 21 }], ranking_rule: '표본 30건 이상', analysis_scope: 'CURRENT_STRATEGY_VERSION', strategy_version: 'e2e-current', excluded_prior_version_samples: 154, auth_required: false, real_orders_enabled: false }) }))
+  await page.route('**/api/trades?**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('run_scope') !== 'ALL') return route.continue()
+    const row = {
+      run_id: 'e2e-fixture', trade_id: 'e2e-focus-trade', opportunity_id: 'e2e-focus-opportunity',
+      strategy: 'LSA_REVERSAL_V1', strategy_version: 'e2e-current', symbol: 'BTCUSDT', side: 'LONG',
+      entry: '100.10', exit: '101.90', entry_ts_ms: 1_721_000_360_000, exit_ts_ms: 1_721_001_080_000,
+      initial_stop: '99.55', take_profit: '101.40', take_profit_2: '102.00', quantity: '1',
+      exit_reason: 'TAKE_PROFIT', gross_pnl: '1.8', fees: '0.2202', slippage: '0.1008',
+      net_pnl: '1.479', holding_ms: 720_000, holding_seconds: 720, profile: 'BASE',
+      sample_type: 'LIVE_PUBLIC', account_scope: 'MAIN', account_id: 'SHARED_PAPER', replay_available: true,
+    }
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        schema_version: 1,
+        opportunities: [{
+          key: { run_id: row.run_id, strategy_id: row.strategy, strategy_version: row.strategy_version, opportunity_id: row.opportunity_id, symbol: row.symbol, side: row.side },
+          family_id: 'LIQUIDITY_SWEEP_REVERSAL', family_label_ko: '유동성 반전', variant_label_ko: '기본',
+          entry_ts_ms: row.entry_ts_ms, exit_ts_ms: row.exit_ts_ms, profiles: { BASE: row }, rows: [row],
+          account_groups: [{ account_scope: 'MAIN', account_group_id: 'SHARED_PAPER', account_ids: ['SHARED_PAPER'], profiles: { BASE: row }, profile_account_refs: { BASE: { account_scope: 'MAIN', account_id: 'SHARED_PAPER' } }, rows: [row], raw_result_row_count: 1, base_result_row_count: 1, stress_result_row_count: 0, partial_exit_row_count: 0 }],
+          raw_result_row_count: 1, base_result_row_count: 1, stress_result_row_count: 0, partial_exit_row_count: 0, replay_available: true,
+        }],
+        counts: { unique_opportunities: 1, raw_result_rows: 1, base_result_rows: 1, stress_result_rows: 0, unresolved_result_rows: 0 },
+        grouping_status: 'PROVEN', source_status: 'COMPLETE', paper_only: true, real_orders_enabled: false, auth_required: false,
+      }),
+    })
+  })
   await page.route('**/api/replay/*/focus**', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      session_version: 5,
+      session_version: 8,
       run_id: 'e2e-fixture',
       trade_id: 'e2e-focus-trade',
       profile: 'BASE',
       symbol: 'BTCUSDT',
       side: 'LONG',
       strategy_id: 'LSA_REVERSAL_V1',
+      entry_context: {
+        signal_ts_ms: 1_721_000_180_000,
+        reason_codes: ['FLOW_CONFIRMED', 'STRUCTURE_CONFIRMED'],
+        reason_labels_ko: ['체결과 호가 흐름이 진입 방향을 확인했습니다.', '가격 구조가 진입 방향을 확인했습니다.'],
+        regime: 'TREND_UP', regime_ko: '상승 추세', strategy_display_name_ko: '유동성 고갈 반전',
+        strategy_summary_ko: '호가와 체결 흐름이 함께 확인된 반전만 연구합니다.',
+        entry_hypothesis_ko: '가격 구조와 실제 호가 비용이 모두 맞을 때만 PAPER 진입합니다.',
+        required_timeframes: ['3m'], entry_rules_ko: ['가격 구조 확인'],
+        trade_strategy_version: 'e2e-current', registry_strategy_version: 'e2e-current',
+        registry_metadata_matches_trade: true, evidence_ko: '저장된 공개시장 신호·PAPER 원장 기준',
+        paper_only: true,
+      },
       levels: { signal_ts_ms: 1_721_000_180_000, entry: '100.10', initial_stop: '99.55', take_profit_1: '101.40', take_profit_2: '102.00' },
       milestones: [
         { kind: 'SIGNAL', ts_ms: 1_721_000_180_000, price: '100.10', label: '진입 신호 확정' },
@@ -103,7 +143,7 @@ async function installMarketFixtures(page: Page) {
       speeds: [0.5, 1, 2, 5, 10, 20, 40, 80],
       frames: [
         { ts_ms: 1_721_000_000_000, event_id: 'pre-1', event_type: 'BOOK_TICKER', data: { bid: '99.80', ask: '99.82', mid: '99.81' }, phase: 'PRE_ENTRY', markers: [], fills: [] },
-        { ts_ms: 1_721_000_180_000, event_id: 'pre-2', event_type: 'DEPTH_UPDATE', data: { bid: '99.95', ask: '99.97', mid: '99.96' }, phase: 'PRE_ENTRY', markers: [], fills: [] },
+        { ts_ms: 1_721_000_180_000, event_id: 'pre-2', event_type: 'DEPTH_UPDATE', data: { bid: '99.95', ask: '99.97', mid: '99.96' }, phase: 'PRE_ENTRY', markers: [{ kind: 'SIGNAL', ts_ms: 1_721_000_180_000, price: '100.10', label: '진입 신호 확정' }], fills: [] },
         { ts_ms: 1_721_000_360_000, event_id: 'open-1', event_type: 'TRADE', data: { bid: '100.09', ask: '100.11', mid: '100.10' }, phase: 'OPEN', markers: [{ kind: 'ENTRY', ts_ms: 1_721_000_360_000, price: '100.10', label: 'PAPER 진입 체결' }], fills: [] },
         { ts_ms: 1_721_000_540_000, event_id: 'open-2', event_type: 'BOOK_TICKER', data: { bid: '100.74', ask: '100.76', mid: '100.75' }, phase: 'OPEN', markers: [{ kind: 'ENTRY', ts_ms: 1_721_000_360_000, price: '100.10', label: 'PAPER 진입 체결' }], fills: [] },
         { ts_ms: 1_721_000_720_000, event_id: 'open-3', event_type: 'DEPTH_UPDATE', data: { bid: '101.39', ask: '101.41', mid: '101.40' }, phase: 'OPEN', markers: [{ kind: 'ENTRY', ts_ms: 1_721_000_360_000, price: '100.10', label: 'PAPER 진입 체결' }], fills: [] },
@@ -363,33 +403,32 @@ test('시장 중심 PAPER 화면이 데스크톱·태블릿·모바일에서 안
   await tradeDetail.getByRole('button', { name: '거래 상세 닫기' }).click()
   await page.locator('.history-table tbody tr').first().getByRole('button', { name: '다시보기' }).click()
   await expect(page.getByRole('heading', { name: /거래 집중 재생/ })).toBeVisible()
-  await expect(page.locator('.focus-plan')).toContainText('저장 재생')
-  await page.locator('.focus-replay-range input').fill('2')
-  await expect(page.locator('.focus-replay-controls')).toContainText('3 / 6')
-  await page.getByRole('button', { name: '처음', exact: true }).click()
-  await page.getByRole('button', { name: '재생', exact: true }).click()
-  await expect(page.locator('.focus-replay-controls')).not.toContainText('1 / 6', { timeout: 2_500 })
+  await expect(page.locator('.replay-trade-list > button')).toHaveCount(1)
+  await expect(page.locator('.replay-trade-list > button').first()).toContainText('BTCUSDT')
+  await expect(page.getByText('왜 진입했나요?')).toBeVisible()
+  await expect(page.getByText('체결과 호가 흐름이 진입 방향을 확인했습니다.')).toBeVisible()
+  await page.locator('.trade-replay-range input').fill('2')
+  await expect(page.locator('.trade-replay-range')).toContainText('3 / 6')
+  await page.getByRole('button', { name: '처음부터', exact: true }).click()
+  await page.locator('.replay-play-button').click()
+  await expect(page.locator('.trade-replay-range')).not.toContainText('1 / 6', { timeout: 2_500 })
   await page.getByRole('button', { name: '일시정지', exact: true }).click()
-  const focusChartBeforeSheet = await page.locator('.focus-grid .chart-panel').boundingBox()
+  const focusChart = await page.locator('.trade-replay-chart-stage .chart-panel').boundingBox()
   if (testInfo.project.name === 'desktop') {
-    const focusChart = await page.locator('.focus-grid .chart-panel').boundingBox()
-    expect(focusChart?.width).toBeGreaterThanOrEqual(960)
-    expect(focusChart?.height).toBeGreaterThanOrEqual(780)
+    expect(focusChart?.width).toBeGreaterThanOrEqual(760)
+    expect(focusChart?.height).toBeGreaterThanOrEqual(420)
     await capture(page, testInfo.project.name, 'position-focus')
     await capture(page, testInfo.project.name, 'replay-position-focus')
-    await page.getByLabel('속도').selectOption('80')
-    await expect(page.getByText('빨리감기 · 80배속')).toBeVisible()
+    await page.getByLabel('재생 속도').selectOption('80')
+    await expect(page.getByLabel('재생 속도')).toHaveValue('80')
     await capture(page, testInfo.project.name, 'replay-position-focus-80x')
   } else {
-    await page.getByRole('button', { name: '계획', exact: true }).click()
-    await expect(page.getByRole('dialog', { name: '진입 계획 상세' })).toBeVisible()
-    expect(await page.locator('.focus-grid .chart-panel').boundingBox()).toEqual(focusChartBeforeSheet)
-    await page.getByRole('dialog', { name: '진입 계획 상세' }).getByRole('button', { name: '닫기', exact: true }).click()
+    expect(focusChart?.width).toBeGreaterThanOrEqual(280)
+    expect(focusChart?.height).toBeGreaterThanOrEqual(340)
+    await expect(page.locator('.replay-story-grid')).toBeVisible()
     await capture(page, testInfo.project.name, 'position-focus')
   }
   interactiveTargetAudits.push(await auditVisibleInteractiveTargets(page, 'trade_replay'))
-
-  await page.getByRole('dialog', { name: /거래 다시보기/ }).getByRole('button', { name: '닫기', exact: true }).click()
 
   await page.getByRole('button', { name: '설정', exact: true }).click()
   await expect(page.getByRole('heading', { name: '설정', exact: true })).toBeVisible()
