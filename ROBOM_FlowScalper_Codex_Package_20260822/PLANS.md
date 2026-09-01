@@ -692,7 +692,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 143 무진입 원인 분리와 전역 격리 실행 중 자동복구
 
-- 상태는 `IMPLEMENTED_AUTOMATED_VALIDATION_PASS_RUNTIME_INSTALL_NOT_RUN`이다.
+- 상태는 `IMPLEMENTED_VALIDATED_INSTALLED_BROWSER_PASS_GITHUB_PENDING`이다.
 - 같은 Run·현재 release에서 PAPER 진입 의도, 6개 기본 연구전략의 SHADOW·LONG·SHORT,
   12개 정밀종목, 공개시장 event·전략평가 전진, queue·저장·consumer·지연·안전잠금을 먼저
   대조한다. 자연 적격신호 0을 엔진 정지나 거래기록 최신화 오류로 단정하지 않는다.
@@ -707,6 +707,12 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   consumer·queue·저장·지연·데이터 건강이 모두 명시적으로 정상인 경우에만 같은 시각의
   전역 cohort를 SHADOW·CHALLENGER로 복구한다. 일부 격리, 개별 계좌 fault, manual lock,
   critical lag, data/recovery lock은 자동 복구하지 않는다.
-- 관련 복구·Registry·추세·주문흐름 회귀 136개, Ruff와 변경 source mypy는 PASS했다.
-  불변 commit·실제 8870 설치·브라우저·GitHub·6시간·24시간은 별도 실행 전까지 `NOT_RUN`,
-  수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+- 관련 복구·Registry·추세·주문흐름 회귀 136개와 전체 backend 1,531개, frontend 118개,
+  fixture 36개, Playwright 7개가 PASS했다. Ruff·mypy·ESLint·TypeScript·production build·
+  PAPER safety·security·repository hygiene·회귀계약도 PASS다.
+- 불변 commit `c4ad6c242956a9c11ce2c83a943b0bf149e0ca46`을 같은 Run에 설치하고 실제 브라우저에서
+  `RUNNING`, 공개시장 연결, PAPER 실제주문 0과 모의평가 전략 6개를 확인했다. 60.027초
+  관찰은 event +5,188·전략평가 +4,068·신규 운영결함 0으로 PASS했지만 적격신호는 0이라
+  현재 무진입은 계속 조건 미충족으로 분류한다.
+- GitHub main·Actions와 6시간·24시간은 실행 전까지 `NOT_RUN`, 수익성은 `NOT_PROVEN`,
+  실자금 준비는 `NOT_READY`다.

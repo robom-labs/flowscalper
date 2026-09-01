@@ -4767,6 +4767,37 @@ consumer·queue·저장·지연·데이터·복구 상태가 모두 정상으로
 부분 격리, 사용자 manual lock, 다른 변경 이유, 서로 다른 격리시각 또는 남은 안전잠금은
 자동 복구하지 않는다.
 
+### 105.3 불변 설치·실제 브라우저·최종 실행 관찰
+
+전체 backend 1,531개와 frontend 118개, fixture 36개, Playwright desktop·tablet·mobile
+7개가 PASS했고 설계상 비대상 제어 2개만 skip했다. Ruff·mypy 127 source·ESLint·TypeScript·
+production build·PAPER build safety·162개 source 보안검사·repository hygiene·30개 회귀계약도
+PASS다. 실제 주문 경로, 인증, private API, API key, wallet과 runtime AI 주문판단은 모두
+false다.
+
+평평한 상태에서 진입 revision 48을 49로 일시정지하고 불변 commit
+`c4ad6c242956a9c11ce2c83a943b0bf149e0ca46`을 설치한 뒤 같은 Run
+`run-2b7135a972dd`와 원장 거래수를 보존했다. 설치 뒤 revision 50으로 재개했고
+`RUNNING`, `ENTRY_ENABLED`, `LIVE`, SHADOW 6·OFF 9, 15전략·30개 BASE/STRESS 독립계좌를
+확인했다. `/api/strategies/summary`와 family inventory는 실제 진입 평가 후보를 모두 6개로
+일치시킨다.
+
+실제 in-app browser를 새로고침해 `PAPER · 실제 주문 0`, `작동 중`, `공개시장 연결됨`,
+`진행 PAPER 0건`, `모의평가 전략 6개`와 `현재 전략의 세부 진입 조건을 기다리고 있습니다.`를
+직접 확인했다. browser warning·error log는 0이다. 화면 숫자를 맞추기 위해 시장 페이지에서
+family catalog를 추가 호출한 첫 시도는 WebSocket·제어 안전 회귀 6건을 일으켜 폐기했고,
+기존 경량 전략 요약 경로에 집계 한 필드만 추가한 최종 방식으로 전체 프론트 회귀를 다시
+통과했다.
+
+최종 60.027초 설치 서비스 관찰은 event +5,188, 전략평가 +4,068, consumer 전달 +5,188,
+queue 최대 19, 처리·체결 P95 최대 54.789/156.877ms, 메모리 증가 15.390MB였다. 비계획
+재연결·sequence gap·resync·event drop·저장 fault·buffer drop·backlog 신규진입 lock·
+critical lag incident·probe error는 모두 0이다. 적격신호·신규 MAIN/LEAGUE 거래·현재버전
+BASE/STRESS 표본 증가는 모두 0이었다. 종료 직후 scanner 12행도 모두 `REJECTED`였고 주요
+현재 차단은 구조 재진입·반대호가 재충전·VWAP 이격 각 10행, 공격적 체결흐름·OFI 반전 각
+8행이었다. 이는 현재 조건 미충족 증거이며 임계값을 낮출 근거가 아니다. 기계판독 근거는
+`evidence/WAVE143_FINAL_RELEASE_RUNNING_SERVICE_60S.json`이다.
+
 | 검증 | 상태 | 이번 실행 근거 |
 |---|---|---|
 | 현재 엔진·진입 의도·6전략 | `PASS_OBSERVED` | RUNNING·ENTRY_ENABLED·SHADOW 6·LONG/SHORT ON·event/평가 전진 |
@@ -4774,9 +4805,10 @@ consumer·queue·저장·지연·데이터·복구 상태가 모두 정상으로
 | 전역 격리 원장 사건 | `FAIL_PRESERVED` | 12:36:18.287 KST 동일 시각 OPERATIONAL_FAULT 전환 10건 |
 | 시작 복구 적용 상태 | `PASS_OBSERVED` | 16:18 이후 적격 6개 SHADOW·CHALLENGER 복구 |
 | 실행 중 엄격 cohort 자동복구 | `PASS_AUTOMATED` | 건강 재검증 복구와 critical-lag 미복구를 포함한 관련 회귀 136개 PASS |
-| Ruff·mypy | `PASS` | 변경 backend·test Ruff, runtime·registry mypy PASS |
-| 불변 release·실제 8870 재설치 | `NOT_RUN` | source 검증은 설치된 서비스 증거를 대신하지 않음 |
-| 실제 브라우저 | `NOT_RUN` | 새 release 설치 뒤 별도 확인 필요 |
+| 전체 자동 검증 | `PASS` | backend 1,531·frontend 118·fixture 36·Playwright 7 passed/2 skipped·lint·typecheck·build·safety·security·hygiene·회귀계약 PASS |
+| 불변 release·실제 8870 재설치 | `PASS_OBSERVED` | release `c4ad6c2`, 같은 Run·revision 50·RUNNING·LIVE·PAPER·실제주문 0 |
+| 실제 브라우저 | `PASS_OBSERVED` | 작동 중·연결됨·모의평가 전략 6개·거래 대기 사유·warning/error 0 |
+| 최종 60.027초 실행 관찰 | `PASS_OBSERVED_NO_SIGNAL` | event +5,188·평가 +4,068·queue 최대 19·신규 운영결함 0·적격신호 0 |
 | GitHub main·Actions | `NOT_RUN` | commit·push 전 |
 | 6시간·24시간 | `NOT_RUN` | 실제 경과 미충족 |
 | 수익성·실자금 | `NOT_PROVEN / NOT_READY` | 무진입 원인·복구 회귀 통과는 비용후 수익성 증거가 아님 |
