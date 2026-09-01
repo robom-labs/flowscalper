@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+GIT_ARCHIVE_TIMEOUT_SECONDS = 300
 _COMMIT_DIRECTORY = re.compile(r"^[0-9a-f]{40}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _RELEASE_MANIFEST_NAME = "release-manifest.json"
@@ -82,7 +83,7 @@ def _extract_commit(source_root: Path, commit: str, destination: Path) -> None:
             cwd=source_root,
             check=True,
             capture_output=True,
-            timeout=120,
+            timeout=GIT_ARCHIVE_TIMEOUT_SECONDS,
         )
         with tarfile.open(archive_path, mode="r") as archive:
             for member in archive.getmembers():

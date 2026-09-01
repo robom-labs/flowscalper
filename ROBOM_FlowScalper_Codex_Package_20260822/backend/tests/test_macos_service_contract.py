@@ -260,6 +260,8 @@ def test_installer_retries_transient_bootstrap_and_keeps_stage_json_clean() -> N
     assert 'bootstrap_succeeded="true"' in installer
     assert "LaunchAgent 등록이 3회 연속 실패했습니다" in installer
     assert 'payload.get("status") != "STAGED"' in installer
+    assert "GIT_ARCHIVE_TIMEOUT_SECONDS = 300" in stage
+    assert "timeout=GIT_ARCHIVE_TIMEOUT_SECONDS" in stage
     assert "stdout=sys.stderr" in stage
     assert "stderr=sys.stderr" in stage
 
