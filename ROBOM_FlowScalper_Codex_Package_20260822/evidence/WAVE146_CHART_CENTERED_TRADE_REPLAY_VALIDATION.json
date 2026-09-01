@@ -1,0 +1,185 @@
+{
+  "schema": "flowscalper.wave146_chart_centered_trade_replay_validation.v1",
+  "status": "PASS_WITH_LIMITS",
+  "generated_ts_utc": "2026-09-01T16:48:53Z",
+  "source_commit_at_first_install": "3edc8611899aab09b9b3036245c205285f697a72",
+  "installed_release_commit_at_browser_validation": "3edc8611899aab09b9b3036245c205285f697a72",
+  "run_id": "run-2b7135a972dd",
+  "maintenance_install_boundary": {
+    "entry_intent_state": "USER_PAUSED",
+    "entry_intent_revision": 73,
+    "entry_intent_reason": "DEPLOYMENT_MAINTENANCE_WAVE146_CHART_REPLAY_INSTALL",
+    "paper_portfolio_flat": true,
+    "open_position_count": 0,
+    "pending_entry_count": 0,
+    "market_observation_active": true,
+    "paper_entry_active_during_validation": false,
+    "open_positions_force_closed_for_deployment": false
+  },
+  "completed_trade_catalog": {
+    "status": "PASS",
+    "live_public_visual_rows": 54,
+    "unique_opportunities": 54,
+    "raw_result_rows_in_returned_opportunities": 104,
+    "base_result_rows": 52,
+    "stress_result_rows": 52,
+    "visual_deduplication_contract": "ONE_ROW_PER_OPPORTUNITY_WITH_BASE_PREFERRED",
+    "underlying_ledger_rows_rewritten_or_deleted": false,
+    "sort_order": "EXIT_TIME_DESCENDING",
+    "refresh_interval_seconds": 15
+  },
+  "selected_actual_trade": {
+    "trade_id": "paper-candidate-f483b232e33f41c3-multispeed_trend_reclaim_30m_v2-base",
+    "opportunity_id": "candidate-f483b232e33f41c3",
+    "strategy_id": "MULTISPEED_TREND_RECLAIM_30M_V2",
+    "strategy_display_name_ko": "30분·1시간 추세 재합류",
+    "symbol": "HYPEUSDT",
+    "side": "LONG",
+    "profile": "BASE",
+    "sample_type": "LIVE_PUBLIC",
+    "entry_ts_ms": 1788273005496,
+    "exit_ts_ms": 1788279002750,
+    "holding_ms": 5997254,
+    "entry_price": "83.90800",
+    "initial_stop": "82.89190372571429",
+    "take_profit_1": "85.552237061428565",
+    "take_profit_2": "87.153474122857130",
+    "actual_exit_price": "82.87400",
+    "exit_reason": "STOP",
+    "net_pnl_usdt": "-3.5595963404571561",
+    "fees_usdt": "0.309213828",
+    "slippage_usdt": "0.0553225124571561"
+  },
+  "focus_replay": {
+    "status": "PASS",
+    "frame_count": 41,
+    "candle_count": 42,
+    "initial_frame": 0,
+    "initial_stage": "PRE_ENTRY",
+    "actual_entry_jump_frame": 6,
+    "actual_exit_jump_frame": 40,
+    "signal_ts_ms": 1788273004976,
+    "actual_entry_ts_ms": 1788273005496,
+    "actual_exit_ts_ms": 1788279002750,
+    "stop_marker_price": "82.87400",
+    "stop_marker_label_ko": "손절·보호선 실제 체결",
+    "initial_stop_remains_separate_plan_line": true,
+    "incomplete_future_candles_hidden": true,
+    "future_event_markers_hidden": true,
+    "registry_metadata_matches_trade": false,
+    "entry_context_source": "STORED_PUBLIC_SIGNAL_AND_PAPER_LEDGER",
+    "entry_reason_labels_ko": [
+      "저장된 전략의 세부 진입 조건을 충족했습니다.",
+      "실제 공개호가에서 진입 비용 조건을 확인했습니다."
+    ],
+    "required_timeframes": [
+      "30m",
+      "1h",
+      "24h momentum",
+      "public book flow"
+    ],
+    "full_run_reconciliation": "NOT_RUN"
+  },
+  "actual_browser_8870": {
+    "status": "PASS",
+    "url": "http://127.0.0.1:8870/?wave=146-actual",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 720
+    },
+    "desktop_columns_css_px": {
+      "trade_list": 300,
+      "player": 933
+    },
+    "controls_verified": [
+      "BEGINNING",
+      "PREVIOUS_KEYFRAME",
+      "PLAY_PAUSE",
+      "NEXT_KEYFRAME",
+      "SPEED",
+      "SIGNAL_JUMP",
+      "ENTRY_JUMP",
+      "TP1_JUMP",
+      "TP2_JUMP",
+      "EXIT_JUMP"
+    ],
+    "speed_selected": 20,
+    "playback_frame_before_play": 0,
+    "playback_frame_after_1_1_seconds": 5,
+    "paused_frame_before_catalog_refresh": 5,
+    "paused_frame_after_16_5_second_catalog_refresh": 5,
+    "catalog_refresh_reset_regression_reproduced_before_fix": true,
+    "catalog_refresh_reset_regression_fixed": true,
+    "exact_kst_entry_exit_and_holding_visible": true,
+    "easy_korean_entry_and_exit_explanations_visible": true,
+    "actual_8870_console_errors_and_warnings": 0,
+    "tablet_and_mobile_scope": "FIXTURE_PLAYWRIGHT_PASS"
+  },
+  "screenshots": [
+    {
+      "path": "evidence/screenshots/v6-actual-8870/wave146-completed-trade-replay-desktop.png",
+      "sha256": "c143abee1d3f400b77f4d17b50c6cc51fd7378724e8dae9c33b4426e4fec386d",
+      "bytes": 89205
+    },
+    {
+      "path": "evidence/screenshots/v6-actual-8870/wave146-completed-trade-replay-chart-top.png",
+      "sha256": "1b9dac230d59186d8557ebe59f92b7f7010be7397ade83bc64e0e38d3e7baf3d",
+      "bytes": 91696
+    }
+  ],
+  "automated_validation": {
+    "backend_full_tests_passed": 1541,
+    "frontend_test_files_passed": 15,
+    "frontend_tests_passed": 119,
+    "fixture_api_tests_passed": 37,
+    "fixture_playwright_passed": 7,
+    "fixture_playwright_intentional_skips": 2,
+    "ruff": "PASS",
+    "mypy_source_files": 127,
+    "mypy": "PASS",
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build_modules": 54,
+    "vite_build": "PASS",
+    "paper_build_safety": "PASS",
+    "security_source_files": 162,
+    "security": "PASS",
+    "repository_hygiene": "PASS",
+    "regression_contracts_passed": 30,
+    "github_actions_feature_run": 33523571757,
+    "github_actions_documentation_runs": [33527271157, 33527274300],
+    "github_actions_status": "PASS"
+  },
+  "post_install_paused_observation": {
+    "status": "PASS",
+    "duration_seconds": 30.379,
+    "public_market_event_delta": 3539,
+    "strategy_evaluation_delta": 2712,
+    "maximum_queue_depth": 30,
+    "maximum_processing_lag_p95_ms": 61.193603515625,
+    "maximum_trade_lag_p95_ms": 61.035888671875,
+    "unplanned_reconnect_delta": 0,
+    "sequence_gap_delta": 0,
+    "resync_delta": 0,
+    "drop_delta": 0,
+    "persistence_fault_delta": 0,
+    "persistence_buffer_drop_delta": 0
+  },
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_key_enabled": false,
+    "wallet_enabled": false,
+    "runtime_ai_order_decision_enabled": false,
+    "funding_readiness": "NOT_READY"
+  },
+  "interpretation": {
+    "chart_centered_completed_trade_replay": "PASS",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}

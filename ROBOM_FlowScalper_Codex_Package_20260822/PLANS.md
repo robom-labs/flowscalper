@@ -790,7 +790,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 
 ## Wave 146 차트 중심 완료 거래 다시보기
 
-- 상태는 `SOURCE_VALIDATION_PASS_INSTALL_WAITING_FOR_FLAT_PAPER`다.
+- 상태는 `COMPLETE_WITH_LIMITS`다.
 - 완료된 `LIVE_PUBLIC` PAPER 거래를 최신순 목록으로 보여 주고 선택 즉시 신호 전 완성 캔들부터
   재생한다. 같은 기회의 BASE·STRESS 원장 행은 보존하며 목록에서만 대표 한 건으로 묶는다.
 - 차트는 재생 시각에 맞춰 신호·실제 진입·TP1·TP2·초기 SL·실제 종료를 누적 표시한다.
@@ -810,7 +810,17 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   객체를 복제해 전달해도 focus 요청 1회와 재생 위치가 유지되는 frontend 회귀를 추가했다.
 - source commit `8d7a586ccf5e1af498f550a68d2feead2870d435`의 GitHub Actions
   `33523571757`은 validate와 browser job이 모두 PASS했다.
-- 실제 8870 설치와 브라우저 검증은 현재 2개 PAPER 포지션이 자연 종료되기 전까지 `NOT_RUN`이다.
-  포지션을 강제 종료하지 않으며 flat이 된 뒤 같은 Run의 불변 릴리스로 설치해 완료한다.
+- 기존 PAPER 포지션 2개가 TP·SL 경로로 자연 종료돼 `open 0·pending 0·flat true`가 된 뒤,
+  불변 release `3edc8611899aab09b9b3036245c205285f697a72`를 같은 Run
+  `run-2b7135a972dd`의 8870에 설치했다. 포지션을 배포 편의 때문에 강제 종료하지 않았다.
+- 실제 8870에서 완료 `LIVE_PUBLIC` 거래 54개, HYPEUSDT 최신 STOP 거래의 진입 전 1/41,
+  실제 진입 7/41, 실제 종료 41/41, 20배속 재생, KST 진입·종료·1.7시간 보유와 쉬운 한국어
+  근거를 확인했다. 일시정지한 5번째 장면은 16.5초 catalog 갱신 뒤에도 5번째로 유지됐고
+  실제 8870 browser 오류·경고는 0이었다.
+- 설치 뒤 일시정지 상태 30.379초 관찰에서 공개시장 event +3,539·전략평가 +2,712,
+  queue 최대 30, 처리·trade P95 최대 61.194·61.036ms, 비계획 재연결·gap·resync·drop·
+  persistence fault·buffer drop·실제주문·인증은 0이었다.
+- 기계판독 증거는 `evidence/WAVE146_CHART_CENTERED_TRADE_REPLAY_VALIDATION.json`, 실제 화면은
+  `evidence/screenshots/v6-actual-8870/`에 보존한다.
 - 화면 완료는 수익성 증거가 아니다. 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금
   준비는 `NOT_READY`, 실제 주문·private API·API Key·wallet·runtime AI 주문판단은 0을 유지한다.

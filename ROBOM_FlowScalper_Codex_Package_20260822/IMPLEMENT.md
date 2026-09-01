@@ -839,10 +839,14 @@ so profitability remains NOT_PROVEN and 6h/24h remain NOT_RUN.
 10. Keep actual orders, private APIs, authentication, API keys, secrets, wallets and runtime AI order
    decisions absent. Keep profitability `NOT_PROVEN` and 6h/24h `NOT_RUN` unless independently observed.
 
-Source and fixture validation is complete at
-`8d7a586ccf5e1af498f550a68d2feead2870d435`. GitHub Actions run `33523571757`
-passed both validate and browser jobs. Actual immutable installation and browser verification remain
-`NOT_RUN` while two PAPER positions are naturally protected; no position is force-closed for deployment.
+Source and fixture validation completed at
+`8d7a586ccf5e1af498f550a68d2feead2870d435`; GitHub Actions run `33523571757`
+passed both validate and browser jobs. After the two PAPER positions closed naturally, immutable release
+`3edc8611899aab09b9b3036245c205285f697a72` was installed into the same Run. The actual 8870 browser
+showed 54 completed opportunities, stable list/chart columns, pre-entry through actual-exit playback,
+20x play/pause, exact KST timing, Korean reasons and zero browser errors or warnings. Frame 5 remained
+frame 5 after the 16.5 second catalog refresh. Six-hour and 24-hour stability remain `NOT_RUN`,
+profitability remains `NOT_PROVEN`, and real-money readiness remains `NOT_READY`.
 
 ## Wave 135 전략 결과표·정렬·홈 이동
 

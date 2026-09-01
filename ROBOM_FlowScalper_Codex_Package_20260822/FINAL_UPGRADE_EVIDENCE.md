@@ -5035,23 +5035,49 @@ revision 69→70으로 해제한 뒤 `RUNNING`·`ENTRY_ENABLED`·10배·최대 1
 | repository hygiene·회귀계약 | `PASS` | hygiene PASS·30개 계약·59개 anchor PASS |
 | GitHub Actions | `PASS` | source `8d7a586ccf5e1af498f550a68d2feead2870d435`·run `33523571757` validate·browser 성공 |
 | fixture 스크린샷 육안 | `PASS_FIXTURE_ONLY` | 목록·큰 차트·시점 이동·이유·시각·결과·모바일 세로 배치 확인 |
-| 실제 8870 설치·브라우저 | `NOT_RUN` | 현재 같은 Run의 PAPER 포지션 2개가 자연 보호 중이라 강제 종료하지 않음 |
+| 실제 8870 설치·브라우저 | `PASS` | release `3edc8611899aab09b9b3036245c205285f697a72`·같은 Run·54개 목록·20배속·16.5초 갱신 위치 유지·오류 0 |
 
 fixture 경계는 `LOCAL_DEMO_FIXTURE_PLAYWRIGHT`다. fixture 스크린샷과 테스트를 실제 설치
-서비스 증거로 바꾸지 않는다. 실제 8870 설치와 브라우저 검증은 포지션이 자연 종료돼 flat이
-된 뒤 불변 commit으로 수행한다.
+서비스 증거로 바꾸지 않는다. 별도로 기존 PAPER 포지션 2개가 TP·SL 경로로 자연 종료되고
+`open 0·pending 0·flat true`가 된 뒤 불변 commit을 같은 Run의 8870에 설치해 실제 화면을
+검증했다. 배포 편의를 위한 강제 종료는 없었다.
 
-### 108.3 현재 판정 경계
+### 108.3 실제 8870 설치·브라우저 증거
+
+첫 실제 검증 release는 `3edc8611899aab09b9b3036245c205285f697a72`, Run은
+`run-2b7135a972dd`다. 설치 뒤에도 `USER_PAUSED` revision 73, 시장 관찰 활성, 신규 진입 비활성,
+포지션·pending 0과 flat true를 유지한 상태에서 화면을 검증했다.
+
+실제 8870의 `거래 → 다시보기`에서 완료 `LIVE_PUBLIC` 기회 54개를 확인했다. 최신
+HYPEUSDT `MULTISPEED_TREND_RECLAIM_30M_V2` BASE 거래를 선택했으며 신호
+23:30:04 KST, 실제 진입 23:30:05 KST, 실제 종료 01:10:02 KST, 보유 1.7시간이 화면과
+API에서 일치했다. 차트는 진입 전 1/41에서 시작했고 실제 진입 이동은 7/41, 실제 종료 이동은
+41/41이었다. 초기 SL 82.8919는 계획선으로 남고 STOP marker와 실제 종료는 원장 체결가
+82.874에 표시됐다.
+
+20배속 재생은 1.1초 동안 1번째에서 6번째 장면으로 전진했고 일시정지 뒤 16.5초 목록 갱신
+전후 모두 6번째 장면을 유지했다. KST 시각·보유시간·30분·1시간·24시간 흐름·공개호가 확인과
+손절 결과 설명을 실제 화면에서 확인했으며 8870 browser 오류·경고는 0이었다. 스크린샷은
+`evidence/screenshots/v6-actual-8870/wave146-completed-trade-replay-desktop.png`와
+`evidence/screenshots/v6-actual-8870/wave146-completed-trade-replay-chart-top.png`, 기계판독 결과는
+`evidence/WAVE146_CHART_CENTERED_TRADE_REPLAY_VALIDATION.json`에 보존한다.
+
+설치 뒤 일시정지 상태 30.379초 관찰은 event 29,688→33,227, 전략평가 22,776→25,488,
+queue 최대 30, 처리·trade P95 최대 61.194·61.036ms였다. 비계획 재연결·gap·resync·drop·
+persistence fault·buffer drop·실제주문·인증은 0이었다. 이 짧은 관찰은 설치 복구와 데이터
+전진 증거이며 6시간·24시간 안정성 또는 수익성 증거가 아니다.
+
+### 108.4 현재 판정 경계
 
 | 항목 | 상태 |
 |---|---|
 | source·자동검증 | `PASS` |
 | fixture 반응형 화면·상호작용 | `PASS_FIXTURE_ONLY` |
-| 불변 설치·실제 8870 화면 | `NOT_RUN_WAITING_FOR_FLAT_PAPER` |
+| 불변 설치·실제 8870 화면 | `PASS` |
 | 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
 | 6시간·24시간 | `NOT_RUN` |
 | 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
 
-현재 상태는 `SOURCE_VALIDATION_PASS_INSTALL_WAITING_FOR_FLAT_PAPER`다. 화면 구현과 자동검증은
-완료했지만 열린 PAPER 포지션을 배포 편의 때문에 강제 종료하지 않았으므로 실제 설치 완료라고
-기록하지 않는다.
+현재 상태는 `COMPLETE_WITH_LIMITS`다. 화면 구현·자동검증·불변 설치·실제 8870 조작검증은
+완료했다. 6시간·24시간과 비용 후 수익성은 별도 장기 증거가 없으므로 `NOT_RUN`·`NOT_PROVEN`,
+실자금 준비는 `NOT_READY`를 유지한다.

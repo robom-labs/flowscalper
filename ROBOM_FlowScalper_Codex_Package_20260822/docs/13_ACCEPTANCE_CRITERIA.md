@@ -311,7 +311,9 @@ Wave 47의 활성 writer 동시검사는 queue 4,096·drop 9,736을 만든 `FAIL
 - [x] Desktop, tablet and mobile fixture browsers keep the chart stable without root overflow or browser errors.
 - [x] Backend 1,541 tests, frontend 119 tests, fixture API 37 tests, fixture Playwright 7 PASS with two
   intentional skips, static checks, PAPER safety and security pass.
-- [ ] A committed immutable Wave 146 release is installed into the same Run after all open PAPER positions
-  close naturally, then the actual 8870 browser journey and actual-order zero are verified.
+- [x] Committed immutable release `3edc8611899aab09b9b3036245c205285f697a72` was installed into the
+  same Run after all open PAPER positions closed naturally. The actual 8870 journey verified 54 rows,
+  pre-entry through actual exit, 20x playback, 16.5-second refresh stability, zero browser errors and
+  actual-order/auth/private/key/wallet/runtime-AI zero.
 - [ ] Six-hour and 24-hour stability and current-version cost-adjusted profitability are independently proven.
   Until then they remain `NOT_RUN`, `NOT_PROVEN` and real-money readiness remains `NOT_READY`.
