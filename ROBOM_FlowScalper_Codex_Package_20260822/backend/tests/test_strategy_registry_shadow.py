@@ -52,6 +52,43 @@ from backend.app.strategies.shadow import ShadowLedger, ShadowPosition
 from backend.tests.test_strategies import features
 
 _EVIDENCE_HASH = "a" * 64
+_ELIGIBLE_DIRECTION_RESEARCH_IDS = (
+    "BREAKOUT_RETEST_15M_V2",
+    "BREAKOUT_RETEST_30M_V2",
+    "CBR_CONTINUATION_V1",
+    "MULTISPEED_TREND_RECLAIM_30M_V2",
+    "TREND_PULLBACK_RECLAIM_15M_V2",
+    "VWAP_EXHAUSTION_REVERSION_V1",
+)
+_CURRENT_DIRECTION_RESEARCH_IDS = {
+    "BREAKOUT_RETEST_30M_V2",
+    "TREND_PULLBACK_RECLAIM_15M_V2",
+    "VWAP_EXHAUSTION_REVERSION_V1",
+}
+
+
+def _restore_operational_quarantine_cohort(
+    registry: StrategyRegistry,
+    *,
+    omit_strategy_id: str | None = None,
+    overrides: dict[str, dict[str, object]] | None = None,
+) -> None:
+    for strategy_id in _ELIGIBLE_DIRECTION_RESEARCH_IDS:
+        if strategy_id == omit_strategy_id:
+            continue
+        values: dict[str, object] = {
+            "mode": StrategyMode.OFF,
+            "lifecycle": StrategyLifecycle.QUARANTINED,
+            "long_enabled": True,
+            "short_enabled": True,
+            "revision": 1,
+            "manual_lock": False,
+            "changed_by": StrategyChangeSource.AUTO_GOVERNOR,
+            "change_reason": "OPERATIONAL_FAULT",
+            "updated_ts_ms": 1_000,
+        }
+        values.update((overrides or {}).get(strategy_id, {}))
+        registry.restore_setting(strategy_id, **values)  # type: ignore[arg-type]
 
 
 def _governance_freshness_inputs(
@@ -308,6 +345,101 @@ def test_retired_hourly_strategy_repairs_legacy_generic_reason() -> None:
     assert len(migrated) == 1
     assert setting.revision == 2
     assert setting.change_reason == "FIXED_HISTORICAL_REPLICATION_FAILED_WAVE46"
+
+
+def test_global_operational_quarantine_restores_only_six_eligible_entries() -> None:
+    registry = StrategyRegistry()
+    _restore_operational_quarantine_cohort(registry)
+    protected_ids = ("LSA_REVERSAL_V1", "AGGRESSOR_FLOW_CONTINUATION_V1")
+    for strategy_id in protected_ids:
+        registry.restore_setting(
+            strategy_id,
+            mode=StrategyMode.OFF,
+            lifecycle=StrategyLifecycle.QUARANTINED,
+            long_enabled=True,
+            short_enabled=True,
+            revision=1,
+            manual_lock=False,
+            changed_by=StrategyChangeSource.AUTO_GOVERNOR,
+            change_reason="OPERATIONAL_FAULT",
+            updated_ts_ms=1_000,
+        )
+
+    migrated = registry.restore_operationally_quarantined_research_defaults(
+        updated_ts_ms=2_000
+    )
+
+    assert tuple(row["strategy_id"] for row in migrated) == (
+        _ELIGIBLE_DIRECTION_RESEARCH_IDS
+    )
+    for row in migrated:
+        strategy_id = str(row["strategy_id"])
+        assert row["mode"] == "SHADOW"
+        assert row["lifecycle"] == (
+            "SHADOW" if strategy_id in _CURRENT_DIRECTION_RESEARCH_IDS else "CHALLENGER"
+        )
+        assert row["settings_revision"] == 2
+        assert row["manual_lock"] is False
+        assert row["changed_by"] == "MIGRATION"
+        assert row["change_reason"] == (
+            "V9_USER_REQUESTED_SHADOW_DEFAULT_ON_AFTER_GLOBAL_OPERATIONAL_RECOVERY"
+        )
+    for strategy_id in protected_ids:
+        protected = registry.setting(strategy_id)
+        assert protected.mode is StrategyMode.OFF
+        assert protected.lifecycle is StrategyLifecycle.QUARANTINED
+        assert protected.revision == 1
+    assert (
+        registry.restore_operationally_quarantined_research_defaults(updated_ts_ms=3_000)
+        == ()
+    )
+
+
+@pytest.mark.parametrize(
+    ("omit_strategy_id", "overrides"),
+    (
+        ("CBR_CONTINUATION_V1", None),
+        (None, {"CBR_CONTINUATION_V1": {"updated_ts_ms": 1_001}}),
+        (
+            None,
+            {
+                "CBR_CONTINUATION_V1": {
+                    "changed_by": StrategyChangeSource.USER_UI,
+                    "manual_lock": True,
+                }
+            },
+        ),
+        (None, {"CBR_CONTINUATION_V1": {"manual_lock": True}}),
+        (
+            None,
+            {"CBR_CONTINUATION_V1": {"change_reason": "INDIVIDUAL_OPERATIONAL_FAULT"}},
+        ),
+    ),
+)
+def test_operational_quarantine_recovery_rejects_partial_or_individual_cohort(
+    omit_strategy_id: str | None,
+    overrides: dict[str, dict[str, object]] | None,
+) -> None:
+    registry = StrategyRegistry()
+    _restore_operational_quarantine_cohort(
+        registry,
+        omit_strategy_id=omit_strategy_id,
+        overrides=overrides,
+    )
+
+    assert (
+        registry.restore_operationally_quarantined_research_defaults(updated_ts_ms=2_000)
+        == ()
+    )
+    for strategy_id in _ELIGIBLE_DIRECTION_RESEARCH_IDS:
+        setting = registry.setting(strategy_id)
+        if strategy_id == omit_strategy_id:
+            assert setting.mode is StrategyMode.SHADOW
+            assert setting.revision == 0
+            continue
+        assert setting.mode is StrategyMode.OFF
+        assert setting.lifecycle is StrategyLifecycle.QUARANTINED
+        assert setting.revision == 1
 
 
 def test_runtime_rejects_direct_reactivation_of_policy_retired_strategy() -> None:

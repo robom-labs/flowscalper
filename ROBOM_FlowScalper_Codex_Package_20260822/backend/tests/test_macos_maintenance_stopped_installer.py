@@ -184,13 +184,7 @@ def test_maintenance_transition_double_checks_absence_and_bootstraps_once() -> N
 
 
 def test_single_bootstrap_helper_calls_launchctl_exactly_once(tmp_path: Path) -> None:
-    zsh = subprocess.run(
-        ["/bin/zsh", "-c", "command -v zsh"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if zsh.returncode != 0:
+    if not Path("/bin/zsh").is_file():
         pytest.skip("zsh가 없는 환경에서는 installer mock을 실행하지 않는다.")
     helper = _shell_function("bootstrap_launch_agent_once", "verify_service_fully_stopped")
     harness = f"""
@@ -254,6 +248,8 @@ def test_maintenance_rollback_restores_artifacts_without_restarting_old_job(
     restore_status: int,
     expected_status: int,
 ) -> None:
+    if not Path("/bin/zsh").is_file():
+        pytest.skip("zsh가 없는 환경에서는 installer rollback mock을 실행하지 않는다.")
     previous_release = tmp_path / "old-release"
     previous_release.mkdir()
     current = tmp_path / "current"

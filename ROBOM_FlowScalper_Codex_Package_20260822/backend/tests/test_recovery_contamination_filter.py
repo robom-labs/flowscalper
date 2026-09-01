@@ -24,6 +24,19 @@ LEGACY_COMPONENT_IDS = (
     "OFI_RETURN_CONFLUENCE_V1",
     "BOOK_SLOPE_ASYMMETRY_V1",
 )
+ELIGIBLE_DIRECTION_RESEARCH_IDS = (
+    "BREAKOUT_RETEST_15M_V2",
+    "BREAKOUT_RETEST_30M_V2",
+    "CBR_CONTINUATION_V1",
+    "MULTISPEED_TREND_RECLAIM_30M_V2",
+    "TREND_PULLBACK_RECLAIM_15M_V2",
+    "VWAP_EXHAUSTION_REVERSION_V1",
+)
+CURRENT_DIRECTION_RESEARCH_IDS = {
+    "BREAKOUT_RETEST_30M_V2",
+    "TREND_PULLBACK_RECLAIM_15M_V2",
+    "VWAP_EXHAUSTION_REVERSION_V1",
+}
 
 
 def _recovery_incident(
@@ -202,6 +215,115 @@ def test_missing_or_divergent_governance_incident_anchor_is_never_ignored() -> N
         windows=((100, 200),),
         governance_incidents=(divergent_incident,),
     ) is False
+
+
+def test_runtime_persists_atomic_global_operational_quarantine_recovery(
+    tmp_path: Path,
+) -> None:
+    run_id = "run-global-operational-quarantine"
+    quarantine_ts_ms = 150
+    ledger = SQLiteLedger(tmp_path / "global-operational-quarantine.sqlite3")
+    PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=0),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    for strategy_id in ELIGIBLE_DIRECTION_RESEARCH_IDS:
+        row = _governance_row(
+            ts_ms=quarantine_ts_ms,
+            strategy_id=strategy_id,
+        )
+        row["run_id"] = run_id
+        row["transition_id"] = f"strategy-setting-{run_id}-{strategy_id}-rev-1"
+        row["change_evidence"]["lineage"]["run_id"] = run_id  # type: ignore[index]
+        governance_incident = _governance_incident(row)
+        governance_incident["run_id"] = run_id
+        ledger.record_strategy_setting(row)
+        ledger.record_incident(
+            str(governance_incident["incident_id"]),
+            run_id=run_id,
+            severity="INFO",
+            category=str(governance_incident["category"]),
+            ts_ms=quarantine_ts_ms,
+            payload=governance_incident["payload"],  # type: ignore[arg-type]
+        )
+
+    recovered_runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=300),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    recovered = RecoveryState(
+        run_id=run_id,
+        venue=Venue.BINANCE_USDM.value,
+        lifecycle_state="SCANNING",
+        payload={},
+        transition_count=0,
+        recovered_ts_ms=300,
+    )
+
+    assert recovered_runtime.restore_recovery_state(recovered) is True, (
+        recovered_runtime.runtime_health_flags
+    )
+    for strategy_id in ELIGIBLE_DIRECTION_RESEARCH_IDS:
+        setting = recovered_runtime.strategy_registry.setting(strategy_id)
+        assert setting.mode.value == "SHADOW"
+        assert setting.lifecycle.value == (
+            "SHADOW" if strategy_id in CURRENT_DIRECTION_RESEARCH_IDS else "CHALLENGER"
+        )
+        assert setting.revision == 2
+        assert setting.changed_by.value == "MIGRATION"
+        assert setting.change_reason == (
+            "V9_USER_REQUESTED_SHADOW_DEFAULT_ON_AFTER_GLOBAL_OPERATIONAL_RECOVERY"
+        )
+    migration_incidents = ledger.list_incidents(
+        category="V9_OPERATIONAL_QUARANTINE_RECOVERY_MIGRATION"
+    )
+    assert len(migration_incidents) == 6
+    for incident in migration_incidents:
+        payload = incident["payload"]
+        assert payload["request_revision"] == 1
+        assert payload["response_revision"] == 2
+        assert payload["changed_by"] == "MIGRATION"
+        assert payload["change_evidence"] == {
+            "policy": "V9_OPERATIONAL_QUARANTINE_SHADOW_DEFAULT_RECOVERY",
+            "eligible_entry_research_only": True,
+            "user_and_manual_settings_preserved": True,
+            "active_promotion_blocked": True,
+        }
+
+    settings_count = ledger.count("strategy_settings")
+    recovered_again = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        clock=DeterministicClock(current_utc_ms=400),
+        run_id=run_id,
+        ledger=ledger,
+        venue=Venue.BINANCE_USDM,
+    )
+    assert recovered_again.restore_recovery_state(
+        RecoveryState(
+            run_id=run_id,
+            venue=Venue.BINANCE_USDM.value,
+            lifecycle_state="SCANNING",
+            payload={},
+            transition_count=0,
+            recovered_ts_ms=400,
+        )
+    ) is True
+    assert ledger.count("strategy_settings") == settings_count
+    assert (
+        len(
+            ledger.list_incidents(
+                category="V9_OPERATIONAL_QUARANTINE_RECOVERY_MIGRATION"
+            )
+        )
+        == 6
+    )
+    ledger.close()
 
 
 def test_ignored_governor_revisions_are_reserved_before_v6_family_migration(

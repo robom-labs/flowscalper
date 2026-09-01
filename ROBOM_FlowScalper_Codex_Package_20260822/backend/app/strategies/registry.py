@@ -146,6 +146,9 @@ POLICY_RETIREMENT_REASONS["HOURLY_MOMENTUM_BREAKOUT_V1"] = (
 POLICY_SHADOW_DEFAULT_IDS = frozenset({"CBR_CONTINUATION_V1"})
 POLICY_SHADOW_DEFAULT_REASON = "NO_ACTIVE_STRATEGY_WITHOUT_COST_ADJUSTED_PROOF_WAVE46"
 UNPROVEN_ACTIVE_RECOVERY_REASON = "V6_UNPROVEN_ACTIVE_RECOVERY_DOWNGRADED"
+OPERATIONAL_QUARANTINE_SHADOW_RECOVERY_REASON = (
+    "V9_USER_REQUESTED_SHADOW_DEFAULT_ON_AFTER_GLOBAL_OPERATIONAL_RECOVERY"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1042,6 +1045,58 @@ class StrategyRegistry:
             setting.manual_lock = False
             setting.changed_by = StrategyChangeSource.MIGRATION
             setting.change_reason = desired_reason
+            setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
+            row = self._setting_row(strategy_id)
+            self._revision_history[strategy_id][setting.revision] = row
+            changed.append(row)
+        return tuple(changed)
+
+    @_setting_locked
+    def restore_operationally_quarantined_research_defaults(
+        self,
+        *,
+        updated_ts_ms: int,
+    ) -> tuple[dict[str, object], ...]:
+        """동일 전역 장애로 한번에 격리된 적격 ENTRY cohort만 복구한다."""
+
+        eligible_strategy_ids = tuple(
+            sorted(
+                strategy_id
+                for strategy_id in self.strategy_ids
+                if (
+                    self.descriptor(strategy_id).role is StrategyRole.ENTRY
+                    and self.descriptor(strategy_id).default_research_enabled
+                    and not self.is_policy_retired(strategy_id)
+                )
+            )
+        )
+        cohort = tuple(self.setting(strategy_id) for strategy_id in eligible_strategy_ids)
+        if not cohort or any(
+            setting.mode is not StrategyMode.OFF
+            or setting.lifecycle is not StrategyLifecycle.QUARANTINED
+            or setting.manual_lock
+            or setting.changed_by is not StrategyChangeSource.AUTO_GOVERNOR
+            or setting.change_reason != "OPERATIONAL_FAULT"
+            for setting in cohort
+        ):
+            return ()
+        if len({setting.updated_ts_ms for setting in cohort}) != 1:
+            return ()
+
+        changed: list[dict[str, object]] = []
+        for strategy_id in eligible_strategy_ids:
+            descriptor = self.descriptor(strategy_id)
+            setting = self.setting(strategy_id)
+            setting.mode = StrategyMode.SHADOW
+            setting.lifecycle = (
+                StrategyLifecycle.SHADOW
+                if descriptor.is_current_variant
+                else StrategyLifecycle.CHALLENGER
+            )
+            setting.revision += 1
+            setting.manual_lock = False
+            setting.changed_by = StrategyChangeSource.MIGRATION
+            setting.change_reason = OPERATIONAL_QUARANTINE_SHADOW_RECOVERY_REASON
             setting.updated_ts_ms = max(updated_ts_ms, setting.updated_ts_ms + 1)
             row = self._setting_row(strategy_id)
             self._revision_history[strategy_id][setting.revision] = row

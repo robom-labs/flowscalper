@@ -1457,6 +1457,11 @@ class PaperRuntime:
                     updated_ts_ms=self.clock.utc_ms()
                 )
             )
+            operational_recovery_migrations = (
+                staged_strategy_registry.restore_operationally_quarantined_research_defaults(
+                    updated_ts_ms=self.clock.utc_ms()
+                )
+            )
             shadow_migrations = (
                 staged_strategy_registry.enforce_unproven_active_defaults(
                     updated_ts_ms=self.clock.utc_ms(),
@@ -1540,6 +1545,16 @@ class PaperRuntime:
                         "new_independent_entry_blocked": True,
                     },
                     "V6_FAMILY_RUNTIME_POLICY_MIGRATION",
+                ),
+                (
+                    operational_recovery_migrations,
+                    {
+                        "policy": "V9_OPERATIONAL_QUARANTINE_SHADOW_DEFAULT_RECOVERY",
+                        "eligible_entry_research_only": True,
+                        "user_and_manual_settings_preserved": True,
+                        "active_promotion_blocked": True,
+                    },
+                    "V9_OPERATIONAL_QUARANTINE_RECOVERY_MIGRATION",
                 ),
                 (
                     shadow_migrations,
