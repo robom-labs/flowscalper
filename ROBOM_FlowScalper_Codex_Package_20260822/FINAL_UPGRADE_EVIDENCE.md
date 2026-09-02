@@ -5324,3 +5324,144 @@ FFUSDT의 `MULTISPEED_RECLAIM_30M`은 LONG, ADX 53.277797, 24시간 모멘텀
 실제 표에는 BTRUSDT 7분 33초 보유 익절과 HYPEUSDT 약 1.7시간 보유 손절이 각각 한 번의
 진입기회로 표시되고, 각 기회의 BASE·STRESS 비용 결과가 중복거래가 아니라 세부 결과로
 묶였다. 실제 주문과 인증은 계속 false다.
+
+## 113. Wave 151 시장구조 근거형 진입·손절·TP1·TP2·잔량관리
+
+### 113.1 확인한 기존 간극과 결정
+
+현재 실행 가능한 6개 SHADOW 전략은 진입 전에 entry·초기 SL·TP1·TP2를 확정하는 경로가
+있었지만, 전략별 가격 구조와 화면 설명이 완전히 일치하지 않았다. 특히 registry의 호환용 R
+필드가 전략 상세 화면에서 `1.4R·2.8R` 같은 고정 목표처럼 다시 표현됐고, 현재 전략의 절대
+TP1·TP2와 손절 가격을 왜 선택했는지 설명하는 불변 필드가 없었다. VWAP 평균회귀 전략의
+짧은 micro-VWAP은 재진입 확인에는 유효하지만 독립적인 장기 구조 목표로 쓰면 안 되는 의미
+충돌도 확인했다.
+
+이번 Wave는 수익을 만들기 위해 임계값을 낮추지 않고 다음 계약으로 교체했다.
+
+- 현재 실행 가능한 6개 전략은 모두 `StructuralExitPlan`의 절대가격을 사용한다. registry의
+  R 값은 이전 버전과 저장 스키마를 읽기 위한 호환 필드일 뿐 현재 목표가 계산에 쓰지 않는다.
+- 15분·30분·1시간 전략은 완성봉만 사용한다. 최근 확정 피벗, 이전 UTC 일 고가·저가,
+  돌파 measured move와 완성봉 ATR channel을 후보로 만들고 방향·최소 순손익비·비용 조건을
+  만족하는 가장 가까운 구조를 TP1, 그 다음 구조를 TP2로 확정한다.
+- 눌림 전략의 SL은 최근 완성봉 눌림 저점·고점 바깥에 ATR 완충을 둔다. 돌파 전략의 SL은
+  재확인 완료봉과 돌파 경계 바깥에 ATR 완충을 둔다.
+- CBR은 실제 10초 가격경로의 눌림 구조, 이전 impulse 극값과 measured impulse를 사용한다.
+  VWAP 평균회귀는 실제 2분 사전 excursion 범위, excursion 극값, 중심·반대 경계·확정 pivot을
+  사용하며 micro-VWAP은 재진입 확인에만 사용한다.
+- TP1에서 40%를 익절하고, 나머지 60%는 전략에 따라 완성봉 ATR chandelier 또는 확인된
+  구조폭 기반 추적손절로 보호한다. 추적손절은 이익을 되돌리는 방향으로 넓힐 수 없다.
+- 후보가 확정될 때 수량·최대손실·entry·SL·TP1·TP2·가격 근거·참조 시간구간·잔량관리
+  방식을 함께 동결한다. 계획·포지션·완료 거래·ReplayEngine이 같은 값을 전달한다.
+- 과거 원장에 가격 근거가 없으면 현재 계산으로 다시 꾸미지 않고 `이전 버전에서 생성돼
+  세부 가격 근거가 저장되지 않음`으로 표시한다.
+- 기존 legacy·이전·퇴역 9개 전략과 이미 열린 포지션의 불변 계획은 수정하지 않았다.
+
+결정과 노룩어헤드 경계는
+`docs/adr/ADR-138-structure-grounded-targets-and-tp1-runners.md`에 기록했다. 이 구조는
+시장 논리에 따른 일관된 PAPER 실행을 만들기 위한 것이며 목표 가격 도달이나 수익을 보장하지
+않는다.
+
+### 113.2 구현·회귀검증
+
+핵심 구현은 `backend/app/strategies/exit_structure.py`,
+`backend/app/strategies/base.py`, 현재 전략 모듈, candidate planner, PAPER portfolio,
+runtime snapshot·recovery, ReplayEngine과 frontend 거래·전략 화면에 연결했다. 실제 브라우저에서
+찾은 고정 R 설명 회귀는 `backend/app/runtime.py`의 조건 상세 payload와
+`frontend/src/pages/StrategiesPage.tsx`를 추가 수정해 제거했다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 구조형 exit 집중 backend | `PASS` | 11건 |
+| backend 전체 | `PASS` | 1,560건 |
+| frontend 전체 Vitest | `PASS` | 15 files·120건 |
+| Ruff check·format | `PASS` | 오류 0·대상 3 files format 정상 |
+| mypy | `PASS` | 128 source files 오류 0 |
+| ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules·main gzip 142.81kB |
+| PAPER build safety·security | `PASS_ZERO` | 실제 주문 경로 false·위반·secret 0 |
+| repository hygiene·회귀계약 | `PASS` | 회귀계약 30개·anchor 59개 |
+| fixture Playwright | `PASS` | desktop·tablet·mobile 7 PASS·2 설계상 SKIP |
+| fixture 화면 증거 | `PASS` | 시장 mobile·포지션·다시보기·80배속 screenshot 갱신 |
+
+테스트는 구조 가격의 방향·유효 순서, 비용후 최소 손익비, 완성봉 사용, CBR·VWAP 구조 차이,
+TP1 부분익절과 잔량 추적, candidate 동결, 저장·복구·replay 전달, 과거 근거 fallback 및 화면
+표시를 포함한다. 실제로 실행하지 않은 6시간·24시간 검증은 통과로 기록하지 않았다.
+
+### 113.3 안전한 설치와 실제 서비스 관찰
+
+첫 설치 시 유지보수 이유를 runtime이 재시작 후 보존하는 prefix가 아닌
+`MAINTENANCE_WAVE151...`로 사용해 설치기의 pause readiness가 실패했다. 설치기는 신규 진입을
+fail-closed로 남겼고, 기존 release를 다시 bootstrap해 같은 Run·원장을 복구했다. 이 실패는
+`FAIL_PRESERVED`다. 이후 공식 prefix `DEPLOYMENT_MAINTENANCE_`와 CAS revision을 사용해
+소스 commit `5abf070bfc308e6d8f98029081cd4de52d588a5d`을 설치했다.
+
+실제 브라우저 QA에서 구조형 전략 상세의 `한눈에 보는 전략`이 여전히 고정 R로 보이고 청산
+조건 payload도 R로 합성되는 두 번째 간극을 발견했다. 이를 수정한 commit
+`56741b03bea1f4450354f65636b5088313dda6aa`을 포지션·pending 0에서 다시 설치했다. 설치 전
+revision 98→유지보수 pause 99→resume 100으로 전환했고 같은 Run
+`run-2b7135a972dd`를 보존했다.
+
+설치 후 8초 관찰에서 공개시장 event는 26,954→27,758로 804건 전진했다. 최종 정상 snapshot은
+`RUNNING`·`ENTRY_ENABLED`, wide 80·deep 16, processing lag P95 32.656ms, trade lag P95
+38.869ms, wide lag P95 1,854.167ms, queue 0, dropped event 0, persistence fault·buffer drop 0,
+unplanned reconnect·gap·resync 0, process memory 263.266MB였다. 실제 주문·인증·private API·
+API Key·wallet·runtime AI 주문판단은 모두 false다.
+
+### 113.4 실제 브라우저 상호작용
+
+실제 `http://127.0.0.1:8870`에서 다음을 직접 확인했다.
+
+- 시장 메인은 `PAPER · 실제 주문 0`, `자동 진입 · 항상 허용`, `작동 중`, 전략 6개,
+  wide/deep 80/16과 보유 0건을 표시했다.
+- 15분 눌림 전략 상세는 고정 R 문구 대신 `고정 비율이 아니라 완성봉·실거래 구조에서
+  1차·2차 가격을 진입 전에 확정`을 표시했다.
+- 현재 조건 미충족 상태의 청산 화면은 임의 TP 가격을 합성하지 않고 `계획 확인 전`,
+  `구조 가격 확정 전`과 완성봉 구조·ATR·pivot·이전 일 고저·잔량관리 규칙을 표시했다.
+- 완료 화면은 이번 Run의 고유 진입기회 3건·원장 6행을 BASE/STRESS 비용쌍으로 묶었다.
+  BTRUSDT는 10:15:02 KST 진입→10:22:35 종료·7분 33초 보유·익절로 표시됐다.
+- BTRUSDT 다시보기는 56건 목록에서 선택됐고 5배속 재생으로 진입 전 장면이 전진했다.
+  `실제 진입`을 누르면 entry 0.08986, TP1 0.088115, TP2 0.086369, 초기 SL 0.091077,
+  하락 PAPER 보유 상태와 진입 후 0초가 차트에 표시됐다.
+- 이 BTRUSDT 거래는 구조 근거 저장 기능 도입 전 생성된 기록이므로 Replay 화면이 근거를
+  새로 만들지 않고 이전 버전 fallback을 정확히 표시했다.
+- 사이트 제목을 누르면 시장 메인으로 돌아왔고, 실제 브라우저 console warning·error는 0이었다.
+
+이번 설치 뒤 새 구조 근거 필드를 포함한 자연 PAPER 진입·종료는 아직 관찰되지 않았다.
+따라서 신규 구조 계획의 실제 LIVE_PUBLIC end-to-end 자연 표본은 `NOT_OBSERVED`이며, 테스트와
+기존 거래 재생을 수익성 또는 새 자연거래 증거로 해석하지 않는다.
+
+### 113.5 원장 전수검사 안전 경계
+
+활성 6.48GB 원장을 직접 `quick_check`하지 않고 온라인 SQLite backup 사본을 만든 뒤 닫힌
+사본만 검사하는 도구를 사용했다. 첫 시도는 쓰기가 계속되는 동안 35번 재시작돼 30.106초
+진행 정지로 `FAIL`했고, 두 번째 큰 단위 시도는 runtime dashboard 요청 timeout을 감지해
+`ABORTED_RUNTIME_SAFETY`로 자동 중단됐다. 두 임시 사본은 모두 삭제됐고 원본 mutation은
+요청하지 않았다. 두 번째 시도 직후 신규 진입은 자동 `SAFETY_WAITING`이 됐으며 이벤트는
+계속 전진했다. 이후 lag가 정상화돼 event 61,236, processing/trade P95
+32.656/38.869ms, queue 0에서 `RUNNING`·`ENTRY_ENABLED`로 자동 복구됐다.
+
+따라서 이번 Wave의 전체 원장 닫힌 사본 `quick_check` 결과는 `NOT_COMPLETED`이며 PASS로
+기록하지 않는다. 설치기의 유지보수 정지 critical-table 검증, persistence fault 0과 원장 API
+정상 응답은 확인했지만 이것을 전체 원장 전수 무결성으로 확대 해석하지 않는다. 두 시도의
+원시 결과는 외장 runtime diagnostics의 `wave151-ledger-integrity.json`과
+`wave151-ledger-integrity-retry.json`에 보존했다.
+
+### 113.6 현재 판정
+
+기계판독 근거는 `evidence/WAVE151_STRUCTURE_GROUNDED_EXITS_VALIDATION.json`에 보존한다.
+
+| 항목 | 상태 |
+|---|---|
+| 현재 6개 전략 구조형 entry·SL·TP1·TP2·runner 계약 | `PASS` |
+| 계획·포지션·저장·복구·Replay 전달 | `PASS` |
+| 실제 브라우저 구조 설명·거래목록·재생·홈 이동 | `PASS_OBSERVED` |
+| 안전 설치·같은 Run 복구·자동 진입 복구 | `PASS_WITH_INITIAL_FAILURE_PRESERVED` |
+| 활성 원장 온라인 사본 전수검사 | `NOT_COMPLETED / ABORTED_RUNTIME_SAFETY` |
+| 새 구조 버전 자연 PAPER 진입·종료 | `NOT_OBSERVED` |
+| 6시간·24시간 | `NOT_RUN` |
+| 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+
+현재 상태는 `COMPLETE_WITH_LIMITS`다. 사용자가 요구한 전략별 시장구조 근거와 초보자용 설명은
+코드·테스트·실제 화면까지 연결했다. 그러나 자연 신호 표본, 장시간 안정성, 전체 원장 전수검사와
+비용 후 수익성은 각각 관찰·실행·통과되지 않았으므로 `NOT_OBSERVED`·`NOT_RUN`·
+`NOT_COMPLETED`·`NOT_PROVEN`을 유지한다.

@@ -1,0 +1,181 @@
+{
+  "schema": "flowscalper.wave151.structure_grounded_exits.validation.v1",
+  "generated_at_utc": "2026-09-02T13:28:42Z",
+  "status": "COMPLETE_WITH_LIMITS",
+  "validated_source_commit": "56741b03bea1f4450354f65636b5088313dda6aa",
+  "run_id": "run-2b7135a972dd",
+  "scope": {
+    "current_executable_shadow_strategies": 6,
+    "preserved_legacy_or_retired_strategies": 9,
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_key_enabled": false,
+    "wallet_enabled": false,
+    "runtime_ai_order_decision_enabled": false
+  },
+  "contracts": {
+    "absolute_structural_tp1_tp2": "PASS",
+    "completed_candle_only_intraday_structure": "PASS",
+    "cbr_actual_10s_path_structure": "PASS",
+    "vwap_actual_2m_pre_excursion_structure": "PASS",
+    "tp1_partial_exit_percent": 40,
+    "runner_remaining_percent": 60,
+    "runner_never_widens_risk": "PASS",
+    "candidate_plan_freezes_price_and_rationale": "PASS",
+    "position_recovery_replay_rationale_path": "PASS",
+    "legacy_missing_rationale_not_fabricated": "PASS",
+    "registry_r_fields_current_runtime_role": "STORAGE_COMPATIBILITY_ONLY"
+  },
+  "offline_verification": {
+    "targeted_backend": {
+      "status": "PASS",
+      "tests": 11
+    },
+    "backend_full": {
+      "status": "PASS",
+      "tests": 1560
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 15,
+      "tests": 120
+    },
+    "ruff_check": "PASS",
+    "ruff_format": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 128
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": {
+      "status": "PASS",
+      "modules": 54,
+      "main_gzip_kb": 142.81
+    },
+    "paper_build_safety": "PASS_ZERO",
+    "security_scan": {
+      "status": "PASS",
+      "files": 163,
+      "violations": 0,
+      "secret_like_findings": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "regression_contracts": {
+      "status": "PASS",
+      "contracts": 30,
+      "anchors": 59
+    },
+    "fixture_playwright": {
+      "status": "PASS",
+      "passed": 7,
+      "designed_skips": 2,
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ]
+    }
+  },
+  "deployment": {
+    "initial_attempt": {
+      "status": "FAIL_PRESERVED",
+      "cause": "maintenance pause reason did not use a restart-preserved prefix",
+      "safety_result": "installer failed closed; previous release and same run were restored before retry"
+    },
+    "structure_source_install": {
+      "status": "PASS",
+      "commit": "5abf070bfc308e6d8f98029081cd4de52d588a5d"
+    },
+    "browser_found_followup": {
+      "status": "FIXED",
+      "finding": "strategy conditions still synthesized and displayed fixed R targets for a structural strategy"
+    },
+    "final_source_install": {
+      "status": "PASS",
+      "commit": "56741b03bea1f4450354f65636b5088313dda6aa",
+      "same_run_preserved": true,
+      "pause_revision": 99,
+      "resume_revision": 100,
+      "final_entry_intent": "ENTRY_ENABLED"
+    }
+  },
+  "runtime_observation": {
+    "status": "PASS_AFTER_AUTOMATIC_RECOVERY",
+    "operation_state": "RUNNING",
+    "entry_intent": "ENTRY_ENABLED",
+    "events_before": 26954,
+    "events_after_8s": 27758,
+    "event_delta_8s": 804,
+    "final_recovery_event_count": 61236,
+    "processing_lag_p95_ms": 32.65576171875,
+    "trade_lag_p95_ms": 38.86865234375,
+    "wide_lag_p95_ms": 1854.1669921875,
+    "queue_depth": 0,
+    "dropped_events": 0,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "process_memory_mb": 263.266,
+    "wide_symbols": 80,
+    "deep_symbols": 16,
+    "paper_portfolio_flat": true,
+    "open_positions": 0,
+    "pending_entries": 0
+  },
+  "actual_browser": {
+    "status": "PASS_OBSERVED",
+    "url": "http://127.0.0.1:8870/",
+    "paper_actual_orders_zero_visible": true,
+    "automatic_entry_always_enabled_visible": true,
+    "strategy_detail_fixed_r_removed": true,
+    "structure_rules_visible_before_plan": true,
+    "completed_unique_opportunities": 3,
+    "completed_ledger_rows": 6,
+    "replay_list_count": 56,
+    "selected_replay_symbol": "BTRUSDT",
+    "selected_replay_entry": "0.08986",
+    "selected_replay_tp1": "0.088115",
+    "selected_replay_tp2": "0.086369",
+    "selected_replay_stop": "0.091077",
+    "selected_replay_entry_time_kst": "2026-09-02 10:15:02",
+    "selected_replay_exit_time_kst": "2026-09-02 10:22:35",
+    "selected_replay_hold_seconds": 453,
+    "selected_replay_outcome": "TAKE_PROFIT",
+    "legacy_rationale_fallback_visible": true,
+    "playback_advanced": true,
+    "site_title_returned_to_market_main": true,
+    "console_warning_or_error_count": 0
+  },
+  "ledger_snapshot_integrity": {
+    "status": "NOT_COMPLETED",
+    "active_ledger_direct_quick_check_requested": false,
+    "source_mutation_requested": false,
+    "first_attempt": {
+      "status": "FAIL",
+      "duration_seconds": 87.451,
+      "error": "online snapshot stalled for 30.106 seconds after 35 restarts",
+      "temporary_snapshot_removed": true
+    },
+    "second_attempt": {
+      "status": "ABORTED_RUNTIME_SAFETY",
+      "duration_seconds": 43.099,
+      "error": "runtime dashboard probe timed out during large backup step",
+      "temporary_snapshot_removed": true
+    },
+    "post_abort_runtime_recovered": true,
+    "result_boundary": "No full closed-snapshot quick_check result was produced and no PASS is claimed."
+  },
+  "evidence_boundaries": {
+    "new_post_upgrade_natural_structural_trade": "NOT_OBSERVED",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}
