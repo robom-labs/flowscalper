@@ -167,6 +167,7 @@ class StrategyDescriptor:
     signal_half_life_seconds: int = 30
     required_timeframes: tuple[str, ...] = ("250ms", "1s", "3s", "10s", "30s", "120s")
     exit_model: str = "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT"
+    # 현재 구조형 전략은 StructuralExitPlan의 절대가격을 쓰며 아래 R 값은 저장 호환용이다.
     take_profit_1_r: Decimal = Decimal("1.5")
     take_profit_2_r: Decimal = Decimal("3.0")
     entry_rules_ko: tuple[str, ...] = ()

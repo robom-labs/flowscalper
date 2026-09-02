@@ -100,7 +100,7 @@ from backend.app.storage.sqlite import (
     persist_archives_and_candles_in_process,
     run_passive_wal_checkpoint_in_process,
 )
-from backend.app.strategies.base import CandidateDecision
+from backend.app.strategies.base import CandidateDecision, RunnerManagement
 from backend.app.strategies.family import StrategyRole
 from backend.app.strategies.governor import (
     GOVERNANCE_EVIDENCE_MAX_AGE_MS,
@@ -5647,6 +5647,55 @@ class PaperRuntime:
             return {}
         entry = decision.planned_entry
         stop = decision.initial_stop
+        structural_exit = decision.structural_exit
+        if structural_exit is not None:
+            runner_explanation = {
+                RunnerManagement.FIXED_SECOND_TARGET: (
+                    "TP1 부분익절 뒤 계획된 두 번째 구조 가격까지 관리"
+                ),
+                RunnerManagement.TP1_ATR_CHANDELIER: (
+                    "TP1 부분익절 뒤 완성봉 ATR 추적선으로 잔량 보호"
+                ),
+                RunnerManagement.TP1_STRUCTURE_DISTANCE: (
+                    "TP1 부분익절 뒤 확인된 가격 구조폭으로 잔량 보호"
+                ),
+            }[structural_exit.runner_management]
+            return {
+                "side": decision.side.value,
+                "entry": str(entry) if entry is not None else None,
+                "initial_stop": str(stop) if stop is not None else None,
+                "take_profit_1": str(structural_exit.take_profit_1),
+                "take_profit_2": str(structural_exit.take_profit_2),
+                "trailing_activation": runner_explanation,
+                "current_trail": None,
+                "remaining_quantity": None,
+                "stop_rationale_ko": structural_exit.stop_rationale_ko,
+                "take_profit_1_rationale_ko": (structural_exit.take_profit_1_rationale_ko),
+                "take_profit_2_rationale_ko": (structural_exit.take_profit_2_rationale_ko),
+                "reference_timeframes_ko": list(structural_exit.reference_timeframes_ko),
+                "runner_management_ko": runner_explanation,
+                "expected_cost_bps": str(decision.expected_cost_bps),
+                "net_reward_risk": (
+                    str(decision.net_reward_risk) if decision.net_reward_risk is not None else None
+                ),
+            }
+        if "STRUCTUR" in descriptor.exit_model:
+            return {
+                "side": decision.side.value,
+                "entry": str(entry) if entry is not None else None,
+                "initial_stop": str(stop) if stop is not None else None,
+                "take_profit_1": None,
+                "take_profit_2": (
+                    str(decision.take_profit) if decision.take_profit is not None else None
+                ),
+                "trailing_activation": "구조 가격 확정 전",
+                "current_trail": None,
+                "remaining_quantity": None,
+                "expected_cost_bps": str(decision.expected_cost_bps),
+                "net_reward_risk": (
+                    str(decision.net_reward_risk) if decision.net_reward_risk is not None else None
+                ),
+            }
         direction = Decimal(1) if decision.side is Side.LONG else Decimal(-1)
         risk = abs(entry - stop) if entry is not None and stop is not None else None
         take_profit_1_r = descriptor.take_profit_1_r

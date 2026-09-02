@@ -396,14 +396,23 @@ function StrategyConditionsPanel({
         {view === 'exit' ? <section className="strategy-execution-plan" aria-label="선택 전략의 청산 정보">
           <h4>청산 정보</h4>
           <dl className="drawer-detail-list">
-            <div><dt>entry</dt><dd>{executionValue(data.execution?.entry)}</dd></div>
-            <div><dt>initial stop</dt><dd>{executionValue(data.execution?.initial_stop)}</dd></div>
-            <div><dt>TP1</dt><dd>{executionValue(data.execution?.TP1 ?? data.execution?.take_profit_1)}</dd></div>
-            <div><dt>TP2</dt><dd>{executionValue(data.execution?.TP2 ?? data.execution?.take_profit_2)}</dd></div>
-            <div><dt>trailing activation</dt><dd>{executionValue(data.execution?.trailing_activation)}</dd></div>
-            <div><dt>current trail</dt><dd>{executionValue(data.execution?.current_trail)}</dd></div>
-            <div><dt>remaining quantity</dt><dd>{executionValue(data.execution?.remaining_quantity)}</dd></div>
+            <div><dt>예상 진입가</dt><dd>{executionValue(data.execution?.entry)}</dd></div>
+            <div><dt>초기 손절가</dt><dd>{executionValue(data.execution?.initial_stop)}</dd></div>
+            <div><dt>1차 익절가</dt><dd>{executionValue(data.execution?.TP1 ?? data.execution?.take_profit_1)}</dd></div>
+            <div><dt>2차 익절가</dt><dd>{executionValue(data.execution?.TP2 ?? data.execution?.take_profit_2)}</dd></div>
+            <div><dt>남은 물량 관리</dt><dd>{executionValue(data.execution?.runner_management_ko ?? data.execution?.trailing_activation)}</dd></div>
+            <div><dt>현재 추적 손절가</dt><dd>{executionValue(data.execution?.current_trail)}</dd></div>
+            <div><dt>남은 수량</dt><dd>{executionValue(data.execution?.remaining_quantity)}</dd></div>
           </dl>
+          {data.execution?.stop_rationale_ko || data.execution?.take_profit_1_rationale_ko || data.execution?.take_profit_2_rationale_ko ? <div className="strategy-price-rationales">
+            <strong>왜 이 가격인가요?</strong>
+            <dl className="drawer-detail-list">
+              <div><dt>손절</dt><dd>{data.execution?.stop_rationale_ko || '구조 가격 확인 전'}</dd></div>
+              <div><dt>1차 익절</dt><dd>{data.execution?.take_profit_1_rationale_ko || '구조 가격 확인 전'}</dd></div>
+              <div><dt>2차 익절</dt><dd>{data.execution?.take_profit_2_rationale_ko || '구조 가격 확인 전'}</dd></div>
+              {data.execution?.reference_timeframes_ko?.length ? <div><dt>확인 구간</dt><dd>{data.execution.reference_timeframes_ko.join(' · ')}</dd></div> : null}
+            </dl>
+          </div> : null}
         </section> : null}
       </> : null}
     </section>
@@ -1288,7 +1297,9 @@ function StrategyOverview({
             <h3>한눈에 보는 전략</h3>
             <dl className="drawer-detail-list">
               <div><dt>예상 보유</dt><dd>{formatDurationMs(selected.expected_holding_seconds[0] * 1_000)}~{formatDurationMs(selected.expected_holding_seconds[1] * 1_000)}</dd></div>
-              <div><dt>이익 목표</dt><dd>1차 {selected.take_profit_1_r}R · 2차 {selected.take_profit_2_r}R</dd></div>
+              <div><dt>이익 목표</dt><dd>{selected.exit_model.includes('STRUCTUR')
+                ? '고정 비율이 아니라 완성봉·실거래 구조에서 1차·2차 가격을 진입 전에 확정'
+                : `1차 ${selected.take_profit_1_r}R · 2차 ${selected.take_profit_2_r}R`}</dd></div>
               <div><dt>최소 준비</dt><dd>{selected.minimum_warmup_ko}</dd></div>
               <div><dt>무엇을 노리나요?</dt><dd>{selected.entry_hypothesis_ko}</dd></div>
               <div><dt>종료 원칙</dt><dd>{selected.edge_decay_policy_ko}</dd></div>

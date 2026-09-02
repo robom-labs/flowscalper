@@ -193,6 +193,8 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .strategy-condition-empty { margin: 10px 0 0; border: 1px dashed #31505f; border-radius: 8px; padding: 12px; color: #8ca4ae; font-size: 10px; line-height: 1.55; }
 .strategy-execution-plan { margin-top: 12px; border-top: 1px solid #1b3541; padding-top: 10px; }
 .strategy-execution-plan h4 { margin-bottom: 8px; color: #d6e9e3; font-size: 11px; }
+.strategy-price-rationales { margin-top: 10px; padding: 10px; border: 1px solid #234653; border-radius: 9px; background: #0b1b23; }
+.strategy-price-rationales > strong { display: block; margin-bottom: 7px; color: #9ce4d1; font-size: 10px; }
 .strategy-previous-variants ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .strategy-previous-variants li { display: grid; gap: 3px; border: 1px solid #1b3541; border-radius: 7px; padding: 9px; }
 .strategy-previous-variants li span { color: #7893a2; font-size: 8px; }

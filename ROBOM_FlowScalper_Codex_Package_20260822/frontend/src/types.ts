@@ -610,6 +610,11 @@ export type StrategyFamilyConditionsResponse = {
     trailing_activation?: string | number | null
     current_trail?: string | number | null
     remaining_quantity?: string | number | null
+    stop_rationale_ko?: string | null
+    take_profit_1_rationale_ko?: string | null
+    take_profit_2_rationale_ko?: string | null
+    reference_timeframes_ko?: string[]
+    runner_management_ko?: string | null
     expiry?: string | number | null
     expiry_ts_ms?: number | null
     expires_at?: string | number | null

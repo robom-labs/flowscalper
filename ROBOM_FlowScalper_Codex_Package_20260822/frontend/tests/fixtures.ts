@@ -143,7 +143,7 @@ export const strategies: StrategyRow[] = catalog.map(([strategyId, shortName, di
   take_profit_1_r: intradayV2?.tp1 ?? (index === 10 ? '2.2' : '1.5'),
   take_profit_2_r: intradayV2?.tp2 ?? (index === 10 ? '4.5' : '3.0'),
   entry_rules_ko: intradayV2 ? ['완성 15분·30분봉 100개와 1시간봉 50개 이상', '눌림 회복 또는 돌파 재확인 뒤 현재 공개 흐름 확인'] : index === 10 ? ['완성 1시간봉 200개 이상', 'EMA·모멘텀·돌파·ADX·상대거래량 동시 확인'] : [],
-  exit_rules_ko: intradayV2 ? [`TP1 ${intradayV2.tp1}R·40%`, `TP2 ${intradayV2.tp2}R·60%`, '일반 근거약화·시간청산 없음'] : index === 10 ? ['TP1 2.2R·40%', 'TP2 4.5R·60%'] : [],
+  exit_rules_ko: intradayV2 ? ['완성봉 구조 밖 초기 손절', 'TP1·TP2는 확정 피벗·이전 일 고저·완성봉 ATR 채널에서 선택', 'TP1 40% 익절 뒤 잔량은 완성봉 ATR 추적', '일반 근거약화·시간청산 없음'] : index === 10 ? ['TP1 2.2R·40%', 'TP2 4.5R·60%'] : [],
   max_hold_seconds: intradayV2 ? intradayV2.maxHold : index === 10 ? 129600 : 900,
   cost_model_version: 'TOP_OF_BOOK_BASE13_STRESS25_V1',
   strategy_version: intradayV2 ? 'V2' : 'V1',

@@ -411,6 +411,11 @@ test('loads a selected strategy family detail on demand and keeps the registry r
       trailing_activation: '103.5',
       current_trail: '102.8',
       remaining_quantity: '0.6',
+      stop_rationale_ko: '돌파 재확인 완료봉 바깥에 ATR 완충을 둡니다.',
+      take_profit_1_rationale_ko: '완성 30분봉의 첫 확정 피벗입니다.',
+      take_profit_2_rationale_ko: '완성 1시간봉의 다음 확정 피벗입니다.',
+      reference_timeframes_ko: ['완성 30분봉', '완성 1시간봉'],
+      runner_management_ko: 'TP1 부분익절 뒤 완성봉 ATR 추적선으로 잔량 보호',
       expiry: '2026-09-01T00:00:00Z',
     },
     paper_only: true, real_orders_enabled: false, auth_required: false,
@@ -479,6 +484,9 @@ test('loads a selected strategy family detail on demand and keeps the registry r
   expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('99.0')
   expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('104.0')
   expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('108.0')
+  expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('왜 이 가격인가요?')
+  expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('완성 30분봉의 첫 확정 피벗입니다.')
+  expect(screen.getByRole('region', { name: '선택 전략의 청산 정보' })).toHaveTextContent('완성 30분봉 · 완성 1시간봉')
 
   expect(screen.queryByText('30분 돌파 V1')).not.toBeInTheDocument()
   expect(screen.queryByText('Time Series Momentum')).not.toBeInTheDocument()

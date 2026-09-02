@@ -14,6 +14,7 @@ from backend.app.execution.portfolio import PaperPortfolioEngine
 from backend.app.execution.trailing import TrailingActivationRule, TrailingModel
 from backend.app.regime import Regime
 from backend.app.risk import RiskState
+from backend.app.runtime import PaperRuntime
 from backend.app.strategies.base import (
     CandidateDecision,
     CandidateStatus,
@@ -244,6 +245,56 @@ def test_candidate_planner_freezes_structural_targets_and_tp1_atr_runner() -> No
     assert result.plan.trailing_policy.activation_rule is TrailingActivationRule.TP1_TRIGGERED
     assert "TP1_ATR_CHANDELIER_RUNNER" in result.plan.management_policy
     assert any("1차 익절 근거" in row for row in result.plan.plain_korean_explanation)
+
+
+def test_strategy_condition_exit_detail_never_replaces_structure_with_fixed_r() -> None:
+    structural = StructuralExitPlan(
+        take_profit_1=Decimal("103.25"),
+        take_profit_2=Decimal("107.75"),
+        stop_rationale_ko="완성 15분봉 눌림 저점 바깥",
+        take_profit_1_rationale_ko="완성 15분봉 첫 확정 피벗",
+        take_profit_2_rationale_ko="완성 1시간봉 다음 확정 피벗",
+        reference_timeframes_ko=("완성 15분봉", "완성 1시간봉"),
+        runner_management=RunnerManagement.TP1_ATR_CHANDELIER,
+        trailing_atr=Decimal("1"),
+        trailing_reference_ts_ms=1_000,
+        trailing_reference_interval_seconds=900,
+    )
+    decision = CandidateDecision(
+        strategy_id="TREND_PULLBACK_RECLAIM_15M_V2",
+        side=Side.LONG,
+        status=CandidateStatus.QUALIFIED,
+        reason_codes=("COMPLETED_INTRADAY_TREND_ALIGNED",),
+        rejection_codes=(),
+        planned_entry=Decimal("100"),
+        initial_stop=Decimal("99"),
+        take_profit=Decimal("107.75"),
+        expected_cost_bps=Decimal("13"),
+        net_reward_risk=Decimal("5"),
+        structural_exit=structural,
+    )
+    descriptor = StrategyRegistry().descriptor(decision.strategy_id)
+
+    detail = PaperRuntime._decision_execution_detail(descriptor, decision)
+
+    assert detail["take_profit_1"] == "103.25"
+    assert detail["take_profit_2"] == "107.75"
+    assert detail["stop_rationale_ko"] == structural.stop_rationale_ko
+    assert detail["take_profit_1_rationale_ko"] == (structural.take_profit_1_rationale_ko)
+    assert detail["reference_timeframes_ko"] == ["완성 15분봉", "완성 1시간봉"]
+    assert "완성봉 ATR" in str(detail["runner_management_ko"])
+
+    waiting = replace(
+        decision,
+        status=CandidateStatus.REJECTED,
+        take_profit=None,
+        net_reward_risk=None,
+        structural_exit=None,
+    )
+    waiting_detail = PaperRuntime._decision_execution_detail(descriptor, waiting)
+    assert waiting_detail["take_profit_1"] is None
+    assert waiting_detail["take_profit_2"] is None
+    assert waiting_detail["trailing_activation"] == "구조 가격 확정 전"
 
 
 def test_live_book_past_tp1_rejects_instead_of_inventing_new_target() -> None:
