@@ -851,7 +851,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
   .trade-replay-chart-stage .replay-main-controls > label { grid-area: speed; margin: 0; }
   .replay-play-button { grid-area: play; min-width: 0; }
   .trade-replay-chart-stage .replay-main-controls button,
-  .trade-replay-chart-stage .replay-main-controls label { min-height: 42px; }
+  .trade-replay-chart-stage .replay-main-controls label { min-height: 48px; }
   .trade-replay-range { grid-template-columns: 1fr 64px; }
   .trade-replay-range > span { grid-column: 1 / -1; }
 }
