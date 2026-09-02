@@ -572,7 +572,7 @@
           "path": "backend/tests/test_v02_operational_safety.py",
           "contains": [
             "test_parquet_persistence_worker_keeps_event_loop_responsive",
-            "test_wal_checkpoint_runs_without_blocking_live_persistence_flushes",
+            "test_wal_checkpoint_gets_exclusive_io_window_before_buffer_drain",
             "test_logical_wal_frames_prevent_repeat_checkpoint_on_retained_file_size",
             "test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists",
             "test_incomplete_oversized_wal_checkpoint_fails_closed"
@@ -583,6 +583,22 @@
           "contains": [
             "test_running_service_soak_accepts_small_wal_deferral_without_checkpoint",
             "test_running_service_soak_accepts_slow_nonblocking_checkpoint"
+          ]
+        }
+      ]
+    },
+    {
+      "contract_id": "CONCURRENT_WAL_CHECKPOINT_IO_STARVATION",
+      "symptom_ko": "외장 APFS에서 PASSIVE 체크포인트와 시장 원장 flush를 동시에 실행하면 서로 디스크를 경쟁해 체크포인트와 거래기록 저장이 수십 초 지연된다.",
+      "fixed_by": "ADR-139 exclusive WAL checkpoint I/O window",
+      "test_anchors": [
+        {
+          "path": "backend/tests/test_v02_operational_safety.py",
+          "contains": [
+            "test_wal_checkpoint_can_use_foreground_io_priority",
+            "test_wal_checkpoint_gets_exclusive_io_window_before_buffer_drain",
+            "wal_checkpoint_current_concurrent_flush_delta\"] == 0",
+            "wal_checkpoint_last_concurrent_flush_delta == 0"
           ]
         }
       ]

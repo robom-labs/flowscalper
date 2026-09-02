@@ -7131,6 +7131,7 @@ class PaperRuntime:
                     run_passive_wal_checkpoint_in_process,
                     str(self.ledger.path),
                     True,
+                    False,
                 )
             )
 
@@ -7180,13 +7181,19 @@ class PaperRuntime:
 
         while not stop.is_set():
             await finish_wal_checkpoint()
+            checkpoint_running = (
+                self._wal_checkpoint_task is not None
+                and not self._wal_checkpoint_task.done()
+            )
             with self._persistence_lock:
                 should_flush = (
                     len(self._market_event_buffer) >= _MARKET_PERSISTENCE_FLUSH_THRESHOLD
                     and not self._persistence_fault_active
+                    and not checkpoint_running
                 )
                 should_flush_universe = bool(self._universe_snapshot_buffer) and (
                     not self._persistence_fault_active
+                    and not checkpoint_running
                 )
             if should_flush_universe:
                 await flush_universe_snapshots()
@@ -7196,6 +7203,7 @@ class PaperRuntime:
                 await asyncio.wait_for(stop.wait(), timeout=0.25)
             except TimeoutError:
                 continue
+        await finish_wal_checkpoint(wait=True)
         with self._persistence_lock:
             has_pending = bool(self._market_event_buffer or self._candle_buffer)
             has_pending_universe = bool(self._universe_snapshot_buffer)

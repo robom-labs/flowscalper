@@ -293,6 +293,44 @@ def test_atomic_sqlite_commit_temporarily_leaves_background_priority(
     ledger.close()
 
 
+def test_wal_checkpoint_can_use_foreground_io_priority(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[object] = []
+    ledger = SQLiteLedger(tmp_path / "checkpoint-priority.sqlite3")
+    ledger.start_run(
+        "run-checkpoint-priority",
+        mode=RuntimeMode.LIVE_SHADOW_PAPER.value,
+        venue=Venue.BINANCE_USDM.value,
+        config={"execution": "PAPER"},
+        started_ts_ms=1_000,
+    )
+    monkeypatch.setattr(
+        sqlite_module,
+        "_apply_persistence_background_io_policy",
+        lambda: calls.append("BACKGROUND"),
+    )
+    monkeypatch.setattr(
+        sqlite_module,
+        "_set_persistence_background_io_policy",
+        lambda enabled: calls.append(enabled) or True,
+    )
+
+    busy, log_frames, checkpointed_frames = (
+        sqlite_module.run_passive_wal_checkpoint_in_process(
+            str(ledger.path),
+            apply_background_io_priority=False,
+        )
+    )
+
+    assert calls == [False]
+    assert busy == 0
+    assert log_frames > 0
+    assert checkpointed_frames == log_frames
+    ledger.close()
+
+
 def test_storage_worker_keeps_low_cpu_priority_without_accumulating(
     monkeypatch,
 ) -> None:
@@ -2186,7 +2224,7 @@ async def test_parquet_persistence_worker_keeps_event_loop_responsive(
     ledger.close()
 
 
-async def test_wal_checkpoint_runs_without_blocking_live_persistence_flushes(
+async def test_wal_checkpoint_gets_exclusive_io_window_before_buffer_drain(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -2225,7 +2263,7 @@ async def test_wal_checkpoint_runs_without_blocking_live_persistence_flushes(
 
     async def slow_checkpoint(function, *arguments):
         assert function is runtime_module.run_passive_wal_checkpoint_in_process
-        assert arguments == (str(ledger.path), True)
+        assert arguments == (str(ledger.path), True, False)
         checkpoint_started.set()
         await release_checkpoint.wait()
         return (0, 10, 10)
@@ -2234,31 +2272,30 @@ async def test_wal_checkpoint_runs_without_blocking_live_persistence_flushes(
     stop = asyncio.Event()
     worker = asyncio.create_task(runtime.run_persistence_worker(stop))
     await asyncio.wait_for(checkpoint_started.wait(), timeout=2.0)
-    for _ in range(200):
-        if runtime._persistence_flush_count >= 4:
-            break
-        await asyncio.sleep(0.01)
+    await asyncio.sleep(0.05)
 
     assert runtime._wal_checkpoint_task is not None
     assert runtime._wal_checkpoint_task.done() is False
-    assert runtime._persistence_flush_count == 4
-    assert runtime._market_event_buffer == []
+    assert runtime._persistence_flush_count == 1
+    assert len(runtime._market_event_buffer) == 750
     diagnostics = runtime.dashboard()["system"]
     assert isinstance(diagnostics, dict)
     assert diagnostics["wal_checkpoint_running"] is True
-    assert diagnostics["wal_checkpoint_current_concurrent_flush_delta"] == 3
+    assert diagnostics["wal_checkpoint_current_concurrent_flush_delta"] == 0
 
     release_checkpoint.set()
-    for _ in range(100):
-        if runtime._wal_checkpoint_count == 1:
+    for _ in range(200):
+        if runtime._wal_checkpoint_count == 1 and runtime._market_event_buffer == []:
             break
         await asyncio.sleep(0.01)
     stop.set()
     await worker
 
     assert runtime._wal_checkpoint_count == 1
-    assert runtime._wal_checkpoint_last_concurrent_flush_delta == 3
-    assert runtime._wal_checkpoint_max_concurrent_flush_delta == 3
+    assert runtime._persistence_flush_count == 4
+    assert runtime._market_event_buffer == []
+    assert runtime._wal_checkpoint_last_concurrent_flush_delta == 0
+    assert runtime._wal_checkpoint_max_concurrent_flush_delta == 0
     assert runtime._wal_checkpoint_fault_count == 0
     assert runtime._persistence_fault_count == 0
     assert ledger.count("market_events") == 1_000
@@ -2335,7 +2372,7 @@ async def test_logical_wal_frames_prevent_repeat_checkpoint_on_retained_file_siz
                 "wal_page_size": 4_096,
             }
         assert function is runtime_module.run_passive_wal_checkpoint_in_process
-        assert arguments == (str(ledger.path), True)
+        assert arguments == (str(ledger.path), True, False)
         checkpoint_calls += 1
         return (0, 5_000, 5_000)
 
@@ -2441,7 +2478,7 @@ async def test_incomplete_oversized_wal_checkpoint_fails_closed(
 
     async def incomplete_checkpoint(function, *arguments):
         assert function is runtime_module.run_passive_wal_checkpoint_in_process
-        assert arguments == (str(ledger.path), True)
+        assert arguments == (str(ledger.path), True, False)
         return (0, 20_000, 0)
 
     monkeypatch.setattr(runtime_module.to_process, "run_sync", incomplete_checkpoint)
@@ -2496,7 +2533,7 @@ async def test_incomplete_checkpoint_with_small_pending_tail_retries_without_fau
     async def nearly_complete_checkpoint(function, *arguments):
         nonlocal checkpoint_calls
         assert function is runtime_module.run_passive_wal_checkpoint_in_process
-        assert arguments == (str(ledger.path), True)
+        assert arguments == (str(ledger.path), True, False)
         checkpoint_calls += 1
         if checkpoint_calls == 1:
             return (0, 41_714, 41_507)
