@@ -943,3 +943,32 @@ or errors. Six-hour and 24-hour stability remain `NOT_RUN`; profitability remain
 4. Add a regression where the compact dashboard version is stale and the grouped server version is current.
 5. Run the frontend suite, ESLint, TypeScript and Vite build, then install and verify the actual browser table.
 6. Do not change the ledger, strategy decisions, costs, fills, TP/SL or PAPER-only safety boundaries.
+
+## Wave 152 daily PAPER activity truth and full-screen browser QA
+
+1. Keep the currently recovered Run and every ledger row. Do not start a fresh Run or rewrite historical
+   results to make the dashboard look active.
+2. Derive the shared-account daily result from completed MAIN trades whose exit date is today in
+   `Asia/Seoul`. Read all strategy versions in the current Run so a deployment does not erase the user's
+   shared-account day view.
+3. Derive strategy research activity separately from the current Run and current strategy version. Group
+   BASE and STRESS rows by their persisted opportunity identity and expose both the unique opportunity count
+   and raw ledger-row count.
+4. Label the market cards as `오늘 공동손익` and `오늘 전략 모의결과`. Keep cumulative shared equity,
+   realized PnL, fees and trade count cumulative; never present them as today's values.
+5. Resolve a preserved or hidden strategy's Korean display name from its registry family and variant before
+   falling back to a raw identifier. Do not display `알 수 없는 이전 전략` when the backend has a valid
+   family or variant name.
+6. Regression-test timezone boundaries, current-Run/all-version shared history, current-version strategy
+   grouping, compact summary and delta transport, beginner-facing copy and preserved strategy names.
+7. Run backend, frontend, lint, typecheck, build, PAPER safety, security, fixture API and responsive
+   Playwright. Preserve environment and product failures, fix the product failure and rerun the official
+   browser command.
+8. Deploy only while the PAPER portfolio is flat. Use CAS maintenance pause and resume, preserve the same
+   Run, observe public events and strategy evaluations advancing, and leave entry enabled after the install.
+9. Click market, strategy, symbol performance, trades, replay, settings and home in the actual browser.
+   Verify sort directions, filters, drawers, chart interval and indicators, replay playback, KST entry/exit
+   times, leverage restoration and zero browser warnings or errors.
+10. A zero natural qualified-signal count is not repaired by weakening strategy, cost, TP, SL or safety
+    gates. Keep the result `NOT_OBSERVED`, profitability `NOT_PROVEN`, real-money readiness `NOT_READY` and
+    6-hour/24-hour soak `NOT_RUN` until those independent gates are actually met.

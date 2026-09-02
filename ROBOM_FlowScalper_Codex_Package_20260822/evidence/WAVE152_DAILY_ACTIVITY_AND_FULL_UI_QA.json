@@ -1,0 +1,260 @@
+{
+  "schema": "flowscalper.wave152.daily_activity_and_full_ui_qa.validation.v1",
+  "generated_at_kst": "2026-09-02T23:56:52+09:00",
+  "status": "COMPLETE_WITH_LIMITS",
+  "validated_source_commit": "1164ff92d0a11b63ab35b1a7c651614146721823",
+  "run_id": "run-2b7135a972dd",
+  "scope": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_key_enabled": false,
+    "wallet_enabled": false,
+    "runtime_ai_order_decision_enabled": false,
+    "strategy_thresholds_changed": false,
+    "ledger_rows_rewritten": false,
+    "fresh_run_started": false
+  },
+  "paper_activity_contract": {
+    "day_scope": "ASIA_SEOUL_EXIT_DATE",
+    "shared_scope": "CURRENT_RUN_ALL_VERSIONS",
+    "strategy_scope": "CURRENT_RUN_CURRENT_STRATEGY_VERSION",
+    "shared_run_completed_trades": 1,
+    "shared_today_completed_trades": 0,
+    "shared_today_realized_pnl_usdt": "0",
+    "strategy_current_unique_opportunities": 3,
+    "strategy_today_unique_opportunities": 3,
+    "strategy_current_raw_result_rows": 6,
+    "strategy_today_raw_result_rows": 6,
+    "strategy_grouping_status": "PROVEN",
+    "base_stress_counted_as_one_opportunity": true
+  },
+  "offline_verification": {
+    "targeted_backend": {
+      "status": "PASS",
+      "tests": 26
+    },
+    "backend_full": {
+      "status": "PASS",
+      "tests": 1561
+    },
+    "frontend_vitest": {
+      "status": "PASS",
+      "files": 15,
+      "tests": 121
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 128
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": {
+      "status": "PASS",
+      "modules": 54,
+      "javascript_kb": 452.24,
+      "javascript_gzip_kb": 143.15
+    },
+    "fixture_backend": {
+      "status": "PASS",
+      "tests": 37
+    },
+    "paper_build_safety": "PASS_ZERO",
+    "security_scan": {
+      "status": "PASS",
+      "source_files": 163,
+      "violations": 0,
+      "secret_like_findings": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "regression_contracts": {
+      "status": "PASS",
+      "contracts": 30
+    },
+    "fixture_playwright": {
+      "status": "PASS",
+      "passed": 7,
+      "designed_skips": 2,
+      "projects": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ]
+    },
+    "preserved_failures": [
+      {
+        "status": "ENVIRONMENT_INVOCATION_FAILURE",
+        "command": "npm run e2e",
+        "cause": "default Playwright browser cache was not installed; official make e2e owns the bundled browser environment"
+      },
+      {
+        "status": "PRODUCT_FAILURE_FIXED",
+        "command": "make e2e",
+        "cause": "market chart height was 540.8px, below the 560px responsive contract"
+      },
+      {
+        "status": "TEST_HARNESS_FAILURE_FIXED",
+        "command": "make e2e",
+        "cause": "first desktop catalog cold setup exceeded the implicit 30 second test timeout; explicit timeout is 120 seconds"
+      }
+    ]
+  },
+  "deployment": {
+    "pre_install_state": {
+      "operation_state": "RUNNING",
+      "entry_intent": "ENTRY_ENABLED",
+      "open_positions": 0,
+      "pending_entries": 0,
+      "paper_portfolio_flat": true
+    },
+    "pause_revision_before": 102,
+    "pause_revision_after": 103,
+    "initial_prepare": {
+      "status": "FAIL_PRESERVED",
+      "processing_lag_p95_ms": 1390.795,
+      "maximum_install_lag_p95_ms": 500,
+      "existing_service_preserved": true,
+      "same_run_preserved": true
+    },
+    "recovery_before_retry": {
+      "events_before": 430285,
+      "events_after": 434034,
+      "processing_lag_p95_ms_approximately": 25
+    },
+    "prepare_retry": "PASS",
+    "install": {
+      "status": "PASS",
+      "immutable_release_commit": "1164ff92d0a11b63ab35b1a7c651614146721823",
+      "same_run_preserved": true
+    },
+    "resume_revision_before": 103,
+    "resume_revision_after": 104,
+    "final_entry_intent": "ENTRY_ENABLED",
+    "final_operation_state": "RUNNING"
+  },
+  "runtime_observation": {
+    "status": "PASS",
+    "duration_seconds": 18,
+    "events_before": 61077,
+    "events_after": 62607,
+    "event_delta": 1530,
+    "strategy_evaluations_before": 50328,
+    "strategy_evaluations_after": 51672,
+    "strategy_evaluation_delta": 1344,
+    "qualified_signal_count": 0,
+    "operation_state": "RUNNING",
+    "entry_intent": "ENTRY_ENABLED",
+    "entry_locked": false,
+    "open_positions": 0,
+    "pending_entries": 0,
+    "queue_depth": 0,
+    "processing_lag_p95_ms_range": [
+      25.2,
+      25.6
+    ],
+    "trade_lag_p95_ms_approximately": 34,
+    "wide_lag_p95_ms_range": [
+      1781,
+      1821
+    ],
+    "wide_lag_is_entry_decision_latency": false,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0,
+    "dropped_events": 0,
+    "persistence_fault_active": false,
+    "persistence_buffer_dropped": 0,
+    "last_error": null,
+    "process_memory_mb_range": [
+      248.078,
+      248.547
+    ],
+    "later_event_count": 81252,
+    "later_strategy_evaluation_count": 66972,
+    "later_processing_lag_p95_ms": 27.54150390625,
+    "later_trade_lag_p95_ms": 40.146484375,
+    "no_natural_entry_interpretation": "Current public-market events and strategy evaluations advanced, but no signal passed every unchanged strategy, cost and safety gate."
+  },
+  "actual_browser": {
+    "status": "PASS_OBSERVED",
+    "url": "http://127.0.0.1:8870/?wave=152&release=1164ff9",
+    "market_cards": {
+      "shared_today_pnl_visible": "0.00 USDT",
+      "strategy_today_unique_opportunities_visible": 3,
+      "strategy_current_unique_opportunities_visible": 3,
+      "simulated_strategy_count_visible": 6,
+      "wide_symbols_visible": 80,
+      "deep_symbols_visible": 16,
+      "open_positions_visible": 0
+    },
+    "market_interactions": {
+      "time_intervals_checked": [
+        "1m",
+        "15m",
+        "4h"
+      ],
+      "positions_drawer": "PASS",
+      "no_trade_reason": "PASS",
+      "indicator_popover": "PASS",
+      "fullscreen": "PASS"
+    },
+    "strategy_interactions": {
+      "overview_performance_symbol_tabs": "PASS",
+      "family_filter_and_restore": "PASS",
+      "pnl_sort_both_directions": "PASS",
+      "detail_drawer_six_tabs": "PASS",
+      "strategy_symbol_combinations": 6,
+      "unknown_preserved_strategy_names": 0
+    },
+    "trade_interactions": {
+      "completed_unique_opportunities": 3,
+      "raw_ledger_rows": 6,
+      "visible_grouped_symbols": [
+        "FFUSDT",
+        "BTRUSDT",
+        "HYPEUSDT"
+      ],
+      "manual_refresh_timestamp_changed": true
+    },
+    "replay_interactions": {
+      "loaded_trade_count": 56,
+      "first_symbol": "FFUSDT",
+      "twenty_x_frames_before": "1/15",
+      "twenty_x_frames_after": "7/15",
+      "pause": "PASS",
+      "speed_restored": "5x",
+      "selected_symbol": "BTRUSDT",
+      "entry_time_kst": "2026-09-02 10:15:02",
+      "exit_time_kst": "2026-09-02 10:22:35",
+      "tp1_visible": true,
+      "tp2_visible": true,
+      "initial_stop_visible": true
+    },
+    "settings_interactions": {
+      "leverage_options": "1-100",
+      "leverage_restored": 10,
+      "research_details_restored": false,
+      "advanced_diagnostics_run_and_release_visible": true
+    },
+    "site_title_returned_to_market_main": true,
+    "console_warning_or_error_count": 0
+  },
+  "ledger_snapshot_integrity": {
+    "status": "NOT_COMPLETED",
+    "last_attempt_boundary": "ABORTED_RUNTIME_SAFETY",
+    "rerun_in_wave152": false,
+    "pass_claimed": false
+  },
+  "evidence_boundaries": {
+    "new_natural_qualified_signal": "NOT_OBSERVED",
+    "new_natural_paper_entry": "NOT_OBSERVED",
+    "new_natural_paper_exit": "NOT_OBSERVED",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}

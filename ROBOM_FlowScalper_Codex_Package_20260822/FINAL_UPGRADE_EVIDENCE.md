@@ -5465,3 +5465,104 @@ API Key·wallet·runtime AI 주문판단은 모두 false다.
 코드·테스트·실제 화면까지 연결했다. 그러나 자연 신호 표본, 장시간 안정성, 전체 원장 전수검사와
 비용 후 수익성은 각각 관찰·실행·통과되지 않았으므로 `NOT_OBSERVED`·`NOT_RUN`·
 `NOT_COMPLETED`·`NOT_PROVEN`을 유지한다.
+
+## 114. Wave 152 오늘 활동 표시·이전 전략명·전체 화면 실제 점검
+
+### 114.1 원인과 수정 범위
+
+같은 Run 안에서 화면의 `오늘 손익`처럼 보이던 값은 실제로는 공동 MAIN 계좌의 누적 손익이었고,
+전략별 독립 BASE·STRESS 모의결과는 별도 계좌인데도 사용자가 오늘 거래 활동과 직접 대조하기
+어려웠다. 또한 현재 registry에서 감춰진 이전 challenger의 이름을 frontend가 찾지 못하면
+거래·종목 성과 화면에 `알 수 없는 이전 전략`이 나타났다. 두 문제 모두 원장을 수정하지 않고
+조회 범위와 표시 계약을 명확히 하는 방식으로 고쳤다.
+
+- 공동계좌 오늘 손익은 현재 Run의 모든 전략 버전에서 KST 오늘 종료된 MAIN 거래만 집계한다.
+- 전략 모의결과는 현재 Run·현재 전략 버전에서 BASE·STRESS를 같은 고유기회로 묶고 고유기회 수와
+  원장 행 수를 함께 보존한다.
+- 시장 카드는 `오늘 공동손익`과 `오늘 전략 모의결과 X회 · 누적 Y회`로 분리했다.
+- 이전 전략명은 family·variant의 한국어 표시명을 우선해 거래기록과 종목 성과에서 복구한다.
+- 원장, 전략 신호, 진입 임계값, 비용, 체결, TP·SL과 자연 신호 조건은 바꾸지 않았다.
+
+설치된 소스 commit은 `1164ff92d0a11b63ab35b1a7c651614146721823`이며 같은 Run
+`run-2b7135a972dd`를 유지했다.
+
+### 114.2 자동 검증과 보존한 실패
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 집계·표시 집중 backend | `PASS` | 26건 |
+| backend 전체 | `PASS` | 1,561건 |
+| frontend 전체 Vitest | `PASS` | 15 files·121건 |
+| Ruff·mypy | `PASS` | 128 source files 오류 0 |
+| ESLint·TypeScript·Vite build | `PASS` | 54 modules·main gzip 143.15kB |
+| fixture backend | `PASS` | 37건 |
+| PAPER build safety·security | `PASS_ZERO` | 163 source·위반·secret·실제 주문 경로 0 |
+| repository hygiene·회귀계약 | `PASS` | 회귀계약 30개 |
+| 공식 fixture Playwright | `PASS` | desktop·tablet·mobile 7 PASS·2 설계상 SKIP |
+
+첫 raw `npm run e2e`는 Playwright browser cache가 없는 실행환경 문제로 실패했고 이를 통과로
+바꾸지 않았다. 공식 `make e2e`의 첫 실행은 시장 차트 높이 540.8px가 계약 560px보다 작다는
+실제 제품 실패를 찾았다. 레이아웃을 수정한 뒤 첫 desktop catalog의 cold setup이 기본 30초를
+초과한 사실도 보존했다. 해당 setup timeout을 120초로 명시하고 공식 명령을 다시 실행해
+7 PASS·2 설계상 SKIP을 얻었다. 최종 실행은 10배→100배→10배 복원, 전략 OFF→복원,
+desktop·tablet·mobile 시장·전략 화면을 포함했다.
+
+### 114.3 안전 설치와 계속 작동 확인
+
+설치 전 공동계좌는 열린 포지션 0·pending 0으로 평탄했고 상태는 `RUNNING`·`ENTRY_ENABLED`였다.
+CAS revision 102→103으로 유지보수 pause를 요청했다. 첫 `--prepare-only`는 테스트 부하 뒤
+processing lag 1,390.795ms가 설치 기준 500ms를 넘어서 안전하게 중단됐으며 기존 서비스와 같은
+Run은 유지됐다. 이 시도는 `FAIL_PRESERVED`다. 이벤트가 430,285→434,034로 전진하고 lag가
+약 25ms로 회복된 뒤 prepare와 설치가 통과했고 revision 103→104로 자동 진입을 복원했다.
+
+설치 후 18초 관찰에서 공개시장 event는 61,077→62,607, 전략 평가는 50,328→51,672로
+증가했다. qualified signal은 0이었고 상태는 계속 `RUNNING`·`ENTRY_ENABLED`, entry lock false,
+열린 포지션·pending·queue는 모두 0이었다. processing P95는 약 25ms, trade P95는 약 34ms였고
+unplanned reconnect·sequence gap·resync·drop은 0, persistence fault false,
+buffer drop 0, last error null이었다. 후속 확인에서도 event 81,252와 전략 평가 66,972까지
+계속 전진했고 processing/trade P95는 27.542/40.146ms였다.
+
+따라서 이번 관찰에서 새 거래가 없는 직접 이유는 프로그램 정지나 수동 pause가 아니라
+현재 자연 시장 입력에서 적격 전략 신호가 0이었기 때문이다. 화면에 보인 대기 사유에는 완성봉
+신호 없음, 재확인 미완료, 공개 호가 흐름 확인 대기와 구조형 손절 거리 범위 미충족 등이 포함됐다.
+거래를 만들기 위해 이 기준을 낮추지 않았다.
+
+### 114.4 실제 브라우저 전수 상호작용
+
+실제 `http://127.0.0.1:8870`에서 다음을 직접 눌러 확인했다.
+
+- 시장 화면은 `오늘 공동손익 0.00 USDT`, `오늘 전략 모의결과 3회 · 누적 3회`, 전략 6개,
+  wide/deep 80/16, 보유 0건과 `작동 중`을 표시했다.
+- 차트 시간구간 1분·15분·4시간 복원, 포지션 drawer, 거래 없음 설명, MA5·MA10·MA20·MA60·
+  EMA20·VWAP·Bollinger·bid·ask·microprice·RSI·MACD 선택창과 fullscreen을 확인했다.
+- 전략 전체·성과·종목별 탭, family 필터, 순손익 양방향 정렬과 전략 상세 6개 탭을 확인했다.
+  종목별 6개 조합에서 `알 수 없는 이전 전략`은 0건이었다.
+- 거래 화면은 완료 고유기회 3건·원장 6행을 FF·BTR·HYPE 3행으로 묶었고 새로고침 시각도
+  실제로 갱신됐다.
+- 다시보기는 56건을 불러왔고 FF 20배속 재생이 1/15→7/15로 전진했다. BTR은 진입
+  10:15:02 KST, 종료 10:22:35 KST, TP1·TP2·초기 SL을 표시했다.
+- 설정의 1~100배 선택지와 기본 10배를 확인했고 연구 상세 checkbox를 켰다가 끄고 원상복구했다.
+  고급진단의 같은 Run·release를 확인했으며 사이트 제목으로 시장 메인에 돌아왔다.
+- 실제 browser console warning·error는 0이었다.
+
+현재 API의 확정 범위는 공동계좌 현재 Run 완료 1건, 공동계좌 오늘 완료 0건·오늘 실현손익 0,
+현재 전략 버전 고유기회 3건·원장 행 6건이다. 공동계좌와 전략별 독립 결과를 합산하지 않는다.
+
+### 114.5 현재 판정
+
+기계판독 근거는 `evidence/WAVE152_DAILY_ACTIVITY_AND_FULL_UI_QA.json`에 보존한다.
+
+| 항목 | 상태 |
+|---|---|
+| 오늘 공동계좌·전략 모의결과 범위와 KST 집계 | `PASS` |
+| 이전 전략 한국어 이름과 BASE·STRESS 고유기회 묶음 | `PASS` |
+| 실제 전체 화면·버튼·정렬·drawer·replay·설정·홈 이동 | `PASS_OBSERVED` |
+| 안전 설치·같은 Run·자동 진입 복원·이벤트 전진 | `PASS_WITH_INITIAL_FAILURE_PRESERVED` |
+| 새 자연 qualified signal·진입·종료 | `NOT_OBSERVED` |
+| 활성 원장 전체 닫힌 사본 전수검사 | `NOT_COMPLETED / ABORTED_RUNTIME_SAFETY` |
+| 6시간·24시간 | `NOT_RUN` |
+| 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+
+현재 상태는 `COMPLETE_WITH_LIMITS`다. 프로그램과 자동 PAPER 진입 경로는 정상 작동 중이지만,
+자연 신호가 없던 관찰 구간을 억지 거래로 바꾸거나 수익성 증거로 해석하지 않는다.

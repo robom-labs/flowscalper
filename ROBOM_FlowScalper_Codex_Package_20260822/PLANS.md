@@ -900,3 +900,21 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   HYPEUSDT 두 진입기회·BASE/STRESS 4행을 확인한다.
 - 원장·거래·전략 판단을 바꾸지 않으며 새 자연 거래가 없으면 `NOT_OBSERVED`, 수익성은
   `NOT_PROVEN`, 실자금 준비는 `NOT_READY`를 유지한다.
+
+## Wave 152 오늘 활동 진실성과 전체 화면 회귀 점검
+
+- 현재 Run과 원장을 보존한 채 공동계좌 오늘 손익, 공동계좌 누적 성과와 전략별 독립 모의결과의
+  범위를 같은 API 시각에 대조한다.
+- 공동계좌 오늘 손익은 KST 종료일·현재 Run 모든 버전, 전략 모의결과는 현재 Run·현재 전략
+  버전으로 집계하고 BASE·STRESS를 한 고유기회로 묶는다.
+- 현재 registry 목록에서 감춰진 이전 전략도 family·variant 한국어 이름으로 표시하며 유효한
+  이름을 `알 수 없는 이전 전략`으로 바꾸지 않는다.
+- backend·frontend·정적검사·PAPER 안전·security·fixture API와 desktop·tablet·mobile E2E를
+  실행하고 차트 높이·cold setup 같은 실패를 보존한 뒤 수정·재실행한다.
+- flat 상태에서 CAS pause·prepare·불변 release 설치·resume을 수행하고 같은 Run, 자동진입 허용,
+  공개 event·전략평가 전진과 지연·queue·저장·재연결 상태를 확인한다.
+- 실제 브라우저에서 시장·전략·종목 성과·거래·다시보기·설정·홈 이동을 직접 조작하고 정렬,
+  drawer, 차트 시간구간·지표, KST 진입·종료 시각, leverage 복원과 console 상태를 확인한다.
+- 자연 qualified signal이 0이면 원인 경로를 기록하되 거래를 만들기 위해 전략·비용·TP·SL·안전
+  기준을 낮추지 않는다. 6시간·24시간, 수익성과 실자금 준비는 독립적으로 `NOT_RUN`·
+  `NOT_PROVEN`·`NOT_READY`를 유지한다.
