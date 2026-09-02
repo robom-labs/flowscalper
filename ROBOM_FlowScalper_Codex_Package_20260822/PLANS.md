@@ -866,5 +866,7 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   통과했다. 실제 공개시장 PAPER 원장을 연결한 8873 source preview에서 완료 거래
   54건, HYPEUSDT 1/41→3/41 재생, 7/41 실제 진입, 41/41 실제 종료와 시각·보호가·
   결과를 확인했다.
-- 불변 설치·실제 8870 재확인·GitHub Actions는 source commit 후 실행하며, 실행 전에는
-  `NOT_RUN`으로 유지한다. 6시간·24시간과 수익성은 각각 `NOT_RUN`·`NOT_PROVEN`이다.
+- 불변 release `b008aba47267`을 실제 8870에 설치하고 기존 Run을 보존했다. 실제 415×734
+  화면에서 54건 목록, 5배속 전진, 진입·종료 장면과 48px 모바일 조작부를 확인했다.
+  GitHub Actions `33574132384`의 validate·browser도 모두 통과했다. 6시간·24시간과
+  수익성은 각각 `NOT_RUN`·`NOT_PROVEN`이다.

@@ -1,7 +1,7 @@
 {
   "wave": 148,
   "created_at_kst": "2026-09-02T08:53:08+09:00",
-  "status": "SOURCE_PREVIEW_PASS_INSTALL_NOT_RUN",
+  "status": "PASS_WITH_LIMITS",
   "scope": "COMPLETED_LIVE_PUBLIC_PAPER_TRADE_REPLAY_UI",
   "source_head_before_change": "fdd5c19b90b719f2bd79f9d47d0812d049eed5af",
   "actual_backend": "http://127.0.0.1:8870",
@@ -22,7 +22,12 @@
     "typescript": { "status": "PASS" },
     "vite_build": { "status": "PASS", "modules": 54 },
     "replay_focus_and_fixture_backend": { "status": "PASS", "tests": 50 },
-    "fixture_playwright_new_regression": { "status": "NOT_RUN" }
+    "fixture_playwright_new_regression": {
+      "status": "PASS",
+      "environment": "GITHUB_ACTIONS",
+      "run_id": 33574132384,
+      "browser_job_id": 100074683675
+    }
   },
   "browser_observation": {
     "status": "PASS_OBSERVED_SOURCE_PREVIEW",
@@ -65,8 +70,91 @@
       "artifacts/ui-audit/wave148-replay/09-desktop-replay-exit.png"
     ]
   },
-  "installation": { "status": "NOT_RUN" },
-  "github": { "status": "NOT_RUN" },
+  "actual_service_browser": {
+    "status": "PASS",
+    "url": "http://127.0.0.1:8870/?wave=148&release=b008aba",
+    "viewport_css_px": { "width": 415, "height": 734 },
+    "completed_trade_catalog_count": 54,
+    "selected_trade": {
+      "symbol": "HYPEUSDT",
+      "profile": "BASE",
+      "frames": 41,
+      "played_from": 1,
+      "played_to": 3,
+      "entry_frame": 7,
+      "exit_frame": 41,
+      "entry_ts_kst": "2026-09-01 23:30:05 KST",
+      "exit_ts_kst": "2026-09-02 01:10:02 KST",
+      "holding_label": "1.7시간",
+      "exit_reason_ko": "손절",
+      "net_pnl_usdt": "-3.56"
+    },
+    "chart_layout": {
+      "top_px": 104,
+      "bottom_px": 753,
+      "width_px": 360,
+      "height_px": 649,
+      "horizontal_overflow": false
+    },
+    "mobile_replay_control_sizes_px": {
+      "start": { "width": 156, "height": 48 },
+      "previous": { "width": 75, "height": 48 },
+      "play": { "width": 156, "height": 48 },
+      "next": { "width": 75, "height": 48 },
+      "speed": { "width": 156, "height": 48 }
+    },
+    "library_toggle": {
+      "closed_display": "none",
+      "opened_display": "block",
+      "opened_trade_count": 54,
+      "closes_after_request": true
+    },
+    "screenshots": [
+      "evidence/screenshots/v6-actual-8870/wave148-video-replay-pre-entry.png",
+      "evidence/screenshots/v6-actual-8870/wave148-video-replay-entry.png",
+      "evidence/screenshots/v6-actual-8870/wave148-video-replay-exit.png"
+    ]
+  },
+  "installation": {
+    "status": "PASS",
+    "release_commit": "b008aba47267c597b7da5cf6e83e50038017c3d6",
+    "run_id_preserved": "run-2b7135a972dd",
+    "operation_state_after_resume": "RUNNING",
+    "paper_entry_state_after_resume": "ENTRY_ENABLED",
+    "release_isolated": true
+  },
+  "runtime_snapshot_after_install": {
+    "event_count": 19656,
+    "consumer_delivery_count": 19656,
+    "lag_p50_ms": 22.1214599609375,
+    "lag_p95_ms": 27.777099609375,
+    "trade_lag_p95_ms": 50.50830078125,
+    "queue_depth": 0,
+    "persistence_fault_active": false,
+    "persistence_buffer_dropped": 0,
+    "dropped_events": 0,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "api_key_enabled": false,
+    "private_api_enabled": false,
+    "open_position_count": 0,
+    "pending_entry_count": 0
+  },
+  "github": {
+    "status": "PASS",
+    "repository": "https://github.com/robom-labs/flowscalper",
+    "main_commit": "b008aba47267c597b7da5cf6e83e50038017c3d6",
+    "actions_run_id": 33574132384,
+    "actions_url": "https://github.com/robom-labs/flowscalper/actions/runs/33574132384",
+    "validate_job": "PASS",
+    "browser_job": "PASS",
+    "first_attempt_failure": {
+      "commit": "ae4b432d5d4d62fd917ea0c8865f6cef81adf8f4",
+      "actions_run_id": 33573400029,
+      "cause": "모바일 차트 재생 조작부 높이 42px로 최소 터치 크기 48px 계약 위반",
+      "resolution_commit": "3320d0da30c354c3dcbab6415b97c6aeda5924b5"
+    }
+  },
   "long_run_6h": "NOT_RUN",
   "long_run_24h": "NOT_RUN",
   "profitability": "NOT_PROVEN",

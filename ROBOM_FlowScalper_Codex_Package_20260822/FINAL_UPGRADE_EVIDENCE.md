@@ -5208,10 +5208,10 @@ buffer drop, pending entry와 open position이 모두 0이었고 WAL checkpoint 
 | frontend 전체 Vitest | `PASS` | 15 files·119 tests |
 | ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules |
 | replay focus·fixture backend | `PASS` | 50건 |
-| 새 fixture Playwright 회귀 | `NOT_RUN` | 소스는 추가했으나 이번 로컬 실행 전 |
+| 새 fixture Playwright 회귀 | `PASS` | GitHub Actions browser job `100074683675` |
 | 실제 8870 backend + 8873 source preview | `PASS_OBSERVED` | 54건·1/41→3/41·7/41·41/41 |
-| 불변 release 설치·실제 8870 수정 UI | `NOT_RUN` | source commit 전 |
-| GitHub main·Actions | `NOT_RUN` | source commit 전 |
+| 불변 release 설치·실제 8870 수정 UI | `PASS` | release `b008aba47267`·동일 Run 보존 |
+| GitHub main·Actions | `PASS` | run `33574132384`·validate/browser 모두 성공 |
 
 실제 저장 거래의 최신 HYPEUSDT BASE를 5배속으로 2.2초 재생해 1/41에서
 3/41로 전진했다. 진입 전 장면은 `2026-09-01 23:20:59 KST`·실제 진입 9분 5초
@@ -5220,8 +5220,25 @@ buffer drop, pending entry와 open position이 모두 0이었고 WAL checkpoint 
 실제 종료는 41/41, `2026-09-02 01:10:02 KST`, `1.7시간 보유 후 손절`, 최종
 `-3.56 USDT`로 일치했다.
 
-이 실행은 현재 실제 8870 backend에 수정 source frontend를 연결한 preview 검증이다.
-수정된 불변 release를 8870에 설치한 것은 아니므로 설치 전에 실제 8870 수정 UI를 PASS로
-쓰지 않는다. 실제 주문·private API·API Key·wallet은 계속 0이고, 이 UI 변경은 전략·신호·
-수량·비용·TP·SL·PAPER 체결을 변경하지 않았다. 6시간·24시간은 `NOT_RUN`, 수익성·실자금
-준비는 `NOT_PROVEN`·`NOT_READY`다.
+source preview 확인 뒤 불변 release `b008aba47267c597b7da5cf6e83e50038017c3d6`을
+실제 8870 서비스에 설치했다. 기존 `run-2b7135a972dd`를 보존했고 설치 직후 신규 PAPER
+진입을 다시 켜 `RUNNING`·`ENTRY_ENABLED`를 확인했다. 12초 관찰에서는 공개시장 event와
+consumer delivery가 각각 1,428건 전진했고, 최종 snapshot은 lag P50 22.12ms·P95 27.78ms,
+trade lag P95 50.51ms, queue 0, persistence fault·buffer drop·event drop 0이었다.
+
+실제 415×734 화면에서도 54건 목록을 열고 닫았으며, 5배속 재생 1/41→3/41,
+실제 진입 7/41, 실제 종료 41/41을 다시 눌렀다. 차트는 x=20·y=104에서 360×649px,
+가로 넘침 없이 표시됐다. 진입 화면에는 entry 83.908·TP1 85.5522·TP2 87.1535·
+초기 SL 82.8919, 종료 화면에는 손절·종료가 82.874·보유 1.7시간·순손익 -3.56 USDT가
+표시됐다. 실제 화면은 다음 파일로 보존했다.
+
+- `evidence/screenshots/v6-actual-8870/wave148-video-replay-pre-entry.png`
+- `evidence/screenshots/v6-actual-8870/wave148-video-replay-entry.png`
+- `evidence/screenshots/v6-actual-8870/wave148-video-replay-exit.png`
+
+첫 Actions run `33573400029`에서는 모바일 영상형 조작부 높이 42px가 프로젝트의 48px
+터치 계약을 위반해 실패했다. 높이를 48px로 수정하고 실제 DOM에서 처음부터·이전·재생·
+다음·속도 조작부가 모두 48px임을 확인했다. 수정 commit을 포함한 Actions run
+`33574132384`는 validate와 browser job을 모두 통과했다. 실제 주문·private API·API Key·
+wallet은 계속 0이고, 이 UI 변경은 전략·신호·수량·비용·TP·SL·PAPER 체결을 변경하지
+않았다. 6시간·24시간은 `NOT_RUN`, 수익성·실자금 준비는 `NOT_PROVEN`·`NOT_READY`다.
