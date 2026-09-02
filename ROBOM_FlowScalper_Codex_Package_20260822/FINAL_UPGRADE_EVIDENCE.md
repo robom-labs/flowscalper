@@ -5283,10 +5283,16 @@ FFUSDT의 `MULTISPEED_RECLAIM_30M`은 LONG, ADX 53.277797, 24시간 모멘텀
 | ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules |
 | security·repository hygiene | `PASS` | 실제 주문 경로 false·위반 0 |
 | 회귀계약 | `PASS` | 30개 |
-| 불변 release 설치·실제 8870 | `NOT_RUN` | source commit 전 단계 |
-| 다음 완성봉 자연 적격신호·신규 거래 | `NOT_OBSERVED` | 기준을 낮추지 않음 |
+| 불변 release 설치·실제 8870 | `PASS` | release `b28892d2b52838661c946e1faf2c97c804f0cacc`, 같은 Run 복구, 620.038초·124표본·probe 오류 0 |
+| 계획회전·다음 완성봉 경계 | `PASS` | 계획회전 1·비계획 0, event +67,936·전략평가 +54,888, queue 최대 37·처리지연 p95 최대 32.827ms·trade 지연 p95 최대 77.130ms |
+| 데이터·저장 안전 | `PASS` | gap·resync·drop·persistence fault·buffer drop·진입잠금 0, 메모리 증가 18.953MiB, 실제 주문·인증 false |
+| 거래기록 범위 대조 | `PASS` | 같은 Run 현재버전 MAIN 0행·전략별 독립계좌 4행, 모든 버전 MAIN 1행·전략별 독립계좌 165행. 빈 MAIN 필터를 전체 무거래로 해석하지 않음 |
+| 다음 완성봉 자연 적격신호·신규 거래 | `NOT_OBSERVED` | 설치 뒤 적격신호·MAIN·전략별 신규거래 증가 0. BTC 조건 상세에서 추세·ADX·공개흐름·비용후 손익비 통과와 상대거래량·setup 구조 미충족을 확인했으며 기준을 낮추지 않음 |
 | 6시간·24시간 | `NOT_RUN` | 실제 경과 전 |
 | 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` | 표본·강건성 gate 미완료 |
 
-설치·같은 Run 복구·다음 완성봉 관찰 결과는 불변 release 전환 뒤 이 절과
-`evidence/WAVE149_COMPLETED_CANDLE_ROTATION_VALIDATION.json`에 갱신한다.
+원시 관찰은 `evidence/WAVE149_FIRST_INSTALL_RUNNING_SERVICE_620S.json`, 재현·수정·검증 요약은
+`evidence/WAVE149_COMPLETED_CANDLE_ROTATION_VALIDATION.json`에 보존했다. 이 검증은 누락 경로가
+수정되고 다음 봉 전에 계획회전·warmup이 끝났다는 증거이며, 자연 신호나 수익을 보장하는 증거는
+아니다. 6시간·24시간은 실제 경과 전이므로 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금 준비는
+`NOT_READY`를 유지한다.
