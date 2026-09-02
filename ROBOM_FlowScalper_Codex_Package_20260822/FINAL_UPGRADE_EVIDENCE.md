@@ -5704,9 +5704,23 @@ ADR-140에 따라 미확정 WAL soft threshold를 16MiB에서 8MiB로 낮춰 한
 | fixture backend·Playwright | `PASS` 37건·7 PASS·2 설계상 SKIP |
 | PAPER build safety·security | `PASS_ZERO` 163 source·실제주문 경로 0 |
 | repository hygiene·회귀계약 | `PASS` 31 contracts·61 anchors·135 tokens |
-| Wave 154 실제 release 설치·신규 checkpoint 2회 | `NOT_RUN` |
+| Wave 154 실제 release 설치·신규 checkpoint | `FAIL_PRESERVED` 첫 2회는 3.766초·1.501초였지만 후속 최대 41.142초 |
+| Wave 155 4MiB 수정·집중 회귀 | `PASS` 집중 5·backend 1,562·frontend 121·fixture 37·Playwright 7 PASS/2 SKIP |
+| Wave 155 정적·build·PAPER safety·security·위생·회귀계약 | `PASS_ZERO` mypy 128 source·build 54 modules·security 163 source·31 contracts |
+| Wave 155 실제 release 설치·신규 checkpoint 10회 | `NOT_RUN` |
 | 6시간·24시간 | `NOT_RUN` |
 | 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
 | 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
 
-현재 상태는 `WAVE153_POSTINSTALL_THRESHOLD_FAIL_WAVE154_AUTOMATED_VALIDATION_PASS_RUNTIME_INSTALL_NOT_RUN`이다.
+불변 release `58bdabdd9af938882ba86e2fef5a853faa974bcd`를 같은
+`run-2b7135a972dd`에 설치하고 CAS revision 107→108로 자동진입을 복원했다.
+2026-09-03 KST 실제 관찰에서 8MiB 첫 2회 checkpoint는 3.766초·1.501초였고
+concurrent flush delta는 0이었다. event는 9,896→25,014건, 전략 평가는
+9,012→23,184건으로 전진했다. 그러나 관찰을 이어간 후 checkpoint 수는
+5회로 늘었고 최대가 41.142초로 30초 gate를 넘었다. 동시 flush·저장 fault·
+buffer drop·event drop은 모두 0이었지만 이를 PASS로 판정하지 않는다.
+기계판독 근거는 `evidence/WAVE154_BOUNDED_WAL_CHECKPOINT_POSTINSTALL.json`이다.
+ADR-141에 따라 4MiB 수정과 전체 자동 검증은 완료했고 실제 release·10회
+checkpoint 검증은 아직 `NOT_RUN`이다.
+
+현재 상태는 `WAVE154_LATE_THRESHOLD_FAIL_WAVE155_AUTOMATED_VALIDATION_PASS_RUNTIME_NOT_RUN`이다.

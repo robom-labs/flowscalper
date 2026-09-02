@@ -958,3 +958,22 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   buffer·queue·지연·event·전략평가·fault·drop·원장 안전을 실제 서비스에서 확인한다.
 - 전략·비용·진입·TP·SL·체결·레버리지는 바꾸지 않고, 6시간·24시간과 수익성은
   각각 `NOT_RUN`·`NOT_PROVEN`을 유지한다.
+- release `58bdabdd9af938882ba86e2fef5a853faa974bcd`를 같은 Run에 설치한 뒤
+  신규 checkpoint 2회가 3.766초·1.501초로 완료됐고 concurrent flush는 둘 다
+  0이었다. 그러나 후속 checkpoint 중 하나가 41.142초로 30초 gate를
+  넘었으므로 Wave 154는 `FAIL_PRESERVED`다.
+
+## Wave 155 4MiB WAL checkpoint 재검증
+
+- 8MiB checkpoint의 후속 41.142초 초과를 ADR-141에 보존하고 soft threshold를
+  4MiB로 낮춘다. PASSIVE·별도 process·배타 I/O gate·FULL synchronous·
+  250-event flush·64MiB fail-closed는 유지한다.
+- 집중 회귀와 전체 backend·frontend·Playwright·정적검사·PAPER safety·security를
+  다시 통과했다. 집중검사 5건, backend 1,562건, frontend 121건, fixture
+  backend 37건, 공식 Playwright 7 PASS·2 SKIP, mypy 128 source, build 54
+  modules, security 163 source와 회귀계약 31개가 PASS했다. 자연 flat에서
+  같은 Run으로 설치한다.
+- 신규 checkpoint 최소 10회가 모두 30초 이내·동시 flush 0인지와 event·
+  전략평가 전진, queue·buffer 회복, fault·drop·실제주문·인증 0을 확인한다.
+- 자동 검증은 `PASS`, 실제 설치·10회 관찰은 `NOT_RUN`, 6시간·24시간은 계속
+  `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.

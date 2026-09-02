@@ -1,6 +1,6 @@
 # ADR-140. 8MiB WAL 체크포인트 실행 구간
 
-- 상태. 채택, 실제 서비스 배포 검증 대기.
+- 상태. 채택 후 후속 checkpoint 30초 초과로 ADR-141에서 기준 교체.
 - 일자. 2026-09-03.
 - 범위. LIVE_PUBLIC PAPER 활성 원장의 PASSIVE WAL 체크포인트에 적용한다.
 - 수익성 영향. 없음. 전략과 PAPER 체결 계약은 바꾸지 않는다.
@@ -43,3 +43,14 @@ ADR-139의 배타 I/O 구간을 적용한 불변 release
 
 ADR-139 결정 1의 16MiB soft threshold만 8MiB로 교체한다. ADR-139의 배타
 I/O 구간과 나머지 안전 계약은 그대로 유효하다.
+
+## 배포 검증과 후속 실패
+
+불변 release `58bdabdd9af938882ba86e2fef5a853faa974bcd`를 기존
+`run-2b7135a972dd`에 설치하고 `RUNNING`·`ENTRY_ENABLED`를 복원했다.
+8MiB 기준의 첫 두 checkpoint는 3.766초·1.501초로 30초 이내였고,
+concurrent flush delta는 0이었다. 그러나 후속 checkpoint 중 하나가
+41.142초로 30초 gate를 넘었다. event·전략 평가는 전진했고 저장 fault·
+buffer drop·event drop은 0이었지만 Wave 154 실행구간을 PASS로 판정하지
+않는다. 기계판독 근거는 `evidence/WAVE154_BOUNDED_WAL_CHECKPOINT_POSTINSTALL.json`에
+보존하고 4MiB 후속 결정은 ADR-141로 옮긴다.

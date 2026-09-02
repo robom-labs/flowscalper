@@ -2742,7 +2742,7 @@ async def test_wal_checkpoint_defers_small_wal_while_persistence_backlog_exists(
     assert runtime._wal_checkpoint_last_wal_bytes < runtime_module._WAL_CHECKPOINT_SOFT_BYTES
     diagnostics = runtime.dashboard()["system"]
     assert isinstance(diagnostics, dict)
-    assert diagnostics["wal_checkpoint_soft_bytes"] == 8 * 1024 * 1024
+    assert diagnostics["wal_checkpoint_soft_bytes"] == 4 * 1024 * 1024
     assert runtime._wal_checkpoint_fault_count == 0
     ledger.close()
 

@@ -10,7 +10,16 @@
   확인했지만 첫 두 16MiB 구간이 36.908초·35.902초로 30초 상한을 넘은 실패를
   보존했다. 한 번의 실행 구간을 줄이기 위해 soft threshold를 8MiB로 낮추고,
   관찰기가 runtime threshold를 사용하며 30초 초과·동시 flush 허용 예외 없이
-  하나라도 발생하면 FAIL로 판정하게 했다. 전략·진입·비용·TP·SL은 바꾸지 않았다.
+  하나라도 발생하면 FAIL로 판정하게 했다. 실제 release
+  `58bdabdd9af938882ba86e2fef5a853faa974bcd`를 같은 Run에 설치한 후 신규
+  checkpoint 2회는 3.766초·1.501초였지만 후속 checkpoint 중 하나가
+  41.142초로 30초 gate를 넘었다. 동시 flush·저장 fault·buffer drop·event
+  drop은 모두 0이었지만 실패를 그대로 보존하고 soft threshold를 4MiB로
+  추가 조정했다. 변경 뒤 집중검사 5건, backend 1,562건, frontend 121건,
+  fixture backend 37건, 공식 Playwright 7 PASS·2 SKIP, 정적·build·PAPER
+  safety·security·회귀계약 31개를 통과했다. 전략·진입·비용·TP·SL은
+  바꾸지 않았고 실제 release·신규 checkpoint 10회는 아직 `NOT_RUN`,
+  6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`이다.
 - Wave 153에서 외장 APFS의 WAL 체크포인트와 시장 원장 flush를 동시에 실행해 체크포인트가
   최대 82.687초, 겹친 flush가 최대 19회까지 늘어난 I/O 경합을 수정했다. 체크포인트는 낮은
   CPU 우선순위를 유지하되 정상 I/O 우선순위와 배타 저장 구간을 사용하고, 완료 전에는 새

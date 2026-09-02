@@ -74,7 +74,21 @@
     "wal_checkpoint_soft_bytes_before": 16777216,
     "wal_checkpoint_soft_bytes_after": 8388608,
     "runtime_change_implemented": true,
-    "runtime_change_deployed": false,
+    "runtime_change_deployed": true,
+    "wave154_release": "58bdabdd9af938882ba86e2fef5a853faa974bcd",
+    "wave154_runtime_verification_evidence": "evidence/WAVE154_BOUNDED_WAL_CHECKPOINT_POSTINSTALL.json",
+    "wave154_runtime_gate": {
+      "status": "FAIL_LATE_THRESHOLD_REPRODUCED",
+      "checkpoint_elapsed_ms": [
+        3766.0,
+        1501.0
+      ],
+      "maximum_concurrent_flush_delta": 0,
+      "persistence_fault_count": 0,
+      "persistence_buffer_dropped": 0,
+      "dropped_events": 0,
+      "later_checkpoint_max_ms": 41142.0
+    },
     "automated_validation": {
       "focused_tests_passed": 30,
       "backend_tests_passed": 1562,
