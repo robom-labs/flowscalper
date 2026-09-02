@@ -5315,9 +5315,12 @@ FFUSDT의 `MULTISPEED_RECLAIM_30M`은 LONG, ADX 53.277797, 24시간 모멘텀
 | 실제 API·브라우저 재현 | `PASS` | API 2기회·4행, 화면 상단 2회·4행, 표 0건으로 불일치 재현 |
 | frontend 전체 | `PASS` | 15 files·120 tests |
 | ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules |
-| 불변 release 설치·실제 완료 표 | `NOT_RUN` | source commit 전 단계 |
+| 불변 release 설치·실제 완료 표 | `PASS` | release `8b31904f653fff9cf27b31b60e1a9da77c64f894`, 같은 Run 복구·`RUNNING`·`ENTRY_ENABLED` revision 90. 실제 브라우저에서 2기회·4행·BASE 2·STRESS 2와 표 2행 확인 |
 | 원장·전략·비용·PAPER 안전변경 | `PASS` | 변경 0 |
 | 자연 신규거래 | `NOT_OBSERVED` | 거래를 강제로 만들거나 기준을 낮추지 않음 |
 | 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` | 화면 수정은 성과 증거가 아님 |
 
 기계판독 근거는 `evidence/WAVE150_CURRENT_TRADE_HISTORY_VISIBILITY.json`에 보존한다.
+실제 표에는 BTRUSDT 7분 33초 보유 익절과 HYPEUSDT 약 1.7시간 보유 손절이 각각 한 번의
+진입기회로 표시되고, 각 기회의 BASE·STRESS 비용 결과가 중복거래가 아니라 세부 결과로
+묶였다. 실제 주문과 인증은 계속 false다.

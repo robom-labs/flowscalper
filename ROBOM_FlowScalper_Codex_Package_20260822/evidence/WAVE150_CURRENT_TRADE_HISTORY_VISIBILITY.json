@@ -1,8 +1,9 @@
 {
   "schema": "flowscalper.wave150.current_trade_history_visibility.v1",
-  "status": "SOURCE_VALIDATED_INSTALL_NOT_RUN",
+  "status": "PASS_INSTALLED_BROWSER_CURRENT_HISTORY_VISIBLE",
   "run_id": "run-2b7135a972dd",
   "baseline_release_commit": "bab720c3d716d445bed351e728762703552b93eb",
+  "installed_release_commit": "8b31904f653fff9cf27b31b60e1a9da77c64f894",
   "reproduction": {
     "api_current_version_unique_opportunities": 2,
     "api_current_version_raw_result_rows": 4,
@@ -22,6 +23,26 @@
     "tp_sl_changed": false,
     "paper_only_boundary_changed": false
   },
+  "installed_browser": {
+    "operation_state": "RUNNING",
+    "paper_entry_intent": "ENTRY_ENABLED",
+    "paper_entry_revision": 90,
+    "release_isolated": true,
+    "same_run_restored": true,
+    "current_version_unique_opportunities": 2,
+    "current_version_raw_result_rows": 4,
+    "current_version_base_rows": 2,
+    "current_version_stress_rows": 2,
+    "visible_table_rows": 2,
+    "visible_symbols": [
+      "BTRUSDT",
+      "HYPEUSDT"
+    ],
+    "btr_exit_reason": "TAKE_PROFIT",
+    "hype_exit_reason": "STOP",
+    "real_orders_enabled": false,
+    "auth_required": false
+  },
   "validation": {
     "frontend_test_files": 15,
     "frontend_tests": 120,
@@ -29,8 +50,8 @@
     "eslint": "PASS",
     "typescript": "PASS",
     "vite_modules": 54,
-    "installed_service": "NOT_RUN",
-    "actual_browser_current_history": "NOT_RUN",
+    "installed_service": "PASS",
+    "actual_browser_current_history": "PASS",
     "natural_new_trade": "NOT_OBSERVED",
     "profitability": "NOT_PROVEN",
     "real_money_readiness": "NOT_READY"
