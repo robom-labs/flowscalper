@@ -5242,3 +5242,51 @@ trade lag P95 50.51ms, queue 0, persistence fault·buffer drop·event drop 0이�
 `33574132384`는 validate와 browser job을 모두 통과했다. 실제 주문·private API·API Key·
 wallet은 계속 0이고, 이 UI 변경은 전략·신호·수량·비용·TP·SL·PAPER 체결을 변경하지
 않았다. 6시간·24시간은 `NOT_RUN`, 수익성·실자금 준비는 `NOT_PROVEN`·`NOT_READY`다.
+
+## 111. Wave 149 완성봉 신호와 정밀감시 회전 정렬
+
+### 111.1 실제 Run에서 재현한 진입 누락 경로
+
+설치 release `edb5c0f929135adda4eaafd3ba0d2c723b4b3aba`의 같은 Run
+`run-2b7135a972dd`는 `RUNNING`·`ENTRY_ENABLED`, wide 80·deep 16, 실제 주문 false,
+인증 false였다. 공개시장 event와 전략평가는 계속 전진했고 open·pending은 0이었다.
+현재 main 거래는 1건이며 2026-09-02 10:22:35 KST BTRUSDT 종료 뒤 자연 적격신호가
+없었다. 서버 중단, 사용자 일시정지, 일간·주간 한도, 원장 fault나 queue 정지가 원인은 아니었다.
+
+2026-09-02 19:00:00 KST를 cutoff로 공개 Binance 30분·1시간 완성봉 499개씩 다시 계산했다.
+FFUSDT의 `MULTISPEED_RECLAIM_30M`은 LONG, ADX 53.277797, 24시간 모멘텀
+0.307182, 상대 거래량 2.002068, rejection 0으로 봉 setup을 통과했다. 신호 epoch는
+`1788343200000`이었다.
+
+동일 Run 저장 Parquet를 `hive_partitioning=false`로 직접 조회하면 FFUSDT의 wide ticker는
+`1788343201370`부터 있었지만 최초 depth는 `1788343439792`, 최초 trade는
+`1788343440296`이었다. 즉 19:00 신호 뒤 약 239.8초가 지나 정밀감시에 들어왔다. 신호 유효시간
+5초와 공개흐름 확인 1초를 이미 지나 이 후보는 depth·trade 확인 경로를 받을 수 없었다.
+반면 SKRUSDT depth는 `1788343200456`, trade는 `1788343200343`부터 있어 공개시장 전체 연결
+정지가 아니라 deep 교체 시점 문제임을 분리했다.
+
+### 111.2 수정과 자동검증
+
+- 기본 900초 WebSocket 회전을 거래소 시각 기준 15분봉 마감 5분 전에 정렬했다.
+- Binance primary와 Bybit fallback에 같은 계산을 적용하고, 900초가 아닌 명시적 진단 회전은
+  그대로 유지했다.
+- 다중추세 setup predicate를 `setup_confirmed`에 대입해 실제 판단과 화면 상세를 일치시켰다.
+- 신호 5초, 흐름확인 1초, wide 80·deep 16, 비용, bid·ask, 수수료·슬리피지, 수량,
+  TP1·TP2·SL과 PAPER-only 경계는 변경하지 않았다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 집중 회귀 | `PASS` | 49건 |
+| backend 전체 | `PASS` | 1,549건 |
+| frontend 전체 | `PASS` | 15 files·119 tests |
+| Ruff·mypy | `PASS` | Ruff 오류 0·mypy 127 files 오류 0 |
+| ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules |
+| security·repository hygiene | `PASS` | 실제 주문 경로 false·위반 0 |
+| 회귀계약 | `PASS` | 30개 |
+| 불변 release 설치·실제 8870 | `NOT_RUN` | source commit 전 단계 |
+| 다음 완성봉 자연 적격신호·신규 거래 | `NOT_OBSERVED` | 기준을 낮추지 않음 |
+| 6시간·24시간 | `NOT_RUN` | 실제 경과 전 |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` | 표본·강건성 gate 미완료 |
+
+설치·같은 Run 복구·다음 완성봉 관찰 결과는 불변 release 전환 뒤 이 절과
+`evidence/WAVE149_COMPLETED_CANDLE_ROTATION_VALIDATION.json`에 갱신한다.

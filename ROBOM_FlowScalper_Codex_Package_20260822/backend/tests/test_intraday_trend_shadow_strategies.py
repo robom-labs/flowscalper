@@ -203,6 +203,7 @@ def test_pullback_and_multispeed_reclaim_are_symmetric_completed_bar_setups(
     assert state.direction is side
     assert state.reason_codes == ()
     assert state.structural_stop is not None
+    assert state.setup_confirmed is True
 
 
 def test_intraday_state_fails_closed_on_warmup_and_recent_gap() -> None:

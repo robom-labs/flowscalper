@@ -910,3 +910,25 @@ with 2 intentional skips. Three post-install 55-second windows passed with zero 
 500ms, while one intervening window is preserved as a WAL-checkpoint-only failure. The actual 8870 replay
 loaded 54 completed opportunities and progressed from frame 1 to frame 10 at 5x with zero browser warnings
 or errors. Six-hour and 24-hour stability remain `NOT_RUN`; profitability remains `NOT_PROVEN`.
+
+## Wave 149 completed-candle aligned deep rotation
+
+1. Diagnose the same installed Run from operation intent through public events, strategy evaluation,
+   qualified signals, positions and closed history before changing any strategy threshold.
+2. Reconstruct a completed intraday setup from public candles and compare its exact signal timestamp with
+   the first persisted depth and trade events for the same symbol.
+3. For the default 900-second provider lifetime, compute the next rotation from calibrated venue time so
+   preparation begins five minutes before each 15-minute candle boundary. Keep explicit nondefault test and
+   diagnostic durations unchanged.
+4. Apply the same alignment to Binance primary and Bybit fallback providers. Preserve wide 80, deep 16,
+   protected-symbol pinning, 30-minute residence, four-symbol rotation cap, snapshot warmup and fail-closed
+   entry locking.
+5. Assign the multispeed reclaim predicate to `setup_confirmed` as well as its rejection code so advanced
+   diagnostics report the same decision that the entry evaluator uses.
+6. Regression-test the venue-time phases, explicit-duration escape hatch, symmetric LONG/SHORT setup state,
+   full backend and frontend suites, static checks and PAPER-only security contracts.
+7. Install only from a committed immutable release while flat, preserve the same Run and observe at least
+   the next completed-candle boundary. A natural qualified signal or trade is not guaranteed and must remain
+   `NOT_OBSERVED` unless it actually occurs.
+8. Do not change signal age, live flow confirmation, fee, slippage, sizing, TP, SL or real-order boundaries.
+   Keep profitability `NOT_PROVEN`, real-money readiness `NOT_READY` and 6h/24h `NOT_RUN`.

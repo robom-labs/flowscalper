@@ -276,14 +276,15 @@ def intraday_trend_state(
                 reasons.append("INTRADAY_ADX_BELOW_18")
             if relative_volume < 0.90:
                 reasons.append("INTRADAY_RELATIVE_VOLUME_BELOW_0_9")
-            if not _multispeed_reclaim_ready(
+            setup_ready = _multispeed_reclaim_ready(
                 direction,
                 previous,
                 latest,
                 previous_ema20,
                 ema20,
                 previous_ema80,
-            ):
+            )
+            if not setup_ready:
                 reasons.append("MULTISPEED_RECLAIM_NOT_CONFIRMED")
             structural_stop = _swing_stop(direction, previous, latest, atr, 0.15)
 

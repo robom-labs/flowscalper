@@ -870,3 +870,20 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   화면에서 54건 목록, 5배속 전진, 진입·종료 장면과 48px 모바일 조작부를 확인했다.
   GitHub Actions `33574132384`의 validate·browser도 모두 통과했다. 6시간·24시간과
   수익성은 각각 `NOT_RUN`·`NOT_PROVEN`이다.
+
+## Wave 149 완성봉 신호와 정밀감시 회전 정렬
+
+- 같은 Run의 작동상태, 신규진입 허용, 공개 event·전략평가 전진, 원장과 필터를 먼저 확인해
+  단순 무거래 화면을 엔진 정지로 오판하지 않는다.
+- 실제 19:00 KST 완성 30분봉을 고정해 FFUSDT 다중추세 재합류의 봉 조건 통과 여부와
+  해당 종목의 최초 depth·trade 저장 시각을 독립적으로 대조한다.
+- 기본 15분 계획회전을 서비스 시작 뒤 900초가 아니라 거래소 15분봉 마감 5분 전에 정렬한다.
+  회전 준비시간은 기존 연결수명에 포함하고, 복구·pin·최소 체류·회전당 교체 상한·warmup
+  진입잠금은 유지한다. 진단에서 명시한 짧은 회전시간도 바꾸지 않는다.
+- 멀티스피드 재합류의 실제 setup 결과를 상태에 저장해 `reason_codes == ()`와
+  `setup_confirmed == true`가 일치하도록 회귀 고정한다.
+- backend 전체, frontend 회귀, Ruff·mypy·lint·typecheck·build·PAPER safety·security·위생·
+  회귀계약을 통과한 뒤 flat 상태에서 같은 Run의 불변 릴리스를 설치한다.
+- 실제 서비스에서는 최소 다음 15분봉 경계까지 event·전략평가·정밀 depth 준비·entry lock·
+  queue·지연·재연결·gap·drop·저장결함과 거래기록을 관찰한다. 자연 신호가 없으면 신규 거래는
+  `NOT_OBSERVED`로 남기며 임계값을 낮추거나 거래를 만들지 않는다.

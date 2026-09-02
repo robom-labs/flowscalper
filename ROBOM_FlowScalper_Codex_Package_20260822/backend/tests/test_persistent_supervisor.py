@@ -29,6 +29,7 @@ from backend.app.market_data.supervisor import (
     PersistentPublicSupervisor,
     ProviderSelection,
     SupervisorTelemetry,
+    _planned_rotation_duration_seconds,
     _wide_and_deep,
 )
 from backend.app.orderbook import BinanceOrderBook
@@ -839,6 +840,40 @@ def test_public_provider_rejects_wide_universe_that_would_be_silently_sharded() 
         BinancePersistentProvider(wide_max=101, deep_max=16)
     with pytest.raises(ValueError, match="100 이하"):
         BybitPersistentProvider(wide_max=101, deep_max=16)
+
+
+@pytest.mark.parametrize(
+    ("minute", "second", "expected_seconds"),
+    [
+        (3, 0, 420),
+        (9, 30, 30),
+        (10, 0, 900),
+        (12, 0, 780),
+    ],
+)
+def test_default_rotation_is_aligned_five_minutes_before_completed_15m_bar(
+    minute: int,
+    second: int,
+    expected_seconds: float,
+) -> None:
+    venue_now_ms = ((19 * 60 + minute) * 60 + second) * 1_000
+
+    duration = _planned_rotation_duration_seconds(
+        venue_now_ms=venue_now_ms,
+        configured_seconds=15 * 60,
+    )
+
+    assert duration == expected_seconds
+
+
+def test_explicit_short_rotation_keeps_test_and_diagnostic_duration() -> None:
+    assert (
+        _planned_rotation_duration_seconds(
+            venue_now_ms=0,
+            configured_seconds=0.25,
+        )
+        == 0.25
+    )
 
 
 async def test_manual_pause_survives_persistent_supervisor_connection(monkeypatch) -> None:

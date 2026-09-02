@@ -42,6 +42,31 @@ _EVENT_LOOP_LAG_OBSERVATION_MS = 100.0
 _EVENT_LOOP_SOAK_LAG_THRESHOLD_MS = 500.0
 _CONSUMER_COOPERATIVE_YIELD_SECONDS = 0.01
 _MAXIMUM_WIDE_SYMBOLS_PER_CONNECTION = 100
+_DEFAULT_PLANNED_ROTATION_SECONDS = 15 * 60
+_INTRADAY_ROTATION_LEAD_SECONDS = 5 * 60
+
+
+def _planned_rotation_duration_seconds(
+    *,
+    venue_now_ms: float,
+    configured_seconds: float,
+) -> float:
+    """기본 정밀감시 교체를 15분 완성봉 5분 전에 시작하도록 정렬한다."""
+
+    if configured_seconds != _DEFAULT_PLANNED_ROTATION_SECONDS:
+        return configured_seconds
+    boundary_ms = _DEFAULT_PLANNED_ROTATION_SECONDS * 1_000
+    lead_ms = _INTRADAY_ROTATION_LEAD_SECONDS * 1_000
+    phase_ms = (venue_now_ms + lead_ms) % boundary_ms
+    wait_ms = boundary_ms - phase_ms
+    return wait_ms / 1_000
+
+
+def _selection_venue_now_ms(selection: ProviderSelection, clock: Clock) -> float:
+    calibration = selection.venue_clock_calibration
+    if calibration is not None:
+        return calibration.venue_now_ms(clock.monotonic_ns())
+    return float(clock.utc_ms()) + selection.venue_clock_offset_ms
 
 
 def _rotation_depth_output_ready(
@@ -801,7 +826,7 @@ class BinancePersistentProvider:
         *,
         wide_max: int = 50,
         deep_max: int = 20,
-        planned_rotation_seconds: float = 15 * 60,
+        planned_rotation_seconds: float = _DEFAULT_PLANNED_ROTATION_SECONDS,
         pinned_symbols: tuple[str, ...] = (),
     ) -> None:
         if not 10 <= deep_max <= 30:
@@ -884,6 +909,10 @@ class BinancePersistentProvider:
         wide_url = router.urls(f"{symbol}@ticker" for symbol in selection.wide_symbols)[0]
         depth_url = router.urls(f"{symbol}@depth" for symbol in selection.deep_symbols)[0]
         trade_url = router.urls(f"{symbol}@aggTrade" for symbol in selection.deep_symbols)[0]
+        rotation_duration_seconds = _planned_rotation_duration_seconds(
+            venue_now_ms=_selection_venue_now_ms(selection, clock),
+            configured_seconds=self.planned_rotation_seconds,
+        )
         started = asyncio.get_running_loop().time()
         depth_coalescer = BinanceDepthCoalescer(bucket_ms=500)
         trade_coalescer = BinanceTradeCoalescer(bucket_ms=500)
@@ -934,7 +963,7 @@ class BinancePersistentProvider:
                 asyncio.create_task(socket.recv()): name for name, socket in sockets.items()
             }
             try:
-                while asyncio.get_running_loop().time() - started < self.planned_rotation_seconds:
+                while asyncio.get_running_loop().time() - started < rotation_duration_seconds:
                     done, _ = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
                     for task in done:
                         family = pending.pop(task)
@@ -1318,7 +1347,7 @@ class BybitPersistentProvider:
         *,
         wide_max: int = 50,
         deep_max: int = 20,
-        planned_rotation_seconds: float = 15 * 60,
+        planned_rotation_seconds: float = _DEFAULT_PLANNED_ROTATION_SECONDS,
         pinned_symbols: tuple[str, ...] = (),
     ) -> None:
         if not 10 <= deep_max <= 30:
@@ -1400,6 +1429,10 @@ class BybitPersistentProvider:
         topics.extend(f"orderbook.50.{symbol}" for symbol in selection.deep_symbols)
         topics.extend(f"publicTrade.{symbol}" for symbol in selection.deep_symbols)
         books = {symbol: BybitOrderBook() for symbol in selection.deep_symbols}
+        rotation_duration_seconds = _planned_rotation_duration_seconds(
+            venue_now_ms=_selection_venue_now_ms(selection, clock),
+            configured_seconds=self.planned_rotation_seconds,
+        )
         started = asyncio.get_running_loop().time()
         async with websockets.connect(
             PUBLIC_LINEAR_WS,
@@ -1410,7 +1443,7 @@ class BybitPersistentProvider:
             additional_headers=None,
         ) as socket:
             await socket.send(json.dumps({"op": "subscribe", "args": topics}))
-            while asyncio.get_running_loop().time() - started < self.planned_rotation_seconds:
+            while asyncio.get_running_loop().time() - started < rotation_duration_seconds:
                 try:
                     async with asyncio.timeout(20):
                         payload = _json_object(await socket.recv())
