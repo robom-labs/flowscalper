@@ -6,6 +6,14 @@
 
 ## 아직 배포하지 않음
 
+- Wave 153에서 외장 APFS의 WAL 체크포인트와 시장 원장 flush를 동시에 실행해 체크포인트가
+  최대 82.687초, 겹친 flush가 최대 19회까지 늘어난 I/O 경합을 수정했다. 체크포인트는 낮은
+  CPU 우선순위를 유지하되 정상 I/O 우선순위와 배타 저장 구간을 사용하고, 완료 전에는 새
+  archive·원장 flush를 시작하지 않는다. 공개시장 수신과 PAPER 포지션 관리는 계속하며 bounded
+  buffer는 완료 직후 배출하고 기존 backlog fail-closed를 유지한다. backend 1,562건,
+  frontend 121건, 공식 Playwright 7 PASS·2 SKIP, 정적·build·PAPER safety·security와 회귀계약
+  31개를 통과했다. 현재 이전 release가 자연 BTWUSDT PAPER 기회를 보호 중이라 강제 청산·재시작
+  없이 설치는 `BLOCKED_OPEN_PAPER_POSITION`, 설치 후 성능 관찰은 `NOT_RUN`이다.
 - Wave 152에서 화면의 누적 공동계좌 손익을 오늘 손익처럼 오해할 수 있던 범위를 분리했다.
   시장 화면은 이제 KST 기준 `오늘 공동손익`과 현재 전략 버전의 `오늘 전략 모의결과`를 따로
   보여 준다. 전략 BASE·STRESS 두 비용 결과는 고유 진입기회 한 번으로 세고 원장 2행은 그대로

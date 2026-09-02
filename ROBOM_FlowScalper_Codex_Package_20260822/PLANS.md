@@ -918,3 +918,26 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 자연 qualified signal이 0이면 원인 경로를 기록하되 거래를 만들기 위해 전략·비용·TP·SL·안전
   기준을 낮추지 않는다. 6시간·24시간, 수익성과 실자금 준비는 독립적으로 `NOT_RUN`·
   `NOT_PROVEN`·`NOT_READY`를 유지한다.
+
+## Wave 153 WAL 체크포인트 전용 I/O 구간
+
+- 설치된 이전 release에서 별도 process WAL 체크포인트와 시장 원장 flush가 같은 외장 APFS에
+  겹쳐 최대 82.687초 checkpoint, 최대 19회 동시 flush, 저장 buffer와 임계지연 증가로 이어진
+  경로를 진단한다. 저장 fault·drop 0과 자동 복구는 결함 해결로 대신하지 않는다.
+- checkpoint child의 낮은 CPU niceness는 유지하고 background I/O 제한은 해제한다. replay와
+  저장 process가 겹치지 않도록 기존 저장 I/O gate의 배타 구간을 사용한다.
+- checkpoint 진행 중 새 시장·universe flush는 보류하되 공개시장 수신, 호가별 TP·SL·runner와
+  PAPER 포지션 관리는 계속한다. bounded buffer와 기존 backlog 진입잠금 기준을 유지하고 완료
+  직후 250-event batch로 모두 배출한다.
+- 작은 논리 WAL 연기, PASSIVE, 별도 process, 불완전·과대 WAL fail-closed, 원자 원장,
+  `synchronous=FULL`, checksum과 불변 거래는 유지한다. 전략·비용·진입·TP·SL을 바꾸지 않는다.
+- checkpoint 대기 중 동시 flush 0과 완료 뒤 buffer 0을 회귀 고정하고 backend 전체,
+  frontend, lint·typecheck·build·PAPER safety·security·위생·회귀계약과 공식 fixture E2E를
+  통과한다.
+- 구현 commit은 `f1c52e98bb2b5aeda8de291bd870fae6783cfb4a`이고 자동검증은 완료했다. 현재 이전
+  release의 BTWUSDT 한 자연 기회가 BASE·STRESS 두 계좌에서 TP1 뒤 runner로 보호 중이므로
+  강제 종료·재시작하지 않는다.
+- open·pending 0의 자연 flat 시점에만 CAS pause·prepare·불변 release 설치·resume을 수행하고,
+  실제 checkpoint 완료시간, 동시 flush 0, buffer 회복, 지연, event·전략평가 전진, 저장 fault·
+  drop 0과 원장 안전을 관찰한다. 설치와 관찰 전 상태는 `BLOCKED_OPEN_PAPER_POSITION`·`NOT_RUN`,
+  수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.

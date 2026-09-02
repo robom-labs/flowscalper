@@ -5566,3 +5566,94 @@ buffer drop 0, last error null이었다. 후속 확인에서도 event 81,252와 
 
 현재 상태는 `COMPLETE_WITH_LIMITS`다. 프로그램과 자동 PAPER 진입 경로는 정상 작동 중이지만,
 자연 신호가 없던 관찰 구간을 억지 거래로 바꾸거나 수익성 증거로 해석하지 않는다.
+
+## 115. Wave 153 WAL 체크포인트 I/O 경합 제거
+
+### 115.1 실제 서비스에서 확인한 원인
+
+소스 기준선과 GitHub main은 `d2b67d6ab1a8930e9ebd9d592bc4b1b328538bf8`, 설치 서비스는
+이전 불변 release `1164ff92d0a11b63ab35b1a7c651614146721823`, Run은 계속
+`run-2b7135a972dd`였다. 설치 서비스의 공개시장 event와 전략 평가는 전진하고 저장 fault·drop은
+0이었지만, WAL `PASSIVE` 체크포인트가 62.766초, 48.181초, 최대 82.687초 걸렸다. 한
+체크포인트와 겹친 persistence flush는 최근 7회·최대 19회였고, 같은 구간에 시장 저장 buffer
+4,327건, 처리 P95 1,076.640ms, 거래호가 P95 2,009.945ms와 임계지연 사고 12회가 관찰됐다.
+
+코드 대조 결과 체크포인트는 별도 process였지만 macOS background I/O 우선순위로 실행되는 동안
+같은 외장 APFS의 archive·SQLite `synchronous=FULL` flush를 계속 허용했다. 이벤트 루프 분리는
+돼 있어도 물리 디스크 쓰기가 서로 경쟁하는 구조였다. 자동 안전대기는 신규 진입만 잠갔고
+체크포인트 뒤 `RUNNING`·`ENTRY_ENABLED`, queue 0, 저장 buffer 13건, 처리·거래 P95
+26.224/42.937ms로 복구했다. 따라서 저장 유실이나 원장 오류가 아니라 반복되는 I/O 경합 성능
+결함으로 분류했다.
+
+같은 관찰 중 2026-09-03 04:30:05 KST에 `30분 돌파 후 재확인` 전략이 BTWUSDT LONG 자연
+신호를 만들어 BASE·STRESS 두 독립계좌에 같은 PAPER 기회가 진입했다. 진입 0.5111500,
+TP1 0.5293300, TP2 0.5478300, 초기 SL 0.4921500의 불변 계획이며 이후 TP1이 체결돼
+`RUNNER_ACTIVE`, 비용보정 손익분기 보호선 상태로 전환됐다. 이 거래는 강제 종료하지 않았다.
+
+### 115.2 구현
+
+구현 commit `f1c52e98bb2b5aeda8de291bd870fae6783cfb4a`에서 다음을 적용했다.
+
+- WAL 체크포인트 child는 낮은 CPU niceness를 유지하되 background I/O 제한을 해제한다.
+- checkpoint를 기존 `storage_io_priority_gate`의 배타 구간에서 실행한다.
+- 체크포인트 중 시장 event·universe flush를 새로 시작하지 않고 공개시장 수신과 PAPER 포지션
+  관리는 계속한다. 받은 event는 기존 bounded buffer에 보존한다.
+- 체크포인트 완료 직후 250-event batch로 buffer를 순차 배출한다. 기존 10,000건 backlog
+  fail-closed와 2,000건 복구 기준은 유지한다.
+- 서비스 종료도 체크포인트부터 기다린 뒤 마지막 buffer를 확정해 종료 flush와 겹치지 않게 했다.
+- 전략 임계값, 후보, 호가 체결, 비용, 레버리지, 수량과 TP1·TP2·SL은 바꾸지 않았다.
+
+결정과 ADR-111의 교체 범위는
+`docs/adr/ADR-139-exclusive-wal-checkpoint-io-window.md`에 기록했다. 체크포인트를 의도적으로
+멈춘 회귀검사에서 첫 flush 뒤 750개 event가 buffer에 남고 동시 flush 0을 유지했으며,
+해제 뒤 네 flush로 1,000개 event와 buffer 0을 확인했다.
+
+### 115.3 자동 검증과 보존한 실패
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| checkpoint·persistence 집중검사 | `PASS` | 13건 |
+| 운영안전·회귀계약 집중검사 | `PASS` | 63건 |
+| backend 전체 | `PASS` | 1,562건 |
+| frontend 전체 Vitest | `PASS` | 15 files·121건 |
+| Ruff·mypy | `PASS` | mypy 128 source files 오류 0 |
+| ESLint·TypeScript·Vite build | `PASS` | 54 modules·main gzip 143.15kB |
+| fixture backend | `PASS` | 37건 |
+| PAPER build safety·security | `PASS_ZERO` | 163 source·위반·secret·실제 주문 경로 0 |
+| repository hygiene·회귀계약 | `PASS` | 계약 31개·anchor 60개·token 134개 |
+| 공식 fixture Playwright | `PASS` | desktop·tablet·mobile 7 PASS·2 설계상 SKIP |
+
+첫 직접 `pnpm e2e`는 내장 기본 Playwright cache에 revision 1234 실행파일이 없어 9건 모두
+실행 전 실패했다. 제품 실패로 바꾸지 않고 환경 실패로 보존했으며, 외장 cache 경계를 적용하는
+공식 `make e2e`를 다시 실행해 fixture backend 37건과 Playwright 7 PASS·2 설계상 SKIP을
+확인했다. 실행하지 않은 검증은 PASS로 기록하지 않았다.
+
+### 115.4 설치·관찰 경계와 현재 판정
+
+새 구현은 자동검증을 통과했지만 설치 서비스에는 아직 적용하지 않았다. 실제 이전 release가
+BTWUSDT 한 기회를 BASE·STRESS 두 계좌에서 보호하고 있어 `paper_portfolio_flat=false`, open 2,
+pending 0이다. 열린 PAPER 계획을 강제 청산하거나 중간 재시작하지 않고 자연 종료 뒤에만
+CAS pause→prepare→불변 release 설치→resume을 수행한다.
+
+마지막 실제 관찰 시각 2026-09-03 05:42:27 KST에 이전 서비스는 `RUNNING`·`ENTRY_ENABLED`,
+event 2,219,433, 전략평가 1,840,044, queue 0, 저장 buffer 13, 처리·거래 P95
+26.224/42.937ms였고 저장 fault·buffer drop·event drop은 0이었다. 두 포지션은 TP1 뒤 runner가
+작동 중이었다. 이 정상 회복은 이전 release의 현재 상태일 뿐 새 I/O 수정의 설치 증거가 아니다.
+
+기계판독 근거는 `evidence/WAVE153_WAL_CHECKPOINT_IO_WINDOW_PREINSTALL.json`에 보존한다.
+
+| 항목 | 상태 |
+|---|---|
+| 원인 재현·코드 수정·자동 회귀 | `PASS` |
+| 현재 PAPER 거래·TP1 runner 보호 | `PASS_OBSERVED` |
+| 새 release 설치 | `BLOCKED_OPEN_PAPER_POSITION` |
+| 설치 후 실제 checkpoint 동시 flush 0·지연 관찰 | `NOT_RUN` |
+| SQLite 닫힌 사본 무결성 | `NOT_RUN` |
+| 6시간·24시간 | `NOT_RUN` |
+| 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+
+현재 상태는 `IMPLEMENTED_AUTOMATED_VALIDATION_PASS_RUNTIME_INSTALL_BLOCKED_OPEN_PAPER_POSITION`이다.
+다음 안전한 종료 조건은 현재 기회의 자연 종료로 open·pending 0이 되는 시점이다. 그때 새 release를
+설치하고 실제 체크포인트 완료시간, 동시 flush 0, buffer 회복, 지연, 유실 0과 원장 상태를 다시
+관찰하기 전에는 성능 결함 해결 완료로 판정하지 않는다.

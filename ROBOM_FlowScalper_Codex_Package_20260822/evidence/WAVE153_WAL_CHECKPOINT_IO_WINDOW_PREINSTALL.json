@@ -1,0 +1,158 @@
+{
+  "schema": "flowscalper.wave153.wal_checkpoint_io_window.preinstall.v1",
+  "recorded_date": "2026-09-03",
+  "status": "IMPLEMENTED_AUTOMATED_VALIDATION_PASS_RUNTIME_INSTALL_BLOCKED_OPEN_PAPER_POSITION",
+  "source": {
+    "baseline_commit": "d2b67d6ab1a8930e9ebd9d592bc4b1b328538bf8",
+    "implementation_commit": "f1c52e98bb2b5aeda8de291bd870fae6783cfb4a"
+  },
+  "observed_installed_runtime": {
+    "release_commit": "1164ff92d0a11b63ab35b1a7c651614146721823",
+    "run_id": "run-2b7135a972dd",
+    "important_boundary": "These observations are from the prior installed release, not proof of the new implementation.",
+    "defect_snapshot": {
+      "server_time_ms": 1788380976015,
+      "operation_state": "RUNNING",
+      "paper_entry_intent": "ENTRY_ENABLED",
+      "wal_checkpoint_count": 105,
+      "wal_checkpoint_last_ms": 82687.0,
+      "wal_checkpoint_max_ms": 82687.0,
+      "wal_checkpoint_slow_count": 71,
+      "wal_checkpoint_last_concurrent_flush_delta": 7,
+      "wal_checkpoint_max_concurrent_flush_delta": 19,
+      "market_persistence_buffer": 4327,
+      "lag_p95_ms": 1076.64013671875,
+      "trade_lag_p95_ms": 2009.944580078125,
+      "critical_lag_incident_count": 12,
+      "persistence_fault_count": 0,
+      "persistence_buffer_dropped": 0,
+      "dropped_events": 0
+    },
+    "automatic_recovery_snapshot": {
+      "server_time_ms": 1788381747686,
+      "operation_state": "RUNNING",
+      "paper_entry_intent": "ENTRY_ENABLED",
+      "queue_depth": 0,
+      "market_persistence_buffer": 13,
+      "lag_p95_ms": 26.224365234375,
+      "trade_lag_p95_ms": 42.936767578125,
+      "wal_checkpoint_last_ms": 28467.0,
+      "wal_checkpoint_max_ms": 82687.0,
+      "persistence_fault_count": 0,
+      "persistence_buffer_dropped": 0,
+      "dropped_events": 0
+    },
+    "protected_position_boundary": {
+      "paper_portfolio_flat": false,
+      "open_position_rows": 2,
+      "unique_opportunities": 1,
+      "strategy_id": "BREAKOUT_RETEST_30M_V2",
+      "strategy_name_ko": "30분 돌파 후 재확인",
+      "symbol": "BTWUSDT",
+      "side": "LONG",
+      "profiles": [
+        "BASE",
+        "STRESS"
+      ],
+      "trailing_state": "RUNNER_ACTIVE",
+      "forced_close": false
+    }
+  },
+  "implemented_contract": {
+    "checkpoint_cpu_priority": "LOW",
+    "checkpoint_io_priority": "FOREGROUND",
+    "storage_io_gate": "EXCLUSIVE",
+    "persistence_flush_during_checkpoint": false,
+    "universe_flush_during_checkpoint": false,
+    "event_ingestion_during_checkpoint": true,
+    "position_management_during_checkpoint": true,
+    "bounded_buffer_and_existing_backlog_fail_closed": true,
+    "shutdown_waits_for_checkpoint_before_final_drain": true,
+    "strategy_thresholds_changed": false,
+    "entry_exit_plan_changed": false
+  },
+  "automated_validation": {
+    "focused_checkpoint_and_persistence": {
+      "status": "PASS",
+      "passed": 13,
+      "deselected": 47
+    },
+    "operational_safety_and_regression_contracts": {
+      "status": "PASS",
+      "passed": 63
+    },
+    "backend_full": {
+      "status": "PASS",
+      "passed": 1562,
+      "duration_seconds": 133.65
+    },
+    "frontend_full": {
+      "status": "PASS",
+      "test_files": 15,
+      "passed": 121
+    },
+    "ruff": "PASS",
+    "mypy": {
+      "status": "PASS",
+      "source_files": 128
+    },
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_build": {
+      "status": "PASS",
+      "modules": 54,
+      "main_gzip_kb": 143.15
+    },
+    "paper_build_safety": "PASS_ZERO",
+    "security_scan": {
+      "status": "PASS_ZERO",
+      "source_files": 163,
+      "violations": 0,
+      "secret_like_files": 0,
+      "real_order_path": false
+    },
+    "repository_hygiene": "PASS",
+    "regression_contracts": {
+      "status": "PASS",
+      "contract_count": 31,
+      "anchor_count": 60,
+      "anchor_token_count": 134
+    },
+    "fixture_backend": {
+      "status": "PASS",
+      "passed": 37
+    },
+    "fixture_playwright": {
+      "status": "PASS",
+      "passed": 7,
+      "skipped_by_design": 2,
+      "preserved_initial_failure": "Direct pnpm e2e used an unavailable internal Playwright cache. The official make e2e command used the configured external cache and passed."
+    }
+  },
+  "runtime_install": {
+    "status": "BLOCKED_OPEN_PAPER_POSITION",
+    "reason": "The existing release is protecting one natural PAPER opportunity in BASE and STRESS accounts. It was not force-closed or restarted.",
+    "required_precondition": {
+      "paper_portfolio_flat": true,
+      "open_positions": 0,
+      "pending_entries": 0
+    },
+    "post_install_live_checkpoint_observation": "NOT_RUN",
+    "sqlite_integrity_snapshot": "NOT_RUN"
+  },
+  "paper_safety": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "private_api_enabled": false,
+    "auth_required": false,
+    "api_key_enabled": false,
+    "wallet_enabled": false,
+    "runtime_ai_order_decision_enabled": false
+  },
+  "long_duration": {
+    "six_hour": "NOT_RUN",
+    "twenty_four_hour": "NOT_RUN"
+  },
+  "profitability": "NOT_PROVEN",
+  "funding_readiness": "NOT_READY"
+}
