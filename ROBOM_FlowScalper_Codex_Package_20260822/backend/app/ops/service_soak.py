@@ -10,8 +10,6 @@ from typing import Any
 
 from backend.app.storage.integrity import RuntimeSafetyViolation
 
-_MAX_LOGICAL_WAL_BYTES_WITHOUT_CHECKPOINT = 64 * 1024 * 1024
-
 
 @dataclass(frozen=True, slots=True)
 class RunningServiceSoakThresholds:
@@ -120,6 +118,7 @@ class RunningServiceSample:
     wal_checkpointed_frames: int
     wal_checkpoint_deferred_count: int
     wal_checkpoint_last_wal_bytes: int
+    wal_checkpoint_soft_bytes: int
     wal_checkpoint_pending_bytes: int
     wal_checkpoint_running: bool
     wal_checkpoint_current_concurrent_flush_delta: int
@@ -394,6 +393,10 @@ def parse_running_service_sample(
             system.get("wal_checkpoint_last_wal_bytes"),
             "system.wal_checkpoint_last_wal_bytes",
         ),
+        wal_checkpoint_soft_bytes=_integer(
+            system.get("wal_checkpoint_soft_bytes"),
+            "system.wal_checkpoint_soft_bytes",
+        ),
         wal_checkpoint_pending_bytes=_integer(
             system.get("wal_checkpoint_pending_bytes"),
             "system.wal_checkpoint_pending_bytes",
@@ -586,16 +589,8 @@ def summarize_running_service_soak(
         observed_wal_checkpoint_latencies,
         default=0.0,
     )
-    maximum_wal_checkpoint_concurrent_flush_delta = max(
-        sample.wal_checkpoint_max_concurrent_flush_delta for sample in samples
-    )
     wal_checkpoint_runtime_impact_bounded = (
         maximum_wal_checkpoint_latency <= active_thresholds.max_wal_checkpoint_last_ms
-        or (
-            maximum_wal_checkpoint_concurrent_flush_delta > 0
-            and final.persistence_flush_count > baseline.persistence_flush_count
-            and final.wal_checkpoint_pending_bytes < _MAX_LOGICAL_WAL_BYTES_WITHOUT_CHECKPOINT
-        )
     )
     baseline_strategy_ids = {state.strategy_id for state in baseline.strategy_states}
     counter_checks = {
@@ -770,7 +765,7 @@ def summarize_running_service_soak(
             final.wal_checkpoint_count > baseline.wal_checkpoint_count
             or (
                 final.wal_checkpoint_deferred_count > baseline.wal_checkpoint_deferred_count
-                and final.wal_checkpoint_pending_bytes < 16 * 1024 * 1024
+                and final.wal_checkpoint_pending_bytes < final.wal_checkpoint_soft_bytes
             )
         ),
         "wal_checkpoint_count_monotonic": all(
@@ -787,6 +782,12 @@ def summarize_running_service_soak(
             for previous, current in adjacent_samples
         ),
         "wal_checkpoint_runtime_impact_bounded": (wal_checkpoint_runtime_impact_bounded),
+        "wal_checkpoint_io_exclusive": all(
+            sample.wal_checkpoint_current_concurrent_flush_delta == 0
+            and sample.wal_checkpoint_last_concurrent_flush_delta == 0
+            and sample.wal_checkpoint_max_concurrent_flush_delta == 0
+            for sample in samples
+        ),
         "wal_checkpoint_complete_at_end": (
             final.wal_checkpoint_log_frames == final.wal_checkpointed_frames
         ),

@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "status": "FAIL_POSTINSTALL_THRESHOLD_REPRODUCED",
+  "observed_date_kst": "2026-09-03",
+  "source_head": "917c624269cf74f8341c7e7ee99c4e4d29ac0823",
+  "active_release": "917c624269cf74f8341c7e7ee99c4e4d29ac0823",
+  "run_id": "run-2b7135a972dd",
+  "install": {
+    "same_run_preserved": true,
+    "cas_pause_revision": 105,
+    "cas_resume_revision": 106,
+    "final_operation_state": "RUNNING",
+    "final_entry_intent": "ENTRY_ENABLED",
+    "paper_portfolio_flat": true,
+    "open_positions": 0,
+    "pending_entries": 0
+  },
+  "postinstall_checkpoints": [
+    {
+      "ordinal": 1,
+      "elapsed_ms": 36908.0,
+      "log_frames": 4122,
+      "checkpointed_frames": 4122,
+      "concurrent_flush_delta": 0,
+      "persistence_backlog_peak": 4841,
+      "event_count_after": 30405,
+      "strategy_evaluation_count_after": 24600,
+      "processing_lag_p95_ms_after": 25.483154296875,
+      "trade_lag_p95_ms_after": 51.42138671875
+    },
+    {
+      "ordinal": 2,
+      "elapsed_ms": 35902.0,
+      "concurrent_flush_delta": 0,
+      "event_count_after": 55089,
+      "strategy_evaluation_count_after": 44388,
+      "market_persistence_buffer_after": 169,
+      "queue_depth_after": 0,
+      "processing_lag_p95_ms_after": 29.953369140625,
+      "trade_lag_p95_ms_after": 67.1591796875
+    }
+  ],
+  "later_recovery_observation": {
+    "observed_at_ms": 1788388887125,
+    "checkpoint_count": 11,
+    "checkpoint_last_ms": 18069.0,
+    "checkpoint_max_ms": 36908.0,
+    "checkpoint_last_concurrent_flush_delta": 0,
+    "checkpoint_max_concurrent_flush_delta": 0,
+    "event_count": 271494,
+    "strategy_evaluation_count": 229248,
+    "queue_depth": 29,
+    "processing_lag_p95_ms": 24.0771484375,
+    "trade_lag_p95_ms": 35.61962890625,
+    "market_persistence_buffer": 45,
+    "persistence_fault_count": 0,
+    "persistence_buffer_dropped": 0,
+    "dropped_events": 0,
+    "unplanned_reconnects": 0,
+    "sequence_gaps": 0,
+    "resyncs": 0
+  },
+  "checks": {
+    "same_run_release_installed": "PASS",
+    "paper_entry_resumed": "PASS",
+    "checkpoint_io_exclusive": "PASS",
+    "events_and_strategy_evaluations_advanced": "PASS",
+    "persistence_faults_zero": "PASS",
+    "buffer_and_event_drops_zero": "PASS",
+    "new_checkpoint_under_30_seconds": "FAIL"
+  },
+  "followup": {
+    "decision": "ADR-140",
+    "wal_checkpoint_soft_bytes_before": 16777216,
+    "wal_checkpoint_soft_bytes_after": 8388608,
+    "runtime_change_implemented": true,
+    "runtime_change_deployed": false,
+    "automated_validation": {
+      "focused_tests_passed": 30,
+      "backend_tests_passed": 1562,
+      "frontend_tests_passed": 121,
+      "fixture_backend_tests_passed": 37,
+      "playwright_passed": 7,
+      "playwright_skipped_by_design": 2,
+      "ruff": "PASS",
+      "mypy_source_files": 128,
+      "eslint": "PASS",
+      "typescript": "PASS",
+      "build_modules": 54,
+      "paper_build_safety": "PASS_ZERO",
+      "security_source_files": 163,
+      "repository_hygiene": "PASS",
+      "regression_contracts": 31
+    },
+    "profitability": "NOT_PROVEN",
+    "funding_readiness": "NOT_READY",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN"
+  },
+  "paper_safety": {
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "private_api_enabled": false,
+    "api_key_enabled": false,
+    "wallet_enabled": false,
+    "runtime_ai_order_decision_enabled": false
+  }
+}

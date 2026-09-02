@@ -5657,3 +5657,56 @@ event 2,219,433, 전략평가 1,840,044, queue 0, 저장 buffer 13, 처리·거�
 다음 안전한 종료 조건은 현재 기회의 자연 종료로 open·pending 0이 되는 시점이다. 그때 새 release를
 설치하고 실제 체크포인트 완료시간, 동시 flush 0, buffer 회복, 지연, 유실 0과 원장 상태를 다시
 관찰하기 전에는 성능 결함 해결 완료로 판정하지 않는다.
+
+## 116. Wave 154 8MiB WAL 체크포인트 실행 구간
+
+### 116.1 Wave 153 안전 설치와 실제 실패 보존
+
+BTWUSDT 자연 PAPER 기회는 TP1 후 runner가 보호한 뒤 초기 손절이 아닌
+trailing STOP으로 자연 종료됐다. BASE는 비용 후 +1.043983444 USDT, STRESS는
++0.846582144 USDT였고 TP2는 도달하지 않았다. 이는 한 기회의 양수 표본일 뿐이며
+수익성은 계속 `NOT_PROVEN`이다.
+
+자연 flat, open 0, pending 0을 확인한 뒤 CAS revision 104→105로 일시정지하고,
+`--prepare-only`과 안전 설치를 완료했다. 활성 release는
+`917c624269cf74f8341c7e7ee99c4e4d29ac0823`, Run은 기존
+`run-2b7135a972dd`를 보존했다. API에서 새 release와 같은 Run을 확인한 뒤
+revision 105→106으로 resume해 `RUNNING`·`ENTRY_ENABLED`를 복원했다.
+
+새 release의 첫 두 실제 checkpoint는 각각 36.908초와 35.902초가 걸렸다.
+두 구간의 concurrent flush delta는 모두 0, WAL busy·fault·buffer drop·event drop은 0이었고,
+event·전략평가도 전진했다. 그러나 30초 상한을 넘었으므로 Wave 153을 완전 PASS로
+판정하지 않는다. 후속 checkpoint는 9.779초와 18.069초까지 회복했지만 실패 표본은
+그대로 보존한다.
+
+기계판독 근거는 `evidence/WAVE153_POSTINSTALL_CHECKPOINT_THRESHOLD_FAILURE.json`이다.
+
+### 116.2 후속 수정
+
+ADR-140에 따라 미확정 WAL soft threshold를 16MiB에서 8MiB로 낮춰 한 번의
+체크포인트 실행 구간과 그 동안 쌓이는 buffer를 줄였다. PASSIVE·별도 process·
+배타 I/O gate·`synchronous=FULL`·250-event flush·64MiB fail-closed는 유지했다.
+
+서비스 관찰기는 runtime의 `wal_checkpoint_soft_bytes`를 직접 사용하고,
+30초를 넘는 신규 checkpoint나 concurrent flush가 한 번이라도 있으면 FAIL로 판정한다.
+기존의 느린 checkpoint 허용 예외는 제거했다. 전략·비용·진입·TP·SL·체결은
+변경하지 않았다.
+
+| 항목 | 상태 |
+|---|---|
+| Wave 153 같은 Run 설치·자동진입 복원 | `PASS` |
+| Wave 153 checkpoint 동시 flush 0 | `PASS` |
+| Wave 153 첫 두 checkpoint 30초 상한 | `FAIL_PRESERVED` |
+| Wave 154 8MiB 수정 집중 회귀 | `PASS` 30건 |
+| backend 전체 | `PASS` 1,562건 |
+| frontend 전체 | `PASS` 15 files·121건 |
+| Ruff·mypy·ESLint·TypeScript·build | `PASS` mypy 128 source·build 54 modules |
+| fixture backend·Playwright | `PASS` 37건·7 PASS·2 설계상 SKIP |
+| PAPER build safety·security | `PASS_ZERO` 163 source·실제주문 경로 0 |
+| repository hygiene·회귀계약 | `PASS` 31 contracts·61 anchors·135 tokens |
+| Wave 154 실제 release 설치·신규 checkpoint 2회 | `NOT_RUN` |
+| 6시간·24시간 | `NOT_RUN` |
+| 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+
+현재 상태는 `WAVE153_POSTINSTALL_THRESHOLD_FAIL_WAVE154_AUTOMATED_VALIDATION_PASS_RUNTIME_INSTALL_NOT_RUN`이다.

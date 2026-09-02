@@ -121,6 +121,7 @@ def _payload() -> dict[str, object]:
             "wal_checkpointed_frames": 10,
             "wal_checkpoint_deferred_count": 0,
             "wal_checkpoint_last_wal_bytes": 1_000,
+            "wal_checkpoint_soft_bytes": 8 * 1024 * 1024,
             "wal_checkpoint_pending_bytes": 1_000,
             "wal_checkpoint_running": False,
             "wal_checkpoint_current_concurrent_flush_delta": 0,
@@ -177,8 +178,8 @@ def _advanced_payload() -> dict[str, object]:
             "consumer_delivery_count": 300,
             "persistence_flush_count": 12,
             "wal_checkpoint_count": 3,
-            "wal_checkpoint_last_concurrent_flush_delta": 2,
-            "wal_checkpoint_max_concurrent_flush_delta": 2,
+            "wal_checkpoint_last_concurrent_flush_delta": 0,
+            "wal_checkpoint_max_concurrent_flush_delta": 0,
             "process_memory_mb": 210.0,
             "process_memory_peak_mb": 230.0,
             "process_uptime_seconds": 130.0,
@@ -316,8 +317,8 @@ def test_running_service_soak_passes_only_with_exact_progress_and_dynamic_accoun
     assert result["persistence_backlog_entry_lock_delta"] == 0
     assert result["wal_checkpoint_deferred_delta"] == 0
     assert result["wal_checkpoint_completed_delta"] == 1
-    assert result["maximum_wal_checkpoint_last_concurrent_flush_delta"] == 2
-    assert result["maximum_wal_checkpoint_concurrent_flush_delta"] == 2
+    assert result["maximum_wal_checkpoint_last_concurrent_flush_delta"] == 0
+    assert result["maximum_wal_checkpoint_concurrent_flush_delta"] == 0
     assert result["failures"] == []
     assert result["paper_safety"]["additional_market_connection_started"] is False
 
@@ -375,7 +376,7 @@ def test_running_service_soak_rejects_new_slow_storage_work() -> None:
     assert "wal_checkpoint_runtime_impact_bounded" in result["failures"]
 
 
-def test_running_service_soak_accepts_slow_nonblocking_checkpoint() -> None:
+def test_running_service_soak_rejects_slow_or_concurrent_checkpoint() -> None:
     nonblocking = _advanced_payload()
     system = nonblocking["system"]
     assert isinstance(system, dict)
@@ -394,9 +395,10 @@ def test_running_service_soak_accepts_slow_nonblocking_checkpoint() -> None:
         requested_duration_seconds=30.0,
     )
 
-    assert result["status"] == "PASS"
+    assert result["status"] == "FAIL"
     assert result["maximum_wal_checkpoint_last_ms"] == 40_494.0
-    assert result["checks"]["wal_checkpoint_runtime_impact_bounded"] is True
+    assert "wal_checkpoint_runtime_impact_bounded" in result["failures"]
+    assert "wal_checkpoint_io_exclusive" in result["failures"]
 
 
 def test_running_service_soak_rejects_stalled_strategy_and_new_faults() -> None:

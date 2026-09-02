@@ -941,3 +941,20 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   실제 checkpoint 완료시간, 동시 flush 0, buffer 회복, 지연, event·전략평가 전진, 저장 fault·
   drop 0과 원장 안전을 관찰한다. 설치와 관찰 전 상태는 `BLOCKED_OPEN_PAPER_POSITION`·`NOT_RUN`,
   수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+## Wave 154 8MiB WAL 체크포인트 실행 구간
+
+- Wave 153 release를 자연 flat 시점에 같은 Run으로 설치하고 CAS resume로
+  `RUNNING`·`ENTRY_ENABLED`를 복원했다. 체크포인트 동시 flush는 0으로 고정됐다.
+- 첫 두 16MiB checkpoint가 36.908초·35.902초로 30초 수용 상한을 넘은 실패를
+  `evidence/WAVE153_POSTINSTALL_CHECKPOINT_THRESHOLD_FAILURE.json`에 보존한다.
+- 후속 checkpoint는 9.779초·18.069초로 회복했지만 초기 실패를 PASS로 바꾸지
+  않고, ADR-140에 따라 soft threshold를 8MiB로 낮춰 한 번의 I/O 구간을 줄인다.
+- 관찰기의 16MiB 중복 상수를 runtime 노출 threshold로 교체하고, 30초 초과나
+  동시 flush를 허용하던 예외를 제거해 둘 중 하나라도 발생하면 FAIL로 고정한다.
+- backend·관찰기·회귀계약·정적검사·PAPER safety·security를 재검증하고 자연 flat이
+  유지될 때 다시 불변 release를 설치한다.
+- 설치 후 적어도 두 번의 신규 checkpoint가 모두 30초 이내·동시 flush 0인지,
+  buffer·queue·지연·event·전략평가·fault·drop·원장 안전을 실제 서비스에서 확인한다.
+- 전략·비용·진입·TP·SL·체결·레버리지는 바꾸지 않고, 6시간·24시간과 수익성은
+  각각 `NOT_RUN`·`NOT_PROVEN`을 유지한다.
