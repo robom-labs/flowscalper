@@ -85,6 +85,47 @@ def decision_for(rows, strategy_id: str, side: Side):
     )
 
 
+def prime_vwap_reversion_path(evaluator, registry: StrategyRegistry) -> None:
+    prices = (
+        100.7,
+        100.9,
+        101.1,
+        100.8,
+        101.0,
+        100.7,
+        100.9,
+        101.1,
+        100.8,
+        101.0,
+        100.7,
+        100.9,
+        100.6,
+        100.4,
+        100.2,
+        99.9,
+        99.7,
+        99.8,
+        99.9,
+        99.95,
+    )
+    for index, mid in enumerate(prices):
+        signed = 100 + (index % 5) * 10
+        deviation_bps = 1 + index % 5
+        weak = replace(
+            aligned_features(
+                Side.LONG,
+                ts_ms=(index + 1) * 50,
+                signed=signed,
+            ),
+            mid=mid,
+            microprice=mid + 0.02,
+            micro_vwap_10s=mid * (1 + deviation_bps / 10_000),
+            ofi_3s=3.0,
+            price_response_efficiency=0.80,
+        )
+        evaluator.evaluate(registry, weak, Regime.RANGE)
+
+
 def test_runtime_reuses_four_side_and_exit_style_plans(monkeypatch) -> None:
     calls: list[tuple[Side, object]] = []
     original = runtime_evaluator._plan
@@ -114,17 +155,7 @@ def test_vwap_reentry_confirmation_requires_every_entry_condition_to_persist() -
     strategy_id = VwapExhaustionStrategy.strategy_id
     evaluator = StrategySignalEvaluator()
     registry = only_strategy(strategy_id)
-    for index, (signed, deviation_bps) in enumerate(
-        ((100, 1), (110, 2), (120, 3), (130, 4), (140, 5)),
-        start=1,
-    ):
-        weak = replace(
-            aligned_features(Side.LONG, ts_ms=index * 200, signed=signed),
-            micro_vwap_10s=100 + deviation_bps / 100,
-            ofi_3s=3.0,
-            price_response_efficiency=0.80,
-        )
-        evaluator.evaluate(registry, weak, Regime.RANGE)
+    prime_vwap_reversion_path(evaluator, registry)
 
     full_confluence = replace(
         aligned_features(Side.LONG, ts_ms=1_500, signed=1_000),

@@ -677,6 +677,14 @@ class StrategyRegistry:
                 evaluator=CompressionBreakoutStrategy(),
                 exit_style=ExitStyle.TREND_40_60,
                 research_contract=_RESEARCH_CONTRACTS["CBR_CONTINUATION_V1"],
+                exit_model="MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
+                exit_rules_ko=(
+                    "초기 손절은 최근 10초 돌파 뒤 실제 눌림 극값 바깥에 호가차·충격폭 완충",
+                    "TP1은 눌림 전 실제 돌파 고점·저점에서 40% 익절",
+                    "TP2는 첫 충격폭을 돌파점에서 투영한 측정 목표",
+                    "TP1 뒤 60% 잔량은 실제 눌림 폭으로 추적하며 손절은 넓히지 않음",
+                    "실제 호가·비용 후 순손익비가 부족하면 진입 거부",
+                ),
             ),
             StrategyDescriptor(
                 strategy_id="VWAP_EXHAUSTION_REVERSION_V1",
@@ -688,6 +696,13 @@ class StrategyRegistry:
                 evaluator=VwapExhaustionStrategy(),
                 exit_style=ExitStyle.REVERSION_70_30,
                 research_contract=_RESEARCH_CONTRACTS["VWAP_EXHAUSTION_REVERSION_V1"],
+                exit_model="VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
+                exit_rules_ko=(
+                    "초기 손절은 최근 2분 과도이탈 극값 바깥에 호가차·이탈폭 완충",
+                    "TP1은 과도이탈 전 실제 2분 가격대 중앙에서 70% 익절",
+                    "TP2는 과도이탈 전 반대편 확정 고저 또는 실제 이탈폭 대칭 범위에서 30% 익절",
+                    "비용후 구조 손익비가 부족하면 목표를 늘리지 않고 진입을 거부",
+                ),
             ),
             StrategyDescriptor(
                 strategy_id="OFI_CONTINUATION_PULLBACK_V1",
@@ -831,7 +846,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(1_800, 28_800),
                 signal_half_life_seconds=5,
                 required_timeframes=("15m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+                exit_model="MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.4"),
                 take_profit_2_r=Decimal("2.8"),
                 entry_rules_ko=(
@@ -842,9 +857,11 @@ class StrategyRegistry:
                     "신호 후 5초 이내 실제 bid·ask·OFI·체결 흐름 확인",
                 ),
                 exit_rules_ko=(
-                    "최근 두 완성봉 구조 밖에 초기 손절 고정",
-                    "TP1 1.4R에서 40%·TP2 2.8R에서 60% 익절",
-                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "최근 두 완성봉 구조 밖에 ATR 완충을 둔 초기 손절 고정",
+                    "TP1은 15분·1시간 확정 피벗·이전 일 고저·완성봉 ATR 채널 중 "
+                    "가장 가까운 유효 가격",
+                    "TP1에서 40% 익절하고 60% 잔량은 완성 15분봉 ATR 추적",
+                    "TP2는 다음 구조 가격이며 비용후 손익비가 부족하면 진입 거부",
                     "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
                 max_hold_seconds=None,
@@ -869,7 +886,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(3_600, 43_200),
                 signal_half_life_seconds=5,
                 required_timeframes=("15m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+                exit_model="MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.6"),
                 take_profit_2_r=Decimal("3.2"),
                 entry_rules_ko=(
@@ -880,8 +897,9 @@ class StrategyRegistry:
                 ),
                 exit_rules_ko=(
                     "재확인 구조 밖에 초기 손절 고정",
-                    "TP1 1.6R에서 40%·TP2 3.2R에서 60% 익절",
-                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "TP1·TP2는 15분·1시간 확정 피벗·이전 일 고저·돌파 측정폭·ATR 채널에서 선택",
+                    "TP1에서 40% 익절하고 60% 잔량은 완성 15분봉 ATR 추적",
+                    "비용후 손익비가 부족하면 임의 R배수 목표를 만들지 않고 진입 거부",
                     "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
                 max_hold_seconds=None,
@@ -906,7 +924,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(7_200, 64_800),
                 signal_half_life_seconds=5,
                 required_timeframes=("30m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+                exit_model="MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.6"),
                 take_profit_2_r=Decimal("3.2"),
                 entry_rules_ko=(
@@ -917,8 +935,9 @@ class StrategyRegistry:
                 ),
                 exit_rules_ko=(
                     "재확인 구조 밖에 초기 손절 고정",
-                    "TP1 1.6R에서 40%·TP2 3.2R에서 60% 익절",
-                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "TP1·TP2는 30분·1시간 확정 피벗·이전 일 고저·돌파 측정폭·ATR 채널에서 선택",
+                    "TP1에서 40% 익절하고 60% 잔량은 완성 30분봉 ATR 추적",
+                    "비용후 손익비가 부족하면 임의 R배수 목표를 만들지 않고 진입 거부",
                     "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
                 max_hold_seconds=None,
@@ -943,7 +962,7 @@ class StrategyRegistry:
                 expected_holding_seconds=(3_600, 57_600),
                 signal_half_life_seconds=5,
                 required_timeframes=("30m", "1h", "24h momentum", "public book flow"),
-                exit_model="STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+                exit_model="MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
                 take_profit_1_r=Decimal("1.5"),
                 take_profit_2_r=Decimal("3.0"),
                 entry_rules_ko=(
@@ -954,8 +973,9 @@ class StrategyRegistry:
                 ),
                 exit_rules_ko=(
                     "최근 두 완성봉 구조 밖에 초기 손절 고정",
-                    "TP1 1.5R에서 40%·TP2 3.0R에서 60% 익절",
-                    "일반 근거약화 조기청산 없음·손절은 넓히지 않음",
+                    "TP1·TP2는 30분·1시간 확정 피벗·이전 일 고저·ATR 채널에서 선택",
+                    "TP1에서 40% 익절하고 60% 잔량은 완성 30분봉 ATR 추적",
+                    "비용후 손익비가 부족하면 임의 R배수 목표를 만들지 않고 진입 거부",
                     "시간만으로 종료하지 않고 TP·구조 손절로 결판",
                 ),
                 max_hold_seconds=None,
@@ -1119,8 +1139,7 @@ class StrategyRegistry:
             setting = self.setting(strategy_id)
             descriptor = self.descriptor(strategy_id)
             has_active_state = (
-                setting.mode is StrategyMode.ACTIVE
-                or setting.lifecycle is StrategyLifecycle.ACTIVE
+                setting.mode is StrategyMode.ACTIVE or setting.lifecycle is StrategyLifecycle.ACTIVE
             )
             valid_governor_active = (
                 setting.mode is StrategyMode.ACTIVE
@@ -1141,8 +1160,7 @@ class StrategyRegistry:
                 setting.lifecycle = StrategyLifecycle.RETIRED
                 change_reason = POLICY_RETIREMENT_REASONS[strategy_id]
             elif (
-                descriptor.role is not StrategyRole.ENTRY
-                or not descriptor.default_research_enabled
+                descriptor.role is not StrategyRole.ENTRY or not descriptor.default_research_enabled
             ):
                 setting.mode = StrategyMode.OFF
                 setting.lifecycle = StrategyLifecycle.RESEARCH
@@ -1185,8 +1203,7 @@ class StrategyRegistry:
             if changed_by == StrategyChangeSource.AUTO_GOVERNOR.value:
                 recovery_token = self._recovery_row_tokens[strategy_id].get(revision)
                 return (
-                    recovery_token is not None
-                    and validated_tokens.get(revision) == recovery_token
+                    recovery_token is not None and validated_tokens.get(revision) == recovery_token
                 )
             if changed_by != StrategyChangeSource.USER_UI.value:
                 return False
@@ -1372,9 +1389,10 @@ class StrategyRegistry:
             raise ValueError("예약할 복구 strategy 원장 token이 없습니다.")
         historical_row = self._revision_history[strategy_id].get(revision)
         if revision <= setting.revision:
-            if historical_row is not None and historical_row.get(
-                "recovery_revision_reserved"
-            ) is True:
+            if (
+                historical_row is not None
+                and historical_row.get("recovery_revision_reserved") is True
+            ):
                 historical_token = self._recovery_row_tokens[strategy_id].get(revision)
                 if historical_token != recovery_row_token:
                     raise ValueError("예약된 strategy revision의 복구 원장 행이 다릅니다.")
@@ -1508,10 +1526,7 @@ class StrategyRegistry:
             raise ValueError(
                 "Shared Capital ACTIVE는 formal OOS gate를 통과한 Governor만 복원합니다."
             )
-        if (
-            target_mode is StrategyMode.ACTIVE
-            and not descriptor.is_current_variant
-        ):
+        if target_mode is StrategyMode.ACTIVE and not descriptor.is_current_variant:
             raise ValueError("V6 non-current variant의 과거 ACTIVE 설정은 복원할 수 없습니다.")
         setting.mode = target_mode
         setting.lifecycle = StrategyLifecycle(str(target["lifecycle"]))

@@ -77,9 +77,7 @@ class IntradayTrendStrategy:
             rejections.append("STALE_OR_DEGRADED_DATA")
         if context.regime in {Regime.SHOCK, Regime.DEGRADED, Regime.WARMUP}:
             rejections.append(f"REGIME_{context.regime.value}")
-        opposite_regime = (
-            Regime.TREND_DOWN if context.side is Side.LONG else Regime.TREND_UP
-        )
+        opposite_regime = Regime.TREND_DOWN if context.side is Side.LONG else Regime.TREND_UP
         if context.regime is opposite_regime:
             rejections.append("CURRENT_MICRO_REGIME_OPPOSES_TREND")
         if context.features.spread_bps > 12:
@@ -115,6 +113,7 @@ class IntradayTrendStrategy:
             take_profit=plan.target if plan else None,
             expected_cost_bps=context.plan.expected_total_cost_bps,
             net_reward_risk=plan.net_reward_risk if plan else None,
+            structural_exit=context.plan.structural_exit,
         )
 
 

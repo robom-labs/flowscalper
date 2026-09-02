@@ -184,9 +184,7 @@ def test_unicode_public_symbol_can_load_candles_and_be_selected() -> None:
     service = MarketExplorerService(binance_candle_loader=candles)
     client = TestClient(create_app(PaperRuntime(mode=RuntimeMode.READY), market_explorer=service))
 
-    history = client.get(
-        "/api/markets/candles?symbol=龙虾USDT&interval_seconds=14400&limit=200"
-    )
+    history = client.get("/api/markets/candles?symbol=龙虾USDT&interval_seconds=14400&limit=200")
     selected = client.post(
         "/api/markets/select",
         json={
@@ -364,8 +362,7 @@ def test_history_reads_use_purpose_built_order_indexes(tmp_path: Path) -> None:
     assert any("shadow_trades_history_run_order" in str(row["detail"]) for row in shadow_run)
     assert any("trades_history_all_order" in str(row["detail"]) for row in main_all)
     assert all(
-        "TEMP B-TREE" not in str(row["detail"])
-        for row in [*shadow_all, *shadow_run, *main_all]
+        "TEMP B-TREE" not in str(row["detail"]) for row in [*shadow_all, *shadow_run, *main_all]
     )
     ledger.close()
 
@@ -399,7 +396,7 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     session = first.json()
     assert session == second.json()
     assert ledger.count("replay_focus_cache") == 1
-    assert session["session_version"] == 8
+    assert session["session_version"] == 9
     assert session["default_speed"] == 5
     assert session["speeds"] == [0.5, 1, 2, 5, 10, 20, 40, 80]
     assert session["paper_only"] is True
@@ -408,6 +405,8 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     assert session["entry_context"]["signal_ts_ms"] == trade["entry_ts_ms"]
     assert isinstance(session["entry_context"]["reason_labels_ko"], list)
     assert isinstance(session["entry_context"]["required_timeframes"], list)
+    assert isinstance(session["entry_context"]["protection_timeframes_ko"], list)
+    assert isinstance(session["entry_context"]["runner_management_ko"], str)
     assert session["reconciliation"]["applicable"] is False
     assert session["reconciliation"]["matched"] is None
     assert session["reconciliation"]["reason"] == "OFFLINE_FIXTURE_UI_ONLY"
@@ -437,9 +436,9 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
     assert sum(Decimal(fill["fee_usdt"]) for fill in session["fills"]) == Decimal(
         trade["fees_usdt"]
     )
-    assert sum(
-        Decimal(fill["slippage_usdt"]) for fill in session["fills"]
-    ) == Decimal(trade["slippage_usdt"])
+    assert sum(Decimal(fill["slippage_usdt"]) for fill in session["fills"]) == Decimal(
+        trade["slippage_usdt"]
+    )
     assert [fill["intent"] for fill in session["fills"]] == ["ENTRY", "EXIT"]
     assert session["reconciliation"]["replay_final_state"] == "NOT_RUN"
 
@@ -460,7 +459,7 @@ def test_trade_focus_replay_hides_future_markers_and_is_deterministic(
             runtime.run_id,
             str(trade["trade_id"]),
             "BASE",
-            session_version=8,
+            session_version=9,
         )
     finally:
         ledger._read_lock = shared_read_lock  # noqa: SLF001
@@ -487,8 +486,7 @@ def test_trade_focus_replay_returns_session_when_optional_cache_is_busy(
     monkeypatch.setattr(ledger, "record_replay_focus_session", cache_busy)
     client = TestClient(create_app(runtime))
     response = client.get(
-        f"/api/replay/{runtime.run_id}/focus"
-        f"?trade_id={trade['trade_id']}&profile=BASE"
+        f"/api/replay/{runtime.run_id}/focus?trade_id={trade['trade_id']}&profile=BASE"
     )
 
     assert response.status_code == 200
@@ -498,9 +496,34 @@ def test_trade_focus_replay_returns_session_when_optional_cache_is_busy(
         runtime.run_id,
         str(trade["trade_id"]),
         "BASE",
-        session_version=8,
+        session_version=9,
     )
     assert remembered == response.json()
+
+
+def test_trade_focus_entry_context_exposes_frozen_price_rationales() -> None:
+    context = ReplayFocusSessionBuilder._entry_context(  # noqa: SLF001 - 원장 표현 계약
+        {
+            "strategy_id": "BREAKOUT_RETEST_15M_V2",
+            "strategy_version": "BREAKOUT_RETEST_15M_V2",
+        },
+        {
+            "regime": "TREND_UP",
+            "reason_codes": ["STRUCTURE_CONFIRMED"],
+            "management_policy": ["TP1_ATR_CHANDELIER_RUNNER"],
+            "stop_rationale_ko": "완성 15분봉 눌림 저점 바깥",
+            "take_profit_1_rationale_ko": "완성 15분봉 피벗",
+            "take_profit_2_rationale_ko": "완성 1시간봉 피벗",
+            "reference_timeframes_ko": ["완성 15분봉", "완성 1시간봉"],
+        },
+        {"signal_ts_ms": 1_000},
+    )
+
+    assert context["stop_rationale_ko"] == "완성 15분봉 눌림 저점 바깥"
+    assert context["take_profit_1_rationale_ko"] == "완성 15분봉 피벗"
+    assert context["take_profit_2_rationale_ko"] == "완성 1시간봉 피벗"
+    assert context["protection_timeframes_ko"] == ["완성 15분봉", "완성 1시간봉"]
+    assert "ATR 추적선" in str(context["runner_management_ko"])
 
 
 def test_stop_focus_marks_the_actual_exit_fill_not_the_initial_stop() -> None:
@@ -567,12 +590,15 @@ def test_trade_focus_reuses_verified_replay_covering_trade_window(tmp_path: Path
     )
 
     assert covered == replay
-    assert ReplayFocusSessionBuilder._covering_replay_result(
-        ledger,
-        run_id="run-covered-focus",
-        entry_ts_ms=1_500,
-        exit_ts_ms=3_500,
-    ) is None
+    assert (
+        ReplayFocusSessionBuilder._covering_replay_result(
+            ledger,
+            run_id="run-covered-focus",
+            entry_ts_ms=1_500,
+            exit_ts_ms=3_500,
+        )
+        is None
+    )
     ledger.close()
 
 

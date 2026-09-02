@@ -286,7 +286,7 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
     if (url.includes('/focus?')) {
       focusRequests += 1
       return new Response(JSON.stringify({
-        session_version: 8,
+        session_version: 9,
         run_id: 'run-costs', trade_id: 'trade-costs', profile: 'BASE',
         symbol: 'BTCUSDT', side: 'LONG', strategy_id: 'LSA_REVERSAL_V1',
         entry_context: {
@@ -297,6 +297,11 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
           strategy_summary_ko: '호가와 체결 흐름이 함께 확인된 반전만 연구합니다.',
           entry_hypothesis_ko: '가격 구조와 실제 호가 비용이 모두 맞을 때만 PAPER 진입합니다.',
           required_timeframes: ['3m'], entry_rules_ko: ['가격 구조 확인'], trade_strategy_version: 'V1',
+          stop_rationale_ko: '완성 15분봉 눌림 저점 바깥의 보호선입니다.',
+          take_profit_1_rationale_ko: '완성 15분봉의 첫 확정 피벗입니다.',
+          take_profit_2_rationale_ko: '완성 1시간봉의 다음 확정 피벗입니다.',
+          protection_timeframes_ko: ['완성 15분봉', '완성 1시간봉'],
+          runner_management_ko: '1차 익절 뒤 남은 수량은 완성봉 ATR 추적선으로 관리합니다.',
           registry_strategy_version: 'V1', registry_metadata_matches_trade: true,
           evidence_ko: '저장된 공개시장 신호·PAPER 원장 기준', paper_only: true,
         },
@@ -341,7 +346,10 @@ test('shows allocated entry and exit fees at the matching replay stage', async (
   expect(screen.getByText('실제 진입 1초 전')).toBeInTheDocument()
   expect(screen.getByText('진입 전 확인').closest('li')).toHaveAttribute('aria-current', 'step')
   expect(screen.getByText('왜 진입했나요?')).toBeInTheDocument()
+  expect(screen.getByText('왜 이 익절·손절가인가요?')).toBeInTheDocument()
   expect(screen.getByText('체결과 호가 흐름이 진입 방향을 확인했습니다.')).toBeInTheDocument()
+  expect(screen.getByText('완성 15분봉 눌림 저점 바깥의 보호선입니다.')).toBeInTheDocument()
+  expect(screen.getByText(/1차 익절 뒤 남은 수량은 완성봉 ATR/)).toBeInTheDocument()
   expect(screen.getByText('3분봉')).toBeInTheDocument()
   expect(screen.getByTestId('replay-chart')).toHaveAttribute('data-candle-count', '1')
   fireEvent.click(screen.getByRole('button', { name: '실제 진입' }))

@@ -15,11 +15,11 @@
 | C | `VWAP_EXHAUSTION_REVERSION_V1` | VWAP 과도이탈 평균복귀 | SHADOW | REVERSION_70_30 |
 | D | `OFI_CONTINUATION_PULLBACK_V1` | OFI 추세 눌림 지속 | OFF | TREND_40_60 |
 | E | `QUEUE_MICROPRICE_MOMENTUM_V1` | 호가 쏠림 순간추세 | OFF | TREND_40_60 |
-| F | `AGGRESSOR_FLOW_CONTINUATION_V1` | 강한 체결 흐름 지속 | SHADOW | TREND_40_60 |
-| G | `MULTILEVEL_MICROPRICE_MOMENTUM_V1` | 다중호가 공정가 추세 | SHADOW | TREND_40_60 |
+| F | `AGGRESSOR_FLOW_CONTINUATION_V1` | 강한 체결 흐름 지속 | OFF | TREND_40_60 |
+| G | `MULTILEVEL_MICROPRICE_MOMENTUM_V1` | 다중호가 공정가 추세 | OFF | TREND_40_60 |
 | H | `DEPTH_ADJUSTED_OFI_IMPULSE_V1` | 깊이보정 OFI 충격 | OFF | TREND_40_60 |
-| I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | SHADOW | TREND_40_60 |
-| J | `BOOK_SLOPE_ASYMMETRY_V1` | 호가 기울기 비대칭 | SHADOW | TREND_40_60 |
+| I | `OFI_RETURN_CONFLUENCE_V1` | OFI·단기수익률 동행 | OFF | TREND_40_60 |
+| J | `BOOK_SLOPE_ASYMMETRY_V1` | 호가 기울기 비대칭 | OFF | TREND_40_60 |
 | K | `HOURLY_MOMENTUM_BREAKOUT_V1` | 시간봉 추세 돌파 | OFF | TREND_40_60 |
 | L | `TREND_PULLBACK_RECLAIM_15M_V2` | 15분 추세 눌림 재상승 | SHADOW | TREND_40_60 |
 | M | `BREAKOUT_RETEST_15M_V2` | 15분 돌파 후 재확인 | SHADOW | TREND_40_60 |
@@ -69,11 +69,11 @@
 
 ## 6. Exit style
 
-- REVERSION은 TP1 70%, TP2 30%다.
-- 유효한 micro-VWAP은 REVERSION TP1이고, 아니면 1.2R이다.
-- REVERSION TP2는 전략의 구조 target을 쓴다.
-- TREND는 TP1 40%를 1.5R, TP2 60%를 3.0R에 둔다.
-- TREND TP1 후 stop은 fee-adjusted break-even보다 불리하게 옮기지 않는다.
+- 현재 REVERSION C는 최근 2분 이탈 극값 바깥을 손절, 과도이탈 전 실제 가격대 중앙을 TP1, 반대편 피벗·실제 이탈폭 대칭 범위를 TP2로 쓴다. 10초 micro-VWAP은 목표가가 아니라 구조 재진입 확인에만 쓰며 TP1 70%, TP2 30%다.
+- 현재 TREND B는 최근 10초 실거래 충격·눌림 구조로 손절·TP1·TP2를 정하고, TP1 40% 후 남은 60%를 실제 눌림폭으로 추적한다.
+- 현재 TREND L∼O는 완성 15·30분·1시간 피벗, 이전 일 고저, 돌파 측정폭과 ATR 채널에서 TP1·TP2를 정한다. TP1 40% 후 남은 60%를 완성봉 ATR Chandelier로 추적한다.
+- 모든 현재 전략은 실제 호가·수수료·슬리피지 후 순손익비가 부족하면 임의 R 배수로 TP를 늘리지 않고 진입을 거부한다.
+- TP1 후 stop과 추적선은 이익 보호 방향으로만 움직이며 불리한 방향으로 넓히지 않는다.
 - 기존 미시구조 전략은 진입 후 30초 유예, 서로 다른 불리 근거 2개, 비용대보다 큰 실제 가격 악화와 3초 지속을 모두 확인한 뒤에만 `EDGE_DECAY`로 종료한다.
 - 신규 L~O 중단기 추세 전략은 일반 미시구조 `EDGE_DECAY`와 경과시간 청산을 사용하지 않는다. 진입 전에 고정한 구조 손절, TP1·TP2, 이익보호 방향의 손절 단축과 데이터·시스템 안전종료만 사용한다.
 - 최초 stop은 불리한 방향으로 넓히지 않는다.
@@ -88,7 +88,7 @@
 - H는 3s OFI를 top10 평균 깊이로 보정한 bp와 과거 prefix robust z, OFI, 체결, microprice와 가격반응을 500ms 확인한다.
 - I는 깊이보정 OFI robust z, 250ms·3s OFI와 prefix 기반 3초 수익률의 방향 동행을 1,000ms 확인한다. 기준가격은 목표 시각보다 최대 1.5초까지만 오래될 수 있고 미래 timestamp는 제외한다.
 - J는 top10 가격거리 1bp당 누적 명목깊이의 매수·매도 기울기를 계산한다. 반대호가 하위 15%, 지지호가 중앙값 이상, 기울기비 1.5배 이상과 OFI·체결·microprice·가격반응을 1,000ms 확인한다.
-- TREND 전략 B/D/E/F/G/H/I/J 구조계획은 최소 0.30% stop 거리와 3.2R target을 사용해 공통 비용 gate를 낮추지 않는다.
+- 현재 TREND B는 최근 10초 실거래 충격·눌림의 실제 가격 구조를 쓴다. OFF인 D∼J의 이전 고정 geometry는 과거 표본 설명으로만 보존하며 현재 진입에 사용하지 않는다.
 - robust statistic은 현재 시점 이전 prefix만 사용하며 Replay도 같은 timestamp 규칙을 쓴다.
 
 ## 7.1 전략 K 완성 시간봉 추세
@@ -101,7 +101,7 @@
 
 ## 7.2 공통 비용후 계획과 event-time 조건
 
-- REVERSION 전략 A/C는 최소 0.80%, TREND 전략 B/D/E/F/G/H/I/J는 최소 0.30%의 구조 stop 거리를 사용한다.
+- 현재 REVERSION C와 TREND B는 실제 가격 경로의 극값·눌림 구조 밖에 호가차 완충을 더해 stop을 정한다. OFF인 A·D∼J의 이전 최소 거리 계약은 과거 표본에만 적용한다.
 - 이 거리는 손실예산을 늘리지 않는다. main은 현재자산의 0.1%, League는 0.5% 위험예산에 맞춰 수량을 줄인다.
 - 최종 CandidatePlanner는 실제 bid·ask, worst entry, 양방향 fee, 예상 exit slippage와 분할청산 비중을 다시 계산하고 순손익비 1.20 미만을 거부한다.
 - A의 refill·범위 재진입과 C의 구조 재진입은 실제 event timestamp로 지속시간을 계산한다.
@@ -115,12 +115,12 @@
 - O는 완성 30분과 1시간 추세가 같은 방향일 때 30분 EMA20 조정 뒤 이전 고저 회복을 확인한다.
 - 네 전략은 새 완성봉 뒤 5초 이내 sequence-valid 실제 bid·ask에서 1초 이상 OFI·aggressor 체결·microprice가 같은 방향일 때만 후보가 된다.
 - 구조 손절 거리는 0.65~3.0 ATR 범위여야 하고 최종 `CandidatePlanner`의 실제 호가·수수료·슬리피지 후 순손익비 1.20 gate를 다시 통과해야 한다.
-- L은 TP1 1.4R·TP2 2.8R, M과 N은 1.6R·3.2R, O는 1.5R·3.0R이다. 네 전략의 `maximum_holding_ms`는 `null`이며 시간만으로 종료하지 않는다. 데이터 이상은 별도 안전종료로 처리한다.
+- L∼O는 완성봉 구조 가격에서 TP1·TP2를 정하고 TP1 후 완성봉 ATR runner를 쓴다. 네 전략의 `maximum_holding_ms`는 `null`이며 시간만으로 종료하지 않는다. 데이터 이상은 별도 안전종료로 처리한다. 세부 결정은 ADR-138을 따른다.
 - 이전 V1 연구와 달리 돌파 추격 대신 완성봉 재확인과 현재 공개 주문흐름을 함께 요구한다. 네 전략은 사전등록된 SHADOW PAPER 가설이며 수익성은 `NOT_PROVEN`이다.
 
 ## 8. Recovery와 출력
 
-- recovery schema v4는 Registry, snapshot timestamp, 계좌별 risk, pending map, position map, order·trade, 계획별 최대보유시간과 계좌·종목별 PAPER 생명주기 revision cursor를 보존한다.
+- recovery schema v5는 Registry, snapshot timestamp, 계좌별 risk, pending map, position map, order·trade, 계획별 최대보유시간, 구조 손절·TP1·TP2 근거, 확인 시간구간과 계좌·종목별 PAPER 생명주기 revision cursor를 보존한다.
 - schema v1~v3는 복구한 pending·position의 실제 상태에서 새 revision cursor를 시작하며, 과거 snapshot에 없던 revision을 추정하지 않는다. schema v4의 cursor·상태·마지막 전환이 불일치하면 fail-closed한다.
 - schema v1의 `pending_entry`, `position`, `SHADOW:` account ID를 새 map과 account ID로 변환한다.
 - 과거 snapshot에 전혀 없던 신규 Registry 전략의 BASE·STRESS 계좌는 additive extension으로 각각 1,000 USDT 빈 계좌를 생성한다. 기존 전략의 한 profile만 누락된 불완전 snapshot은 계속 fail-closed한다.

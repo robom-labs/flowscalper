@@ -210,13 +210,10 @@ class PaperPortfolioEngine:
         self.shadow_ledger = shadow_ledger
         self.execution_engine = execution_engine or PaperExecutionEngine()
         self.risk_manager = risk_manager or RiskManager()
-        self.league_risk_manager = league_risk_manager or RiskManager(
-            STRATEGY_LEAGUE_RISK_LIMITS
-        )
-        if (
-            not selected_margin_leverage.is_finite()
-            or not Decimal(1) <= selected_margin_leverage <= Decimal(100)
-        ):
+        self.league_risk_manager = league_risk_manager or RiskManager(STRATEGY_LEAGUE_RISK_LIMITS)
+        if not selected_margin_leverage.is_finite() or not Decimal(
+            1
+        ) <= selected_margin_leverage <= Decimal(100):
             raise ValueError("PAPER 선택 레버리지는 1배 이상 100배 이하여야 합니다.")
         self.selected_margin_leverage = selected_margin_leverage
         self.cost_model = cost_model or self.execution_engine.cost_model
@@ -745,9 +742,7 @@ class PaperPortfolioEngine:
             "remaining_quantity": str(managed.remaining_quantity),
             "notional": str(entry_fill.notional),
             "selected_leverage": str(plan.selected_margin_leverage),
-            "margin_used_usdt": str(
-                entry_fill.notional / plan.selected_margin_leverage
-            ),
+            "margin_used_usdt": str(entry_fill.notional / plan.selected_margin_leverage),
             "risk_budget": str(plan.risk_budget),
             "maximum_planned_loss": str(plan.max_planned_loss),
             "expected_fees": str(plan.expected_fees_usdt),
@@ -784,6 +779,10 @@ class PaperPortfolioEngine:
                 )
             ),
             "management_policy": list(plan.management_policy),
+            "stop_rationale_ko": plan.stop_rationale_ko,
+            "take_profit_1_rationale_ko": plan.take_profit_1_rationale_ko,
+            "take_profit_2_rationale_ko": plan.take_profit_2_rationale_ko,
+            "reference_timeframes_ko": list(plan.reference_timeframes_ko),
             "maximum_holding_ms": plan.maximum_holding_ms,
             "trailing": self._trailing_view(managed),
         }
@@ -1248,9 +1247,7 @@ class PaperPortfolioEngine:
                         "remaining_quantity": str(managed.remaining_quantity),
                         "notional": str(notional),
                         "selected_leverage": str(plan.selected_margin_leverage),
-                        "margin_used_usdt": str(
-                            notional / plan.selected_margin_leverage
-                        ),
+                        "margin_used_usdt": str(notional / plan.selected_margin_leverage),
                         "effective_leverage": str(notional / account.risk_state.current_equity)
                         if account.risk_state.current_equity > 0
                         else "0",
@@ -1264,6 +1261,11 @@ class PaperPortfolioEngine:
                             if managed.pending_exit is not None
                             else "TP·SL·근거감쇠 자동 관리"
                         ),
+                        "management_policy": list(plan.management_policy),
+                        "stop_rationale_ko": plan.stop_rationale_ko,
+                        "take_profit_1_rationale_ko": plan.take_profit_1_rationale_ko,
+                        "take_profit_2_rationale_ko": plan.take_profit_2_rationale_ko,
+                        "reference_timeframes_ko": list(plan.reference_timeframes_ko),
                         "trailing": self._trailing_view(managed),
                         "elapsed_seconds": max(
                             0,
@@ -2111,9 +2113,7 @@ class PaperPortfolioEngine:
             trailing_state_checksum=trailing.checksum() if trailing is not None else None,
             selected_margin_leverage=managed.plan.selected_margin_leverage,
             entry_notional_usdt=entry.notional,
-            margin_used_usdt=(
-                entry.notional / managed.plan.selected_margin_leverage
-            ),
+            margin_used_usdt=(entry.notional / managed.plan.selected_margin_leverage),
         )
 
     @staticmethod
@@ -2848,6 +2848,10 @@ def _candidate_plan_payload(plan: CandidatePlan) -> dict[str, object]:
         ),
         "trailing_reference_ts_ms": plan.trailing_reference_ts_ms,
         "trailing_reference_interval_seconds": plan.trailing_reference_interval_seconds,
+        "stop_rationale_ko": plan.stop_rationale_ko,
+        "take_profit_1_rationale_ko": plan.take_profit_1_rationale_ko,
+        "take_profit_2_rationale_ko": plan.take_profit_2_rationale_ko,
+        "reference_timeframes_ko": list(plan.reference_timeframes_ko),
         "selected_margin_leverage": str(plan.selected_margin_leverage),
     }
 
@@ -2954,9 +2958,23 @@ def _candidate_plan_from_payload(payload: Mapping[str, object]) -> CandidatePlan
         trailing_reference_interval_seconds=int(str(payload["trailing_reference_interval_seconds"]))
         if payload.get("trailing_reference_interval_seconds") is not None
         else None,
-        selected_margin_leverage=Decimal(
-            str(payload.get("selected_margin_leverage", "1"))
+        stop_rationale_ko=(
+            str(payload["stop_rationale_ko"])
+            if payload.get("stop_rationale_ko") is not None
+            else None
         ),
+        take_profit_1_rationale_ko=(
+            str(payload["take_profit_1_rationale_ko"])
+            if payload.get("take_profit_1_rationale_ko") is not None
+            else None
+        ),
+        take_profit_2_rationale_ko=(
+            str(payload["take_profit_2_rationale_ko"])
+            if payload.get("take_profit_2_rationale_ko") is not None
+            else None
+        ),
+        reference_timeframes_ko=_strings(payload, "reference_timeframes_ko"),
+        selected_margin_leverage=Decimal(str(payload.get("selected_margin_leverage", "1"))),
     )
 
 
@@ -3290,15 +3308,12 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
             if payload.get("trailing_state_checksum") is not None
             else None
         ),
-        selected_margin_leverage=Decimal(
-            str(payload.get("selected_margin_leverage", "1"))
-        ),
+        selected_margin_leverage=Decimal(str(payload.get("selected_margin_leverage", "1"))),
         entry_notional_usdt=Decimal(
             str(
                 payload.get(
                     "entry_notional_usdt",
-                    Decimal(str(payload["entry_price"]))
-                    * Decimal(str(payload["quantity"])),
+                    Decimal(str(payload["entry_price"])) * Decimal(str(payload["quantity"])),
                 )
             )
         ),
@@ -3306,8 +3321,7 @@ def _paper_trade_from_payload(payload: Mapping[str, object]) -> PaperTrade:
             str(
                 payload.get(
                     "margin_used_usdt",
-                    Decimal(str(payload["entry_price"]))
-                    * Decimal(str(payload["quantity"])),
+                    Decimal(str(payload["entry_price"])) * Decimal(str(payload["quantity"])),
                 )
             )
         ),

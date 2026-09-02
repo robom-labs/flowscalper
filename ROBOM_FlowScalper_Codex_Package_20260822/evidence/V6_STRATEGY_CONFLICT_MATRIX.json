@@ -277,10 +277,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -407,10 +407,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -533,10 +533,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -1203,10 +1203,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -1738,10 +1738,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -1868,10 +1868,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -2002,10 +2002,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -2133,10 +2133,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -2260,10 +2260,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -2933,10 +2933,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -3471,10 +3471,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -3602,10 +3602,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -3738,8 +3738,8 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": true,
@@ -3870,11 +3870,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -3996,11 +3996,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -4123,7 +4123,7 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "ATR_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
@@ -4253,11 +4253,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -4380,11 +4380,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -4505,8 +4505,8 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": true,
@@ -4640,11 +4640,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -4766,11 +4766,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -4893,11 +4893,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -5022,8 +5022,8 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": true,
@@ -5160,11 +5160,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -5286,11 +5286,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -5416,11 +5416,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -5547,7 +5547,7 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "ATR_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
@@ -5681,11 +5681,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -5812,11 +5812,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -5941,8 +5941,8 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": true,
@@ -6081,11 +6081,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -6211,11 +6211,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -6342,11 +6342,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -6480,8 +6480,8 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": true,
@@ -6626,11 +6626,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -6751,11 +6751,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -6888,7 +6888,7 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_model_b": "ATR_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
@@ -7015,11 +7015,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -7152,11 +7152,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -7287,11 +7287,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -7413,11 +7413,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -7550,11 +7550,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -7687,11 +7687,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -7826,11 +7826,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -7954,11 +7954,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MICRO_PATH_TP1_RUNNER_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -8489,10 +8489,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -9027,10 +9027,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -9158,10 +9158,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -9548,7 +9548,7 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "ATR_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": false,
@@ -10060,7 +10060,7 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "ATR_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": false,
@@ -10194,7 +10194,7 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "ATR_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
         "same_exit_model": false,
@@ -10456,10 +10456,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "REVERSION_70_30",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -11001,10 +11001,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "REVERSION_70_30",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -11132,10 +11132,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "REVERSION_70_30",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -11268,10 +11268,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -11806,10 +11806,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -11937,10 +11937,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -12072,11 +12072,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -12198,11 +12198,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -12325,11 +12325,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -12453,8 +12453,8 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
         "same_exit_model": true,
@@ -12590,11 +12590,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -12990,10 +12990,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -13120,10 +13120,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -13394,10 +13394,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -13525,10 +13525,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -13665,10 +13665,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "TREND_40_60",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": true,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [
@@ -13796,10 +13796,10 @@
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
         "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": true,
         "tp_r_targets_a": [
@@ -13942,11 +13942,11 @@
       },
       "shared_exit": {
         "derivation": "exact registry exit contract comparison",
-        "exit_model_a": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
-        "exit_model_b": "STRUCTURE_TP1_TP2_SL_NO_TIME_EXIT",
+        "exit_model_a": "MTF_STRUCTURE_TP1_ATR_RUNNER_TP2_SL_NO_TIME_EXIT",
+        "exit_model_b": "VWAP_PRE_EXCURSION_RANGE_TP1_TP2_STRUCTURAL_SL_NO_TIME_EXIT",
         "exit_style_a": "TREND_40_60",
         "exit_style_b": "REVERSION_70_30",
-        "same_exit_model": true,
+        "same_exit_model": false,
         "same_exit_style": false,
         "same_tp_r_targets": false,
         "tp_r_targets_a": [

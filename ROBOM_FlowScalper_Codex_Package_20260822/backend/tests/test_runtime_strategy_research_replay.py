@@ -24,6 +24,7 @@ from backend.tests.test_strategy_league_signals import (
     aligned_features,
     decision_for,
     only_strategy,
+    prime_vwap_reversion_path,
 )
 from scripts.research_runtime_strategy_replay import (
     RESEARCH_CPU_CHECKPOINT_EVENTS,
@@ -316,9 +317,9 @@ def test_runtime_strategy_league_replay_uses_one_paper_runtime_and_30_accounts(
     assert len(result["reports"]) == 30
     decision_diagnostics = result["strategy_decision_diagnostics"]
     assert set(decision_diagnostics) == set(strategy_ids)
-    assert sum(
-        int(row["evaluated"]) for row in decision_diagnostics.values()
-    ) == int(result["strategy_evaluation_count"])
+    assert sum(int(row["evaluated"]) for row in decision_diagnostics.values()) == int(
+        result["strategy_evaluation_count"]
+    )
     assert all(set(row["sides"]) == {"LONG", "SHORT"} for row in decision_diagnostics.values())
     assert result["real_orders_enabled"] is False
     assert result["auth_required"] is False
@@ -390,20 +391,15 @@ def test_runtime_strategy_league_replay_targets_tp1_gate_to_aggressor_only(
     assert candidate["auth_required"] is False
     assert candidate["ledger_attached"] is False
     assert [
-        report
-        for report in candidate["reports"]
-        if report["strategy_id"] != target_strategy_id
-    ] == [
-        report
-        for report in baseline["reports"]
-        if report["strategy_id"] != target_strategy_id
-    ]
+        report for report in candidate["reports"] if report["strategy_id"] != target_strategy_id
+    ] == [report for report in baseline["reports"] if report["strategy_id"] != target_strategy_id]
     for strategy_id in StrategyRegistry().strategy_ids:
         if strategy_id == target_strategy_id:
             continue
-        assert candidate["candidate_plan_counts"][strategy_id] == baseline[
-            "candidate_plan_counts"
-        ][strategy_id]
+        assert (
+            candidate["candidate_plan_counts"][strategy_id]
+            == baseline["candidate_plan_counts"][strategy_id]
+        )
 
 
 def test_runtime_strategy_league_replay_can_target_tp1_gate_to_all_strategies(
@@ -435,8 +431,7 @@ def test_runtime_strategy_league_replay_can_target_tp1_gate_to_all_strategies(
     assert set(diagnostics) == set(StrategyRegistry().strategy_ids)
     assert all(row["gate_targeted"] is True for row in diagnostics.values())
     assert all(
-        int(row["gate_accepted_qualified"])
-        + int(row["gate_rejected_qualified"])
+        int(row["gate_accepted_qualified"]) + int(row["gate_rejected_qualified"])
         == int(row["gate_baseline_qualified"])
         for row in diagnostics.values()
     )
@@ -491,18 +486,8 @@ def test_wave102_baseline_and_current_logic_share_the_evaluator_but_not_confirma
     registry = only_strategy(strategy_id)
     current = ResearchSignalGateEvaluator(strategy_logic=STRATEGY_LOGIC_CURRENT)
     wave102 = ResearchSignalGateEvaluator(strategy_logic=STRATEGY_LOGIC_WAVE102)
-    for index, (signed, deviation_bps) in enumerate(
-        ((100, 1), (110, 2), (120, 3), (130, 4), (140, 5)),
-        start=1,
-    ):
-        weak = replace(
-            aligned_features(Side.LONG, ts_ms=index * 200, signed=signed),
-            micro_vwap_10s=100 + deviation_bps / 100,
-            ofi_3s=3.0,
-            price_response_efficiency=0.80,
-        )
-        current.evaluate(registry, weak, Regime.RANGE)
-        wave102.evaluate(registry, weak, Regime.RANGE)
+    prime_vwap_reversion_path(current, registry)
+    prime_vwap_reversion_path(wave102, registry)
 
     full_confluence = replace(
         aligned_features(Side.LONG, ts_ms=1_500, signed=1_000),
@@ -553,9 +538,7 @@ def test_runtime_strategy_replay_builds_not_proven_empty_summary(tmp_path: Path)
         "STRESS": None,
     }
     assert result["overall"]["ranking_eligible"] is False
-    assert "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30" in result["overall"][
-        "ranking_blockers"
-    ]
+    assert "UNIQUE_MARKET_OPPORTUNITIES_BELOW_30" in result["overall"]["ranking_blockers"]
     assert result["overall"]["profitability_status"] == "NOT_PROVEN"
     assert result["signal_gate"] == "NONE"
     assert result["strategy_logic"] == STRATEGY_LOGIC_CURRENT
@@ -766,8 +749,7 @@ def test_strategy_league_result_keeps_every_strategy_not_proven(tmp_path: Path) 
     assert result["robustness_evaluation"]["final_oos"]["opened_for_this_result"] is False
     assert len(result["overall_by_strategy"]) == 15
     assert all(
-        summary["ranking_eligible"] is False
-        for summary in result["overall_by_strategy"].values()
+        summary["ranking_eligible"] is False for summary in result["overall_by_strategy"].values()
     )
 
 
@@ -789,9 +771,7 @@ def test_strategy_league_result_records_explicit_gate_trial_target(tmp_path: Pat
     )
 
     assert result["signal_gate_target_strategy_id"] == target_strategy_id
-    assert result["signal_gate_trial_id"] == (
-        f"{SIGNAL_GATE_TP1_FEASIBILITY}:{target_strategy_id}"
-    )
+    assert result["signal_gate_trial_id"] == (f"{SIGNAL_GATE_TP1_FEASIBILITY}:{target_strategy_id}")
     assert result["runs"][0]["signal_gate_target_strategy_id"] == target_strategy_id
     assert result["profitability_status"] == "NOT_PROVEN"
 
@@ -837,9 +817,7 @@ def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_p
                         )
                     else:
                         net_pnl = (
-                            Decimal("0.10")
-                            if opportunity_index % 3 == 0
-                            else Decimal("-0.10")
+                            Decimal("0.10") if opportunity_index % 3 == 0 else Decimal("-0.10")
                         )
                     rows.append(
                         _robustness_trade(
@@ -877,18 +855,13 @@ def test_strategy_league_robustness_computes_oos_dsr_bootstrap_and_pbo_without_p
     assert robust["profiles"]["BASE"]["sample_size"] == 30
     assert robust["profiles"]["STRESS"]["win_rate"] == pytest.approx(0.8)
     assert robust["profiles"]["BASE"]["expectancy_bootstrap_95"]["lower"] > 0
-    assert (
-        robust["profiles"]["BASE"]["deflated_sharpe_ratio"]["dsr_probability"]
-        >= 0.95
-    )
+    assert robust["profiles"]["BASE"]["deflated_sharpe_ratio"]["dsr_probability"] >= 0.95
     assert robust["historical_cost_oos_statistical_gates_passed"] is True
     assert robust["historical_concentration_gate_passed"] is True
     assert robust["historical_cost_oos_statistical_and_concentration_gates_passed"] is True
     assert robust["concentration"]["maximum_single_symbol_opportunity_share"] <= 0.50
     assert robust["ranking_eligible"] is False
-    assert "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED" in robust[
-        "ranking_blockers"
-    ]
+    assert "INDEPENDENT_FORWARD_LIVE_PUBLIC_NOT_EVALUATED" in robust["ranking_blockers"]
     assert weak["historical_cost_oos_statistical_gates_passed"] is False
     assert result["ranking_eligible_strategy_ids"] == []
     assert result["real_orders_enabled"] is False
@@ -1057,9 +1030,7 @@ def test_all_strategy_cli_passes_explicit_gate_target(tmp_path: Path) -> None:
         main()
 
     assert json.loads(output_path.read_text()) == result
-    assert build_league.call_args.kwargs["signal_gate_target_strategy_id"] == (
-        target_strategy_id
-    )
+    assert build_league.call_args.kwargs["signal_gate_target_strategy_id"] == (target_strategy_id)
     assert build_league.call_args.kwargs["target_cpu_ratio"] == 0.25
 
 
@@ -1152,9 +1123,7 @@ def test_gate_history_preserves_receive_order_when_venue_timestamp_moves_backwar
     evaluator._append_mid(replace(_feature(), ts_ms=121_000, mid=100))
     evaluator._append_mid(replace(_feature(), ts_ms=120_500, mid=99))
 
-    range_bps = evaluator._recent_range_bps(
-        replace(_feature(), ts_ms=121_500, mid=101)
-    )
+    range_bps = evaluator._recent_range_bps(replace(_feature(), ts_ms=121_500, mid=101))
 
     assert range_bps is not None
     assert range_bps > 190

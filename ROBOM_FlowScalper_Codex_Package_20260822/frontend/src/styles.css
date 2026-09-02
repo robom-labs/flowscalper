@@ -546,7 +546,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .trade-replay-range b { color: #c8d8df; text-align: right; font-variant-numeric: tabular-nums; }
 .trade-replay-jumps { display: flex; gap: 5px; overflow-x: auto; scrollbar-width: thin; }
 .trade-replay-jumps button { min-width: 92px; min-height: 48px; border: 1px solid #31505f; border-radius: 7px; padding: 0 10px; color: #b9cbd5; background: #10212a; cursor: pointer; font-size: 9px; font-weight: 750; white-space: nowrap; }
-.replay-story-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr)); gap: 8px; }
+.replay-story-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .replay-story { min-height: 214px; }
 .replay-story > span { display: block; margin-bottom: 8px; color: var(--mint); font-size: 9px; font-weight: 800; letter-spacing: .05em; }
 .replay-story h3 { margin: 0 0 8px; line-height: 1.45; }
@@ -556,6 +556,7 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .replay-story dl > div, .trade-replay-technical-grid dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #18303a; }
 .replay-story dt, .trade-replay-technical-grid dt { color: #718a98; font-size: 9px; }
 .replay-story dd, .trade-replay-technical-grid dd { margin: 0; color: #c9d7de; font-size: 9px; text-align: right; font-variant-numeric: tabular-nums; }
+.price-story dd { max-width: 68%; line-height: 1.5; }
 .replay-timeframes { display: flex; min-height: 32px; align-items: center; gap: 5px; flex-wrap: wrap; }
 .replay-timeframes small { color: #718a98; font-size: 8px; }
 .replay-timeframes b { border: 1px solid #31505f; border-radius: 999px; padding: 4px 7px; color: #bcd0d8; font-size: 8px; }
@@ -674,6 +675,8 @@ h3 { font-size: 14px; color: #d5e4ec; }
 .focus-plan dd small { display: block; color: #718a98; font-size: 7px; font-weight: 500; }
 .focus-plan details { border-top: 1px solid #19303b; color: #7893a2; font-size: 8px; }
 .focus-plan summary { min-height: 48px; padding-top: 10px; cursor: pointer; }
+.focus-price-rationale p { display: grid; gap: 3px; margin: 0; padding: 7px 2px; border-bottom: 1px solid #142934; line-height: 1.5; }
+.focus-price-rationale p b { color: #a9e8d7; font-size: 8px; }
 .focus-management { margin: 12px 2px; color: #9ae7d1; font-size: 9px; line-height: 1.55; }
 .focus-mode-label { color: #7893a2; font-size: 8px; }
 .focus-mobile-metrics, .focus-sheet-buttons { display: none; }

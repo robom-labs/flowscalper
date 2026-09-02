@@ -15,11 +15,21 @@ type Props = {
 }
 
 function PlanRail({ position }: { position: FocusPosition }) {
+  const priceRationales = [position.stop_rationale_ko, position.take_profit_1_rationale_ko, position.take_profit_2_rationale_ko]
+  const hasPriceRationale = priceRationales.some(Boolean)
+  const runnerExplanation = position.management_policy?.includes('TP1_ATR_CHANDELIER_RUNNER')
+    ? '1차 익절 뒤 남은 물량은 완성봉 ATR 추적선으로 수익을 보호하며 손절선은 넓히지 않습니다.'
+    : position.management_policy?.includes('TP1_PATH_STRUCTURE_RUNNER')
+      ? '1차 익절 뒤 남은 물량은 진입 전 실제 눌림폭만큼 추적하며 손절선은 넓히지 않습니다.'
+      : position.management_policy?.includes('FIXED_SECOND_TARGET')
+        ? '1차 익절 뒤 남은 물량은 진입 전에 확정한 2차 구조 가격에서 정리합니다.'
+        : ''
   return <aside className="focus-plan" aria-label="진입 계획">
     <div className="focus-rail-title"><span>{position.side === 'LONG' ? '상승 방향' : '하락 방향'} · 설정 {formatRatio(position.selected_leverage, '배')} · 실제 노출 {formatRatio(position.effective_leverage, '배')}</span><b>{position.symbol}</b><small>{position.strategy_display_name_ko} · {costProfileLabel(position.profile)} · {paperAccountLabel(position.account_id)}</small></div>
     <dl>
       <div><dt>실제 진입</dt><dd>{formatPrice(position.actual_entry)}</dd></div><div><dt>초기 손절</dt><dd>{formatPrice(position.initial_stop)}</dd></div><div><dt>현재 손절</dt><dd>{formatPrice(position.current_stop)}<small>{position.current_stop === position.initial_stop ? '변경 없음' : '진입 뒤 조정'}</small></dd></div><div><dt>1차 목표</dt><dd>{formatPrice(position.take_profit_1)}</dd></div><div><dt>2차 목표</dt><dd>{position.take_profit_2 ? formatPrice(position.take_profit_2) : '—'}</dd></div><div><dt>추적 익절</dt><dd>{trailingStateLabel(position.trailing)}<small>{position.trailing?.current_trail ? `보호선 ${formatPrice(position.trailing.current_trail)}` : '활성화 전에는 기존 손절 유지'}</small></dd></div><div><dt>계획 손실</dt><dd>{formatUsdt(position.maximum_planned_loss_usdt)}</dd></div><div><dt>보유 / 남은</dt><dd>{formatQuantity(position.original_quantity)} / {formatQuantity(position.remaining_quantity)}</dd></div><div><dt>명목금액</dt><dd>{formatUsdt(position.notional_usdt)}</dd></div><div><dt>PAPER 증거금</dt><dd>{formatUsdt(position.margin_used_usdt)}</dd></div>
     </dl>
+    {hasPriceRationale ? <details className="focus-price-rationale"><summary>이 가격을 정한 이유</summary><p><b>손절</b>{position.stop_rationale_ko}</p><p><b>1차 익절</b>{position.take_profit_1_rationale_ko}</p><p><b>2차 익절</b>{position.take_profit_2_rationale_ko}</p>{runnerExplanation ? <p><b>남은 물량</b>{runnerExplanation}</p> : null}{position.reference_timeframes_ko?.length ? <p><b>확인 구간</b>{position.reference_timeframes_ko.join(' · ')}</p> : null}</details> : null}
     <details><summary>계획 상세</summary><p>위험예산 {formatUsdt(position.risk_budget_usdt)}</p><p>남은 계획손실 {formatUsdt(position.remaining_planned_loss_usdt)}</p><p>{position.exit_style}</p></details>
   </aside>
 }

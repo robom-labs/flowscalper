@@ -89,4 +89,5 @@ class CompressionBreakoutStrategy:
             take_profit=plan.target if plan else None,
             expected_cost_bps=context.plan.expected_total_cost_bps,
             net_reward_risk=plan.net_reward_risk if plan else None,
+            structural_exit=context.plan.structural_exit,
         )

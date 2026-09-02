@@ -628,6 +628,8 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       ? context.reason_labels_ko
       : ['이 거래의 세부 진입 근거 설명은 과거 원장에 남아 있지 않습니다.']
     const timeframes = context?.required_timeframes ?? []
+    const protectionTimeframes = context?.protection_timeframes_ko ?? []
+    const hasPriceRationale = Boolean(context?.stop_rationale_ko && context.take_profit_1_rationale_ko && context.take_profit_2_rationale_ko)
     const playbackLabel = playing ? '일시정지' : cursor >= focusSession.frames.length - 1 ? '처음부터 다시 재생' : cursor === 0 ? '처음부터 재생' : '계속 재생'
     return <section className="trade-replay-player" aria-labelledby="replay-focus-heading">
       <header className="trade-replay-player-head">
@@ -669,6 +671,7 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
       </div>
       <section className="replay-story-grid" aria-label="거래 설명">
         <article className="panel replay-story entry-story"><span>왜 진입했나요?</span><h3>{context?.strategy_summary_ko || `${strategyName}의 저장된 진입 신호`}</h3><p>{context?.entry_hypothesis_ko || '저장된 전략 규칙이 가격·호가·체결 조건을 확인했습니다.'}</p><div className="replay-timeframes"><small>확인 구간</small>{timeframes.length ? timeframes.map((item) => <b key={item}>{replayTimeframeLabel(item)}</b>) : <b>저장 정보 없음</b>}</div><ul>{entryReasons.slice(0, 6).map((reason) => <li key={reason}>{reason}</li>)}</ul></article>
+        <article className="panel replay-story price-story"><span>왜 이 익절·손절가인가요?</span>{hasPriceRationale ? <><dl><div><dt>초기 손절</dt><dd>{context?.stop_rationale_ko}</dd></div><div><dt>1차 익절</dt><dd>{context?.take_profit_1_rationale_ko}</dd></div><div><dt>2차 익절</dt><dd>{context?.take_profit_2_rationale_ko}</dd></div></dl><p>{context?.runner_management_ko}</p><div className="replay-timeframes"><small>가격 근거</small>{protectionTimeframes.map((item) => <b key={item}>{item}</b>)}</div></> : <><h3>과거 계획 가격을 그대로 보여줍니다.</h3><p>이 거래는 이전 버전에서 생성돼 세부 가격 근거가 원장에 저장되지 않았습니다. 현재 값을 새 근거로 꾸며내지 않습니다.</p></>}</article>
         <article className="panel replay-story time-story"><span>언제 진입하고 나왔나요?</span><dl><div><dt>신호 확정</dt><dd>{formatKstDateTime(focusSession.levels.signal_ts_ms)}</dd></div><div><dt>실제 진입</dt><dd>{formatKstDateTime(focusSession.entry_ts_ms)}</dd></div><div><dt>실제 종료</dt><dd>{formatKstDateTime(focusSession.exit_ts_ms)}</dd></div><div><dt>총 보유시간</dt><dd>{formatDurationMs(trade.holding_ms || focusSession.exit_ts_ms - focusSession.entry_ts_ms)}</dd></div></dl></article>
         <article className="panel replay-story exit-story"><span>어떻게 끝났나요?</span><h3>{exitReasonLabel(trade.exit_reason)} · <b className={Number(trade.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(trade.net_pnl, { signed: true })}</b></h3><p>{replayExitExplanation(trade.exit_reason)}</p><dl><div><dt>실제 종료가</dt><dd>{formatPrice(trade.exit)}</dd></div><div><dt>총 비용</dt><dd>{formatUsdt(Number(trade.fees) + Number(trade.slippage))}</dd></div></dl></article>
       </section>

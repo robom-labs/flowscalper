@@ -10,11 +10,19 @@ from backend.app.costing import CostModel, CostProfile
 from backend.app.domain.market import Instrument
 from backend.app.domain.models import Side, Venue
 from backend.app.execution.models import BookSnapshot
-from backend.app.execution.trailing import TrailingModel, TrailingPolicy
+from backend.app.execution.trailing import (
+    TrailingActivationRule,
+    TrailingModel,
+    TrailingPolicy,
+)
 from backend.app.features import FeatureSnapshot
 from backend.app.regime import Regime
 from backend.app.risk import RiskManager, RiskSizingInput, RiskState
-from backend.app.strategies.base import CandidateDecision, CandidateStatus
+from backend.app.strategies.base import (
+    CandidateDecision,
+    CandidateStatus,
+    RunnerManagement,
+)
 from backend.app.strategies.registry import ExitStyle
 
 _ATR_TRAILING_MODELS = {
@@ -123,6 +131,10 @@ class CandidatePlan:
     trailing_structure_stop: Decimal | None = None
     trailing_reference_ts_ms: int | None = None
     trailing_reference_interval_seconds: int | None = None
+    stop_rationale_ko: str | None = None
+    take_profit_1_rationale_ko: str | None = None
+    take_profit_2_rationale_ko: str | None = None
+    reference_timeframes_ko: tuple[str, ...] = ()
     selected_margin_leverage: Decimal = Decimal("1")
 
     def __post_init__(self) -> None:
@@ -132,10 +144,9 @@ class CandidatePlan:
             raise ValueError("최대 보유시간은 양수여야 합니다.")
         if self.position_size <= 0 or self.minimum_quantity <= 0:
             raise ValueError("수량과 최소 수량은 양수여야 합니다.")
-        if (
-            not self.selected_margin_leverage.is_finite()
-            or not Decimal(1) <= self.selected_margin_leverage <= Decimal(100)
-        ):
+        if not self.selected_margin_leverage.is_finite() or not Decimal(
+            1
+        ) <= self.selected_margin_leverage <= Decimal(100):
             raise ValueError("PAPER 선택 레버리지는 1배 이상 100배 이하여야 합니다.")
         if not self.take_profit_targets:
             raise ValueError("진입 전에 최소 하나의 익절 목표가 확정돼야 합니다.")
@@ -213,6 +224,16 @@ class CandidatePlan:
                 raise ValueError("trailing 완료봉 참조가 한 시간구간보다 오래됐습니다.")
         if self.trailing_structure_stop is not None and self.trailing_structure_stop <= 0:
             raise ValueError("trailing 구조 stop은 양수여야 합니다.")
+        rationale_values = (
+            self.stop_rationale_ko,
+            self.take_profit_1_rationale_ko,
+            self.take_profit_2_rationale_ko,
+        )
+        if any(value is not None for value in rationale_values) and (
+            not all(value is not None and value.strip() for value in rationale_values)
+            or not self.reference_timeframes_ko
+        ):
+            raise ValueError("구조 손절·익절 근거와 확인 구간은 함께 저장돼야 합니다.")
 
     @property
     def first_target(self) -> TakeProfitTarget:
@@ -316,6 +337,42 @@ class CandidatePlanner:
             or decision.net_reward_risk is None
         ):
             return PlanBuildResult(None, ("INCOMPLETE_STRATEGY_PLAN",))
+        structural_exit = decision.structural_exit
+        if structural_exit is not None:
+            if take_profit_targets_override is not None or trailing_policy is not None:
+                return PlanBuildResult(None, ("STRUCTURAL_EXIT_OVERRIDE_CONFLICT",))
+            fractions = (
+                (Decimal("0.70"), Decimal("0.30"))
+                if exit_style is ExitStyle.REVERSION_70_30
+                else (Decimal("0.40"), Decimal("0.60"))
+            )
+            take_profit_targets_override = (
+                TakeProfitTarget("TP1", structural_exit.take_profit_1, fractions[0]),
+                TakeProfitTarget("TP2", structural_exit.take_profit_2, fractions[1]),
+            )
+            if structural_exit.runner_management is RunnerManagement.TP1_ATR_CHANDELIER:
+                trailing_policy = TrailingPolicy(
+                    policy_id="STRUCTURAL_TP1_ATR_RUNNER_V1",
+                    model=TrailingModel.ATR_CHANDELIER,
+                    activation_rule=TrailingActivationRule.TP1_TRIGGERED,
+                    activation_r=Decimal(1),
+                    partial_tp_required=True,
+                    atr_multiplier=Decimal("2.5"),
+                )
+                trailing_atr = structural_exit.trailing_atr
+                trailing_reference_ts_ms = structural_exit.trailing_reference_ts_ms
+                trailing_reference_interval_seconds = (
+                    structural_exit.trailing_reference_interval_seconds
+                )
+            elif structural_exit.runner_management is RunnerManagement.TP1_STRUCTURE_DISTANCE:
+                trailing_policy = TrailingPolicy(
+                    policy_id="STRUCTURAL_TP1_PATH_RUNNER_V1",
+                    model=TrailingModel.FIXED_DISTANCE,
+                    activation_rule=TrailingActivationRule.TP1_TRIGGERED,
+                    activation_r=Decimal(1),
+                    partial_tp_required=True,
+                    fixed_distance=structural_exit.trailing_distance,
+                )
         trailing_reference_values = (
             trailing_atr,
             trailing_structure_stop,
@@ -418,6 +475,16 @@ class CandidatePlanner:
             trend_take_profit_1_r=trend_take_profit_1_r,
             trend_take_profit_2_r=trend_take_profit_2_r,
         )
+        if structural_exit is not None:
+            if (
+                len(targets) != 2
+                or targets[0].label != "TP1"
+                or targets[1].label != "TP2"
+                or targets[1].price != final_target
+                or (side is Side.LONG and not worst_entry < targets[0].price < targets[1].price)
+                or (side is Side.SHORT and not targets[1].price < targets[0].price < worst_entry)
+            ):
+                return PlanBuildResult(None, ("LIVE_BOOK_INVALIDATES_STRUCTURAL_TARGETS",))
         executable_levels = book.asks if side is Side.LONG else book.bids
         executable_depth = sum(
             (
@@ -533,6 +600,15 @@ class CandidatePlanner:
                 else "STRUCTURAL_REVERSION_EXIT",
                 "STOP_NEVER_WIDENS",
                 (
+                    "TP1_ATR_CHANDELIER_RUNNER"
+                    if structural_exit is not None
+                    and structural_exit.runner_management is RunnerManagement.TP1_ATR_CHANDELIER
+                    else "TP1_PATH_STRUCTURE_RUNNER"
+                    if structural_exit is not None
+                    and structural_exit.runner_management is RunnerManagement.TP1_STRUCTURE_DISTANCE
+                    else "FIXED_SECOND_TARGET"
+                ),
+                (
                     "EXIT_ON_PERSISTENT_EDGE_DECAY"
                     if edge_decay_enabled
                     else "NO_GENERAL_EDGE_DECAY_TP_SL_ONLY"
@@ -550,6 +626,18 @@ class CandidatePlanner:
             trailing_structure_stop=trailing_structure_stop,
             trailing_reference_ts_ms=trailing_reference_ts_ms,
             trailing_reference_interval_seconds=trailing_reference_interval_seconds,
+            stop_rationale_ko=(
+                structural_exit.stop_rationale_ko if structural_exit is not None else None
+            ),
+            take_profit_1_rationale_ko=(
+                structural_exit.take_profit_1_rationale_ko if structural_exit is not None else None
+            ),
+            take_profit_2_rationale_ko=(
+                structural_exit.take_profit_2_rationale_ko if structural_exit is not None else None
+            ),
+            reference_timeframes_ko=(
+                structural_exit.reference_timeframes_ko if structural_exit is not None else ()
+            ),
         )
         return PlanBuildResult(plan, ())
 

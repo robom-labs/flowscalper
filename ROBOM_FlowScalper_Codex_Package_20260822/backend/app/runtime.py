@@ -236,11 +236,7 @@ def _fail_closed_recovery_windows(
             if opened_at is None:
                 opened_at = ts_ms
             continue
-        if (
-            opened_at is not None
-            and recovery_ok
-            and new_state == "RECOVERY_REVALIDATION_LOCKED"
-        ):
+        if opened_at is not None and recovery_ok and new_state == "RECOVERY_REVALIDATION_LOCKED":
             windows.append((opened_at, ts_ms))
             opened_at = None
     return tuple(windows)
@@ -280,9 +276,7 @@ def _is_fail_closed_governance_contamination(
         or not isinstance(lineage, Mapping)
     ):
         return False
-    expected_transition_id = (
-        f"strategy-setting-{run_id}-{strategy_id}-rev-{revision}"
-    )
+    expected_transition_id = f"strategy-setting-{run_id}-{strategy_id}-rev-{revision}"
     exact_fail_closed_transition = (
         row.get("run_id") == run_id
         and row.get("changed_by") == StrategyChangeSource.AUTO_GOVERNOR.value
@@ -304,8 +298,7 @@ def _is_fail_closed_governance_contamination(
         and row.get("occurred_ts_ms") == ts_ms
         and assessment.get("strategy_id") == strategy_id
         and assessment.get("reason_codes") == ["OPERATIONAL_FAULT"]
-        and assessment.get("recommended_lifecycle")
-        == StrategyLifecycle.QUARANTINED.value
+        and assessment.get("recommended_lifecycle") == StrategyLifecycle.QUARANTINED.value
         and assessment.get("automatic_action_allowed") is True
         and assessment.get("transition_required") is True
         and evidence.get("operational_fault") is True
@@ -321,8 +314,7 @@ def _is_fail_closed_governance_contamination(
     if not exact_fail_closed_transition:
         return False
     inside_closed_window = any(
-        start_ts_ms <= ts_ms < end_ts_ms
-        for start_ts_ms, end_ts_ms in windows
+        start_ts_ms <= ts_ms < end_ts_ms for start_ts_ms, end_ts_ms in windows
     )
     if not inside_closed_window:
         return False
@@ -339,16 +331,13 @@ def _is_fail_closed_governance_contamination(
             and incident_payload.get("run_id") == run_id
             and incident_payload.get("strategy_id") == strategy_id
             and incident_payload.get("settings_revision") == revision
-            and incident_payload.get("changed_by")
-            == StrategyChangeSource.AUTO_GOVERNOR.value
+            and incident_payload.get("changed_by") == StrategyChangeSource.AUTO_GOVERNOR.value
             and incident_payload.get("change_reason") == "OPERATIONAL_FAULT"
             and incident_payload.get("mode") == StrategyMode.OFF.value
-            and incident_payload.get("lifecycle")
-            == StrategyLifecycle.QUARANTINED.value
+            and incident_payload.get("lifecycle") == StrategyLifecycle.QUARANTINED.value
             and incident_payload.get("settings_updated_ts_ms") == ts_ms
             and incident_payload.get("occurred_ts_ms") == ts_ms
-            and incident_payload.get("actor")
-            == StrategyChangeSource.AUTO_GOVERNOR.value
+            and incident_payload.get("actor") == StrategyChangeSource.AUTO_GOVERNOR.value
             and incident_payload.get("cause_code") == "OPERATIONAL_FAULT"
             and incident_payload.get("change_evidence") == change_evidence
         ):
@@ -394,16 +383,10 @@ def _governance_evidence_from_recovery(
     return GovernanceEvidence(
         base_sample_size=_strict_recovery_int(row, "base_sample_size"),
         stress_sample_size=_strict_recovery_int(row, "stress_sample_size"),
-        base_expectancy_usdt=_recovery_decimal(
-            row, "base_expectancy_usdt", required=True
-        ),
-        stress_expectancy_usdt=_recovery_decimal(
-            row, "stress_expectancy_usdt", required=True
-        ),
+        base_expectancy_usdt=_recovery_decimal(row, "base_expectancy_usdt", required=True),
+        stress_expectancy_usdt=_recovery_decimal(row, "stress_expectancy_usdt", required=True),
         base_profit_factor=_recovery_decimal(row, "base_profit_factor", required=True),
-        stress_profit_factor=_recovery_decimal(
-            row, "stress_profit_factor", required=True
-        ),
+        stress_profit_factor=_recovery_decimal(row, "stress_profit_factor", required=True),
         sample_span_days=_recovery_float(row, "sample_span_days", required=True) or 0.0,
         regime_count=_strict_recovery_int(row, "regime_count"),
         dsr_probability=_recovery_float(row, "dsr_probability", required=True),
@@ -414,25 +397,15 @@ def _governance_evidence_from_recovery(
         ),
         recent_expectancy_usdt=_recovery_decimal(row, "recent_expectancy_usdt"),
         recent_profit_factor=_recovery_decimal(row, "recent_profit_factor"),
-        recent_stress_expectancy_usdt=_recovery_decimal(
-            row, "recent_stress_expectancy_usdt"
-        ),
-        recent_stress_profit_factor=_recovery_decimal(
-            row, "recent_stress_profit_factor"
-        ),
-        parameter_robustness_passed=_strict_recovery_bool(
-            row, "parameter_robustness_passed"
-        ),
+        recent_stress_expectancy_usdt=_recovery_decimal(row, "recent_stress_expectancy_usdt"),
+        recent_stress_profit_factor=_recovery_decimal(row, "recent_stress_profit_factor"),
+        parameter_robustness_passed=_strict_recovery_bool(row, "parameter_robustness_passed"),
         risk_contract_passed=_strict_recovery_bool(row, "risk_contract_passed"),
         independent_period_count=_strict_recovery_int(row, "independent_period_count"),
         live_public_sample_size=_strict_recovery_int(row, "live_public_sample_size"),
         cooldown_elapsed=_strict_recovery_bool(row, "cooldown_elapsed"),
-        strategy_correlation_abs=_recovery_float(
-            row, "strategy_correlation_abs", required=True
-        ),
-        full_oos_degraded_evaluations=_strict_recovery_int(
-            row, "full_oos_degraded_evaluations"
-        ),
+        strategy_correlation_abs=_recovery_float(row, "strategy_correlation_abs", required=True),
+        full_oos_degraded_evaluations=_strict_recovery_int(row, "full_oos_degraded_evaluations"),
         recent_oos_degraded_evaluations=_strict_recovery_int(
             row, "recent_oos_degraded_evaluations"
         ),
@@ -441,9 +414,7 @@ def _governance_evidence_from_recovery(
         abnormal_order_loop=_strict_recovery_bool(row, "abnormal_order_loop"),
         evaluation_period=evaluation_period,
         evaluated_ts_ms=_strict_recovery_int(row, "evaluated_ts_ms"),
-        operational_health_passed=_strict_recovery_bool(
-            row, "operational_health_passed"
-        ),
+        operational_health_passed=_strict_recovery_bool(row, "operational_health_passed"),
         operational_health_evaluated_ts_ms=_strict_recovery_int(
             row, "operational_health_evaluated_ts_ms"
         ),
@@ -454,16 +425,12 @@ def _governance_evidence_from_recovery(
         stress_win_rate=_recovery_decimal(row, "stress_win_rate"),
         unique_opportunity_count=_strict_recovery_int(row, "unique_opportunity_count"),
         base_win_rate_ci95_lower=_recovery_decimal(row, "base_win_rate_ci95_lower"),
-        stress_win_rate_ci95_lower=_recovery_decimal(
-            row, "stress_win_rate_ci95_lower"
-        ),
+        stress_win_rate_ci95_lower=_recovery_decimal(row, "stress_win_rate_ci95_lower"),
         base_payoff_ratio=_recovery_decimal(row, "base_payoff_ratio"),
         stress_payoff_ratio=_recovery_decimal(row, "stress_payoff_ratio"),
         base_return_skew=_recovery_decimal(row, "base_return_skew"),
         stress_return_skew=_recovery_decimal(row, "stress_return_skew"),
-        base_largest_trade_contribution=_recovery_decimal(
-            row, "base_largest_trade_contribution"
-        ),
+        base_largest_trade_contribution=_recovery_decimal(row, "base_largest_trade_contribution"),
         stress_largest_trade_contribution=_recovery_decimal(
             row, "stress_largest_trade_contribution"
         ),
@@ -954,9 +921,7 @@ class PaperRuntime:
             shadow_ledger=shadow_ledger,
             venue=self.venue,
             risk_manager=RiskManager(self._continuous_limits(RiskLimits())),
-            league_risk_manager=RiskManager(
-                self._continuous_limits(STRATEGY_LEAGUE_RISK_LIMITS)
-            ),
+            league_risk_manager=RiskManager(self._continuous_limits(STRATEGY_LEAGUE_RISK_LIMITS)),
             selected_margin_leverage=self._selected_margin_leverage,
             enforce_v6_family_conflicts=True,
         )
@@ -1186,8 +1151,7 @@ class PaperRuntime:
             if (
                 setting_row.get("mode") != StrategyMode.ACTIVE.value
                 or setting_row.get("lifecycle") != StrategyLifecycle.ACTIVE.value
-                or setting_row.get("changed_by")
-                != StrategyChangeSource.AUTO_GOVERNOR.value
+                or setting_row.get("changed_by") != StrategyChangeSource.AUTO_GOVERNOR.value
                 or setting_row.get("manual_lock") is not False
                 or setting_row.get("change_reason") != "CHALLENGER_BEATS_CHAMPION"
                 or setting_row.get("run_id") != self.run_id
@@ -1215,9 +1179,7 @@ class PaperRuntime:
             assessment_ts_ms = _strict_recovery_int(lineage, "assessment_ts_ms")
             release_commit = git_commit()
             persisted_run = self.ledger.get_run(self.run_id) if self.ledger is not None else None
-            if persisted_run is None or not isinstance(
-                persisted_run.get("config_json"), str
-            ):
+            if persisted_run is None or not isinstance(persisted_run.get("config_json"), str):
                 return False
             run_config = json.loads(str(persisted_run["config_json"]))
             if not isinstance(run_config, Mapping):
@@ -1248,10 +1210,8 @@ class PaperRuntime:
                 return False
             if (
                 assessment.get("strategy_id") != strategy_id
-                or assessment.get("current_lifecycle")
-                != StrategyLifecycle.CHALLENGER.value
-                or assessment.get("recommended_lifecycle")
-                != StrategyLifecycle.ACTIVE.value
+                or assessment.get("current_lifecycle") != StrategyLifecycle.CHALLENGER.value
+                or assessment.get("recommended_lifecycle") != StrategyLifecycle.ACTIVE.value
                 or assessment.get("reason_codes") != ["CHALLENGER_BEATS_CHAMPION"]
                 or assessment.get("automatic_action_allowed") is not True
                 or assessment.get("transition_required") is not True
@@ -1286,12 +1246,7 @@ class PaperRuntime:
                 evidence,
                 required_regime_count=min(3, supported_regime_count),
             )
-            return not (
-                common_failures
-                or family_failures
-                or shadow_failures
-                or active_failures
-            )
+            return not (common_failures or family_failures or shadow_failures or active_failures)
         except (KeyError, TypeError, ValueError):
             return False
 
@@ -1306,12 +1261,10 @@ class PaperRuntime:
             return False
         try:
             staged_persisted_main_order_ids = {
-                str(order["order_id"])
-                for order in self.ledger.list_orders(self.run_id)
+                str(order["order_id"]) for order in self.ledger.list_orders(self.run_id)
             }
             staged_persisted_main_trade_ids = {
-                str(trade["trade_id"])
-                for trade in self.ledger.list_trades(self.run_id)
+                str(trade["trade_id"]) for trade in self.ledger.list_trades(self.run_id)
             }
             staged_persisted_shadow_trade_ids = {
                 str(trade["shadow_trade_id"])
@@ -1340,9 +1293,7 @@ class PaperRuntime:
                 self.ledger.list_incidents(category="PAPER_RESTART_RECOVERY"),
                 run_id=self.run_id,
             )
-            governance_incidents = self.ledger.list_incidents(
-                category="AUTO_GOVERNOR_TRANSITION"
-            )
+            governance_incidents = self.ledger.list_incidents(category="AUTO_GOVERNOR_TRANSITION")
             setting_rows = self.ledger.list_strategy_settings(self.run_id)
             recovery_setting_actions: list[
                 _RecoveredStrategySetting | _IgnoredRecoveryStrategyRevision
@@ -1358,23 +1309,16 @@ class PaperRuntime:
                     windows=recovery_windows,
                     governance_incidents=governance_incidents,
                 ):
-                    strategy_id = _strict_recovery_setting_text(
-                        setting_row, "strategy_id"
-                    )
+                    strategy_id = _strict_recovery_setting_text(setting_row, "strategy_id")
                     staged_strategy_registry.descriptor(strategy_id)
-                    revision = _strict_recovery_setting_int(
-                        setting_row, "settings_revision"
-                    )
+                    revision = _strict_recovery_setting_int(setting_row, "settings_revision")
                     updated_ts_ms = _strict_recovery_setting_int(
                         setting_row, "settings_updated_ts_ms"
                     )
                     recovery_row_token = _recovery_row_token(setting_row)
                     revision_key = (strategy_id, revision)
                     previous_token = seen_ignored_tokens.get(revision_key)
-                    if (
-                        previous_token is not None
-                        and previous_token != recovery_row_token
-                    ):
+                    if previous_token is not None and previous_token != recovery_row_token:
                         raise ValueError(
                             "동일 ignored strategy revision의 복구 원장 행이 다릅니다."
                         )
@@ -1396,43 +1340,27 @@ class PaperRuntime:
                 staged_strategy_registry.descriptor(strategy_id)
                 mode = StrategyMode(_strict_recovery_setting_text(setting_row, "mode"))
                 lifecycle = (
-                    StrategyLifecycle(
-                        _strict_recovery_setting_text(setting_row, "lifecycle")
-                    )
+                    StrategyLifecycle(_strict_recovery_setting_text(setting_row, "lifecycle"))
                     if setting_row.get("lifecycle") is not None
                     else staged_strategy_registry.lifecycle_for_mode(mode)
                 )
                 if staged_strategy_registry.mode_for_lifecycle(lifecycle) is not mode:
                     raise ValueError("복구 전략 설정의 mode와 lifecycle이 서로 다릅니다.")
-                revision = _strict_recovery_setting_int(
-                    setting_row, "settings_revision"
-                )
+                revision = _strict_recovery_setting_int(setting_row, "settings_revision")
                 _strict_recovery_setting_int(setting_row, "ts_ms")
-                updated_ts_ms = _strict_recovery_setting_int(
-                    setting_row, "settings_updated_ts_ms"
-                )
+                updated_ts_ms = _strict_recovery_setting_int(setting_row, "settings_updated_ts_ms")
                 changed_by = StrategyChangeSource(
                     _strict_recovery_setting_text(setting_row, "changed_by")
                 )
-                change_reason = _strict_recovery_setting_text(
-                    setting_row, "change_reason"
-                )
-                long_enabled = _strict_recovery_setting_bool(
-                    setting_row, "long_enabled"
-                )
-                short_enabled = _strict_recovery_setting_bool(
-                    setting_row, "short_enabled"
-                )
-                manual_lock = _strict_recovery_setting_bool(
-                    setting_row, "manual_lock"
-                )
+                change_reason = _strict_recovery_setting_text(setting_row, "change_reason")
+                long_enabled = _strict_recovery_setting_bool(setting_row, "long_enabled")
+                short_enabled = _strict_recovery_setting_bool(setting_row, "short_enabled")
+                manual_lock = _strict_recovery_setting_bool(setting_row, "manual_lock")
                 revision_key = (strategy_id, revision)
                 recovery_row_token = _recovery_row_token(setting_row)
                 previous_token = seen_recovery_tokens.get(revision_key)
                 if previous_token is not None and previous_token != recovery_row_token:
-                    raise ValueError(
-                        "동일 strategy settings revision의 복구 원장 행이 다릅니다."
-                    )
+                    raise ValueError("동일 strategy settings revision의 복구 원장 행이 다릅니다.")
                 seen_recovery_tokens[revision_key] = recovery_row_token
                 recovery_setting_actions.append(
                     _RecoveredStrategySetting(
@@ -1452,18 +1380,14 @@ class PaperRuntime:
                 )
             for recovery_action in recovery_setting_actions:
                 if isinstance(recovery_action, _IgnoredRecoveryStrategyRevision):
-                    reserved_row = (
-                        staged_strategy_registry.reserve_ignored_recovery_revision(
-                            recovery_action.strategy_id,
-                            revision=recovery_action.revision,
-                            updated_ts_ms=recovery_action.updated_ts_ms,
-                            recovery_row_token=recovery_action.recovery_row_token,
-                        )
+                    reserved_row = staged_strategy_registry.reserve_ignored_recovery_revision(
+                        recovery_action.strategy_id,
+                        revision=recovery_action.revision,
+                        updated_ts_ms=recovery_action.updated_ts_ms,
+                        recovery_row_token=recovery_action.recovery_row_token,
                     )
                     if reserved_row is not None:
-                        source_ts_ms = _strict_recovery_setting_int(
-                            recovery_action.source, "ts_ms"
-                        )
+                        source_ts_ms = _strict_recovery_setting_int(recovery_action.source, "ts_ms")
                         recovery_window = next(
                             (
                                 (start_ts_ms, end_ts_ms)
@@ -1483,9 +1407,7 @@ class PaperRuntime:
                                 "effective_previous_revision": reserved_row[
                                     "effective_previous_revision"
                                 ],
-                                "recovery_source_row_token": (
-                                    recovery_action.recovery_row_token
-                                ),
+                                "recovery_source_row_token": (recovery_action.recovery_row_token),
                                 "ignored_transition_id": recovery_action.source.get(
                                     "transition_id"
                                 ),
@@ -1498,11 +1420,9 @@ class PaperRuntime:
                         )
                     continue
                 parsed_setting = recovery_action
-                valid_governor_active = (
-                    self._validated_governor_active_recovery_revision(
-                        parsed_setting.source,
-                        recovery_ts_ms=recovery_validation_ts_ms,
-                    )
+                valid_governor_active = self._validated_governor_active_recovery_revision(
+                    parsed_setting.source,
+                    recovery_ts_ms=recovery_validation_ts_ms,
                 )
                 staged_strategy_registry.restore_setting(
                     parsed_setting.strategy_id,
@@ -1526,32 +1446,22 @@ class PaperRuntime:
                         existing_token is not None
                         and existing_token != parsed_setting.recovery_row_token
                     ):
-                        raise ValueError(
-                            "동일 ACTIVE settings revision의 검증 원장 행이 다릅니다."
-                        )
-                    strategy_tokens[parsed_setting.revision] = (
-                        parsed_setting.recovery_row_token
-                    )
-            retirement_migrations = (
-                staged_strategy_registry.enforce_policy_retirements(
-                    updated_ts_ms=self.clock.utc_ms()
-                )
+                        raise ValueError("동일 ACTIVE settings revision의 검증 원장 행이 다릅니다.")
+                    strategy_tokens[parsed_setting.revision] = parsed_setting.recovery_row_token
+            retirement_migrations = staged_strategy_registry.enforce_policy_retirements(
+                updated_ts_ms=self.clock.utc_ms()
             )
-            family_migrations = (
-                staged_strategy_registry.enforce_v6_family_runtime_policy(
-                    updated_ts_ms=self.clock.utc_ms()
-                )
+            family_migrations = staged_strategy_registry.enforce_v6_family_runtime_policy(
+                updated_ts_ms=self.clock.utc_ms()
             )
             operational_recovery_migrations = (
                 staged_strategy_registry.restore_operationally_quarantined_research_defaults(
                     updated_ts_ms=self.clock.utc_ms()
                 )
             )
-            shadow_migrations = (
-                staged_strategy_registry.enforce_unproven_active_defaults(
-                    updated_ts_ms=self.clock.utc_ms(),
-                    validated_governor_active_tokens=validated_active_tokens,
-                )
+            shadow_migrations = staged_strategy_registry.enforce_unproven_active_defaults(
+                updated_ts_ms=self.clock.utc_ms(),
+                validated_governor_active_tokens=validated_active_tokens,
             )
             portfolio_payload = recovered.payload.get("portfolio")
             if isinstance(portfolio_payload, Mapping):
@@ -1615,9 +1525,7 @@ class PaperRuntime:
                 staged_intent_reason = reason
                 staged_intent_updated_ts_ms = intent_updated_value
                 staged_intent_idempotency = idempotency
-            orderflow_filter = self.ledger.get_app_setting(
-                "orderflow_confirmation_filter_v2"
-            )
+            orderflow_filter = self.ledger.get_app_setting("orderflow_confirmation_filter_v2")
             if orderflow_filter is not None and orderflow_filter.get("run_id") == self.run_id:
                 staged_orderflow_runtime.restore_state(orderflow_filter)
 
@@ -1670,17 +1578,15 @@ class PaperRuntime:
                         strategy_registry=staged_strategy_registry,
                     )
                     migration_evidence = dict(evidence)
-                    reservation = reservation_by_strategy.get(
-                        str(migrated["strategy_id"])
-                    )
+                    reservation = reservation_by_strategy.get(str(migrated["strategy_id"]))
                     if (
                         reservation is not None
                         and int(str(migrated["settings_revision"]))
                         == int(str(reservation["ignored_revision"])) + 1
                     ):
-                        migration_evidence[
-                            "recovery_contamination_policy_reassertion"
-                        ] = dict(reservation)
+                        migration_evidence["recovery_contamination_policy_reassertion"] = dict(
+                            reservation
+                        )
                     migration_records.append(
                         (
                             {
@@ -1725,11 +1631,7 @@ class PaperRuntime:
                 staged_selected_symbol = sorted(staged_recovery_symbols)[0]
             snapshot_ts_value = recovered.payload.get(
                 "snapshot_ts_ms",
-                (
-                    staged_recovery_plan.signal_time_ms
-                    if staged_recovery_plan is not None
-                    else 0
-                ),
+                (staged_recovery_plan.signal_time_ms if staged_recovery_plan is not None else 0),
             )
             if (
                 isinstance(snapshot_ts_value, bool)
@@ -1749,8 +1651,7 @@ class PaperRuntime:
                 "category": "RECOVERY",
                 "level": "INFO",
                 "message": (
-                    f"{recovered.lifecycle_state} PAPER 상태 복구 · "
-                    "fresh 공개호가 전 신규진입 잠금"
+                    f"{recovered.lifecycle_state} PAPER 상태 복구 · fresh 공개호가 전 신규진입 잠금"
                 ),
             }
             self.ledger.record_strategy_migration_batch(migration_records)
@@ -1767,8 +1668,7 @@ class PaperRuntime:
             self._paper_entry_intent_idempotency = staged_intent_idempotency
             if auto_resumed_user_pause:
                 self._persist_paper_entry_intent(
-                    updated_ts_ms=staged_intent_updated_ts_ms
-                    or recovery_validation_ts_ms
+                    updated_ts_ms=staged_intent_updated_ts_ms or recovery_validation_ts_ms
                 )
                 self._log(
                     "RISK",
@@ -1780,9 +1680,7 @@ class PaperRuntime:
             self.position_visible = staged_position_visible
             self.selected_symbol = staged_selected_symbol
             self._recovery_revalidation_symbols = staged_recovery_symbols
-            self._recovery_ignored_governance_row_tokens = tuple(
-                ignored_governance_row_tokens
-            )
+            self._recovery_ignored_governance_row_tokens = tuple(ignored_governance_row_tokens)
             self._recovery_reserved_governance_revisions = tuple(
                 dict(row) for row in reserved_governance_revisions
             )
@@ -1986,12 +1884,10 @@ class PaperRuntime:
         recovery_audit = self.startup_recovery_audit
         paper_transition = self.paper_portfolio.latest_execution_transition
         queue_capacity = (
-            self._supervisor.telemetry.queue_capacity
-            if self._supervisor is not None
-            else 0
+            self._supervisor.telemetry.queue_capacity if self._supervisor is not None else 0
         )
-        strategy_high_water, strategy_low_water = (
-            self._strategy_evaluation_queue_watermarks(queue_capacity)
+        strategy_high_water, strategy_low_water = self._strategy_evaluation_queue_watermarks(
+            queue_capacity
         )
         semivariance_snapshots = tuple(self._semivariance_latest_snapshots.values())
         return {
@@ -2186,9 +2082,7 @@ class PaperRuntime:
                 profile_id: {
                     "initialized": self._directional_change_initialized[profile_id],
                     "event_count": self._directional_change_event_counts[profile_id],
-                    "last_direction": self._directional_change_last_directions[
-                        profile_id
-                    ].value,
+                    "last_direction": self._directional_change_last_directions[profile_id].value,
                     "last_confirmation_type": (
                         self._directional_change_last_confirmation_types[profile_id]
                     ),
@@ -2212,17 +2106,13 @@ class PaperRuntime:
                 ),
                 "periodicity_status": "PERIODICITY_UNCALIBRATED",
                 "last_symbol": self._semivariance_last_symbol,
-                "last_completed_minute_ts_ms": (
-                    self._semivariance_last_completed_minute_ts_ms
-                ),
+                "last_completed_minute_ts_ms": (self._semivariance_last_completed_minute_ts_ms),
                 "last_status": self._semivariance_last_status,
                 "last_reset_reason": self._semivariance_last_reset_reason,
                 "risk_multiplier_applied": False,
             },
             "strategy_evaluation_executor": (
-                "DEDICATED_PROCESS"
-                if self.mode is RuntimeMode.LIVE_SHADOW_PAPER
-                else "SYNCHRONOUS"
+                "DEDICATED_PROCESS" if self.mode is RuntimeMode.LIVE_SHADOW_PAPER else "SYNCHRONOUS"
             ),
             "strategy_evaluation_process_pid": self._live_strategy_process_pid,
             **strategy_candle_cache_diagnostics,
@@ -2513,11 +2403,10 @@ class PaperRuntime:
                     thirty_minute_candles=prepared.thirty_minute_candles,
                     hourly_candles=prepared.hourly_candles,
                 )
-                process_result, cancellation = (
-                    await self._live_strategy_evaluator.evaluate_to_completion(
-                        process_request
-                    )
-                )
+                (
+                    process_result,
+                    cancellation,
+                ) = await self._live_strategy_evaluator.evaluate_to_completion(process_request)
                 self._record_live_event_phase("STRATEGY_EVALUATION", phase_started, event)
                 if cancellation is None:
                     self._refresh_supervisor_entry_safety()
@@ -2688,9 +2577,7 @@ class PaperRuntime:
                         or trade.quantity <= 0
                     ):
                         raise FeatureInputError("체결 가격과 수량은 유한한 양수여야 합니다.")
-                    out_of_order_trade_count = (
-                        self.candle_builder.diagnostics.out_of_order_trades
-                    )
+                    out_of_order_trade_count = self.candle_builder.diagnostics.out_of_order_trades
                     completed_candles = self.candle_builder.add(trade)
                     feature_engine = self.feature_engines.get(event.symbol)
                     if feature_engine is not None:
@@ -2994,16 +2881,12 @@ class PaperRuntime:
                 sequence_valid=event.quality.sequence_valid,
                 stale=event.quality.is_stale,
                 lag_ms=(
-                    Decimal(str(event.quality.lag_ms))
-                    if event.quality.lag_ms is not None
-                    else None
+                    Decimal(str(event.quality.lag_ms)) if event.quality.lag_ms is not None else None
                 ),
             )
             updates = tuple(
                 (profile_id, engine.update(observation))
-                for profile_id, engine in self._directional_change_engines_for_symbol(
-                    event.symbol
-                )
+                for profile_id, engine in self._directional_change_engines_for_symbol(event.symbol)
             )
         except (ArithmeticError, KeyError, IndexError, TypeError, ValueError):
             self._discard_directional_change_symbol(event.symbol)
@@ -3763,9 +3646,7 @@ class PaperRuntime:
     ) -> tuple[dict[str, object], ...]:
         """검증된 증거로만 governor 전환을 적용하고 이유와 기간을 저장한다."""
 
-        timestamp = (
-            self.clock.utc_ms() if assessment_ts_ms is None else assessment_ts_ms
-        )
+        timestamp = self.clock.utc_ms() if assessment_ts_ms is None else assessment_ts_ms
         assessment = self.strategy_governor.assess(
             self.strategy_registry,
             strategy_id,
@@ -3822,25 +3703,17 @@ class PaperRuntime:
         """두 격리 계좌와 runtime fault를 같은 cycle 시각에 fail-closed 평가한다."""
 
         strategy_accounts = [
-            account
-            for account in accounts
-            if account.get("strategy_id") == strategy_id
+            account for account in accounts if account.get("strategy_id") == strategy_id
         ]
         expected_profiles = {CostProfile.BASE.value, CostProfile.STRESS.value}
-        expected_account_ids = {
-            f"{strategy_id}:{profile}" for profile in expected_profiles
-        }
+        expected_account_ids = {f"{strategy_id}:{profile}" for profile in expected_profiles}
         accounts_proven_healthy = (
             len(strategy_accounts) == 2
-            and {account.get("profile") for account in strategy_accounts}
-            == expected_profiles
-            and {account.get("account_id") for account in strategy_accounts}
-            == expected_account_ids
+            and {account.get("profile") for account in strategy_accounts} == expected_profiles
+            and {account.get("account_id") for account in strategy_accounts} == expected_account_ids
             and all(account.get("faulted") is False for account in strategy_accounts)
         )
-        account_fault = any(
-            account.get("faulted") is True for account in strategy_accounts
-        )
+        account_fault = any(account.get("faulted") is True for account in strategy_accounts)
         main_risk_fault = self.paper_portfolio.main.risk_state.faulted is True
         persistence_fault = self._persistence_fault_active is True
         supervisor = self._supervisor
@@ -3874,9 +3747,7 @@ class PaperRuntime:
             and not self._recovery_revalidation_symbols
         )
         health_flags_proven = all(
-            isinstance(flag, str)
-            and "ENTRY_LOCK" not in flag
-            and "RECOVERY" not in flag
+            isinstance(flag, str) and "ENTRY_LOCK" not in flag and "RECOVERY" not in flag
             for flag in self.runtime_health_flags
         )
         operational_health_passed = (
@@ -3915,28 +3786,21 @@ class PaperRuntime:
             for strategy_id in self.strategy_registry.strategy_ids
             if (
                 self.strategy_registry.descriptor(strategy_id).role is StrategyRole.ENTRY
-                and self.strategy_registry.descriptor(
-                    strategy_id
-                ).default_research_enabled
+                and self.strategy_registry.descriptor(strategy_id).default_research_enabled
                 and not self.strategy_registry.is_policy_retired(strategy_id)
             )
         )
         if not eligible_strategy_ids or any(
-            operational_by_strategy.get(strategy_id, {}).get(
-                "operational_health_passed"
-            )
+            operational_by_strategy.get(strategy_id, {}).get("operational_health_passed")
             is not True
-            or operational_by_strategy.get(strategy_id, {}).get("operational_fault")
-            is not False
+            or operational_by_strategy.get(strategy_id, {}).get("operational_fault") is not False
             for strategy_id in eligible_strategy_ids
         ):
             return ()
 
-        changed = (
-            self.strategy_registry.restore_operationally_quarantined_research_defaults(
-                updated_ts_ms=evaluated_ts_ms,
-                source=StrategyChangeSource.RECOVERY,
-            )
+        changed = self.strategy_registry.restore_operationally_quarantined_research_defaults(
+            updated_ts_ms=evaluated_ts_ms,
+            source=StrategyChangeSource.RECOVERY,
         )
         release_commit = git_commit()
         for row in changed:
@@ -3995,10 +3859,7 @@ class PaperRuntime:
     def run_strategy_governance_cycle(self) -> dict[str, object]:
         """새 자연표본 또는 운영 결함이 있을 때만 보수적 자동 전환을 적용한다."""
 
-        recovery_failed = (
-            self.startup_recovery_audit.get("new_state")
-            == "RECOVERY_FAIL_CLOSED"
-        )
+        recovery_failed = self.startup_recovery_audit.get("new_state") == "RECOVERY_FAIL_CLOSED"
         if recovery_failed:
             return {
                 "evaluated_ts_ms": self.clock.utc_ms(),
@@ -4920,9 +4781,7 @@ class PaperRuntime:
             else ""
         )
         explicit_opportunity_id = (
-            str(trade["opportunity_id"]).strip()
-            if trade.get("opportunity_id") is not None
-            else ""
+            str(trade["opportunity_id"]).strip() if trade.get("opportunity_id") is not None else ""
         )
         if candidate_id.upper() == "UNKNOWN":
             candidate_id = ""
@@ -4999,9 +4858,7 @@ class PaperRuntime:
                 if trade.get("trailing_state_checksum") is not None
                 else None
             ),
-            "selected_margin_leverage": str(
-                trade.get("selected_margin_leverage", "1")
-            ),
+            "selected_margin_leverage": str(trade.get("selected_margin_leverage", "1")),
             "entry_notional_usdt": str(
                 trade.get(
                     "entry_notional_usdt",
@@ -5487,15 +5344,12 @@ class PaperRuntime:
         snapshot["focus_positions"] = self.focus_positions()
         main_pending_entry_count = len(self.paper_portfolio.main.pending_entries)
         league_pending_entry_count = sum(
-            len(account.pending_entries)
-            for account in self.paper_portfolio.shadows.values()
+            len(account.pending_entries) for account in self.paper_portfolio.shadows.values()
         )
         total_open_position_count = len(self.paper_portfolio.main.positions) + sum(
             len(account.positions) for account in self.paper_portfolio.shadows.values()
         )
-        total_pending_entry_count = (
-            main_pending_entry_count + league_pending_entry_count
-        )
+        total_pending_entry_count = main_pending_entry_count + league_pending_entry_count
         snapshot["main_pending_entry_count"] = main_pending_entry_count
         snapshot["league_pending_entry_count"] = league_pending_entry_count
         snapshot["total_pending_entry_count"] = total_pending_entry_count
@@ -5504,11 +5358,9 @@ class PaperRuntime:
             total_open_position_count == 0 and total_pending_entry_count == 0
         )
         snapshot["paper_entry_intent"] = self.paper_entry_intent()
-        snapshot["paper_research_configuration"] = (
-            self.paper_research_configuration()
-        )
-        snapshot["orderflow_confirmation_filter"] = (
-            self.orderflow_confirmation_filter_status(symbol=self.selected_symbol)
+        snapshot["paper_research_configuration"] = self.paper_research_configuration()
+        snapshot["orderflow_confirmation_filter"] = self.orderflow_confirmation_filter_status(
+            symbol=self.selected_symbol
         )
         snapshot["history_scope"] = {
             "analysis_scope": "CURRENT_STRATEGY_VERSION",
@@ -5566,9 +5418,7 @@ class PaperRuntime:
             self._selected_margin_leverage = Decimal(selected_leverage)
             self._paper_research_configuration_revision += 1
             self._paper_research_configuration_updated_ts_ms = timestamp
-            self.paper_portfolio.risk_manager = RiskManager(
-                self._continuous_limits(RiskLimits())
-            )
+            self.paper_portfolio.risk_manager = RiskManager(self._continuous_limits(RiskLimits()))
             self.paper_portfolio.league_risk_manager = RiskManager(
                 self._continuous_limits(STRATEGY_LEAGUE_RISK_LIMITS)
             )
@@ -5682,16 +5532,12 @@ class PaperRuntime:
                     side,
                 )
             )
-            signal = self.strategy_signals.get(
-                (resolved_symbol, strategy_id, side.value)
-            )
+            signal = self.strategy_signals.get((resolved_symbol, strategy_id, side.value))
             if not condition_rows and signal is None:
                 continue
             passed_count = sum(row.get("status") == "PASSED" for row in condition_rows)
             blocked_rows = [
-                row
-                for row in condition_rows
-                if row.get("status") in {"BLOCKED", "WAITING_DATA"}
+                row for row in condition_rows if row.get("status") in {"BLOCKED", "WAITING_DATA"}
             ]
             decision = signal.decision if signal is not None else None
             side_payloads.append(
@@ -5703,8 +5549,7 @@ class PaperRuntime:
                     "passed": passed_count,
                     "total": len(condition_rows),
                     "top_blockers": [
-                        str(row.get("label_ko", "조건 실측 대기"))
-                        for row in blocked_rows[:3]
+                        str(row.get("label_ko", "조건 실측 대기")) for row in blocked_rows[:3]
                     ],
                     "conditions": condition_rows,
                     "execution": self._decision_execution_detail(
@@ -5724,12 +5569,10 @@ class PaperRuntime:
         open_positions = [
             row
             for row in self.focus_positions()
-            if row.get("strategy_id") == strategy_id
-            and row.get("symbol") == resolved_symbol
+            if row.get("strategy_id") == strategy_id and row.get("symbol") == resolved_symbol
         ]
         pending_count = sum(
-            pending.plan.strategy_id == strategy_id
-            and pending.plan.symbol == resolved_symbol
+            pending.plan.strategy_id == strategy_id and pending.plan.symbol == resolved_symbol
             for account in self.paper_portfolio.accounts
             for pending in account.pending_entries.values()
         )
@@ -5779,15 +5622,11 @@ class PaperRuntime:
             "symbol": resolved_symbol,
             "setup_state": setup_state,
             "passed": selected["passed"] if selected is not None else 0,
-            "total": (
-                selected["total"] if selected is not None else len(waiting_conditions)
-            ),
-            "top_blockers": selected["top_blockers"] if selected is not None else [
-                "현재 종목의 첫 evaluator 실측을 기다리고 있습니다."
-            ],
-            "conditions": (
-                selected["conditions"] if selected is not None else waiting_conditions
-            ),
+            "total": (selected["total"] if selected is not None else len(waiting_conditions)),
+            "top_blockers": selected["top_blockers"]
+            if selected is not None
+            else ["현재 종목의 첫 evaluator 실측을 기다리고 있습니다."],
+            "conditions": (selected["conditions"] if selected is not None else waiting_conditions),
             "sides": side_payloads,
             "execution": execution,
             "pending_count": pending_count,
@@ -5824,16 +5663,16 @@ class PaperRuntime:
             "take_profit_2": (
                 str(entry + direction * risk * take_profit_2_r)
                 if entry is not None and risk is not None
-                else str(decision.take_profit) if decision.take_profit is not None else None
+                else str(decision.take_profit)
+                if decision.take_profit is not None
+                else None
             ),
             "trailing_activation": "TP1 이후 비용 보전 방향으로만 조정",
             "current_trail": None,
             "remaining_quantity": None,
             "expected_cost_bps": str(decision.expected_cost_bps),
             "net_reward_risk": (
-                str(decision.net_reward_risk)
-                if decision.net_reward_risk is not None
-                else None
+                str(decision.net_reward_risk) if decision.net_reward_risk is not None else None
             ),
         }
 
@@ -5872,9 +5711,7 @@ class PaperRuntime:
                     {
                         "condition_id": f"COMPONENT_{name.upper()}",
                         "label_ko": component_labels.get(str(name), str(name)),
-                        "threshold_ko": (
-                            f"{status['component_pass_threshold']} 이상"
-                        ),
+                        "threshold_ko": (f"{status['component_pass_threshold']} 이상"),
                         "current_value": value,
                         "status": (
                             "PASSED"
@@ -5896,9 +5733,7 @@ class PaperRuntime:
                     "label_ko": "공개시장 데이터 상태",
                     "threshold_ko": "HEALTHY",
                     "current_value": row.get("data_health"),
-                    "status": (
-                        "PASSED" if row.get("data_health") == "HEALTHY" else "BLOCKED"
-                    ),
+                    "status": ("PASSED" if row.get("data_health") == "HEALTHY" else "BLOCKED"),
                     "reason_ko": "sequence·stale 상태를 함께 반영합니다.",
                     "side": side,
                 },
@@ -5910,8 +5745,7 @@ class PaperRuntime:
                     "current_value": row.get("score"),
                     "status": (
                         "PASSED"
-                        if Decimal(str(row.get("score", 0)))
-                        >= Decimal(str(status["threshold"]))
+                        if Decimal(str(row.get("score", 0))) >= Decimal(str(status["threshold"]))
                         else "BLOCKED"
                     ),
                     "reason_ko": "사전등록된 9개 가중치를 사용합니다.",
@@ -5982,9 +5816,9 @@ class PaperRuntime:
             ),
             "passed": selected["passed"] if selected is not None else 0,
             "total": selected["total"] if selected is not None else 13,
-            "top_blockers": selected["top_blockers"] if selected is not None else [
-                "현재 종목의 주문흐름 실측을 기다리고 있습니다."
-            ],
+            "top_blockers": selected["top_blockers"]
+            if selected is not None
+            else ["현재 종목의 주문흐름 실측을 기다리고 있습니다."],
             "conditions": selected["conditions"] if selected is not None else [],
             "sides": side_payloads,
             "execution": {},
@@ -6373,13 +6207,9 @@ class PaperRuntime:
                     else percentage(league.weekly_loss_limit_fraction)
                 ),
                 "daily_trade_limit": (
-                    "중단 없음"
-                    if league.max_daily_trades is None
-                    else str(league.max_daily_trades)
+                    "중단 없음" if league.max_daily_trades is None else str(league.max_daily_trades)
                 ),
-                "loss_cooldown": (
-                    "사용 안 함" if not league.loss_cooldowns_enabled else "사용"
-                ),
+                "loss_cooldown": ("사용 안 함" if not league.loss_cooldowns_enabled else "사용"),
                 "drawdown_lock": percentage(league.maximum_drawdown_fraction),
                 "base_entry_fee": bps(cost.fee_bps(entry=True, profile=CostProfile.BASE)),
                 "base_exit_fee": bps(cost.fee_bps(entry=False, profile=CostProfile.BASE)),
@@ -6635,11 +6465,13 @@ class PaperRuntime:
             "reason_codes": list(plan.reason_codes),
             "plain_korean_explanation": list(plan.plain_korean_explanation),
             "management_policy": list(plan.management_policy),
+            "stop_rationale_ko": plan.stop_rationale_ko,
+            "take_profit_1_rationale_ko": plan.take_profit_1_rationale_ko,
+            "take_profit_2_rationale_ko": plan.take_profit_2_rationale_ko,
+            "reference_timeframes_ko": list(plan.reference_timeframes_ko),
             "selected_margin_leverage": str(plan.selected_margin_leverage),
             "planned_margin_usdt": str(
-                plan.position_size
-                * plan.worst_allowed_entry
-                / plan.selected_margin_leverage
+                plan.position_size * plan.worst_allowed_entry / plan.selected_margin_leverage
             ),
             "main_eligible": plan.main_eligible,
             "shadow_eligible": plan.shadow_eligible,

@@ -32,6 +32,11 @@ from backend.app.strategies.depth_adjusted_ofi import (
     DepthAdjustedOfiStrategy,
     depth_adjusted_ofi_ready,
 )
+from backend.app.strategies.exit_structure import (
+    compression_breakout_exit_plan,
+    intraday_structural_exit_plan,
+    vwap_reversion_exit_plan,
+)
 from backend.app.strategies.hourly_momentum_breakout import (
     HourlyMomentumBreakoutContext,
     HourlyMomentumBreakoutStrategy,
@@ -187,9 +192,7 @@ class StrategySignalEvaluator:
         self._intraday_state_cache: dict[
             tuple[str, str], tuple[int | None, IntradayTrendState]
         ] = {}
-        self._latest_conditions: dict[
-            tuple[str, str, Side], tuple[dict[str, object], ...]
-        ] = {}
+        self._latest_conditions: dict[tuple[str, str, Side], tuple[dict[str, object], ...]] = {}
 
     def condition_rows(
         self,
@@ -243,6 +246,7 @@ class StrategySignalEvaluator:
                     history_statistics,
                     trailing_return_3s_bps,
                     plan,
+                    tick_size,
                     fifteen_minute_candles,
                     thirty_minute_candles,
                     hourly_candles,
@@ -272,6 +276,7 @@ class StrategySignalEvaluator:
         history_statistics: _HistoryStatistics,
         trailing_return_3s_bps: float | None,
         plan: PlanInputs,
+        tick_size: Decimal,
         fifteen_minute_candles: tuple[Candle, ...],
         thirty_minute_candles: tuple[Candle, ...],
         hourly_candles: tuple[Candle, ...],
@@ -323,6 +328,17 @@ class StrategySignalEvaluator:
             )
             return evaluator.evaluate(sweep_context)
         if isinstance(evaluator, CompressionBreakoutStrategy):
+            expected_cost_bps = max(
+                Decimal("13"),
+                Decimal(str(snapshot.spread_bps)) + Decimal("12"),
+            )
+            compression_plan = compression_breakout_exit_plan(
+                history,
+                snapshot,
+                side,
+                tick_size=tick_size,
+                expected_cost_bps=expected_cost_bps,
+            )
             pullback = _pullback_metrics(
                 history,
                 snapshot,
@@ -344,7 +360,7 @@ class StrategySignalEvaluator:
                 side=side,
                 features=snapshot,
                 regime=regime,
-                plan=plan,
+                plan=compression_plan,
                 compression_quantile=history_statistics.compression_percentile,
                 breakout_confirmed=ofi_medium > 0 and trade_flow > 0.15,
                 initial_impulse_extended=snapshot.realized_volatility_30s >= 0.0015,
@@ -364,6 +380,17 @@ class StrategySignalEvaluator:
             )
             return evaluator.evaluate(breakout_context)
         if isinstance(evaluator, VwapExhaustionStrategy):
+            expected_cost_bps = max(
+                Decimal("13"),
+                Decimal(str(snapshot.spread_bps)) + Decimal("12"),
+            )
+            reversion_plan = vwap_reversion_exit_plan(
+                history,
+                snapshot,
+                side,
+                tick_size=tick_size,
+                expected_cost_bps=expected_cost_bps,
+            )
             excursion_valid = deviation_bps < 0 if side is Side.LONG else deviation_bps > 0
             structure_reentered = abs(deviation_bps) <= max(
                 8.0,
@@ -389,7 +416,7 @@ class StrategySignalEvaluator:
                 side=side,
                 features=snapshot,
                 regime=regime,
-                plan=plan,
+                plan=reversion_plan,
                 vwap_deviation_robust_z=history_statistics.deviation_z,
                 excursion_direction_valid=excursion_valid,
                 aggressive_flow_robust_z=history_statistics.flow_z,
@@ -645,10 +672,7 @@ class StrategySignalEvaluator:
                 if intraday_state.structural_stop is not None
                 else None
             )
-            intraday_plan_direction = Decimal(1) if side is Side.LONG else Decimal(-1)
-            risk_distance = (
-                abs(entry - structural_stop) if structural_stop is not None else None
-            )
+            risk_distance = abs(entry - structural_stop) if structural_stop is not None else None
             risk_atr = (
                 float(risk_distance) / intraday_state.atr
                 if risk_distance is not None
@@ -656,19 +680,16 @@ class StrategySignalEvaluator:
                 and intraday_state.atr > 0
                 else None
             )
-            target = (
-                entry
-                + intraday_plan_direction
-                * risk_distance
-                * Decimal(str(evaluator.take_profit_2_r))
-                if risk_distance is not None
-                else None
-            )
-            intraday_plan = PlanInputs(
+            intraday_plan = intraday_structural_exit_plan(
+                side=side,
                 entry=entry,
                 structural_stop=structural_stop,
-                target=target,
-                expected_total_cost_bps=expected_cost_bps,
+                expected_cost_bps=expected_cost_bps,
+                tick_size=tick_size,
+                signal_ts_ms=snapshot.ts_ms,
+                base_candles=candles,
+                hourly_candles=hourly_candles,
+                variant=evaluator.variant,
             )
             aligned = intraday_flow_confirmation_ready(side, snapshot, regime)
             confirmation_ms = self._confirmation_ms(
@@ -685,9 +706,7 @@ class StrategySignalEvaluator:
                 regime=regime,
                 plan=intraday_plan,
                 state=intraday_state,
-                signal_age_ms=(
-                    snapshot.ts_ms - signal_ts_ms if signal_ts_ms is not None else None
-                ),
+                signal_age_ms=(snapshot.ts_ms - signal_ts_ms if signal_ts_ms is not None else None),
                 confirmation_ms=confirmation_ms,
                 risk_atr=risk_atr,
             )
@@ -884,9 +903,7 @@ def _intraday_condition_rows(
         setup_label = "30분 조정 뒤 1시간 방향 재합류"
     direction_multiplier = 1 if context.side is Side.LONG else -1
     directional_momentum = (
-        state.momentum_24h * direction_multiplier
-        if state.momentum_24h is not None
-        else None
+        state.momentum_24h * direction_multiplier if state.momentum_24h is not None else None
     )
     opposite_regime = Regime.TREND_DOWN if context.side is Side.LONG else Regime.TREND_UP
     flow_passed = intraday_flow_confirmation_ready(
@@ -944,8 +961,7 @@ def _intraday_condition_rows(
             threshold_ko=f"{momentum_threshold * 100:.1f}% 이상",
             current_value=directional_momentum,
             passed=(
-                directional_momentum is not None
-                and directional_momentum >= momentum_threshold
+                directional_momentum is not None and directional_momentum >= momentum_threshold
             ),
             **common,
         ),
@@ -1008,9 +1024,7 @@ def _intraday_condition_rows(
             label_ko="bid·ask·OFI·체결 흐름",
             threshold_ko=f"동일 방향 {evaluator.confirmation_required_ms}ms 지속",
             current_value=f"{flow_value}, 지속 {context.confirmation_ms}ms",
-            passed=(
-                flow_passed and context.confirmation_ms >= evaluator.confirmation_required_ms
-            ),
+            passed=(flow_passed and context.confirmation_ms >= evaluator.confirmation_required_ms),
             **common,
         ),
         _condition_row(
@@ -1018,9 +1032,7 @@ def _intraday_condition_rows(
             label_ko="구조 손절 거리",
             threshold_ko="0.65~3.00 ATR",
             current_value=context.risk_atr,
-            passed=(
-                context.risk_atr is not None and 0.65 <= context.risk_atr <= 3.0
-            ),
+            passed=(context.risk_atr is not None and 0.65 <= context.risk_atr <= 3.0),
             **common,
         ),
         _condition_row(
@@ -1040,9 +1052,7 @@ def _vwap_condition_rows(
 ) -> tuple[dict[str, object], ...]:
     structure_limit = max(8.0, context.features.spread_bps * 8)
     absolute_deviation = (
-        abs(context.vwap_deviation_bps)
-        if context.vwap_deviation_bps is not None
-        else None
+        abs(context.vwap_deviation_bps) if context.vwap_deviation_bps is not None else None
     )
     net_rr = float(decision.net_reward_risk) if decision.net_reward_risk is not None else None
     common: _ConditionObservation = {
@@ -1087,9 +1097,7 @@ def _vwap_condition_rows(
             label_ko="이탈 방향",
             threshold_ko=f"{context.side.value} 평균복귀 반대쪽 이탈",
             current_value=(
-                context.vwap_deviation_bps
-                if context.vwap_deviation_bps is not None
-                else None
+                context.vwap_deviation_bps if context.vwap_deviation_bps is not None else None
             ),
             passed=context.excursion_direction_valid,
             **common,
@@ -1123,8 +1131,7 @@ def _vwap_condition_rows(
             label_ko="OFI 반전",
             threshold_ko="단기 OFI는 진입방향·3초 OFI는 이탈방향",
             current_value=(
-                f"OFI250 {context.features.ofi_250ms:.4f}, "
-                f"OFI3 {context.features.ofi_3s:.4f}"
+                f"OFI250 {context.features.ofi_250ms:.4f}, OFI3 {context.features.ofi_3s:.4f}"
             ),
             passed=context.ofi_reversed,
             **common,

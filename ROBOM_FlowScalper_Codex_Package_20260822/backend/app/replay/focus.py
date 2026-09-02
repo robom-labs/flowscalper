@@ -13,7 +13,7 @@ from typing import Any
 
 from backend.app.storage.sqlite import SQLiteLedger
 
-_FOCUS_SESSION_VERSION = 8
+_FOCUS_SESSION_VERSION = 9
 _CANDIDATE_ID_PATTERN = re.compile(r"^paper-(candidate-[0-9a-f]+)-")
 _EXIT_REASON_LABELS = {
     "TAKE_PROFIT": "익절",
@@ -53,6 +53,18 @@ _REGIME_LABELS_KO = {
     "RANGE": "박스권",
     "HIGH_VOL": "변동성 확대",
     "LOW_VOL": "변동성 축소",
+}
+_RUNNER_POLICY_LABELS_KO = {
+    "TP1_ATR_CHANDELIER_RUNNER": (
+        "1차 익절 뒤 남은 수량은 완성봉 ATR 추적선으로 수익을 보호하고, "
+        "손절선은 절대 넓히지 않습니다."
+    ),
+    "TP1_PATH_STRUCTURE_RUNNER": (
+        "1차 익절 뒤 남은 수량은 진입 전 실제 눌림폭만큼 추적하고, 손절선은 절대 넓히지 않습니다."
+    ),
+    "FIXED_SECOND_TARGET": (
+        "1차 익절 뒤 남은 수량은 진입 전에 확정한 2차 구조 가격에서 정리합니다."
+    ),
 }
 
 
@@ -105,9 +117,7 @@ class ReplayFocusSessionBuilder:
         candles = [
             self._chart_candle(candle)
             for candle in stored_candles
-            if entry_ts - pre_roll_ms
-            <= int(str(candle["open_ts_ms"]))
-            <= exit_ts + post_roll_ms
+            if entry_ts - pre_roll_ms <= int(str(candle["open_ts_ms"])) <= exit_ts + post_roll_ms
         ]
         window: list[dict[str, Any]] = []
         for candle in candles:
@@ -140,12 +150,8 @@ class ReplayFocusSessionBuilder:
             raise ValueError("거래 시간대의 저장 공개시장 이벤트가 없습니다.")
         frames.extend(
             (
-                self._ledger_transition_frame(
-                    trade, trade_fills, milestones, transition="ENTRY"
-                ),
-                self._ledger_transition_frame(
-                    trade, trade_fills, milestones, transition="EXIT"
-                ),
+                self._ledger_transition_frame(trade, trade_fills, milestones, transition="ENTRY"),
+                self._ledger_transition_frame(trade, trade_fills, milestones, transition="EXIT"),
             )
         )
         frames.sort(
@@ -186,14 +192,10 @@ class ReplayFocusSessionBuilder:
             "source_net_pnl": str(trade["net_pnl_usdt"]),
             "source_fees": str(trade["fees_usdt"]),
             "source_slippage": str(trade["slippage_usdt"]),
-            "replay_final_state": (
-                str(replay["final_state"]) if replay is not None else "NOT_RUN"
-            ),
+            "replay_final_state": (str(replay["final_state"]) if replay is not None else "NOT_RUN"),
             "replay_checksum": str(replay["checksum"]) if replay is not None else "",
             "matched": (
-                replay_count > 0
-                if reconciliation_applicable and replay_count is not None
-                else None
+                replay_count > 0 if reconciliation_applicable and replay_count is not None else None
             ),
             "reason": (
                 "PUBLIC_PAPER_REPLAY_COMPARISON"
@@ -296,9 +298,7 @@ class ReplayFocusSessionBuilder:
         entry_price = Decimal(str(trade["entry_price"]))
         exit_price = Decimal(str(trade["exit_price"]))
         total_fees = max(Decimal(0), Decimal(str(trade.get("fees_usdt", 0))))
-        total_slippage = max(
-            Decimal(0), Decimal(str(trade.get("slippage_usdt", 0)))
-        )
+        total_slippage = max(Decimal(0), Decimal(str(trade.get("slippage_usdt", 0))))
         entry_notional = abs(entry_price * quantity)
         exit_notional = abs(exit_price * quantity)
         combined_notional = entry_notional + exit_notional
@@ -407,11 +407,7 @@ class ReplayFocusSessionBuilder:
         trade: Mapping[str, object],
         candidate: Mapping[str, object] | None,
     ) -> dict[str, object]:
-        raw_targets = (
-            candidate.get("take_profit_targets", [])
-            if candidate is not None
-            else []
-        )
+        raw_targets = candidate.get("take_profit_targets", []) if candidate is not None else []
         targets = raw_targets if isinstance(raw_targets, list) else []
         target_prices = [
             str(target["price"])
@@ -484,6 +480,26 @@ class ReplayFocusSessionBuilder:
             descriptor.research_contract.strategy_version if descriptor is not None else ""
         )
         regime = str(candidate.get("regime", "UNKNOWN")) if candidate else "UNKNOWN"
+        raw_timeframes = candidate.get("reference_timeframes_ko", []) if candidate else []
+        protection_timeframes = (
+            [str(value) for value in raw_timeframes]
+            if isinstance(raw_timeframes, list | tuple)
+            else []
+        )
+        raw_management_policy = candidate.get("management_policy", []) if candidate else []
+        management_policy = (
+            [str(value) for value in raw_management_policy]
+            if isinstance(raw_management_policy, list | tuple)
+            else []
+        )
+        runner_management_ko = next(
+            (
+                label
+                for policy, label in _RUNNER_POLICY_LABELS_KO.items()
+                if policy in management_policy
+            ),
+            "이 과거 거래에는 남은 수량의 세부 관리 근거가 저장되지 않았습니다.",
+        )
         return {
             "signal_ts_ms": int(str(levels["signal_ts_ms"])),
             "reason_codes": reason_codes,
@@ -495,16 +511,21 @@ class ReplayFocusSessionBuilder:
             ),
             "strategy_summary_ko": descriptor.summary_ko if descriptor is not None else "",
             "entry_hypothesis_ko": (
-                descriptor.research_contract.entry_hypothesis_ko
-                if descriptor is not None
-                else ""
+                descriptor.research_contract.entry_hypothesis_ko if descriptor is not None else ""
             ),
             "required_timeframes": (
                 list(descriptor.required_timeframes) if descriptor is not None else []
             ),
-            "entry_rules_ko": (
-                list(descriptor.entry_rules_ko) if descriptor is not None else []
-            ),
+            "entry_rules_ko": (list(descriptor.entry_rules_ko) if descriptor is not None else []),
+            "stop_rationale_ko": str(candidate.get("stop_rationale_ko") or "") if candidate else "",
+            "take_profit_1_rationale_ko": str(candidate.get("take_profit_1_rationale_ko") or "")
+            if candidate
+            else "",
+            "take_profit_2_rationale_ko": str(candidate.get("take_profit_2_rationale_ko") or "")
+            if candidate
+            else "",
+            "protection_timeframes_ko": protection_timeframes,
+            "runner_management_ko": runner_management_ko,
             "trade_strategy_version": trade_version,
             "registry_strategy_version": registry_version,
             "registry_metadata_matches_trade": bool(
@@ -656,9 +677,7 @@ class ReplayFocusSessionBuilder:
         entry_ts = int(str(trade["entry_ts_ms"]))
         exit_ts = int(str(trade["exit_ts_ms"]))
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
-        markers = [
-            marker for marker in milestones if int(str(marker["ts_ms"])) <= ts_ms
-        ]
+        markers = [marker for marker in milestones if int(str(marker["ts_ms"])) <= ts_ms]
         visible_fills = [fill for fill in fills if int(str(fill["ts_ms"])) <= ts_ms]
         return {
             "ts_ms": ts_ms,
@@ -683,20 +702,15 @@ class ReplayFocusSessionBuilder:
         entry_ts = int(str(trade["entry_ts_ms"]))
         exit_ts = int(str(trade["exit_ts_ms"]))
         ts_ms = entry_ts if transition == "ENTRY" else exit_ts
-        markers = [
-            marker for marker in milestones if int(str(marker["ts_ms"])) <= ts_ms
-        ]
+        markers = [marker for marker in milestones if int(str(marker["ts_ms"])) <= ts_ms]
         return {
             "ts_ms": ts_ms,
             "event_id": (
-                f"{trade.get('trade_id', trade.get('shadow_trade_id', 'trade'))}"
-                f":{transition}"
+                f"{trade.get('trade_id', trade.get('shadow_trade_id', 'trade'))}:{transition}"
             ),
             "event_type": "PAPER_LEDGER_TRANSITION",
             "data": {
-                "price": str(
-                    trade["entry_price"] if transition == "ENTRY" else trade["exit_price"]
-                )
+                "price": str(trade["entry_price"] if transition == "ENTRY" else trade["exit_price"])
             },
             "phase": "OPEN" if transition == "ENTRY" else "CLOSED",
             "markers": markers,
@@ -704,9 +718,7 @@ class ReplayFocusSessionBuilder:
         }
 
     @staticmethod
-    def _state_changed(
-        previous: Mapping[str, object], current: Mapping[str, object]
-    ) -> bool:
+    def _state_changed(previous: Mapping[str, object], current: Mapping[str, object]) -> bool:
         def size(value: object) -> int:
             return len(value) if isinstance(value, list) else 0
 

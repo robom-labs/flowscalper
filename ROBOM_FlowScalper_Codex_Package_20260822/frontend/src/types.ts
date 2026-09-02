@@ -814,6 +814,11 @@ export type LeaguePosition = {
   elapsed_seconds: number
   exit_style: string
   management_reason: string
+  management_policy?: string[]
+  stop_rationale_ko?: string | null
+  take_profit_1_rationale_ko?: string | null
+  take_profit_2_rationale_ko?: string | null
+  reference_timeframes_ko?: string[]
   trailing?: TrailingPositionState
 }
 
@@ -891,6 +896,11 @@ export type FocusPosition = {
   elapsed_seconds: number
   management_reason: string
   management_reason_ko: string
+  management_policy?: string[]
+  stop_rationale_ko?: string | null
+  take_profit_1_rationale_ko?: string | null
+  take_profit_2_rationale_ko?: string | null
+  reference_timeframes_ko?: string[]
   stage: string
   stage_ko: string
   data_health: string
@@ -1305,6 +1315,11 @@ export type ReplayFocusSession = {
     entry_hypothesis_ko: string
     required_timeframes: string[]
     entry_rules_ko: string[]
+    stop_rationale_ko?: string
+    take_profit_1_rationale_ko?: string
+    take_profit_2_rationale_ko?: string
+    protection_timeframes_ko?: string[]
+    runner_management_ko?: string
     trade_strategy_version: string
     registry_strategy_version: string
     registry_metadata_matches_trade: boolean
