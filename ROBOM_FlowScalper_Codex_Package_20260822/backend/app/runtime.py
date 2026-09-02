@@ -22,6 +22,7 @@ from uuid import uuid4
 from anyio import BrokenWorkerProcess, to_process, to_thread
 
 from backend.app.adapters.fixture import FixtureMarketData
+from backend.app.analytics.opportunities import group_trade_opportunities
 from backend.app.analytics.reports import TradeAnalytics
 from backend.app.api.dashboard import build_dashboard_snapshot
 from backend.app.build_identity import APP_VERSION, STRATEGY_VERSION, git_commit
@@ -810,6 +811,12 @@ class PaperRuntime:
     )
     _dashboard_strategy_performance_cache: tuple[dict[str, object], ...] = field(
         default_factory=tuple, repr=False
+    )
+    _dashboard_paper_activity_cache_key: tuple[object, ...] | None = field(
+        default=None, repr=False
+    )
+    _dashboard_paper_activity_cache: dict[str, object] = field(
+        default_factory=dict, repr=False
     )
     _strategy_arbitration_evidence_cache: dict[str, SharedCapitalArbitrationEvidence] = field(
         default_factory=dict, repr=False
@@ -4350,8 +4357,10 @@ class PaperRuntime:
             )
             excluded_counts[key] = excluded_counts.get(key, 0) + 1
         for row in rows:
+            descriptor = self.strategy_registry.descriptor(str(row["strategy_id"]))
             row["analysis_scope"] = "CURRENT_STRATEGY_VERSION"
             row["strategy_version"] = STRATEGY_VERSION
+            row["strategy_display_name_ko"] = descriptor.display_name_ko
             row["data_state"] = self._strategy_analytics_data_state()
             row["excluded_prior_version_samples"] = excluded_counts.get(
                 (str(row["strategy_id"]), str(row["profile"]), str(row["symbol"])),
@@ -5329,7 +5338,15 @@ class PaperRuntime:
             strategies=tuple(strategy_rows),
             shadow_accounts=tuple(self.paper_portfolio.shadow_rows()),
             league_accounts=tuple(self.paper_portfolio.league_account_rows(self.latest_books)),
-            league_positions=tuple(self.paper_portfolio.league_position_rows(self.latest_books)),
+            league_positions=tuple(
+                dict(row)
+                | {
+                    "strategy_display_name_ko": self.strategy_registry.descriptor(
+                        str(row["strategy_id"])
+                    ).display_name_ko
+                }
+                for row in self.paper_portfolio.league_position_rows(self.latest_books)
+            ),
             risk_contract=self._risk_dashboard_contract(),
             current_position=current_position,
             execution_audit=tuple(self.paper_portfolio.audit_events[-100:]),
@@ -5358,6 +5375,7 @@ class PaperRuntime:
             total_open_position_count == 0 and total_pending_entry_count == 0
         )
         snapshot["paper_entry_intent"] = self.paper_entry_intent()
+        snapshot["paper_activity"] = self.paper_activity_summary()
         snapshot["paper_research_configuration"] = self.paper_research_configuration()
         snapshot["orderflow_confirmation_filter"] = self.orderflow_confirmation_filter_status(
             symbol=self.selected_symbol
@@ -6376,6 +6394,8 @@ class PaperRuntime:
         self._persisted_audit_count = 0
         self._dashboard_strategy_performance_cache_key = None
         self._dashboard_strategy_performance_cache = ()
+        self._dashboard_paper_activity_cache_key = None
+        self._dashboard_paper_activity_cache = {}
         self._strategy_arbitration_evidence_cache = {}
         self._strategy_arbitration_evidence_ready = False
         self.strategy_evaluation_count = 0
@@ -7293,6 +7313,8 @@ class PaperRuntime:
                 self._historical_prior_version_shadow_trades = tuple(prior_version_shadow_trades)
                 self._dashboard_strategy_performance_cache_key = None
                 self._dashboard_strategy_performance_cache = ()
+                self._dashboard_paper_activity_cache_key = None
+                self._dashboard_paper_activity_cache = {}
                 arbitration_reports = TradeAnalytics().strategy_reports(
                     current_shadow_trades,
                     strategy_ids=self.strategy_registry.strategy_ids,
@@ -7345,6 +7367,111 @@ class PaperRuntime:
                 if trade.trade_id not in rows:
                     rows[trade.trade_id] = self._paper_trade_row(trade)
         return tuple(rows.values())
+
+    def paper_activity_summary(self) -> dict[str, object]:
+        """공동계좌와 독립 전략계좌를 섞지 않고 한국시간 당일 활동을 요약한다."""
+
+        now_ms = self.clock.utc_ms()
+        kst_day = (now_ms + 9 * 60 * 60 * 1_000) // (24 * 60 * 60 * 1_000)
+        with self._dashboard_trade_cache_lock:
+            main_runtime_version = (
+                len(self.paper_portfolio.main.completed_trades),
+                self.paper_portfolio.main.completed_trades[-1].trade_id
+                if self.paper_portfolio.main.completed_trades
+                else None,
+            )
+            shadow_runtime_versions = tuple(
+                (
+                    account.account_id,
+                    len(account.completed_trades),
+                    account.completed_trades[-1].trade_id
+                    if account.completed_trades
+                    else None,
+                )
+                for account in self.paper_portfolio.shadows.values()
+            )
+            cache_key = (
+                self.run_id,
+                STRATEGY_VERSION,
+                kst_day,
+                len(self._historical_all_main_trades),
+                len(self._historical_all_shadow_trades),
+                main_runtime_version,
+                shadow_runtime_versions,
+            )
+            if cache_key == self._dashboard_paper_activity_cache_key:
+                return dict(self._dashboard_paper_activity_cache)
+
+            main_rows = tuple(
+                row
+                for row in self._history_main_trades()
+                if str(row.get("run_id", "")) == self.run_id
+                and str(row.get("sample_type", "LIVE_PUBLIC")) == "LIVE_PUBLIC"
+            )
+            strategy_rows = tuple(
+                row
+                for row in self._history_shadow_trades()
+                if str(row.get("run_id", "")) == self.run_id
+                and str(row.get("sample_type", "LIVE_PUBLIC")) == "LIVE_PUBLIC"
+                and str(row.get("strategy_version", "")) == STRATEGY_VERSION
+            )
+
+            def is_today(row: Mapping[str, object]) -> bool:
+                exit_ts_ms = int(str(row.get("exit_ts_ms", 0)))
+                return (exit_ts_ms + 9 * 60 * 60 * 1_000) // (24 * 60 * 60 * 1_000) == kst_day
+
+            today_main_rows = tuple(row for row in main_rows if is_today(row))
+            normalized_strategy_rows = tuple(
+                dict(row)
+                | {
+                    "strategy_id": str(row.get("strategy_id", row.get("strategy", ""))),
+                    "account_scope": str(row.get("account_scope", "LEAGUE")),
+                }
+                for row in strategy_rows
+            )
+            normalized_today_strategy_rows = tuple(
+                row for row in normalized_strategy_rows if is_today(row)
+            )
+            grouped_all = group_trade_opportunities(
+                normalized_strategy_rows,
+                strategy_version=STRATEGY_VERSION,
+            )
+            grouped_today = group_trade_opportunities(
+                normalized_today_strategy_rows,
+                strategy_version=STRATEGY_VERSION,
+            )
+            today_main_pnl = sum(
+                (
+                    Decimal(
+                        str(row.get("net_pnl", row.get("net_pnl_usdt", "0")))
+                    )
+                    for row in today_main_rows
+                ),
+                start=Decimal(0),
+            )
+            result: dict[str, object] = {
+                "day_scope": "ASIA_SEOUL_EXIT_DATE",
+                "shared_scope": "CURRENT_RUN_ALL_VERSIONS",
+                "strategy_scope": "CURRENT_RUN_CURRENT_STRATEGY_VERSION",
+                "shared_run_completed_trades": len(main_rows),
+                "shared_today_completed_trades": len(today_main_rows),
+                "shared_today_realized_pnl_usdt": str(today_main_pnl),
+                "strategy_current_unique_opportunities": grouped_all.unique_opportunity_count,
+                "strategy_today_unique_opportunities": grouped_today.unique_opportunity_count,
+                "strategy_current_raw_result_rows": grouped_all.raw_result_row_count,
+                "strategy_today_raw_result_rows": grouped_today.raw_result_row_count,
+                "strategy_grouping_status": (
+                    "PROVEN"
+                    if grouped_all.unresolved_result_row_count == 0
+                    and grouped_today.unresolved_result_row_count == 0
+                    else "NOT_PROVEN"
+                ),
+                "paper_only": True,
+                "real_orders_enabled": False,
+            }
+            self._dashboard_paper_activity_cache_key = cache_key
+            self._dashboard_paper_activity_cache = dict(result)
+            return result
 
     def _ensure_fixture_completed_trade(self) -> None:
         if self.ledger is None or self.ledger.list_trades(self.run_id):

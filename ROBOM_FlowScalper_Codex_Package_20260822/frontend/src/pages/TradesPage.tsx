@@ -209,7 +209,7 @@ export function TradesPage({ data }: { data: DashboardData }) {
             <div className="replay-trade-list" id="replay-trade-list">
               {replayRows.map((row) => {
                 const selected = selectedReplayTrade?.trade_id === row.trade_id && selectedReplayTrade.profile === row.profile
-                const name = strategyLabel(data.strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy)
+                const name = strategyLabel(data.strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy, row.strategy_display_name_ko)
                 return <button type="button" key={`${row.trade_id}:${row.profile}`} className={selected ? 'selected' : ''} aria-pressed={selected} onClick={() => { setRequestedReplayTrade(row); setReplayLibraryOpen(false) }}><span><b>{row.symbol} · {sideLabel(row.side)}</b><small>{name}</small></span><span><b className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</b><small>{exitReasonLabel(row.exit_reason)} · {formatDurationMs(row.holding_ms)}</small></span><time dateTime={new Date(row.entry_ts_ms).toISOString()}>{formatKstDateTime(row.entry_ts_ms)}</time></button>
               })}
               {!replayLoad ? <div className="replay-library-empty" role="status"><b>거래 목록을 불러오는 중입니다.</b></div> : null}

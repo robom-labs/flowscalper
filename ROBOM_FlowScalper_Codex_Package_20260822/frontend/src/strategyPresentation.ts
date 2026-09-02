@@ -7,8 +7,14 @@ export const modeLabels: Record<StrategySummaryRow['mode'], string> = {
   OFF: '검증 중지',
 }
 
-export function strategyLabel(strategy: StrategySummaryRow | undefined, strategyId: string) {
-  if (!strategy || strategy.strategy_id !== strategyId) return '알 수 없는 이전 전략'
+export function strategyLabel(
+  strategy: StrategySummaryRow | undefined,
+  strategyId: string,
+  fallbackLabel?: string | null,
+) {
+  if (!strategy || strategy.strategy_id !== strategyId) {
+    return fallbackLabel?.trim() || '알 수 없는 이전 전략'
+  }
   const family = strategy.family_label_ko?.trim() || strategy.short_name
   const variant = strategy.variant_label_ko?.trim() || strategy.display_name_ko
   return family === variant ? family : `${family} · ${variant}`

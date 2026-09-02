@@ -46,7 +46,7 @@ function preferredFocus(rows: FocusPosition[], profile: 'BASE' | 'STRESS') {
 function positionOverlay(position: FocusPosition, strategies: DashboardData['strategies']): ChartOverlay {
   return {
     key: position.focus_key,
-    label: `${strategyLabel(strategies.find((strategy) => strategy.strategy_id === position.strategy), position.strategy)} · ${costProfileLabel(position.profile)} · ${paperAccountLabel(position.account_id)}`,
+    label: `${strategyLabel(strategies.find((strategy) => strategy.strategy_id === position.strategy), position.strategy, position.strategy_display_name_ko)} · ${costProfileLabel(position.profile)} · ${paperAccountLabel(position.account_id)}`,
     symbol: position.symbol,
     side: position.side,
     signalTime: position.signal_time,
@@ -273,9 +273,10 @@ export function MarketPage({ data, onChartChange, onStartLive, onStartDemo, busy
     {fixture ? <p className="mode-truth-banner" role="status">샘플 PAPER 데이터 · LIVE 아님</p> : null}
     <section className="market-summary" aria-label="시장 요약">
       <article><span>공개시장 연결</span><b>{data.status.market_data_state === 'LIVE' ? '연결됨' : data.status.mode === 'DEMO_FIXTURE' ? '샘플' : '대기'}</b></article>
-      <article><span>현재자산</span><b>{formatUsdt(data.status.current_equity_usdt, { equity: true })}</b></article>
-      <article><span>오늘 순손익</span><b className={Number(data.status.realized_pnl_usdt) >= 0 ? 'positive' : 'negative'}>{formatUsdt(data.status.realized_pnl_usdt, { signed: true })}</b></article>
-      <article><span>진행 PAPER</span><b>{data.focus_positions.length}건</b></article>
+      <article><span>공동계좌 현재자산</span><b>{formatUsdt(data.status.current_equity_usdt, { equity: true })}</b></article>
+      <article title="한국시간에 종료된 공동 PAPER 계좌 거래만 집계합니다."><span>오늘 공동손익</span><b className={Number(data.paper_activity.shared_today_realized_pnl_usdt) >= 0 ? 'positive' : 'negative'}>{formatUsdt(data.paper_activity.shared_today_realized_pnl_usdt, { signed: true })}</b></article>
+      <article><span>현재 보유</span><b>{data.focus_positions.length}건</b></article>
+      <article title="독립계좌의 기본·보수 비용 결과는 한 번의 진입기회로 묶습니다. 손익은 전략·거래 화면에서 계좌별로 확인합니다."><span>오늘 전략 모의결과</span><b>{data.paper_activity.strategy_today_unique_opportunities}회 · 누적 {data.paper_activity.strategy_current_unique_opportunities}회</b></article>
       <article><span>모의평가 전략</span><b>{enabledEntryCandidateCount}개</b></article>
       <article><span>넓게 감시 / 정밀분석</span><b>{data.status.wide_symbols} / {data.status.deep_symbols}개</b></article>
     </section>

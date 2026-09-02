@@ -104,6 +104,7 @@ test('keeps partial BASE and STRESS ledger rows in one completed opportunity', a
     account_scope: 'LEAGUE', account_id: `${strategies[1].strategy_id}:BASE`,
     strategy_version: data.history_scope.strategy_version, replay_available: true,
   }
+  data.strategies = data.strategies.filter((strategy) => strategy.strategy_id !== template.strategy)
   const base = { ...template, trade_id: 'trade-v6-base', opportunity_id: 'opportunity-v6', account_scope: 'LEAGUE' as const, profile: 'BASE', quantity: '0.4', net_pnl: '0.75' }
   const basePartial = { ...base, trade_id: 'trade-v6-base-partial', quantity: '0.6', exit_ts_ms: 2_500, holding_ms: 1_500, holding_seconds: 1.5, net_pnl: '0.5' }
   const stress = { ...template, trade_id: 'trade-v6-stress', opportunity_id: 'opportunity-v6', account_scope: 'LEAGUE' as const, account_id: `${strategies[1].strategy_id}:STRESS`, profile: 'STRESS', quantity: '0.4', net_pnl: '0.45' }
@@ -147,6 +148,8 @@ test('keeps partial BASE and STRESS ledger rows in one completed opportunity', a
 
   expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1)
   expect(screen.getByText(/비용 2개 비교/)).toBeInTheDocument()
+  expect(screen.getByText('돌파·큰 추세 · 현재 variant')).toBeInTheDocument()
+  expect(screen.queryByText('알 수 없는 이전 전략')).not.toBeInTheDocument()
   expect(screen.getByText('+1.25 USDT')).toBeInTheDocument()
   expect(screen.getByText('+0.75 USDT')).toBeInTheDocument()
   expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/api/trades'), expect.any(Object))

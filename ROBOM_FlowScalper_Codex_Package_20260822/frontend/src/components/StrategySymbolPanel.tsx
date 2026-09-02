@@ -62,7 +62,7 @@ export function StrategySymbolPanel({ strategies }: Props) {
             <tbody>{visible.length ? visible.map((row) => (
               <tr key={`${row.strategy_id}-${row.profile}-${row.symbol}`}>
                 <td data-label="비교"><strong>{row.rank ?? '검증 전'}</strong></td>
-                <td data-label="전략·종목"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy_id), row.strategy_id)}</strong><small>{row.symbol} · {costProfileLabel(row.profile)}</small></td>
+                <td data-label="전략·종목"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy_id), row.strategy_id, row.strategy_display_name_ko)}</strong><small>{row.symbol} · {costProfileLabel(row.profile)}</small></td>
                 <td data-label="검증 자료"><strong>{evidenceLabel(row)}</strong></td>
                 <td data-label="승률"><strong>{row.sample_size ? formatPercentFraction(row.win_rate) : '표본 없음'}</strong></td>
                 <td data-label="최종 순손익" className={Number(row.net_pnl) > 0 ? 'positive' : Number(row.net_pnl) < 0 ? 'negative' : ''}><strong>{formatUsdt(row.net_pnl, { signed: true })}</strong></td>

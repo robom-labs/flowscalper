@@ -37,6 +37,7 @@ _SUMMARY_DELTA_KEYS = (
     "paused",
     "operation_status",
     "paper_entry_intent",
+    "paper_activity",
     "paper_only",
     "real_orders_enabled",
     "auth_required",
@@ -208,6 +209,7 @@ def compact_ui_summary(snapshot: Mapping[str, object]) -> dict[str, object]:
         "paused": bool(snapshot.get("paused", True)),
         "operation_status": snapshot.get("operation_status", {}),
         "paper_entry_intent": snapshot.get("paper_entry_intent", {}),
+        "paper_activity": snapshot.get("paper_activity", {}),
         "main_pending_entry_count": snapshot.get("main_pending_entry_count", "NOT_PROVEN"),
         "league_pending_entry_count": snapshot.get(
             "league_pending_entry_count", "NOT_PROVEN"

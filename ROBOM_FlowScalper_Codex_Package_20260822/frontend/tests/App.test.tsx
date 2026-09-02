@@ -352,6 +352,40 @@ test('keeps the market rail to ten deep symbols until search or 전체보기 exp
   expect(rail.querySelectorAll('.market-row')).toHaveLength(1)
 })
 
+test('shows true KST today shared PnL separately from cumulative PnL and strategy results', () => {
+  vi.stubGlobal('localStorage', { getItem: vi.fn(() => null), setItem: vi.fn() })
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ candles: [] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  })))
+  const data = {
+    ...initialDashboard,
+    status: { ...initialDashboard.status, realized_pnl_usdt: -42.5 },
+    paper_activity: {
+      ...initialDashboard.paper_activity,
+      shared_today_realized_pnl_usdt: '1.25',
+      shared_today_completed_trades: 1,
+      strategy_today_unique_opportunities: 2,
+      strategy_current_unique_opportunities: 3,
+    },
+  }
+  const handlers = {
+    onChartChange: vi.fn(), onStartLive: vi.fn(), onStartDemo: vi.fn(),
+    busy: false, operation: null, onCancel: vi.fn(), onRetry: vi.fn(),
+  }
+
+  render(<MarketPage data={data} {...handlers} />)
+
+  expect(screen.getByText('오늘 공동손익')).toBeInTheDocument()
+  expect(screen.getByText('+1.25 USDT')).toBeInTheDocument()
+  expect(screen.queryByText('-42.5 USDT')).not.toBeInTheDocument()
+  expect(screen.getByText('2회 · 누적 3회')).toBeInTheDocument()
+  expect(screen.getByText('오늘 전략 모의결과').closest('article')).toHaveAttribute(
+    'title',
+    expect.stringContaining('기본·보수 비용 결과는 한 번의 진입기회로 묶습니다.'),
+  )
+})
+
 test('separates current RSS from peak RSS in advanced diagnostics', async () => {
   const resourceDashboard = {
     ...initialDashboard,

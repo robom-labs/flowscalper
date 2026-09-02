@@ -547,7 +547,7 @@ export function HistoryPage({
               return (
               <tr key={opportunity.key}>
                 <td data-label="거래"><strong>{row.symbol}</strong><small>{sideLabel(row.side)} · {sampleTypeLabel(row.sample_type)}</small></td>
-                <td data-label="전략·계좌"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy)}</strong><small>{opportunity.rows.length > 1 ? comparison.label : `${accountLabel(row)} · ${comparison.label}`}</small></td>
+                <td data-label="전략·계좌"><strong>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === row.strategy), row.strategy, row.strategy_display_name_ko)}</strong><small>{opportunity.rows.length > 1 ? comparison.label : `${accountLabel(row)} · ${comparison.label}`}</small></td>
                 <td data-label="진입 → 종료" className="history-time-cell"><strong><time dateTime={new Date(entryTsMs).toISOString()} title={formatKstDateTime(entryTsMs)}>{formatKstTime(entryTsMs)}</time> 진입</strong><small><time dateTime={new Date(latestExitTsMs).toISOString()} title={formatKstDateTime(latestExitTsMs)}>{exitClock}</time> 종료 · {opportunityHoldingLabel(opportunity)} 보유</small></td>
                 <td data-label="최종 결과">{opportunity.rows.length > 1 ? <><div className="history-cost-results">{opportunity.rows.map((result) => <span className={Number(result.net_pnl) >= 0 ? 'positive' : 'negative'} key={historyResultIdentity(result)}><b>{historyResultLabel(opportunity, result)}</b><strong>{formatUsdt(result.net_pnl, { signed: true })}</strong></span>)}</div><small>{comparison.note}</small></> : <><strong className={Number(row.net_pnl) >= 0 ? 'positive' : 'negative'}>{formatUsdt(row.net_pnl, { signed: true })}</strong><small>가격 손익 {formatUsdt(row.gross_pnl, { signed: true })} · 총비용 {formatUsdt(Number(row.fees) + Number(row.slippage))}</small></>}</td>
                 <td data-label="종료 이유"><strong>{sameExitReason ? historyExitLabel(row.exit_reason, isPriorVersion(row)) : '결과별 종료 다름'}</strong><small>{sameExitReason ? exitExplanation(row.exit_reason, isPriorVersion(row)) : '세부 결과를 열어 각각의 종료 이유를 확인하세요.'}</small></td>
@@ -581,7 +581,7 @@ export function HistoryPage({
               <h3 id="trade-summary-heading">거래 요약</h3>
               <dl className="detail-list">
               <div><dt>거래 방향</dt><dd>{sideLabel(selected.side)}</dd></div>
-              <div><dt>사용 전략</dt><dd>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === selected.strategy), selected.strategy)}</dd></div>
+              <div><dt>사용 전략</dt><dd>{strategyLabel(strategies.find((strategy) => strategy.strategy_id === selected.strategy), selected.strategy, selected.strategy_display_name_ko)}</dd></div>
               <div><dt>진입 가격</dt><dd>{formatPrice(selected.entry)}</dd></div>
               <div><dt>손절 가격</dt><dd>{formatPrice(selected.initial_stop)}</dd></div>
               {selected.take_profit_1 || selected.take_profit_2 ? <><div><dt>1차 목표</dt><dd>{selected.take_profit_1 ? formatPrice(selected.take_profit_1) : '—'}</dd></div><div><dt>2차 목표</dt><dd>{selected.take_profit_2 ? formatPrice(selected.take_profit_2) : '—'}</dd></div></> : <div><dt>목표가(과거 기록)</dt><dd>{formatPrice(selected.take_profit)}</dd></div>}

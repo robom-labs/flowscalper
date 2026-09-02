@@ -106,6 +106,9 @@ function collapseProfileRows(
     opportunity_id: opportunity.key.opportunity_id,
     symbol: opportunity.key.symbol,
     strategy: opportunity.key.strategy_id,
+    strategy_display_name_ko: [opportunity.family_label_ko, opportunity.variant_label_ko]
+      .filter((label): label is string => Boolean(label?.trim()))
+      .join(' · ') || representative.strategy_display_name_ko || null,
     side: opportunity.key.side,
     strategy_version: opportunity.key.strategy_version,
     profile,

@@ -158,6 +158,7 @@ export type HistoryRow = {
   opportunity_id?: string
   symbol: string
   strategy: string
+  strategy_display_name_ko?: string | null
   side: string
   entry: string
   exit: string
@@ -795,6 +796,7 @@ export type LeaguePosition = {
   candidate_id: string
   account_id: string
   strategy_id: string
+  strategy_display_name_ko?: string
   profile: 'BASE' | 'STRESS'
   symbol: string
   side: 'LONG' | 'SHORT'
@@ -961,6 +963,7 @@ export type StrategySymbolResponse = {
 
 export type StrategySymbolPerformance = {
   strategy_id: string
+  strategy_display_name_ko?: string
   profile: 'BASE' | 'STRESS'
   symbol: string
   sample_size: number
@@ -992,6 +995,21 @@ export type DashboardData = {
     reason: string
     updated_ts_ms: number | null
     reversible: true
+  }
+  paper_activity: {
+    day_scope: 'ASIA_SEOUL_EXIT_DATE'
+    shared_scope: 'CURRENT_RUN_ALL_VERSIONS'
+    strategy_scope: 'CURRENT_RUN_CURRENT_STRATEGY_VERSION'
+    shared_run_completed_trades: number
+    shared_today_completed_trades: number
+    shared_today_realized_pnl_usdt: string
+    strategy_current_unique_opportunities: number
+    strategy_today_unique_opportunities: number
+    strategy_current_raw_result_rows: number
+    strategy_today_raw_result_rows: number
+    strategy_grouping_status: 'PROVEN' | 'NOT_PROVEN'
+    paper_only: true
+    real_orders_enabled: false
   }
   scanner: ScannerRow[]
   chart: ChartData

@@ -1837,6 +1837,9 @@ def test_runtime_strategy_analytics_do_not_double_count_shared_main_trade(
     assert symbol["sample_size"] == 1
     assert symbol["analysis_scope"] == "CURRENT_STRATEGY_VERSION"
     assert symbol["strategy_version"] == STRATEGY_VERSION
+    assert symbol["strategy_display_name_ko"] == runtime.strategy_registry.descriptor(
+        str(symbol["strategy_id"])
+    ).display_name_ko
     assert symbol["excluded_prior_version_samples"] == 1
     enriched = ledger.list_shadow_trades("run-prior-strategy")[0]
     assert enriched["strategy_version"] == "prior-version"

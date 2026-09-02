@@ -42,6 +42,7 @@ def test_v6_summary_excludes_heavy_detail_and_is_less_than_half_dashboard() -> N
 
     summary = compact_ui_summary(dashboard)
 
+    assert summary["paper_activity"] == dashboard["paper_activity"]
     assert summary["paper_only"] is True
     assert summary["real_orders_enabled"] is False
     assert summary["auth_required"] is False
@@ -92,6 +93,69 @@ def test_v6_summary_excludes_heavy_detail_and_is_less_than_half_dashboard() -> N
         for row in strategy_summary["strategies"]
         for report in row["performance"].values()
     )
+
+
+def test_v6_paper_activity_separates_kst_today_pnl_and_strategy_opportunities() -> None:
+    now_ms = 1_750_000_000_000
+    runtime = PaperRuntime(
+        mode=RuntimeMode.READY,
+        clock=DeterministicClock(current_utc_ms=now_ms),
+        run_id="run-v6-paper-activity",
+    )
+    runtime._historical_all_main_trades = (
+        {
+            "run_id": runtime.run_id,
+            "trade_id": "main-today",
+            "sample_type": "LIVE_PUBLIC",
+            "exit_ts_ms": now_ms - 60_000,
+            "net_pnl": "1.25",
+        },
+        {
+            "run_id": runtime.run_id,
+            "trade_id": "main-prior-day",
+            "sample_type": "LIVE_PUBLIC",
+            "exit_ts_ms": now_ms - 30 * 60 * 60 * 1_000,
+            "net_pnl": "9.00",
+        },
+    )
+    strategy_id = "TREND_PULLBACK_RECLAIM_15M_V2"
+    shadow_rows = []
+    for opportunity_id, exit_ts_ms in (
+        ("opportunity-today", now_ms - 30_000),
+        ("opportunity-prior-day", now_ms - 30 * 60 * 60 * 1_000),
+    ):
+        for profile in ("BASE", "STRESS"):
+            shadow_rows.append(
+                {
+                    "run_id": runtime.run_id,
+                    "trade_id": f"{opportunity_id}-{profile.lower()}",
+                    "candidate_id": opportunity_id,
+                    "opportunity_id": opportunity_id,
+                    "strategy_id": strategy_id,
+                    "strategy_version": STRATEGY_VERSION,
+                    "sample_type": "LIVE_PUBLIC",
+                    "account_scope": "LEAGUE",
+                    "account_id": f"{strategy_id}:{profile}",
+                    "profile": profile,
+                    "symbol": "BTCUSDT",
+                    "side": "LONG",
+                    "entry_ts_ms": exit_ts_ms - 60_000,
+                    "exit_ts_ms": exit_ts_ms,
+                    "net_pnl": "0.10",
+                }
+            )
+    runtime._historical_all_shadow_trades = tuple(shadow_rows)
+
+    activity = runtime.paper_activity_summary()
+
+    assert activity["shared_run_completed_trades"] == 2
+    assert activity["shared_today_completed_trades"] == 1
+    assert activity["shared_today_realized_pnl_usdt"] == "1.25"
+    assert activity["strategy_current_raw_result_rows"] == 4
+    assert activity["strategy_current_unique_opportunities"] == 2
+    assert activity["strategy_today_raw_result_rows"] == 2
+    assert activity["strategy_today_unique_opportunities"] == 1
+    assert activity["strategy_grouping_status"] == "PROVEN"
 
 
 def test_v6_summary_preserves_main_only_pending_exposure_after_pause() -> None:

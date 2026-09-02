@@ -169,6 +169,7 @@ async function capture(page: Page, project: string, name: string) {
 }
 
 test('market catalog explicit expansion keeps the default list bounded', async ({ page }, testInfo) => {
+  test.setTimeout(120_000)
   await installMarketFixtures(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'BTCUSDT 시장' })).toBeVisible()

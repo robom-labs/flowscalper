@@ -539,7 +539,11 @@ export function ReplayViewer({ trade, strategies = [] }: Props) {
     const planVisible = currentFocusFrame.ts_ms >= focusSession.levels.signal_ts_ms
     const context = focusSession.entry_context
     const registeredStrategy = strategies.find((strategy) => strategy.strategy_id === focusSession.strategy_id)
-    const compactStrategyName = strategyLabel(registeredStrategy, focusSession.strategy_id)
+    const compactStrategyName = strategyLabel(
+      registeredStrategy,
+      focusSession.strategy_id,
+      context?.strategy_display_name_ko || trade.strategy_display_name_ko,
+    )
     const strategyName = compactStrategyName === '알 수 없는 이전 전략'
       ? context?.strategy_display_name_ko || compactStrategyName
       : compactStrategyName

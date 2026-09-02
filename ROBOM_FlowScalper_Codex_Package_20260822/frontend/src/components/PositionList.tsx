@@ -11,7 +11,7 @@ const PositionRow = memo(function PositionRow({ position, strategy }: { position
   const pnl = Number(position.net_pnl)
   return (
     <tr>
-      <td data-label="전략"><strong>{strategyLabel(strategy, position.strategy_id)}</strong><small>{costProfileLabel(position.profile)} 가상계좌</small></td>
+      <td data-label="전략"><strong>{strategyLabel(strategy, position.strategy_id, position.strategy_display_name_ko)}</strong><small>{costProfileLabel(position.profile)} 가상계좌</small></td>
       <td data-label="거래"><strong>{position.symbol}</strong><small>{position.side === 'LONG' ? '상승 방향' : '하락 방향'}</small></td>
       <td data-label="현재 결과" className={pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : ''}><strong>{formatUsdt(position.net_pnl, { signed: true })}</strong><small>가격 손익 {formatUsdt(position.gross_pnl, { signed: true })} · 비용 {formatUsdt(Number(position.fees) + Number(position.slippage))}</small></td>
       <td data-label="가격"><strong>진입 {formatPrice(position.actual_entry)}</strong><small>현재 {formatPrice(position.current_mark)}</small></td>
