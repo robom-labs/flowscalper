@@ -932,3 +932,14 @@ or errors. Six-hour and 24-hour stability remain `NOT_RUN`; profitability remain
    `NOT_OBSERVED` unless it actually occurs.
 8. Do not change signal age, live flow confirmation, fee, slippage, sizing, TP, SL or real-order boundaries.
    Keep profitability `NOT_PROVEN`, real-money readiness `NOT_READY` and 6h/24h `NOT_RUN`.
+
+## Wave 150 current-version completed trade visibility
+
+1. Reproduce the installed mismatch where `/api/trades` returns two current-version opportunities and four
+   BASE/STRESS rows while the completed-trade table renders zero rows.
+2. Keep the grouped ledger response as the authority for both rows and `scope.strategy_version`; do not filter
+   those rows with an older compact-dashboard `history_scope` value.
+3. Extend the frontend response type with the grouped scope and pass that exact version to `HistoryPage`.
+4. Add a regression where the compact dashboard version is stale and the grouped server version is current.
+5. Run the frontend suite, ESLint, TypeScript and Vite build, then install and verify the actual browser table.
+6. Do not change the ledger, strategy decisions, costs, fills, TP/SL or PAPER-only safety boundaries.

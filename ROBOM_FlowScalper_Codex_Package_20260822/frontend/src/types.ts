@@ -288,6 +288,18 @@ export type TradeAccountGroup = {
 export type TradesResponse = {
   schema_version: 1
   opportunities: TradeOpportunity[]
+  scope?: {
+    run_scope: 'CURRENT' | 'ALL'
+    account_scope: 'MAIN' | 'LEAGUE' | 'ALL'
+    profile: 'BASE' | 'STRESS' | 'ALL'
+    version_scope: 'CURRENT' | 'ALL'
+    sample_type: 'LIVE_PUBLIC' | 'OFFLINE_FIXTURE' | 'ALL'
+    strategy_version: string
+    returned_count: number
+    limit: number
+    source_raw_limit?: number
+    source_grouping_complete?: boolean
+  }
   counts: {
     unique_opportunities: number
     returned_opportunities?: number

@@ -157,6 +157,12 @@ export function TradesPage({ data }: { data: DashboardData }) {
     : currentLoad?.state === 'ERROR'
       ? '완료 확인 필요'
       : '완료 불러오는 중'
+  const currentHistoryScope = groupedTrades?.scope?.strategy_version
+    ? {
+        strategy_version: groupedTrades.scope.strategy_version,
+        excluded_prior_version_samples: 0,
+      }
+    : data.history_scope
 
   return (
     <section className="trades-page" aria-labelledby="trades-heading">
@@ -183,7 +189,7 @@ export function TradesPage({ data }: { data: DashboardData }) {
         </p>
       ) : null}
       {tab === 'open' ? <section className="panel wide-panel" role="tabpanel" aria-label="진행 중"><PositionList positions={data.league_positions} strategies={data.strategies} /></section> : null}
-      {tab === 'closed' ? <div role="tabpanel" aria-label="완료">{groupedTrades ? <HistoryPage rows={completedRows} counts={groupedTrades.counts} currentRunId={data.status.run_id} openPositionCount={data.focus_positions.length} historyScope={data.history_scope} strategies={data.strategies} providedScope="CURRENT_ALL" onReplay={openReplay} /> : <p className={currentLoad?.state === 'ERROR' ? 'error-banner' : 'bootstrap-state'} role={currentLoad?.state === 'ERROR' ? 'alert' : 'status'}>{currentLoad?.state === 'ERROR' ? '완료 거래를 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.' : '완료 거래를 불러오는 중입니다.'}</p>}</div> : null}
+      {tab === 'closed' ? <div role="tabpanel" aria-label="완료">{groupedTrades ? <HistoryPage rows={completedRows} counts={groupedTrades.counts} currentRunId={data.status.run_id} openPositionCount={data.focus_positions.length} historyScope={currentHistoryScope} strategies={data.strategies} providedScope="CURRENT_ALL" onReplay={openReplay} /> : <p className={currentLoad?.state === 'ERROR' ? 'error-banner' : 'bootstrap-state'} role={currentLoad?.state === 'ERROR' ? 'alert' : 'status'}>{currentLoad?.state === 'ERROR' ? '완료 거래를 불러오지 못했습니다. 연결을 확인한 뒤 다시 시도하세요.' : '완료 거래를 불러오는 중입니다.'}</p>}</div> : null}
       {tab === 'replay' ? <div role="tabpanel" aria-label="다시보기" className="trade-replay-tab">
         <section className="trade-replay-browser" aria-label="완료 거래 차트 다시보기">
           <aside className={`replay-trade-library${replayLibraryOpen ? ' mobile-open' : ''}`}>

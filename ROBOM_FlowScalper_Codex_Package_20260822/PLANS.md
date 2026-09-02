@@ -887,3 +887,16 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 실제 서비스에서는 최소 다음 15분봉 경계까지 event·전략평가·정밀 depth 준비·entry lock·
   queue·지연·재연결·gap·drop·저장결함과 거래기록을 관찰한다. 자연 신호가 없으면 신규 거래는
   `NOT_OBSERVED`로 남기며 임계값을 낮추거나 거래를 만들지 않는다.
+
+## Wave 150 현재버전 완료 거래 표시 일치
+
+- 실제 `/api/trades`의 현재 Run·현재 버전·모든 가상계좌 응답과 브라우저의 완료 횟수·원장 행·
+  표 행을 같은 시각에 대조한다.
+- 경량 `/api/ui/summary`에 없는 이전 `history_scope`를 현재 원장 필터 근거로 사용하지 않는다.
+  현재버전은 묶음 원장 응답의 `scope.strategy_version`으로 고정한다.
+- 서버 현재버전과 경량 화면의 과거 버전이 다른 회귀 fixture를 추가해 완료 표가 비지 않는지
+  검증한다.
+- frontend 전체, lint·typecheck·build 뒤 불변 release를 설치하고 실제 브라우저에서 BTRUSDT와
+  HYPEUSDT 두 진입기회·BASE/STRESS 4행을 확인한다.
+- 원장·거래·전략 판단을 바꾸지 않으며 새 자연 거래가 없으면 `NOT_OBSERVED`, 수익성은
+  `NOT_PROVEN`, 실자금 준비는 `NOT_READY`를 유지한다.

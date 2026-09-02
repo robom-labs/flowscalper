@@ -162,6 +162,56 @@ test('keeps partial BASE and STRESS ledger rows in one completed opportunity', a
   expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1)
 })
 
+test('uses the grouped ledger current version when the compact dashboard scope is stale', async () => {
+  const data = dashboardFixture()
+  data.history_scope.strategy_version = 'STALE_COMPACT_DASHBOARD_VERSION'
+  const currentVersion = 'SERVER_GROUPED_LEDGER_CURRENT_VERSION'
+  const completed: HistoryRow = {
+    run_id: data.status.run_id,
+    trade_id: 'trade-current-ledger-version',
+    opportunity_id: 'opportunity-current-ledger-version',
+    symbol: 'BTRUSDT',
+    strategy: strategies[1].strategy_id,
+    side: 'SHORT',
+    entry: '0.08986',
+    exit: '0.08646',
+    entry_ts_ms: 1_000,
+    exit_ts_ms: 454_000,
+    initial_stop: '0.09108',
+    take_profit: '0.08637',
+    quantity: '130',
+    exit_reason: 'TAKE_PROFIT',
+    gross_pnl: '0.4421',
+    fees: '0.01375',
+    slippage: '0',
+    net_pnl: '0.42835',
+    holding_ms: 453_000,
+    holding_seconds: 453,
+    profile: 'BASE',
+    sample_type: 'LIVE_PUBLIC',
+    account_scope: 'LEAGUE',
+    account_id: `${strategies[1].strategy_id}:BASE`,
+    strategy_version: currentVersion,
+    replay_available: true,
+  }
+  const grouped = groupedTradesResponse(completed)
+  grouped.scope = {
+    run_scope: 'CURRENT', account_scope: 'ALL', profile: 'ALL',
+    version_scope: 'CURRENT', sample_type: 'ALL', strategy_version: currentVersion,
+    returned_count: 1, limit: 1000, source_raw_limit: 2000,
+    source_grouping_complete: true,
+  }
+  vi.stubGlobal('fetch', vi.fn(async () => response(grouped)))
+
+  render(<TradesPage data={data} />)
+  await waitFor(() => expect(screen.getByText(/완료 1회 · 원장 1행/)).toBeInTheDocument())
+  fireEvent.click(screen.getByRole('tab', { name: '완료' }))
+
+  expect(document.querySelectorAll('.history-table tbody tr')).toHaveLength(1)
+  expect(screen.getByText('BTRUSDT')).toBeInTheDocument()
+  expect(screen.getByText(/진입기회 1건 · 원장 결과 1행/)).toBeInTheDocument()
+})
+
 test('polls completed trades without overlapping and refreshes a closure in the same Run', async () => {
   vi.useFakeTimers()
   const data = dashboardFixture()

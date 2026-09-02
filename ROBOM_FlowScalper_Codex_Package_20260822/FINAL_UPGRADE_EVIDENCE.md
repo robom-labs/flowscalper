@@ -5296,3 +5296,28 @@ FFUSDT의 `MULTISPEED_RECLAIM_30M`은 LONG, ADX 53.277797, 24시간 모멘텀
 수정되고 다음 봉 전에 계획회전·warmup이 끝났다는 증거이며, 자연 신호나 수익을 보장하는 증거는
 아니다. 6시간·24시간은 실제 경과 전이므로 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금 준비는
 `NOT_READY`를 유지한다.
+
+## 112. Wave 150 현재버전 완료 거래 표시 연결
+
+실제 설치 브라우저에서 거래 화면 상단은 `완료 2회 · 원장 4행`을 표시했지만 완료 탭은
+`진입기회 0건`과 빈 표를 표시했다. 같은 시각 서버 `/api/trades`의 현재 Run·모든 가상계좌·
+현재버전 응답은 BTRUSDT 익절과 HYPEUSDT 손절의 고유 진입기회 2건, BASE 2행·STRESS 2행으로
+정상이었다. 따라서 원장 저장이나 거래 최신화 정지가 아니라 화면의 이중 버전 필터 결함으로
+분리했다.
+
+경량 `/api/ui/summary`에는 `history_scope`가 없어서 초기 화면의 이전 버전 문자열이 남을 수
+있는데, 완료 표가 이를 다시 현재버전 기준으로 사용했다. 이미 서버가 현재버전으로 필터한 묶음
+응답의 `scope.strategy_version`을 화면 기준으로 사용하도록 고치고, 두 버전이 의도적으로 다른
+회귀를 추가했다.
+
+| 검증 | 상태 | 이번 실행 결과 |
+|---|---|---|
+| 실제 API·브라우저 재현 | `PASS` | API 2기회·4행, 화면 상단 2회·4행, 표 0건으로 불일치 재현 |
+| frontend 전체 | `PASS` | 15 files·120 tests |
+| ESLint·TypeScript·Vite build | `PASS` | 오류 0·54 modules |
+| 불변 release 설치·실제 완료 표 | `NOT_RUN` | source commit 전 단계 |
+| 원장·전략·비용·PAPER 안전변경 | `PASS` | 변경 0 |
+| 자연 신규거래 | `NOT_OBSERVED` | 거래를 강제로 만들거나 기준을 낮추지 않음 |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` | 화면 수정은 성과 증거가 아님 |
+
+기계판독 근거는 `evidence/WAVE150_CURRENT_TRADE_HISTORY_VISIBILITY.json`에 보존한다.

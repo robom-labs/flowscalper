@@ -1,0 +1,38 @@
+{
+  "schema": "flowscalper.wave150.current_trade_history_visibility.v1",
+  "status": "SOURCE_VALIDATED_INSTALL_NOT_RUN",
+  "run_id": "run-2b7135a972dd",
+  "baseline_release_commit": "bab720c3d716d445bed351e728762703552b93eb",
+  "reproduction": {
+    "api_current_version_unique_opportunities": 2,
+    "api_current_version_raw_result_rows": 4,
+    "api_current_version_base_rows": 2,
+    "api_current_version_stress_rows": 2,
+    "browser_header_completed_opportunities": 2,
+    "browser_header_raw_result_rows": 4,
+    "browser_table_visible_opportunities": 0,
+    "root_cause": "COMPACT_UI_STALE_HISTORY_SCOPE_FILTERED_SERVER_CURRENT_VERSION_ROWS"
+  },
+  "change": {
+    "source_of_current_strategy_version": "GET_/api/trades.scope.strategy_version",
+    "current_api_rows_are_filtered_against_server_scope": true,
+    "history_or_execution_rows_mutated": false,
+    "strategy_thresholds_changed": false,
+    "cost_or_fill_changed": false,
+    "tp_sl_changed": false,
+    "paper_only_boundary_changed": false
+  },
+  "validation": {
+    "frontend_test_files": 15,
+    "frontend_tests": 120,
+    "regression_test_added": true,
+    "eslint": "PASS",
+    "typescript": "PASS",
+    "vite_modules": 54,
+    "installed_service": "NOT_RUN",
+    "actual_browser_current_history": "NOT_RUN",
+    "natural_new_trade": "NOT_OBSERVED",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}
