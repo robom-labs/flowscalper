@@ -168,7 +168,10 @@
     "wal_checkpoint_soft_bytes_before": 8388608,
     "wal_checkpoint_soft_bytes_after": 4194304,
     "runtime_change_implemented": true,
-    "runtime_change_deployed": false
+    "runtime_change_deployed": true,
+    "runtime_change_verified": true,
+    "followup_release": "6d63e6f63ebda3023336e5cabbabf1009c77eb9d",
+    "followup_evidence": "evidence/WAVE155_FOUR_MIB_WAL_CHECKPOINT_POSTINSTALL.json"
   },
   "limits": {
     "profitability": "NOT_PROVEN",

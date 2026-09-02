@@ -5707,7 +5707,12 @@ ADR-140에 따라 미확정 WAL soft threshold를 16MiB에서 8MiB로 낮춰 한
 | Wave 154 실제 release 설치·신규 checkpoint | `FAIL_PRESERVED` 첫 2회는 3.766초·1.501초였지만 후속 최대 41.142초 |
 | Wave 155 4MiB 수정·집중 회귀 | `PASS` 집중 5·backend 1,562·frontend 121·fixture 37·Playwright 7 PASS/2 SKIP |
 | Wave 155 정적·build·PAPER safety·security·위생·회귀계약 | `PASS_ZERO` mypy 128 source·build 54 modules·security 163 source·31 contracts |
-| Wave 155 실제 release 설치·신규 checkpoint 10회 | `NOT_RUN` |
+| Wave 155 실제 release 설치·신규 checkpoint 10회 | `PASS_SHORT_SCOPE` 최대 1.506초·동시 flush 0·event +58,512·전략평가 +53,940 |
+| Wave 155 후속 checkpoint 15회 누적 | `PASS_WITH_TRANSIENT_AUTOMATIC_SAFETY_WAIT` 최대 17.874초·자동 복구·연속 안정 표본 3회 |
+| Wave 155 실제 8870 화면·버튼·console | `PASS_OBSERVED` 시장·전략·거래·설정·홈 이동, console 오류·경고 0 |
+| GitHub main·Actions | `PASS` release source `6d63e6f`, run `33694443072` validate·browser PASS |
+| 새 자연 qualified signal·진입·종료 | `NOT_OBSERVED` 관찰 구간 적격신호 0, 임계값 완화·인위 거래 0 |
+| 활성 writer full SQLite 전수검사 | `NOT_RUN_SAFETY_BOUNDARY` |
 | 6시간·24시간 | `NOT_RUN` |
 | 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
 | 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
@@ -5720,7 +5725,42 @@ concurrent flush delta는 0이었다. event는 9,896→25,014건, 전략 평가�
 5회로 늘었고 최대가 41.142초로 30초 gate를 넘었다. 동시 flush·저장 fault·
 buffer drop·event drop은 모두 0이었지만 이를 PASS로 판정하지 않는다.
 기계판독 근거는 `evidence/WAVE154_BOUNDED_WAL_CHECKPOINT_POSTINSTALL.json`이다.
-ADR-141에 따라 4MiB 수정과 전체 자동 검증은 완료했고 실제 release·10회
-checkpoint 검증은 아직 `NOT_RUN`이다.
+ADR-141에 따라 4MiB 수정과 전체 자동 검증을 완료한 뒤, 불변 release
+`6d63e6f63ebda3023336e5cabbabf1009c77eb9d`를 같은 Run에 설치했다. CAS
+revision 108→109에서 안전 일시정지하고 109→110에서 재개해 최종
+`RUNNING`·`ENTRY_ENABLED`를 확인했다.
 
-현재 상태는 `WAVE154_LATE_THRESHOLD_FAIL_WAVE155_AUTOMATED_VALIDATION_PASS_RUNTIME_NOT_RUN`이다.
+2026-09-03 KST 08:27:33부터 08:37:46까지 새 checkpoint 10회는
+0.752·0.766·1.011·1.252·0.503·1.254·1.001·0.755·1.506·0.753초였고,
+모두 30초 상한 안이며 current·last·max concurrent flush delta는 0이었다.
+event는 58,512건, 전략 평가는 53,940건 전진했고 queue는 최대 21에서 0으로,
+시장 buffer는 최대 278에서 회복했다. persistence fault·checkpoint fault·
+buffer drop·event drop·비계획 reconnect·gap·resync는 모두 0이었다.
+
+관찰을 checkpoint 15회까지 이어간 누적 최대는 17.874초였다. 일부 후속
+체크포인트 전후 지연 보호로 자동 안전 대기가 발생했지만 시장 관찰은 계속됐고,
+사용자 개입 없이 `RUNNING`·신규 PAPER 진입 허용으로 복구한 연속 안정 표본
+3회를 확인했다. 최종 API 표본은 queue 0, 처리 P50/P95 19.500/194.144ms,
+실행호가 P95 154.343ms, wide P95 1,939.264ms, persistence backlog peak
+2,617, 현재/최고 RSS 150.766/267.969MiB였다. 실제 주문·인증·private API·
+API Key·wallet·runtime AI 주문판단은 계속 0이다.
+
+실제 Chrome에서 구 release 화면과 새 server의 revision 불일치 안전화면을 먼저
+확인하고 새로고침한 뒤 시장·전략·거래·설정과 로고 홈 이동을 직접 조작했다.
+시장 화면의 연결·자동관찰·자동진입 허용·80 wide·16 deep·차트, 전략 화면의
+방향 후보 6개·표시 family 3개·등록 16개·계좌 30개, 거래 화면의 완료 4개 고유
+기회·BASE/STRESS 원장 8행·KST 진입/종료/보유시간, 설정의 PAPER 10배 선택을
+확인했다. console 오류·경고는 0이었다. 관찰 구간에는 새 자연 qualified signal이
+없어 신규 거래는 `NOT_OBSERVED`이며, 거래를 만들기 위해 전략·비용·진입·TP·SL을
+바꾸지 않았다.
+
+전체 자동검증은 집중 5건, backend 1,562건, frontend 121건, fixture backend
+37건, 공식 Playwright 7 PASS·2 설계상 SKIP, mypy 128 source, build 54 modules,
+security 163 source와 회귀계약 31개가 PASS했다. GitHub main과 Actions
+`33694443072`의 validate·browser도 PASS했다. 기계판독 근거는
+`evidence/WAVE155_FOUR_MIB_WAL_CHECKPOINT_POSTINSTALL.json`이다.
+
+현재 상태는
+`WAVE154_FAILURE_PRESERVED_WAVE155_DEPLOYED_10_CHECKPOINT_PASS_AUTOMATIC_RECOVERY_OBSERVED_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
+6시간·24시간, 활성 writer full SQLite 전수검사와 비용 후 수익성은 각각
+`NOT_RUN`·`NOT_RUN_SAFETY_BOUNDARY`·`NOT_PROVEN`이며 실자금 준비는 `NOT_READY`다.

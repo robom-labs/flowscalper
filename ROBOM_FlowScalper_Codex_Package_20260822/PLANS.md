@@ -975,5 +975,19 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
   같은 Run으로 설치한다.
 - 신규 checkpoint 최소 10회가 모두 30초 이내·동시 flush 0인지와 event·
   전략평가 전진, queue·buffer 회복, fault·drop·실제주문·인증 0을 확인한다.
-- 자동 검증은 `PASS`, 실제 설치·10회 관찰은 `NOT_RUN`, 6시간·24시간은 계속
-  `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+- 불변 release `6d63e6f63ebda3023336e5cabbabf1009c77eb9d`를 기존
+  `run-2b7135a972dd`에 CAS pause→prepare→설치→resume 순서로 적용하고
+  revision 110의 `RUNNING`·`ENTRY_ENABLED`를 복원했다.
+- 첫 10회 checkpoint는 최대 1.506초·동시 flush 0이었고 event +58,512·
+  전략평가 +53,940이 전진했다. 후속 15회까지의 누적 최대도 17.874초로
+  30초 상한 안이었다. fault·drop·비계획 재연결·gap·resync는 0이었다.
+- 후속 구간의 일시적 자동 안전 대기는 시장 관찰을 유지한 채 개입 없이
+  `RUNNING`·신규 PAPER 진입 허용으로 복구했다. 연속 안정 표본 3회를 확인했으며
+  이를 장시간 PASS로 확대하지 않는다.
+- 실제 브라우저에서 시장·전략·거래·설정과 로고 홈 이동을 확인했고 console
+  오류·경고는 0이었다. 현재버전 완료 거래는 4개 고유 기회·BASE/STRESS 원장
+  8행으로 표시됐다. 관찰 구간의 자연 적격신호는 0이므로 새 거래는
+  `NOT_OBSERVED`로 남기고 전략 기준을 낮추지 않았다.
+- GitHub main과 Actions `33694443072`의 validate·browser는 `PASS`다.
+  6시간·24시간은 계속 `NOT_RUN`, 활성 원장 전수검사는 안전경계상 `NOT_RUN`,
+  수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
