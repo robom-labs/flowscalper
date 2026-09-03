@@ -1064,6 +1064,54 @@ def test_sequence_gap_data_health_lock_recovers_after_fresh_depth() -> None:
     assert runtime.dashboard()["operation_status"]["state"] == "RUNNING"
 
 
+def test_deep_rotation_prunes_retired_stale_trade_symbol_without_global_entry_lock() -> None:
+    clock = DeterministicClock(current_utc_ms=15_000)
+    runtime = PaperRuntime(
+        mode=RuntimeMode.LIVE_SHADOW_PAPER,
+        run_id="run-stale-trade-rotation",
+        clock=clock,
+        venue=Venue.BINANCE_USDM,
+    )
+    supervisor = PersistentPublicSupervisor(
+        RecordedProvider(),
+        run_id=runtime.run_id,
+        clock=clock,
+        sink=runtime.ingest_live_event,
+    )
+    prior_selection = ProviderSelection(
+        venue=Venue.BINANCE_USDM,
+        instruments={},
+        tickers={},
+        wide_symbols=("BTCUSDT", "OLDUSDT", "ETHUSDT"),
+        deep_symbols=("BTCUSDT", "OLDUSDT"),
+        bootstrap_events=(),
+    )
+    next_selection = ProviderSelection(
+        venue=Venue.BINANCE_USDM,
+        instruments={},
+        tickers={},
+        wide_symbols=("BTCUSDT", "OLDUSDT", "ETHUSDT"),
+        deep_symbols=("BTCUSDT", "ETHUSDT"),
+        bootstrap_events=(),
+    )
+    runtime.live_selection = prior_selection
+    runtime._stale_trade_symbols.add("OLDUSDT")
+    runtime._supervisor = supervisor
+    supervisor.selection = next_selection
+    supervisor.telemetry.consumer_running = True
+    supervisor.telemetry.entry_locked = False
+    supervisor.running = lambda: True  # type: ignore[method-assign]
+    runtime.market_data_state = MarketDataState.LIVE
+    runtime.runtime_health_flags = ["PUBLIC_SUPERVISOR_RUNNING", "NO_AUTH_HEADERS"]
+
+    runtime._refresh_supervisor_entry_safety()
+
+    assert runtime.live_selection is next_selection
+    assert runtime._stale_trade_symbols == set()
+    assert runtime.paused is False
+    assert "ENTRY_LOCK_DATA_HEALTH" not in runtime.runtime_health_flags
+
+
 def test_crossed_book_is_rejected_before_execution_and_feature_lock_recovers() -> None:
     clock = DeterministicClock(current_utc_ms=20_000)
     runtime = PaperRuntime(

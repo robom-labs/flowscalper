@@ -991,3 +991,22 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - GitHub main과 Actions `33694443072`의 validate·browser는 `PASS`다.
   6시간·24시간은 계속 `NOT_RUN`, 활성 원장 전수검사는 안전경계상 `NOT_RUN`,
   수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+## Wave 156 지연 공개체결의 종목별 격리와 자동진입 복원
+
+- `ENTRY_ENABLED`인데도 `stale_trade_symbols=1`이 장시간 남아 전체
+  PAPER가 `SAFETY_WAITING`으로 멈추는 실제 서비스 경로를 재현한다.
+- 늦은 aggregate trade는 여전히 archive로 보존하되 candle·전략 피처에
+  사용하지 않고, 해당 종목 pending만 취소한다. 다른 fresh 종목의
+  PAPER 진입은 전역으로 잠그지 않는다.
+- 정밀감시에서 교체된 종목의 종료된 stale 상태를 정리하되,
+  실행호가 gap·sequence·consumer·queue·저장·복구 안전잠금은 유지한다.
+- 종목별 stale 체결, fresh 체결·depth 회복과 정밀감시 교체 회귀를
+  추가하고 backend 전체·frontend·Playwright·정적검사·PAPER safety·
+  security·위생·회귀계약을 재검증한다.
+- flat에서 CAS pause→prepare→불변 release 설치→resume으로 같은 Run을
+  유지하고, `RUNNING`·`ENTRY_ENABLED`·event·전략평가 전진과
+  queue·fault·drop·실제주문 0을 실제로 관찰한다.
+- 전략·비용·TP·SL을 낮추지 않는다. 자연 적격신호·거래가 없으면
+  `NOT_OBSERVED`, 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`,
+  실자금 준비는 `NOT_READY`를 유지한다.

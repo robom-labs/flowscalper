@@ -2526,13 +2526,19 @@ class PaperRuntime:
                 persistence_backlog = len(self._market_event_buffer)
             self._refresh_persistence_backlog_safety(persistence_backlog)
         data_health_fault = event.quality.is_stale or not event.quality.sequence_valid
+        trade_data_health_fault = event.event_type == "TRADE" and data_health_fault
         if depth_event and data_health_fault:
             self._observe_directional_change(event)
         if data_health_fault:
             self._reset_semivariance_symbol(event.symbol, "DATA_GAP")
-            entering_gap = event.symbol not in self.data_gap_since_ms
-            self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
-            if entering_gap:
+            entering_fault = (
+                event.symbol not in self._stale_trade_symbols
+                if trade_data_health_fault
+                else event.symbol not in self.data_gap_since_ms
+            )
+            if not trade_data_health_fault:
+                self.data_gap_since_ms.setdefault(event.symbol, event.venue_ts_ms)
+            if entering_fault:
                 # 진행 중인 이전 healthy 프로세스 결과를 거부하고, 다음 평가에서
                 # 자식 evaluator의 confirmation 이력을 새 상태로 시작한다.
                 self._strategy_data_health_epoch += 1
@@ -2542,17 +2548,28 @@ class PaperRuntime:
                     latest_feature,
                     data_healthy=False,
                 )
-            self.paused = True
-            if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
-                self.runtime_health_flags.append("ENTRY_LOCK_DATA_HEALTH")
-            cancelled_accounts = self.paper_portfolio.cancel_all_pending_entries(
-                now_ms=event.venue_ts_ms,
-                reason_code=(
-                    "DATA_HEALTH_STALE"
-                    if event.quality.is_stale
-                    else "DATA_HEALTH_SEQUENCE_INVALID"
-                ),
+            reason_code = (
+                "DATA_HEALTH_STALE"
+                if event.quality.is_stale
+                else "DATA_HEALTH_SEQUENCE_INVALID"
             )
+            if trade_data_health_fault:
+                # 지연된 공개 체결은 해당 종목의 진입 근거만 무효화한다.
+                # 다른 fresh 종목과 전체 PAPER 진입을 함께 잠그면,
+                # 비활성 종목 하나가 다음 체결 전까지 전체 Run을 중단시킨다.
+                cancelled_accounts = self.paper_portfolio.cancel_pending_entries_for_symbol(
+                    event.symbol,
+                    now_ms=event.venue_ts_ms,
+                    reason_code=reason_code,
+                )
+            else:
+                self.paused = True
+                if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
+                    self.runtime_health_flags.append("ENTRY_LOCK_DATA_HEALTH")
+                cancelled_accounts = self.paper_portfolio.cancel_all_pending_entries(
+                    now_ms=event.venue_ts_ms,
+                    reason_code=reason_code,
+                )
             if cancelled_accounts and not defer_execution_persistence:
                 self._persist_execution_state_safely(event.venue_ts_ms)
         if depth_event:
@@ -2704,6 +2721,16 @@ class PaperRuntime:
             self.live_selection = selection
             self.wide_symbol_count = len(selection.wide_symbols)
             self.deep_symbol_count = len(selection.deep_symbols)
+            removed_stale_symbols = self._stale_trade_symbols.difference(
+                selection.deep_symbols
+            )
+            if removed_stale_symbols:
+                self._stale_trade_symbols.difference_update(removed_stale_symbols)
+                self._log(
+                    "MARKET_DATA",
+                    "정밀감시 교체 종목의 종료된 체결 지연 상태 정리 · "
+                    f"{len(removed_stale_symbols)}개",
+                )
             self._record_universe_selection(selection, reason="SAFE_DEEP_ROTATION")
         telemetry = self._supervisor.telemetry
         self.processing_lag_p95_ms = telemetry.lag_p95_ms
@@ -2761,9 +2788,9 @@ class PaperRuntime:
             self.paused = False
 
     def _refresh_data_health_entry_safety(self) -> None:
-        """모든 gap과 stale trade가 fresh depth로 회복된 뒤에만 잠금을 푼다."""
+        """모든 실행호가 gap이 fresh depth로 회복된 뒤에만 잠금을 푼다."""
 
-        if self.data_gap_since_ms or self._stale_trade_symbols:
+        if self.data_gap_since_ms:
             return
         if "ENTRY_LOCK_DATA_HEALTH" not in self.runtime_health_flags:
             return
