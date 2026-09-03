@@ -1010,3 +1010,23 @@ Wave 98 코드 릴리스 `5f82e4e00f057c6a6bcb338d41b7a45a290cf63f`의 Actions `
 - 전략·비용·TP·SL을 낮추지 않는다. 자연 적격신호·거래가 없으면
   `NOT_OBSERVED`, 6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`,
   실자금 준비는 `NOT_READY`를 유지한다.
+
+### Wave 156 실행 결과
+
+- 불변 release `6289ba27b082eb42a4734447c27a23dfc841a835`를 같은
+  `run-2b7135a972dd`에 설치했고 CAS revision 111→112로 안전 재개했다.
+- 실제 `stale_trade_symbols=1` 표본에서도 전체는 `RUNNING`·
+  `ENTRY_ENABLED`·`paused=false`를 유지했다. 178.8초 동안 event +21,881건·
+  전략평가 +16,116건이 전진했고 queue·fault·drop·비계획 reconnect는 0이었다.
+- 집중 회귀 3건, backend 1,563건, frontend 121건, fixture backend 37건,
+  공식 Playwright 7 PASS·2 설계상 SKIP와 Ruff·mypy·ESLint·TypeScript·build·
+  PAPER safety·security·repository hygiene·회귀계약을 통과했다.
+- 실제 브라우저에서 시장·전략·거래·설정·홈 이동, 완료 기회 4건·원장 8행,
+  LIVE_PUBLIC 다시보기 57건과 BTWUSDT 45프레임 재생을 확인했다. console
+  오류·경고는 0이었다.
+- 브라우저 검증 작업자의 CPU 173.3%·RSS 약 4.86GiB 호스트 경합으로
+  checkpoint 38.473초와 `SAFETY_WAITING`이 발생한 실패를 삭제하지 않았다.
+  작업자 종료 뒤 runtime은 자동 복구했고 최종 처리 P95 22.925ms·trade P95
+  33.019ms, queue·fault·drop·gap·resync 0을 확인했다.
+- 관찰 구간의 자연 적격신호·신규 진입·종료는 `NOT_OBSERVED`, 6시간·24시간은
+  `NOT_RUN`, 비용 후 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.

@@ -5764,3 +5764,84 @@ security 163 source와 회귀계약 31개가 PASS했다. GitHub main과 Actions
 `WAVE154_FAILURE_PRESERVED_WAVE155_DEPLOYED_10_CHECKPOINT_PASS_AUTOMATIC_RECOVERY_OBSERVED_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.
 6시간·24시간, 활성 writer full SQLite 전수검사와 비용 후 수익성은 각각
 `NOT_RUN`·`NOT_RUN_SAFETY_BOUNDARY`·`NOT_PROVEN`이며 실자금 준비는 `NOT_READY`다.
+
+## 117. Wave 156 지연 공개체결의 종목별 격리와 자동진입 복원
+
+### 117.1 원인과 수정
+
+기존 release는 한 종목의 500ms 초과 aggregate trade를 전략 입력에서
+제외하면서도 전역 `paused`와 `ENTRY_LOCK_DATA_HEALTH`를 설정했다. 같은 종목의
+fresh trade가 오기 전까지 잠금이 남았고, 거래가 드물거나 정밀감시에서 빠진
+종목이면 다른 정상 종목까지 무기한 신규 진입이 멈췄다. 당시 실행호가 건강은
+`HEALTHY`, queue·저장 fault·drop·비계획 reconnect는 0이었다.
+
+Wave 156은 늦은 trade를 계속 archive하고 candle·전략 피처에서 제외하되,
+해당 종목의 pending만 취소한다. 다른 fresh 종목과 전체 Run은 계속한다.
+정밀감시에서 빠진 종목의 종료된 stale 상태를 정리하며 실행호가 gap·순서누락·
+consumer·queue·저장·복구 결함의 전역 fail-closed는 유지했다. 전략 기준·비용·
+PAPER 체결·수량·TP1·TP2·SL은 바꾸지 않았다.
+
+### 117.2 자동 검증
+
+| 항목 | 상태 |
+|---|---|
+| 종목별 stale/fresh/회전 집중 회귀 | `PASS` 3건 |
+| backend 전체 | `PASS` 1,563건 |
+| frontend 전체 | `PASS` 15 files·121건 |
+| fixture backend | `PASS` 37건 |
+| 공식 Playwright | `PASS` 7건·설계상 SKIP 2건 |
+| Ruff·mypy·ESLint·TypeScript·Vite build | `PASS` mypy 128 source·build 54 modules |
+| PAPER build safety·security | `PASS_ZERO` security 163 source·위반·secret·실제주문 경로 0 |
+| repository hygiene·회귀계약 | `PASS` 31 contracts·61 anchors·136 tokens |
+
+### 117.3 설치와 실제 runtime 관찰
+
+flat·open 0·pending 0에서 CAS revision 110→111로 일시정지하고
+`--prepare-only` 뒤 안전 설치했다. 불변 release는
+`6289ba27b082eb42a4734447c27a23dfc841a835`, Run은 기존
+`run-2b7135a972dd`를 보존했다. revision 111→112로 재개해
+`RUNNING`·`ENTRY_ENABLED`를 복원했다.
+
+설치 후 105.7초 표본에서 실제 `stale_trade_symbols=1`이 발생했지만 전체는
+`RUNNING`·`ENTRY_ENABLED`·`paused=false`를 유지했다. 첫 178.8초 관찰에서
+event +21,881건·전략평가 +16,116건이 전진했고 최종 queue·persistence
+fault·buffer drop·event drop·비계획 reconnect는 모두 0이었다. 자연
+qualified signal과 open·pending은 0이어서 신규 거래는 `NOT_OBSERVED`다.
+
+### 117.4 실제 브라우저 검증과 보존한 실패
+
+실제 화면에서 시장·전략·거래·설정과 로고 홈 이동을 조작했다. 완료 거래는
+4개 고유 기회·BASE/STRESS 원장 8행으로 표시됐고 KST 진입·종료·보유시간을
+확인했다. 과거 재생은 비동기 로드 뒤 LIVE_PUBLIC 기회 57건을 표시했다.
+BTWUSDT 45프레임을 1→2프레임으로 재생하고 종료 이동으로 45프레임에 도달해
+진입·TP1·TP2·초기 손절·종료·KST 시각·진입 근거가 차트에 표시됨을 확인했다.
+설정은 PAPER 전용·기본 10배·1배부터 100배 선택·일간/주간 연구 중단 없음을
+보였고 console 오류·경고는 0이었다.
+
+브라우저 검증 도중 외부 computer-use 작업자가 CPU 173.3%·RSS 약 4.86GiB를
+사용해 호스트 I/O 경합이 발생했다. checkpoint 최대 38.473초·처리 P95 최대
+19,824.224ms와 `SAFETY_WAITING`을 숨기지 않고 실패로 보존한다. runtime은
+공개시장 관찰을 계속했고 fault·drop·gap·resync·비계획 reconnect는 0이었다.
+작업자를 종료한 뒤 개입 없이 `RUNNING`·`ENTRY_ENABLED`로 복구했다. 최종
+안정 표본은 event 116,426건·전략평가 76,140건, 처리 P50/P95
+18.827/22.925ms, wide P95 1,832.379ms, trade P95 33.019ms, queue 0,
+checkpoint last 1.002초, fault·drop·gap·resync·비계획 reconnect 0이었다.
+
+| 항목 | 상태 |
+|---|---|
+| 같은 Run 설치·자동진입 복원 | `PASS` revision 111→112 |
+| 실제 stale trade의 종목별 격리 | `PASS_OBSERVED` stale 1에서도 `RUNNING`·`ENTRY_ENABLED` |
+| 실제 화면·거래·다시보기·console | `PASS_OBSERVED` 4기회·8원장·57 replay·45 frames·console 0 |
+| 외부 QA 호스트 경합 | `FAIL_PRESERVED_EXTERNAL_QA_LOAD_AUTOMATICALLY_RECOVERED` |
+| 최종 runtime 회복 | `PASS_OBSERVED` 처리 P95 22.925ms·trade P95 33.019ms·queue/fault/drop 0 |
+| 자연 qualified signal·신규 진입·종료 | `NOT_OBSERVED` 임계값 완화·인위 거래 0 |
+| 활성 writer full SQLite 전수검사 | `NOT_RUN_SAFETY_BOUNDARY` |
+| 6시간·24시간 | `NOT_RUN` |
+| 실제 주문·private API·API Key·wallet·runtime AI 주문판단 | `PASS_ZERO` |
+| 수익성·실자금 준비 | `NOT_PROVEN / NOT_READY` |
+
+기계판독 근거는
+`evidence/WAVE156_SYMBOL_SCOPED_STALE_TRADE_POSTINSTALL.json`이다.
+
+현재 상태는
+`WAVE156_DEPLOYED_SYMBOL_SCOPED_STALE_TRADE_PASS_OBSERVED_AUTOMATIC_RECOVERY_OBSERVED_LONG_SOAK_NOT_RUN_PROFITABILITY_NOT_PROVEN_NOT_READY`다.

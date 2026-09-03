@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "wave": 156,
+  "recorded_at_kst": "2026-09-03T17:15:58+09:00",
+  "status": "COMPLETE_WITH_LIMITS",
+  "objective": "Keep a delayed aggregate trade isolated to its symbol while healthy symbols and the PAPER run continue.",
+  "baseline": {
+    "github_main_commit": "bf27887ed65d1aac14d5cd8f762f941e2a0f77cf",
+    "installed_release_commit": "6d63e6f63ebda3023336e5cabbabf1009c77eb9d",
+    "run_id": "run-2b7135a972dd",
+    "paper_entry_intent": "ENTRY_ENABLED",
+    "observed_state": "SAFETY_WAITING",
+    "observed_stale_trade_symbols": 1,
+    "observed_executable_depth_health": "HEALTHY",
+    "queue_depth": 0,
+    "persistence_fault_active": false,
+    "persistence_buffer_dropped": 0,
+    "dropped_events": 0,
+    "unplanned_reconnects": 0
+  },
+  "root_cause": {
+    "status": "CONFIRMED",
+    "summary": "A stale aggregate trade set a global data-health entry lock and pause that could remain until the same symbol produced a later fresh trade, including after that symbol left the deep universe.",
+    "affected_component": "backend/app/runtime.py",
+    "unchanged_global_fail_closed_paths": [
+      "executable_depth_gap",
+      "sequence_gap",
+      "consumer_fault",
+      "queue_overload",
+      "persistence_fault",
+      "recovery_fault"
+    ]
+  },
+  "implementation": {
+    "release_commit": "6289ba27b082eb42a4734447c27a23dfc841a835",
+    "decision_record": "docs/adr/ADR-142-symbol-scoped-stale-trade-entry-safety.md",
+    "behavior": [
+      "Archive and reject stale trade input from candles and strategy features.",
+      "Cancel pending PAPER entries only for the stale symbol.",
+      "Do not globally pause healthy symbols for an isolated stale trade.",
+      "Prune stale-trade state when a symbol leaves the deep universe.",
+      "Keep promotion health conservative while any current stale-trade evidence remains."
+    ],
+    "strategy_thresholds_changed": false,
+    "cost_model_changed": false,
+    "paper_execution_changed": false,
+    "tp_sl_changed": false
+  },
+  "automated_validation": {
+    "focused_regression": { "status": "PASS", "passed": 3 },
+    "backend": { "status": "PASS", "passed": 1563 },
+    "frontend": { "status": "PASS", "files": 15, "passed": 121 },
+    "ruff": { "status": "PASS" },
+    "mypy": { "status": "PASS", "source_files": 128 },
+    "eslint": { "status": "PASS" },
+    "typescript": { "status": "PASS" },
+    "vite_build": { "status": "PASS", "modules": 54 },
+    "fixture_backend": { "status": "PASS", "passed": 37 },
+    "playwright": { "status": "PASS", "passed": 7, "designed_skips": 2 },
+    "paper_build_safety": { "status": "PASS_ZERO_REAL_ORDER_PATH" },
+    "security": {
+      "status": "PASS",
+      "source_files": 163,
+      "violations": 0,
+      "secret_like_files": 0
+    },
+    "repository_hygiene": { "status": "PASS" },
+    "regression_contracts": {
+      "status": "PASS",
+      "contracts": 31,
+      "anchor_files": 61,
+      "tokens": 136
+    }
+  },
+  "deployment": {
+    "status": "PASS",
+    "run_id_preserved": "run-2b7135a972dd",
+    "source_release_commit": "6289ba27b082eb42a4734447c27a23dfc841a835",
+    "cas_pause_revision": 111,
+    "cas_resume_revision": 112,
+    "final_paper_entry_intent": "ENTRY_ENABLED"
+  },
+  "postinstall_observation": {
+    "symbol_scoped_stale_trade": {
+      "status": "PASS_OBSERVED",
+      "elapsed_seconds": 105.7,
+      "stale_trade_symbols": 1,
+      "operation_state": "RUNNING",
+      "paper_entry_intent": "ENTRY_ENABLED",
+      "paused": false
+    },
+    "initial_observer_final": {
+      "elapsed_seconds": 178.8,
+      "operation_state": "RUNNING",
+      "paper_entry_intent": "ENTRY_ENABLED",
+      "event_delta": 21881,
+      "strategy_evaluation_delta": 16116,
+      "queue_depth": 0,
+      "processing_lag_p95_ms": 25.004,
+      "trade_lag_p95_ms": 38.573,
+      "persistence_fault_active": false,
+      "persistence_buffer_dropped": 0,
+      "dropped_events": 0,
+      "unplanned_reconnects": 0,
+      "open_positions": 0,
+      "pending_entries": 0,
+      "qualified_signal_count": 0
+    },
+    "ui_qa_host_contention": {
+      "status": "FAIL_PRESERVED_EXTERNAL_QA_LOAD_AUTOMATICALLY_RECOVERED",
+      "cause_observed": "The computer-use verification worker reached 173.3 percent CPU and about 4.86 GiB RSS while the replay chart was inspected.",
+      "maximum_wal_checkpoint_ms_during_contention": 38473.0,
+      "maximum_observed_processing_lag_p95_ms_during_contention": 19824.224,
+      "safety_behavior": "The runtime entered SAFETY_WAITING, continued public-market observation, recorded no drop or persistence fault, and recovered automatically after the QA worker was stopped.",
+      "product_long_soak_inference": "NOT_ALLOWED"
+    },
+    "final_stable_sample": {
+      "operation_state": "RUNNING",
+      "paper_entry_intent": "ENTRY_ENABLED",
+      "paused": false,
+      "event_count": 116426,
+      "strategy_evaluation_count": 76140,
+      "queue_depth": 0,
+      "market_persistence_buffer": 256,
+      "critical_lag_active": false,
+      "stale_trade_symbols": 0,
+      "lag_p50_ms": 18.827,
+      "lag_p95_ms": 22.925,
+      "wide_lag_p95_ms": 1832.379,
+      "trade_lag_p95_ms": 33.019,
+      "wal_checkpoint_count": 16,
+      "wal_checkpoint_last_ms": 1002.0,
+      "wal_checkpoint_running": false,
+      "persistence_fault_active": false,
+      "persistence_buffer_dropped": 0,
+      "dropped_events": 0,
+      "unplanned_reconnects": 0,
+      "sequence_gaps": 0,
+      "resyncs": 0,
+      "open_positions": 0,
+      "pending_entries": 0,
+      "qualified_signal_count": 0
+    }
+  },
+  "browser_qa": {
+    "status": "PASS_OBSERVED",
+    "market": "Connected, PAPER actual orders 0, 80 wide and 16 deep symbols, operation-state explanation visible.",
+    "strategies": "Six directional candidates, sixteen registered strategies, sparse samples excluded from ranking.",
+    "completed_trades": "Four unique opportunities and eight BASE/STRESS ledger result rows rendered with entry, exit and holding time.",
+    "replay_catalog": "Fifty-seven LIVE_PUBLIC opportunities loaded.",
+    "replay_player": "BTWUSDT replay rendered 45 frames, advanced from frame 1 to 2, and the exit jump reached frame 45 with entry, TP1, TP2, initial stop, KST times and rationale visible.",
+    "settings": "PAPER-only boundary, default 10x leverage, 1x through 100x choices, no daily or weekly research stop, and automatic safety state rendered.",
+    "brand_home": "The ROBOM FlowScalper title returned to the market page and refreshed current state.",
+    "browser_console_warning_or_error_count": 0
+  },
+  "safety_boundary": {
+    "paper_only": true,
+    "real_orders_enabled": false,
+    "auth_required": false,
+    "api_key_enabled": false,
+    "private_api_enabled": false,
+    "wallet_enabled": false,
+    "runtime_ai_order_decision_enabled": false,
+    "funding_readiness": "NOT_READY"
+  },
+  "remaining_gates": {
+    "new_natural_qualified_signal": "NOT_OBSERVED",
+    "new_natural_entry_and_exit": "NOT_OBSERVED",
+    "six_hour_soak": "NOT_RUN",
+    "twenty_four_hour_soak": "NOT_RUN",
+    "profitability": "NOT_PROVEN",
+    "real_money_readiness": "NOT_READY"
+  }
+}

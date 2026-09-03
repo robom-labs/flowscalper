@@ -6,6 +6,16 @@
 
 ## 현재 배포됨
 
+- Wave 156에서 한 종목의 500ms 초과 공개체결이 전체 PAPER 신규 진입을
+  무기한 잠그던 결함을 종목별 격리로 수정했다. 불변 release
+  `6289ba27b082eb42a4734447c27a23dfc841a835`를 같은 Run에 설치했고 실제
+  `stale_trade_symbols=1` 표본에서도 `RUNNING`·`ENTRY_ENABLED`를 유지했다.
+  브라우저에서 완료 기회 4건·원장 8행·다시보기 57건과 45프레임 재생을
+  확인했다. 외부 QA 작업자 경합으로 checkpoint 38.473초가 발생한 실패는
+  보존했으며 작업자 종료 뒤 처리 P95 22.925ms·trade P95 33.019ms,
+  queue·fault·drop 0으로 자동 복구했다. 자연 신규 거래는 `NOT_OBSERVED`,
+  6시간·24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금 준비는
+  `NOT_READY`다.
 - Wave 154의 8MiB WAL checkpoint에서 후속 41.142초 초과가 재발한 실패를
   보존하고, Wave 155에서 soft threshold를 4MiB로 줄였다. PASSIVE·별도
   process·배타 I/O gate·`synchronous=FULL`·250-event flush·64MiB
@@ -20,11 +30,6 @@
   실자금 준비는 `NOT_READY`다.
 
 ## 아직 배포하지 않음
-- Wave 156에서 한 종목의 500ms 초과 공개체결이 전체 PAPER 신규
-  진입을 무기한 잠그던 결함을 수정했다. 늦은 체결은 여전히 해당
-  종목의 candle·전략 피처와 pending에서 fail-closed하지만, 다른 fresh 종목의
-  PAPER 진입은 계속한다. 실행호가 gap·순서누락·저장·복구 안전잠금과
-  전략·비용·TP·SL·실제주문 0 계약은 바꾸지 않았다.
 - Wave 153에서 외장 APFS의 WAL 체크포인트와 시장 원장 flush를 동시에 실행해 체크포인트가
   최대 82.687초, 겹친 flush가 최대 19회까지 늘어난 I/O 경합을 수정했다. 체크포인트는 낮은
   CPU 우선순위를 유지하되 정상 I/O 우선순위와 배타 저장 구간을 사용하고, 완료 전에는 새

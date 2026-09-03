@@ -1,6 +1,6 @@
 # ADR-142. 지연된 공개 체결의 종목별 PAPER 진입 격리
 
-- 상태. 채택·자동 회귀검증 완료. 실제 서비스 설치·관찰은 진행 전.
+- 상태. 채택·배포·실제 서비스 단기 관찰 완료. 장시간 검증은 미실행.
 - 일자. 2026-09-03.
 - 범위. LIVE_PUBLIC PAPER의 500ms 초과 aggregate trade 지연 처리에 적용한다.
 - 수익성 영향. 없음. 전략·비용·수량·TP1·TP2·SL·체결 계약은 바꾸지 않는다.
@@ -43,3 +43,28 @@
   `ENTRY_ENABLED`, event·전략평가 전진, queue·fault·drop·실제주문 0을
   관찰한다. 자연 적격신호가 없으면 신규 거래는 `NOT_OBSERVED`다.
 
+## 실제 서비스 검증
+
+- 불변 release `6289ba27b082eb42a4734447c27a23dfc841a835`를 기존
+  `run-2b7135a972dd`에 설치했다. CAS revision 111에서 안전 일시정지하고
+  revision 112에서 `ENTRY_ENABLED`로 재개했다.
+- 설치 후 105.7초 표본에서 `stale_trade_symbols=1`이 실제로 발생했지만
+  전체 상태는 `RUNNING`·`ENTRY_ENABLED`·`paused=false`를 유지했다. 이전의
+  전역 `ENTRY_LOCK_DATA_HEALTH` 재현 경로가 종목별로 격리됐음을 확인했다.
+- 첫 178.8초 관찰에서 공개 event +21,881건·전략평가 +16,116건이 전진했고,
+  최종 queue·persistence fault·buffer drop·event drop·비계획 reconnect는
+  모두 0이었다.
+- 실제 브라우저에서 완료 기회 4건·BASE/STRESS 원장 8행과 저장된
+  LIVE_PUBLIC 다시보기 57건을 확인했다. BTWUSDT 다시보기 45프레임을
+  재생해 진입·TP1·TP2·초기 손절·종료·KST 시각·진입 근거를 확인했다.
+- 브라우저 검증 도중 외부 computer-use 작업자가 CPU 173.3%·RSS 약
+  4.86GiB를 사용해 WAL checkpoint가 최대 38.473초까지 늦어지는 호스트
+  경합도 보존했다. runtime은 `SAFETY_WAITING`으로 안전 전환하고 공개시장
+  관찰을 계속했으며 작업자 종료 뒤 개입 없이 복구했다. 복구 표본은
+  `RUNNING`·`ENTRY_ENABLED`, 처리 P95 22.925ms, trade P95 33.019ms,
+  queue·fault·drop·비계획 reconnect·gap·resync 0이었다.
+- 자연 적격신호와 신규 거래는 관찰되지 않아 `NOT_OBSERVED`다. 6시간·
+  24시간은 `NOT_RUN`, 수익성은 `NOT_PROVEN`, 실자금 준비는 `NOT_READY`다.
+
+기계판독 근거는
+`evidence/WAVE156_SYMBOL_SCOPED_STALE_TRADE_POSTINSTALL.json`이다.
